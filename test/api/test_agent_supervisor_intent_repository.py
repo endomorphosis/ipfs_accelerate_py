@@ -49,6 +49,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+    DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
     INTENT_COMPLETION_PROJECTION_SCHEMA,
     INTENT_PLAN_PROJECTION_SCHEMA,
     INTENT_REPOSITORY_INTERFACE,
@@ -1086,6 +1088,147 @@ def test_guarded_retry_replaces_wrong_deadline_and_rejects_drift(
                 delay_ms=60_000,
                 reason=reason,
             )
+
+
+def test_guarded_retry_preserves_virgin_transfer_lineage_and_rejects_tampering(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        now = 1_700_000_000_000
+        repo._clock_ms = lambda: now  # type: ignore[method-assign]
+        transfer_task_cid = "task:cid:atomic-transfer"
+        repo.upsert_task(
+            task_cid=transfer_task_cid,
+            task_alias="DQP-ATOMIC-05",
+            goal_cid=ids["goal_cid"],
+            plan_cid=ids["plan_cid"],
+            objective_id=ids["objective_id"],
+            ordinal=3,
+            status="ready",
+            priority="P1",
+        )
+        transfer_task = repo.get_task(transfer_task_cid)
+        assert transfer_task is not None
+        claim_receipt = {
+            "operation": "database_claim",
+            "claim_id": "claim:atomic-transfer",
+            "attempt_id": "attempt:atomic-transfer",
+            "attempt_number": 1,
+            "owner_session_id": "session:atomic-transfer-recipient",
+            "lease_id": "lease:atomic-transfer",
+            "fencing_token": 1,
+            "fence_epoch": 1,
+            "claimed_from_revision": int(transfer_task["revision"]),
+            "task_shard_count": 2,
+            "task_shard_index": 1,
+            "strict_task_sharding": True,
+            "idle_lane_work_stealing": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+            "task_prefix": "DQP-",
+            "unknown_callback_reopen_count": 2,
+            "virgin_task_transfer_request": {
+                "schema": DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+                "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+                "task_shard_count": 2,
+                "recipient_shard_index": 1,
+                "task_prefix": "DQP-",
+            },
+        }
+        repo.cas_task_status(
+            task_cid=transfer_task_cid,
+            expected_revision=int(transfer_task["revision"]),
+            new_status="in_progress",
+            receipt=claim_receipt,
+        )
+        claimed = repo.get_task(transfer_task_cid)
+        assert claimed is not None
+        claimed_receipt = claimed["body"]["completion_receipt"]
+        origin_binding = deepcopy(claimed_receipt["virgin_task_transfer"])
+        origin_cursor = deepcopy(
+            claimed_receipt["virgin_task_transfer_claim_cursor"]
+        )
+
+        reason = "database_portal_retry:attempt:atomic-transfer:capacity"
+        retry_receipt = {
+            "operation": "database_portal_capacity_retry",
+            "queue_reason": reason,
+            "queue_reused": False,
+            "queue_receipt": {},
+            "retry_not_before_ms": 0,
+        }
+        tampered_binding = deepcopy(origin_binding)
+        tampered_binding["donor_ready_count"] = (
+            int(tampered_binding["donor_ready_count"]) + 1
+        )
+        tampered_cursor = deepcopy(origin_cursor)
+        tampered_cursor["claim_id"] = "claim:forged-transfer"
+        for field, value, message in (
+            (
+                "virgin_task_transfer",
+                tampered_binding,
+                "would replace a virgin-transfer binding",
+            ),
+            (
+                "virgin_task_transfer_claim_cursor",
+                tampered_cursor,
+                "would replace a virgin-transfer claim cursor",
+            ),
+            (
+                "unknown_callback_reopen_count",
+                1,
+                "would replace an unknown-callback reopen count",
+            ),
+            (
+                "unknown_callback_reopen_count",
+                "2",
+                "would replace an unknown-callback reopen count",
+            ),
+        ):
+            forged = {**retry_receipt, field: value}
+            with pytest.raises(IntentRepositoryTransitionError, match=message):
+                repo.record_queue_backoff_and_cas_task_status(
+                    task_cid=transfer_task_cid,
+                    expected_revision=int(claimed["revision"]),
+                    expected_control_receipt=claimed_receipt,
+                    new_status="retrying",
+                    receipt=forged,
+                    delay_ms=60_000,
+                    reason=reason,
+                )
+            assert repo.get_queue_entry(transfer_task_cid) is None
+            assert repo.get_task(transfer_task_cid) == claimed
+
+        result = repo.record_queue_backoff_and_cas_task_status(
+            task_cid=transfer_task_cid,
+            expected_revision=int(claimed["revision"]),
+            expected_control_receipt=claimed_receipt,
+            new_status="retrying",
+            receipt=retry_receipt,
+            delay_ms=60_000,
+            reason=reason,
+        )
+        assert result["queue_reused"] is False
+        retrying = repo.get_task(transfer_task_cid)
+        assert retrying is not None
+        exact_receipt = retrying["body"]["completion_receipt"]
+        assert exact_receipt["virgin_task_transfer"] == origin_binding
+        assert exact_receipt["virgin_task_transfer_claim_cursor"] == origin_cursor
+        assert exact_receipt["unknown_callback_reopen_count"] == 2
+
+        replay = repo.record_queue_backoff_and_cas_task_status(
+            task_cid=transfer_task_cid,
+            expected_revision=int(retrying["revision"]),
+            expected_control_receipt=exact_receipt,
+            new_status="retrying",
+            receipt=exact_receipt,
+            delay_ms=60_000,
+            reason=reason,
+            exact_retry_not_before_ms=int(exact_receipt["retry_not_before_ms"]),
+        )
+        assert replay["queue_reused"] is True
+        assert replay["status_receipt"]["changed"] is False
+        assert replay["transition_receipt"] == exact_receipt
+        assert repo.get_task(transfer_task_cid) == retrying
 
 
 # ---------------------------------------------------------------------------

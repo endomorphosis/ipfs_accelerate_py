@@ -513,19 +513,39 @@ def _decode_json(value: Any, *, noun: str = "json") -> Any:
 def _receipt_with_preserved_reopen_count(
     receipt: Mapping[str, Any],
     previous_receipt: Any,
+    *,
+    require_exact_previous: bool = False,
 ) -> dict[str, Any]:
     """Keep unknown-callback reopen count across later claim receipts."""
 
     stored = dict(receipt)
-    if "unknown_callback_reopen_count" in stored:
+    field = "unknown_callback_reopen_count"
+    previous_present = isinstance(previous_receipt, Mapping) and field in previous_receipt
+    previous_count = previous_receipt.get(field) if previous_present else None
+    if require_exact_previous:
+        if previous_present and (
+            type(previous_count) is not int or previous_count < 0
+        ):
+            raise IntentRepositoryIntegrityError(
+                "authoritative unknown-callback reopen count is invalid"
+            )
+        if field in stored and (
+            not previous_present
+            or type(stored[field]) is not int
+            or stored[field] != previous_count
+        ):
+            raise IntentRepositoryTransitionError(
+                "transition would replace an unknown-callback reopen count"
+            )
+        if previous_present:
+            stored[field] = previous_count
         return stored
-    previous_count = None
-    if isinstance(previous_receipt, Mapping):
-        previous_count = previous_receipt.get("unknown_callback_reopen_count")
+    if field in stored:
+        return stored
     if previous_count is None:
         return stored
     try:
-        stored["unknown_callback_reopen_count"] = max(0, int(previous_count))
+        stored[field] = max(0, int(previous_count))
     except (TypeError, ValueError):
         return dict(receipt)
     return stored
@@ -8053,6 +8073,26 @@ class IntentRepository:
             else:
                 revision = current_revision + 1
                 body_map = dict(body_map)
+                transition_receipt = _prepare_database_virgin_transfer_receipt_on(
+                    connection,
+                    task={
+                        "task_cid": resolved_cid,
+                        "task_alias": str(task_row[1]),
+                        "status": previous_status,
+                        "revision": current_revision,
+                        "body": body_map,
+                    },
+                    previous_status=previous_status,
+                    current_revision=current_revision,
+                    new_status=status_text,
+                    receipt=transition_receipt,
+                    now_ms=now_ms,
+                )
+                transition_receipt = _receipt_with_preserved_reopen_count(
+                    transition_receipt,
+                    current_receipt,
+                    require_exact_previous=True,
+                )
                 body_map["completion_receipt"] = transition_receipt
                 encoded_body = _canonical(body_map, noun="task body")
                 connection.execute(

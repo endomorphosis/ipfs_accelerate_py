@@ -22,21 +22,21 @@ from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
-from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
-    implementation_daemon as implementation_daemon_module,
-)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     open_database_coordinator,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     OwnerLiveness,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DATABASE_PROGRAM_JSON_ENV,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     FakeQuackTransport,
     build_server,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
-    DATABASE_PROGRAM_JSON_ENV,
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    typed_database_task_source as typed_database_task_source_module,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     CommandOutcome,
@@ -84,9 +84,6 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source
     daemon_required_owner_command_operations,
     daemon_required_owner_operations,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources import (
-    typed_database_task_source as typed_database_task_source_module,
-)
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
@@ -94,8 +91,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
     TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD,
-    TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+    TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
     TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_REASON,
@@ -113,8 +110,15 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     typed_database_blocked_retry_revalidation_requirement,
     typed_database_strict_resume_rejection_receipt_id,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    database_portal_bridge as database_portal_bridge_module,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DatabasePortalBridgeError,
+    DatabasePortalExecutionBridge,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_CLAIMED,
@@ -8099,3 +8103,1042 @@ def test_typed_quack_run_once_recovers_owner_relative_gitlink_lossy_retry_once(
         elif client.attached:
             client.close()
         server.stop()
+
+
+def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prove the historical r19-r27 suffix through the real typed owner.
+
+    Only the retired r20 route omission and the two expensive Portal proof
+    callbacks are fixtures.  Claiming, typed admission, callback recovery,
+    route repair, terminalization, V2 rearm, and successor admission all pass
+    through FakeQuackTransport into the embedded DuckDB state owner.
+    """
+
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    class CapturedHistoricalTransition(BaseException):
+        pass
+
+    class CapturedSuccessorReservation(BaseException):
+        pass
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    database = repository / ".agent-state" / "doep-r19-r27.duckdb"
+    database.parent.mkdir()
+    database.parent.chmod(0o700)
+    direct = DatabaseTaskSource(database)
+    direct.materialize(
+        {
+            "repository_tree_id": "git-tree:doep-r19-r27",
+            "plan_root_cid": "plan:doep-r19-r27",
+            "objectives": [
+                {
+                    "objective_id": "objective:doep-r19-r27",
+                    "objective_alias": "DOEP-O-R19-R27",
+                    "goal_cid": "goal:doep-r19-r27",
+                    "goal_alias": "DOEP-G-R19-R27",
+                    "title": "Recover a claim-verification false negative",
+                }
+            ],
+            "plans": [
+                {
+                    "plan_cid": "plan:doep-r19-r27",
+                    "plan_alias": "DOEP-P-R19-R27",
+                    "goal_cid": "goal:doep-r19-r27",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": "task:doep-r19-r27",
+                    "task_id": "DOEP-000",
+                    "goal_cid": "goal:doep-r19-r27",
+                    "plan_cid": "plan:doep-r19-r27",
+                    "objective_id": "objective:doep-r19-r27",
+                    "status": "ready",
+                    "outputs": [{"path": "result.json", "effect": {}}],
+                    "validations": [
+                        {"argv": ["/usr/bin/true"], "shell": False, "policy": {}}
+                    ],
+                }
+            ],
+        },
+        repository_tree_id="git-tree:doep-r19-r27",
+        plan_root_cid="plan:doep-r19-r27",
+    )
+    initial = direct.get_task("task:doep-r19-r27")
+    assert initial is not None and initial.revision == 1
+    initial_body_json = canonical_json_bytes(dict(initial.body)).decode("utf-8")
+    direct.close()
+
+    # Reproduce the irrelevant immutable prefix so the first real typed claim
+    # lands at r17/r18 and the unknown-callback quarantine lands at r19.
+    fixture_connection = open_duckdb_connection(database)
+    try:
+        fixture_connection.execute("BEGIN TRANSACTION")
+        for revision in range(2, 17):
+            fixture_connection.execute(
+                "UPDATE tasks SET revision = ?, updated_at = ?, body_json = ? "
+                "WHERE task_cid = ? AND revision = ?",
+                [
+                    revision,
+                    f"2026-09-09T00:00:{revision:02d}Z",
+                    initial_body_json,
+                    initial.task_cid,
+                    revision - 1,
+                ],
+            )
+            fixture_connection.execute(
+                "INSERT INTO task_revisions "
+                "(task_cid, revision, status, body_json, recorded_at) "
+                "VALUES (?, ?, 'ready', ?, ?)",
+                [
+                    initial.task_cid,
+                    revision,
+                    initial_body_json,
+                    f"2026-09-09T00:00:{revision:02d}Z",
+                ],
+            )
+        fixture_connection.execute("COMMIT")
+    except Exception:
+        fixture_connection.execute("ROLLBACK")
+        raise
+    finally:
+        fixture_connection.close()
+
+    direct = DatabaseTaskSource(
+        database,
+        repository_tree_id="git-tree:doep-r19-r27",
+        plan_root_cid="plan:doep-r19-r27",
+    )
+    r16 = direct.get_task(initial.task_cid)
+    assert r16 is not None and r16.revision == 16 and r16.status == "ready"
+    route_policy = TaskExecutionRoutePolicy.seal(
+        snapshot=direct.snapshot(),
+        tasks=(r16,),
+        execution_modes={r16.task_alias: GROK_CODEX_EXECUTION_MODE},
+    )
+    direct.close()
+
+    server = build_server(
+        database_path=database,
+        state_dir=repository / ".agent-state" / "typed-owner",
+        store_id="doep-r19-r27-owner-v1",
+        repository_id="repository:doep-r19-r27",
+        repository_root=repository,
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    client_id = "database-implementation-daemon:doep-r19-r27"
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=daemon_required_owner_operations(),
+        allowed_command_operations=daemon_required_owner_command_operations(),
+        peer_pid=os.getpid(),
+    )
+    owner_running = True
+    grant_active = True
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+    )
+    adapter: TypedDatabaseTaskSource | None = None
+    daemon: DatabaseImplementationDaemon | None = None
+    clock = {"now_ms": 1_000}
+    provider_calls: list[str] = []
+
+    def crash_after_provider_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> Mapping[str, Any]:
+        provider_calls.append(attempt.attempt_id)
+        raise SimulatedProcessCrash("injected post-callback process loss")
+
+    def open_lane() -> DatabaseImplementationDaemon:
+        return DatabaseImplementationDaemon(
+            database_path=database,
+            coordination_path=(
+                repository / ".agent-state" / "lane-coordination.duckdb"
+            ),
+            execution_path=(
+                repository / ".agent-state" / "lane-execution.duckdb"
+            ),
+            owner_session_id="session:doep-r19-r27",
+            process_instance_id=identity.process_birth_id,
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri=identity.listen_uri,
+            task_source=adapter,
+            close_task_source=False,
+            state_owner_bootstrap_credentials=credentials,
+            install_schema=False,
+            repo_root=repository,
+            merge_target_ref="HEAD",
+            task_prefix="DOEP-",
+            provider_fn=crash_after_provider_started,
+            post_merge_recovery_fn=lambda: None,
+            require_real_execution=True,
+            lease_ms=5_000,
+            clock_ms=lambda: clock["now_ms"],
+        ).open()
+
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
+        adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=route_policy,
+        )
+        credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=route_policy,
+        )
+
+        daemon = open_lane()
+        source = daemon.claim_next()
+        assert source is not None and source.attempt_number == 1
+        r18 = adapter.get_task(source.task_cid)
+        assert r18 is not None and r18.revision == 18
+        assert r18.body["completion_receipt"]["operation"] == (
+            "database_attempt_admitted"
+        )
+        with pytest.raises(
+            SimulatedProcessCrash,
+            match="post-callback process loss",
+        ):
+            daemon._resume_attempt_without_process_crash(source)
+        daemon.close()
+        daemon = open_lane()
+
+        replay = daemon.run_once()
+        assert replay["implementation_result"]["reason"] == (
+            "portal_neutral_failure"
+        )
+        r19 = adapter.get_task(source.task_cid)
+        assert r19 is not None
+        assert (r19.revision, r19.status) == (19, "quarantined")
+        assert r19.body["completion_receipt"]["operation"] == (
+            "database_portal_neutral_failure_quarantine"
+        )
+        assert provider_calls == [source.attempt_id]
+
+        candidate_commit = "a" * 40
+        target_commit = "c" * 40
+        qualification: dict[str, Any] = {
+            "schema": (
+                implementation_daemon_module
+                .POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+            ),
+            "task_ids": [source.task_alias],
+            "task_cid": source.task_cid,
+            "request_id": "merge-request:doep-r19-r27",
+            "candidate_commit": candidate_commit,
+            "integration_commit": "b" * 40,
+            "train_receipt_id": "sha256:" + "4" * 64,
+            "current_target_commit": target_commit,
+        }
+        qualification["receipt_id"] = content_identity(qualification)
+        recovery_evidence: dict[str, Any] = {
+            "schema": (
+                implementation_daemon_module
+                .DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA
+            ),
+            "request_id": "merge-request:doep-r19-r27",
+            "task_cid": source.task_cid,
+            "task_alias": source.task_alias,
+            "candidate_commit": candidate_commit,
+            "source_attempt_id": source.attempt_id,
+            "source_claim_id": source.claim_id,
+            "source_lease_id": source.lease_id,
+            "source_fencing_token": source.fencing_token,
+            "source_fence_epoch": source.fence_epoch,
+            "source_binding_id": "sha256:" + "1" * 64,
+            "source_projection_immutable_digest": "sha256:" + "2" * 64,
+            "qualified_target_commit": target_commit,
+            "callback_requalification_receipt_id": qualification["receipt_id"],
+            "callback_requalification_receipt": qualification,
+        }
+        recovery_evidence["evidence_id"] = (
+            daemon._database_portal_evidence_digest(recovery_evidence)
+        )
+        historical_arguments: dict[str, Any] = {}
+
+        def capture_historical_transition(**kwargs: Any) -> Any:
+            historical_arguments.update(kwargs)
+            raise CapturedHistoricalTransition
+
+        with monkeypatch.context() as historical_path:
+            historical_path.setattr(
+                daemon,
+                "_verified_post_merge_callback_integration_receipt",
+                lambda raw, **_kwargs: dict(raw),
+            )
+            historical_path.setattr(
+                adapter,
+                "record_queue_backoff_and_cas_status",
+                capture_historical_transition,
+            )
+            with pytest.raises(CapturedHistoricalTransition):
+                daemon.recover_blocked_post_merge_declared_outputs(
+                    recovery_evidence
+                )
+        assert historical_arguments["expected_revision"] == 19
+        assert historical_arguments["status"] == "retrying"
+
+        # Reproduce the retired route-less r20 writer only while the typed
+        # owner is stopped. The legacy DatabaseTaskSource performs its
+        # canonical task CAS, revision-history append, and event/outbox
+        # publication with the same stripped receipt; the absent cooldown is
+        # the historical CAS-then-cooldown process-loss boundary. This keeps
+        # the fixture replayable without weakening live owner authorization.
+        prior_generation = identity.generation
+        daemon.close()
+        daemon = None
+        adapter.close()
+        adapter = None
+        server.revoke_typed_client_grant(grant.grant_id)
+        grant_active = False
+        server.stop()
+        owner_running = False
+
+        historical_source = DatabaseTaskSource(
+            database,
+            repository_tree_id="git-tree:doep-r19-r27",
+            plan_root_cid="plan:doep-r19-r27",
+        )
+        try:
+            historical_receipt = dict(historical_arguments["receipt"])
+            for field in (
+                "execution_route_binding",
+                "execution_route_policy_id",
+                "execution_route_origin_revision",
+            ):
+                historical_receipt.pop(field)
+            historical_transition = historical_source.compare_and_set_status(
+                source.task_cid,
+                historical_arguments["expected_revision"],
+                historical_arguments["status"],
+                historical_receipt,
+                expected_control_receipt=(
+                    historical_arguments["expected_control_receipt"]
+                ),
+            )
+            assert historical_transition.changed is True
+            r20 = historical_source.get_task(source.task_cid)
+            assert r20 is not None and (r20.revision, r20.status) == (
+                20,
+                "retrying",
+            )
+            r20_receipt = r20.body["completion_receipt"]
+            assert not {
+                "execution_route_binding",
+                "execution_route_policy_id",
+                "execution_route_origin_revision",
+            }.intersection(r20_receipt)
+            r20_history = historical_source.task_revision_history_projection(
+                source.task_cid
+            )["revisions"][-1]
+            assert r20_history == {
+                "revision": 20,
+                "status": "retrying",
+                "body": dict(r20.body),
+            }
+        finally:
+            historical_source.close()
+
+        server = build_server(
+            database_path=database,
+            state_dir=repository / ".agent-state" / "typed-owner",
+            store_id="doep-r19-r27-owner-v1",
+            repository_id="repository:doep-r19-r27",
+            repository_root=repository,
+            transport=FakeQuackTransport(),
+            capability_probe=_capability,
+            migrate=_migrate,
+            connection_factory=open_duckdb_connection,
+            owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+        )
+        identity = server.start()
+        owner_running = True
+        assert identity.generation > prior_generation
+        token, grant = server.issue_typed_client_grant_record(
+            client_id=client_id,
+            process_birth_id=identity.process_birth_id,
+            allowed_operations=daemon_required_owner_operations(),
+            allowed_command_operations=(
+                daemon_required_owner_command_operations()
+            ),
+            peer_pid=os.getpid(),
+        )
+        grant_active = True
+        monkeypatch.setenv(
+            TYPED_STATE_OWNER_SOCKET_ENV,
+            str(server.typed_command_socket_path()),
+        )
+        monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+        client = QuackStateClient(
+            owner_id=client_id,
+            store_id=identity.store_id,
+            process_birth_id=identity.process_birth_id,
+        )
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
+        adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=route_policy,
+        )
+        credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=route_policy,
+        )
+        daemon = open_lane()
+
+        r20 = adapter.get_task(source.task_cid)
+        assert r20 is not None and (r20.revision, r20.status) == (
+            20,
+            "retrying",
+        )
+        r20_receipt = r20.body["completion_receipt"]
+        assert not {
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        }.intersection(r20_receipt)
+
+        # The historical fixture models the retired split transition losing
+        # its cooldown write after the task CAS. Repair that missing binding
+        # from the same canonical r20 receipt before route-lineage repair.
+        cooldown_repairs = adapter.repair_retrying_cooldown_bindings()
+        assert len(cooldown_repairs) == 1
+        assert cooldown_repairs[0]["changed"] is True
+        assert cooldown_repairs[0]["reason"] == (
+            "retrying_cooldown_rebound_to_control_receipt"
+        )
+        assert adapter.repair_retrying_cooldown_bindings() == ()
+
+        # The typed ready read invokes the canonical owner-side route repair.
+        ready = adapter.ready_tasks().tasks
+        assert [task.task_cid for task in ready] == [source.task_cid]
+        r21 = adapter.get_task(source.task_cid)
+        assert r21 is not None and (r21.revision, r21.status) == (
+            21,
+            "retrying",
+        )
+        assert r21.body["completion_receipt"]["operation"] == (
+            typed_database_task_source_module
+            .TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
+        )
+
+        failed = daemon.claim_next()
+        assert failed is not None and failed.attempt_number == 2
+        r23 = adapter.get_task(failed.task_cid)
+        assert r23 is not None and r23.revision == 23
+        assert r23.body["completion_receipt"]["operation"] == (
+            "database_attempt_admitted"
+        )
+        reason = (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON
+        )
+        failed = daemon.commit_phase(
+            failed,
+            ATTEMPT_PHASE_FAILED,
+            body={
+                "reason": reason,
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        failed_claim = daemon.coordinator.get_task_claim(failed.claim_id)
+        assert failed_claim is not None
+        clock["now_ms"] = int(failed_claim.expires_at_ms) + 1
+        coordination = daemon._reconcile_failed_attempt_coordination(failed)
+        terminal = daemon._persist_terminal_portal_failure(
+            failed,
+            reason=reason,
+            coordination_evidence=coordination,
+        )
+        assert terminal["changed"] is True
+        r24 = adapter.get_task(failed.task_cid)
+        assert r24 is not None and (r24.revision, r24.status) == (
+            24,
+            "blocked",
+        )
+        assert provider_calls == [source.attempt_id]
+
+        def claim_verification_proof(
+            attempt: DatabaseTaskAttempt,
+            context: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            source_seed = context["source_seed"]
+            rebased_seed = context["rebased_seed"]
+            receipt: dict[str, Any] = {
+                "schema": (
+                    implementation_daemon_module
+                    .DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA
+                ),
+                "disposition": "retry_exact_post_merge_completion_seed",
+                "reason": reason,
+                "task_cid": attempt.task_cid,
+                "task_alias": attempt.task_alias,
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "attempt_number": attempt.attempt_number,
+                "fencing_token": attempt.fencing_token,
+                "fence_epoch": attempt.fence_epoch,
+                "blocked_task_revision": 24,
+                "history_context_id": context["context_id"],
+                "history_projection_cid": context["history_projection_cid"],
+                "source_seed_id": source_seed["seed_id"],
+                "rebased_seed_id": rebased_seed["seed_id"],
+                "request_id": source_seed["request_id"],
+                "candidate_commit": source_seed["candidate_commit"],
+                "qualified_target_commit": source_seed[
+                    "qualified_target_commit"
+                ],
+                "qualification_kind": source_seed["qualification_kind"],
+                "qualification_receipt_id": source_seed[
+                    "qualification_receipt_id"
+                ],
+                "recovery_evidence_id": source_seed["recovery_evidence_id"],
+                "queue_source_binding_id": source_seed[
+                    "queue_source_binding_id"
+                ],
+                "queue_source_projection_immutable_digest": source_seed[
+                    "queue_source_projection_immutable_digest"
+                ],
+                "execution_route_binding_id": context[
+                    "execution_route_binding_id"
+                ],
+                "candidate_preserved": True,
+                "target_generation_unchanged": True,
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+            }
+            receipt["receipt_id"] = daemon._database_portal_evidence_digest(
+                receipt
+            )
+            return receipt
+
+        daemon._post_merge_completion_claim_verification_recovery_fn = (
+            claim_verification_proof
+        )
+
+        # Capture the exact daemon-generated r24 -> r25 proposal before it
+        # reaches the owner.  Each adversarial replay below remains a valid
+        # JSON/command envelope, but changes one semantic authority field.
+        # The exclusive owner must derive that authority from canonical
+        # history and its live grant, reject before mutation, and leave no
+        # half-written cooldown for restart repair.
+        captured_recovery_arguments: dict[str, Any] = {}
+
+        def capture_recovery_transition(**kwargs: Any) -> Any:
+            captured_recovery_arguments.update(kwargs)
+            raise CapturedHistoricalTransition
+
+        with monkeypatch.context() as recovery_capture:
+            recovery_capture.setattr(
+                adapter,
+                "record_queue_backoff_and_cas_status",
+                capture_recovery_transition,
+            )
+            with pytest.raises(CapturedHistoricalTransition):
+                daemon.reconcile_terminal_portal_failures()
+        assert captured_recovery_arguments["expected_revision"] == 24
+        assert captured_recovery_arguments["status"] == "retrying"
+        proposed_receipt = captured_recovery_arguments["receipt"]
+        assert isinstance(proposed_receipt, Mapping)
+        assert isinstance(
+            proposed_receipt.get("recovery_process_attestation"),
+            Mapping,
+        )
+        r24_generation = client.load_generation()
+        r24_history = adapter.task_revision_history_projection(failed.task_cid)
+        r24_queue = adapter.get_queue_entry(failed.task_cid)
+        assert r24_queue is not None
+        assert (
+            r24_queue.attempt,
+            r24_queue.retry_not_before_ms,
+            r24_queue.state,
+        ) == (1, 0, "released")
+        assert "callback_integration" in r24_queue.reason
+        r24_queue_projection = r24_queue.to_dict()
+        r24_cooldown = adapter._retry_cooldown_row(failed.task_cid)
+        assert r24_cooldown is not None
+        assert r24_cooldown["attempt"] == 1
+        assert r24_cooldown["revision"] >= 1
+        r24_cooldown_projection = json.loads(
+            canonical_json_bytes(dict(r24_cooldown)).decode("utf-8")
+        )
+
+        def tamper_history_projection(receipt: dict[str, Any]) -> None:
+            evidence = dict(
+                receipt[
+                    "post_merge_completion_claim_verification_recovery"
+                ]
+            )
+            evidence["history_projection_cid"] = "sha256:" + "f" * 64
+            evidence_body = dict(evidence)
+            evidence_body.pop("receipt_id", None)
+            evidence["receipt_id"] = "sha256:" + hashlib.sha256(
+                canonical_json_bytes(evidence_body)
+            ).hexdigest()
+            receipt[
+                "post_merge_completion_claim_verification_recovery"
+            ] = evidence
+            receipt["evidence_source"] = (
+                "typed_post_merge_completion_claim_verification_recovery:"
+                + evidence["receipt_id"]
+            )
+
+        def remove_recovery_attestation(receipt: dict[str, Any]) -> None:
+            receipt.pop("recovery_process_attestation", None)
+
+        def install_foreign_recovery_attestation(
+            receipt: dict[str, Any],
+        ) -> None:
+            attestation = dict(receipt["recovery_process_attestation"])
+            attestation["grant_id"] = "grant:foreign-recovery"
+            attestation["client_id"] = (
+                "database-implementation-daemon:foreign-recovery"
+            )
+            receipt["recovery_process_attestation"] = attestation
+
+        def tamper_recovery_attestation(receipt: dict[str, Any]) -> None:
+            attestation = dict(receipt["recovery_process_attestation"])
+            attestation["pid"] = int(attestation["pid"]) + 1
+            attestation["process_birth_id"] = _process_birth_content_id(
+                attestation["pid"],
+                attestation["start_time_ticks"],
+                attestation["boot_id"],
+                attestation["parent_pid"],
+            )
+            receipt["recovery_process_attestation"] = attestation
+
+        def install_nonzero_recovery_deadline(receipt: dict[str, Any]) -> None:
+            receipt["retry_not_before_ms"] = 1
+
+        recovery_forgeries: tuple[
+            tuple[str, Callable[[dict[str, Any]], None]], ...
+        ] = (
+            ("history-projection", tamper_history_projection),
+            ("missing-attestation", remove_recovery_attestation),
+            ("foreign-attestation", install_foreign_recovery_attestation),
+            ("tampered-attestation", tamper_recovery_attestation),
+            ("nonzero-deadline", install_nonzero_recovery_deadline),
+        )
+        for label, mutate in recovery_forgeries:
+            forged_receipt = json.loads(
+                canonical_json_bytes(dict(proposed_receipt)).decode("utf-8")
+            )
+            mutate(forged_receipt)
+            forged_body = dict(r24.body)
+            forged_body["completion_receipt"] = forged_receipt
+            expected_message = (
+                "cooldown is invalid"
+                if label == "nonzero-deadline"
+                else "authorization_denied"
+            )
+            with pytest.raises(TransactionError, match=expected_message):
+                client.cas_task_status(
+                    task_cid=failed.task_cid,
+                    goal_cid=r24.goal_cid,
+                    expected_task_revision=24,
+                    new_status="retrying",
+                    command_id=f"executor-cas:forged-r25:{label}",
+                    idempotency_key=f"executor-cas:forged-r25:{label}",
+                    body=forged_body,
+                    expected_control_receipt=r24.body["completion_receipt"],
+                )
+            unchanged_r24 = adapter.get_task(failed.task_cid)
+            assert unchanged_r24 is not None
+            assert unchanged_r24.to_dict() == r24.to_dict()
+            assert client.load_generation() == r24_generation
+            assert adapter.task_revision_history_projection(
+                failed.task_cid
+            ) == r24_history
+            unchanged_queue = adapter.get_queue_entry(failed.task_cid)
+            assert unchanged_queue is not None
+            assert unchanged_queue.to_dict() == r24_queue_projection
+            unchanged_cooldown = adapter._retry_cooldown_row(failed.task_cid)
+            assert unchanged_cooldown is not None
+            assert json.loads(
+                canonical_json_bytes(dict(unchanged_cooldown)).decode("utf-8")
+            ) == r24_cooldown_projection
+            assert provider_calls == [source.attempt_id]
+
+        # Fail the final queue CAS after the task and task-history mutations
+        # have executed on the owner's one DuckDB transaction.  Rollback must
+        # restore every projection and must not seal an idempotency result, so
+        # the same canonical recovery can succeed after the injected fault is
+        # removed.
+        owner_gateway = server._command_gateway
+        assert owner_gateway is not None
+        owner_execute = owner_gateway._execute
+        r24_idempotency_projection = owner_gateway._connection.execute(
+            "SELECT idempotency_key, command_kind, command_id, store_id, "
+            "session_id, result_digest, created_at, expires_at, body_json "
+            "FROM idempotency_records ORDER BY idempotency_key"
+        ).fetchall()
+        failed_atomic_operations: list[str] = []
+
+        def fail_atomic_cooldown(
+            operation: Any,
+            parameters: list[Any],
+        ) -> dict[str, Any]:
+            if operation.name == "executor_update_retry_cooldown":
+                failed_atomic_operations.append(operation.name)
+                raise RuntimeError("injected atomic retry cooldown failure")
+            return owner_execute(operation, parameters)
+
+        with monkeypatch.context() as atomic_failure:
+            atomic_failure.setattr(
+                owner_gateway,
+                "_execute",
+                fail_atomic_cooldown,
+            )
+            with pytest.raises(TransactionError, match="operation_failed"):
+                adapter.record_queue_backoff_and_cas_status(
+                    **captured_recovery_arguments
+                )
+        assert failed_atomic_operations == [
+            "executor_update_retry_cooldown"
+        ]
+        rolled_back_r24 = adapter.get_task(failed.task_cid)
+        assert rolled_back_r24 is not None
+        assert rolled_back_r24.to_dict() == r24.to_dict()
+        assert client.load_generation() == r24_generation
+        assert adapter.task_revision_history_projection(
+            failed.task_cid
+        ) == r24_history
+        rolled_back_queue = adapter.get_queue_entry(failed.task_cid)
+        assert rolled_back_queue is not None
+        assert rolled_back_queue.to_dict() == r24_queue_projection
+        rolled_back_cooldown = adapter._retry_cooldown_row(failed.task_cid)
+        assert rolled_back_cooldown is not None
+        assert json.loads(
+            canonical_json_bytes(dict(rolled_back_cooldown)).decode("utf-8")
+        ) == r24_cooldown_projection
+        assert owner_gateway._connection.execute(
+            "SELECT idempotency_key, command_kind, command_id, store_id, "
+            "session_id, result_digest, created_at, expires_at, body_json "
+            "FROM idempotency_records ORDER BY idempotency_key"
+        ).fetchall() == r24_idempotency_projection
+        assert provider_calls == [source.attempt_id]
+
+        second_cooldown_calls: list[dict[str, Any]] = []
+        record_task_retry_cooldown = adapter.record_task_retry_cooldown
+
+        def observe_second_cooldown(**kwargs: Any) -> Any:
+            second_cooldown_calls.append(dict(kwargs))
+            return record_task_retry_cooldown(**kwargs)
+
+        with monkeypatch.context() as atomic_recovery:
+            atomic_recovery.setattr(
+                adapter,
+                "record_task_retry_cooldown",
+                observe_second_cooldown,
+            )
+            recovered = daemon.reconcile_terminal_portal_failures()
+        assert second_cooldown_calls == []
+        assert len(recovered) == 1
+        assert recovered[0]["status"] == "retrying", recovered
+        assert recovered[0]["changed"] is True
+        r25 = adapter.get_task(failed.task_cid)
+        assert r25 is not None and (r25.revision, r25.status) == (
+            25,
+            "retrying",
+        )
+        r25_receipt = r25.body["completion_receipt"]
+        assert r25_receipt["operation"] == (
+            "database_portal_post_merge_declared_output_recovery"
+        )
+        r25_cooldown = adapter._retry_cooldown_row(failed.task_cid)
+        assert r25_cooldown is not None
+        assert r25_cooldown["revision"] == r24_cooldown["revision"] + 1
+        assert r25_cooldown["attempt"] == r25_receipt["attempt_number"]
+        assert r25_cooldown["claim_cid"] == r25_receipt["claim_id"]
+        assert r25_cooldown["release_reason"] == r25_receipt["queue_reason"]
+        assert r25_cooldown["retry_not_before_ms"] == (
+            r25_receipt["retry_not_before_ms"]
+        )
+        r25_extension = r25_cooldown["extension"]
+        assert isinstance(r25_extension, Mapping)
+        assert r25_extension["expected_task_revision"] == 24
+        assert r25_extension["attempt_id"] == r25_receipt["attempt_id"]
+        assert r25_extension["claim_id"] == r25_receipt["claim_id"]
+        assert r25_extension["reason"] == r25_receipt["queue_reason"]
+        assert r25_extension["retry_not_before_ms"] == (
+            r25_receipt["retry_not_before_ms"]
+        )
+        assert recovered[0]["retry_not_before_ms"] == 0
+        assert recovered[0]["queue_receipt"]["retry_not_before_ms"] == 0
+        assert recovered[0]["queue_receipt"]["reason"] == (
+            r25_receipt["queue_reason"]
+        )
+        v2_seed = r25_receipt["post_merge_completion_recovery_seed"]
+        assert v2_seed["schema"] == (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+        )
+        assert v2_seed["source_task_revision"] == 19
+        assert v2_seed["recovery_control_revision"] == 24
+        v2_body = dict(v2_seed)
+        v2_id = v2_body.pop("seed_id")
+        assert v2_id == daemon._database_portal_evidence_digest(v2_body)
+        assert provider_calls == [source.attempt_id]
+
+        # Stop after the shared r26 reservation and prove that a raw V2
+        # `database_claim` is not bridge execution authority.  Only the
+        # canonical r27 typed admission may release the provider path.
+        promote_successor = daemon._promote_typed_attempt_admission
+        captured_successor: dict[str, Any] = {}
+
+        def capture_successor_reservation(
+            attempt: DatabaseTaskAttempt,
+            *,
+            reservation_receipt: Mapping[str, Any],
+        ) -> None:
+            captured_successor["attempt"] = attempt
+            captured_successor["reservation_receipt"] = dict(
+                reservation_receipt
+            )
+            raise CapturedSuccessorReservation
+
+        with monkeypatch.context() as reservation_capture:
+            reservation_capture.setattr(
+                daemon,
+                "_promote_typed_attempt_admission",
+                capture_successor_reservation,
+            )
+            with pytest.raises(CapturedSuccessorReservation):
+                daemon.claim_next()
+        successor = captured_successor["attempt"]
+        assert isinstance(successor, DatabaseTaskAttempt)
+        assert successor.attempt_number == failed.attempt_number + 1
+        assert successor.body["post_merge_completion_recovery_seed"] == v2_seed
+        r26 = adapter.get_task(successor.task_cid)
+        assert r26 is not None and (r26.revision, r26.status) == (
+            26,
+            "in_progress",
+        )
+        r26_claim = r26.body["completion_receipt"]
+        assert r26_claim["operation"] == "database_claim"
+        bridge = object.__new__(DatabasePortalExecutionBridge)
+        bridge.task_source = adapter
+        assert bridge._post_merge_completion_claim_receipt(
+            attempt=successor,
+            record=r26,
+            status_receipt=r26_claim,
+            seed=v2_seed,
+            recovery_control_revision=24,
+        ) is None
+        assert provider_calls == [source.attempt_id]
+
+        # Model a lost r25 response discovered only after the successor was
+        # reserved at r26.  Replaying the exact public task-source request on
+        # the same owner/client must resolve through owner idempotency: it may
+        # report the already committed r25 receipt, but cannot rewind r26,
+        # append history, rewrite cooldown, or dispatch the provider.
+        before_lost_response_replay = adapter.get_task(successor.task_cid)
+        before_lost_response_history = (
+            adapter.task_revision_history_projection(successor.task_cid)
+        )
+        before_lost_response_generation = client.load_generation()
+        before_lost_response_cooldown = adapter._retry_cooldown_row(
+            successor.task_cid
+        )
+        assert before_lost_response_replay is not None
+        assert before_lost_response_cooldown is not None
+        lost_response_cooldown_projection = json.loads(
+            canonical_json_bytes(
+                dict(before_lost_response_cooldown)
+            ).decode("utf-8")
+        )
+        with monkeypatch.context() as replay_guard:
+            replay_guard.setattr(
+                adapter,
+                "record_task_retry_cooldown",
+                observe_second_cooldown,
+            )
+            replayed_recovery = adapter.record_queue_backoff_and_cas_status(
+                **captured_recovery_arguments
+            )
+        assert replayed_recovery["queue_reused"] is True
+        replayed_cas = replayed_recovery["cas_result"]
+        assert replayed_cas.changed is False
+        assert (replayed_cas.task.revision, replayed_cas.task.status) == (
+            25,
+            "retrying",
+        )
+        assert replayed_cas.receipt_cid == recovered[0][
+            "control_receipt"
+        ]["receipt_cid"]
+        replay_identity_rows = owner_gateway._connection.execute(
+            "SELECT command_id, idempotency_key, result_digest "
+            "FROM idempotency_records WHERE result_digest = ?",
+            [replayed_cas.receipt_cid],
+        ).fetchall()
+        assert len(replay_identity_rows) == 1
+        assert replay_identity_rows[0][0] == replay_identity_rows[0][1]
+        assert str(replay_identity_rows[0][0]).startswith("executor-cas:")
+        assert replayed_recovery["queue_receipt"]["queue_revision"] == (
+            r25_cooldown["revision"]
+        )
+        assert second_cooldown_calls == []
+        after_lost_response_replay = adapter.get_task(successor.task_cid)
+        assert after_lost_response_replay is not None
+        assert after_lost_response_replay.to_dict() == (
+            before_lost_response_replay.to_dict()
+        )
+        assert client.load_generation() == before_lost_response_generation
+        assert adapter.task_revision_history_projection(
+            successor.task_cid
+        ) == before_lost_response_history
+        after_lost_response_cooldown = adapter._retry_cooldown_row(
+            successor.task_cid
+        )
+        assert after_lost_response_cooldown is not None
+        assert json.loads(
+            canonical_json_bytes(
+                dict(after_lost_response_cooldown)
+            ).decode("utf-8")
+        ) == lost_response_cooldown_projection
+        assert provider_calls == [source.attempt_id]
+
+        promote_successor(
+            successor,
+            reservation_receipt=captured_successor["reservation_receipt"],
+        )
+        r27 = adapter.get_task(successor.task_cid)
+        assert r27 is not None and (r27.revision, r27.status) == (
+            27,
+            "in_progress",
+        )
+        admission = r27.body["completion_receipt"]
+        assert admission["operation"] == "database_attempt_admitted"
+        assert admission["admitted_from_revision"] == 26
+        assert admission["attempt_execution_phase"] == ATTEMPT_PHASE_CLAIMED
+        assert admission["attempt_execution_revision"] == 1
+
+        history = adapter.task_revision_history_projection(successor.task_cid)
+        r26_entry = next(
+            item for item in history["revisions"] if item["revision"] == 26
+        )
+        r26_claim = r26_entry["body"]["completion_receipt"]
+        validated_r26_claim = (
+            database_portal_bridge_module
+            ._validated_post_merge_completion_claim_receipt(
+                r26_claim,
+                task_cid=successor.task_cid,
+                task_alias=successor.task_alias,
+                receipt_body=r26_entry["body"],
+                predecessor_receipt=r25_receipt,
+            )
+        )
+        assert validated_r26_claim is not None
+
+        claim = bridge._post_merge_completion_claim_receipt(
+            attempt=successor,
+            record=r27,
+            status_receipt=admission,
+            seed=v2_seed,
+            recovery_control_revision=24,
+        )
+        assert claim is not None
+        assert claim["operation"] == "database_claim"
+        assert claim["claimed_from_revision"] == 25
+        assert claim["attempt_id"] == successor.attempt_id
+        assert claim["attempt_number"] == failed.attempt_number + 1
+        assert claim["post_merge_completion_recovery_seed"] == v2_seed
+        assert provider_calls == [source.attempt_id]
+
+        revisions = history["revisions"]
+        suffix = revisions[18:27]
+        assert [item["revision"] for item in suffix] == list(range(19, 28))
+        assert [item["status"] for item in suffix] == [
+            "quarantined",
+            "retrying",
+            "retrying",
+            "in_progress",
+            "in_progress",
+            "blocked",
+            "retrying",
+            "in_progress",
+            "in_progress",
+        ]
+        assert [
+            item["body"]["completion_receipt"]["operation"] for item in suffix
+        ] == [
+            "database_portal_neutral_failure_quarantine",
+            (
+                "database_post_merge_declared_outputs_"
+                "callback_integration_recovery"
+            ),
+            (
+                typed_database_task_source_module
+                .TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
+            ),
+            "database_claim",
+            "database_attempt_admitted",
+            "database_portal_terminal_failure",
+            "database_portal_post_merge_declared_output_recovery",
+            "database_claim",
+            "database_attempt_admitted",
+        ]
+
+        # Replaying maintenance and bridge verification is read-only once the
+        # successor is admitted: no revision, dispatch, or claim is duplicated.
+        before_replay = adapter.get_task(successor.task_cid)
+        before_history = adapter.task_revision_history_projection(
+            successor.task_cid
+        )
+        assert daemon.reconcile_terminal_portal_failures() == []
+        assert bridge._post_merge_completion_claim_receipt(
+            attempt=successor,
+            record=r27,
+            status_receipt=admission,
+            seed=v2_seed,
+            recovery_control_revision=24,
+        ) == claim
+        after_replay = adapter.get_task(successor.task_cid)
+        assert before_replay is not None and after_replay is not None
+        assert after_replay.to_dict() == before_replay.to_dict()
+        assert adapter.task_revision_history_projection(
+            successor.task_cid
+        ) == before_history
+        assert provider_calls == [source.attempt_id]
+    finally:
+        monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
+        if daemon is not None:
+            daemon.close()
+        if adapter is not None:
+            adapter.close()
+        elif client.attached:
+            client.close()
+        if grant_active and owner_running:
+            server.revoke_typed_client_grant(grant.grant_id)
+        if owner_running:
+            server.stop()

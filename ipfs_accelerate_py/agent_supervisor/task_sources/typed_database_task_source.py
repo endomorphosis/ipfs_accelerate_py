@@ -63,6 +63,8 @@ from .task_execution_route_policy import (
     task_execution_contract_cid,
 )
 from .typed_state_owner import (
+    _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_OPERATION,
+    _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_REASON,
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
@@ -1841,7 +1843,7 @@ class TypedDatabaseTaskSource:
     readiness = ready_tasks
     select_ready_tasks = ready_tasks
 
-    def compare_and_set_status(
+    def _compare_and_set_status_with_owner_result(
         self,
         task_cid_or_alias: Any,
         expected_revision: int,
@@ -1850,7 +1852,7 @@ class TypedDatabaseTaskSource:
         *,
         expected_control_receipt: Mapping[str, Any] | None = None,
         evidence_digests: Sequence[str] | None = None,
-    ) -> DatabaseCASResult:
+    ) -> tuple[DatabaseCASResult, Mapping[str, Any]]:
         prior = self.get_task(task_cid_or_alias)
         if prior is None:
             raise KeyError(str(task_cid_or_alias))
@@ -1860,14 +1862,59 @@ class TypedDatabaseTaskSource:
             or expected_revision < 0
         ):
             raise TaskSourceConflictError("expected task revision is invalid")
-        if prior.revision != expected_revision:
-            raise TaskSourceConflictError("task revision CAS failed")
         requested_status = str(status or "").strip().lower()
         if requested_status not in TYPED_TASK_STATUS_VOCABULARY:
             raise TaskSourceIntegrityError(
                 "task status is outside the closed typed vocabulary"
             )
-        prior_receipt = prior.body.get("completion_receipt")
+        proposed_receipt = dict(receipt or {})
+        atomic_post_merge_recovery = (
+            proposed_receipt.get("operation")
+            == _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_OPERATION
+        )
+        # Capture informational event position before any effect.  The task
+        # and cooldown commit emits no domain event; authoritative success is
+        # derived solely from the transaction result below.
+        atomic_event_cursor = (
+            self.snapshot().event_cursor if atomic_post_merge_recovery else 0
+        )
+        fresh_expected_head = prior.revision == expected_revision
+        # A lost owner response must be able to reach the canonical
+        # idempotency record.  Reconstruct the exact expected task revision
+        # from immutable history only for this one owner-validated recovery;
+        # every ordinary CAS retains the current-head precondition.
+        if prior.revision != expected_revision:
+            if not atomic_post_merge_recovery or prior.revision <= expected_revision:
+                raise TaskSourceConflictError("task revision CAS failed")
+            history = self.task_revision_history_projection(prior.task_cid)
+            revisions = history.get("revisions")
+            if not isinstance(revisions, list):
+                raise TaskSourceIntegrityError(
+                    "post-merge recovery replay history is malformed"
+                )
+            expected_entry = next(
+                (
+                    entry
+                    for entry in revisions
+                    if isinstance(entry, Mapping)
+                    and entry.get("revision") == expected_revision
+                ),
+                None,
+            )
+            if (
+                not isinstance(expected_entry, Mapping)
+                or type(expected_entry.get("status")) is not str
+                or not isinstance(expected_entry.get("body"), Mapping)
+            ):
+                raise TaskSourceConflictError(
+                    "post-merge recovery replay has no exact source revision"
+                )
+            prior_status = str(expected_entry["status"]).strip().lower()
+            prior_body = dict(expected_entry["body"])
+        else:
+            prior_status = prior.status
+            prior_body = dict(prior.body)
+        prior_receipt = prior_body.get("completion_receipt")
         if expected_control_receipt is not None and not isinstance(
             expected_control_receipt, Mapping
         ):
@@ -1888,7 +1935,7 @@ class TypedDatabaseTaskSource:
             if not receipts_match:
                 raise TaskSourceConflictError("task control receipt CAS is stale")
         if (
-            prior.status == "blocked"
+            prior_status == "blocked"
             and requested_status in _PROTECTED_REOPENED_TASK_STATUSES
             and isinstance(prior_receipt, Mapping)
             and prior_receipt.get("operation")
@@ -1897,7 +1944,43 @@ class TypedDatabaseTaskSource:
             raise TaskSourceConflictError(
                 "protected typed-deferral task cannot be reopened by generic CAS"
             )
-        merged_body = dict(prior.body)
+        if (
+            prior_status == "blocked"
+            and requested_status in _PROTECTED_REOPENED_TASK_STATUSES
+            and isinstance(prior_receipt, Mapping)
+            and prior_receipt.get("operation")
+            == "database_portal_terminal_failure"
+            and prior_receipt.get("reason")
+            == _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_REASON
+        ):
+            if proposed_receipt.get("operation") != (
+                _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_OPERATION
+            ):
+                raise TaskSourceConflictError(
+                    "post-merge claim-verification task requires its exact "
+                    "owner-verified recovery"
+                )
+            # Fresh mutation authority is bound to the active daemon grant.
+            # A stale exact replay may cross an owner restart: it reaches only
+            # the existing command idempotency record, while any changed
+            # receipt/digest is rejected by the owner before mutation.
+            if fresh_expected_head:
+                try:
+                    active_attestation = dict(self.claim_process_attestation())
+                except (TypeError, ValueError, TypedStateOwnerError) as exc:
+                    raise TaskSourceConflictError(
+                        "post-merge claim-verification recovery has no live "
+                        "owner attestation"
+                    ) from exc
+                if (
+                    proposed_receipt.get("recovery_process_attestation")
+                    != active_attestation
+                ):
+                    raise TaskSourceConflictError(
+                        "post-merge claim-verification task requires its exact "
+                        "owner-verified recovery"
+                    )
+        merged_body = dict(prior_body)
         if receipt is not None:
             merged_body["completion_receipt"] = dict(receipt)
         material = {
@@ -1928,11 +2011,92 @@ class TypedDatabaseTaskSource:
             raise TaskSourceConflictError(
                 str(result.result.get("error") or "task status CAS was not accepted")
             )
-        updated = self.get_task(prior.task_cid)
-        if updated is None:
-            raise TaskSourceIntegrityError("task disappeared after status CAS")
-        if updated.status != requested_status:
-            raise TaskSourceIntegrityError("task status CAS returned inconsistent state")
+        owner_result = dict(result.result)
+        if atomic_post_merge_recovery:
+            expected_owner_fields = {
+                "task_cid",
+                "status",
+                "task_revision",
+                "task_updated_at",
+                "store_revision_before",
+                "command_id",
+                "receipt_persisted",
+                "completion_receipt_cid",
+                "completion_evidence_digest",
+                "retry_cooldown_persisted",
+                "retry_attempt_id",
+                "retry_claim_id",
+                "retry_attempt_number",
+                "retry_queue_revision",
+                "retry_not_before_ms",
+                "retry_reason",
+            }
+            task_revision = owner_result.get("task_revision")
+            event_cursor = atomic_event_cursor
+            store_revision_before = owner_result.get("store_revision_before")
+            retry_queue_revision = owner_result.get("retry_queue_revision")
+            retry_deadline = owner_result.get("retry_not_before_ms")
+            if (
+                set(owner_result) != expected_owner_fields
+                or owner_result.get("task_cid") != prior.task_cid
+                or owner_result.get("status") != requested_status
+                or owner_result.get("command_id") != f"executor-cas:{digest}"
+                or type(task_revision) is not int
+                or task_revision != expected_revision + 1
+                or type(store_revision_before) is not int
+                or store_revision_before < 0
+                or type(owner_result.get("task_updated_at")) is not str
+                or not owner_result["task_updated_at"]
+                or owner_result.get("receipt_persisted") is not True
+                or owner_result.get("completion_receipt_cid") != ""
+                or owner_result.get("completion_evidence_digest") != ""
+                or owner_result.get("retry_cooldown_persisted") is not True
+                or type(owner_result.get("retry_attempt_id")) is not str
+                or owner_result["retry_attempt_id"]
+                != proposed_receipt.get("attempt_id")
+                or type(owner_result.get("retry_claim_id")) is not str
+                or owner_result["retry_claim_id"]
+                != proposed_receipt.get("claim_id")
+                or type(owner_result.get("retry_attempt_number")) is not int
+                or owner_result["retry_attempt_number"]
+                != proposed_receipt.get("attempt_number")
+                or type(retry_queue_revision) is not int
+                or retry_queue_revision < 1
+                or type(retry_deadline) is not int
+                or retry_deadline != 0
+                or type(owner_result.get("retry_reason")) is not str
+                or owner_result["retry_reason"]
+                != proposed_receipt.get("queue_reason")
+            ):
+                raise TaskSourceIntegrityError(
+                    "atomic post-merge recovery returned an invalid task receipt"
+                )
+            updated = TaskRecord(
+                task_cid=prior.task_cid,
+                task_alias=prior.task_alias,
+                goal_cid=prior.goal_cid,
+                plan_cid=prior.plan_cid,
+                objective_id=prior.objective_id,
+                ordinal=prior.ordinal,
+                status=requested_status,
+                revision=task_revision,
+                priority=prior.priority,
+                updated_at=str(owner_result["task_updated_at"]),
+                body=MappingProxyType(dict(merged_body)),
+                dependencies=prior.dependencies,
+                outputs=prior.outputs,
+                acceptance=prior.acceptance,
+                validations=prior.validations,
+            )
+        else:
+            updated = self.get_task(prior.task_cid)
+            if updated is None:
+                raise TaskSourceIntegrityError("task disappeared after status CAS")
+            if updated.status != requested_status:
+                raise TaskSourceIntegrityError(
+                    "task status CAS returned inconsistent state"
+                )
+            event_cursor = self.snapshot().event_cursor
         completion_receipt_cid = str(
             result.result.get("completion_receipt_cid") or ""
         )
@@ -1943,14 +2107,35 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "completed task status CAS returned no normalized completion receipt"
             )
-        return DatabaseCASResult(
+        cas_result = DatabaseCASResult(
             task=updated,
-            previous_status=prior.status,
+            previous_status=prior_status,
             revision=updated.revision,
-            event_cursor=self.snapshot().event_cursor,
+            event_cursor=int(event_cursor),
             changed=bool(result.changed),
             receipt_cid=completion_receipt_cid or str(result.result_digest or ""),
         )
+        return cas_result, MappingProxyType(owner_result)
+
+    def compare_and_set_status(
+        self,
+        task_cid_or_alias: Any,
+        expected_revision: int,
+        status: str,
+        receipt: Mapping[str, Any] | None = None,
+        *,
+        expected_control_receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
+    ) -> DatabaseCASResult:
+        cas_result, _owner_result = self._compare_and_set_status_with_owner_result(
+            task_cid_or_alias,
+            expected_revision,
+            status,
+            receipt,
+            expected_control_receipt=expected_control_receipt,
+            evidence_digests=evidence_digests,
+        )
+        return cas_result
 
     cas_status = compare_and_set_status
 
@@ -3026,9 +3211,13 @@ class TypedDatabaseTaskSource:
         """Reopen one blocked task through birth-bound typed CAS + cooldown.
 
         ``record_task_retry_cooldown`` refuses ``blocked`` so the daemon can
-        only reopen through this method.  Lane processes do not receive the
-        opaque owner-command token, so this path uses the granted typed
-        socket operations instead of the filesystem owner-command rendezvous.
+        only reopen through this method.  The exact post-merge
+        claim-verification recovery commits its status, history, and cooldown
+        in one owner transaction. Other admitted recovery classes retain
+        their established transition followed by cooldown contract. Lane
+        processes do not receive the opaque owner-command token, so this path
+        uses the granted typed socket operations instead of the filesystem
+        owner-command rendezvous.
         """
 
         if _post_merge_recovery_admission is not None:
@@ -3046,15 +3235,51 @@ class TypedDatabaseTaskSource:
                 "leftover-wait recovery is unavailable through the generic "
                 "remote queue/status command"
             )
+        atomic_post_merge_recovery = (
+            receipt_map.get("operation")
+            == _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_OPERATION
+        )
         if (
             isinstance(delay_ms, bool)
             or not isinstance(delay_ms, int)
             or delay_ms < 0
         ):
             raise TaskSourceIntegrityError("typed retry delay_ms is invalid")
+        if atomic_post_merge_recovery and (
+            requested_status != "retrying"
+            or type(selection_penalty) is not int
+            or selection_penalty != 0
+            or delay_ms != 0
+            or type(receipt_map.get("backoff_ms")) is not int
+            or receipt_map.get("backoff_ms") != 0
+            or type(receipt_map.get("retry_not_before_ms")) is not int
+            or receipt_map.get("retry_not_before_ms") != 0
+            or (
+                exact_retry_not_before_ms is not None
+                and (
+                    type(exact_retry_not_before_ms) is not int
+                    or exact_retry_not_before_ms != 0
+                )
+            )
+            or type(reason) is not str
+            or reason != receipt_map.get("queue_reason")
+        ):
+            raise TaskSourceIntegrityError(
+                "atomic post-merge recovery requires its exact immediate "
+                "retrying queue contract"
+            )
         retry_not_before_ms = exact_retry_not_before_ms
         if retry_not_before_ms is None:
-            retry_not_before_ms = self._clock_ms() + delay_ms
+            # The post-merge receipt already carries its canonical deadline
+            # (zero for the immediate recovery). Reusing that value keeps an
+            # identical public retry bound to the original idempotency key
+            # after a response loss. Other retry classes retain the live-clock
+            # deadline established by their existing contract.
+            retry_not_before_ms = (
+                receipt_map.get("retry_not_before_ms")
+                if atomic_post_merge_recovery
+                else self._clock_ms() + delay_ms
+            )
         if (
             isinstance(retry_not_before_ms, bool)
             or not isinstance(retry_not_before_ms, int)
@@ -3070,19 +3295,61 @@ class TypedDatabaseTaskSource:
             )
         # Stamp the owner-visible deadline before CAS. The exclusive owner
         # requires receipt.retry_not_before_ms == cooldown.retry_not_before_ms
-        # and receipt.backoff_ms == delay_ms; a 0-placeholder receipt leaves
-        # blocked handshake recovery (missing implementation commit) terminal.
+        # and receipt.backoff_ms == delay_ms. The exact immediate post-merge
+        # recovery deliberately preserves its canonical zero deadline; other
+        # retry classes receive their existing clock-derived deadline above.
         if "retry_not_before_ms" in receipt_map:
             receipt_map["retry_not_before_ms"] = retry_not_before_ms
         if "backoff_ms" in receipt_map:
             receipt_map["backoff_ms"] = delay_ms
-        cas_result = self.compare_and_set_status(
+        cas_result, owner_cas_result = self._compare_and_set_status_with_owner_result(
             task_cid,
             expected_revision,
             requested_status,
             receipt_map,
             expected_control_receipt=expected_control_receipt,
         )
+        if atomic_post_merge_recovery:
+            queue_revision = owner_cas_result.get("retry_queue_revision")
+            if (
+                owner_cas_result.get("retry_cooldown_persisted") is not True
+                or type(queue_revision) is not int
+                or queue_revision < 1
+                or type(owner_cas_result.get("retry_not_before_ms")) is not int
+                or owner_cas_result.get("retry_not_before_ms")
+                != retry_not_before_ms
+            ):
+                raise TaskSourceIntegrityError(
+                    "atomic post-merge recovery returned an invalid cooldown receipt"
+                )
+            queue_receipt = {
+                "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+                "operation": "task.retry.cooldown.record",
+                "task_cid": str(task_cid),
+                "expected_task_revision": int(expected_revision),
+                "attempt_id": str(owner_cas_result["retry_attempt_id"]),
+                "claim_id": str(owner_cas_result["retry_claim_id"]),
+                "attempt_number": int(
+                    owner_cas_result["retry_attempt_number"]
+                ),
+                "queue_revision": queue_revision,
+                "retry_not_before_ms": int(
+                    owner_cas_result["retry_not_before_ms"]
+                ),
+                "reason": str(owner_cas_result["retry_reason"]),
+            }
+            return self._guarded_queue_status_result(
+                {
+                    "previous_status": cas_result.previous_status,
+                    "queue_receipt": queue_receipt,
+                    "queue_reused": not bool(cas_result.changed),
+                    "retry_not_before_ms": int(
+                        owner_cas_result["retry_not_before_ms"]
+                    ),
+                    "transition_receipt": dict(receipt_map),
+                },
+                cas_result=cas_result,
+            )
         cooldown = self.record_task_retry_cooldown(
             task_cid=str(task_cid),
             expected_task_revision=int(expected_revision),

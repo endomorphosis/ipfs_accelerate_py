@@ -392,6 +392,31 @@ def _alias_home(task_alias: str, shard_count: int) -> int:
     return int(digest[:8], 16) % shard_count
 
 
+def _assert_tampered_retry_floor_rejected_before_claim(
+    daemon: DatabaseImplementationDaemon,
+    monkeypatch: pytest.MonkeyPatch,
+    tampered_task: object,
+) -> None:
+    task_cid = str(getattr(tampered_task, "task_cid"))
+    before = daemon.coordinator.coordination_registry_projection()
+    assert before["counts"]["task_claims"] == 0
+    assert before["counts"]["task_attempts"] == 0
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            daemon,
+            "_stable_authoritative_task_projection",
+            lambda: ([tampered_task], frozenset({task_cid})),
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="invalid source identity",
+        ):
+            daemon.claim_next()
+    after = daemon.coordinator.coordination_registry_projection()
+    assert after["counts"]["task_claims"] == 0
+    assert after["counts"]["task_attempts"] == 0
+
+
 def _rewrite_as_legacy_typed_deferrals(
     daemon: DatabaseImplementationDaemon,
     attempts: list[DatabaseTaskAttempt],
@@ -3098,7 +3123,7 @@ def test_preexisting_declared_output_has_no_admitted_candidate_lineage(
 
         with pytest.raises(
             DatabaseImplementationAuthorityError,
-            match="no unique admitted candidate lineage",
+            match="exact predecessor is not an admission",
         ):
             daemon._landed_merge_repair_proof(retrying)
 
@@ -8236,6 +8261,7 @@ def test_consumed_attempt_evidence_mirrors_bridge_exact_predicates(
 
 def test_protected_preservation_is_distinct_and_crosses_lanes(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     holder: dict[str, DatabaseImplementationDaemon] = {}
     provider_calls: list[str] = []
@@ -8302,6 +8328,28 @@ def test_protected_preservation_is_distinct_and_crosses_lanes(
     finally:
         first.close()
 
+    tampered_body = json.loads(json.dumps(retrying.body, default=dict))
+    tampered_body["completion_receipt"]["protected_preservation_seed"][
+        "attempt_number"
+    ] = int(source.attempt_number) + 1
+    tampered_task = replace(retrying, body=tampered_body)
+    tampered_lane = _open_daemon(
+        tmp_path,
+        session="session:protected-preservation-tampered-lane",
+        max_task_attempts=3,
+        lease_ms=5_000,
+        clock_ms=lambda: 7_000,
+        lane="protected-tampered",
+    )
+    try:
+        _assert_tampered_retry_floor_rejected_before_claim(
+            tampered_lane,
+            monkeypatch,
+            tampered_task,
+        )
+    finally:
+        tampered_lane.close()
+
     second = _open_daemon(
         tmp_path,
         session="session:protected-preservation-lane-b",
@@ -8314,6 +8362,7 @@ def test_protected_preservation_is_distinct_and_crosses_lanes(
         assert second.get_attempt(source.attempt_id) is None
         successor = second.claim_next()
         assert successor is not None
+        assert successor.attempt_number == source.attempt_number + 1
         claimed = second.task_source.get(source.task_cid)
         assert claimed is not None
         claim_receipt = claimed.body["completion_receipt"]
@@ -8827,8 +8876,7 @@ def test_protected_reconciliation_self_lock_rearms_original_seed_once(
         )
         target = daemon.claim_next()
         assert target is not None
-        assert target.attempt_number == 1
-        assert target.attempt_number < source.attempt_number
+        assert target.attempt_number == source.attempt_number + 1
         assert target.attempt_id != source.attempt_id
         target_claim = daemon.task_source.get(target.task_cid)
         assert target_claim is not None
@@ -9079,6 +9127,10 @@ def test_protected_reconciliation_self_lock_rearms_original_seed_once(
 
         successor = daemon.claim_next()
         assert successor is not None
+        assert successor.attempt_number == max(
+            source.attempt_number,
+            target.attempt_number,
+        ) + 1
         assert successor.attempt_id not in {
             source.attempt_id,
             target.attempt_id,
@@ -9200,6 +9252,7 @@ def test_blocked_self_lock_replay_observes_complete_foreign_control_first(
 def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
     tmp_path: Path,
     provider_reset_ms: int,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     holder: dict[str, DatabaseImplementationDaemon] = {}
     source_portal_task_cid = "baguqeera" + "a" * 52
@@ -9291,9 +9344,30 @@ def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
     finally:
         first.close()
 
+    tampered_body = json.loads(json.dumps(task.body, default=dict))
+    tampered_body["completion_receipt"]["capacity_retry_seed"][
+        "attempt_number"
+    ] = int(source.attempt_number) + 1
+    tampered_task = replace(task, body=tampered_body)
+    tampered_lane = _open_daemon(
+        tmp_path,
+        session="session:capacity-tampered-lane",
+        max_task_attempts=3,
+        clock_ms=lambda: 2_000_000,
+        lane="capacity-tampered",
+    )
+    try:
+        _assert_tampered_retry_floor_rejected_before_claim(
+            tampered_lane,
+            monkeypatch,
+            tampered_task,
+        )
+    finally:
+        tampered_lane.close()
+
     # Lane B has a fresh coordination/execution journal, so source attempt
-    # 1 is intentionally absent.  The exact shared control receipt authorizes
-    # the handoff, and its private attempt counter can also restart at 1.
+    # 1 is intentionally absent.  The exact shared control receipt both
+    # authorizes the handoff and projects the source attempt as its floor.
     second = _open_daemon(
         tmp_path,
         session="session:capacity-lane-b",
@@ -9305,7 +9379,7 @@ def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
         assert second.get_attempt(source.attempt_id) is None
         successor = second.claim_next()
         assert successor is not None
-        assert successor.attempt_number == 1
+        assert successor.attempt_number == source.attempt_number + 1
         claimed = second.task_source.get(source.task_cid)
         assert claimed is not None
         claim_receipt = claimed.body["completion_receipt"]
@@ -9448,6 +9522,27 @@ def test_superseded_consumed_attempt_recovers_and_crosses_lanes(
     finally:
         first.close()
 
+    tampered_body = json.loads(json.dumps(retrying.body, default=dict))
+    tampered_body["completion_receipt"]["consumed_attempt_retry_seed"][
+        "attempt_number"
+    ] = int(source.attempt_number) + 1
+    tampered_task = replace(retrying, body=tampered_body)
+    tampered_lane = _open_daemon(
+        tmp_path,
+        session="session:consumed-tampered-lane",
+        max_task_attempts=3,
+        clock_ms=lambda: clock[0] + 1,
+        lane="consumed-tampered",
+    )
+    try:
+        _assert_tampered_retry_floor_rejected_before_claim(
+            tampered_lane,
+            monkeypatch,
+            tampered_task,
+        )
+    finally:
+        tampered_lane.close()
+
     clock[0] += 1
     second = _open_daemon(
         tmp_path,
@@ -9500,7 +9595,7 @@ def test_superseded_consumed_attempt_recovers_and_crosses_lanes(
         assert racer.claim_next() is None
         successor = winner["attempt"]
         assert successor is not None
-        assert successor.attempt_number == 1
+        assert successor.attempt_number == source.attempt_number + 1
         claimed = second.task_source.get(source.task_cid)
         assert claimed is not None
         claim_receipt = claimed.body["completion_receipt"]
@@ -13255,7 +13350,7 @@ def test_transition_invalid_replay_rejects_a_foreign_database_claim(
         )
         with pytest.raises(
             DatabaseImplementationConflictError,
-            match="database task was claimed by a different fenced attempt",
+            match="control status replay conflicts with a foreign durable receipt",
         ):
             daemon._cas_task_status_database(
                 task.task_cid,
@@ -16739,6 +16834,33 @@ def test_reconcile_retrying_cooldown_bindings_uses_typed_repair() -> None:
     )
 
 
+def test_run_once_repairs_retrying_cooldown_before_terminal_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(tmp_path)
+    order: list[str] = []
+    try:
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_retrying_cooldown_bindings",
+            lambda: order.append("cooldown") or [],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_terminal_portal_failures",
+            lambda: order.append("terminal") or [],
+        )
+
+        result = daemon.run_once()
+
+        assert order == ["cooldown", "terminal"]
+        assert result["retrying_cooldown_repairs"] == []
+        assert result["terminal_portal_reconciliations"] == []
+    finally:
+        daemon.close()
+
+
 def test_terminal_portal_reason_skips_failed_attempt_without_phase_receipt() -> None:
     daemon = SimpleNamespace(phase_history=lambda _attempt_id: [])
     attempt = SimpleNamespace(attempt_id="attempt:missing-failed-phase")
@@ -19521,6 +19643,456 @@ def _real_released_unknown_callback_quarantine(
     assert restarted.list_running_attempts() == []
     assert provider_calls == [source.attempt_id]
     return restarted, blocked, provider_calls
+
+
+def _synthetic_r19_r24_claim_verification_rearm(
+    tmp_path: Path,
+    *,
+    portable_coordination: bool = False,
+) -> tuple[
+    DatabaseImplementationDaemon,
+    DatabaseTaskAttempt,
+    dict[str, object],
+    dict[str, object],
+    list[str],
+]:
+    """Project the exact incident identities over a real DuckDB owner CAS.
+
+    The bridge qualification itself is already exercised by its focused test
+    module.  Here the expensive repository/merge proof is represented by its
+    content-addressed receipt, while the blocked and retrying task rows and
+    queue update remain real canonical DuckDB state.
+    """
+
+    daemon, source, provider_calls = (
+        _real_released_unknown_callback_quarantine(tmp_path)
+    )
+    current = daemon.task_source.get(source.task_cid)
+    assert current is not None and current.status == "quarantined"
+    prior_receipt = current.body["completion_receipt"]
+    failed = replace(
+        source,
+        status="failed",
+        committed_phase=ATTEMPT_PHASE_FAILED,
+        revision=int(source.revision) + 1,
+        finished_at_ms=int(source.finished_at_ms or daemon._now_ms()),
+    )
+    reason = (
+        implementation_daemon_module
+        .DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON
+    )
+    sealed_coordination = (
+        {
+            "claim_id": failed.claim_id,
+            "attempt_id": failed.attempt_id,
+            "attempt_number": int(failed.attempt_number),
+            "lease_state": "expired",
+            "claim_state": "expired",
+            "claim_revision": 1,
+            "coordination_attempt_status": "expired",
+            "coordination_attempt_revision": 1,
+            "expires_at_ms": 0,
+            "observed_at_ms": daemon._now_ms(),
+            "expired_now": False,
+            "claim_absent": False,
+            "historical_expired": True,
+            "superseded_by_newer_fence": False,
+            "successor": {},
+        }
+        if portable_coordination
+        else {}
+    )
+    terminal_receipt = {
+        "operation": "database_portal_terminal_failure",
+        "attempt_id": failed.attempt_id,
+        "attempt_number": int(failed.attempt_number),
+        "claim_id": failed.claim_id,
+        "lease_id": failed.lease_id,
+        "owner_session_id": failed.owner_session_id,
+        "fencing_token": int(failed.fencing_token),
+        "fence_epoch": int(failed.fence_epoch),
+        "execution_phase": ATTEMPT_PHASE_FAILED,
+        "execution_revision": int(failed.revision),
+        "execution_finished_at_ms": failed.finished_at_ms,
+        "reason": reason,
+        "retryable": False,
+        "coordination": sealed_coordination,
+        "control_expected_status": "quarantined",
+        "control_expected_revision": int(current.revision),
+    }
+    daemon.task_source.compare_and_set_status(
+        source.task_cid,
+        int(current.revision),
+        "blocked",
+        terminal_receipt,
+        expected_control_receipt=prior_receipt,
+    )
+
+    qualification = _callback_integration_recovery_evidence(daemon, source)
+    v1_seed = daemon._build_post_merge_completion_recovery_seed(
+        attempt=source,
+        task_revision=19,
+        evidence=qualification,
+        qualified_target_commit=str(qualification["qualified_target_commit"]),
+        qualification_kind="callback_integration",
+        qualification_receipt_id=str(
+            qualification["callback_requalification_receipt_id"]
+        ),
+        recovery_evidence_id=str(qualification["evidence_id"]),
+        terminal_reason="provider_callback_outcome_unknown",
+    )
+    v2_body = dict(v1_seed)
+    v2_body.pop("seed_id")
+    v2_body["schema"] = DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+    v2_body["recovery_control_revision"] = 24
+    v2_seed = {
+        **v2_body,
+        "seed_id": daemon._database_portal_evidence_digest(v2_body),
+    }
+    context_body: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-claim-verification-context@2"
+        ),
+        "task_cid": source.task_cid,
+        "task_alias": source.task_alias,
+        "source_task_revision": 19,
+        "recovery_task_revision": 20,
+        "route_recovery_task_revision": 21,
+        "claim_task_revision": 22,
+        "admission_task_revision": 23,
+        "blocked_task_revision": 24,
+        "unknown_callback_reopen_count": prior_receipt[
+            "unknown_callback_reopen_count"
+        ],
+        "history_projection_cid": "baguqeera" + "h" * 48,
+        "semantic_body_id": content_identity({"task": source.task_cid}),
+        "source_seed": v1_seed,
+        "rebased_seed": v2_seed,
+        "execution_route_binding": {},
+        "execution_route_binding_id": content_identity(
+            {"task_execution_route_binding": {}}
+        ),
+        "blocked_attempt": failed.to_dict(),
+        "blocked_receipt_id": content_identity(
+            {"post_merge_claim_verification_terminal": terminal_receipt}
+        ),
+    }
+    context = {
+        **context_body,
+        "context_id": content_identity(context_body),
+    }
+    evidence_body: dict[str, object] = {
+        "schema": (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA
+        ),
+        "disposition": "retry_exact_post_merge_completion_seed",
+        "reason": reason,
+        "task_cid": failed.task_cid,
+        "task_alias": failed.task_alias,
+        "attempt_id": failed.attempt_id,
+        "claim_id": failed.claim_id,
+        "lease_id": failed.lease_id,
+        "owner_session_id": failed.owner_session_id,
+        "attempt_number": int(failed.attempt_number),
+        "fencing_token": int(failed.fencing_token),
+        "fence_epoch": int(failed.fence_epoch),
+        "blocked_task_revision": 24,
+        "history_context_id": context["context_id"],
+        "history_projection_cid": context["history_projection_cid"],
+        "source_seed_id": v1_seed["seed_id"],
+        "rebased_seed_id": v2_seed["seed_id"],
+        "request_id": v1_seed["request_id"],
+        "candidate_commit": v1_seed["candidate_commit"],
+        "qualified_target_commit": v1_seed["qualified_target_commit"],
+        "qualification_kind": v1_seed["qualification_kind"],
+        "qualification_receipt_id": v1_seed["qualification_receipt_id"],
+        "recovery_evidence_id": v1_seed["recovery_evidence_id"],
+        "queue_source_binding_id": v1_seed["queue_source_binding_id"],
+        "queue_source_projection_immutable_digest": v1_seed[
+            "queue_source_projection_immutable_digest"
+        ],
+        "execution_route_binding_id": context["execution_route_binding_id"],
+        "candidate_preserved": True,
+        "target_generation_unchanged": True,
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+    }
+    evidence = {
+        **evidence_body,
+        "receipt_id": daemon._database_portal_evidence_digest(evidence_body),
+    }
+    return daemon, failed, context, evidence, provider_calls
+
+
+def _bind_synthetic_r24_reconciliation(
+    daemon: DatabaseImplementationDaemon,
+    failed: DatabaseTaskAttempt,
+    context: Mapping[str, object],
+    evidence: Mapping[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reason = (
+        implementation_daemon_module
+        .DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON
+    )
+    monkeypatch.setattr(daemon, "_latest_failed_attempts", lambda: [failed])
+    monkeypatch.setattr(
+        daemon,
+        "_terminal_portal_failure_reason",
+        lambda _attempt: reason,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_fresh_failed_attempt_control_supersession",
+        lambda _attempt: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_reconcile_failed_attempt_coordination",
+        lambda attempt: {
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "attempt_number": int(attempt.attempt_number),
+            "historical_released": True,
+            "mutation_authority": "task_revision_and_control_receipt_cas",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_execute_with_retry_transition_authority",
+        lambda _attempt, _coordination, transition: transition(),
+    )
+    monkeypatch.setattr(daemon, "_automatic_claim_forbidden", lambda _task: False)
+    monkeypatch.setattr(
+        daemon,
+        "_post_merge_completion_claim_verification_recovery_context",
+        lambda _attempt, _task, **_kwargs: dict(context),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_post_merge_completion_claim_verification_recovery_evidence",
+        lambda attempt, task, **kwargs: (
+            daemon._verified_post_merge_completion_claim_verification_recovery_receipt(
+                attempt,
+                task,
+                evidence,
+                history_context=kwargs["history_context"],
+            )
+        ),
+    )
+
+
+def test_claim_verification_reconciliation_rearms_r24_with_rebased_v2_seed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, failed, context, evidence, provider_calls = (
+        _synthetic_r19_r24_claim_verification_rearm(tmp_path)
+    )
+    try:
+        _bind_synthetic_r24_reconciliation(
+            daemon, failed, context, evidence, monkeypatch
+        )
+        before = daemon.task_source.get(failed.task_cid)
+        assert before is not None and before.status == "blocked"
+        calls_before = list(provider_calls)
+        original_cas = daemon.task_source.record_queue_backoff_and_cas_status
+        cas_calls: list[dict[str, object]] = []
+
+        def observe_owner_cas(**kwargs: object) -> object:
+            cas_calls.append(dict(kwargs))
+            return original_cas(**kwargs)
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "record_queue_backoff_and_cas_status",
+            observe_owner_cas,
+        )
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "retrying"
+        assert outcomes[0]["changed"] is True
+        assert len(cas_calls) == 1
+        assert cas_calls[0]["expected_revision"] == int(before.revision)
+        assert cas_calls[0]["expected_control_receipt"] == (
+            before.body["completion_receipt"]
+        )
+        retrying = daemon.task_source.get(failed.task_cid)
+        assert retrying is not None and retrying.status == "retrying"
+        receipt = retrying.body["completion_receipt"]
+        seed = receipt["post_merge_completion_recovery_seed"]
+        assert seed["schema"] == (
+            DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+        )
+        assert seed["recovery_control_revision"] == 24
+        assert seed["seed_id"] == daemon._database_portal_evidence_digest(
+            {key: value for key, value in seed.items() if key != "seed_id"}
+        )
+        v1 = dict(context["source_seed"])
+        v2 = dict(seed)
+        for item in (v1, v2):
+            item.pop("seed_id", None)
+            item.pop("schema", None)
+        v2.pop("recovery_control_revision")
+        assert v2 == v1
+        assert receipt[
+            "post_merge_completion_claim_verification_recovery"
+        ] == evidence
+        assert provider_calls == calls_before
+    finally:
+        daemon.close()
+
+
+def test_claim_verification_reconciliation_survives_replaced_coordination_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original, failed, context, evidence, provider_calls = (
+        _synthetic_r19_r24_claim_verification_rearm(
+            tmp_path,
+            portable_coordination=True,
+        )
+    )
+    original.close()
+    daemon = _open_daemon(
+        tmp_path / "replacement",
+        control_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "replacement-coordination.duckdb",
+        # Execution history is durable recovery authority.  Replace only the
+        # disposable coordination sidecar used to fence the next claim.
+        execution_path=tmp_path / "lane" / "execution.duckdb",
+        session="session:claim-verification-replacement",
+        strict_task_sharding=True,
+    )
+    try:
+        _bind_synthetic_r24_reconciliation(
+            daemon, failed, context, evidence, monkeypatch
+        )
+
+        def forbid_lane_local_reconciliation(
+            _attempt: DatabaseTaskAttempt,
+        ) -> dict[str, object]:
+            raise AssertionError("replacement sidecar was treated as authority")
+
+        monkeypatch.setattr(
+            daemon,
+            "_reconcile_failed_attempt_coordination",
+            forbid_lane_local_reconciliation,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_execute_with_retry_transition_authority",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("replacement sidecar fenced the portable CAS")
+            ),
+        )
+        portable_calls: list[str] = []
+        original_portable = (
+            daemon._execute_with_portable_post_merge_completion_authority
+        )
+
+        def observe_portable(
+            attempt: DatabaseTaskAttempt,
+            coordination: Mapping[str, object],
+            callback: Callable[..., object],
+            **kwargs: object,
+        ) -> object:
+            portable_calls.append(attempt.attempt_id)
+            return original_portable(
+                attempt,
+                coordination,
+                callback,
+                **kwargs,
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_execute_with_portable_post_merge_completion_authority",
+            observe_portable,
+        )
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "retrying"
+        assert outcomes[0]["changed"] is True
+        assert portable_calls == [failed.attempt_id]
+        retrying = daemon.task_source.get(failed.task_cid)
+        assert retrying is not None and retrying.status == "retrying"
+        assert retrying.body["completion_receipt"][
+            "post_merge_completion_recovery_seed"
+        ] == context["rebased_seed"]
+        assert provider_calls == [failed.attempt_id]
+    finally:
+        daemon.close()
+
+
+def test_claim_verification_reconciliation_tamper_stays_blocked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, failed, context, evidence, provider_calls = (
+        _synthetic_r19_r24_claim_verification_rearm(tmp_path)
+    )
+    try:
+        tampered = dict(evidence)
+        tampered["candidate_commit"] = "f" * 40
+        _bind_synthetic_r24_reconciliation(
+            daemon, failed, context, tampered, monkeypatch
+        )
+        before = daemon.task_source.get(failed.task_cid)
+        assert before is not None and before.status == "blocked"
+        calls_before = list(provider_calls)
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "blocked"
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["provider_dispatched"] is False
+        unchanged = daemon.task_source.get(failed.task_cid)
+        assert unchanged is not None
+        assert unchanged.status == "blocked"
+        assert int(unchanged.revision) == int(before.revision)
+        assert unchanged.body == before.body
+        assert daemon.task_source.get_queue_entry(failed.task_cid) is None
+        assert provider_calls == calls_before
+    finally:
+        daemon.close()
+
+
+def test_claim_verification_reconciliation_never_dispatches_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, failed, context, evidence, provider_calls = (
+        _synthetic_r19_r24_claim_verification_rearm(tmp_path)
+    )
+    dispatched: list[str] = []
+
+    def forbidden_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        dispatched.append(attempt.attempt_id)
+        raise AssertionError("r24 reconciliation dispatched a provider")
+
+    try:
+        daemon._provider_fn = forbidden_provider
+        _bind_synthetic_r24_reconciliation(
+            daemon, failed, context, evidence, monkeypatch
+        )
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+
+        assert outcomes[0]["status"] == "retrying"
+        assert dispatched == []
+        # The sole earlier call belongs to construction of the historical
+        # provider-outcome-unknown fixture, not this reconciliation pass.
+        assert len(provider_calls) == 1
+    finally:
+        daemon.close()
 
 
 def test_callback_integration_recovery_rearms_real_neutral_quarantine_once(

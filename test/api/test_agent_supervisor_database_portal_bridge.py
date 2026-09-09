@@ -57,7 +57,20 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
     duckdb_available,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    DATABASE_VIRGIN_TASK_TRANSFER_BINDING_SCHEMA,
+    DATABASE_VIRGIN_TASK_TRANSFER_CURSOR_SCHEMA,
     TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+    GROK_CODEX_EXECUTION_MODE,
+    TaskExecutionRouteBinding,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+    TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
+    TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     database_portal_bridge as database_portal_bridge_module,
@@ -17077,7 +17090,13 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
         @staticmethod
         def get_queue_entry(task_cid: str) -> object | None:
             return (
-                SimpleNamespace(reason=transition["queue_reason"])
+                    SimpleNamespace(
+                        reason=transition["queue_reason"],
+                        retry_not_before_ms=transition.get(
+                            "retry_not_before_ms",
+                            0,
+                        ),
+                    )
                 if task_cid == attempt.task_cid
                 else None
             )
@@ -17090,6 +17109,1214 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     )
     assert replay["qualification_kind"] == "callback_integration"
     assert replay["post_merge_completion_recovery_seed"] == seed
+
+
+def _route_repaired_typed_completion_claim_fixture(
+    *,
+    tamper: str = "",
+) -> tuple[
+    DatabasePortalExecutionBridge,
+    DatabaseTaskAttempt,
+    SimpleNamespace,
+    dict[str, object],
+]:
+    """Reproduce terminal/recovery/route/claim/admission revisions 19--23."""
+
+    recovery_control_revision = 19
+    attempt = replace(
+        _attempt(),
+        attempt_id="attempt:route-repaired-consumer",
+        claim_id="claim:route-repaired-consumer",
+        lease_id="lease:route-repaired-consumer",
+        owner_session_id="session:route-repaired-consumer",
+        attempt_number=78,
+        fencing_token=79,
+        fence_epoch=12,
+    )
+    source_identity = {
+        "attempt_id": "attempt:callback-unknown-source",
+        "attempt_number": 43,
+        "claim_id": "claim:callback-unknown-source",
+        "lease_id": "lease:callback-unknown-source",
+        "owner_session_id": "session:callback-unknown-source",
+        "fencing_token": 44,
+        "fence_epoch": 8,
+    }
+    seed_body: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-recovery-seed@1"
+        ),
+        "task_cid": attempt.task_cid,
+        "task_alias": attempt.task_alias,
+        **source_identity,
+        "source_task_revision": recovery_control_revision,
+        "request_id": "request:callback-integration",
+        "candidate_commit": "a" * 40,
+        "qualified_target_commit": "b" * 40,
+        "qualification_kind": "callback_integration",
+        "qualification_receipt_id": "receipt:callback-integration",
+        "queue_source_attempt_id": "attempt:merge-queue-source",
+        "queue_source_claim_id": "claim:merge-queue-source",
+        "queue_source_lease_id": "lease:merge-queue-source",
+        "queue_source_fencing_token": 17,
+        "queue_source_fence_epoch": 4,
+        "queue_source_binding_id": "sha256:" + "1" * 64,
+        "queue_source_projection_immutable_digest": "sha256:" + "2" * 64,
+        "recovery_evidence_id": "sha256:" + "3" * 64,
+        "terminal_reason": "provider_callback_outcome_unknown",
+    }
+    seed = {
+        **seed_body,
+        "seed_id": database_portal_bridge_module._sha256_bytes(
+            database_portal_bridge_module._canonical_json(seed_body)
+        ),
+    }
+    route = TaskExecutionRouteBinding(
+        policy_id="policy:route-repaired-claim",
+        plan_root_cid="plan:route-repaired-claim",
+        repository_tree_id="tree:route-repaired-claim",
+        source_revision=1,
+        task_cid=attempt.task_cid,
+        task_alias=attempt.task_alias,
+        task_revision=8,
+        task_contract_cid="contract:route-repaired-claim",
+        execution_mode=GROK_CODEX_EXECUTION_MODE,
+    ).to_dict()
+    prior_receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-neutral-quarantine@1"
+        ),
+        "operation": "database_portal_neutral_failure_quarantine",
+        "failure_kind": "provider_callback_outcome_unknown",
+        "retry_suppressed": True,
+        **{
+            field: source_identity[field]
+            for field in (
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "fencing_token",
+                "fence_epoch",
+            )
+        },
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    missing_receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-callback-integration-recovery@1"
+        ),
+        "operation": (
+            "database_post_merge_declared_outputs_"
+            "callback_integration_recovery"
+        ),
+        **source_identity,
+        "control_expected_status": "quarantined",
+        "control_expected_revision": recovery_control_revision,
+        "post_merge_completion_recovery_seed": seed,
+    }
+    witness_body = {
+        "schema": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
+        "operation": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
+        "task_cid": attempt.task_cid,
+        "task_alias": attempt.task_alias,
+        "source_task_revision": recovery_control_revision,
+        "missing_route_task_revision": recovery_control_revision + 1,
+        "recovered_task_revision": recovery_control_revision + 2,
+        "prior_receipt_cid": content_identity(
+            {"post_commit_route_predecessor_receipt": prior_receipt}
+        ),
+        "current_receipt_cid": content_identity(
+            {"post_commit_route_missing_receipt": missing_receipt}
+        ),
+        "route_binding_cid": content_identity(
+            {"task_execution_route_binding": route}
+        ),
+        "route_policy_id": route["policy_id"],
+        "current_policy_id": "policy:current-route-repaired-claim",
+        "current_policy_source_revision": 2,
+        "plan_root_cid": route["plan_root_cid"],
+        "repository_tree_id": route["repository_tree_id"],
+        "post_commit_candidate_receipt_id": seed["seed_id"],
+        "queue_revision_before": 7,
+        "queue_revision_after": 7,
+    }
+    witness = {
+        **witness_body,
+        "receipt_id": content_identity(
+            {"typed_post_commit_route_recovery": witness_body}
+        ),
+    }
+    recovered_receipt = {
+        **missing_receipt,
+        "schema": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
+        "operation": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
+        "source_control_operation": missing_receipt["operation"],
+        "control_expected_status": "retrying",
+        "control_expected_revision": recovery_control_revision + 1,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+        "execution_route_lineage_recovery": witness,
+    }
+    pid = 2345
+    start_time_ticks = 6789
+    boot_id = "boot:route-repaired-claim"
+    parent_pid = 1
+    process_material = f"{pid}:{start_time_ticks}:{boot_id}:{parent_pid}"
+    claim_process_attestation = {
+        "schema": TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+        "grant_id": "grant:route-repaired-claim",
+        "client_id": "database-implementation-daemon:lane-0",
+        "process_birth_id": (
+            "birth:"
+            + hashlib.sha256(process_material.encode("utf-8")).hexdigest()[:32]
+        ),
+        "pid": pid,
+        "uid": 1000,
+        "start_time_ticks": start_time_ticks,
+        "boot_id": boot_id,
+        "parent_pid": parent_pid,
+    }
+    claim_receipt = {
+        "operation": "database_claim",
+        "claim_id": attempt.claim_id,
+        "attempt_id": attempt.attempt_id,
+        "attempt_number": attempt.attempt_number,
+        "owner_session_id": attempt.owner_session_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "claimed_from_revision": recovery_control_revision + 2,
+        "task_shard_count": 4,
+        "task_shard_index": 0,
+        "strict_task_sharding": True,
+        "idle_lane_work_stealing": "virgin-transfer",
+        "task_prefix": "LGSWF-",
+        "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+        "claim_process_attestation": claim_process_attestation,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+        "post_merge_completion_recovery_source_attempt_id": seed["attempt_id"],
+        "post_merge_completion_recovery_seed": seed,
+    }
+    admission_receipt = {
+        **claim_receipt,
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+        "admitted_from_revision": recovery_control_revision + 3,
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+    }
+    if tamper == "route-wrapper-operation":
+        recovered_receipt["operation"] = "database_claim"
+    elif tamper == "route-witness-identity":
+        recovered_receipt["execution_route_lineage_recovery"] = {
+            **witness,
+            "recovered_task_revision": 999,
+        }
+    elif tamper == "typed-admission-transform":
+        admission_receipt["attempt_execution_revision"] = 2
+    elif tamper == "claim-route-tuple":
+        claim_receipt["execution_route_policy_id"] = "policy:foreign"
+        admission_receipt["execution_route_policy_id"] = "policy:foreign"
+    elif tamper == "claim-attempt-number":
+        claim_receipt["attempt_number"] = attempt.attempt_number + 1
+        admission_receipt["attempt_number"] = attempt.attempt_number + 1
+    elif tamper == "claim-synchronized-extra-field":
+        claim_receipt["unowned_authority"] = True
+        admission_receipt["unowned_authority"] = True
+    elif tamper == "claim-attestation-extra-field":
+        claim_process_attestation["unowned_authority"] = True
+    elif tamper == "claim-attestation-birth-id":
+        claim_process_attestation["process_birth_id"] = "birth:" + "f" * 32
+    elif tamper == "claim-partial-transfer":
+        partial = {"mode": "virgin-transfer"}
+        claim_receipt["virgin_task_transfer"] = partial
+        admission_receipt["virgin_task_transfer"] = partial
+    elif tamper == "claim-unstamped-transfer-request":
+        request = {"mode": "virgin-transfer"}
+        claim_receipt["virgin_task_transfer_request"] = request
+        admission_receipt["virgin_task_transfer_request"] = request
+    elif tamper == "claim-invalid-transfer-mode":
+        claim_receipt["idle_lane_work_stealing"] = "virgin_transfer"
+        admission_receipt["idle_lane_work_stealing"] = "virgin_transfer"
+    elif tamper == "valid-owner-reopen-count":
+        for receipt in (
+            prior_receipt,
+            missing_receipt,
+            recovered_receipt,
+            claim_receipt,
+            admission_receipt,
+        ):
+            receipt["unknown_callback_reopen_count"] = 0
+        witness["prior_receipt_cid"] = content_identity(
+            {"post_commit_route_predecessor_receipt": prior_receipt}
+        )
+        witness["current_receipt_cid"] = content_identity(
+            {"post_commit_route_missing_receipt": missing_receipt}
+        )
+        witness_value = dict(witness)
+        witness_value.pop("receipt_id")
+        witness["receipt_id"] = content_identity(
+            {"typed_post_commit_route_recovery": witness_value}
+        )
+    elif tamper:
+        raise AssertionError(f"unknown route-repaired fixture tamper {tamper!r}")
+
+    semantic_body = dict(_record().body)
+    revisions = [
+        {
+            "revision": revision,
+            "status": status,
+            "body": {**semantic_body, "completion_receipt": receipt},
+        }
+        for revision, status, receipt in (
+            (recovery_control_revision, "quarantined", prior_receipt),
+            (recovery_control_revision + 1, "retrying", missing_receipt),
+            (recovery_control_revision + 2, "retrying", recovered_receipt),
+            (recovery_control_revision + 3, "in_progress", claim_receipt),
+            (recovery_control_revision + 4, "in_progress", admission_receipt),
+        )
+    ]
+    history_body = {
+        "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+        "task_cid": attempt.task_cid,
+        "revisions": revisions,
+    }
+    history = {
+        **history_body,
+        "projection_cid": content_identity(history_body),
+    }
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.task_source = SimpleNamespace(
+        task_revision_history_projection=lambda _task_cid: history,
+        validate_execution_route_binding=(
+            lambda binding, **_kwargs: dict(binding)
+        ),
+    )
+    bridge.merge_queue = None
+    record = SimpleNamespace(
+        task_cid=attempt.task_cid,
+        task_alias=attempt.task_alias,
+        status="in_progress",
+        revision=recovery_control_revision + 4,
+        body=revisions[-1]["body"],
+    )
+    return bridge, attempt, record, seed
+
+
+def _direct_typed_completion_claim_fixture(
+    *,
+    tamper: str = "",
+) -> tuple[
+    DatabasePortalExecutionBridge,
+    DatabaseTaskAttempt,
+    SimpleNamespace,
+    dict[str, object],
+]:
+    """Collapse the route fixture to recovery/claim/admission revisions 20--22."""
+
+    bridge, attempt, _route_record, seed = (
+        _route_repaired_typed_completion_claim_fixture()
+    )
+    route_history = bridge.task_source.task_revision_history_projection(
+        attempt.task_cid
+    )
+    source_revisions = route_history["revisions"]
+    terminal_receipt = dict(source_revisions[0]["body"]["completion_receipt"])
+    recovery_receipt = dict(source_revisions[1]["body"]["completion_receipt"])
+    claim_receipt = dict(source_revisions[3]["body"]["completion_receipt"])
+    route = dict(claim_receipt["execution_route_binding"])
+    recovery_receipt.update(
+        {
+            "execution_route_binding": route,
+            "execution_route_policy_id": route["policy_id"],
+            "execution_route_origin_revision": route["task_revision"],
+        }
+    )
+    claim_receipt["claimed_from_revision"] = 20
+    admission_receipt = {
+        **claim_receipt,
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+        "admitted_from_revision": 21,
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+    }
+    if tamper == "admission-extra-field":
+        admission_receipt["unowned_authority"] = True
+    elif tamper == "admission-source-revision":
+        admission_receipt["admitted_from_revision"] = 20
+    elif tamper == "claim-operation":
+        claim_receipt["operation"] = "database_attempt_admitted"
+    elif tamper == "claim-route-malformed":
+        claim_receipt["execution_route_binding"] = {}
+        admission_receipt["execution_route_binding"] = {}
+    elif tamper == "claim-route-tuple":
+        claim_receipt["execution_route_policy_id"] = "policy:foreign"
+        admission_receipt["execution_route_policy_id"] = "policy:foreign"
+    elif tamper not in {"", "history-cid"}:
+        raise AssertionError(f"unknown direct admission fixture tamper {tamper!r}")
+
+    semantic_body = dict(_record().body)
+    revisions = [
+        {
+            "revision": revision,
+            "status": status,
+            "body": {**semantic_body, "completion_receipt": receipt},
+        }
+        for revision, status, receipt in (
+            (19, "quarantined", terminal_receipt),
+            (20, "retrying", recovery_receipt),
+            (21, "in_progress", claim_receipt),
+            (22, "in_progress", admission_receipt),
+        )
+    ]
+    history_body = {
+        "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+        "task_cid": attempt.task_cid,
+        "revisions": revisions,
+    }
+    history = {
+        **history_body,
+        "projection_cid": (
+            "sha256:" + "f" * 64
+            if tamper == "history-cid"
+            else content_identity(history_body)
+        ),
+    }
+    bridge.task_source = SimpleNamespace(
+        task_revision_history_projection=lambda _task_cid: history,
+        validate_execution_route_binding=(
+            lambda binding, **_kwargs: dict(binding)
+        ),
+    )
+    record = SimpleNamespace(
+        task_cid=attempt.task_cid,
+        task_alias=attempt.task_alias,
+        status="in_progress",
+        revision=22,
+        body=revisions[-1]["body"],
+    )
+    return bridge, attempt, record, seed
+
+
+def test_post_merge_completion_direct_typed_admission_normalizes_to_claim() -> None:
+    bridge, attempt, record, seed = _direct_typed_completion_claim_fixture()
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="post-merge completion recovery seed has no merge queue",
+    ):
+        bridge._post_merge_completion_recovery_seed_from_record(
+            attempt=attempt,
+            record=record,
+        )
+
+    claim = bridge._post_merge_completion_claim_receipt(
+        attempt=attempt,
+        record=record,
+        status_receipt=record.body["completion_receipt"],
+        seed=seed,
+        recovery_control_revision=19,
+    )
+    assert claim is not None
+    assert claim["operation"] == "database_claim"
+    assert claim["claimed_from_revision"] == 20
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "admission-extra-field",
+        "admission-source-revision",
+        "claim-operation",
+        "claim-route-malformed",
+        "claim-route-tuple",
+        "history-cid",
+    ],
+)
+def test_post_merge_completion_direct_typed_admission_rejects_forgery(
+    tamper: str,
+) -> None:
+    bridge, attempt, record, _seed = _direct_typed_completion_claim_fixture(
+        tamper=tamper
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="post-merge completion recovery seed failed claim verification",
+    ):
+        bridge._post_merge_completion_recovery_seed_from_record(
+            attempt=attempt,
+            record=record,
+        )
+
+
+def test_post_merge_completion_route_repair_admits_exact_typed_claim() -> None:
+    bridge, attempt, record, seed = (
+        _route_repaired_typed_completion_claim_fixture()
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="post-merge completion recovery seed has no merge queue",
+    ):
+        bridge._post_merge_completion_recovery_seed_from_record(
+            attempt=attempt,
+            record=record,
+        )
+
+    status_receipt = record.body["completion_receipt"]
+    assert bridge._post_merge_completion_claim_receipt(
+        attempt=attempt,
+        record=record,
+        status_receipt=status_receipt,
+        seed=seed,
+        recovery_control_revision=19,
+    )["operation"] == "database_claim"
+
+
+def test_post_merge_completion_route_repair_preserves_owner_reopen_count() -> None:
+    bridge, attempt, record, seed = (
+        _route_repaired_typed_completion_claim_fixture(
+            tamper="valid-owner-reopen-count"
+        )
+    )
+
+    claim = bridge._post_merge_completion_claim_receipt(
+        attempt=attempt,
+        record=record,
+        status_receipt=record.body["completion_receipt"],
+        seed=seed,
+        recovery_control_revision=19,
+    )
+
+    assert claim is not None
+    assert claim["unknown_callback_reopen_count"] == 0
+
+
+def _post_merge_transferred_claim_receipts(
+    *,
+    tamper: str = "",
+) -> tuple[DatabaseTaskAttempt, dict[str, object], dict[str, object]]:
+    bridge, attempt, _record_value, _seed = (
+        _route_repaired_typed_completion_claim_fixture()
+    )
+    revisions = bridge.task_source.task_revision_history_projection(
+        attempt.task_cid
+    )["revisions"]
+    predecessor = dict(revisions[2]["body"]["completion_receipt"])
+    claim = dict(revisions[3]["body"]["completion_receipt"])
+    claim["task_shard_index"] = 1
+    binding_body = {
+        "schema": DATABASE_VIRGIN_TASK_TRANSFER_BINDING_SCHEMA,
+        "mode": "virgin-transfer",
+        "cohort_id": content_identity(
+            {
+                "kind": "database-virgin-task-transfer-cohort",
+                "task_prefix": "LGSWF-",
+                "task_shard_count": 4,
+                "claim_policy_id": "",
+                "store_generation": "",
+            }
+        ),
+        "claim_policy_id": "",
+        "store_generation": "",
+        "task_cid": attempt.task_cid,
+        "task_alias": attempt.task_alias,
+        "task_prefix": "LGSWF-",
+        "task_shard_count": 4,
+        "home_shard_index": 0,
+        "recipient_shard_index": 1,
+        "source_task_revision": 8,
+        "claim_id": "claim:initial-transfer",
+        "attempt_id": "attempt:initial-transfer",
+        "owner_session_id": attempt.owner_session_id,
+        "lease_id": "lease:initial-transfer",
+        "fencing_token": 10,
+        "fence_epoch": 4,
+        "preclaim_projection_id": "projection:initial-transfer",
+        "donor_active": True,
+        "donor_ready_count": 0,
+    }
+    binding = {
+        **binding_body,
+        "binding_id": content_identity(binding_body),
+    }
+
+    def cursor(
+        *,
+        claim_id: str,
+        attempt_id: str,
+        lease_id: str,
+        fencing_token: int,
+        fence_epoch: int,
+        claimed_from_revision: int,
+    ) -> dict[str, object]:
+        body = {
+            "schema": DATABASE_VIRGIN_TASK_TRANSFER_CURSOR_SCHEMA,
+            "binding_id": binding["binding_id"],
+            "claim_id": claim_id,
+            "attempt_id": attempt_id,
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": lease_id,
+            "fencing_token": fencing_token,
+            "fence_epoch": fence_epoch,
+            "claimed_from_revision": claimed_from_revision,
+        }
+        return {**body, "cursor_id": content_identity(body)}
+
+    predecessor_cursor = cursor(
+        claim_id="claim:initial-transfer",
+        attempt_id="attempt:initial-transfer",
+        lease_id="lease:initial-transfer",
+        fencing_token=10,
+        fence_epoch=4,
+        claimed_from_revision=8,
+    )
+    claim_cursor = cursor(
+        claim_id=attempt.claim_id,
+        attempt_id=attempt.attempt_id,
+        lease_id=attempt.lease_id,
+        fencing_token=attempt.fencing_token,
+        fence_epoch=attempt.fence_epoch,
+        claimed_from_revision=int(claim["claimed_from_revision"]),
+    )
+    predecessor.update(
+        virgin_task_transfer=binding,
+        virgin_task_transfer_claim_cursor=predecessor_cursor,
+    )
+    claim.update(
+        virgin_task_transfer=binding,
+        virgin_task_transfer_claim_cursor=claim_cursor,
+    )
+    if tamper == "dropped":
+        claim.pop("virgin_task_transfer")
+        claim.pop("virgin_task_transfer_claim_cursor")
+    elif tamper == "changed-binding":
+        changed_body = dict(binding_body)
+        changed_body["preclaim_projection_id"] = "projection:forged"
+        changed_binding = {
+            **changed_body,
+            "binding_id": content_identity(changed_body),
+        }
+        changed_cursor_body = {
+            **claim_cursor,
+            "binding_id": changed_binding["binding_id"],
+        }
+        changed_cursor_body.pop("cursor_id")
+        claim["virgin_task_transfer"] = changed_binding
+        claim["virgin_task_transfer_claim_cursor"] = {
+            **changed_cursor_body,
+            "cursor_id": content_identity(changed_cursor_body),
+        }
+    elif tamper == "stale-cursor":
+        claim["virgin_task_transfer_claim_cursor"] = predecessor_cursor
+    elif tamper == "changed-cursor":
+        changed_cursor_body = {
+            **claim_cursor,
+            "attempt_id": "attempt:forged-cursor",
+        }
+        changed_cursor_body.pop("cursor_id")
+        claim["virgin_task_transfer_claim_cursor"] = {
+            **changed_cursor_body,
+            "cursor_id": content_identity(changed_cursor_body),
+        }
+    elif tamper == "binding-extra-field":
+        changed_binding_body = dict(binding_body)
+        changed_binding_body["unowned_authority"] = True
+        changed_binding = {
+            **changed_binding_body,
+            "binding_id": content_identity(changed_binding_body),
+        }
+        changed_cursor_body = dict(claim_cursor)
+        changed_cursor_body.pop("cursor_id")
+        changed_cursor_body["binding_id"] = changed_binding["binding_id"]
+        claim["virgin_task_transfer"] = changed_binding
+        claim["virgin_task_transfer_claim_cursor"] = {
+            **changed_cursor_body,
+            "cursor_id": content_identity(changed_cursor_body),
+        }
+    elif tamper == "cursor-extra-field":
+        changed_cursor_body = dict(claim_cursor)
+        changed_cursor_body.pop("cursor_id")
+        changed_cursor_body["unowned_authority"] = True
+        claim["virgin_task_transfer_claim_cursor"] = {
+            **changed_cursor_body,
+            "cursor_id": content_identity(changed_cursor_body),
+        }
+    elif tamper:
+        raise AssertionError(f"unknown transferred-claim tamper {tamper!r}")
+    return attempt, predecessor, claim
+
+
+def test_post_merge_completion_claim_admits_rotated_transfer_cursor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON",
+        raising=False,
+    )
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+        raising=False,
+    )
+    attempt, predecessor, claim = _post_merge_transferred_claim_receipts()
+
+    validated = (
+        database_portal_bridge_module
+        ._validated_post_merge_completion_claim_receipt(
+            claim,
+            task_cid=attempt.task_cid,
+            task_alias=attempt.task_alias,
+            receipt_body={"completion_receipt": claim},
+            predecessor_receipt=predecessor,
+        )
+    )
+
+    assert validated == claim
+    assert validated["virgin_task_transfer"] == predecessor[
+        "virgin_task_transfer"
+    ]
+    assert validated["virgin_task_transfer_claim_cursor"] != predecessor[
+        "virgin_task_transfer_claim_cursor"
+    ]
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "dropped",
+        "changed-binding",
+        "stale-cursor",
+        "changed-cursor",
+        "binding-extra-field",
+        "cursor-extra-field",
+    ],
+)
+def test_post_merge_completion_claim_rejects_transfer_lineage_tamper(
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON",
+        raising=False,
+    )
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+        raising=False,
+    )
+    attempt, predecessor, claim = _post_merge_transferred_claim_receipts(
+        tamper=tamper
+    )
+
+    assert (
+        database_portal_bridge_module
+        ._validated_post_merge_completion_claim_receipt(
+            claim,
+            task_cid=attempt.task_cid,
+            task_alias=attempt.task_alias,
+            receipt_body={"completion_receipt": claim},
+            predecessor_receipt=predecessor,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "route-wrapper-operation",
+        "route-witness-identity",
+        "typed-admission-transform",
+        "claim-route-tuple",
+        "claim-attempt-number",
+        "claim-synchronized-extra-field",
+        "claim-attestation-extra-field",
+        "claim-attestation-birth-id",
+        "claim-partial-transfer",
+        "claim-unstamped-transfer-request",
+        "claim-invalid-transfer-mode",
+    ],
+)
+def test_post_merge_completion_route_repair_rejects_forged_bridge(
+    tamper: str,
+) -> None:
+    bridge, attempt, record, _seed = (
+        _route_repaired_typed_completion_claim_fixture(tamper=tamper)
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="post-merge completion recovery seed failed claim verification",
+    ):
+        bridge._post_merge_completion_recovery_seed_from_record(
+            attempt=attempt,
+            record=record,
+        )
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "",
+        "evidence",
+        "target",
+        "successor-seed",
+        "missing-recovery-attestation",
+        "foreign-recovery-attestation",
+        "tampered-recovery-attestation",
+        "v2-claim-without-admission",
+    ],
+)
+def test_claim_verification_recovery_reproves_without_provider_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    bridge, claimed, _record_value, source_seed = (
+        _route_repaired_typed_completion_claim_fixture()
+    )
+    failed = replace(
+        claimed,
+        committed_phase="failed",
+        status="failed",
+        revision=2,
+        finished_at_ms=123,
+    )
+    route_history = bridge.task_source.task_revision_history_projection(
+        failed.task_cid
+    )
+    revisions = list(route_history["revisions"])
+    semantic_body = dict(revisions[-1]["body"])
+    semantic_body.pop("completion_receipt")
+    terminal = {
+        "operation": "database_portal_terminal_failure",
+        "attempt_id": failed.attempt_id,
+        "attempt_number": failed.attempt_number,
+        "claim_id": failed.claim_id,
+        "lease_id": failed.lease_id,
+        "owner_session_id": failed.owner_session_id,
+        "fencing_token": failed.fencing_token,
+        "fence_epoch": failed.fence_epoch,
+        "execution_phase": "failed",
+        "execution_revision": failed.revision,
+        "execution_finished_at_ms": failed.finished_at_ms,
+        "reason": (
+            "post-merge completion recovery seed failed claim verification"
+        ),
+        "retryable": False,
+        "coordination": {},
+        "control_expected_status": "in_progress",
+        "control_expected_revision": 23,
+    }
+    route = revisions[2]["body"]["completion_receipt"][
+        "execution_route_binding"
+    ]
+    terminal.update(
+        execution_route_binding=route,
+        execution_route_policy_id=route["policy_id"],
+        execution_route_origin_revision=route["task_revision"],
+    )
+    revisions.append(
+        {
+            "revision": 24,
+            "status": "blocked",
+            "body": {**semantic_body, "completion_receipt": terminal},
+        }
+    )
+    history_body = {
+        "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+        "task_cid": failed.task_cid,
+        "revisions": revisions,
+    }
+    history = {
+        **history_body,
+        "projection_cid": content_identity(history_body),
+    }
+    record = SimpleNamespace(
+        task_cid=failed.task_cid,
+        task_alias=failed.task_alias,
+        status="blocked",
+        revision=24,
+        body=revisions[-1]["body"],
+    )
+    bridge.task_source = SimpleNamespace(
+        get=lambda _task_cid: record,
+        task_revision_history_projection=lambda _task_cid: history,
+    )
+    rebased_body = dict(source_seed)
+    rebased_body.pop("seed_id")
+    rebased_body["schema"] = (
+        database_portal_bridge_module
+        .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+    )
+    rebased_body["recovery_control_revision"] = 24
+    rebased_seed = {
+        **rebased_body,
+        "seed_id": database_portal_bridge_module._sha256_bytes(
+            database_portal_bridge_module._canonical_json(rebased_body)
+        ),
+    }
+    blocked_attempt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-claim-verification-attempt@1"
+        ),
+        "attempt_id": failed.attempt_id,
+        "claim_id": failed.claim_id,
+        "task_cid": failed.task_cid,
+        "task_alias": failed.task_alias,
+        "attempt_number": failed.attempt_number,
+        "owner_session_id": failed.owner_session_id,
+        "fencing_token": failed.fencing_token,
+        "fence_epoch": failed.fence_epoch,
+        "lease_id": failed.lease_id,
+        "committed_phase": terminal["execution_phase"],
+        "status": terminal["execution_phase"],
+        "finished_at_ms": terminal["execution_finished_at_ms"],
+        "revision": terminal["execution_revision"],
+        "post_merge_completion_recovery_source_attempt_id": source_seed[
+            "attempt_id"
+        ],
+        "post_merge_completion_recovery_seed": source_seed,
+        "execution_route_binding": route,
+    }
+    context_body = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-claim-verification-context@2"
+        ),
+        "task_cid": failed.task_cid,
+        "task_alias": failed.task_alias,
+        "source_task_revision": 19,
+        "recovery_task_revision": 20,
+        "route_recovery_task_revision": 21,
+        "claim_task_revision": 22,
+        "admission_task_revision": 23,
+        "blocked_task_revision": 24,
+        "unknown_callback_reopen_count": 0,
+        "history_projection_cid": history["projection_cid"],
+        "semantic_body_id": content_identity(semantic_body),
+        "source_seed": source_seed,
+        "rebased_seed": rebased_seed,
+        "execution_route_binding": route,
+        "execution_route_binding_id": content_identity(
+            {"task_execution_route_binding": route}
+        ),
+        "blocked_attempt": blocked_attempt,
+        "blocked_receipt_id": content_identity(
+            {"post_merge_claim_verification_terminal": terminal}
+        ),
+    }
+    context = {
+        **context_body,
+        "context_id": content_identity(context_body),
+    }
+    request = SimpleNamespace(request_id=source_seed["request_id"])
+    projection = SimpleNamespace(binding={"task_cid": failed.task_cid})
+    bridge.merge_queue = SimpleNamespace(get=lambda _request_id: request)
+    bridge.repository_root = tmp_path
+    bridge.merge_target_branch = "main"
+    monkeypatch.setattr(
+        bridge,
+        "_owned_post_merge_recovery_projection",
+        lambda *_args, **_kwargs: projection,
+    )
+    evidence = {
+        "schema": database_portal_bridge_module._DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA,
+        "evidence_id": source_seed["recovery_evidence_id"],
+        "request_id": source_seed["request_id"],
+        "task_cid": source_seed["task_cid"],
+        "task_alias": source_seed["task_alias"],
+        "candidate_commit": source_seed["candidate_commit"],
+        "qualified_target_commit": source_seed["qualified_target_commit"],
+        "callback_requalification_receipt_id": source_seed[
+            "qualification_receipt_id"
+        ],
+        "source_binding_id": source_seed["queue_source_binding_id"],
+        "source_projection_immutable_digest": source_seed[
+            "queue_source_projection_immutable_digest"
+        ],
+    }
+    if tamper == "evidence":
+        evidence["candidate_commit"] = "f" * 40
+    monkeypatch.setattr(
+        bridge,
+        "_post_merge_recovery_evidence",
+        lambda *_args, **_kwargs: evidence,
+    )
+    git_calls: list[list[str]] = []
+
+    def fake_git(arguments: list[str], **_kwargs: object) -> SimpleNamespace:
+        git_calls.append(arguments)
+        return SimpleNamespace(
+            returncode=0,
+            stdout=(
+                ("e" * 40)
+                if tamper == "target"
+                else source_seed["qualified_target_commit"]
+            )
+            + "\n",
+        )
+
+    monkeypatch.setattr(database_portal_bridge_module.subprocess, "run", fake_git)
+    provider_calls: list[str] = []
+    bridge.run_provider = lambda attempt: provider_calls.append(attempt.attempt_id)
+
+    if tamper in {"evidence", "target"}:
+        with pytest.raises(
+            DatabasePortalBridgeError,
+            match=(
+                "evidence changed"
+                if tamper == "evidence"
+                else "target generation changed"
+            ),
+        ):
+            bridge.recover_post_merge_completion_claim_verification(
+                failed,
+                context,
+            )
+        assert provider_calls == []
+        return
+
+    receipt = bridge.recover_post_merge_completion_claim_verification(
+        failed,
+        context,
+    )
+
+    assert receipt["candidate_preserved"] is True
+    assert receipt["target_generation_unchanged"] is True
+    assert receipt["provider_dispatched"] is False
+    assert receipt["attempt_consumed"] is False
+    assert receipt["source_seed_id"] == source_seed["seed_id"]
+    assert receipt["rebased_seed_id"] == rebased_seed["seed_id"]
+    assert receipt["receipt_id"] == database_portal_bridge_module._sha256_bytes(
+        database_portal_bridge_module._canonical_json(
+            {key: value for key, value in receipt.items() if key != "receipt_id"}
+        )
+    )
+    assert git_calls == [
+        ["git", "rev-parse", "--verify", "refs/heads/main^{commit}"]
+    ]
+    assert provider_calls == []
+
+    recovery_attestation = dict(
+        revisions[3]["body"]["completion_receipt"][
+            "claim_process_attestation"
+        ]
+    )
+    if tamper == "foreign-recovery-attestation":
+        recovery_attestation["client_id"] = "client:foreign-recovery"
+    elif tamper == "tampered-recovery-attestation":
+        recovery_attestation["process_birth_id"] = "birth:" + "f" * 32
+    recovery_receipt = {
+        "operation": "database_portal_post_merge_declared_output_recovery",
+        "attempt_id": failed.attempt_id,
+        "claim_id": failed.claim_id,
+        "lease_id": failed.lease_id,
+        "owner_session_id": failed.owner_session_id,
+        "fencing_token": failed.fencing_token,
+        "fence_epoch": failed.fence_epoch,
+        "attempt_number": failed.attempt_number,
+        "execution_phase": "failed",
+        "execution_revision": failed.revision,
+        "execution_finished_at_ms": failed.finished_at_ms,
+        "reason": (
+            "post-merge completion recovery seed failed claim verification"
+        ),
+        "backoff_seconds": 0,
+        "backoff_ms": 0,
+        "retry_not_before_ms": 0,
+        "evidence_source": (
+            "typed_post_merge_completion_claim_verification_recovery:"
+            + receipt["receipt_id"]
+        ),
+        "queue_reason": (
+            "database_portal_retry:"
+            + failed.attempt_id
+            + ":post-merge completion recovery seed failed claim verification"
+        ),
+        "queue_reused": False,
+        "queue_receipt": {},
+        "coordination": {},
+        "post_merge_completion_recovery_seed": rebased_seed,
+        "post_merge_completion_claim_verification_recovery": receipt,
+        **(
+            {"recovery_process_attestation": recovery_attestation}
+            if tamper != "missing-recovery-attestation"
+            else {}
+        ),
+        "control_expected_status": "blocked",
+        "control_expected_revision": 24,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    successor = replace(
+        claimed,
+        attempt_id="attempt:claim-verification-successor",
+        claim_id="claim:claim-verification-successor",
+        lease_id="lease:claim-verification-successor",
+        owner_session_id="session:claim-verification-successor",
+        attempt_number=claimed.attempt_number + 1,
+        fencing_token=claimed.fencing_token + 1,
+        fence_epoch=claimed.fence_epoch + 1,
+    )
+    claim_receipt = dict(revisions[3]["body"]["completion_receipt"])
+    claim_receipt.update(
+        {
+            "claim_id": successor.claim_id,
+            "attempt_id": successor.attempt_id,
+            "attempt_number": successor.attempt_number,
+            "owner_session_id": successor.owner_session_id,
+            "lease_id": successor.lease_id,
+            "fencing_token": successor.fencing_token,
+            "fence_epoch": successor.fence_epoch,
+            "claimed_from_revision": 25,
+            "post_merge_completion_recovery_source_attempt_id": source_seed[
+                "attempt_id"
+            ],
+            "post_merge_completion_recovery_seed": rebased_seed,
+        }
+    )
+    if tamper == "successor-seed":
+        changed_seed_body = dict(rebased_seed)
+        changed_seed_body.pop("seed_id")
+        changed_seed_body["candidate_commit"] = "f" * 40
+        changed_seed = {
+            **changed_seed_body,
+            "seed_id": database_portal_bridge_module._sha256_bytes(
+                database_portal_bridge_module._canonical_json(
+                    changed_seed_body
+                )
+            ),
+        }
+        claim_receipt["post_merge_completion_recovery_seed"] = changed_seed
+    admission_receipt = {
+        **claim_receipt,
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+        "admitted_from_revision": 26,
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+    }
+    successor_revisions = [
+        *revisions,
+        {
+            "revision": 25,
+            "status": "retrying",
+            "body": {
+                **semantic_body,
+                "completion_receipt": recovery_receipt,
+            },
+        },
+        {
+            "revision": 26,
+            "status": "in_progress",
+            "body": {**semantic_body, "completion_receipt": claim_receipt},
+        },
+        {
+            "revision": 27,
+            "status": "in_progress",
+            "body": {
+                **semantic_body,
+                "completion_receipt": admission_receipt,
+            },
+        },
+    ]
+    successor_history_body = {
+        "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+        "task_cid": successor.task_cid,
+        "revisions": successor_revisions,
+    }
+    successor_history = {
+        **successor_history_body,
+        "projection_cid": content_identity(successor_history_body),
+    }
+    successor_record = SimpleNamespace(
+        task_cid=successor.task_cid,
+        task_alias=successor.task_alias,
+        status="in_progress",
+        revision=27,
+        body=successor_revisions[-1]["body"],
+    )
+    bridge.task_source = SimpleNamespace(
+        task_revision_history_projection=lambda _task_cid: successor_history,
+        validate_execution_route_binding=(
+            lambda binding, **_kwargs: dict(binding)
+        ),
+    )
+    bridge.merge_queue = None
+    if tamper in {
+        "missing-recovery-attestation",
+        "foreign-recovery-attestation",
+        "tampered-recovery-attestation",
+    }:
+        assert (
+            bridge._post_merge_completion_claim_receipt(
+                attempt=successor,
+                record=successor_record,
+                status_receipt=admission_receipt,
+                seed=rebased_seed,
+                recovery_control_revision=24,
+            )
+            is None
+        )
+        return
+    if tamper == "v2-claim-without-admission":
+        claim_record = SimpleNamespace(
+            task_cid=successor.task_cid,
+            task_alias=successor.task_alias,
+            status="in_progress",
+            revision=26,
+            body=successor_revisions[-2]["body"],
+        )
+        assert (
+            bridge._post_merge_completion_claim_receipt(
+                attempt=successor,
+                record=claim_record,
+                status_receipt=claim_receipt,
+                seed=rebased_seed,
+                recovery_control_revision=24,
+            )
+            is None
+        )
+        return
+    if tamper == "successor-seed":
+        with pytest.raises(
+            DatabasePortalBridgeError,
+            match="post-merge completion recovery seed failed claim verification",
+        ):
+            bridge._post_merge_completion_recovery_seed_from_record(
+                attempt=successor,
+                record=successor_record,
+            )
+        return
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="post-merge completion recovery seed has no merge queue",
+    ):
+        bridge._post_merge_completion_recovery_seed_from_record(
+            attempt=successor,
+            record=successor_record,
+        )
+    assert bridge._post_merge_completion_claim_receipt(
+        attempt=successor,
+        record=successor_record,
+        status_receipt=admission_receipt,
+        seed=rebased_seed,
+        recovery_control_revision=24,
+    ) == claim_receipt
 
 
 def test_post_merge_completion_recovery_seed_closes_without_portal_dispatch(
