@@ -3686,32 +3686,30 @@ class IntentRepository:
         if self._quack_transport:
             # Replica publication is fail-closed: the owner withdraws and
             # restarts the endpoint synchronously after each admitted bundle.
-            # Hold the same bounded store lock for the complete open/query/
-            # close window so a trusted read can never straddle that refresh.
+            # Trusted reads still verify the live store binding, but they must
+            # not take exclusive write-transaction.lock. That lock is the
+            # owner mutation fence; holding it across CPU-heavy non-mutation
+            # work starves extra-gate shards that need the fence to dispatch.
             expected_store = str(
                 os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
             ).strip()
-            read_lock = quack_owner_mutation_write_lock_path(expected_store)
-            if read_lock is None:
+            if not expected_store:
                 raise IntentRepositoryIntegrityError(
-                    "quack read transaction has no accepted-root lock path"
+                    "quack read transaction has no accepted-root store identity"
                 )
-            with exclusive_file_lock(
-                read_lock, timeout_seconds=self.lock_timeout_seconds
-            ):
-                connection = open_duckdb_connection(self._open_target)
-                try:
-                    binding = getattr(connection, "_quack_mutation_binding", None)
-                    if (
-                        not isinstance(binding, Mapping)
-                        or binding.get("store_id") != expected_store
-                    ):
-                        raise IntentRepositoryIntegrityError(
-                            "quack read lock is not bound to the live store"
-                        )
-                    yield connection
-                finally:
-                    connection.close()
+            connection = open_duckdb_connection(self._open_target)
+            try:
+                binding = getattr(connection, "_quack_mutation_binding", None)
+                if (
+                    not isinstance(binding, Mapping)
+                    or binding.get("store_id") != expected_store
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "quack read is not bound to the live store"
+                    )
+                yield connection
+            finally:
+                connection.close()
             return
         connection = open_duckdb_connection(self._open_target)
         try:

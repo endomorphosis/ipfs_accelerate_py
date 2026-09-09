@@ -16,6 +16,7 @@ import copy
 import fcntl
 import hashlib
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -83,6 +84,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
     _canonical_mapping_matches,
+    _prepared_reconciliation_barrier_core_matches,
     _database_portal_historical_interrupted_state_transition_budget_matches,
     _database_portal_quiesced_stale_dispatch_release_budget_matches,
     _database_terminal_claim_ordinal_lower_bound,
@@ -6200,6 +6202,1072 @@ def test_nested_state_changed_landed_recovery_falls_through_to_generic_rearm(
         successor.close()
 
 
+def test_run_once_skip_defers_coordination_storage_repair_for_extra_gate() -> None:
+    """Coordination ART rebuild must not crash extra-gate finalize/release.
+
+    Lane-0 died on DatabaseCoordinationStorageRepairedError while
+    releasing PCTDD-005 attempt:f0413133, throwing away the hashlib
+    first pass. Official unstick is retry after reopen, never CAS.
+    Extra-gate aliases still cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinationStorageRepairedError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    opened: list[str] = []
+    daemon = Daemon.__new__(Daemon)
+    daemon._coordinator = SimpleNamespace(
+        open=lambda: opened.append("open") or daemon._coordinator
+    )
+    receipt = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/coordination-storage-repair@1",
+        "logical_projection_equal": True,
+        "retry_required": True,
+    }
+    exc = DatabaseCoordinationStorageRepairedError(
+        "DuckDB ART storage was rebuilt with equal logical projection; "
+        "the interrupted fenced operation must be reconciled before retry",
+        receipt=receipt,
+    )
+
+    def _boom() -> dict[str, Any]:
+        raise exc
+
+    daemon._run_once_database_authoritative = _boom  # type: ignore[method-assign]
+    result = Daemon.run_once(daemon)
+
+    assert opened == ["open", "open"]
+    assert result["unchanged"] is True
+    assert result["write_count"] == 0
+    assert result["selection_idle_reason"] == (
+        "database_coordination_storage_repaired_retry_required"
+    )
+    assert result["database_portal_reconciliation"]["blocked"] is False
+    assert result["database_portal_reconciliation"]["reason"] == (
+        "database_coordination_storage_repaired_retry_required"
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_retrying_receipt_is_not_nonconsuming_refund_tamper() -> None:
+    """Nested-state-changed extra-gate retry receipts stay claimable.
+
+    Provider-route saga replay must not treat extra-gate audit pairs
+    (previous_operation / authority_outcome) as a refund-authority tamper
+    fail-close.  The current retrying receipt is retry authority.
+    Extra-gate aliases still cannot bypass safe_to_restart=False.
+    """
+
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    receipt = {
+        "operation": "database_retry_rearmed",
+        "forced_block": False,
+        "retry_exhausted": False,
+        "previous_operation": "database_unknown_outcome_blocked",
+        "previous_owner_session_id": "embedded-store:predecessor",
+        "authority_outcome": "rearmed",
+    }
+    retrying = SimpleNamespace(
+        status="retrying",
+        task_alias="PCTDD-034",
+        body={"completion_receipt": receipt},
+    )
+    assert Daemon._task_alias_is_extra_gate(retrying) is True
+    assert Daemon._extra_gate_retry_receipt_is_claimable(retrying, receipt) is True
+    in_progress = SimpleNamespace(
+        status="in_progress",
+        task_alias="PCTDD-034",
+        body={"completion_receipt": receipt},
+    )
+    assert (
+        Daemon._extra_gate_retry_receipt_is_claimable(in_progress, receipt)
+        is False
+    )
+
+
+def test_extra_gate_foreign_process_running_attempt_is_not_live_local(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dead extra-gate workers must not keep a 2h accepted lease.
+
+    Resume-then-callback_failure never spawned grok. Official unstick is
+    rearm, never CAS. Extra-gate aliases still cannot bypass
+    safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    daemon = SimpleNamespace(
+        process_instance_id="process:live",
+        task_source=SimpleNamespace(get=lambda _cid: None),
+        _task_alias_is_extra_gate=Daemon._task_alias_is_extra_gate,
+    )
+    foreign = SimpleNamespace(
+        task_alias="PCTDD-005",
+        task_cid="task:cid:005",
+        body={"process_instance_id": "process:dead"},
+    )
+    local = SimpleNamespace(
+        task_alias="PCTDD-005",
+        task_cid="task:cid:005",
+        body={"process_instance_id": "process:live"},
+    )
+    other = SimpleNamespace(
+        task_alias="PCTDD-008",
+        task_cid="task:cid:008",
+        body={"process_instance_id": "process:dead"},
+    )
+    empty = SimpleNamespace(
+        task_alias="PCTDD-007",
+        task_cid="task:cid:007",
+        body={},
+    )
+    rewritten = SimpleNamespace(
+        task_alias="PCTDD-005",
+        task_cid="task:cid:005",
+        body={},
+    )
+    daemon.task_source = SimpleNamespace(
+        get=lambda _cid: SimpleNamespace(
+            body={
+                "completion_receipt": {
+                    "process_instance_id": "process:live",
+                }
+            }
+        )
+    )
+    cid_only = SimpleNamespace(
+        task_alias="",
+        task_cid="baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
+        body={"process_instance_id": "process:live"},
+    )
+    assert (
+        Daemon._extra_gate_running_attempt_is_live_local(daemon, foreign)
+        is False
+    )
+    assert Daemon._extra_gate_running_attempt_is_live_local(daemon, local) is False
+    assert Daemon._task_alias_is_extra_gate(cid_only) is True
+    assert Daemon._extra_gate_running_attempt_is_live_local(daemon, cid_only) is False
+    monkeypatch.setattr(
+        daemon_module,
+        "active_codex_exec_workers",
+        lambda *_args, **_kwargs: [{"pid": 3112389}],
+    )
+    assert Daemon._extra_gate_running_attempt_is_live_local(daemon, local) is True
+    assert Daemon._extra_gate_running_attempt_is_live_local(daemon, other) is True
+    assert Daemon._extra_gate_running_attempt_is_live_local(daemon, empty) is False
+    assert Daemon._extra_gate_running_attempt_is_live_local(daemon, rewritten) is False
+    assert Daemon._extra_gate_running_attempt_is_live_local(daemon, cid_only) is True
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_dead_outside_selection_attempt_does_not_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dead extra-gate leftovers must not fail-close a matching home shard.
+
+    Lane-2 idled on owner_attempt_outside_selection while PCTDD-006 was
+    retrying and grok was gone. Official unstick is rearm, never CAS.
+    Extra-gate aliases still cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    records = {
+        "process:dead": {
+            "state": "active",
+            "process_birth": {"pid": 1_000_000_000},
+        },
+        "process:closed": {"state": "closed", "process_birth": {"pid": os.getpid()}},
+        "process:live": {
+            "state": "active",
+            "process_birth": {"pid": os.getpid()},
+        },
+    }
+
+    class Probe(SimpleNamespace):
+        def _task_alias_is_extra_gate(self, task: object) -> bool:
+            return Daemon._task_alias_is_extra_gate(task)
+
+        def _extra_gate_running_attempt_is_live_local(self, attempt: object) -> bool:
+            return Daemon._extra_gate_running_attempt_is_live_local(self, attempt)
+
+        def _extra_gate_attempt_recorded_process_is_alive(
+            self, attempt: object
+        ) -> bool:
+            return Daemon._extra_gate_attempt_recorded_process_is_alive(
+                self, attempt
+            )
+
+        def _outside_selection_running_attempt_must_gate(
+            self, attempt: object
+        ) -> bool:
+            return Daemon._outside_selection_running_attempt_must_gate(
+                self, attempt
+            )
+
+        def _database_process_instance_record(
+            self, process_id: str
+        ) -> dict[str, object] | None:
+            return records.get(process_id)
+
+    daemon = Probe(process_instance_id="process:home")
+    extra_dead = SimpleNamespace(
+        task_alias="PCTDD-006",
+        process_instance_id="process:dead",
+        body={"process_instance_id": "process:dead"},
+    )
+    extra_closed = SimpleNamespace(
+        task_alias="PCTDD-006",
+        process_instance_id="process:closed",
+        body={},
+    )
+    extra_live = SimpleNamespace(
+        task_alias="PCTDD-006",
+        process_instance_id="process:live",
+        body={"process_instance_id": "process:live"},
+    )
+    ordinary = SimpleNamespace(
+        task_alias="PCTDD-008",
+        process_instance_id="process:dead",
+        body={"process_instance_id": "process:dead"},
+    )
+    extra_empty = SimpleNamespace(
+        task_alias="PCTDD-006",
+        process_instance_id="",
+        body={},
+    )
+    assert (
+        Daemon._outside_selection_running_attempt_must_gate(daemon, extra_dead)
+        is False
+    )
+    assert (
+        Daemon._outside_selection_running_attempt_must_gate(
+            daemon, extra_closed
+        )
+        is False
+    )
+    assert (
+        Daemon._outside_selection_running_attempt_must_gate(daemon, extra_empty)
+        is False
+    )
+    assert (
+        Daemon._outside_selection_running_attempt_must_gate(daemon, extra_live)
+        is True
+    )
+    assert (
+        Daemon._outside_selection_running_attempt_must_gate(daemon, ordinary)
+        is True
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_pre_dispatch_provider_error_defers_without_force_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Extra-gate setup exceptions must not burn the one-shot as unknown.
+
+    Live g9 claimed 005/007/034, then wrapped a non-Portal exception as
+    ``provider callback raised without admissible return evidence``. Portal
+    events stayed empty and grok never started. Official unstick is a
+    bounded provider-route deferral of the exact claim, never CAS.
+    Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinationError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DatabasePortalBridgeError,
+        DatabasePortalProviderRouteDeferred,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    daemon = SimpleNamespace(
+        process_instance_id="process:live",
+        _task_alias_is_extra_gate=Daemon._task_alias_is_extra_gate,
+    )
+    extra_gate = SimpleNamespace(
+        task_alias="PCTDD-005",
+        task_cid="baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
+    )
+    ordinary = SimpleNamespace(
+        task_alias="PCTDD-008",
+        task_cid="task:cid:008",
+    )
+    boom = RuntimeError("embedded execution store already has an active database writer")
+    assert (
+        Daemon._extra_gate_provider_pre_dispatch_should_defer(
+            daemon, extra_gate, boom
+        )
+        is True
+    )
+    assert (
+        Daemon._extra_gate_provider_pre_dispatch_should_defer(
+            daemon, ordinary, boom
+        )
+        is False
+    )
+    assert (
+        Daemon._extra_gate_provider_pre_dispatch_should_defer(
+            daemon, extra_gate, DatabasePortalBridgeError("portal blocked")
+        )
+        is False
+    )
+    assert (
+        Daemon._extra_gate_provider_pre_dispatch_should_defer(
+            daemon, extra_gate, DatabaseCoordinationError("not open")
+        )
+        is False
+    )
+    missing = FileNotFoundError(
+        2,
+        "No such file or directory",
+        Path(
+            "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery/"
+            "data/agent_supervisor/parallel_content_sealing_proof_carrying_tdd_v1_g9/"
+            "worktrees/workspace_b6c6c987ab22_678bd72ae733"
+        ),
+    )
+    assert Daemon._exception_is_missing_managed_workspace(missing) is True
+    assert (
+        Daemon._extra_gate_provider_pre_dispatch_should_defer(
+            daemon, extra_gate, missing
+        )
+        is True
+    )
+    assert (
+        Daemon._exception_is_missing_managed_workspace(
+            RuntimeError("callback_authority_incomplete_blocked")
+        )
+        is False
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "active_codex_exec_workers",
+        lambda *_args, **_kwargs: [{"pid": 3112389}],
+    )
+    assert (
+        Daemon._extra_gate_provider_pre_dispatch_should_defer(
+            daemon, extra_gate, boom
+        )
+        is False
+    )
+    deferred = DatabasePortalProviderRouteDeferred(
+        "extra_gate_provider_pre_dispatch:RuntimeError",
+        backoff_seconds=20,
+    )
+    assert isinstance(deferred, DatabasePortalBridgeError)
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
+def test_successor_session_rearms_stale_extra_gate_in_progress(
+    tmp_path: Path,
+) -> None:
+    """Owner recycle must rearm extra-gate in_progress without a local worker.
+
+    Home daemons were idling on no_ready_tasks while DuckDB left PCTDD-006
+    in_progress after the claiming session died. Official unstick is rearm,
+    never CAS. Extra-gate aliases still cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    population = _population(1)
+    population["tasks"][0]["task_id"] = "PCTDD-006"
+    seed = _open_daemon(
+        tmp_path,
+        session="embedded-store:predecessor-006",
+        max_task_attempts=2,
+    )
+    try:
+        seed.materialize_population(population)
+        task = seed.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = seed._retry_budget_receipt(
+            task,
+            attempts_used=1,
+            operation="database_claim",
+            reason="claimed",
+        )
+        receipt["owner_session_id"] = "embedded-store:predecessor-006"
+        seed._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="in_progress",
+            receipt=receipt,
+        )
+        stuck = seed.task_source.get("task:cid:001")
+        assert stuck is not None and stuck.status == "in_progress"
+    finally:
+        seed.close()
+
+    successor = _open_daemon(
+        tmp_path,
+        session="embedded-store:successor-006",
+        max_task_attempts=2,
+    )
+    try:
+        rearms = successor.reconcile_blocked_unknown_outcome_tasks()
+        assert len(rearms) == 1
+        assert rearms[0]["rearmed"] is True
+        assert rearms[0]["task_alias"] == "PCTDD-006"
+        recovered = successor.task_source.get("task:cid:001")
+        assert recovered is not None and recovered.status == "retrying"
+        assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+            {
+                "safe_to_restart": False,
+                "blocked": True,
+                "quiesced": False,
+                "reconciled": False,
+                "reason": "database_portal_retained_reconciliation_blocked",
+            }
+        )
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
+def test_same_session_rearms_extra_gate_in_progress_without_running_attempt(
+    tmp_path: Path,
+) -> None:
+    """Same-session extra-gate in_progress without a running attempt must rearm.
+
+    Lane-2 claimed PCTDD-006 then idled on no_ready_tasks because the
+    predecessor-only skip refused same-session receipts. Official unstick
+    is rearm, never CAS. Extra-gate aliases still cannot bypass
+    safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    population = _population(1)
+    population["tasks"][0]["task_id"] = "PCTDD-006"
+    daemon = _open_daemon(
+        tmp_path,
+        session="embedded-store:same-session-006",
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = daemon._retry_budget_receipt(
+            task,
+            attempts_used=1,
+            operation="database_claim",
+            reason="claimed",
+        )
+        receipt["owner_session_id"] = "embedded-store:same-session-006"
+        receipt["process_instance_id"] = "process:dead-claim-without-grok"
+        daemon._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="in_progress",
+            receipt=receipt,
+        )
+        stuck = daemon.task_source.get("task:cid:001")
+        assert stuck is not None and stuck.status == "in_progress"
+        rearms = daemon.reconcile_blocked_unknown_outcome_tasks()
+        assert len(rearms) == 1
+        assert rearms[0]["rearmed"] is True
+        recovered = daemon.task_source.get("task:cid:001")
+        assert recovered is not None and recovered.status == "retrying"
+        assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+            {
+                "safe_to_restart": False,
+                "blocked": True,
+                "quiesced": False,
+                "reconciled": False,
+                "reason": "database_portal_retained_reconciliation_blocked",
+            }
+        )
+    finally:
+        daemon.close()
+
+
+def test_extra_gate_claimable_retry_skips_invalid_provider_route_cooldown() -> None:
+    """Extra-gate nested-state-changed receipts are not cooldown-invalid.
+
+    Home daemons were idling on database_provider_route_cooldown_invalid
+    after saga-replaying PCTDD-034 because authority_outcome audit fields
+    fail the exact cooldown census.  Ordinary PCTDD-001 missing-attempt
+    cooldowns stay typed-invalid.  Extra-gate aliases still cannot bypass
+    safe_to_restart=False.
+    """
+
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    receipt = {
+        "schema": daemon_module.DATABASE_RETRY_BUDGET_SCHEMA,
+        "operation": "database_retry_rearmed",
+        "reason": "provider_route_deferred_rearmed",
+        "forced_block": False,
+        "retry_exhausted": False,
+        "attempt_consumed": False,
+        "backoff_seconds": 20,
+        "retry_not_before_ms": 1,
+        "authority_outcome": "rearmed",
+        "previous_operation": "database_unknown_outcome_blocked",
+        "attempt_id": "attempt:a25c7f1da71e4a2ca575e4dd2275b7d5",
+    }
+
+    class _Probe(Daemon):
+        def get_attempt(self, attempt_id: str) -> None:  # type: ignore[override]
+            return None
+
+        def _now_ms(self) -> int:  # type: ignore[override]
+            return 0
+
+    probe = _Probe.__new__(_Probe)
+    extra_gate = SimpleNamespace(
+        status="retrying",
+        task_alias="PCTDD-034",
+        task_cid="baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
+        body={"completion_receipt": receipt},
+    )
+    ordinary = SimpleNamespace(
+        status="retrying",
+        task_alias="PCTDD-001",
+        task_cid="task:cid:001",
+        body={"completion_receipt": receipt},
+    )
+    assert probe._task_alias_is_extra_gate(extra_gate) is True
+    assert probe._task_alias_is_extra_gate(ordinary) is False
+    assert probe._extra_gate_retry_receipt_is_claimable(extra_gate, receipt) is True
+    assert probe._provider_route_retry_cooldown_state(extra_gate) == "not_applicable"
+    assert probe._provider_route_retry_cooldown_state(ordinary) == "invalid"
+
+
+def test_extra_gate_terminal_disposition_conflict_continues_ordinary_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PCTDD-005 terminal-disposition leftover is retry authority.
+
+    Lane-0 was fail-closing the whole daemon pass on
+    database_portal_terminal_repair_batch_blocked after the extra-gate
+    helper already classified the leftover as retry authority. Ordinary
+    dispatch must continue. Extra-gate aliases still cannot bypass
+    safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    provider_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-terminal-disposition",
+        provider_calls=provider_calls,
+        max_task_attempts=2,
+    )
+    recon = {
+        "reconciled": False,
+        "blocked": True,
+        "reason": "database_portal_terminal_repair_batch_blocked",
+        "trigger": "database_daemon_startup",
+        "owner_session_id": daemon.owner_session_id,
+        "active_attempt_count": 0,
+        "current_process_attempt_count_skipped": 0,
+        "reconciled_attempt_count": 0,
+        "repair_batch_pending": False,
+        "reconciliation_complete": False,
+        "quiesced": False,
+        "safe_to_restart": False,
+        "attempts": [
+            {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "terminal_reconciliation_receipt_repair_failed",
+                "trigger": "database_daemon_startup",
+                "attempt_id": "attempt:f49b4e967c5c4fa7a358b4c2837094d4",
+                "claim_id": "claim:5bec03a98d4341498cbeb897e92d6a58",
+                "task_cid": (
+                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+                ),
+                "task_alias": "PCTDD-005",
+                "error_type": "DatabaseImplementationConflictError",
+                "error": "terminal phase changed its actual database disposition",
+            }
+        ],
+    }
+    assert (
+        daemon_module.DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+            recon
+        )
+        is True
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon._database_portal_bridge = object()
+        daemon._database_portal_reconciliation_checked = False
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_quiesced_database_portal_attempts",
+            lambda **_kwargs: recon,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_blocked_unknown_outcome_tasks",
+            lambda: [],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_expired_running_attempts",
+            lambda apply_selection=False: [],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_project_preserved_database_portal_callback_evidence",
+            lambda _recon: [],
+        )
+        result = daemon.run_once()
+        assert result.get("selection_idle_reason") != (
+            "database_portal_reconciliation_blocked"
+        )
+        assert result.get("claimed_task_cid") == "task:cid:001"
+        assert provider_calls == ["task:cid:001"]
+    finally:
+        daemon.close()
+
+
+def test_extra_gate_mutation_fence_timeout_does_not_crash_daemon_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """write-transaction.lock timeout skip-defers extra-gate rearm.
+
+    Lane-3 crashed while CAS-rearming blocked PCTDD-034 because another
+    lane held the owner mutation fence. Extra-gate leftover stays retry
+    authority; the daemon must continue ordinary dispatch. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    provider_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-mutation-fence",
+        provider_calls=provider_calls,
+        max_task_attempts=2,
+    )
+    recon = {
+        "reconciled": False,
+        "blocked": True,
+        "reason": "database_portal_terminal_repair_batch_blocked",
+        "trigger": "database_daemon_startup",
+        "owner_session_id": daemon.owner_session_id,
+        "active_attempt_count": 0,
+        "repair_batch_pending": False,
+        "reconciliation_complete": False,
+        "quiesced": False,
+        "safe_to_restart": False,
+        "attempts": [
+            {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "terminal_reconciliation_receipt_repair_failed",
+                "task_alias": "PCTDD-034",
+                "task_cid": (
+                    "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada"
+                ),
+                "error_type": "DatabaseImplementationConflictError",
+                "error": "terminal phase changed its actual database disposition",
+            }
+        ],
+    }
+    assert daemon_module.DatabaseImplementationDaemon._mutation_fence_lock_timeout(
+        TimeoutError(
+            "timed out acquiring DuckDB process lock: "
+            "/tmp/quack-owner/write-transaction.lock"
+        )
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon._database_portal_bridge = object()
+        daemon._database_portal_reconciliation_checked = False
+
+        def raise_fence(**_kwargs: object) -> list[dict[str, object]]:
+            raise TimeoutError(
+                "timed out acquiring DuckDB process lock: "
+                "/tmp/quack-owner/write-transaction.lock"
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_quiesced_database_portal_attempts",
+            lambda **_kwargs: recon,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_blocked_unknown_outcome_tasks",
+            raise_fence,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_expired_running_attempts",
+            lambda apply_selection=False: [],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_project_preserved_database_portal_callback_evidence",
+            lambda _recon: [],
+        )
+        result = daemon.run_once()
+        assert result.get("selection_idle_reason") != (
+            "database_portal_reconciliation_blocked"
+        )
+        assert result.get("claimed_task_cid") == "task:cid:001"
+        assert provider_calls == ["task:cid:001"]
+    finally:
+        daemon.close()
+
+
+def test_extra_gate_missing_nested_state_does_not_fail_close_daemon_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing extra-gate portal-task-state.json is retry authority.
+
+    Recycle-during-in_progress left PCTDD-006 nested_state.present=False
+    and provider_forbidden_terminal_recovery_state_invalid. Hash-home
+    lane-0 then fail-closed the whole pass, so retrying extra-gate work
+    never spawned grok. Ordinary dispatch must continue. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    provider_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-missing-nested-state",
+        provider_calls=provider_calls,
+        max_task_attempts=2,
+    )
+    recon = {
+        "reconciled": False,
+        "blocked": True,
+        "reason": "database_portal_attempt_reconciliation_blocked",
+        "trigger": "database_daemon_startup",
+        "owner_session_id": daemon.owner_session_id,
+        "active_attempt_count": 1,
+        "current_process_attempt_count_skipped": 0,
+        "reconciled_attempt_count": 1,
+        "repair_batch_pending": False,
+        "reconciliation_complete": False,
+        "quiesced": False,
+        "safe_to_restart": False,
+        "attempts": [
+            {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "nested_portal_attempt_reconciliation_blocked",
+                "attempt_id": "attempt:3b93e2f61cbe48eab1b0f8b923c7c7d6",
+                "claim_id": "claim:873f9db643774acd9fa5913a4ae2e4c9",
+                "task_cid": (
+                    "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a"
+                ),
+                "task_alias": "PCTDD-006",
+                "nested_state": {
+                    "present": False,
+                    "state_path": str(tmp_path / "portal-task-state.json"),
+                    "state_digest": "",
+                    "active": False,
+                },
+                "provider_runner_fence": {
+                    "applicable": False,
+                    "safe_to_restart": True,
+                    "fenced": False,
+                    "reason": "ordinary_provider_runner_receipt_absent",
+                },
+                "portal_reconciliation": {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "provider_forbidden_terminal_recovery_blocked",
+                    "provider_forbidden_terminal_recovery": {
+                        "reconciled": False,
+                        "blocked": True,
+                        "applicable": True,
+                        "reason": (
+                            "provider_forbidden_terminal_recovery_state_invalid"
+                        ),
+                        "provider_dispatched": False,
+                        "implementation_dispatched": False,
+                        "state_reason": "missing_state_file",
+                    },
+                },
+            }
+        ],
+    }
+    assert (
+        daemon_module.DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
+            recon
+        )
+        is True
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon._database_portal_bridge = object()
+        daemon._database_portal_reconciliation_checked = False
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_quiesced_database_portal_attempts",
+            lambda **_kwargs: recon,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_blocked_unknown_outcome_tasks",
+            lambda: [],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_expired_running_attempts",
+            lambda apply_selection=False: [],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_project_preserved_database_portal_callback_evidence",
+            lambda _recon: [],
+        )
+        result = daemon.run_once()
+        assert result.get("selection_idle_reason") != (
+            "database_portal_reconciliation_blocked"
+        )
+        assert result.get("claimed_task_cid") == "task:cid:001"
+        assert provider_calls == ["task:cid:001"]
+    finally:
+        daemon.close()
+
+
+def test_extra_gate_may_claim_off_hash_home_shard() -> None:
+    """Retrying extra-gate work is selectable off hash-home.
+
+    PCTDD-005/006/007 hash to shard 0. Strict sharding left lanes 1-3 on
+    no_ready_tasks while lane-0 was fail-closed. Extra-gate aliases still
+    cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    class _Task:
+        task_alias = "PCTDD-006"
+        task_cid = (
+            "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a"
+        )
+
+    class _Other:
+        task_alias = "PCTDD-008"
+        task_cid = "baguqeera-not-extra-gate"
+
+    daemon = daemon_module.DatabaseImplementationDaemon.__new__(
+        daemon_module.DatabaseImplementationDaemon
+    )
+    daemon.strict_task_sharding = True
+    daemon.task_shard_count = 4
+    daemon.task_shard_index = 2
+    assert daemon._extra_gate_or_home_shard(_Task()) is True
+    assert daemon._extra_gate_or_home_shard(_Other()) is False
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_retry_authority_rearms_during_continuation_required(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Historical audit continuation must not skip extra-gate rearm.
+
+    Lane-0 classified PCTDD-005 leftover as
+    terminal_reconciliation_extra_gate_retry_authority then returned
+    database_portal_reconciliation_completed because
+    continuation_required was True, so 005 stayed blocked. Official
+    unstick is rearm, never CAS. Extra-gate aliases still cannot bypass
+    safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-continuation-rearm",
+        max_task_attempts=2,
+    )
+    recon = {
+        "reconciled": True,
+        "blocked": False,
+        "reason": "database_portal_post_cas_transitions_reconciled",
+        "trigger": "database_daemon_startup",
+        "owner_session_id": daemon.owner_session_id,
+        "active_attempt_count": 1,
+        "reconciled_attempt_count": 15,
+        "continuation_required": True,
+        "repair_batch_pending": False,
+        "reconciliation_complete": False,
+        "quiesced": False,
+        "safe_to_restart": False,
+        "attempts": [
+            {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "terminal_reconciliation_extra_gate_retry_authority",
+                "task_alias": "PCTDD-005",
+                "task_cid": (
+                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+                ),
+                "error_type": "DatabaseImplementationConflictError",
+                "error": "terminal phase changed its actual database disposition",
+            }
+        ],
+    }
+    assert (
+        daemon_module.DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+            recon
+        )
+        is True
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+    rearm_outcome = [
+        {
+            "task_cid": (
+                "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+            ),
+            "task_alias": "PCTDD-005",
+            "operation": "database_unknown_outcome_rearmed",
+            "rearmed": True,
+        }
+    ]
+    try:
+        daemon._database_portal_bridge = object()
+        daemon._database_portal_reconciliation_checked = False
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_quiesced_database_portal_attempts",
+            lambda **_kwargs: recon,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_blocked_unknown_outcome_tasks",
+            lambda: rearm_outcome,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_project_preserved_database_portal_callback_evidence",
+            lambda _recon: [],
+        )
+        result = daemon.run_once()
+        assert result.get("selection_idle_reason") == (
+            "database_unknown_outcomes_rearmed"
+        )
+        assert result.get("unknown_outcome_rearms") == rearm_outcome
+        assert result.get("claimed_task_cid") in (None, "")
+    finally:
+        daemon.close()
+
+
 def test_nested_state_changed_landed_recovery_does_not_fence_ready_dispatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -7080,6 +8148,30 @@ def test_rearm_snapshot_comparison_rejects_numeric_aliases(
     assert not _canonical_mapping_matches(
         {"body": {"revision": 1}},
         {"body": {"revision": numeric_alias}},
+    )
+
+
+def test_prepared_barrier_core_matches_nested_observational_floats() -> None:
+    nested = {"state_digest": "sha256:" + "d" * 64, "age_seconds": 1.5}
+    prepared = {
+        "stage": "prepared",
+        "receipt_id": "sha256:" + "a" * 64,
+        "reason": "nested_quiesced",
+        "nested_state": nested,
+    }
+    barrier = {
+        "stage": "commit_barrier",
+        "receipt_id": "sha256:" + "b" * 64,
+        "prepared_reconciliation_receipt_id": prepared["receipt_id"],
+        "reason": "nested_quiesced",
+        "nested_state": nested,
+    }
+    assert _prepared_reconciliation_barrier_core_matches(prepared, barrier) is True
+    assert (
+        _prepared_reconciliation_barrier_core_matches(
+            prepared, {**barrier, "reason": "other"}
+        )
+        is False
     )
 
 
@@ -9684,6 +10776,7 @@ def test_terminal_no_effect_route_selector_admits_historical_attempt_suffix(
     ("task_alias", "attempt_number", "attempts_used", "rearm_count"),
     (
         ("PCTDD-005", 3, 1, 0),
+        ("PCTDD-005", 6, 1, 0),
         ("PCTDD-006", 4, 1, 1),
         ("PCTDD-007", 4, 1, 1),
         ("PCTDD-034", 8, 1, 0),
@@ -9762,6 +10855,7 @@ def test_retained_recovery_reserved_alias_cannot_be_rebound(task_alias: str) -> 
     ("task_alias", "attempt_number", "attempts_used", "rearm_count"),
     (
         ("PCTDD-005", 3, 1, 0),
+        ("PCTDD-005", 6, 1, 0),
         ("PCTDD-006", 4, 1, 1),
         ("PCTDD-007", 4, 1, 1),
         ("PCTDD-034", 8, 1, 0),
@@ -9831,12 +10925,233 @@ def test_exact_quiesced_stale_release_bypasses_terminal_landed_selector(
             "_database_portal_no_provider_rearm_evidence",
             generic,
         )
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            lambda task_cid, **kwargs: SimpleNamespace(
+                task_cid=task_cid,
+                status=str(kwargs.get("new_status") or ""),
+                revision=int(getattr(task, "revision", 0) or 0) + 1,
+                body={"completion_receipt": dict(kwargs.get("receipt") or {})},
+            ),
+        )
 
         outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
 
-        assert outcomes == []
         assert landed_calls == []
         assert generic_calls == [task_alias]
+        assert all(
+            item.get("operation") != DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION
+            for item in outcomes
+        )
+    finally:
+        daemon.close()
+
+
+def test_callback_authority_incomplete_without_evidence_generic_rearms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unknown callback authority with no nested proof rearms to retrying."""
+
+    seed = _open_daemon(
+        tmp_path,
+        session="session:callback-authority-generic-rearm-seed",
+        max_task_attempts=2,
+    )
+    try:
+        population = _population(1)
+        seed.materialize_population(population)
+        attempt = seed.claim_next()
+        assert attempt is not None
+        seed._begin_callback_dispatch(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        seed._record_callback_dispatch_outcome(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+            outcome="raised",
+            body={"exception_type": "DatabasePortalBridgeError"},
+        )
+        _failed, blocked_receipt = seed._finalize_failed_attempt(
+            attempt,
+            reason="callback_authority_incomplete_blocked",
+            force_block=True,
+            unknown_authority=True,
+        )
+        assert blocked_receipt["reason"] == (
+            "callback_authority_incomplete_blocked"
+        )
+        task_cid = str(attempt.task_cid)
+    finally:
+        seed.close()
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:callback-authority-generic-rearm-successor",
+        max_task_attempts=2,
+    )
+    cas_statuses: list[str] = []
+    original_cas = daemon._cas_task_status_database
+    try:
+        blocked = daemon.task_source.get(task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+        monkeypatch.setattr(
+            daemon,
+            "_database_portal_no_provider_rearm_evidence",
+            lambda *_args, **_kwargs: None,
+        )
+
+        def tracking_cas(
+            task_cid: str,
+            **kwargs: object,
+        ) -> object:
+            status = str(kwargs.get("new_status") or "")
+            cas_statuses.append(status)
+            assert status != "completed"
+            return original_cas(task_cid, **kwargs)
+
+        monkeypatch.setattr(daemon, "_cas_task_status_database", tracking_cas)
+
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["rearmed"] is True
+        assert outcomes[0]["operation"] == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+        rearmed = daemon.task_source.get(task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        assert "completed" not in cas_statuses
+        assert "retrying" in cas_statuses
+    finally:
+        daemon.close()
+
+
+def test_consumed_reserved_callback_authority_incomplete_generic_rearms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consumed extra-gate one-shot still rearms unknown callback authority."""
+
+    seed = _open_daemon(
+        tmp_path,
+        session="session:consumed-callback-authority-generic-rearm-seed",
+        max_task_attempts=2,
+    )
+    try:
+        population = _population(1)
+        seed.materialize_population(population)
+        attempt = seed.claim_next()
+        assert attempt is not None
+        seed._begin_callback_dispatch(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        seed._record_callback_dispatch_outcome(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+            outcome="raised",
+            body={"exception_type": "DatabasePortalBridgeError"},
+        )
+        seed._finalize_failed_attempt(
+            attempt,
+            reason="callback_authority_incomplete_blocked",
+            force_block=True,
+            unknown_authority=True,
+        )
+        task_cid = str(attempt.task_cid)
+    finally:
+        seed.close()
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:consumed-callback-authority-generic-rearm-successor",
+        max_task_attempts=2,
+    )
+    cas_statuses: list[str] = []
+    original_cas = daemon._cas_task_status_database
+    try:
+        monkeypatch.setattr(
+            daemon,
+            "_database_portal_no_provider_rearm_evidence",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_automatic_claim_forbidden_current",
+            lambda *_args, **_kwargs: True,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_retained_recovery_reserved_epoch_state",
+            lambda *_args, **_kwargs: "consumed",
+        )
+
+        def tracking_cas(
+            task_cid: str,
+            **kwargs: object,
+        ) -> object:
+            status = str(kwargs.get("new_status") or "")
+            cas_statuses.append(status)
+            assert status != "completed"
+            return original_cas(task_cid, **kwargs)
+
+        monkeypatch.setattr(daemon, "_cas_task_status_database", tracking_cas)
+
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["rearmed"] is True
+        rearmed = daemon.task_source.get(task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        assert cas_statuses == ["retrying"]
+    finally:
+        daemon.close()
+
+
+def test_generic_rearm_receipt_with_stale_retained_records_is_not_exhausted(
+    tmp_path: Path,
+) -> None:
+    """Superseded one-shot records must not idle extra-gate as max-attempts."""
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:rearm-stale-retained-not-exhausted",
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.list_tasks(limit=8).tasks[0]
+        receipt = {
+            "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+            "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+            "task_cid": str(task.task_cid),
+            "validation_spec_cid": daemon._retry_budget_validation_spec_cid(
+                task
+            ),
+            "attempts_used": 0,
+            "max_task_attempts": 2,
+            "retry_exhausted": False,
+            "forced_block": False,
+            "retained_recovery_admission": {"schema": "stale-one-shot"},
+            "retained_recovery_consumption": {"schema": "stale-one-shot"},
+        }
+        daemon._cas_task_status_database(
+            str(task.task_cid),
+            expected_revision=int(task.revision),
+            new_status="retrying",
+            receipt=receipt,
+        )
+        updated = daemon.task_source.get(task.task_cid)
+        assert updated is not None
+        state = daemon._retry_budget_state(updated)
+        assert state["retry_exhausted"] is False
+        assert state["malformed"] is False
+        assert daemon._automatic_claim_forbidden_current(updated) is False
     finally:
         daemon.close()
 

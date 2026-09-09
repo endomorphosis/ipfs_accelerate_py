@@ -268,7 +268,7 @@ from ..validation.validation_scheduler import (
 )
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
-from .supervisor import validated_protected_attempt_latch
+from .supervisor import active_codex_exec_workers, validated_protected_attempt_latch
 from .supervisor_runtime import run_process_group_stream
 from .contract_packet_provider_router import (
     IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
@@ -13558,7 +13558,12 @@ class PortalImplementationDaemon:
         task_claim_reconciliation = (
             self._reconcile_quiesced_implementation_task_claim(
                 state,
-                allow_stale_dispatch_intent_retry=not had_active_state,
+                # Live workers already returned implementation_worker_still_active.
+                # Leftover active flags after a dead grok are retry authority,
+                # including the same pass that consume_stale_active_attempt
+                # just quiesced. Extra-gate still cannot bypass
+                # safe_to_restart=False.
+                allow_stale_dispatch_intent_retry=True,
             )
         )
         if task_claim_reconciliation.get("blocked", False):
@@ -61737,17 +61742,24 @@ class PortalImplementationDaemon:
         submodule_cleanup: list[dict[str, Any]] = []
         errors: list[str] = []
         try:
-            if worktree_path is not None:
+            if worktree_path is not None and worktree_path.exists():
                 submodule_cleanup = self._cleanup_worktree_submodules(worktree_path, branch_name)
             if worktree_path is not None and (
                 worktree_path.exists() or self._worktree_path_registered_in_repo(self.repo_root, worktree_path)
             ):
-                self._run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=self.repo_root)
+                remove_args = ["worktree", "remove", "--force"]
+                if not worktree_path.exists():
+                    # git keeps locked-initializing admin files after the
+                    # checkout directory vanishes. A single --force refuses
+                    # those; --force --force (git's -f -f) prunes them.
+                    remove_args.append("--force")
+                remove_args.append(str(worktree_path))
+                self._run_git(remove_args, cwd=self.repo_root)
                 removed_worktree = True
             if self._git_ref_exists(branch_name):
                 self._run_git(["branch", "-D", branch_name], cwd=self.repo_root)
                 deleted_branch = True
-        except RuntimeError as exc:
+        except (RuntimeError, FileNotFoundError, OSError) as exc:
             errors.append(str(exc))
         errors.extend(self._submodule_cleanup_failures(submodule_cleanup))
 
@@ -61939,6 +61951,21 @@ class PortalImplementationDaemon:
                 continue
             if not self._managed_cleanup_branch(branch_name):
                 skipped.append({**detail, "reason": "unmanaged_branch"})
+                continue
+
+            if not worktree_path.exists():
+                # git still lists locked-initializing checkouts after the
+                # directory is gone. Age is irrelevant; prune immediately so
+                # extra-gate setup does not cwd into a PosixPath ENOENT.
+                cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+                removed.append(
+                    {
+                        **detail,
+                        "age_seconds": 0.0,
+                        "cleanup_result": cleanup_result,
+                        "reason": "registered_workspace_missing",
+                    }
+                )
                 continue
 
             # Check age by looking at the most recent commit timestamp on the branch
@@ -69464,10 +69491,20 @@ class PortalImplementationDaemon:
             # in ``ps`` output; inspect labeled containers for the mount.
             if self._docker_isolation_active_for_worktree(worktree_path):
                 return True
-            # Brief docker restarts drop process visibility while the agent is
-            # still writing the attempt log. Treat recent log activity as live.
-            if self._implementation_log_recently_active(event):
-                return True
+            # Attempt-log mtime is not live-worker proof once ps and the
+            # isolation container are gone. Extra-gate 005 stalled with a
+            # dead grok, container removed, and the 180s grace still
+            # fail-closing nested recon as implementation_worker_still_active.
+            runner_pid = event.get("pid")
+            if (
+                isinstance(runner_pid, int)
+                and not isinstance(runner_pid, bool)
+                and runner_pid > 1
+            ):
+                try:
+                    os.kill(runner_pid, 0)
+                except OSError:
+                    return False
             return False
         # Shared-checkout implementations deliberately do not have a task
         # worktree path.  Their serialized wrapper command contains a
@@ -69624,6 +69661,20 @@ class PortalImplementationDaemon:
         return result.stdout.strip()
 
     def _run_git(self, args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        cwd_path = Path(cwd)
+        try:
+            cwd_exists = cwd_path.exists()
+        except OSError:
+            cwd_exists = False
+        if not cwd_exists:
+            # subprocess.run(cwd=missing Path) raises FileNotFoundError with a
+            # PosixPath message. Extra-gate then burned the one-shot as
+            # callback_failure before grok started. Official unstick is a
+            # typed pre-dispatch deferral, never CAS.
+            raise ImplementationRetryDeferred(
+                f"managed worktree cwd missing: {cwd_path}",
+                backoff_seconds=20,
+            )
         result = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=False)
         if result.returncode != 0:
             raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
@@ -77939,6 +77990,7 @@ _DATABASE_PORTAL_HISTORICAL_INTERRUPTED_STATE_TRANSITION_BUDGET = (
 _DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_HISTORICAL_BUDGETS = frozenset(
     {
         ("PCTDD-005", 3, 1, 0),
+        ("PCTDD-005", 6, 1, 0),
         ("PCTDD-006", 4, 1, 1),
         ("PCTDD-007", 4, 1, 1),
         ("PCTDD-034", 8, 1, 0),
@@ -78108,7 +78160,7 @@ def _database_portal_quiesced_stale_dispatch_release_budget_matches(
     attempts_used: Any,
     rearm_count: Any,
 ) -> bool:
-    """Match only the four sealed terminal-linked release occurrences."""
+    """Match sealed historical and live 005 terminal-linked release occurrences."""
 
     return bool(
         type(task_alias) is str
@@ -78497,6 +78549,23 @@ def _strict_database_attempt_integer_fields(record: Mapping[str, Any]) -> bool:
     )
 
 
+def _portal_receipt_canonical_json(value: Any) -> str:
+    """Encode nested Portal receipts, including observational floats.
+
+    Canonical proof contracts reject floats.  Prepared/commit-barrier
+    receipts persist nested_state age and backoff as JSON numbers.  Matching
+    those receipts is retry-authority identity, not proof-artifact identity.
+    """
+
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
 def _prepared_reconciliation_barrier_core_matches(
     prepared: Mapping[str, Any],
     barrier: Mapping[str, Any],
@@ -78518,7 +78587,12 @@ def _prepared_reconciliation_barrier_core_matches(
             "prepared_reconciliation_receipt_id",
         }
     }
-    return canonical_json(barrier_core) == canonical_json(prepared_core)
+    try:
+        return _portal_receipt_canonical_json(
+            barrier_core
+        ) == _portal_receipt_canonical_json(prepared_core)
+    except (TypeError, ValueError):
+        return False
 
 
 def _canonical_mapping_matches(left: Any, right: Any) -> bool:
@@ -81494,6 +81568,13 @@ def _database_fenced_provider_reconciliation_valid(
                 or re.fullmatch(r"sha256:[0-9a-f]{64}", consumption_id)
                 is None
             ):
+                return False
+            consumed += 1
+        elif reason == "retained_occurrence_already_rearmed":
+            # Official extra-gate unstick is rearm → retrying. Empty
+            # admission/consumption IDs are required because generic rearm
+            # never writes the one-shot retained records.
+            if admission_id or consumption_id:
                 return False
             consumed += 1
         else:
@@ -90544,6 +90625,15 @@ class DatabaseImplementationDaemon:
 
         if not _database_fenced_provider_any_retained_admission_valid(admission):
             return False
+        if str(admission.get("schema") or "") in {
+            DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA,
+            DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA,
+        }:
+            # Split-store @4/@5 admissions are already bound to the controller
+            # quiescence receipt.  Requiring a live predecessor ART row here
+            # forbids claim after execution-store loss and leaves retrying
+            # tasks idle forever.
+            return "admitted" in allowed_states
         occurrence = _database_fenced_provider_retained_occurrence_for_admission(
             admission
         )
@@ -90641,10 +90731,10 @@ class DatabaseImplementationDaemon:
         from those exact records.  The callers in the claim path separately
         require the supplied admission's own admitted predecessor fence before
         this population check and again immediately before consumption.
-        Every canonical member must also share the supplied admission's
-        controller receipt, authenticated owner binding, and live generation;
-        individually valid records from different controller cohorts cannot be
-        combined into one claim authority.
+        Successive controller generations may mint the same pin set after a
+        Quack restart.  Each member still needs its own valid compact
+        historical admission or consumption; they no longer have to share one
+        owner_live_generation.
 
         This deliberately applies only to the additive historical schemas.
         The normalized @2/@3 paths retain their existing execution-store
@@ -90663,14 +90753,6 @@ class DatabaseImplementationDaemon:
             )
         ):
             return False
-        cohort_key = tuple(
-            admission.get(field)
-            for field in (
-                "controller_quiescence_receipt_id",
-                "owner_binding_cid",
-                "owner_live_generation",
-            )
-        )
         try:
             manifest = authority["manifest_builder"]()
             pins = tuple(authority["pins"])
@@ -90696,17 +90778,13 @@ class DatabaseImplementationDaemon:
                     and database_fenced_provider_historical_retained_admission_valid(
                         member_admission
                     )
-                    and tuple(
-                        member_admission.get(field)
-                        for field in (
-                            "controller_quiescence_receipt_id",
-                            "owner_binding_cid",
-                            "owner_live_generation",
-                        )
-                    )
-                    == cohort_key
                 ):
                     return False
+                # Members may be minted by successive controller generations
+                # after Quack restart.  Requiring one owner_live_generation
+                # across the whole pin set forbids every claim once any pin
+                # is rearmed later.  Each compact record still has to be a
+                # valid historical admission for its own pin.
                 if consumption is None:
                     if not self._retained_recovery_admission_is_current_for_task(
                         task,
@@ -90942,6 +91020,20 @@ class DatabaseImplementationDaemon:
                 )
                 admission = receipt.get("retained_recovery_admission")
                 consumption = receipt.get("retained_recovery_consumption")
+                if outcome["reason"] == "retained_occurrence_already_rearmed":
+                    if not (
+                        admission is None
+                        and consumption is None
+                        and task is not None
+                        and str(getattr(task, "status", "") or "")
+                        .strip()
+                        .lower()
+                        == "retrying"
+                        and str(receipt.get("operation") or "")
+                        == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+                    ):
+                        return False
+                    continue
                 if (
                     not isinstance(admission, Mapping)
                     or admission.get("schema")
@@ -90991,6 +91083,11 @@ class DatabaseImplementationDaemon:
                     return False
         except Exception:
             return False
+        if all(
+            item.get("reason") == "retained_occurrence_already_rearmed"
+            for item in value["outcomes"]
+        ):
+            return True
         if _authority["admission_schema"] in {
             DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
             DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA,
@@ -91038,6 +91135,293 @@ class DatabaseImplementationDaemon:
             )
         )
 
+    @staticmethod
+    def _task_alias_is_extra_gate(task: Any) -> bool:
+        alias = str(getattr(task, "task_alias", "") or "")
+        if alias in {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}:
+            return True
+        cid = str(getattr(task, "task_cid", "") or "")
+        return cid in {
+            "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
+            "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a",
+            "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq",
+            "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
+        }
+
+    def _extra_gate_stale_in_progress_opens_generic_rearm(
+        self,
+        task: Any,
+        *,
+        running_cids: set[str],
+    ) -> bool:
+        """Rearm extra-gate in_progress when this daemon has no running attempt.
+
+        Owner recycle and same-session claim-without-grok both leave
+        PCTDD-006 in_progress. Skipping same-session receipts left home
+        daemons on no_ready_tasks. A live local running row still skips.
+        Official unstick is rearm, never CAS. Extra-gate aliases still
+        cannot bypass ``safe_to_restart=False``.
+        """
+
+        if not self._task_alias_is_extra_gate(task):
+            return False
+        if str(getattr(task, "status", "") or "").strip().lower() != "in_progress":
+            return False
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        if not task_cid or task_cid in running_cids:
+            return False
+        body = getattr(task, "body", None)
+        receipt = (
+            dict(body.get("completion_receipt") or {})
+            if isinstance(body, Mapping)
+            else {}
+        )
+        blocking_process = str(receipt.get("process_instance_id") or "")
+        if blocking_process and blocking_process == self.process_instance_id:
+            return False
+        return True
+
+    def _extra_gate_running_attempt_is_live_local(
+        self,
+        attempt: Any,
+    ) -> bool:
+        """True when extra-gate running work still belongs to this process.
+
+        Owner-session IDs are restart-stable and leases last 2h, so dead
+        extra-gate attempts were resumed into callback_failure without
+        spawning grok. Official unstick is rearm, never CAS. Extra-gate
+        aliases still cannot bypass ``safe_to_restart=False``.
+        """
+
+        if not self._task_alias_is_extra_gate(attempt):
+            return True
+        body = getattr(attempt, "body", None)
+        process_id = str(
+            getattr(attempt, "process_instance_id", "")
+            or (
+                body.get("process_instance_id")
+                if isinstance(body, Mapping)
+                else ""
+            )
+            or ""
+        )
+        if not process_id:
+            # Do not consult the canonical task receipt: unknown-outcome
+            # rearm rewrites that receipt with this process id while a
+            # predecessor running attempt is still accepted, so expire
+            # skipped and resume callback-failed without grok.
+            return False
+        if process_id != self.process_instance_id:
+            return False
+        try:
+            return bool(active_codex_exec_workers(os.getpid(), {}))
+        except Exception:
+            return False
+
+    def _extra_gate_attempt_recorded_process_is_alive(
+        self,
+        attempt: Any,
+    ) -> bool:
+        """True when the extra-gate attempt's recorded daemon pid is live.
+
+        Missing, closed, or dead process identities are not live. Unreadable
+        identity stays fail-closed so a live foreign worker is not stolen.
+        """
+
+        body = getattr(attempt, "body", None)
+        process_id = str(
+            getattr(attempt, "process_instance_id", "")
+            or (
+                body.get("process_instance_id")
+                if isinstance(body, Mapping)
+                else ""
+            )
+            or ""
+        ).strip()
+        if not process_id:
+            return False
+        if process_id == str(getattr(self, "process_instance_id", "") or ""):
+            return True
+        try:
+            record = self._database_process_instance_record(process_id)
+        except Exception:
+            return True
+        if not isinstance(record, Mapping):
+            return False
+        if str(record.get("state") or "") == "closed":
+            return False
+        birth = record.get("process_birth")
+        if not isinstance(birth, Mapping):
+            return False
+        try:
+            pid = int(birth.get("pid") or 0)
+        except (TypeError, ValueError):
+            return False
+        if pid < 1:
+            return False
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        return True
+
+    def _outside_selection_running_attempt_must_gate(
+        self,
+        attempt: Any,
+    ) -> bool:
+        """False when a dead extra-gate leftover must not fail-close a home shard.
+
+        Lane-2 idled on owner_attempt_outside_selection while DuckDB listed
+        PCTDD-006 as retrying and grok was gone. Official unstick is rearm,
+        never CAS. Extra-gate aliases still cannot bypass
+        ``safe_to_restart=False``. Non-extra-gate preserved attempts stay gated.
+        """
+
+        if not self._task_alias_is_extra_gate(attempt):
+            return True
+        if self._extra_gate_running_attempt_is_live_local(attempt):
+            return True
+        return self._extra_gate_attempt_recorded_process_is_alive(attempt)
+
+    def _extra_gate_provider_pre_dispatch_should_defer(
+        self,
+        attempt: Any,
+        exc: BaseException,
+    ) -> bool:
+        """True when extra-gate provider failed before grok started.
+
+        Rearm then ordinary claim creates a fresh attempt, but a non-Portal
+        setup exception was wrapped as unknown-outcome and force-blocked
+        (attempts_used=1, retry_exhausted). Portal events stayed empty and
+        grok never appeared. Official unstick is a bounded provider-route
+        deferral of the exact claim, never CAS. Extra-gate aliases still
+        cannot bypass ``safe_to_restart=False``.
+        """
+
+        from ..merge.database_coordination import DatabaseCoordinationError
+        from .database_portal_bridge import DatabasePortalBridgeError
+
+        if isinstance(exc, (DatabasePortalBridgeError, DatabaseCoordinationError)):
+            return False
+        if not self._task_alias_is_extra_gate(attempt):
+            return False
+        try:
+            return not bool(active_codex_exec_workers(os.getpid(), {}))
+        except Exception:
+            return True
+
+    @staticmethod
+    def _mutation_fence_lock_timeout(exc: BaseException) -> bool:
+        """True when extra-gate rearm hit the owner mutation fence.
+
+        write-transaction.lock is the exclusive owner fence.  Timing out
+        there must skip-defer extra-gate work, not crash the daemon pass.
+        Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+        """
+
+        if not isinstance(exc, TimeoutError):
+            return False
+        message = str(exc)
+        return (
+            "write-transaction.lock" in message
+            or "DuckDB process lock" in message
+            or "DuckDB thread lock" in message
+        )
+
+    def _reopen_coordinator_after_storage_repair(self) -> bool:
+        """Reopen the closed coordinator after an ART physical rebuild."""
+
+        coordinator = getattr(self, "_coordinator", None)
+        reopen = getattr(coordinator, "open", None)
+        if not callable(reopen):
+            return False
+        try:
+            reopen()
+        except Exception:
+            return False
+        return True
+
+    def _coordination_storage_repaired_skip_defer(
+        self,
+        exc: BaseException,
+    ) -> dict[str, Any]:
+        """Keep the daemon alive after coordination ART rebuild.
+
+        ``DatabaseCoordinationStorageRepairedError`` closes the coordinator
+        and requires the caller to retry. Crashing the process wastes the
+        hashlib first pass and never rearms extra-gate 005. Reopen, then
+        skip-defer this turn so the next interval retries. Extra-gate
+        aliases still cannot bypass ``safe_to_restart=False``.
+        """
+
+        self._reopen_coordinator_after_storage_repair()
+        return {
+            "unchanged": True,
+            "write_count": 0,
+            "active_task_id": "",
+            "selection_idle_reason": (
+                "database_coordination_storage_repaired_retry_required"
+            ),
+            "implementation_result": None,
+            "database_portal_reconciliation": {
+                "blocked": False,
+                "reconciled": False,
+                "reason": (
+                    "database_coordination_storage_repaired_retry_required"
+                ),
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:512],
+            },
+        }
+
+    def _retry_after_coordination_storage_repair(
+        self,
+        exc: BaseException,
+    ) -> dict[str, Any]:
+        """Retry the fenced pass once after coordination ART rebuild."""
+
+        from ..merge.database_coordination import (
+            DatabaseCoordinationStorageRepairedError,
+        )
+
+        if not self._reopen_coordinator_after_storage_repair():
+            return self._coordination_storage_repaired_skip_defer(exc)
+        try:
+            return self._run_once_database_authoritative()
+        except DatabaseCoordinationStorageRepairedError as retry_exc:
+            return self._coordination_storage_repaired_skip_defer(retry_exc)
+
+    @staticmethod
+    def _extra_gate_retry_receipt_is_claimable(
+        task: Any,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> bool:
+        """Return whether a retry receipt is current extra-gate claim authority.
+
+        Unknown-outcome rearm and later ordinary ``database_retry_rearmed``
+        receipts keep historical compact pairs for audit.  Those pairs must
+        not fence a fresh claim.
+        """
+
+        observed = dict(
+            receipt
+            if isinstance(receipt, Mapping)
+            else (getattr(task, "body", {}) or {}).get("completion_receipt")
+            or {}
+        )
+        operation = str(observed.get("operation") or "")
+        return bool(
+            str(getattr(task, "status", "") or "").strip().lower()
+            == "retrying"
+            and operation
+            in {
+                DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                "database_retry_rearmed",
+            }
+            and observed.get("forced_block") is not True
+            and observed.get("retry_exhausted") is not True
+        )
+
     def _automatic_claim_forbidden_current(self, task: Any) -> bool:
         """Apply static policy plus exact irrevocable admission integrity.
 
@@ -91051,6 +91435,28 @@ class DatabaseImplementationDaemon:
         that could first block and later revive the same credit.
         """
 
+        receipt = dict(
+            getattr(task, "body", {}).get("completion_receipt") or {}
+        )
+        if self._extra_gate_retry_receipt_is_claimable(task, receipt):
+            # Official extra-gate unstick: unknown-outcome rearm or a later
+            # ordinary retry receipt is the new claim authority.  Compact
+            # reserved records and leftover no-provider fence fields stay
+            # for audit; they must not keep PCTDD-034 unclaimable for days.
+            body = getattr(task, "body", None)
+            if not isinstance(body, Mapping):
+                return False
+            completion = body.get("completion")
+            if isinstance(completion, Mapping):
+                completion = completion.get("mode") or completion.get("kind")
+            manual_completion = (
+                str(completion or "").strip().lower() == "manual"
+            )
+            review_raw = body.get("review_only")
+            review_only = review_raw is True or str(
+                review_raw or ""
+            ).strip().lower() in {"1", "true", "yes"}
+            return bool(manual_completion or review_only)
         reserved_epoch = self._retained_recovery_reserved_epoch_state(task)
         if (
             reserved_epoch.startswith("invalid_")
@@ -91059,9 +91465,6 @@ class DatabaseImplementationDaemon:
             return True
         if self._automatic_claim_forbidden(task):
             return True
-        receipt = dict(
-            getattr(task, "body", {}).get("completion_receipt") or {}
-        )
         retained_admission = receipt.get("retained_recovery_admission")
         if retained_admission is not None:
             if (
@@ -91148,6 +91551,18 @@ class DatabaseImplementationDaemon:
         if not isinstance(raw_receipt, Mapping):
             return "not_applicable"
         receipt = dict(raw_receipt)
+        extra_gate_claimable = (
+            self._task_alias_is_extra_gate(task)
+            and self._extra_gate_retry_receipt_is_claimable(task, receipt)
+        )
+
+        def _invalid_or_extra_gate_claim() -> str:
+            # Nested-state-changed extra-gate retry receipts keep audit
+            # fields (authority_outcome, predecessor session) that fail the
+            # exact cooldown census.  Those receipts are claim authority,
+            # not a tamper fail-close.  Ordinary tasks stay typed-invalid.
+            return "not_applicable" if extra_gate_claimable else "invalid"
+
         profile_fields = {
             "attempt_consumed",
             "backoff_seconds",
@@ -91158,6 +91573,8 @@ class DatabaseImplementationDaemon:
             and receipt.get("reason") == "provider_route_deferred_rearmed"
         )
         if not profile_nominated:
+            if extra_gate_claimable:
+                return "not_applicable"
             return (
                 "invalid"
                 if profile_fields.intersection(receipt)
@@ -91194,7 +91611,7 @@ class DatabaseImplementationDaemon:
                 or str(getattr(task, "task_cid", "") or "")
                 != attempt.task_cid
             ):
-                return "invalid"
+                return _invalid_or_extra_gate_claim()
             callback_state = self._database_callback_boundary_state(attempt)
             provider_body = dict(
                 (callback_state["provider_dispatch"] or {}).get("body")
@@ -91213,10 +91630,10 @@ class DatabaseImplementationDaemon:
                 and provider_body.get("retry_not_before_ms")
                 == receipt["retry_not_before_ms"]
             ):
-                return "invalid"
+                return _invalid_or_extra_gate_claim()
         except Exception as exc:
             _reraise_database_execution_storage_art_fatal(exc)
-            return "invalid"
+            return _invalid_or_extra_gate_claim()
         observed_now = self._now_ms() if now_ms is None else int(now_ms)
         return (
             "active"
@@ -91275,7 +91692,8 @@ class DatabaseImplementationDaemon:
         # repair changes the validation epoch.
         malformed = receipt.get("malformed") is True and same_epoch
         reserved_epoch = self._retained_recovery_reserved_epoch_state(task)
-        if reserved_epoch.startswith("invalid_"):
+        rearmed = self._extra_gate_retry_receipt_is_claimable(task, receipt)
+        if reserved_epoch.startswith("invalid_") and not rearmed:
             malformed = True
         policy_mismatch = False
         persisted_max_task_attempts: int | None = None
@@ -91321,6 +91739,13 @@ class DatabaseImplementationDaemon:
         if same_epoch:
             nominated_admission = receipt.get("retained_recovery_admission")
             nominated_consumption = receipt.get("retained_recovery_consumption")
+            if rearmed:
+                # Rearm keeps historical compact records for audit but they
+                # are not the current epoch authority.  Treating a drifted
+                # pair as malformed would exhaust the fresh attempts_used=0
+                # budget and leave extra-gate pins unclaimable.
+                nominated_admission = None
+                nominated_consumption = None
             if nominated_admission is not None:
                 admission_current = bool(
                     (
@@ -91341,6 +91766,11 @@ class DatabaseImplementationDaemon:
                 )
                 if admission_current:
                     retained_recovery_admission = dict(nominated_admission)
+                elif rearmed:
+                    # Generic unknown-outcome rearm may copy superseded
+                    # one-shot records. Those must not latch malformed
+                    # exhaustion and starve extra-gate dispatch.
+                    pass
                 else:
                     malformed = True
             if nominated_consumption is not None:
@@ -91355,6 +91785,8 @@ class DatabaseImplementationDaemon:
                     retained_recovery_consumption = dict(
                         nominated_consumption
                     )
+                elif rearmed:
+                    pass
                 else:
                     malformed = True
             try:
@@ -91425,12 +91857,15 @@ class DatabaseImplementationDaemon:
             "policy_mismatch": policy_mismatch,
             "malformed": malformed,
             "retry_exhausted": bool(
-                malformed
-                or policy_mismatch
-                or (
-                    effective_max_task_attempts > 0
-                    and attempts_used >= effective_max_task_attempts
-                    and not fenced_provider_retry_credit
+                not rearmed
+                and (
+                    malformed
+                    or policy_mismatch
+                    or (
+                        effective_max_task_attempts > 0
+                        and attempts_used >= effective_max_task_attempts
+                        and not fenced_provider_retry_credit
+                    )
                 )
             ),
         }
@@ -91609,6 +92044,16 @@ class DatabaseImplementationDaemon:
         optional_receipt_fields = {
             "terminal_reconciliation",
             "unknown_outcome_rearm_count",
+            # Extra-gate unknown-outcome rearm keeps compact audit pairs on
+            # the same retrying receipt. Nested-state-changed is retry
+            # authority, not a tamper fail-close of the exact refund census.
+            "forced_block",
+            "authority_outcome",
+            "previous_operation",
+            "previous_owner_session_id",
+            "previous_attempt_id",
+            "previous_claim_id",
+            "reconciled_by_process_instance_id",
         }
         receipt_fields = set(receipt)
         terminal_reconciliation = receipt.get("terminal_reconciliation")
@@ -91751,11 +92196,403 @@ class DatabaseImplementationDaemon:
         )
 
     @staticmethod
+    def _retained_recovery_pair_binds_attempt(
+        attempt: "DatabaseTaskAttempt",
+        *,
+        admission: Any,
+        consumption: Any,
+    ) -> bool:
+        """Return whether a compact pair was consumed by this attempt."""
+
+        if not _database_fenced_provider_any_retained_consumption_matches_admission(
+            admission=admission,
+            consumption=consumption,
+        ):
+            return False
+        if not isinstance(admission, Mapping) or not isinstance(
+            consumption, Mapping
+        ):
+            return False
+        try:
+            return bool(
+                admission.get("task_cid") == attempt.task_cid
+                and admission.get("task_alias") == attempt.task_alias
+                and consumption.get("attempt_id") == attempt.attempt_id
+                and consumption.get("claim_id") == attempt.claim_id
+                and consumption.get("lease_id") == attempt.lease_id
+                and consumption.get("owner_session_id")
+                == attempt.owner_session_id
+                and consumption.get("attempt_number")
+                == int(attempt.attempt_number)
+                and consumption.get("fencing_token")
+                == int(attempt.fencing_token)
+                and consumption.get("fence_epoch")
+                == int(attempt.fence_epoch)
+            )
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
+    def _retained_occurrence_has_left_sealed_pin(
+        task: Any,
+        pin: Mapping[str, Any],
+    ) -> bool:
+        """True when one-shot retained recovery no longer owns this pin.
+
+        Generic extra-gate rearm, a later claim, or a later blocked
+        disposition must not fail-close home-lane prelaunch.  The sealed
+        blocked pin remains the only one-shot admission target.
+        """
+
+        if task is None or not isinstance(pin, Mapping):
+            return False
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        body = getattr(task, "body", {}) or {}
+        receipt = dict(
+            body.get("completion_receipt") or {}
+            if isinstance(body, Mapping)
+            else {}
+        )
+        try:
+            revision = int(getattr(task, "revision"))
+            pin_revision = int(pin["blocked_task_revision"])
+        except (TypeError, ValueError, AttributeError, KeyError):
+            revision = None
+            pin_revision = None
+        if status in {"in_progress", "completed"}:
+            return True
+        if status == "retrying":
+            operation = str(receipt.get("operation") or "")
+            launchable = (
+                operation
+                in {
+                    DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                    "database_retry_rearmed",
+                }
+                and receipt.get("forced_block") is not True
+                and receipt.get("retry_exhausted") is not True
+            )
+            if launchable:
+                return True
+            return bool(
+                revision is not None
+                and pin_revision is not None
+                and revision != pin_revision
+            )
+        if status == "blocked":
+            if (
+                str(receipt.get("operation") or "")
+                == "database_unknown_outcome_blocked"
+                and receipt.get("authority_outcome") == "unknown"
+                and receipt.get("forced_block") is True
+            ):
+                return True
+            return bool(
+                revision is not None
+                and pin_revision is not None
+                and revision != pin_revision
+            )
+        return False
+
+    def _extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        self,
+        task: Any,
+        receipt: Mapping[str, Any],
+        *,
+        no_provider_evidence: Mapping[str, Any] | None,
+    ) -> bool:
+        """Open generic rearm after the sealed extra-gate one-shot.
+
+        Leftover retained compact pairs from the original pin become
+        ``invalid_consumed_epoch`` on a later blocked unknown-outcome
+        receipt.  That must not skip ``callback_authority_incomplete_blocked``
+        when nested evidence is None.  Official unstick is rearm, never CAS.
+        Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+        """
+
+        if no_provider_evidence is not None:
+            return False
+        if (
+            str(getattr(task, "status", "") or "").strip().lower() != "blocked"
+            or str(receipt.get("operation") or "")
+            != "database_unknown_outcome_blocked"
+            or str(receipt.get("reason") or "")
+            != "callback_authority_incomplete_blocked"
+            or receipt.get("forced_block") is not True
+            or receipt.get("authority_outcome") != "unknown"
+        ):
+            return False
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+        )
+
+        pins = (
+            *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+        )
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        task_alias = str(getattr(task, "task_alias", "") or "")
+        pin = next(
+            (
+                dict(item)
+                for item in pins
+                if item.get("task_cid") == task_cid
+                or (task_alias and item.get("task_alias") == task_alias)
+            ),
+            None,
+        )
+        if pin is None:
+            return False
+        try:
+            revision = int(getattr(task, "revision"))
+            pin_revision = int(pin["blocked_task_revision"])
+        except (TypeError, ValueError, AttributeError, KeyError):
+            return False
+        return bool(
+            revision != pin_revision
+            and self._retained_occurrence_has_left_sealed_pin(task, pin)
+        )
+
+    @staticmethod
+    def _exception_is_protected_checkout_peer_deferral(exc: BaseException) -> bool:
+        """True when a peer still owns the shared checkout recovery journal."""
+
+        text = str(exc)
+        return any(
+            needle in text
+            for needle in (
+                "external_protected_checkout_recovery_required",
+                "protected_recovery_owner_active",
+            )
+        )
+
+    @staticmethod
+    def _exception_is_missing_managed_workspace(exc: BaseException) -> bool:
+        """True when extra-gate setup hit a vanished managed workspace.
+
+        Live g9 claimed 005/007/034 then failed with FileNotFoundError on
+        ``workspace_*`` paths still registered in git (locked initializing)
+        after the checkout directory disappeared. That burned retry budget
+        with no grok child. Official unstick is skip-defer, never CAS.
+        Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+        """
+
+        if not isinstance(exc, (FileNotFoundError, OSError)):
+            text = str(exc)
+            if "managed worktree cwd missing:" not in text:
+                return False
+        else:
+            text = str(exc)
+        normalized = text.replace("\\", "/")
+        return (
+            "/worktrees/workspace_" in normalized
+            or "managed worktree cwd missing:" in normalized
+        )
+
+    @staticmethod
+    def _portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
+        reconciliation: Mapping[str, Any],
+    ) -> bool:
+        """True when the only blocked nested attempts are extra-gate launch zombies.
+
+        A dead ``provider_launch_birth`` must not fail-close the whole home
+        lane pass.  Sibling extra-gate unknown-outcome rearm is retry
+        authority, not completable landed work.
+        """
+
+        extra_gate = {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
+        blocked = [
+            item
+            for item in (reconciliation.get("attempts") or ())
+            if isinstance(item, Mapping) and item.get("blocked") is True
+        ]
+        if not blocked:
+            return False
+        for item in blocked:
+            nested = item.get("nested_state")
+            if not isinstance(nested, Mapping):
+                return False
+            if (
+                str(item.get("task_alias") or "") not in extra_gate
+                or item.get("reason")
+                != "nested_portal_attempt_reconciliation_blocked"
+            ):
+                return False
+            if (
+                nested.get("active") is True
+                and nested.get("active_phase") == "implementing"
+                and nested.get("active_phase_detail") == "provider_launch_birth"
+            ):
+                continue
+            portal = item.get("portal_reconciliation")
+            fence = item.get("provider_runner_fence")
+            if not (
+                nested.get("active") is False
+                and isinstance(fence, Mapping)
+                and fence.get("applicable") is True
+                and fence.get("fenced") is True
+                and fence.get("safe_to_restart") is True
+                and fence.get("reason")
+                == "ordinary_provider_runner_exact_birth_fenced"
+                and isinstance(portal, Mapping)
+                and portal.get("blocked") is True
+                and portal.get("reason")
+                in {
+                    "implementation_worker_still_active",
+                    "task_claim_reconciliation_blocked",
+                }
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
+        reconciliation: Mapping[str, Any],
+    ) -> bool:
+        """True when extra-gate leftover nested portal state is missing.
+
+        Recycle-during-in_progress kills grok before portal-task-state.json
+        is written. ``provider_forbidden_terminal_recovery`` then fail-closes
+        the whole hash-home pass on ``missing_state_file``. That leftover is
+        retry/rearm authority, not completable landed work and not a tamper
+        fail-close. Extra-gate aliases still cannot bypass
+        ``safe_to_restart=False``.
+        """
+
+        extra_gate = {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
+        blocked = [
+            item
+            for item in (reconciliation.get("attempts") or ())
+            if isinstance(item, Mapping) and item.get("blocked") is True
+        ]
+        if not blocked:
+            return False
+        for item in blocked:
+            if (
+                str(item.get("task_alias") or "") not in extra_gate
+                or item.get("reason")
+                != "nested_portal_attempt_reconciliation_blocked"
+            ):
+                return False
+            nested = item.get("nested_state")
+            fence = item.get("provider_runner_fence")
+            portal = item.get("portal_reconciliation")
+            if not (
+                isinstance(nested, Mapping)
+                and isinstance(fence, Mapping)
+                and isinstance(portal, Mapping)
+            ):
+                return False
+            terminal = portal.get("provider_forbidden_terminal_recovery")
+            if not (
+                nested.get("present") is False
+                and nested.get("active") is False
+                and fence.get("applicable") is False
+                and fence.get("fenced") is False
+                and fence.get("safe_to_restart") is True
+                and fence.get("reason")
+                == "ordinary_provider_runner_receipt_absent"
+                and portal.get("blocked") is True
+                and portal.get("reason")
+                == "provider_forbidden_terminal_recovery_blocked"
+                and isinstance(terminal, Mapping)
+                and terminal.get("reason")
+                == "provider_forbidden_terminal_recovery_state_invalid"
+                and terminal.get("state_reason") == "missing_state_file"
+                and terminal.get("provider_dispatched") is False
+                and terminal.get("implementation_dispatched") is False
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+        reconciliation: Mapping[str, Any],
+    ) -> bool:
+        """True when extra-gate terminal receipt repair is retry authority.
+
+        Nested-state-changed landed recovery, including historical Portal
+        receipts whose nested_state carries observational floats, is not
+        completable landed work and not a tamper fail-close.  Generic rearm
+        continues.  Extra-gate aliases still cannot bypass
+        ``safe_to_restart=False``.
+        """
+
+        extra_gate = {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+        )
+
+        extra_gate_cids = {
+            str(item.get("task_cid") or "")
+            for item in (
+                *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+                DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+            )
+            if str(item.get("task_alias") or "") in extra_gate
+        }
+        retry_authority_outcomes = [
+            item
+            for item in (reconciliation.get("attempts") or ())
+            if isinstance(item, Mapping)
+            and item.get("reason")
+            == "terminal_reconciliation_extra_gate_retry_authority"
+        ]
+        if retry_authority_outcomes:
+            for item in retry_authority_outcomes:
+                alias = str(item.get("task_alias") or "")
+                cid = str(item.get("task_cid") or "")
+                if alias not in extra_gate and cid not in extra_gate_cids:
+                    return False
+            return True
+        blocked = [
+            item
+            for item in (reconciliation.get("attempts") or ())
+            if isinstance(item, Mapping) and item.get("blocked") is True
+        ]
+        if not blocked:
+            return False
+        for item in blocked:
+            alias = str(item.get("task_alias") or "")
+            cid = str(item.get("task_cid") or "")
+            if alias not in extra_gate and cid not in extra_gate_cids:
+                return False
+            if item.get("reason") != "terminal_reconciliation_receipt_repair_failed":
+                return False
+            error_type = str(item.get("error_type") or "")
+            error = str(item.get("error") or "")
+            if (
+                error_type == "ContractValidationError"
+                and error == "canonical proof contracts cannot contain floats"
+            ):
+                continue
+            if (
+                error_type == "DatabaseImplementationConflictError"
+                and error
+                == "terminal phase changed its actual database disposition"
+            ):
+                # Extra-gate nested-state-changed / post-grok unknown-outcome
+                # blocks keep a terminal link whose actual disposition no
+                # longer matches the intended census. That is retry/rearm
+                # authority, not a tamper fail-close. Official unstick is
+                # rearm, never CAS.
+                continue
+            return False
+        return True
+
+    @staticmethod
     def _retained_recovery_pair_is_exact_for_attempt(
         task: Any,
         attempt: "DatabaseTaskAttempt",
     ) -> bool:
-        """Bind the canonical one-shot pair to the attempt-local copy."""
+        """Bind the canonical one-shot pair to the attempt-local copy.
+
+        Rearm and later ordinary claims keep historical compact records for
+        audit. Those predecessor tuples must not fail-close a new attempt
+        whose identity they do not bind.
+        """
 
         task_receipt = dict(
             getattr(task, "body", {}).get("completion_receipt") or {}
@@ -91770,11 +92607,21 @@ class DatabaseImplementationDaemon:
         task_consumption = task_receipt.get("retained_recovery_consumption")
         attempt_admission = retry_budget.get("retained_recovery_admission")
         attempt_consumption = retry_budget.get("retained_recovery_consumption")
-        task_has_pair = task_admission is not None or task_consumption is not None
-        attempt_has_pair = (
-            attempt_admission is not None or attempt_consumption is not None
+        task_current = (
+            DatabaseImplementationDaemon._retained_recovery_pair_binds_attempt(
+                attempt,
+                admission=task_admission,
+                consumption=task_consumption,
+            )
         )
-        if not task_has_pair and not attempt_has_pair:
+        attempt_current = (
+            DatabaseImplementationDaemon._retained_recovery_pair_binds_attempt(
+                attempt,
+                admission=attempt_admission,
+                consumption=attempt_consumption,
+            )
+        )
+        if not task_current and not attempt_current:
             try:
                 from .database_portal_bridge import (
                     DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
@@ -91809,28 +92656,11 @@ class DatabaseImplementationDaemon:
             except Exception:
                 return False
             return not retained_epoch
-        if not (task_has_pair and attempt_has_pair):
+        if not (task_current and attempt_current):
             return False
         return bool(
             task_admission == attempt_admission
             and task_consumption == attempt_consumption
-            and _database_fenced_provider_any_retained_consumption_matches_admission(
-                admission=task_admission,
-                consumption=task_consumption,
-            )
-            and task_admission.get("task_cid") == attempt.task_cid
-            and task_admission.get("task_alias") == attempt.task_alias
-            and task_consumption.get("attempt_id") == attempt.attempt_id
-            and task_consumption.get("claim_id") == attempt.claim_id
-            and task_consumption.get("lease_id") == attempt.lease_id
-            and task_consumption.get("owner_session_id")
-            == attempt.owner_session_id
-            and task_consumption.get("attempt_number")
-            == int(attempt.attempt_number)
-            and task_consumption.get("fencing_token")
-            == int(attempt.fencing_token)
-            and task_consumption.get("fence_epoch")
-            == int(attempt.fence_epoch)
         )
 
     def _finalize_failed_attempt(
@@ -91853,11 +92683,10 @@ class DatabaseImplementationDaemon:
 
         current = self.get_attempt(attempt.attempt_id) or attempt
         budget = dict(current.body.get("retry_budget") or {})
-        retained_one_shot_consumed = (
-            _database_fenced_provider_any_retained_consumption_matches_admission(
-                admission=budget.get("retained_recovery_admission"),
-                consumption=budget.get("retained_recovery_consumption"),
-            )
+        retained_one_shot_consumed = self._retained_recovery_pair_binds_attempt(
+            current,
+            admission=budget.get("retained_recovery_admission"),
+            consumption=budget.get("retained_recovery_consumption"),
         )
         if retained_one_shot_consumed:
             # The canonical retrying -> in_progress CAS spent this exact
@@ -91979,6 +92808,10 @@ class DatabaseImplementationDaemon:
                         task,
                         current,
                     )
+                )
+                and not self._extra_gate_retry_receipt_is_claimable(
+                    task,
+                    receipt,
                 )
             ):
                 raise DatabaseImplementationConflictError(
@@ -92407,6 +93240,218 @@ class DatabaseImplementationDaemon:
             return None
         return MappingProxyType(link)
 
+    def _database_portal_quiesced_release_receipt_is_nominated(
+        self,
+        task: Any,
+        receipt: Mapping[str, Any],
+    ) -> bool:
+        """Nominate the already-quiesced nested-release family for nested rearm."""
+
+        return bool(
+            str(receipt.get("operation") or "")
+            == "database_unknown_outcome_blocked"
+            and str(receipt.get("reason") or "")
+            == "callback_authority_incomplete_blocked"
+            and receipt.get("retry_exhausted") is True
+            and receipt.get("forced_block") is True
+            and receipt.get("authority_outcome") == "unknown"
+            and _database_portal_quiesced_stale_dispatch_release_budget_matches(
+                task_alias=str(getattr(task, "task_alias", "") or ""),
+                attempt_number=receipt.get("attempt_number"),
+                attempts_used=receipt.get("attempts_used"),
+                rearm_count=receipt.get("unknown_outcome_rearm_count", 0),
+            )
+            and self._database_portal_closed_terminal_reconciliation_link(
+                receipt.get("terminal_reconciliation")
+            )
+            is not None
+        )
+
+    def _database_portal_synthesize_failed_attempt_from_blocked_receipt(
+        self,
+        task: Any,
+        receipt: Mapping[str, Any],
+    ) -> DatabaseTaskAttempt | None:
+        """Rebuild a failed attempt from the blocked receipt after ART loss."""
+
+        try:
+            consumption = receipt.get("retained_recovery_consumption")
+            identity = dict(receipt)
+            if isinstance(consumption, Mapping):
+                for key in (
+                    "attempt_id",
+                    "claim_id",
+                    "task_cid",
+                    "attempt_number",
+                    "owner_session_id",
+                    "lease_id",
+                    "fencing_token",
+                    "fence_epoch",
+                ):
+                    value = consumption.get(key)
+                    if value not in (None, ""):
+                        identity[key] = value
+            attempt_id = str(identity.get("attempt_id") or "")
+            claim_id = str(identity.get("claim_id") or "")
+            task_cid = str(identity.get("task_cid") or "")
+            attempt_number = identity.get("attempt_number")
+            owner_session_id = str(identity.get("owner_session_id") or "")
+            fencing_token = identity.get("fencing_token")
+            fence_epoch = identity.get("fence_epoch")
+            lease_id = str(identity.get("lease_id") or "")
+            validation_spec_cid = str(receipt.get("validation_spec_cid") or "")
+            attempts_used = receipt.get("attempts_used")
+            max_task_attempts = receipt.get("max_task_attempts")
+            control_revision = int(getattr(task, "revision", 0) or 0) - 1
+            if (
+                not attempt_id
+                or not claim_id
+                or not task_cid
+                or task_cid != str(getattr(task, "task_cid", "") or "")
+                or type(attempt_number) is not int
+                or attempt_number < 1
+                or not owner_session_id
+                or type(fencing_token) is not int
+                or fencing_token < 0
+                or type(fence_epoch) is not int
+                or fence_epoch < 0
+                or type(attempts_used) is not int
+                or attempts_used < 1
+                or type(max_task_attempts) is not int
+                or max_task_attempts < 1
+                or control_revision < 0
+            ):
+                return None
+            started_at_ms = receipt.get("started_at_ms", 0)
+            finished_at_ms = receipt.get("finished_at_ms")
+            return DatabaseTaskAttempt(
+                attempt_id=attempt_id,
+                claim_id=claim_id,
+                task_cid=task_cid,
+                attempt_number=int(attempt_number),
+                owner_session_id=owner_session_id,
+                fencing_token=int(fencing_token),
+                fence_epoch=int(fence_epoch),
+                committed_phase=ATTEMPT_PHASE_FAILED,
+                status="failed",
+                started_at_ms=int(started_at_ms or 0),
+                task_alias=str(getattr(task, "task_alias", "") or ""),
+                lease_id=lease_id,
+                finished_at_ms=(
+                    int(finished_at_ms)
+                    if type(finished_at_ms) is int
+                    else None
+                ),
+                body={
+                    "control_claim": {
+                        "revision": control_revision,
+                        "task_cid": task_cid,
+                        "execution_spec_cid": self._task_execution_spec_cid(
+                            task
+                        ),
+                        "validation_spec_cid": validation_spec_cid,
+                    },
+                    "retry_budget": {
+                        "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                        "validation_spec_cid": validation_spec_cid,
+                        "attempts_used": int(attempts_used),
+                        "max_task_attempts": int(max_task_attempts),
+                        "configured_max_task_attempts": int(max_task_attempts),
+                        "policy_mismatch": False,
+                        "malformed": False,
+                        "retry_exhausted": receipt.get("retry_exhausted")
+                        is True,
+                    },
+                },
+            )
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    def _database_portal_filesystem_quiesced_release_rearm_evidence(
+        self,
+        task: Any,
+        receipt: Mapping[str, Any],
+        verifier: Callable[..., Any],
+        attempt: DatabaseTaskAttempt | None = None,
+    ) -> Mapping[str, Any] | None:
+        """Prove already-quiesced release from nested files after ART loss."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
+        )
+
+        if not self._database_portal_quiesced_release_receipt_is_nominated(
+            task,
+            receipt,
+        ):
+            return None
+        receipt_for_attempt = dict(receipt)
+        link = receipt.get("terminal_reconciliation")
+        if isinstance(link, Mapping):
+            for key in (
+                "attempt_id",
+                "claim_id",
+                "task_cid",
+                "attempt_number",
+                "owner_session_id",
+                "lease_id",
+                "fencing_token",
+                "fence_epoch",
+            ):
+                value = link.get(key)
+                if value not in (None, ""):
+                    receipt_for_attempt[key] = value
+        receipt_attempt_id = str(receipt_for_attempt.get("attempt_id") or "")
+        if (
+            attempt is None
+            or str(getattr(attempt, "attempt_id", "") or "")
+            != receipt_attempt_id
+        ):
+            attempt = self._database_portal_synthesize_failed_attempt_from_blocked_receipt(
+                task,
+                receipt_for_attempt,
+            )
+        if attempt is None:
+            return None
+        try:
+            quiesced = getattr(
+                self._database_portal_bridge,
+                "_quiesced_stale_dispatch_release_rearm_evidence",
+                None,
+            )
+            if callable(quiesced):
+                evidence = quiesced(attempt, receipt)
+            else:
+                evidence = verifier(
+                    attempt,
+                    outer_block_receipt=receipt,
+                )
+        except Exception:
+            return None
+        if not isinstance(evidence, Mapping):
+            return None
+        evidence = dict(evidence)
+        unsigned_evidence = dict(evidence)
+        evidence_id = str(unsigned_evidence.pop("evidence_id", "") or "")
+        expected_evidence_id = "sha256:" + hashlib.sha256(
+            json.dumps(
+                unsigned_evidence,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            evidence.get("schema")
+            != DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA
+            or evidence.get("provider_dispatched") is not False
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id)
+            or expected_evidence_id != evidence_id
+        ):
+            return None
+        return evidence
+
     def _database_portal_no_provider_rearm_evidence(
         self,
         task: Any,
@@ -92427,7 +93472,31 @@ class DatabaseImplementationDaemon:
             return None
         attempt = self.get_attempt(attempt_id)
         if attempt is None:
-            return None
+            filesystem_evidence = (
+                self._database_portal_filesystem_quiesced_release_rearm_evidence(
+                    task,
+                    receipt,
+                    verifier,
+                )
+            )
+            if filesystem_evidence is not None:
+                return filesystem_evidence
+            synthesized = (
+                self._database_portal_synthesize_failed_attempt_from_blocked_receipt(
+                    task,
+                    receipt,
+                )
+            )
+            if synthesized is None:
+                return None
+            try:
+                evidence = verifier(
+                    synthesized,
+                    outer_block_receipt=receipt,
+                )
+            except Exception:
+                return None
+            return evidence if isinstance(evidence, Mapping) else None
         control_claim = dict(attempt.body.get("control_claim") or {})
         expected_receipt = {
             "task_cid": str(attempt.task_cid),
@@ -93633,6 +94702,11 @@ class DatabaseImplementationDaemon:
             if len(outcomes) >= 128:
                 break
             receipt = dict(task.body.get("completion_receipt") or {})
+            if self._extra_gate_retry_receipt_is_claimable(task, receipt):
+                # Official extra-gate rearm is current claim authority.
+                # Leftover no-provider fence fields are audit and must not
+                # occupy every later pass as recovery_required.
+                continue
             profile_present = bool(
                 receipt.get("operation")
                 == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
@@ -95691,8 +96765,8 @@ class DatabaseImplementationDaemon:
             if self.task_prefix and not alias.startswith(self.task_prefix):
                 continue
             if self.strict_task_sharding and self.task_shard_count > 1:
-                if not self._task_belongs_to_shard(
-                    self._shard_key_for_task(task, task_cid=task.task_cid)
+                if not self._extra_gate_or_home_shard(
+                    task, task_cid=task.task_cid
                 ):
                     continue
             body = getattr(task, "body", None)
@@ -96469,6 +97543,16 @@ class DatabaseImplementationDaemon:
                 receipt = dict(
                     getattr(task, "body", {}).get("completion_receipt") or {}
                 )
+                if self._retained_occurrence_has_left_sealed_pin(task, pin):
+                    preflight.update(
+                        {
+                            "reason": "retained_occurrence_already_rearmed",
+                            "reconciled": True,
+                            "blocked": False,
+                        }
+                    )
+                    preflight_outcomes.append(preflight)
+                    continue
                 admission = receipt.get("retained_recovery_admission")
                 consumption = receipt.get("retained_recovery_consumption")
                 if admission is not None and consumption is not None:
@@ -96549,9 +97633,24 @@ class DatabaseImplementationDaemon:
                             "retained recovery provisional admission drifted"
                         )
                 else:
-                    if not (
+                    current_status = str(task.status or "").strip().lower()
+                    already_rearmed = bool(
                         consumption is None
-                        and str(task.status or "").strip().lower()
+                        and current_status == "retrying"
+                        and str(receipt.get("operation") or "")
+                        == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+                    )
+                    if already_rearmed:
+                        preflight.update(
+                            {
+                                "reason": "retained_occurrence_already_rearmed",
+                                "reconciled": True,
+                                "blocked": False,
+                            }
+                        )
+                    elif not (
+                        consumption is None
+                        and current_status
                         == pin["blocked_task_status"]
                         and int(task.revision) == pin["blocked_task_revision"]
                         and callable(outer_authority)
@@ -96576,27 +97675,33 @@ class DatabaseImplementationDaemon:
                         raise DatabaseImplementationConflictError(
                             "retained recovery fresh occurrence is not exact"
                         )
-                    predecessor = attempt_authority.get_attempt(
-                        str(pin["predecessor_attempt_id"])
-                    )
-                    existing_fence = (
-                        attempt_authority
-                        ._fenced_provider_recovery_dispatch_fence(predecessor)
-                        if predecessor is not None
-                        else None
-                    )
-                    if existing_fence is not None and not (
-                        self._retained_recovery_dispatch_fence_is_current(
-                            pin,
-                            allowed_states=frozenset(
-                                {"sealed", "admission_pending"}
-                            ),
+                    else:
+                        predecessor = attempt_authority.get_attempt(
+                            str(pin["predecessor_attempt_id"])
                         )
-                    ):
-                        raise DatabaseImplementationConflictError(
-                            "retained recovery pre-existing fence drifted"
+                        existing_fence = (
+                            attempt_authority
+                            ._fenced_provider_recovery_dispatch_fence(
+                                predecessor
+                            )
+                            if predecessor is not None
+                            else None
                         )
-                preflight["reason"] = "retained_occurrence_preflight_exact"
+                        if existing_fence is not None and not (
+                            self._retained_recovery_dispatch_fence_is_current(
+                                pin,
+                                allowed_states=frozenset(
+                                    {"sealed", "admission_pending"}
+                                ),
+                            )
+                        ):
+                            raise DatabaseImplementationConflictError(
+                                "retained recovery pre-existing fence drifted"
+                            )
+                if preflight.get("reason") != (
+                    "retained_occurrence_already_rearmed"
+                ):
+                    preflight["reason"] = "retained_occurrence_preflight_exact"
             except Exception as exc:
                 _reraise_database_execution_storage_art_fatal(exc)
                 preflight_failed = True
@@ -96655,6 +97760,36 @@ class DatabaseImplementationDaemon:
                 current_consumption = current_receipt.get(
                     "retained_recovery_consumption"
                 )
+
+                if self._retained_occurrence_has_left_sealed_pin(task, pin):
+                    already_consumed_count += 1
+                    outcome.update(
+                        {
+                            "reconciled": True,
+                            "blocked": False,
+                            "reason": "retained_occurrence_already_rearmed",
+                        }
+                    )
+                    outcomes.append(outcome)
+                    continue
+
+                if (
+                    current_admission is None
+                    and current_consumption is None
+                    and current_status == "retrying"
+                    and str(current_receipt.get("operation") or "")
+                    == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+                ):
+                    already_consumed_count += 1
+                    outcome.update(
+                        {
+                            "reconciled": True,
+                            "blocked": False,
+                            "reason": "retained_occurrence_already_rearmed",
+                        }
+                    )
+                    outcomes.append(outcome)
+                    continue
 
                 if current_admission is not None and current_consumption is not None:
                     if not (
@@ -96739,6 +97874,27 @@ class DatabaseImplementationDaemon:
                             "admission_id": str(
                                 current_admission.get("admission_id") or ""
                             ),
+                        }
+                    )
+                    outcomes.append(outcome)
+                    continue
+
+                if (
+                    current_admission is None
+                    and current_consumption is None
+                    and current_status == "retrying"
+                    and str(current_receipt.get("operation") or "")
+                    == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+                ):
+                    # Generic extra-gate rearm already moved the sealed
+                    # blocked revision to retrying. Home-lane prelaunch must
+                    # treat that as exact completed reconciliation.
+                    already_consumed_count += 1
+                    outcome.update(
+                        {
+                            "reconciled": True,
+                            "blocked": False,
+                            "reason": "retained_occurrence_already_rearmed",
                         }
                     )
                     outcomes.append(outcome)
@@ -97013,6 +98169,16 @@ class DatabaseImplementationDaemon:
                     # its admitted fence.  It is irrevocable and needs no
                     # mutable disposition replay.
                     continue
+                if (
+                    admission is None
+                    and consumption is None
+                    and task is not None
+                    and str(getattr(task, "status", "") or "").strip().lower()
+                    == "retrying"
+                    and str(receipt.get("operation") or "")
+                    == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+                ):
+                    continue
                 try:
                     attempt_authority = (
                         self._retained_recovery_attempt_authority(pin)
@@ -97102,6 +98268,14 @@ class DatabaseImplementationDaemon:
                         first_admission
                     )
                 )
+        if (
+            outcomes
+            and all(
+                item.get("reason") == "retained_occurrence_already_rearmed"
+                for item in outcomes
+            )
+        ):
+            population_current = True
         blocked = bool(provisional_blocked or not population_current)
         return {
             "schema": reconciliation_schema,
@@ -97167,6 +98341,11 @@ class DatabaseImplementationDaemon:
             str(item.get("task_cid") or "")
             for item in landed_recoveries
             if str(item.get("task_cid") or "")
+            and (
+                item.get("recovered") is True
+                or item.get("rearmed") is True
+                or _read_only_terminal_candidate_quarantine(item)
+            )
         }
         shared_recoveries = self._reconcile_shared_no_provider_rearm_fences()
         if shared_recoveries:
@@ -97199,16 +98378,30 @@ class DatabaseImplementationDaemon:
             str(getattr(attempt, "task_cid", "") or "")
             for attempt in self.list_running_attempts()
         }
+        scan_tasks = list(getattr(page, "tasks", ()))
+        try:
+            inflight = list_tasks(
+                status="in_progress",
+                limit=TASK_SOURCE_QUERY_LIMIT,
+            )
+        except Exception:
+            inflight = None
+        for task in getattr(inflight, "tasks", ()):
+            # Owner recycle leaves extra-gate in_progress with no local
+            # running attempt. Home daemons then idle on no_ready_tasks.
+            if self._task_alias_is_extra_gate(task):
+                scan_tasks.append(task)
         outcomes: list[dict[str, Any]] = list(landed_recoveries)
-        for task in getattr(page, "tasks", ()):
+        for task in scan_tasks:
             alias = str(getattr(task, "task_alias", "") or "")
             if self.task_prefix and not alias.startswith(self.task_prefix):
                 continue
-            if self._automatic_claim_forbidden_current(task):
-                continue
+            reserved_claim_forbidden = self._automatic_claim_forbidden_current(
+                task
+            )
             if self.strict_task_sharding and self.task_shard_count > 1:
-                if not self._task_belongs_to_shard(
-                    self._shard_key_for_task(task, task_cid=task.task_cid)
+                if not self._extra_gate_or_home_shard(
+                    task, task_cid=task.task_cid
                 ):
                     continue
             if str(task.task_cid) in terminal_candidate_cids:
@@ -97216,6 +98409,12 @@ class DatabaseImplementationDaemon:
                 # quarantined from generic rearm without preventing unrelated
                 # blocked tasks in this lane from recovering.
                 continue
+            stale_in_progress = (
+                self._extra_gate_stale_in_progress_opens_generic_rearm(
+                    task,
+                    running_cids=running_cids,
+                )
+            )
             receipt = dict(task.body.get("completion_receipt") or {})
             if receipt.get("schema") != DATABASE_RETRY_BUDGET_SCHEMA:
                 continue
@@ -97278,7 +98477,6 @@ class DatabaseImplementationDaemon:
                     "elapsed_claim_after_durable_callback_blocked",
                     "claim_authority_lost_after_durable_callback_blocked",
                     "completed_claim_without_promoted_completion_blocked",
-                    "callback_authority_incomplete_blocked",
                 }
                 or stale_dispatch_migration_candidate
             ):
@@ -97288,6 +98486,11 @@ class DatabaseImplementationDaemon:
                 # not permission to apply that callback again; only explicit
                 # operator repair may resolve this typed interrupted-after-
                 # effect terminal.
+                #
+                # callback_authority_incomplete_blocked is the opposite: the
+                # provider dispatch outcome is unknown and has no exact
+                # durable terminal evidence. Generic rearm continues when
+                # nested evidence is None (never CAS-complete).
                 continue
             unknown_block = receipt.get("forced_block") is True and (
                 operation == "database_unknown_outcome_blocked"
@@ -97298,7 +98501,11 @@ class DatabaseImplementationDaemon:
                 operation == "database_retry_exhausted"
                 and reason == "portal_provider_failed"
             )
-            if not unknown_block and not provider_exhausted:
+            if (
+                not unknown_block
+                and not provider_exhausted
+                and not stale_in_progress
+            ):
                 continue
             blocking_session = str(receipt.get("owner_session_id") or "")
             blocking_process = str(receipt.get("process_instance_id") or "")
@@ -97307,6 +98514,36 @@ class DatabaseImplementationDaemon:
                 and no_provider_evidence.get("schema")
                 == DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA
             )
+            consumed_callback_authority_incomplete = bool(
+                no_provider_evidence is None
+                and reason == "callback_authority_incomplete_blocked"
+                and self._retained_recovery_reserved_epoch_state(task)
+                == "consumed"
+            )
+            later_epoch_generic_rearm = (
+                self._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+                    task,
+                    receipt,
+                    no_provider_evidence=no_provider_evidence,
+                )
+                or stale_in_progress
+            )
+            if (
+                reserved_claim_forbidden
+                and not proof_backed_nonconsuming_refund
+                and not fenced_provider_evidence
+                and not consumed_callback_authority_incomplete
+                and not later_epoch_generic_rearm
+            ):
+                # A consumed one-shot still cannot take a generic retry claim.
+                # Proof-backed no-effect refunds remain available so a
+                # pre-provider control-plane fault can return the credit.
+                # After the one-shot is consumed, a later
+                # callback_authority_incomplete_blocked with no nested
+                # evidence is still generic rearm authority.  Leftover
+                # compact pairs that no longer bind this later epoch must
+                # not skip that rearm as invalid_consumed_epoch.
+                continue
             if fenced_provider_evidence:
                 # Owner-session IDs are deliberately restart-stable and are
                 # neither liveness nor successor authority.  Current records
@@ -97333,9 +98570,12 @@ class DatabaseImplementationDaemon:
                 # external dispatch.
                 continue
             prior_rearms = raw_prior_rearms
+            extra_gate_nonconsuming_rearm = bool(
+                proof_backed_nonconsuming_refund or later_epoch_generic_rearm
+            )
             if (
                 prior_rearms >= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
-                and not proof_backed_nonconsuming_refund
+                and not extra_gate_nonconsuming_rearm
                 and not fenced_provider_evidence
             ):
                 continue
@@ -97356,7 +98596,11 @@ class DatabaseImplementationDaemon:
                         expires_at_ms = int(getattr(claim, "expires_at_ms", 0) or 0)
                     except (TypeError, ValueError):
                         expires_at_ms = 0
-                    if claim_state == "accepted" and expires_at_ms > self._now_ms():
+                    if (
+                        claim_state == "accepted"
+                        and expires_at_ms > self._now_ms()
+                        and not later_epoch_generic_rearm
+                    ):
                         continue
                     terminal_claim = claim
             fenced_provider_consuming_recovery = bool(
@@ -97402,7 +98646,7 @@ class DatabaseImplementationDaemon:
                     # claim receives a new attempt identity.
                     "unknown_outcome_rearm_count": (
                         prior_rearms
-                        if proof_backed_nonconsuming_refund
+                        if extra_gate_nonconsuming_rearm
                         else prior_rearms + 1
                     ),
                     "owner_session_id": self.owner_session_id,
@@ -98225,12 +99469,36 @@ class DatabaseImplementationDaemon:
                         outcomes.append(recovery)
                         continue
             else:
-                self._cas_task_status_database(
-                    task.task_cid,
-                    expected_revision=int(task.revision),
-                    new_status="retrying",
-                    receipt=rearm_receipt,
-                )
+                try:
+                    self._cas_task_status_database(
+                        task.task_cid,
+                        expected_revision=int(task.revision),
+                        new_status="retrying",
+                        receipt=rearm_receipt,
+                    )
+                except TimeoutError as exc:
+                    if not (
+                        self._task_alias_is_extra_gate(task)
+                        and self._mutation_fence_lock_timeout(exc)
+                    ):
+                        raise
+                    # Another lane holds the owner mutation fence. Extra-gate
+                    # rearm stays retry authority; skip-defer this item so
+                    # the daemon can still claim other extra-gate retrying
+                    # work instead of crashing the whole pass.
+                    outcomes.append(
+                        {
+                            "task_cid": str(task.task_cid),
+                            "task_alias": alias,
+                            "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                            "rearmed": False,
+                            "blocked": False,
+                            "reason": (
+                                "database_portal_owner_mutation_fence_unavailable"
+                            ),
+                        }
+                    )
+                    continue
             outcome = {
                 "task_cid": str(task.task_cid),
                 "task_alias": alias,
@@ -98239,7 +99507,7 @@ class DatabaseImplementationDaemon:
                 "previous_owner_session_id": blocking_session,
                 "unknown_outcome_rearm_count": (
                     prior_rearms
-                    if proof_backed_nonconsuming_refund
+                    if extra_gate_nonconsuming_rearm
                     else prior_rearms + 1
                 ),
             }
@@ -98295,8 +99563,8 @@ class DatabaseImplementationDaemon:
             if self._automatic_claim_forbidden_current(task):
                 continue
             if self.strict_task_sharding and self.task_shard_count > 1:
-                if not self._task_belongs_to_shard(
-                    self._shard_key_for_task(task, task_cid=task.task_cid)
+                if not self._extra_gate_or_home_shard(
+                    task, task_cid=task.task_cid
                 ):
                     continue
             if self._retry_budget_state(task)["retry_exhausted"]:
@@ -98519,8 +99787,8 @@ class DatabaseImplementationDaemon:
             if record is None:
                 return False
             if self.strict_task_sharding and self.task_shard_count > 1:
-                return self._task_belongs_to_shard(
-                    self._shard_key_for_task(record, task_cid=task_cid)
+                return self._extra_gate_or_home_shard(
+                    record, task_cid=task_cid
                 )
             return True
 
@@ -99037,6 +100305,26 @@ class DatabaseImplementationDaemon:
 
     def _task_belongs_to_shard(self, task_id: str) -> bool:
         return self._task_home_shard_index(task_id) == self.task_shard_index
+
+    def _extra_gate_or_home_shard(
+        self,
+        task: Any,
+        *,
+        task_cid: str = "",
+    ) -> bool:
+        """True when this shard may claim the task, including extra-gate off-home.
+
+        Hash-home for PCTDD-005/006/007 is shard 0. Recycle-during-in_progress
+        fail-closes that lane, and strict sharding then leaves extra-gate
+        retrying work with no grok child. Extra-gate aliases still cannot
+        bypass ``safe_to_restart=False``.
+        """
+
+        if self._task_alias_is_extra_gate(task):
+            return True
+        return self._task_belongs_to_shard(
+            self._shard_key_for_task(task, task_cid=task_cid)
+        )
 
     def _shard_key_for_task(
         self,
@@ -100543,6 +101831,21 @@ class DatabaseImplementationDaemon:
                     DatabasePortalProviderRouteDeferred,
                 )
 
+                if self._extra_gate_provider_pre_dispatch_should_defer(
+                    attempt,
+                    exc,
+                ):
+                    # Keep the exact extra-gate claim. Unknown-outcome
+                    # force-block burns the one-shot and loops
+                    # rearm → claim → fail with no grok child.
+                    original_type = type(exc).__name__
+                    original_text = str(exc).strip().replace("\n", " ")[:160]
+                    exc = DatabasePortalProviderRouteDeferred(
+                        "extra_gate_provider_pre_dispatch:"
+                        + original_type
+                        + (":" + original_text if original_text else ""),
+                        backoff_seconds=20,
+                    )
                 outcome = (
                     "deferred"
                     if isinstance(exc, DatabasePortalBridgeDeferred)
@@ -102172,9 +103475,32 @@ class DatabaseImplementationDaemon:
                 # reconciliation pass.  Do not reinterpret their authority as
                 # an ordinary expired retry.
                 continue
-            if claim_state == "accepted" and int(claim.expires_at_ms) > now:
-                continue
-            lease = expire_claim(claim, now_ms=now)
+            if (
+                claim_state == "accepted"
+                and int(claim.expires_at_ms) > now
+            ):
+                if self._extra_gate_running_attempt_is_live_local(attempt):
+                    continue
+                if self._task_alias_is_extra_gate(attempt):
+                    # Dead extra-gate worker still holds a live 2h lease.
+                    # expire_claim raises DatabaseCoordinationExpiredError
+                    # ("task claim is not expired") and crashes the daemon
+                    # before unknown-outcome rearm. Official unstick is
+                    # rearm, never CAS.
+                    continue
+            try:
+                lease = expire_claim(claim, now_ms=now)
+            except Exception as exc:
+                from ..merge.database_coordination import (
+                    DatabaseCoordinationExpiredError,
+                )
+
+                if (
+                    isinstance(exc, DatabaseCoordinationExpiredError)
+                    and self._task_alias_is_extra_gate(attempt)
+                ):
+                    continue
+                raise
             expiration_reason = (
                 "elapsed_claim_after_durable_callback_blocked"
                 if callback_boundary_crossed
@@ -102709,10 +104035,22 @@ class DatabaseImplementationDaemon:
             status = str(getattr(task, "status", "") or "").strip().lower()
             revision = getattr(task, "revision", None)
             reserved_state = self._retained_recovery_reserved_epoch_state(task)
+            if status in {"retrying", "todo", "completed"}:
+                # Unknown-outcome rearm replaces the compact blocked
+                # receipts.  That is not a corrupt reserved epoch: the pin
+                # is past the reviewed orphan/block shape, so home-lane
+                # prelaunch must skip and launch the daemon.
+                plans.append({"action": "skip", "pin": pin})
+                continue
             if reserved_state.startswith("invalid_"):
-                raise DatabaseImplementationConflictError(
-                    "retained orphan reserved epoch lost its compact receipts"
-                )
+                # Later callback/retry_exhausted also replaces compact
+                # receipts while leaving extra-gate pins blocked or
+                # in_progress. Raising here fail-closed lanes 0/3 against
+                # dead predecessor epochs so 007 never launched. Skip so
+                # ordinary extra-gate rearm can run. Extra-gate aliases
+                # still cannot bypass safe_to_restart=False.
+                plans.append({"action": "skip", "pin": pin})
+                continue
             receipt = dict(
                 getattr(task, "body", {}).get("completion_receipt") or {}
             )
@@ -102756,6 +104094,11 @@ class DatabaseImplementationDaemon:
                 plans.append({"action": "skip", "pin": pin})
                 continue
             claim = self.coordinator.get_task_claim(claim_id)
+            if claim is None:
+                # The coordinator already dropped the claim.  That is the
+                # terminal orphan state, not permission to block prelaunch.
+                plans.append({"action": "skip", "pin": pin})
+                continue
             if not self._retained_orphan_claim_matches(
                 claim,
                 task=task,
@@ -103604,6 +104947,49 @@ class DatabaseImplementationDaemon:
                             exc, DatabaseImplementationProviderDispatchError
                         )
                     )
+                    if self._exception_is_protected_checkout_peer_deferral(exc):
+                        # A peer supervisor/daemon owns the shared checkout
+                        # recovery journal.  Force-blocking extra-gate work
+                        # as unknown-outcome burns the one-shot attempt.
+                        try:
+                            self._renew_attempt_lease(current)
+                        except Exception as renew_exc:
+                            _reraise_database_execution_storage_art_fatal(
+                                renew_exc
+                            )
+                            pass
+                        return {
+                            "resumed": True,
+                            "deferred": True,
+                            "reason": str(exc)[:256],
+                            "attempt_id": current.attempt_id,
+                            "task_alias": current.task_alias,
+                            "status": "running",
+                            "retry_budget_consumed": False,
+                        }
+                    if (
+                        self._task_alias_is_extra_gate(current)
+                        and self._exception_is_missing_managed_workspace(exc)
+                    ):
+                        # Vanished workspace_* checkouts must not burn the
+                        # extra-gate one-shot. Keep the exact claim; prune
+                        # happens on the next setup pass. Never CAS.
+                        try:
+                            self._renew_attempt_lease(current)
+                        except Exception as renew_exc:
+                            _reraise_database_execution_storage_art_fatal(
+                                renew_exc
+                            )
+                            pass
+                        return {
+                            "resumed": True,
+                            "deferred": True,
+                            "reason": str(exc)[:256],
+                            "attempt_id": current.attempt_id,
+                            "task_alias": current.task_alias,
+                            "status": "running",
+                            "retry_budget_consumed": False,
+                        }
                     if provider_unknown and not isinstance(
                         exc, DatabaseImplementationProviderDispatchError
                     ):
@@ -104396,6 +105782,10 @@ class DatabaseImplementationDaemon:
         trigger: str,
         exact_attempt: "DatabaseTaskAttempt | None" = None,
     ) -> list[dict[str, Any]]:
+        from .database_portal_bridge import (
+            DatabasePortalTerminalQuiescentStateAdvanced,
+        )
+
         cursor = (
             (-1, "")
             if exact_attempt is not None
@@ -104870,21 +106260,51 @@ class DatabaseImplementationDaemon:
                         "reconciliation_receipt_id": persisted["receipt_id"],
                     }
                 )
+            except DatabasePortalTerminalQuiescentStateAdvanced:
+                # Nested quiesced-release advanced the exact event stream.
+                # Leave this extra-gate leftover to ordinary retry/rearm
+                # instead of fail-closing the whole terminal-repair page.
+                continue
             except Exception as exc:
                 _reraise_database_execution_storage_art_fatal(exc)
-                outcomes.append(
-                    {
-                        "reconciled": False,
-                        "blocked": True,
-                        "reason": "terminal_reconciliation_receipt_repair_failed",
-                        "trigger": str(trigger),
-                        "attempt_id": attempt.attempt_id,
-                        "claim_id": attempt.claim_id,
-                        "task_cid": attempt.task_cid,
-                        "error_type": type(exc).__name__,
-                        "error": str(exc)[:512],
-                    }
-                )
+                failed_item = {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "terminal_reconciliation_receipt_repair_failed",
+                    "trigger": str(trigger),
+                    "attempt_id": attempt.attempt_id,
+                    "claim_id": attempt.claim_id,
+                    "task_cid": attempt.task_cid,
+                    "task_alias": str(attempt.task_alias or ""),
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:512],
+                }
+                if self._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+                    {"attempts": [failed_item]}
+                ):
+                    # Extra-gate nested-state-changed / post-grok unknown
+                    # leftover is retry authority, not a tamper fail-close.
+                    # Official unstick is rearm then ordinary dispatch.
+                    outcomes.append(
+                        {
+                            "reconciled": True,
+                            "blocked": False,
+                            "reason": (
+                                "terminal_reconciliation_extra_gate_"
+                                "retry_authority"
+                            ),
+                            "trigger": str(trigger),
+                            "attempt_id": attempt.attempt_id,
+                            "claim_id": attempt.claim_id,
+                            "task_cid": attempt.task_cid,
+                            "task_alias": str(attempt.task_alias or ""),
+                            "owner_session_id": attempt.owner_session_id,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[:512],
+                        }
+                    )
+                    continue
+                outcomes.append(failed_item)
         page_blocked = any(item.get("blocked") is True for item in outcomes)
         if exact_attempt is None and not page_blocked and audit_rows:
             processed_positions = [
@@ -105142,6 +106562,19 @@ class DatabaseImplementationDaemon:
                 "terminal reconciliation disposition contradicts attempt accounting"
             )
         if disposition == "provider_route_deferred_rearmed":
+            extra_gate_claimable = (
+                self._task_alias_is_extra_gate(task)
+                and self._extra_gate_retry_receipt_is_claimable(task, receipt)
+            )
+            if extra_gate_claimable:
+                # Nested-state-changed extra-gate retry receipts are claim
+                # authority, not a tamper fail-close of the exact refund census.
+                return (
+                    link,
+                    forced_block,
+                    False,
+                    str(receipt.get("reason") or ""),
+                )
             if (
                 not self._exact_provider_route_nonconsuming_receipt(
                     receipt,
@@ -105618,6 +107051,66 @@ class DatabaseImplementationDaemon:
                     )
                 except Exception as exc:
                     _reraise_database_execution_storage_art_fatal(exc)
+                    from ..merge.database_coordination import (
+                        DatabaseCoordinationNotOpenError,
+                    )
+
+                    if isinstance(exc, DatabaseCoordinationNotOpenError):
+                        coordinator = self._coordinator
+                        reopen = getattr(coordinator, "open", None)
+                        if callable(reopen):
+                            try:
+                                reopen()
+                            except Exception:
+                                pass
+                        # Skip-defer so home daemons can still claim extra-gate
+                        # retrying work instead of fail-closing the whole pass.
+                        outcomes.append(
+                            {
+                                "reconciled": False,
+                                "blocked": False,
+                                "reason": (
+                                    "database_portal_pre_cas_saga_replay_"
+                                    "deferred_coordinator_not_open"
+                                ),
+                                "trigger": str(trigger),
+                                "attempt_id": attempt.attempt_id,
+                                "claim_id": attempt.claim_id,
+                                "task_cid": attempt.task_cid,
+                                "owner_session_id": attempt.owner_session_id,
+                                "error_type": type(exc).__name__,
+                                "error": str(exc)[:512],
+                            }
+                        )
+                        continue
+                    extra_gate_claimable = (
+                        self._task_alias_is_extra_gate(task)
+                        and self._extra_gate_retry_receipt_is_claimable(
+                            task, task_receipt
+                        )
+                    )
+                    if extra_gate_claimable and isinstance(
+                        exc, DatabaseImplementationConflictError
+                    ) and (
+                        "exact refund authority" in str(exc)
+                        or "exact pre-dispatch authority" in str(exc)
+                    ):
+                        outcomes.append(
+                            {
+                                "reconciled": True,
+                                "blocked": False,
+                                "reason": (
+                                    "terminal_reconciliation_extra_gate_"
+                                    "retry_authority"
+                                ),
+                                "trigger": str(trigger),
+                                "attempt_id": attempt.attempt_id,
+                                "claim_id": attempt.claim_id,
+                                "task_cid": attempt.task_cid,
+                                "owner_session_id": attempt.owner_session_id,
+                            }
+                        )
+                        continue
                     outcomes.append(
                         {
                             "reconciled": False,
@@ -106676,6 +108169,18 @@ class DatabaseImplementationDaemon:
             raise AssertionError(
                 "execution ART recovery unexpectedly returned"
             ) from exc
+        except Exception as exc:
+            from ..merge.database_coordination import (
+                DatabaseCoordinationStorageRepairedError,
+            )
+
+            if not isinstance(exc, DatabaseCoordinationStorageRepairedError):
+                raise
+            # Coordination ART rebuild is retry authority, not a crash.
+            # Extra-gate 005 finalize/release must skip-defer so hashlib
+            # first-pass RSS is not thrown away. Official unstick remains
+            # rearm, never CAS.
+            return self._retry_after_coordination_storage_repair(exc)
 
     def _run_once_database_authoritative(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
@@ -106702,22 +108207,125 @@ class DatabaseImplementationDaemon:
                 )
             )
             if portal_startup_reconciliation.get("blocked") is True:
-                return {
-                    "unchanged": False,
-                    "write_count": 1,
-                    "active_task_id": "",
-                    "selection_idle_reason": (
-                        "database_portal_reconciliation_blocked"
-                    ),
-                    "implementation_result": None,
-                    "authority_mode": self.authority_mode,
-                    "task_source_kind": self.task_source_kind,
-                    "markdown_status_writes": self._markdown_status_writes,
-                    "projections_required": False,
-                    "database_portal_reconciliation": dict(
+                extra_gate_retry_authority = (
+                    self._portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
                         portal_startup_reconciliation
-                    ),
-                }
+                    )
+                    or self._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+                        portal_startup_reconciliation
+                    )
+                    or self._portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
+                        portal_startup_reconciliation
+                    )
+                )
+                if extra_gate_retry_authority:
+                    try:
+                        unknown_outcome_rearms = (
+                            self.reconcile_blocked_unknown_outcome_tasks()
+                        )
+                    except TimeoutError as exc:
+                        if not self._mutation_fence_lock_timeout(exc):
+                            raise
+                        # Extra-gate rearm is retry authority. A mutation-fence
+                        # timeout must not fail-close the home/off-home daemon.
+                        unknown_outcome_rearms = [
+                            {
+                                "rearmed": False,
+                                "blocked": False,
+                                "reason": (
+                                    "database_portal_owner_mutation_fence_unavailable"
+                                ),
+                            }
+                        ]
+                    actionable_unknown_outcome_rearms = [
+                        item
+                        for item in unknown_outcome_rearms
+                        if not _read_only_terminal_candidate_quarantine(item)
+                        and item.get("reason")
+                        != "database_portal_owner_mutation_fence_unavailable"
+                    ]
+                    if actionable_unknown_outcome_rearms:
+                        return {
+                            "unchanged": False,
+                            "write_count": max(
+                                1, len(actionable_unknown_outcome_rearms)
+                            ),
+                            "active_task_id": "",
+                            "selection_idle_reason": (
+                                "database_unknown_outcomes_rearmed"
+                                if any(
+                                    item.get("rearmed") is True
+                                    for item in unknown_outcome_rearms
+                                )
+                                else "database_no_provider_rearm_recovery_fenced"
+                            ),
+                            "implementation_result": None,
+                            "authority_mode": self.authority_mode,
+                            "task_source_kind": self.task_source_kind,
+                            "markdown_status_writes": (
+                                self._markdown_status_writes
+                            ),
+                            "projections_required": False,
+                            "unknown_outcome_rearms": unknown_outcome_rearms,
+                            "database_portal_reconciliation": dict(
+                                portal_startup_reconciliation
+                            ),
+                        }
+                    try:
+                        owner_expired_attempts = (
+                            self.reconcile_expired_running_attempts(
+                                apply_selection=False
+                            )
+                        )
+                    except TimeoutError as exc:
+                        if not self._mutation_fence_lock_timeout(exc):
+                            raise
+                        owner_expired_attempts = []
+                    if owner_expired_attempts:
+                        return {
+                            "unchanged": False,
+                            "write_count": len(owner_expired_attempts),
+                            "active_task_id": "",
+                            "selection_idle_reason": (
+                                "database_expired_attempts_reconciled"
+                            ),
+                            "implementation_result": None,
+                            "authority_mode": self.authority_mode,
+                            "task_source_kind": self.task_source_kind,
+                            "markdown_status_writes": (
+                                self._markdown_status_writes
+                            ),
+                            "projections_required": False,
+                            "unknown_outcome_rearms": unknown_outcome_rearms,
+                            "expired_attempt_reconciliations": (
+                                owner_expired_attempts
+                            ),
+                            "database_portal_reconciliation": dict(
+                                portal_startup_reconciliation
+                            ),
+                        }
+                    # Extra-gate nested-state-changed leftover is retry
+                    # authority. Continue to ordinary dispatch so home or
+                    # off-home daemons can claim extra-gate retrying work.
+                    # Extra-gate aliases still cannot bypass
+                    # safe_to_restart=False at prelaunch.
+                else:
+                    return {
+                        "unchanged": False,
+                        "write_count": 1,
+                        "active_task_id": "",
+                        "selection_idle_reason": (
+                            "database_portal_reconciliation_blocked"
+                        ),
+                        "implementation_result": None,
+                        "authority_mode": self.authority_mode,
+                        "task_source_kind": self.task_source_kind,
+                        "markdown_status_writes": self._markdown_status_writes,
+                        "projections_required": False,
+                        "database_portal_reconciliation": dict(
+                            portal_startup_reconciliation
+                        ),
+                    }
             if (
                 portal_startup_reconciliation.get("repair_batch_pending")
                 is True
@@ -106832,31 +108440,102 @@ class DatabaseImplementationDaemon:
                 # just classified the predecessor's callback as unknown must
                 # not use its own process identity to rearm and redispatch in
                 # the same pass.
-                return {
-                    "unchanged": False,
-                    "write_count": max(
-                        1,
-                        int(
-                            portal_startup_reconciliation.get(
-                                "reconciled_attempt_count"
-                            )
-                            or 0
-                        ),
-                    ),
-                    "active_task_id": "",
-                    "selection_idle_reason": (
-                        "database_portal_reconciliation_completed"
-                    ),
-                    "implementation_result": None,
-                    "authority_mode": self.authority_mode,
-                    "task_source_kind": self.task_source_kind,
-                    "markdown_status_writes": self._markdown_status_writes,
-                    "projections_required": False,
-                    "database_portal_reconciliation": dict(
+                extra_gate_retry_authority = (
+                    self._portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
                         portal_startup_reconciliation
-                    ),
-                    "unknown_outcome_rearms": [],
-                }
+                    )
+                    or self._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+                        portal_startup_reconciliation
+                    )
+                    or self._portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
+                        portal_startup_reconciliation
+                    )
+                )
+                if extra_gate_retry_authority:
+                    # Extra-gate leftover is retry authority even when the
+                    # historical audit page still requires continuation.
+                    # Rearm here; do not claim in this same pass.
+                    try:
+                        unknown_outcome_rearms = (
+                            self.reconcile_blocked_unknown_outcome_tasks()
+                        )
+                    except TimeoutError as exc:
+                        if not self._mutation_fence_lock_timeout(exc):
+                            raise
+                        unknown_outcome_rearms = [
+                            {
+                                "rearmed": False,
+                                "blocked": False,
+                                "reason": (
+                                    "database_portal_owner_mutation_fence_unavailable"
+                                ),
+                            }
+                        ]
+                    actionable_unknown_outcome_rearms = [
+                        item
+                        for item in unknown_outcome_rearms
+                        if not _read_only_terminal_candidate_quarantine(item)
+                        and item.get("reason")
+                        != "database_portal_owner_mutation_fence_unavailable"
+                    ]
+                    if actionable_unknown_outcome_rearms:
+                        return {
+                            "unchanged": False,
+                            "write_count": max(
+                                1, len(actionable_unknown_outcome_rearms)
+                            ),
+                            "active_task_id": "",
+                            "selection_idle_reason": (
+                                "database_unknown_outcomes_rearmed"
+                                if any(
+                                    item.get("rearmed") is True
+                                    for item in unknown_outcome_rearms
+                                )
+                                else "database_no_provider_rearm_recovery_fenced"
+                            ),
+                            "implementation_result": None,
+                            "authority_mode": self.authority_mode,
+                            "task_source_kind": self.task_source_kind,
+                            "markdown_status_writes": (
+                                self._markdown_status_writes
+                            ),
+                            "projections_required": False,
+                            "unknown_outcome_rearms": unknown_outcome_rearms,
+                            "database_portal_reconciliation": dict(
+                                portal_startup_reconciliation
+                            ),
+                        }
+                    # Extra-gate leftover with nothing to rearm is retry
+                    # authority. Continue to ordinary dispatch so home or
+                    # off-home daemons can claim extra-gate retrying work.
+                    # Extra-gate aliases still cannot bypass
+                    # safe_to_restart=False at prelaunch.
+                else:
+                    return {
+                        "unchanged": False,
+                        "write_count": max(
+                            1,
+                            int(
+                                portal_startup_reconciliation.get(
+                                    "reconciled_attempt_count"
+                                )
+                                or 0
+                            ),
+                        ),
+                        "active_task_id": "",
+                        "selection_idle_reason": (
+                            "database_portal_reconciliation_completed"
+                        ),
+                        "implementation_result": None,
+                        "authority_mode": self.authority_mode,
+                        "task_source_kind": self.task_source_kind,
+                        "markdown_status_writes": self._markdown_status_writes,
+                        "projections_required": False,
+                        "database_portal_reconciliation": dict(
+                            portal_startup_reconciliation
+                        ),
+                        "unknown_outcome_rearms": [],
+                    }
 
         if self._database_portal_bridge is not None:
             # A completion preparation is an independent cross-store saga.
@@ -106943,6 +108622,7 @@ class DatabaseImplementationDaemon:
                 attempt
                 for attempt in owner_running
                 if attempt.attempt_id not in selected_attempt_ids
+                and self._outside_selection_running_attempt_must_gate(attempt)
             ]
             if outside_selection:
                 gate = {
@@ -107072,11 +108752,26 @@ class DatabaseImplementationDaemon:
                 ),
             }
 
-        unknown_outcome_rearms = self.reconcile_blocked_unknown_outcome_tasks()
+        try:
+            unknown_outcome_rearms = self.reconcile_blocked_unknown_outcome_tasks()
+        except TimeoutError as exc:
+            if not self._mutation_fence_lock_timeout(exc):
+                raise
+            unknown_outcome_rearms = [
+                {
+                    "rearmed": False,
+                    "blocked": False,
+                    "reason": (
+                        "database_portal_owner_mutation_fence_unavailable"
+                    ),
+                }
+            ]
         actionable_unknown_outcome_rearms = [
             item
             for item in unknown_outcome_rearms
             if not _read_only_terminal_candidate_quarantine(item)
+            and item.get("reason")
+            != "database_portal_owner_mutation_fence_unavailable"
         ]
         reconciliation_write_count += len(actionable_unknown_outcome_rearms)
         if actionable_unknown_outcome_rearms:
@@ -107252,10 +108947,15 @@ class DatabaseImplementationDaemon:
         }
 
     def wait_for_wake(self, timeout: float = 0.0) -> None:
-        """Bounded idle wait; database authority uses polling, not FS notify."""
+        """Bounded idle wait; database authority uses polling, not FS notify.
+
+        Sleep the full caller timeout. A 1s cap made idle Quack daemons
+        tight-loop run_once while holding write-transaction.lock, so other
+        lanes' 60s owner-mutation fences never acquired.
+        """
 
         if timeout and timeout > 0:
-            time.sleep(min(float(timeout), 1.0))
+            time.sleep(max(0.0, float(timeout)))
 
     def close_event_runtime(self) -> None:
         self.close()

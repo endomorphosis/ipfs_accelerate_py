@@ -2012,3 +2012,138 @@ def test_prepared_completion_race_cannot_release_retained_orphan_claim(
         assert provider_calls == []
     finally:
         daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
+def test_rearmed_retrying_retained_pins_skip_without_compact_receipts(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+
+    pins = (
+        *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    daemon = _open_daemon(tmp_path, provider_calls=[])
+    try:
+        owner_cas = lambda **_kwargs: None
+        setattr(owner_cas, "__database_portal_owner_fence_held__", True)
+        setattr(
+            owner_cas,
+            "__database_portal_checkout_mutation_lease_held__",
+            True,
+        )
+        daemon._database_portal_outer_authority_cas = owner_cas
+        daemon.authority_mode = "quack"
+        daemon.control_store_id = str(pins[0]["owner_store_id"])
+        daemon.control_store_generation = str(
+            pins[0]["control_store_generation"]
+        )
+        tasks = {
+            str(pin["task_cid"]): SimpleNamespace(
+                task_cid=str(pin["task_cid"]),
+                task_alias=str(pin["task_alias"]),
+                status="retrying",
+                revision=int(pin["blocked_task_revision"]) + 1,
+                body={
+                    "completion_receipt": {
+                        "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                        "operation": "database_unknown_outcome_rearmed",
+                        "reason": "callback_authority_incomplete_blocked",
+                        "authority_outcome": "rearmed",
+                        "forced_block": False,
+                        "retry_exhausted": False,
+                        "attempts_used": 0,
+                        "unknown_outcome_rearm_count": 1,
+                    }
+                },
+            )
+            for pin in pins
+        }
+        daemon.task_source.get = lambda cid: tasks.get(str(cid))
+        outcomes = daemon.reconcile_retained_recovery_orphaned_claims()
+        assert outcomes == []
+        outcomes_005 = daemon.reconcile_pctdd005_successor_orphaned_claims()
+        assert outcomes_005 == []
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
+@pytest.mark.parametrize("status", ["blocked", "in_progress"])
+def test_retry_exhausted_retained_pins_skip_invalid_compact_epoch(
+    tmp_path: Path,
+    status: str,
+) -> None:
+    """Blocked/in_progress extra-gate after compact receipts were replaced.
+
+    Home-lane prelaunch was fail-closing with DatabaseImplementationConflictError
+    "retained orphan reserved epoch lost its compact receipts" so PCTDD-007
+    never launched. Extra-gate aliases still cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    pins = (
+        *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    daemon = _open_daemon(tmp_path, provider_calls=[])
+    try:
+        owner_cas = lambda **_kwargs: None
+        setattr(owner_cas, "__database_portal_owner_fence_held__", True)
+        setattr(
+            owner_cas,
+            "__database_portal_checkout_mutation_lease_held__",
+            True,
+        )
+        daemon._database_portal_outer_authority_cas = owner_cas
+        daemon.authority_mode = "quack"
+        daemon.control_store_id = str(pins[0]["owner_store_id"])
+        daemon.control_store_generation = str(
+            pins[0]["control_store_generation"]
+        )
+        tasks = {
+            str(pin["task_cid"]): SimpleNamespace(
+                task_cid=str(pin["task_cid"]),
+                task_alias=str(pin["task_alias"]),
+                status=status,
+                revision=int(pin["blocked_task_revision"]) + 12,
+                body={
+                    "completion_receipt": {
+                        "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                        "operation": "database_unknown_outcome_blocked",
+                        "reason": "callback_authority_incomplete_blocked",
+                        "authority_outcome": "unknown",
+                        "forced_block": True,
+                        "retry_exhausted": True,
+                        "attempts_used": 1,
+                    }
+                },
+            )
+            for pin in pins
+        }
+        daemon.task_source.get = lambda cid: tasks.get(str(cid))
+        outcomes = daemon.reconcile_retained_recovery_orphaned_claims()
+        assert outcomes == []
+        outcomes_005 = daemon.reconcile_pctdd005_successor_orphaned_claims()
+        assert outcomes_005 == []
+        assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+            {
+                "safe_to_restart": False,
+                "blocked": True,
+                "quiesced": False,
+                "reconciled": False,
+                "reason": "database_portal_retained_reconciliation_blocked",
+            }
+        )
+    finally:
+        daemon.close()
+

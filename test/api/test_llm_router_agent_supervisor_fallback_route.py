@@ -1097,6 +1097,53 @@ def test_terminal_watchdog_signal_preserves_inputs_when_docker_rm_fails(
     finally:
         _discard_live_cleanup_inputs(paths)
 
+
+def test_owned_watchdog_exits_after_cas_absent_grace_without_destroying_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Parent-dead cas-owned watchdogs must not wait forever for cas-terminal."""
+
+    context, paths = _live_cleanup_launch_context()
+    owned = paths["lease_root"] / "cas-owned"
+    owned.write_text(str(context["container_name"]), encoding="ascii")
+    owned.chmod(0o600)
+    removed: list[object] = []
+
+    class EofStdin:
+        @property
+        def buffer(self) -> "EofStdin":
+            return self
+
+        def read(self, _maximum: int) -> bytes:
+            return b""
+
+    monkeypatch.setattr(grok_cli_runner_module, "_DOCKER_CAS_ABSENT_GRACE_SECONDS", 0.0)
+    monkeypatch.setattr(grok_cli_runner_module.sys, "stdin", EofStdin())
+    monkeypatch.setattr(
+        grok_cli_runner_module,
+        "_remove_exact_docker_container",
+        lambda **_kwargs: removed.append(True),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner_module.time,
+        "sleep",
+        lambda _seconds: (_ for _ in ()).throw(AssertionError("grace must not sleep")),
+    )
+    try:
+        assert grok_cli_runner_module._docker_cleanup_watchdog_main(
+            _terminal_watchdog_arguments(context, paths)
+        ) == 125
+        assert removed == []
+        assert paths["lease_root"].exists()
+        assert paths["docker_config"].exists()
+        assert paths["provider_home"].exists()
+        assert paths["prompt_path"].exists()
+        assert owned.exists()
+        assert not (paths["lease_root"] / "cas-terminal").exists()
+    finally:
+        _discard_live_cleanup_inputs(paths)
+
+
 _BOARD = "agent-supervisor-prompt-only-self-improvement-v3"
 _ARTIFACT = (
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"

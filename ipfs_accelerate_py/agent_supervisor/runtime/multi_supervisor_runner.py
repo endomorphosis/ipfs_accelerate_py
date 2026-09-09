@@ -140,6 +140,14 @@ SEALED_CONTROL_PLANE_MODULES = frozenset(
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
     }
 )
+SEALED_HASHLIB_LOCK_ENV = "IPFS_ACCELERATE_SEALED_HASHLIB_LOCK"
+SEALED_HASHLIB_CPU_LOAD_LIMIT = 0.40
+SEALED_HASHLIB_MEMORY_PERCENT_LIMIT = 75
+SEALED_HASHLIB_MIN_AVAILABLE_BYTES = 4 * 1024 * 1024 * 1024
+SEALED_HASHLIB_SWAP_FLOOR_BYTES = 512 * 1024 * 1024
+SEALED_HASHLIB_POLL_SECONDS = 0.25
+SEALED_HASHLIB_WAIT_SECONDS = 60.0
+_SEALED_HASHLIB_PYTHON_FLAGS = frozenset({"-I", "-S", "-B", "-E", "-s", "-P"})
 SEALED_CONTROL_PLANE_BOOTSTRAP = r'''import fcntl,hashlib,json,os,stat,sys
 def _pairs(items):
     result={}
@@ -154,57 +162,65 @@ try:
     if any(type(value) is not str or not value for value in pin.values()): raise SystemExit(78)
     if pin['schema']!='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2': raise SystemExit(78)
     if module not in {'ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler','ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor'}: raise SystemExit(78)
-    command_line=open('/proc/self/cmdline','rb').read().split(b'\0')
-    code_index=command_line.index(b'-c')+1
-    if 'sha256:'+hashlib.sha256(command_line[code_index]).hexdigest()!=expected_bootstrap: raise SystemExit(78)
-    executable=os.open('/proc/self/exe',os.O_RDONLY|getattr(os,'O_CLOEXEC',0))
+    lock_path=os.environ.get('IPFS_ACCELERATE_SEALED_HASHLIB_LOCK',''); lock_fd=-1
+    if lock_path:
+        lock_fd=os.open(lock_path,os.O_RDWR|os.O_CREAT|getattr(os,'O_CLOEXEC',0),0o600)
+        fcntl.flock(lock_fd,fcntl.LOCK_EX)
     try:
-        executable_hash=hashlib.sha256()
-        while True:
-            block=os.read(executable,65536)
+        command_line=open('/proc/self/cmdline','rb').read().split(b'\0')
+        code_index=command_line.index(b'-c')+1
+        if 'sha256:'+hashlib.sha256(command_line[code_index]).hexdigest()!=expected_bootstrap: raise SystemExit(78)
+        executable=os.open('/proc/self/exe',os.O_RDONLY|getattr(os,'O_CLOEXEC',0))
+        try:
+            executable_hash=hashlib.sha256()
+            while True:
+                block=os.read(executable,65536)
+                if not block: break
+                executable_hash.update(block)
+        finally: os.close(executable)
+        if 'sha256:'+executable_hash.hexdigest()!=expected_python: raise SystemExit(78)
+        required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
+        metadata=os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size<=0 or fcntl.fcntl(fd,fcntl.F_GET_SEALS)&required!=required: raise SystemExit(78)
+        archive_hash=hashlib.sha256(); offset=0
+        while offset<metadata.st_size:
+            block=os.pread(fd,min(65536,metadata.st_size-offset),offset)
             if not block: break
-            executable_hash.update(block)
-    finally: os.close(executable)
-    if 'sha256:'+executable_hash.hexdigest()!=expected_python: raise SystemExit(78)
-    required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
-    metadata=os.fstat(fd)
-    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size<=0 or fcntl.fcntl(fd,fcntl.F_GET_SEALS)&required!=required: raise SystemExit(78)
-    archive_hash=hashlib.sha256(); offset=0
-    while offset<metadata.st_size:
-        block=os.pread(fd,min(65536,metadata.st_size-offset),offset)
-        if not block: break
-        archive_hash.update(block); offset+=len(block)
-    if offset!=metadata.st_size or 'sha256:'+archive_hash.hexdigest()!=pin['archive_sha256']: raise SystemExit(78)
-    archive='/proc/self/fd/'+str(fd)
-    path_metadata=os.stat(archive)
-    if (path_metadata.st_dev,path_metadata.st_ino)!=(metadata.st_dev,metadata.st_ino): raise SystemExit(78)
-    sys.path.insert(0,archive)
-    import importlib,importlib.machinery,runpy,types
-    import ipfs_accelerate_py as accepted_root
-    prefix=archive+'/'
-    root_origin=getattr(accepted_root,'__file__',None)
-    if type(root_origin) is not str or not root_origin.startswith(prefix): raise SystemExit(78)
-    package_name='ipfs_accelerate_py.agent_supervisor'; package_path=archive+'/ipfs_accelerate_py/agent_supervisor'
-    if any(name==package_name or name.startswith(package_name+'.') for name in sys.modules): raise SystemExit(78)
-    package_file=package_path+'/__init__.py'; package_spec=importlib.machinery.ModuleSpec(package_name,loader=None,origin=package_file,is_package=True); package_spec.submodule_search_locations=[package_path]
-    package=types.ModuleType(package_name); package.__file__=package_file; package.__package__=package_name; package.__path__=[package_path]; package.__spec__=package_spec
-    sys.modules[package_name]=package; setattr(accepted_root,'agent_supervisor',package)
-    if module in sys.modules or package.__path__!=[package_path] or package.__spec__.origin!=package_file: raise SystemExit(78)
-    if module=='ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor':
-        timeout_name=package_name+'.todo_daemon.implementation_timeout'; timeout_alias=package_name+'.implementation_timeout'
-        timeout_module=importlib.import_module(timeout_name); timeout_origin=getattr(timeout_module,'__file__',None)
-        if type(timeout_origin) is not str or not timeout_origin.startswith(prefix): raise SystemExit(78)
-        sys.modules[timeout_alias]=timeout_module; setattr(package,'implementation_timeout',timeout_module)
-    namespace=runpy.run_module(module,run_name=module,alter_sys=True)
-    if module in sys.modules: raise SystemExit(78)
-    target_origin=namespace.get('__file__')
-    if type(target_origin) is not str or not target_origin.startswith(prefix): raise SystemExit(78)
-    for name,loaded in tuple(sys.modules.items()):
-        if name=='ipfs_accelerate_py' or name=='ipfs_accelerate_py.llm_router' or name.startswith('ipfs_accelerate_py.agent_supervisor'):
-            origin=getattr(loaded,'__file__',None)
-            if type(origin) is not str or not origin.startswith(prefix): raise SystemExit(78)
-    main=namespace.get('main')
-    if not callable(main): raise SystemExit(78)
+            archive_hash.update(block); offset+=len(block)
+        if offset!=metadata.st_size or 'sha256:'+archive_hash.hexdigest()!=pin['archive_sha256']: raise SystemExit(78)
+        archive='/proc/self/fd/'+str(fd)
+        path_metadata=os.stat(archive)
+        if (path_metadata.st_dev,path_metadata.st_ino)!=(metadata.st_dev,metadata.st_ino): raise SystemExit(78)
+        sys.path.insert(0,archive)
+        import importlib,importlib.machinery,runpy,types
+        import ipfs_accelerate_py as accepted_root
+        prefix=archive+'/'
+        root_origin=getattr(accepted_root,'__file__',None)
+        if type(root_origin) is not str or not root_origin.startswith(prefix): raise SystemExit(78)
+        package_name='ipfs_accelerate_py.agent_supervisor'; package_path=archive+'/ipfs_accelerate_py/agent_supervisor'
+        if any(name==package_name or name.startswith(package_name+'.') for name in sys.modules): raise SystemExit(78)
+        package_file=package_path+'/__init__.py'; package_spec=importlib.machinery.ModuleSpec(package_name,loader=None,origin=package_file,is_package=True); package_spec.submodule_search_locations=[package_path]
+        package=types.ModuleType(package_name); package.__file__=package_file; package.__package__=package_name; package.__path__=[package_path]; package.__spec__=package_spec
+        sys.modules[package_name]=package; setattr(accepted_root,'agent_supervisor',package)
+        if module in sys.modules or package.__path__!=[package_path] or package.__spec__.origin!=package_file: raise SystemExit(78)
+        if module=='ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor':
+            timeout_name=package_name+'.todo_daemon.implementation_timeout'; timeout_alias=package_name+'.implementation_timeout'
+            timeout_module=importlib.import_module(timeout_name); timeout_origin=getattr(timeout_module,'__file__',None)
+            if type(timeout_origin) is not str or not timeout_origin.startswith(prefix): raise SystemExit(78)
+            sys.modules[timeout_alias]=timeout_module; setattr(package,'implementation_timeout',timeout_module)
+        namespace=runpy.run_module(module,run_name=module,alter_sys=True)
+        if module in sys.modules: raise SystemExit(78)
+        target_origin=namespace.get('__file__')
+        if type(target_origin) is not str or not target_origin.startswith(prefix): raise SystemExit(78)
+        for name,loaded in tuple(sys.modules.items()):
+            if name=='ipfs_accelerate_py' or name=='ipfs_accelerate_py.llm_router' or name.startswith('ipfs_accelerate_py.agent_supervisor'):
+                origin=getattr(loaded,'__file__',None)
+                if type(origin) is not str or not origin.startswith(prefix): raise SystemExit(78)
+        main=namespace.get('main')
+        if not callable(main): raise SystemExit(78)
+    finally:
+        if lock_fd>=0:
+            fcntl.flock(lock_fd,fcntl.LOCK_UN); os.close(lock_fd)
     raise SystemExit(main())
 except SystemExit: raise
 except BaseException: raise SystemExit(78)
@@ -213,6 +229,123 @@ SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256 = (
     "sha256:"
     + hashlib.sha256(SEALED_CONTROL_PLANE_BOOTSTRAP.encode("utf-8")).hexdigest()
 )
+
+
+class SealedHashlibHostPressureError(RuntimeError):
+    """Refuse another hashlib capsule birth while the host is saturated."""
+
+
+def _read_proc_loadavg() -> str:
+    return Path("/proc/loadavg").read_text()
+
+
+def _read_proc_meminfo() -> str:
+    return Path("/proc/meminfo").read_text()
+
+
+def sealed_hashlib_lock_path() -> str:
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+    return str(Path(runtime) / f"ipfs-accelerate-sealed-hashlib-{os.geteuid()}.lock")
+
+
+def command_is_sealed_hashlib_bootstrap(command: Sequence[str]) -> bool:
+    """True for isolated ``python -I [-S] [-B] -c <bootstrap>`` hasher births.
+
+    Production capsules launch ``-I -S -B -c``.  The previous matcher only
+    accepted ``-I -c``, so the CPU/memory gate never ran and children hashed
+    the sealed archive in parallel without the exclusive hashlib lock.
+    """
+
+    if len(command) < 3:
+        return False
+    index = 1
+    saw_isolated = False
+    while index < len(command) and command[index] in _SEALED_HASHLIB_PYTHON_FLAGS:
+        if command[index] == "-I":
+            saw_isolated = True
+        index += 1
+    if not saw_isolated or index + 1 >= len(command) or command[index] != "-c":
+        return False
+    return "import fcntl,hashlib,json,os,stat,sys" in command[index + 1]
+
+
+def sealed_hashlib_host_pressure() -> tuple[bool, str]:
+    """Admit one more hashlib capsule birth only when CPU and memory have headroom."""
+
+    nproc = os.cpu_count() or 1
+    try:
+        load1 = float(_read_proc_loadavg().split()[0])
+    except (OSError, ValueError, IndexError):
+        load1 = 0.0
+    cpu_ratio = load1 / float(nproc)
+    mem_available = 0
+    mem_total = 0
+    swap_free: int | None = None
+    try:
+        fields: dict[str, int] = {}
+        for line in _read_proc_meminfo().splitlines():
+            name, rest = line.split(":", 1)
+            fields[name] = int(rest.split()[0]) * 1024
+        mem_available = int(fields.get("MemAvailable") or fields.get("MemFree") or 0)
+        mem_total = int(fields.get("MemTotal") or 0)
+        if int(fields.get("SwapTotal") or 0) > 0:
+            swap_free = int(fields.get("SwapFree") or 0)
+    except (OSError, ValueError):
+        pass
+    mem_percent = 0
+    if mem_total > 0:
+        mem_percent = max(0, min(100, 100 - (mem_available * 100 // mem_total)))
+    if cpu_ratio >= SEALED_HASHLIB_CPU_LOAD_LIMIT:
+        return False, "host_cpu_load"
+    if mem_available and mem_available < SEALED_HASHLIB_MIN_AVAILABLE_BYTES:
+        return False, "host_memory_headroom"
+    if mem_percent >= SEALED_HASHLIB_MEMORY_PERCENT_LIMIT:
+        return False, "host_memory_percent"
+    if swap_free is not None and swap_free < SEALED_HASHLIB_SWAP_FLOOR_BYTES:
+        return False, "host_swap_exhaustion"
+    return True, "admitted"
+
+
+def wait_for_sealed_hashlib_launch_headroom(
+    *,
+    timeout_seconds: float | None = None,
+) -> str:
+    """Block sealed hashlib births until CPU/memory pressure recedes.
+
+    One hasher may run; another birth is refused while load, RAM, or swap
+    are already over the watermarks.  Children also serialize the SHA-256
+    of the interpreter and sealed archive behind an exclusive flock so
+    parallel births cannot hash files at once.  Timeout fail-closes so a
+    recycle cannot spawn another 3 GiB hasher onto an exhausted box.
+    """
+
+    deadline = time.monotonic() + float(
+        SEALED_HASHLIB_WAIT_SECONDS if timeout_seconds is None else timeout_seconds
+    )
+    last = "admitted"
+    while True:
+        admitted, last = sealed_hashlib_host_pressure()
+        if admitted:
+            return last
+        if time.monotonic() >= deadline:
+            raise SealedHashlibHostPressureError(
+                f"sealed hashlib launch refused under {last}"
+            )
+        time.sleep(SEALED_HASHLIB_POLL_SECONDS)
+
+
+def apply_sealed_hashlib_launch_controls(
+    command: Sequence[str],
+    environment: MutableMapping[str, str],
+    *,
+    timeout_seconds: float | None = None,
+) -> None:
+    """Gate and serialize hashlib capsule verify+import before Popen."""
+
+    if not command_is_sealed_hashlib_bootstrap(command):
+        return
+    environment[SEALED_HASHLIB_LOCK_ENV] = sealed_hashlib_lock_path()
+    wait_for_sealed_hashlib_launch_headroom(timeout_seconds=timeout_seconds)
 
 ORDERED_IMPLEMENTATION_PROVIDER_ROUTE: Mapping[str, str] = MappingProxyType(
     resolve_agent_implementation_route(default_route="legacy").as_environment()
@@ -6223,6 +6356,7 @@ def start_track(
             if name in positive_names
         }
         launch_environment["PATH"] = "/usr/bin:/bin"
+    apply_sealed_hashlib_launch_controls(command, launch_environment)
     try:
         try:
             process = subprocess.Popen(
@@ -7378,6 +7512,53 @@ def _validate_plan_bound_accepted_tree(
             raise ValueError(
                 f"plan-bound accepted entry is not the clean pinned blob: {relative}"
             )
+
+
+def _process_argv_is_grok_cli_runner(argv: Sequence[str]) -> bool:
+    """True when argv is the grok provider, not a protected-path mention."""
+
+    parts = [str(part) for part in argv if str(part)]
+    if not parts:
+        return False
+    joined = " ".join(parts)
+    if " -m ipfs_accelerate_py.agent_supervisor.grok_cli_runner" in f" {joined}":
+        return True
+    return any(
+        part.startswith("/")
+        and " " not in part
+        and (
+            part.endswith("/runtime/grok_cli_runner.py")
+            or part.endswith("/grok_cli_runner.py")
+        )
+        for part in parts
+    )
+
+
+def _extra_gate_grok_descendants_must_preserve(
+    process: subprocess.Popen[bytes] | None,
+) -> bool:
+    """True when an exited extra-gate supervisor still has grok children.
+
+    Master ``restarting exited`` fenced the whole marker-bound tree and
+    SIGTERM-killed grok_cli_runner mid PCTDD-006. Official unstick is
+    rearm, never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    if process is None:
+        return False
+    profile = getattr(process, "_agent_supervisor_lifecycle_profile", None)
+    if not isinstance(profile, LifecycleProfile):
+        return False
+    try:
+        tree = LinuxProcessAdapter().snapshot(profile)
+    except Exception:
+        return False
+    for item in getattr(tree, "members", ()) or ():
+        argv = tuple(getattr(item, "argv", ()) or ())
+        if _process_argv_is_grok_cli_runner(argv):
+            return True
+    return False
 
 
 def _terminate_managed_process(
@@ -8830,14 +9011,23 @@ def run_supervisor_tracks(
                     continue
                 _emit(output, f"restarting exited {track.name} supervisor old_pid={old_pid or 'none'}")
                 if process is not None:
-                    fenced, _member_pids = _terminate_managed_process(
-                        process,
-                        grace_seconds=stop_grace_seconds,
-                    )
-                    if not fenced:
-                        raise SupervisorRunInterrupted(
-                            f"could not fence exited {track.name} descendants"
+                    if _extra_gate_grok_descendants_must_preserve(process):
+                        _emit(
+                            output,
+                            (
+                                f"preserving extra-gate grok descendants for "
+                                f"{track.name} old_pid={old_pid or 'none'}"
+                            ),
                         )
+                    else:
+                        fenced, _member_pids = _terminate_managed_process(
+                            process,
+                            grace_seconds=stop_grace_seconds,
+                        )
+                        if not fenced:
+                            raise SupervisorRunInterrupted(
+                                f"could not fence exited {track.name} descendants"
+                            )
                 processes[track.name] = launch_track(track)
             dispatch_pending_reassignments()
             if replan_required:

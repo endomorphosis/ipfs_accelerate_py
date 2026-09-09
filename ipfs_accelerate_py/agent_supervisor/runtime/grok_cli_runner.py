@@ -52,6 +52,9 @@ sys.path[:] = [
     ],
 ]
 
+from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import (
+    hashing_lock,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_command_binding import (
     ensure_provider_command_bindings,
     recover_provider_command_name_error,
@@ -1550,8 +1553,19 @@ def _repository_head(workspace: Path) -> str:
 
 
 def _workspace_content_fingerprint(workspace: Path) -> str:
-    """Hash every workspace path, file byte, mode, and symlink target."""
+    """Hash every workspace path, file byte, mode, and symlink target.
 
+    The digest is order-stable and single-threaded.  Concurrent lanes must
+    not each walk a multi-gigabyte worktree at once: under CPU or memory
+    pressure the hasher takes a host-wide exclusive lock so hashing cannot
+    hang the machine with overlapping SHA-256 streams.
+    """
+
+    with hashing_lock(kind="workspace-fingerprint", exclusive=True):
+        return _workspace_content_fingerprint_unlocked(workspace)
+
+
+def _workspace_content_fingerprint_unlocked(workspace: Path) -> str:
     digest = hashlib.sha256()
     try:
         for root, directories, files in os.walk(
@@ -2203,11 +2217,20 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
             # recovery.  Container absence or exit is not proof that the
             # provider effect never ran, so the watchdog must preserve the
             # exact container until the CAS terminal record has been written.
+            # Stdin is already EOF here (the owning runner closed or died).
+            # Wait only for the sealed CAS-absent grace; an unbounded wait
+            # leaks a PID-1 reaper per killed in_progress grok.
+            deadline = time.monotonic() + _DOCKER_CAS_ABSENT_GRACE_SECONDS
             while True:
                 if cas_terminal():
                     cleanup(settle_for_creation=True)
                     break
-                time.sleep(1.0)
+                if time.monotonic() >= deadline:
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                time.sleep(min(1.0, remaining))
     finally:
         # Never destroy the inputs required for a later exact retry unless
         # absence/removal of the receipt-bound container was proven.  A dead

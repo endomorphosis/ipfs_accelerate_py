@@ -239,6 +239,23 @@ def _changed_control_plane_projection() -> dict[str, object]:
     }
 
 
+def _stable_control_plane_projection() -> dict[str, object]:
+    return {
+        "control_plane_source_schema": "control-plane-source@1",
+        "control_plane_source_id": "same-source",
+        "control_plane_current_source_id": "same-source",
+        "control_plane_source_tree_id": "same-tree",
+        "control_plane_current_source_tree_id": "same-tree",
+        "control_plane_source_revision": "same-revision",
+        "control_plane_current_source_revision": "same-revision",
+        "control_plane_update_pending": False,
+        "control_plane_update_detected_at": "",
+        "control_plane_reload_deferred": False,
+        "control_plane_reload_deferred_reason": "",
+        "control_plane_reload_deferred_task_id": "",
+    }
+
+
 @pytest.mark.parametrize(
     ("missing_fields", "expected_reason"),
     [
@@ -610,7 +627,7 @@ def test_source_reload_owner_mutation_lock_contention_defers_without_quiescence(
 
     @contextmanager
     def contended_lock(_path, *, timeout_seconds):
-        assert timeout_seconds == 2.0
+        assert timeout_seconds == 60.0
         raise TimeoutError("owner mutation lock remains active")
         yield
 
@@ -759,7 +776,7 @@ def test_watchdog_defers_before_quiescence_for_database_portal(
     assert supervisor._last_supervisor_maintenance_at > 0.0
 
 
-def test_watchdog_holds_quack_owner_fence_across_idle_maintenance(
+def test_watchdog_releases_quack_owner_fence_before_idle_maintenance(
     tmp_path,
     monkeypatch,
 ):
@@ -828,10 +845,12 @@ def test_watchdog_holds_quack_owner_fence_across_idle_maintenance(
             "projection",
             "quiesce",
             "projection",
+            "portal_fence_exit",
         ]
         assert kwargs == {
             "managed_daemon_launch_lock_held": True,
-            "database_portal_fenced_program": config.database_program,
+            "database_portal_quiesced_idle": True,
+            "database_portal_fenced_program": None,
         }
         order.append("maintenance")
         return {
@@ -854,8 +873,8 @@ def test_watchdog_holds_quack_owner_fence_across_idle_maintenance(
         "projection",
         "quiesce",
         "projection",
-        "maintenance",
         "portal_fence_exit",
+        "maintenance",
     ]
     assert decision.action == "recycle"
     assert decision.reason == "supervisor_maintenance_completed_after_quiescence"
@@ -979,7 +998,7 @@ def test_quack_projection_uses_one_connection_and_detects_generation_churn(
 
     @contextmanager
     def owner_lock(_path, *, timeout_seconds):
-        assert timeout_seconds == 2.0
+        assert timeout_seconds == 60.0
         events.append("lock")
         try:
             yield
@@ -1100,7 +1119,7 @@ def test_outer_owner_receipt_uses_existing_fence_and_one_quack_transaction(
 
     @contextmanager
     def owner_lock(_path, *, timeout_seconds):
-        assert timeout_seconds == 2.0
+        assert timeout_seconds == 60.0
         events.append("lock")
         try:
             yield
@@ -1561,8 +1580,9 @@ def test_remote_claim_and_unknown_receipt_defer_without_local_directory_scan(
             task_cid="cid:PCTDD-032",
         )
     )
+    seen: list[str] = []
 
-    class Source:
+    class MixedSource:
         def list_tasks(self, *, status, cursor, limit):
             assert (status, cursor, limit) == ("in_progress", "", 128)
             return SimpleNamespace(
@@ -1577,18 +1597,115 @@ def test_remote_claim_and_unknown_receipt_defer_without_local_directory_scan(
                 remote.task_cid: remote,
             }.get(task_cid)
 
+    def local_lifecycle(_source, task, attempt):
+        cid = str(getattr(task, "task_cid", "") or "")
+        seen.append(cid)
+        if cid != local.task_cid:
+            raise AssertionError("remote attempt directory must not be read")
+        return {
+            "task_id": "PCTDD-031",
+            "task_cid": cid,
+            "task_revision": 11,
+            "attempt_id": str(attempt.attempt_id),
+            "binding_id": "binding-1",
+            "lifecycle_record_id": "lifecycle-1",
+            "lifecycle_state": "claimed",
+            "workspace_path": str(tmp_path / "worktree"),
+            "active_phase": "implementing",
+            "post_provider_recovery": False,
+        }
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_claim_lifecycle",
+        local_lifecycle,
+    )
+    mixed = supervisor._database_portal_claim_projection(MixedSource())
+    assert seen == [local.task_cid]
+    assert mixed["task_ids"] == ["PCTDD-031"]
+    assert mixed["reason"] == "database_portal_claim_or_recovery_saga"
+    assert mixed["activity_detected"] is True
+
+    class RemoteOnlySource:
+        def list_tasks(self, *, status, cursor, limit):
+            return SimpleNamespace(
+                tasks=(remote,),
+                revision=9,
+                next_cursor="",
+            )
+
+        def get_task(self, task_cid):
+            return remote if task_cid == remote.task_cid else None
+
     monkeypatch.setattr(
         supervisor,
         "_database_portal_claim_lifecycle",
         lambda *_: pytest.fail("remote attempt directory must not be read"),
     )
-    with pytest.raises(RuntimeError, match="another supervisor lane"):
-        supervisor._database_portal_claim_projection(Source())
+    idle = supervisor._database_portal_claim_projection(RemoteOnlySource())
+    assert idle["reason"] == "database_portal_population_idle"
+    assert idle["activity_detected"] is False
+    assert idle["defer_maintenance"] is False
+    assert idle["defer_reload"] is False
+    assert idle["attempts"] == []
+    assert idle["task_ids"] == []
 
     malformed = dict(_receipt())
     malformed["self_selected_policy"] = "accept"
     with pytest.raises(RuntimeError, match="closed record"):
         supervisor._database_claim_attempt(_task(malformed))
+
+
+def test_peer_home_shard_in_progress_does_not_fail_close_home_projection(
+    tmp_path,
+    monkeypatch,
+):
+    config = replace(
+        _config(tmp_path),
+        task_shard_count=4,
+        task_shard_index=0,
+        strict_task_sharding=True,
+    )
+    supervisor = PortalImplementationSupervisor(config)
+    peer = TaskRecord(
+        task_cid="cid:PCTDD-034",
+        task_alias="PCTDD-034",
+        goal_cid="PCTDD-G033",
+        ordinal=34,
+        status="in_progress",
+        revision=50,
+        priority="P1",
+        body={
+            "title": "peer-lane claim",
+            "completion_receipt": {
+                **_receipt(owner="pctdd-owner:lane-0", task_cid="cid:PCTDD-034"),
+                "retained_recovery_admission": {"task_cid": "not-a-chain"},
+            },
+        },
+    )
+
+    class PeerSource:
+        def list_tasks(self, *, status, cursor, limit):
+            return SimpleNamespace(tasks=(peer,), revision=12, next_cursor="")
+
+        def get_task(self, task_cid):
+            raise AssertionError("peer-home-shard claim must not be fetched")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_claim_lifecycle",
+        lambda *_: pytest.fail("peer attempt directory must not be read"),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_claim_attempt",
+        lambda *_: pytest.fail("peer retained chain must not be validated"),
+    )
+    idle = supervisor._database_portal_claim_projection(PeerSource())
+    assert idle["reason"] == "database_portal_population_idle"
+    assert idle["activity_detected"] is False
+    assert idle["defer_maintenance"] is False
+    assert idle["attempts"] == []
 
 
 def test_worktree_maintenance_holds_repo_lease_and_defers_on_quack_failure(
@@ -1713,7 +1830,11 @@ def test_public_run_once_quiesces_and_records_deferred_not_completed(
 
     @contextmanager
     def portal_fence():
-        yield supervisor.config.database_program
+        events.append("portal_fence_enter")
+        try:
+            yield supervisor.config.database_program
+        finally:
+            events.append("portal_fence_exit")
 
     monkeypatch.setattr(
         supervisor,
@@ -1751,13 +1872,17 @@ def test_public_run_once_quiesces_and_records_deferred_not_completed(
     )
 
     def maintenance(_update, **kwargs):
-        assert events == ["projection", "quiesce", "projection"]
+        assert events == [
+            "portal_fence_enter",
+            "projection",
+            "quiesce",
+            "projection",
+            "portal_fence_exit",
+        ]
         assert kwargs == {
             "include_refill": False,
             "managed_daemon_launch_lock_held": True,
-            "database_portal_fenced_program": (
-                supervisor.config.database_program
-            ),
+            "database_portal_quiesced_idle": True,
         }
         events.append("maintenance")
         return {
@@ -1770,7 +1895,14 @@ def test_public_run_once_quiesces_and_records_deferred_not_completed(
 
     result = supervisor.run_once(include_refill=False)
 
-    assert events == ["projection", "quiesce", "projection", "maintenance"]
+    assert events == [
+        "portal_fence_enter",
+        "projection",
+        "quiesce",
+        "projection",
+        "portal_fence_exit",
+        "maintenance",
+    ]
     assert result["maintenance_blocked"] is True
     assert finished == [
         ("deferred", "database_portal_projection_inconclusive")
@@ -1863,6 +1995,212 @@ def test_public_run_once_preserves_current_retained_startup_blocker(
         else [("database_portal_retained_startup_blocked", result)]
     )
     assert finished == [("deferred", blocked["reason"])]
+
+
+def test_retained_startup_allows_launch_when_peer_writer_is_busy() -> None:
+    busy = {
+        "reconciled": False,
+        "blocked": False,
+        "reason": "database_portal_retained_peer_writer_busy",
+        "reconciliation_complete": False,
+        "quiesced": True,
+        "safe_to_restart": True,
+        "peer_lane": 3,
+        "error": "embedded execution store already has an active database writer",
+    }
+    assert (
+        PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+            busy
+        )
+        is True
+    )
+    blocked = dict(busy)
+    blocked["safe_to_restart"] = False
+    assert (
+        PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+            blocked
+        )
+        is False
+    )
+    post_cas = {
+        "reconciled": False,
+        "blocked": True,
+        "reason": "database_portal_post_cas_reconciliation_blocked",
+        "reconciliation_complete": False,
+        "quiesced": False,
+        "safe_to_restart": False,
+    }
+    assert (
+        PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+            post_cas
+        )
+        is True
+    )
+
+
+def test_extra_gate_shard_retries_mutation_fence_timeout_instead_of_fail_close(
+    tmp_path,
+    monkeypatch,
+):
+    from dataclasses import replace
+
+    config = replace(_config(tmp_path), task_shard_index=2)
+    supervisor = PortalImplementationSupervisor(config)
+    lock_attempts = {"count": 0}
+
+    @contextmanager
+    def exclusive_lock(_path, *, timeout_seconds=60.0):
+        lock_attempts["count"] += 1
+        if lock_attempts["count"] == 1:
+            raise TimeoutError(
+                "timed out acquiring DuckDB process lock: write-transaction.lock"
+            )
+        yield
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_reconciliation_program_environment",
+        lambda *_args, **_kwargs: nullcontext(),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state.exclusive_file_lock",
+        exclusive_lock,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state.quack_owner_mutation_write_lock_path",
+        lambda *_args, **_kwargs: tmp_path / "write-transaction.lock",
+    )
+
+    with supervisor._database_portal_reload_mutation_fence() as program:
+        assert program is supervisor.config.database_program
+
+    assert lock_attempts["count"] == 2
+    assert supervisor._database_portal_extra_gate_shard_must_wait_for_mutation_fence() is True
+
+
+def test_lane0_mutation_fence_timeout_still_fail_closes(
+    tmp_path,
+    monkeypatch,
+):
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    finished: list[tuple[str, str]] = []
+
+    @contextmanager
+    def portal_fence():
+        raise TimeoutError(
+            "timed out acquiring DuckDB process lock: write-transaction.lock"
+        )
+        yield supervisor.config.database_program
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda status="completed", error="": finished.append(
+                (status, error)
+            ),
+        ),
+    )
+
+    result = supervisor.run_once(include_refill=False)
+
+    assert result["maintenance_blocked"] is True
+    assert result["reason"] == "database_portal_owner_mutation_fence_unavailable"
+    assert finished == [
+        ("deferred", "database_portal_owner_mutation_fence_unavailable")
+    ]
+    assert supervisor._database_portal_extra_gate_shard_must_wait_for_mutation_fence() is True
+
+
+def test_public_run_once_does_not_label_peer_writer_busy_as_fence_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DatabaseImplementationAuthorityError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        DATABASE_PORTAL_RETAINED_PEER_WRITER_BUSY_REASON,
+    )
+
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    recorded: list[tuple[str, dict[str, object]]] = []
+    finished: list[tuple[str, str]] = []
+
+    @contextmanager
+    def portal_fence():
+        yield supervisor.config.database_program
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection_fenced",
+        lambda _program: _authenticated_watchdog_projection(active=False),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_retained_fenced_provider_program_applicable",
+        lambda _program: True,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_terminate_managed_daemon_tree",
+        lambda **_kwargs: {"quiesced": True},
+    )
+
+    def explode(*_args, **_kwargs):
+        raise DatabaseImplementationAuthorityError(
+            "embedded execution store already has an active database writer"
+        )
+
+    monkeypatch.setattr(
+        supervisor,
+        "_reconcile_interrupted_database_portal_attempts_bound",
+        explode,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda *_args, **_kwargs: pytest.fail(
+            "peer writer busy must not fall through to ordinary maintenance"
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda name, payload: recorded.append((name, dict(payload))),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda status="completed", error="": finished.append(
+                (status, error)
+            ),
+        ),
+    )
+
+    result = supervisor.run_once(include_refill=False)
+
+    assert result["reason"] == DATABASE_PORTAL_RETAINED_PEER_WRITER_BUSY_REASON
+    assert result["reason"] != "database_portal_owner_mutation_fence_unavailable"
+    assert result.get("maintenance_blocked") is not True
+    assert result["safe_to_restart"] is True
+    assert recorded == [
+        ("database_portal_retained_peer_writer_busy", result)
+    ]
+    assert finished == [("completed", "")]
 
 
 def test_worktree_maintenance_stops_before_daemon_owned_reconcile(
@@ -2160,3 +2498,1097 @@ def test_projection_checkout_lease_spans_later_supervisor_mutations(
     assert events.count("generated_repair") == 2
     assert result["database_portal_daemon_reconciliation_pending"] is True
     assert supervisor._current_supervisor_checkout_lease() is None
+
+
+def test_retained_pins_are_already_rearmed_for_retrying_extra_gate_tasks() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+    )
+
+    pins = (
+        *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    tasks = {
+        str(pin["task_cid"]): SimpleNamespace(
+            task_cid=str(pin["task_cid"]),
+            task_alias=str(pin["task_alias"]),
+            status="retrying",
+            body={
+                "completion_receipt": {
+                    "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                    "forced_block": False,
+                }
+            },
+        )
+        for pin in pins
+    }
+    daemon = SimpleNamespace(task_source=SimpleNamespace(get=lambda cid: tasks.get(str(cid))))
+    assert PortalImplementationSupervisor._retained_pins_are_already_rearmed(
+        daemon
+    ) is True
+    tasks[str(pins[0]["task_cid"])].status = "in_progress"
+    assert PortalImplementationSupervisor._retained_pins_are_already_rearmed(
+        daemon
+    ) is True
+    tasks[str(pins[0]["task_cid"])].status = "retrying"
+    tasks[str(pins[0]["task_cid"])].body["completion_receipt"] = {
+        "operation": "database_retry_rearmed",
+        "retry_exhausted": False,
+    }
+    assert PortalImplementationSupervisor._retained_pins_are_already_rearmed(
+        daemon
+    ) is True
+    tasks[str(pins[0]["task_cid"])].status = "blocked"
+    tasks[str(pins[0]["task_cid"])].body["completion_receipt"] = {
+        "operation": "database_unknown_outcome_blocked",
+        "authority_outcome": "unknown",
+        "forced_block": True,
+    }
+    assert PortalImplementationSupervisor._retained_pins_are_already_rearmed(
+        daemon
+    ) is True
+    tasks[str(pins[0]["task_cid"])].body["completion_receipt"][
+        "operation"
+    ] = "database_retry_exhausted"
+    assert PortalImplementationSupervisor._retained_pins_are_already_rearmed(
+        daemon
+    ) is False
+
+
+def test_later_epoch_blocked_extra_gate_pin_is_already_rearmed() -> None:
+    """034 blocked after a later attempt must not fence home-lane prelaunch."""
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+        DatabaseImplementationDaemon,
+    )
+
+    pins = (
+        *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    tasks = {
+        str(pin["task_cid"]): SimpleNamespace(
+            task_cid=str(pin["task_cid"]),
+            task_alias=str(pin["task_alias"]),
+            status="retrying",
+            revision=int(pin["blocked_task_revision"]) + 4,
+            body={
+                "completion_receipt": {
+                    "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                    "forced_block": False,
+                    "retained_recovery_admission": {"schema": "stale-one-shot"},
+                    "retained_recovery_consumption": {
+                        "schema": "stale-one-shot"
+                    },
+                }
+            },
+        )
+        for pin in pins
+    }
+    pin_034 = next(pin for pin in pins if pin["task_alias"] == "PCTDD-034")
+    tasks[str(pin_034["task_cid"])].status = "blocked"
+    tasks[str(pin_034["task_cid"])].body["completion_receipt"] = {
+        "operation": "database_portal_projection_incomplete",
+        "forced_block": True,
+    }
+    daemon = SimpleNamespace(
+        task_source=SimpleNamespace(get=lambda cid: tasks.get(str(cid)))
+    )
+    assert PortalImplementationSupervisor._retained_pins_are_already_rearmed(
+        daemon
+    ) is True
+    assert (
+        DatabaseImplementationDaemon._retained_occurrence_has_left_sealed_pin(
+            tasks[str(pin_034["task_cid"])],
+            pin_034,
+        )
+        is True
+    )
+    sealed = SimpleNamespace(
+        task_cid=str(pin_034["task_cid"]),
+        task_alias="PCTDD-034",
+        status="blocked",
+        revision=int(pin_034["blocked_task_revision"]),
+        body={
+            "completion_receipt": {
+                "operation": "database_unknown_outcome_blocked"
+            }
+        },
+    )
+    assert (
+        DatabaseImplementationDaemon._retained_occurrence_has_left_sealed_pin(
+            sealed,
+            pin_034,
+        )
+        is False
+    )
+    tasks[str(pin_034["task_cid"])].revision = int(
+        pin_034["blocked_task_revision"]
+    )
+    tasks[str(pin_034["task_cid"])].body["completion_receipt"] = {
+        "operation": "database_unknown_outcome_blocked",
+        "authority_outcome": "unknown",
+        "forced_block": True,
+    }
+    assert PortalImplementationSupervisor._retained_pins_are_already_rearmed(
+        daemon
+    ) is True
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_later_epoch_005_unknown_block_opens_generic_rearm() -> None:
+    """Stale retained compact pairs must not skip extra-gate generic rearm."""
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DatabaseImplementationDaemon,
+    )
+
+    pin = DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    task = SimpleNamespace(
+        task_cid=str(pin["task_cid"]),
+        task_alias="PCTDD-005",
+        status="blocked",
+        revision=int(pin["blocked_task_revision"]) + 14,
+        body={
+            "completion_receipt": {
+                "operation": "database_unknown_outcome_blocked",
+                "reason": "callback_authority_incomplete_blocked",
+                "forced_block": True,
+                "authority_outcome": "unknown",
+                "retry_exhausted": True,
+                "retained_recovery_admission": {"schema": "stale-one-shot"},
+                "retained_recovery_consumption": {"schema": "stale-one-shot"},
+            }
+        },
+    )
+    receipt = dict(task.body["completion_receipt"])
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        task,
+        receipt,
+        no_provider_evidence=None,
+    ) is True
+    receipt["unknown_outcome_rearm_count"] = 3
+    task.body["completion_receipt"] = dict(receipt)
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        task,
+        receipt,
+        no_provider_evidence=None,
+    ) is True
+    sealed = SimpleNamespace(
+        task_cid=str(pin["task_cid"]),
+        task_alias="PCTDD-005",
+        status="blocked",
+        revision=int(pin["blocked_task_revision"]),
+        body={"completion_receipt": dict(receipt)},
+    )
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        sealed,
+        receipt,
+        no_provider_evidence=None,
+    ) is False
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_protected_checkout_peer_deferral_is_recognized() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DatabaseImplementationDaemon,
+    )
+
+    assert (
+        DatabaseImplementationDaemon._exception_is_protected_checkout_peer_deferral(
+            RuntimeError("external_protected_checkout_recovery_required")
+        )
+        is True
+    )
+    assert (
+        DatabaseImplementationDaemon._exception_is_protected_checkout_peer_deferral(
+            RuntimeError("protected_recovery_owner_active")
+        )
+        is True
+    )
+    assert (
+        DatabaseImplementationDaemon._exception_is_protected_checkout_peer_deferral(
+            RuntimeError("callback_authority_incomplete_blocked")
+        )
+        is False
+    )
+
+
+def test_extra_gate_provider_launch_birth_zombie_is_recognized() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DatabaseImplementationDaemon,
+    )
+
+    recon = {
+        "blocked": True,
+        "attempts": [
+            {
+                "task_alias": "PCTDD-006",
+                "blocked": True,
+                "reason": "nested_portal_attempt_reconciliation_blocked",
+                "nested_state": {
+                    "active": True,
+                    "active_phase": "implementing",
+                    "active_phase_detail": "provider_launch_birth",
+                },
+            }
+        ],
+    }
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
+            recon
+        )
+        is True
+    )
+    recon["attempts"][0]["task_alias"] = "PCTDD-008"
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
+            recon
+        )
+        is False
+    )
+    successor = {
+        "blocked": True,
+        "attempts": [
+            {
+                "task_alias": "PCTDD-005",
+                "blocked": True,
+                "reason": "nested_portal_attempt_reconciliation_blocked",
+                "nested_state": {"active": False},
+                "provider_runner_fence": {
+                    "applicable": True,
+                    "fenced": True,
+                    "safe_to_restart": True,
+                    "reason": "ordinary_provider_runner_exact_birth_fenced",
+                },
+                "portal_reconciliation": {
+                    "blocked": True,
+                    "reason": "task_claim_reconciliation_blocked",
+                },
+            }
+        ],
+    }
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
+            successor
+        )
+        is True
+    )
+    successor["attempts"][0]["provider_runner_fence"][
+        "safe_to_restart"
+    ] = False
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
+            successor
+        )
+        is False
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_missing_nested_state_is_retry_authority() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DatabaseImplementationDaemon,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    recon = {
+        "blocked": True,
+        "attempts": [
+            {
+                "task_alias": "PCTDD-006",
+                "blocked": True,
+                "reason": "nested_portal_attempt_reconciliation_blocked",
+                "nested_state": {
+                    "present": False,
+                    "state_digest": "",
+                    "active": False,
+                },
+                "provider_runner_fence": {
+                    "applicable": False,
+                    "safe_to_restart": True,
+                    "fenced": False,
+                    "reason": "ordinary_provider_runner_receipt_absent",
+                },
+                "portal_reconciliation": {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "provider_forbidden_terminal_recovery_blocked",
+                    "provider_forbidden_terminal_recovery": {
+                        "reconciled": False,
+                        "blocked": True,
+                        "applicable": True,
+                        "reason": (
+                            "provider_forbidden_terminal_recovery_state_invalid"
+                        ),
+                        "provider_dispatched": False,
+                        "implementation_dispatched": False,
+                        "state_reason": "missing_state_file",
+                    },
+                },
+            }
+        ],
+    }
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
+            recon
+        )
+        is True
+    )
+    recon["attempts"][0]["provider_runner_fence"]["safe_to_restart"] = False
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
+            recon
+        )
+        is False
+    )
+    recon["attempts"][0]["provider_runner_fence"]["safe_to_restart"] = True
+    recon["attempts"][0]["task_alias"] = "PCTDD-008"
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
+            recon
+        )
+        is False
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_unrepairable_terminal_receipt_opens_generic_rearm() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DatabaseImplementationDaemon,
+        _prepared_reconciliation_barrier_core_matches,
+    )
+
+    prepared = {
+        "stage": "prepared",
+        "receipt_id": "sha256:" + "a" * 64,
+        "reason": "nested_quiesced",
+        "nested_state": {"state_digest": "sha256:" + "b" * 64, "age_seconds": 0.776},
+        "backoff_seconds": 20.0,
+    }
+    barrier = {
+        "stage": "commit_barrier",
+        "receipt_id": "sha256:" + "c" * 64,
+        "prepared_reconciliation_receipt_id": prepared["receipt_id"],
+        "reason": "nested_quiesced",
+        "nested_state": {"state_digest": "sha256:" + "b" * 64, "age_seconds": 0.776},
+        "backoff_seconds": 20.0,
+    }
+    assert _prepared_reconciliation_barrier_core_matches(prepared, barrier) is True
+    mismatched = {**barrier, "backoff_seconds": 30.0}
+    assert (
+        _prepared_reconciliation_barrier_core_matches(prepared, mismatched)
+        is False
+    )
+
+    recon = {
+        "blocked": True,
+        "reason": "database_portal_terminal_repair_batch_blocked",
+        "safe_to_restart": False,
+        "attempts": [
+            {
+                "task_alias": "PCTDD-005",
+                "task_cid": (
+                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+                ),
+                "blocked": True,
+                "reason": "terminal_reconciliation_receipt_repair_failed",
+                "error_type": "ContractValidationError",
+                "error": "canonical proof contracts cannot contain floats",
+            }
+        ],
+    }
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+            recon
+        )
+        is True
+    )
+    cid_only = {
+        "blocked": True,
+        "attempts": [
+            {
+                "task_cid": (
+                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+                ),
+                "blocked": True,
+                "reason": "terminal_reconciliation_receipt_repair_failed",
+                "error_type": "ContractValidationError",
+                "error": "canonical proof contracts cannot contain floats",
+            }
+        ],
+    }
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+            cid_only
+        )
+        is True
+    )
+    disposition = {
+        "blocked": True,
+        "attempts": [
+            {
+                "task_alias": "PCTDD-005",
+                "task_cid": (
+                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+                ),
+                "blocked": True,
+                "reason": "terminal_reconciliation_receipt_repair_failed",
+                "error_type": "DatabaseImplementationConflictError",
+                "error": "terminal phase changed its actual database disposition",
+            }
+        ],
+    }
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+            disposition
+        )
+        is True
+    )
+    failed_item = {
+        "reconciled": False,
+        "blocked": True,
+        "reason": "terminal_reconciliation_receipt_repair_failed",
+        "task_alias": "PCTDD-005",
+        "task_cid": (
+            "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+        ),
+        "error_type": "DatabaseImplementationConflictError",
+        "error": "terminal phase changed its actual database disposition",
+    }
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+            {"attempts": [failed_item]}
+        )
+        is True
+    )
+    retry_authority = {
+        "reconciled": True,
+        "blocked": False,
+        "continuation_required": True,
+        "attempts": [
+            {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "terminal_reconciliation_extra_gate_retry_authority",
+                "task_alias": "PCTDD-005",
+                "task_cid": (
+                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+                ),
+            }
+        ],
+    }
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+            retry_authority
+        )
+        is True
+    )
+    recon["attempts"][0]["task_alias"] = "PCTDD-008"
+    recon["attempts"][0]["task_cid"] = "baguqeera-not-extra-gate"
+    assert (
+        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+            recon
+        )
+        is False
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+    assert PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_checkout_fence_unavailable",
+        }
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        _DatabasePortalOwnerMutationFenceDeferred,
+    )
+
+    timed = TimeoutError(
+        "timed out acquiring DuckDB process lock: write-transaction.lock"
+    )
+    assert (
+        PortalImplementationSupervisor._database_portal_mutation_fence_acquisition_timed_out(
+            timed
+        )
+        is True
+    )
+    assert issubclass(
+        _DatabasePortalOwnerMutationFenceDeferred, RuntimeError
+    )
+    assert (
+        PortalImplementationSupervisor._extra_gate_portal_state_must_preserve_worker(
+            {"active_task_id": "PCTDD-005"}
+        )
+        is True
+    )
+    assert (
+        PortalImplementationSupervisor._extra_gate_portal_state_must_preserve_worker(
+            {"active_task_id": "PCTDD-008"}
+        )
+        is False
+    )
+
+
+def test_extra_gate_grok_descendants_are_preserved_on_exited_supervisor() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        _process_argv_is_grok_cli_runner,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    grok_argv = [
+        "/usr/bin/python3.12",
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        "--workspace",
+        "/tmp/workspace_b6c6c987ab22",
+        "--model",
+        "grok-4.6",
+    ]
+    assert _process_argv_is_grok_cli_runner(grok_argv) is True
+    assert (
+        _process_argv_is_grok_cli_runner(
+            ["/usr/bin/python3.12", "-m", "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"]
+        )
+        is False
+    )
+    assert (
+        _process_argv_is_grok_cli_runner(
+            [
+                "/usr/bin/python3.12",
+                "-c",
+                "protected-path ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+            ]
+        )
+        is False
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_source_reload_defers_without_quiesce_when_extra_gate_in_progress(
+    tmp_path,
+    monkeypatch,
+):
+    """Watchdog source-change must not kill extra-gate in-progress daemons.
+
+    run_once skip-terminate never ran on this path, so PCTDD-005 was
+    quiesced mid-worktree on control_plane_source_changed. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    config = _config(tmp_path)
+    state = PortalTaskState()
+    state.active_task_id = "PCTDD-005"
+    state.save(config.state_path)
+    supervisor = PortalImplementationSupervisor(config)
+    order: list[str] = []
+
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        _changed_control_plane_projection,
+    )
+    monkeypatch.setattr(supervisor, "_record_event", lambda *_: None)
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+
+    @contextmanager
+    def portal_fence():
+        order.append("portal_fence_enter")
+        try:
+            yield config.database_program
+        finally:
+            order.append("portal_fence_exit")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection_fenced",
+        lambda _program: (
+            order.append("projection")
+            or _authenticated_watchdog_projection(active=False)
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: pytest.fail(
+            "extra-gate in-progress must not quiesce the managed child"
+        ),
+    )
+
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=987654),
+        {},
+    )
+
+    assert order == [
+        "portal_fence_enter",
+        "projection",
+        "portal_fence_exit",
+    ]
+    assert decision.action == "continue"
+    assert decision.reason != "control_plane_source_changed"
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_deferred_reason"
+    ] == "extra_gate_in_progress_preserve_worker"
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_deferred_task_id"
+    ] == "PCTDD-005"
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_watchdog_maintenance_preserves_extra_gate_in_progress(
+    tmp_path,
+    monkeypatch,
+):
+    """Periodic watchdog maintenance must not kill extra-gate grok.
+
+    Source-change skip never ran on this path, so PCTDD-005 grok was
+    quiesced as supervisor_watchdog_maintenance. Extra-gate aliases
+    still cannot bypass safe_to_restart=False.
+    """
+
+    config = _config(tmp_path)
+    state = PortalTaskState()
+    state.active_task_id = "PCTDD-005"
+    state.save(config.state_path)
+    supervisor = PortalImplementationSupervisor(config)
+    supervisor._last_supervisor_maintenance_at = 0.0
+
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        _stable_control_plane_projection,
+    )
+    monkeypatch.setattr(supervisor, "_record_event", lambda *_: None)
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: pytest.fail(
+            "extra-gate in-progress must not quiesce for watchdog maintenance"
+        ),
+    )
+
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=987654),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert decision.reason != "control_plane_source_changed"
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_watchdog_maintenance_preserves_live_grok_without_active_task_id(
+    tmp_path,
+    monkeypatch,
+):
+    """Empty portal active_task_id must not quiesce a live extra-gate grok.
+
+    After watchdog_startup_grace_seconds the first maintenance pass killed
+    PCTDD-005 grok because PortalTaskState.active_task_id was already
+    cleared. Extra-gate aliases still cannot bypass safe_to_restart=False.
+    """
+
+    config = _config(tmp_path)
+    state = PortalTaskState()
+    state.active_task_id = ""
+    state.save(config.state_path)
+    supervisor = PortalImplementationSupervisor(config)
+    supervisor._last_supervisor_maintenance_at = 0.0
+
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        _stable_control_plane_projection,
+    )
+    monkeypatch.setattr(supervisor, "_record_event", lambda *_: None)
+    monkeypatch.setattr(
+        supervisor,
+        "_active_agent_worker_processes",
+        lambda *_args, **_kwargs: (
+            [
+                {
+                    "pid": 3112389,
+                    "cmdline": (
+                        "python3.12",
+                        "-m",
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+                    ),
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: pytest.fail(
+            "live grok must not be quiesced when portal active_task_id is empty"
+        ),
+    )
+
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=987654),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert decision.reason != "control_plane_source_changed"
+    assert (
+        PortalImplementationSupervisor._extra_gate_portal_state_must_preserve_worker(
+            {"active_task_id": ""}
+        )
+        is False
+    )
+    assert supervisor._live_in_progress_worker_must_preserve(state) is True
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_failed_landed_recovery_does_not_skip_extra_gate_generic_rearm() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        _read_only_terminal_candidate_quarantine,
+    )
+
+    item = {
+        "task_cid": "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
+        "task_alias": "PCTDD-005",
+        "operation": "database_terminal_landed_completion",
+        "recovered": False,
+        "rearmed": False,
+        "blocked": True,
+        "reason": "terminal_landed_candidate_recovery_blocked",
+        "error_type": "ContractValidationError",
+        "error": "canonical proof contracts cannot contain floats",
+    }
+    assert _read_only_terminal_candidate_quarantine(item) is False
+    terminal_candidate_cids = {
+        str(row.get("task_cid") or "")
+        for row in (item,)
+        if str(row.get("task_cid") or "")
+        and (
+            row.get("recovered") is True
+            or row.get("rearmed") is True
+            or _read_only_terminal_candidate_quarantine(row)
+        )
+    }
+    assert item["task_cid"] not in terminal_candidate_cids
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_shared_no_provider_fence_skips_claimable_extra_gate_rearm() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+        DatabaseImplementationDaemon,
+        TASK_SOURCE_QUERY_LIMIT,
+    )
+
+    task = SimpleNamespace(
+        task_cid="baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
+        task_alias="PCTDD-034",
+        status="retrying",
+        revision=59,
+        body={
+            "completion_receipt": {
+                "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                "forced_block": False,
+                "retry_exhausted": False,
+                "no_provider_rearm_fence": {"saga_id": "sha256:" + "a" * 64},
+            }
+        },
+    )
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon.open = lambda: None  # type: ignore[method-assign]
+    daemon._task_source = SimpleNamespace(
+        list_tasks=lambda limit=TASK_SOURCE_QUERY_LIMIT: SimpleNamespace(
+            tasks=[task]
+        )
+    )
+    assert daemon._reconcile_shared_no_provider_rearm_fences() == []
+
+
+def test_historical_compact_pair_does_not_mismatch_a_new_rearm_claim() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DatabaseImplementationDaemon,
+    )
+
+    historical_admission = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-fenced-provider-historical-retained-admission@1",
+        "task_cid": "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
+        "task_alias": "PCTDD-005",
+    }
+    historical_consumption = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-fenced-provider-historical-retained-consumption@1",
+        "task_cid": "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
+        "task_alias": "PCTDD-005",
+        "attempt_id": "attempt:80318cb2b8384964a8b784520d9bba70",
+        "claim_id": "claim:84143a5851a8491b849327790b4c3e01",
+        "lease_id": "lease:db58ff48ac3b497eb60d9f261983622e",
+        "owner_session_id": "embedded-store:5a477a1db9402e639fecebb83f5f0873",
+        "attempt_number": 7,
+        "fencing_token": 7,
+        "fence_epoch": 7,
+    }
+    attempt = SimpleNamespace(
+        task_cid="baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
+        task_alias="PCTDD-005",
+        attempt_id="attempt:67925e4ebcdc4b2b9f2d10e07b170e3e",
+        claim_id="claim:824c6b1ac06249fb93045f67171c1ddb",
+        lease_id="lease:79ab25993a694f45ac27d8fdd2793912",
+        owner_session_id="embedded-store:5a477a1db9402e639fecebb83f5f0873",
+        attempt_number=8,
+        fencing_token=8,
+        fence_epoch=8,
+        body={
+            "control_claim": {"revision": 30},
+            "retry_budget": {
+                "retained_recovery_admission": historical_admission,
+                "retained_recovery_consumption": historical_consumption,
+            },
+        },
+    )
+    task = SimpleNamespace(
+        task_cid=attempt.task_cid,
+        task_alias=attempt.task_alias,
+        status="in_progress",
+        revision=31,
+        body={
+            "completion_receipt": {
+                "operation": "database_claim",
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "retained_recovery_admission": historical_admission,
+                "retained_recovery_consumption": historical_consumption,
+            }
+        },
+    )
+    assert (
+        DatabaseImplementationDaemon._retained_recovery_pair_binds_attempt(
+            attempt,
+            admission=historical_admission,
+            consumption=historical_consumption,
+        )
+        is False
+    )
+    assert (
+        DatabaseImplementationDaemon._retained_recovery_pair_is_exact_for_attempt(
+            task,
+            attempt,
+        )
+        is True
+    )
+    reserved = SimpleNamespace(
+        task_cid="baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a",
+        task_alias="PCTDD-006",
+        attempt_id="attempt:new",
+        claim_id="claim:new",
+        lease_id="lease:new",
+        owner_session_id="embedded-store:5a477a1db9402e639fecebb83f5f0873",
+        attempt_number=8,
+        fencing_token=8,
+        fence_epoch=8,
+        body={
+            "control_claim": {"revision": 31},
+            "retry_budget": {
+                "retained_recovery_admission": historical_admission,
+                "retained_recovery_consumption": historical_consumption,
+            },
+        },
+    )
+    reserved_task = SimpleNamespace(
+        body={
+            "completion_receipt": {
+                "retained_recovery_admission": historical_admission,
+                "retained_recovery_consumption": historical_consumption,
+            }
+        }
+    )
+    assert (
+        DatabaseImplementationDaemon._retained_recovery_pair_is_exact_for_attempt(
+            reserved_task,
+            reserved,
+        )
+        is False
+    )
+
+
+def test_unknown_outcome_rearm_receipt_is_not_claim_forbidden(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+        DatabaseImplementationDaemon,
+    )
+
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon._automatic_claim_forbidden = lambda _task: False
+    task = SimpleNamespace(
+        status="retrying",
+        task_alias="PCTDD-006",
+        task_cid="baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a",
+        revision=33,
+        body={
+            "completion_receipt": {
+                "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                "forced_block": False,
+                "retry_exhausted": False,
+            }
+        },
+    )
+    assert daemon._automatic_claim_forbidden_current(task) is False
+    task.body["completion_receipt"]["operation"] = "database_retry_rearmed"
+    task.body["completion_receipt"]["forced_block"] = None
+    assert daemon._automatic_claim_forbidden_current(task) is False
+    task.body["completion_receipt"]["forced_block"] = True
+    assert daemon._automatic_claim_forbidden_current(task) is True
+
+
+def test_extra_gate_rearm_with_leftover_no_provider_fence_is_claimable() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+        DatabaseImplementationDaemon,
+    )
+
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    task = SimpleNamespace(
+        status="retrying",
+        task_alias="PCTDD-034",
+        task_cid="baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
+        revision=59,
+        body={
+            "completion_receipt": {
+                "schema": "ipfs_accelerate_py/agent-supervisor/database-retry-budget@1",
+                "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                "forced_block": False,
+                "retry_exhausted": False,
+                "unknown_outcome_rearm_count": 1,
+                "no_provider_rearm_fence": {
+                    "state": "admitted",
+                    "saga_id": "sha256:" + "a" * 64,
+                },
+                "no_provider_rearm_original_block_receipt": {
+                    "unknown_outcome_rearm_count": 0
+                },
+            }
+        },
+    )
+    assert daemon._automatic_claim_forbidden(task) is True
+    assert daemon._automatic_claim_forbidden_current(task) is False
+    task.body["review_only"] = True
+    assert daemon._automatic_claim_forbidden_current(task) is True
+
+
