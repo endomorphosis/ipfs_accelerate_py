@@ -6268,11 +6268,108 @@ class DatabaseCoordinator:
             )
         return raw, task, nested
 
+    @staticmethod
+    def _validate_landed_recovery_completion(
+        prepared: Mapping[str, Any],
+        task: Mapping[str, Any],
+        receipt: Mapping[str, Any],
+    ) -> None:
+        """Bind an owner-admitted landed recovery to its expired preparation.
+
+        The control owner independently admitted this recovery, rather than the
+        original prepared CAS. Preserve both evidence digests; never invent a
+        coordination_preparation field in the immutable canonical receipt.
+        This validator consumes authoritative control truth, just like the
+        ordinary preparation validator; it is not an admission API.
+        """
+        identity_fields = (
+            "task_cid",
+            "claim_id",
+            "attempt_id",
+            "attempt_number",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+        )
+        required = set(identity_fields) | {
+            "schema",
+            "operation",
+            "recovery_operation",
+            "recovery_reason",
+            "task_alias",
+            "source_status",
+            "source_task_revision",
+            "source_control_receipt_cid",
+            "admitted_task_revision",
+            "admitted_control_receipt_cid",
+            "historic_claim_process_birth_id",
+            "historic_process_liveness",
+            "evidence_digest",
+            "landed_output_proof",
+        }
+        expected_revision = prepared["control_expected_revision"]
+        if (
+            set(receipt) != required
+            or receipt.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/typed-database-legacy-orphan-landed-completion@1"
+            or receipt.get("operation") != "database_complete"
+            or receipt.get("recovery_operation")
+            != "database_legacy_orphan_landed_complete"
+            or receipt.get("recovery_reason") != "legacy_orphan_declared_outputs_landed"
+            or any(
+                type(receipt.get(k)) is not type(prepared[k])
+                or receipt.get(k) != prepared[k]
+                for k in identity_fields
+            )
+            or receipt.get("source_status") != prepared["control_expected_status"]
+            or receipt.get("source_status") != "in_progress"
+            or type(receipt.get("source_task_revision")) is not int
+            or receipt.get("source_task_revision") != expected_revision
+            or type(receipt.get("admitted_task_revision")) is not int
+            or receipt.get("admitted_task_revision") != expected_revision
+            or not receipt.get("source_control_receipt_cid")
+            or receipt.get("source_control_receipt_cid")
+            != receipt.get("admitted_control_receipt_cid")
+            or receipt.get("historic_process_liveness") != "dead"
+            or not str(receipt.get("historic_claim_process_birth_id") or "").startswith(
+                "birth:"
+            )
+            or not task.get("task_alias")
+            or receipt.get("task_alias") != task.get("task_alias")
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "landed recovery receipt differs from exact preparation authority"
+            )
+        proof = receipt.get("landed_output_proof")
+        if (
+            not isinstance(proof, Mapping)
+            or proof.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/database-landed-merge-repair@3"
+            or proof.get("operation") != "database_landed_merge_repair"
+            or any(
+                proof.get(k) != receipt[k]
+                for k in ("task_cid", "task_alias", "attempt_id")
+            )
+            or receipt.get("evidence_digest")
+            != _sha256_hex(canonical_json_bytes(dict(proof)))
+            or not isinstance(proof.get("candidate_lineage"), Mapping)
+            or proof["candidate_lineage"].get("attempt_id") != receipt["attempt_id"]
+            or proof["candidate_lineage"].get("attempt_number")
+            != receipt["attempt_number"]
+            or not isinstance(proof.get("validation_receipt"), Mapping)
+            or proof["validation_receipt"].get("outcome") != "passed"
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "landed recovery proof differs from its admitted evidence"
+            )
+
     def _validate_control_completion_receipt(
         self,
         *,
         prepared: Mapping[str, Any],
         receipt: Mapping[str, Any],
+        allow_landed_recovery: bool = False,
     ) -> dict[str, Any]:
         raw, task, nested = self._control_task_projection(receipt)
         task_cid = str(prepared["task_cid"])
@@ -6331,9 +6428,22 @@ class DatabaseCoordinator:
             )
         binding = completion_receipt.get("coordination_preparation")
         if not isinstance(binding, Mapping):
-            raise DatabaseCoordinationStaleFenceError(
-                "control completion receipt has no coordination preparation"
+            if not allow_landed_recovery:
+                raise DatabaseCoordinationStaleFenceError(
+                    "control completion receipt has no coordination preparation"
+                )
+            self._validate_landed_recovery_completion(
+                prepared, task, completion_receipt
             )
+            return {
+                "task_cid": task_cid,
+                "status": task_status,
+                "revision": task_revision,
+                "receipt_cid": str(raw.get("receipt_cid") or ""),
+                "receipt_digest": _sha256_hex(_canonical_json(raw).encode("utf-8")),
+                "recovery_operation": completion_receipt["recovery_operation"],
+                "recovery_evidence_digest": completion_receipt["evidence_digest"],
+            }
         exact_binding_fields = (
             "task_cid",
             "claim_id",
@@ -7421,6 +7531,7 @@ class DatabaseCoordinator:
                 control_summary = self._validate_control_completion_receipt(
                     prepared=prepared,
                     receipt=control_completion_receipt,
+                    allow_landed_recovery=True,
                 )
                 guard_summary = self._required_cross_store_fence_guard_unlocked(
                     connection,
@@ -7621,6 +7732,10 @@ class DatabaseCoordinator:
                 control_summary = self._validate_control_completion_receipt(
                     prepared=promoted,
                     receipt=control_completion_receipt,
+                    allow_landed_recovery=(
+                        promoted.get("control_completion", {}).get("recovery_operation")
+                        == "database_legacy_orphan_landed_complete"
+                    ),
                 )
                 self._required_cross_store_fence_guard_unlocked(
                     connection,
