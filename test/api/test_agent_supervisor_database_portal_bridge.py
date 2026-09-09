@@ -17444,6 +17444,56 @@ def test_pending_merge_consume_bind_is_one_shot(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize("train_first", [True, False])
+def test_merge_consumers_bind_independently_and_preserve_both_idle_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, train_first: bool,
+) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:two-merge-consumers",
+        authority_mode="embedded_exclusive", task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    calls = []
+    def same_board():
+        calls.append("same_board")
+        return {"consumed": True, "request_id": "same-board", "write_count": 2}
+    def train():
+        calls.append("train")
+        return {"merged": True, "status": "merged", "request_id": "train"}
+    def bind_train():
+        daemon.bind_merge_train_recovery(
+            merge_queue=object(), repo_root=tmp_path,
+            merge_target_branch="main", pending_merge_consume_fn=train,
+        )
+    try:
+        if train_first:
+            bind_train()
+            daemon.bind_pending_merge_consume(same_board)
+        else:
+            daemon.bind_pending_merge_consume(same_board)
+            bind_train()
+        # Quarantine settlement is independent of this startup/idle contract.
+        monkeypatch.setattr(daemon, "_settle_invalid_metadata_portal_quarantines",
+                            lambda: {"write_count": 0})
+        result = daemon._run_once_impl()
+        assert calls == ["same_board", "train"]
+        assert result["pending_merge_consume"]["request_id"] == "same-board"
+        assert result["pending_merge_train_consume"]["request_id"] == "train"
+        assert result["write_count"] == 3
+        with pytest.raises(DatabaseImplementationAuthorityError, match="already bound"):
+            daemon.bind_pending_merge_consume(lambda: None)
+        with pytest.raises(DatabaseImplementationAuthorityError, match="already bound"):
+            bind_train()
+        assert daemon._pending_merge_consume_fn is same_board
+        assert daemon._pending_merge_train_consume_fn is train
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_idle_database_pass_consumes_pending_same_board_merge(
     tmp_path: Path,
 ) -> None:
