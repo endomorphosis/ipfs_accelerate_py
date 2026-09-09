@@ -110,3 +110,17 @@ def test_closeout_relation_population_is_bounded_and_cannot_report_complete(nati
     assert facts["relations"]["goals"]["truncated"] is True
     assert facts["truncated"] is True
     assert facts["completion_authority"] is False
+
+
+def test_nullable_legacy_claim_state_remains_an_unresolved_native_fact(native):
+    client, connection, _ = native
+    connection.execute("CREATE TABLE legacy_claims AS SELECT * FROM task_claims")
+    connection.execute("DROP TABLE task_claims")
+    connection.execute("ALTER TABLE legacy_claims RENAME TO task_claims")
+    connection.execute(
+        "INSERT INTO task_claims VALUES ('claim:unknown','task:typed-owner','session:worker',1,1,'now','later',NULL,NULL,0,'id:unknown')"
+    )
+    facts = client.completion_closeout_snapshot(["task:typed-owner"])["closeout_facts"]
+    assert facts["relations"]["task_claims"]["rows"][0]["claim_id"] == "claim:unknown"
+    assert facts["relations"]["task_claims"]["rows"][0]["state"] is None
+    assert facts["completion_authority"] is False
