@@ -976,6 +976,41 @@ def test_unstall_stale_in_progress_tasks_retries_dead_gate(tmp_path) -> None:
     assert rows["PCCE-022"] == ("in_progress", 1)
 
 
+def test_unstall_dead_generation_in_progress_retries_recent_gate(tmp_path) -> None:
+    import duckdb
+    from datetime import datetime, timedelta, timezone
+
+    connection = duckdb.connect(":memory:")
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL
+        )
+        """
+    )
+    now = datetime(2026, 9, 9, 16, 25, tzinfo=timezone.utc)
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?)",
+        [
+            "cid-050",
+            "SPAR-050",
+            "in_progress",
+            3,
+            (now - timedelta(minutes=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ],
+    )
+    result = unstall_stale_in_progress_tasks(connection, now=now, stale_seconds=1)
+    assert [item["task_alias"] for item in result["unstalled"]] == ["SPAR-050"]
+    row = connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_alias = 'SPAR-050'"
+    ).fetchone()
+    assert tuple(row) == ("retrying", 4)
+
+
 def test_unstall_drops_status_indexes_that_fatal_status_updates(tmp_path) -> None:
     import duckdb
     from datetime import datetime, timedelta, timezone
