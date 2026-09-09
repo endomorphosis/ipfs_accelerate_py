@@ -1617,7 +1617,10 @@ def test_status_bootstrap_cannot_admit_unbound_non_federated_board(
     _install(db)
     gateway, connection = _gateway(db, socket_path)
     try:
+        assert gateway.capability()["status_bootstrap_configured"] is False
+        assert gateway.capability()["status_bootstrap_scope_bound"] is False
         bootstrap_token = gateway.configure_status_bootstrap()
+        assert gateway.capability()["status_bootstrap_configured"] is True
         # PCPR-style boards have tasks but no admitted federation slice.
         assert connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] == 1
         with pytest.raises(
@@ -1626,8 +1629,13 @@ def test_status_bootstrap_cannot_admit_unbound_non_federated_board(
         ):
             gateway.bind_status_bootstrap_scope()
         for status_bootstrap in (False, True):
-            with pytest.raises(TypedStateOwnerError):
-                TypedStateOwnerConnection(
+            expected = (
+                TypedStateOwnerRemoteError if status_bootstrap
+                else TypedStateOwnerProtocolError
+            )
+            client = TypedStateOwnerConnection.__new__(TypedStateOwnerConnection)
+            with pytest.raises(expected) as rejected:
+                client.__init__(
                     socket_path=socket_path,
                     token=bootstrap_token,
                     client_id=STATUS_BOOTSTRAP_CLIENT_ID,
@@ -1636,6 +1644,25 @@ def test_status_bootstrap_cannot_admit_unbound_non_federated_board(
                     timeout_seconds=2.0,
                     status_bootstrap=status_bootstrap,
                 )
+            assert client._socket.fileno() == -1
+            if status_bootstrap:
+                assert rejected.value.error_code == "status_scope_not_admitted"
+                assert bootstrap_token not in str(rejected.value)
+        # A credential/store/client mismatch must remain opaque, even while
+        # status is configured but has no admitted scope.
+        for token, client_id, store_id in (
+            ("0" * 64, STATUS_BOOTSTRAP_CLIENT_ID, "control.duckdb"),
+            (bootstrap_token, "client:forged", "control.duckdb"),
+            (bootstrap_token, STATUS_BOOTSTRAP_CLIENT_ID, "other.duckdb"),
+        ):
+            with pytest.raises(TypedStateOwnerProtocolError):
+                TypedStateOwnerConnection(
+                    socket_path=socket_path, token=token, client_id=client_id,
+                    process_birth_id="birth:unbound-board-status",
+                    store_id=store_id, timeout_seconds=2.0,
+                    status_bootstrap=True,
+                )
+        assert gateway.capability()["status_bootstrap_scope_bound"] is False
         assert gateway.capability()["active_grants"] == 0
         # Rejected operator reads must leave the ordinary worker path usable.
         token, _grant = gateway.issue_grant(
@@ -1704,6 +1731,7 @@ def test_status_bootstrap_rebinds_each_distinct_process_read_only(
     )
     bootstrap_token = gateway.configure_status_bootstrap()
     gateway.bind_status_bootstrap_scope()
+    assert gateway.capability()["status_bootstrap_scope_bound"] is True
     context = multiprocessing.get_context("spawn")
     observed: list[dict[str, Any]] = []
     try:
@@ -1785,7 +1813,7 @@ def test_status_bootstrap_rebinds_each_distinct_process_read_only(
             )
             """
         )
-        with pytest.raises(TypedStateOwnerError):
+        with pytest.raises(TypedStateOwnerRemoteError) as rejected:
             TypedStateOwnerConnection(
                 socket_path=socket_path,
                 token=bootstrap_token,
@@ -1794,6 +1822,7 @@ def test_status_bootstrap_rebinds_each_distinct_process_read_only(
                 store_id="control.duckdb",
                 status_bootstrap=True,
             )
+        assert rejected.value.error_code == "status_scope_not_admitted"
         connection.execute(
             "DELETE FROM federations WHERE federation_id = 'federation:other'"
         )

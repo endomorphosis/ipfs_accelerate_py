@@ -4394,6 +4394,9 @@ class TypedStateOwnerGateway:
             pass
 
     def capability(self) -> dict[str, Any]:
+        with self._grants_lock:
+            status_configured = self._status_bootstrap_token_digest is not None
+            status_scope_bound = bool(self._status_bootstrap_scope)
         return {
             "interface": TYPED_STATE_OWNER_INTERFACE,
             "available": self._listener is not None and not self._stop.is_set(),
@@ -4408,6 +4411,10 @@ class TypedStateOwnerGateway:
             "revoked_grants": len(self._revoked_grants),
             "grant_expiry_required": True,
             "kernel_peer_credentials_required": True,
+            # Configuration diagnostics only: live scope is revalidated on
+            # every status attach, so these flags never authorize closeout.
+            "status_bootstrap_configured": status_configured,
+            "status_bootstrap_scope_bound": status_scope_bound,
             "typed_event_wait_bound": self._event_wait_handler is not None,
             # Owner status is canonical DAG-JSON and therefore float-free.
             "typed_event_wait_maximum_seconds": int(
@@ -4730,10 +4737,27 @@ class TypedStateOwnerGateway:
                     raise TypedStateOwnerAuthorizationError(
                         "gateway authentication failed"
                     )
-                grant = self._issue_status_session_grant(
-                    peer_identity=peer_identity,
-                    process_birth_id=process_birth_id,
-                )
+                try:
+                    grant = self._issue_status_session_grant(
+                        peer_identity=peer_identity,
+                        process_birth_id=process_birth_id,
+                    )
+                except TypedStateOwnerAuthorizationError:
+                    self._last_error_type = "TypedStateOwnerAuthorizationError"
+                    # Only an authenticated status peer may distinguish missing
+                    # admission from a dead transport. Never export SQL, scope
+                    # identifiers, tokens, or the underlying exception text.
+                    _send_frame(
+                        channel,
+                        {
+                            "schema": TYPED_STATE_OWNER_SCHEMA,
+                            "request_id": opened_request_id,
+                            "ok": False,
+                            "error_code": "status_scope_not_admitted",
+                            "error_type": "TypedStateOwnerAuthorizationError",
+                        },
+                    )
+                    return
                 status_session_grant_id = grant.grant_id
             elif action == "open":
                 with self._grants_lock:
@@ -10126,13 +10150,19 @@ class TypedStateOwnerConnection:
         self._active = False
         self._prepared_command: StateCommand | None = None
         self._request_index = 0
-        opened = self._request(
-            "open_status" if status_bootstrap else "open",
-            token=token,
-            client_id=client_id,
-            process_birth_id=process_birth_id,
-            store_id=store_id,
-        )
+        try:
+            opened = self._request(
+                "open_status" if status_bootstrap else "open",
+                token=token,
+                client_id=client_id,
+                process_birth_id=process_birth_id,
+                store_id=store_id,
+            )
+        except BaseException:
+            # No constructed client reaches the caller on failed admission.
+            # Close here even when the peer sent a well-formed rejection.
+            self._poison_transport()
+            raise
         self.identity = MappingProxyType(dict(opened.get("identity") or {}))
         self.catalog_id = str(opened.get("catalog_id") or "")
         self.session_id = str(opened.get("session_id") or "")

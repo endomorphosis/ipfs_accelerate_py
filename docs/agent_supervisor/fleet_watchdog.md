@@ -56,6 +56,16 @@ systemctl --user stop ipfs-taskboard-watchdog.service ipfs-taskboard-repair.serv
 systemctl --user stop ipfs-taskboard-repair-job.service
 ```
 
+The typed owner reports `status_bootstrap_configured` and
+`status_bootstrap_scope_bound` separately from transport availability. These
+configuration flags are diagnostic; each status attach still revalidates its
+live authority. An authenticated status peer whose scope is missing or no
+longer admitted receives `status_scope_not_admitted`. Invalid credentials,
+client IDs, stores, and peer UIDs remain opaque handshake failures. Neither
+result authorizes restarting a live owner or creating federation records to
+admit a legacy board. Such boards require a supported board-scoped admission
+and their existing sealed requalification process before independent closeout.
+
 ## Completion and Git publication
 
 An all-terminal observation triggers a closeout review. The worker verifies
