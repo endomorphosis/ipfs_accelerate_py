@@ -103520,7 +103520,29 @@ class DatabaseImplementationDaemon:
         }
 
     def _retained_callback_suffix_context(self, task: Any) -> dict[str, Any] | None:
-        """Reproduce all physical no-provider successors before source reuse."""
+        """Verify the physical suffix and current coordination before fencing."""
+        context = self._retained_callback_suffix_physical_context(task)
+        if context is None:
+            return None
+        current = context["current_attempt"]
+        if (
+            self._failed_attempt_coordination_successor(current) is not None
+            or self.coordinator.get_prepared_task_completion(task.task_cid) is not None
+        ):
+            return None
+        persisted = context["current_receipt"].get("coordination")
+        if not self._terminal_coordination_reproduces_read_only(
+            current, persisted=persisted or None, require_expired=not bool(persisted)
+        ):
+            return None
+        return context
+
+    def _retained_callback_suffix_physical_context(self, task: Any) -> dict[str, Any] | None:
+        """Reproduce canonical and physical evidence without coordinator re-entry.
+
+        The atomic recovery callback uses this only inside the already acquired
+        native coordination fence. It is not coordination or transition authority.
+        """
         from .retained_callback_suffix import (
             GUARD_REASON,
             IDENTITY,
@@ -103606,13 +103628,6 @@ class DatabaseImplementationDaemon:
         if (
             not self._local_attempt_is_exact_latest(current)
             or any(a.task_cid == task.task_cid for a in self.list_running_attempts())
-            or self._failed_attempt_coordination_successor(current) is not None
-            or self.coordinator.get_prepared_task_completion(task.task_cid) is not None
-        ):
-            return None
-        persisted = context["current_receipt"].get("coordination")
-        if not self._terminal_coordination_reproduces_read_only(
-            current, persisted=persisted or None, require_expired=not bool(persisted)
         ):
             return None
         source_coordination = dict(
@@ -117627,7 +117642,7 @@ class DatabaseImplementationDaemon:
             else None
         )
 
-        def verify_completion_key_terminal_history() -> None:
+        def verify_completion_key_terminal_history(*, inside_coordination_fence: bool = False) -> None:
             if completion_terminal_reason != DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON:
                 return
             if (completion_recovery_seed is None
@@ -117644,7 +117659,11 @@ class DatabaseImplementationDaemon:
             if (crash_source_admitted and crash_context is not None
                     and crash_context.get("receiver_suffix") is True):
                 current_task = self.task_source.get(task_cid)
-                refreshed = self._retained_callback_suffix_context(current_task)
+                refreshed = (
+                    self._retained_callback_suffix_physical_context(current_task)
+                    if inside_coordination_fence
+                    else self._retained_callback_suffix_context(current_task)
+                )
                 if refreshed is None or refreshed["context_id"] != crash_context["context_id"]:
                     raise DatabaseImplementationAuthorityError(
                         "retained callback suffix changed before atomic recovery"
@@ -117852,7 +117871,7 @@ class DatabaseImplementationDaemon:
         def project_recovery(
             post_merge_queue_admission: object | None = None,
         ) -> Mapping[str, Any]:
-            verify_completion_key_terminal_history()
+            verify_completion_key_terminal_history(inside_coordination_fence=True)
             guarded_arguments: dict[str, Any] = {
                 "task_cid": task_cid,
                 "expected_revision": int(task.revision),

@@ -426,7 +426,14 @@ def test_retained_suffix_uses_current_real_claim_for_atomic_cas(tmp_path, monkey
             "portable_coordination_authority": False,
         }
         d._post_merge_completion_crash_recovery_context = lambda task, **kw: context
-        d._retained_callback_suffix_context = lambda task: context
+        def reproduce_before_fence(task):
+            # Production preauthorization reads coordination. Re-entering this
+            # from the atomic callback must fail in the real coordinator.
+            d.coordinator.get_task_claim(current.claim_id)
+            return context
+
+        d._retained_callback_suffix_context = reproduce_before_fence
+        d._retained_callback_suffix_physical_context = lambda task: context
         monkeypatch.setattr(
             d,
             "_verified_post_merge_callback_integration_receipt",
