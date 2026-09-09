@@ -36,6 +36,7 @@ import stat
 import threading
 import time
 import uuid
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -121,11 +122,20 @@ from ..task_sources.duckdb_state import (
     validate_quack_owner_command_request,
 )
 from ..task_sources.intent_repository import (
+    CALLER_REPLACEMENTS,
     COMPLETION_EVIDENCE_SCHEMA,
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    INTENT_REPOSITORY_INTERFACE,
+    PRODUCTION_INTEGRATION_TASK_ID,
     QUEUE_ENTRY_SCHEMA,
+    TYPED_QUACK_OWNER_INTERFACE,
+    IntentCompatibilityWarning,
+    IntentReceipt,
     IntentRepository,
+    IntentUnsupportedPathError,
     missing_current_evidence_on,
+    production_authority_contract,
+    reject_plan_delta_production_waiver,
 )
 from ..task_sources.quack_capabilities import (
     QuackCapabilityReport,
@@ -176,6 +186,8 @@ _UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
 
 QUACK_STATE_SERVER_INTERFACE: Final = "QuackStateServer@1"
 STATE_SERVER_IDENTITY_INTERFACE: Final = "StateServerIdentity@1"
+PRODUCTION_CUTOVER_TASK_ID: Final = PRODUCTION_INTEGRATION_TASK_ID
+QuackCompatibilityWarning = IntentCompatibilityWarning
 QUACK_STATE_SERVER_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/quack-state-server@1"
 )
@@ -3032,6 +3044,9 @@ class QuackStateServer:
 
     INTERFACE: ClassVar[str] = QUACK_STATE_SERVER_INTERFACE
     SCHEMA: ClassVar[str] = QUACK_STATE_SERVER_SCHEMA
+    PRODUCTION_INTEGRATION_TASK_ID: ClassVar[str] = PRODUCTION_INTEGRATION_TASK_ID
+    WRITABLE_OWNER: ClassVar[str] = TYPED_QUACK_OWNER_INTERFACE
+    ADAPTER: ClassVar[str] = INTENT_REPOSITORY_INTERFACE
 
     config: QuackStateServerConfig
     transport: QuackTransport | None = None
@@ -3320,6 +3335,164 @@ class QuackStateServer:
             return MappingProxyType(dict(result))
         finally:
             self._lock.release()
+
+    def _bound_intent_repository(self) -> IntentRepository:
+        """Return the exclusive owner's IntentRepository adapter.
+
+        The owner connection remains the sole writer.  This adapter cannot
+        install schema, open a second database, or survive past ``close()``.
+        """
+
+        if (
+            self._lifecycle is not ServerLifecycle.READY
+            and self._lifecycle is not ServerLifecycle.STARTING
+        ) or self._connection is None or self._identity is None:
+            raise QuackStateServerNotRunningError(
+                "typed owner compatibility routing requires a live state owner"
+            )
+        return IntentRepository(
+            self.config.database_path,
+            bound_connection=self._connection,
+            owner_id="quack-state-owner",
+            session_id=f"quack-owner-{self._identity.generation}",
+            install_schema=False,
+        )
+
+    def production_authority(self) -> Mapping[str, Any]:
+        """Return the closed ASEH-061 host binding for this owner process."""
+
+        contract = dict(production_authority_contract())
+        contract["host"] = QUACK_STATE_SERVER_INTERFACE
+        contract["lifecycle"] = self._lifecycle.value
+        contract["independent_writer"] = False
+        return MappingProxyType(contract)
+
+    def route_supported_legacy_api(
+        self,
+        operation: str,
+        payload: Mapping[str, Any] | None = None,
+        *,
+        caller: str = "legacy-adapter",
+        repository: IntentRepository | None = None,
+    ) -> IntentReceipt | Mapping[str, Any]:
+        """Warn and apply one supported legacy API through IntentRepository."""
+
+        replacement = CALLER_REPLACEMENTS.get(operation, TYPED_QUACK_OWNER_INTERFACE)
+        warnings.warn(
+            f"legacy API {operation} from {caller} is routed through "
+            f"{replacement} on {QUACK_STATE_SERVER_INTERFACE}",
+            QuackCompatibilityWarning,
+            stacklevel=2,
+        )
+        authority = repository
+        owned = False
+        if authority is None:
+            authority = self._bound_intent_repository()
+            owned = True
+        try:
+            return authority.route_supported_legacy_api(
+                operation, payload, caller=caller
+            )
+        finally:
+            if owned:
+                authority.close()
+
+    def reject_unsupported_legacy_path(
+        self,
+        *,
+        caller: str,
+        operation: str,
+        repository: IntentRepository | None = None,
+    ) -> None:
+        """Warn and refuse an unsupported compatibility or deletion path."""
+
+        warnings.warn(
+            f"legacy API {operation} from {caller} is not admitted on "
+            f"{QUACK_STATE_SERVER_INTERFACE}; use {TYPED_QUACK_OWNER_INTERFACE}",
+            QuackCompatibilityWarning,
+            stacklevel=2,
+        )
+        authority = repository
+        owned = False
+        if authority is None and self._connection is not None and self._identity is not None:
+            authority = self._bound_intent_repository()
+            owned = True
+        try:
+            if authority is not None:
+                authority.reject_unsupported_legacy_path(
+                    caller=caller, operation=operation
+                )
+            raise IntentUnsupportedPathError(
+                f"legacy path {operation} from {caller} is not an admitted "
+                "IntentRepository to typed-Quack-owner mutation"
+            )
+        finally:
+            if owned and authority is not None:
+                authority.close()
+
+    def apply_admitted_intent_transition(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
+        lease_id: str = "",
+        fencing_token: Any = None,
+        claim_revision: Any = None,
+        repository: IntentRepository | None = None,
+    ) -> IntentReceipt:
+        """Apply one admitted transition through the bound IntentRepository."""
+
+        authority = repository
+        owned = False
+        if authority is None:
+            authority = self._bound_intent_repository()
+            owned = True
+        try:
+            return authority.apply_admitted_transition(
+                task_cid=task_cid,
+                expected_revision=expected_revision,
+                new_status=new_status,
+                receipt=receipt,
+                evidence_digests=evidence_digests,
+                lease_id=lease_id,
+                fencing_token=fencing_token,
+                claim_revision=claim_revision,
+            )
+        finally:
+            if owned:
+                authority.close()
+
+    def reconcile_typed_owner_authority(
+        self,
+        *,
+        repository: IntentRepository | None = None,
+        orphan_previous_generation: bool = True,
+    ) -> Mapping[str, Any]:
+        """Restart-reconcile the same durable IntentRepository authority."""
+
+        authority = repository
+        owned = False
+        if authority is None:
+            authority = self._bound_intent_repository()
+            owned = True
+        try:
+            return authority.reconcile_after_authenticated_restart(
+                orphan_previous_generation=orphan_previous_generation
+            )
+        finally:
+            if owned:
+                authority.close()
+
+    def reject_plan_delta_production_waiver(
+        self,
+        plan_delta: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Refuse a plan delta that tries to skip production integration."""
+
+        reject_plan_delta_production_waiver(plan_delta)
 
     def bind_federation_repository(
         self,
@@ -5215,21 +5388,26 @@ class QuackStateServer:
             install_schema=False,
         )
         try:
-            recovery = repository.reconcile_legacy_stale_unstall_projection_drift()
-            if recovery.changed:
-                candidates = recovery.details.get("candidates") or ()
-                self._log(
-                    "board projection recovery "
-                    f"candidates={len(candidates)} event_id={recovery.event_id}"
-                )
-            result = repository.unstall_stale_in_progress_tasks(
+            report = repository.reconcile_after_authenticated_restart(
                 orphan_previous_generation=True
             )
-            repository.assert_projection_matches_events()
+            recovery = report.get("drift") or {}
+            if isinstance(recovery, Mapping) and recovery.get("changed"):
+                details = recovery.get("details") or {}
+                candidates = details.get("candidates") or () if isinstance(details, Mapping) else ()
+                self._log(
+                    "board projection recovery "
+                    f"candidates={len(candidates)} event_id={recovery.get('event_id') or ''}"
+                )
+            result = report.get("unstalled") or {}
         finally:
             repository.close()
-        unstalled = result.get("unstalled") or []
-        sanitized = result.get("sanitized_malformed_validation_retry_seeds") or []
+        unstalled = result.get("unstalled") or [] if isinstance(result, Mapping) else []
+        sanitized = (
+            result.get("sanitized_malformed_validation_retry_seeds") or []
+            if isinstance(result, Mapping)
+            else []
+        )
         if not unstalled and not sanitized:
             return
         aliases = ",".join(
@@ -7728,7 +7906,9 @@ __all__ = (
     "FakeQuackTransport",
     "InProcessQuackTransport",
     "OwnerMarker",
+    "PRODUCTION_CUTOVER_TASK_ID",
     "QUACK_STATE_SERVER_INTERFACE",
+    "QuackCompatibilityWarning",
     "QuackStateServer",
     "QuackStateServerBindError",
     "QuackStateServerCapabilityError",

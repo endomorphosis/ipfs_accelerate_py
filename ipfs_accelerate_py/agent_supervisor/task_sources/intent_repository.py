@@ -30,6 +30,7 @@ import os
 import re
 import threading
 import time
+import warnings
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -37,7 +38,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, NoReturn
 
 from .control_plane_contracts import (
     ControlPlaneBoundsError,
@@ -53,6 +54,12 @@ from .duckdb_state import (
     DuckDBQuackMutationConflictError,
     DuckDBQuackMutationTransitionError,
     DuckDBQuackMutationUnknownOutcomeError,
+    QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+    QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
+    QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+    QuackOwnerCommandRemoteError,
     STALE_IN_PROGRESS_UNSTALL_SECONDS,
     _is_quack_session_dead,
     exclusive_file_lock,
@@ -61,6 +68,7 @@ from .duckdb_state import (
     quack_owner_mutation_write_lock_path,
     quack_session_is_live,
     quack_transport_uri,
+    submit_quack_owner_command,
     unstall_stale_in_progress_tasks as apply_stale_in_progress_unstall,
 )
 
@@ -70,6 +78,15 @@ from .duckdb_state import (
 
 INTENT_REPOSITORY_INTERFACE: Final[str] = "IntentRepository@1"
 PLAN_REVISION_REPOSITORY_INTERFACE: Final[str] = "PlanRevisionRepository@1"
+TYPED_QUACK_OWNER_INTERFACE: Final[str] = "TypedStateOwnerCommandGateway@1"
+QUACK_STATE_SERVER_HOST_INTERFACE: Final[str] = "QuackStateServer@1"
+PRODUCTION_INTEGRATION_TASK_ID: Final[str] = "ASEH-061"
+PRODUCTION_AUTHORITY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/aseh-production-authority@1"
+)
+COMPATIBILITY_RECONCILE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/aseh-compatibility-reconcile@1"
+)
 
 INTENT_REPOSITORY_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/intent-repository@1"
 PLAN_REVISION_REPOSITORY_SCHEMA: Final[str] = (
@@ -237,6 +254,157 @@ class IntentEvidenceError(IntentRepositoryError):
 
 class DuckDBUnavailableError(IntentRepositoryError):
     """DuckDB is required but missing from the environment."""
+
+
+class IntentCompatibilityWarning(RuntimeWarning):
+    """Runtime signal that a supported legacy API was routed through the sole authority."""
+
+
+class IntentUnsupportedPathError(IntentRepositoryError):
+    """A legacy, dual-write, or plan-delta path is not admitted for production mutation."""
+
+
+class IntentIndependentWriterError(IntentUnsupportedPathError):
+    """A caller attempted to write without the typed Quack owner."""
+
+
+# ---------------------------------------------------------------------------
+# Production cutover / compatibility vocabulary
+# ---------------------------------------------------------------------------
+
+
+SUPPORTED_LEGACY_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "compare_and_set_status",
+        "cas_task_status",
+        "cas_status",
+        "record_evidence",
+        "record_validation_result",
+        "record_queue_backoff",
+        "record_queue_retry",
+        "rearm_blocked_task",
+        "apply_admitted_transition",
+        "recover",
+        "reconcile_legacy_stale_unstall_projection_drift",
+        "DuckDBTaskSource.compare_and_set_status",
+        "TaskTransitionService.transition",
+    }
+)
+UNSUPPORTED_LEGACY_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "direct_sql",
+        "transition_legacy",
+        "delete_public_api",
+        "independent_duckdb_write",
+        "silent_fallback",
+        "plan_delta_waiver",
+        "dual_write",
+    }
+)
+CALLER_REPLACEMENTS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "DuckDBTaskSource": "DatabaseTaskSource@1",
+        "DuckDBTaskSource.compare_and_set_status": "DatabaseTaskSource.compare_and_set_status",
+        "TaskTransitionService.transition": "IntentRepository.apply_admitted_transition",
+        "TaskTransitionService.transition_legacy": "IntentRepository.reject_unsupported_legacy_path",
+        "markdown_task_board": "IntentRepository@1",
+        "direct_sql_mutation": "typed owner command compare_and_set_status",
+        "IntentRepository.cas_task_status": "TypedStateOwnerCommandGateway@1",
+    }
+)
+_TYPED_OWNER_COMMAND_BY_OPERATION: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "compare_and_set_status": QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+        "cas_task_status": QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+        "cas_status": QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+        "DuckDBTaskSource.compare_and_set_status": QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+        "TaskTransitionService.transition": QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+        "apply_admitted_transition": QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+        "record_evidence": QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+        "record_validation_result": QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+        "record_queue_backoff": QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+        "record_queue_retry": QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
+    }
+)
+
+
+def production_authority_contract() -> Mapping[str, Any]:
+    """Return the closed ASEH-061 production authority binding.
+
+    A plan delta may substitute a newer current-tree path only when ASEH-060
+    already proved that path is the writable owner.  It cannot waive this
+    production integration or install a second writer.
+    """
+
+    return MappingProxyType(
+        {
+            "schema": PRODUCTION_AUTHORITY_SCHEMA,
+            "task_id": PRODUCTION_INTEGRATION_TASK_ID,
+            "writable_owner": TYPED_QUACK_OWNER_INTERFACE,
+            "adapter": INTENT_REPOSITORY_INTERFACE,
+            "host": QUACK_STATE_SERVER_HOST_INTERFACE,
+            "disposition": "adapter",
+            "independent_writer": False,
+            "public_api_deletion_supported": False,
+            "plan_delta_may_waive_production_integration": False,
+            "caller_replacements": dict(CALLER_REPLACEMENTS),
+            "supported_legacy_operations": tuple(sorted(SUPPORTED_LEGACY_OPERATIONS)),
+            "unsupported_legacy_operations": tuple(sorted(UNSUPPORTED_LEGACY_OPERATIONS)),
+            "rollback": (
+                "discard or revert only the scoped task-worktree patch through "
+                "the canonical merge/recovery path; preserve observed effects "
+                "and receipts; keep claims closed until the same durable "
+                "authority restarts and reconciles"
+            ),
+        }
+    )
+
+
+def reject_plan_delta_production_waiver(
+    plan_delta: Mapping[str, Any] | None = None,
+) -> None:
+    """Refuse any attempt to skip the IntentRepository to typed-Quack cutover."""
+
+    del plan_delta
+    warnings.warn(
+        "legacy API plan_delta_waiver from plan-delta is not admitted; "
+        "a plan delta cannot waive ASEH-061 production integration",
+        IntentCompatibilityWarning,
+        stacklevel=2,
+    )
+    raise IntentUnsupportedPathError(
+        "a plan delta cannot waive ASEH-061 production integration"
+    )
+
+
+def _warn_legacy_route(*, caller: str, operation: str, replacement: str) -> None:
+    caller_text = str(caller or "").strip() or "unknown"
+    operation_text = str(operation or "").strip() or "task mutation"
+    replacement_text = str(replacement or "").strip() or TYPED_QUACK_OWNER_INTERFACE
+    warnings.warn(
+        f"legacy API {operation_text} from {caller_text} is routed through "
+        f"{replacement_text}; replace the caller with the typed Quack owner path",
+        IntentCompatibilityWarning,
+        stacklevel=3,
+    )
+
+
+def _raise_from_owner_command(exc: QuackOwnerCommandRemoteError) -> NoReturn:
+    code = str(getattr(exc, "code", "") or "")
+    message = str(getattr(exc, "message", "") or exc)
+    if code == "conflict":
+        raise IntentRepositoryConflictError(message) from exc
+    if code == "completion_refused":
+        raise IntentCompletionError(message) from exc
+    if code == "bounds":
+        raise IntentRepositoryBoundsError(message) from exc
+    if code == "integrity":
+        raise IntentRepositoryIntegrityError(message) from exc
+    if code == "not_found":
+        raise KeyError(message) from exc
+    if code in {"read_replica_refresh_unknown_outcome", "unknown_external_outcome"}:
+        raise IntentRepositoryUnknownOutcomeError(message) from exc
+    raise IntentRepositoryError(message) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -747,6 +915,8 @@ class IntentRepository:
 
     INTERFACE: ClassVar[str] = INTENT_REPOSITORY_INTERFACE
     SCHEMA: ClassVar[str] = INTENT_REPOSITORY_SCHEMA
+    PRODUCTION_INTEGRATION_TASK_ID: ClassVar[str] = PRODUCTION_INTEGRATION_TASK_ID
+    WRITABLE_OWNER: ClassVar[str] = TYPED_QUACK_OWNER_INTERFACE
 
     def __init__(
         self,
@@ -874,6 +1044,22 @@ class IntentRepository:
         """Whether lifecycle belongs to an injected exclusive-owner connection."""
 
         return self._bound_connection is not None
+
+    @property
+    def writes_through_typed_owner(self) -> bool:
+        """Whether mutations must traverse the live typed Quack owner."""
+
+        return bool(self._quack_transport) and self._bound_connection is None
+
+    def production_authority(self) -> Mapping[str, Any]:
+        """Return the closed production binding for this repository instance."""
+
+        contract = dict(production_authority_contract())
+        contract["uses_quack_transport"] = self.uses_quack_transport
+        contract["uses_bound_connection"] = self.uses_bound_connection
+        contract["writes_through_typed_owner"] = self.writes_through_typed_owner
+        contract["independent_writer"] = False
+        return MappingProxyType(contract)
 
     def close(self) -> None:
         self._closed = True
@@ -1149,6 +1335,307 @@ class IntentRepository:
                 ],
             )
             return MappingProxyType(result_map)
+
+    def _intent_receipt_from_typed_result(
+        self,
+        command: str,
+        result: Mapping[str, Any],
+        *,
+        subject_id: str,
+    ) -> IntentReceipt:
+        payload = _mapping(result, noun="typed owner result")
+        if command == QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS:
+            task = payload.get("task")
+            task_map = _mapping(task, noun="typed owner task") if isinstance(task, Mapping) else {}
+            resolved = str(task_map.get("task_cid") or subject_id)
+            return IntentReceipt(
+                event_id=str(payload.get("receipt_cid") or ""),
+                event_type=IntentEventType.TASK_STATUS_CHANGED.value,
+                global_sequence=int(payload.get("event_cursor") or 0),
+                recorded_at=_utc_iso(),
+                subject_id=resolved,
+                revision=int(payload.get("revision") or 0),
+                changed=bool(payload.get("changed")),
+                details=MappingProxyType(
+                    {
+                        "task_cid": resolved,
+                        "status": str(task_map.get("status") or ""),
+                        "previous_status": str(payload.get("previous_status") or ""),
+                        "routed_through": TYPED_QUACK_OWNER_INTERFACE,
+                    }
+                ),
+            )
+        details = payload.get("details")
+        return IntentReceipt(
+            event_id=str(payload.get("event_id") or ""),
+            event_type=str(payload.get("event_type") or ""),
+            global_sequence=int(payload.get("global_sequence") or 0),
+            recorded_at=str(payload.get("recorded_at") or _utc_iso()),
+            subject_id=str(payload.get("subject_id") or subject_id),
+            revision=int(payload.get("revision") or 0),
+            changed=bool(payload.get("changed", True)),
+            details=MappingProxyType(dict(details) if isinstance(details, Mapping) else {}),
+        )
+
+    def _route_typed_owner_mutation(
+        self,
+        operation: str,
+        payload: Mapping[str, Any],
+        *,
+        caller: str,
+        subject_id: str,
+    ) -> IntentReceipt:
+        command = _TYPED_OWNER_COMMAND_BY_OPERATION.get(operation)
+        if command is None:
+            self.reject_unsupported_legacy_path(caller=caller, operation=operation)
+            raise IntentUnsupportedPathError(
+                f"legacy path {operation} is not an admitted typed owner command"
+            )
+        replacement = CALLER_REPLACEMENTS.get(operation, TYPED_QUACK_OWNER_INTERFACE)
+        _warn_legacy_route(caller=caller, operation=operation, replacement=str(replacement))
+        try:
+            result = submit_quack_owner_command(command, dict(payload))
+        except QuackOwnerCommandRemoteError as exc:
+            _raise_from_owner_command(exc)
+        if not isinstance(result, Mapping):
+            raise IntentRepositoryIntegrityError("typed owner command did not return a mapping")
+        return self._intent_receipt_from_typed_result(
+            command, result, subject_id=subject_id
+        )
+
+    def reject_unsupported_legacy_path(
+        self,
+        *,
+        caller: str,
+        operation: str,
+    ) -> None:
+        """Warn and refuse a path that is not admitted to the sole authority."""
+
+        caller_text = str(caller or "").strip() or "unknown"
+        operation_text = str(operation or "").strip() or "task mutation"
+        warnings.warn(
+            f"legacy API {operation_text} from {caller_text} is not admitted; "
+            f"use {TYPED_QUACK_OWNER_INTERFACE}",
+            IntentCompatibilityWarning,
+            stacklevel=2,
+        )
+        error_type: type[IntentUnsupportedPathError] = IntentUnsupportedPathError
+        if operation_text in {"dual_write", "independent_duckdb_write"}:
+            error_type = IntentIndependentWriterError
+        raise error_type(
+            f"legacy path {operation_text} from {caller_text} is not an admitted "
+            "IntentRepository to typed-Quack-owner mutation"
+        )
+
+    def route_supported_legacy_api(
+        self,
+        operation: str,
+        payload: Mapping[str, Any] | None = None,
+        *,
+        caller: str = "legacy-adapter",
+    ) -> IntentReceipt | Mapping[str, Any]:
+        """Warn and apply one supported legacy mutation through this authority."""
+
+        operation_text = str(operation or "").strip()
+        if operation_text not in SUPPORTED_LEGACY_OPERATIONS:
+            self.reject_unsupported_legacy_path(caller=caller, operation=operation_text)
+            raise IntentUnsupportedPathError(
+                f"legacy path {operation_text} is not an admitted mutation"
+            )
+        args = _mapping(payload, noun="legacy payload")
+        replacement = CALLER_REPLACEMENTS.get(operation_text, TYPED_QUACK_OWNER_INTERFACE)
+        _warn_legacy_route(
+            caller=caller, operation=operation_text, replacement=str(replacement)
+        )
+        if operation_text in {
+            "compare_and_set_status",
+            "cas_task_status",
+            "cas_status",
+            "DuckDBTaskSource.compare_and_set_status",
+        }:
+            return self.cas_task_status(
+                task_cid=str(args.get("task_cid") or args.get("task_cid_or_alias") or ""),
+                expected_revision=int(args.get("expected_revision") or 0),
+                new_status=str(args.get("new_status") or args.get("status") or ""),
+                receipt=args.get("receipt") if isinstance(args.get("receipt"), Mapping) else None,
+                evidence_digests=(
+                    args.get("evidence_digests")
+                    if isinstance(args.get("evidence_digests"), Sequence)
+                    and not isinstance(args.get("evidence_digests"), (str, bytes, bytearray))
+                    else None
+                ),
+            )
+        if operation_text in {"apply_admitted_transition", "TaskTransitionService.transition"}:
+            return self.apply_admitted_transition(
+                task_cid=str(args.get("task_cid") or args.get("task_cid_or_alias") or ""),
+                expected_revision=int(args.get("expected_revision") or 0),
+                new_status=str(args.get("new_status") or args.get("status") or ""),
+                receipt=args.get("receipt") if isinstance(args.get("receipt"), Mapping) else None,
+                evidence_digests=(
+                    args.get("evidence_digests")
+                    if isinstance(args.get("evidence_digests"), Sequence)
+                    and not isinstance(args.get("evidence_digests"), (str, bytes, bytearray))
+                    else None
+                ),
+                lease_id=str(args.get("lease_id") or ""),
+                fencing_token=args.get("fencing_token"),
+                claim_revision=args.get("claim_revision"),
+            )
+        if operation_text == "record_evidence":
+            return self.record_evidence(
+                task_cid=str(args.get("task_cid") or ""),
+                evidence_kind=str(args.get("evidence_kind") or ""),
+                digest=str(args.get("digest") or ""),
+                body=args.get("body") if isinstance(args.get("body"), Mapping) else None,
+            )
+        if operation_text == "record_validation_result":
+            argv = args.get("argv")
+            return self.record_validation_result(
+                task_cid=str(args.get("task_cid") or ""),
+                outcome=str(args.get("outcome") or ""),
+                evidence_digest=str(args.get("evidence_digest") or ""),
+                argv=argv if isinstance(argv, Sequence) and not isinstance(argv, (str, bytes)) else None,
+                attempt_id=str(args.get("attempt_id") or ""),
+                body=args.get("body") if isinstance(args.get("body"), Mapping) else None,
+            )
+        if operation_text == "record_queue_backoff":
+            return self.record_queue_backoff(
+                task_cid=str(args.get("task_cid") or ""),
+                delay_ms=int(args.get("delay_ms") or 0),
+                reason=str(args.get("reason") or "backoff"),
+                selection_penalty=int(args.get("selection_penalty") or 0),
+            )
+        if operation_text == "record_queue_retry":
+            return self.record_queue_retry(task_cid=str(args.get("task_cid") or ""))
+        if operation_text == "rearm_blocked_task":
+            task = self.get_task(str(args.get("task_cid") or args.get("task_cid_or_alias") or ""))
+            if task is None:
+                raise KeyError(str(args.get("task_cid") or args.get("task_cid_or_alias") or ""))
+            if str(task.get("status") or "") != "blocked":
+                raise IntentRepositoryConflictError("rearm requires blocked status")
+            return self.cas_task_status(
+                task_cid=str(task.get("task_cid") or ""),
+                expected_revision=int(task.get("revision") or 0),
+                new_status="retrying",
+                receipt=args.get("receipt") if isinstance(args.get("receipt"), Mapping) else None,
+            )
+        if operation_text == "recover":
+            return self.recover()
+        if operation_text == "reconcile_legacy_stale_unstall_projection_drift":
+            return self.reconcile_legacy_stale_unstall_projection_drift()
+        self.reject_unsupported_legacy_path(caller=caller, operation=operation_text)
+        raise IntentUnsupportedPathError("supported legacy dispatch was not exhaustive")
+
+    def apply_admitted_transition(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
+        lease_id: str = "",
+        fencing_token: Any = None,
+        claim_revision: Any = None,
+    ) -> IntentReceipt:
+        """Apply one admitted status CAS and prove event/revision parity.
+
+        This is the production integration of the ASEH-040/041 transition
+        contract: no stale CAS is retried, and the only write is
+        :meth:`cas_task_status`.  Terminalization requires a current lease,
+        fence, and claim revision.
+        """
+
+        before = self.get_task(task_cid)
+        if before is None:
+            raise KeyError(task_cid)
+        resolved_cid = str(before.get("task_cid") or "")
+        if not resolved_cid:
+            raise IntentRepositoryIntegrityError("repository returned a task without task_cid")
+        status_text = _status(new_status, allowed=_TASK_STATUSES, noun="task")
+        if status_text in _TERMINAL_STATUSES:
+            lease_text = str(lease_id or "").strip()
+            if (
+                not lease_text
+                or isinstance(fencing_token, bool)
+                or not isinstance(fencing_token, int)
+                or fencing_token < 1
+                or isinstance(claim_revision, bool)
+                or not isinstance(claim_revision, int)
+                or claim_revision < 1
+            ):
+                raise IntentRepositoryError(
+                    "effectful execution and terminalization require a current "
+                    "lease, fence, and claim revision"
+                )
+        mutation = self.cas_task_status(
+            task_cid=resolved_cid,
+            expected_revision=expected_revision,
+            new_status=status_text,
+            receipt=receipt,
+            evidence_digests=evidence_digests,
+        )
+        after = self.get_task(resolved_cid)
+        if after is None:
+            raise IntentRepositoryIntegrityError("task disappeared after repository CAS")
+        materialized_revision = int(after.get("revision") or 0)
+        materialized_status = str(after.get("status") or "")
+        if materialized_status != status_text or materialized_revision != mutation.revision:
+            raise IntentRepositoryIntegrityError(
+                "durable task projection does not match the CAS receipt"
+            )
+        if mutation.changed:
+            events = self.list_events(
+                after_global_sequence=max(0, mutation.global_sequence - 1),
+                limit=1,
+            )
+            if len(events) != 1 or str(events[0].get("event_id") or "") != mutation.event_id:
+                raise IntentRepositoryIntegrityError(
+                    "repository event receipt cannot be read back exactly"
+                )
+            event_body = events[0].get("body")
+            if not isinstance(event_body, Mapping):
+                raise IntentRepositoryIntegrityError("repository event body is malformed")
+            payload = event_body.get("body")
+            if not isinstance(payload, Mapping):
+                raise IntentRepositoryIntegrityError("repository event payload is malformed")
+            if (
+                str(payload.get("task_cid") or "") != resolved_cid
+                or int(payload.get("revision") or 0) != materialized_revision
+            ):
+                raise IntentRepositoryIntegrityError(
+                    "durable event payload does not match materialized task revision"
+                )
+        return mutation
+
+    def reconcile_after_authenticated_restart(
+        self,
+        *,
+        orphan_previous_generation: bool = True,
+    ) -> Mapping[str, Any]:
+        """Repair bounded legacy drift, unstall, and prove event/projection parity.
+
+        Production scheduling must not resume until this report is produced
+        against the same durable authority that will accept the next claim.
+        """
+
+        drift = self.reconcile_legacy_stale_unstall_projection_drift()
+        unstalled = self.unstall_stale_in_progress_tasks(
+            orphan_previous_generation=orphan_previous_generation
+        )
+        settled = self.assert_projection_matches_events()
+        return MappingProxyType(
+            {
+                "schema": COMPATIBILITY_RECONCILE_SCHEMA,
+                "task_id": PRODUCTION_INTEGRATION_TASK_ID,
+                "authority": TYPED_QUACK_OWNER_INTERFACE,
+                "adapter": INTENT_REPOSITORY_INTERFACE,
+                "independent_writer": False,
+                "drift": drift.to_dict(),
+                "unstalled": dict(unstalled),
+                "snapshot": settled.to_dict(),
+            }
+        )
 
     # -- event plumbing ------------------------------------------------------
 
@@ -2642,6 +3129,25 @@ class IntentRepository:
         )
         parent = _optional_identifier(parent_evidence_id, noun="parent_evidence_id")
         now = _utc_iso()
+        if self.writes_through_typed_owner:
+            if evidence_id or parent:
+                self.reject_unsupported_legacy_path(
+                    caller="IntentRepository.record_evidence",
+                    operation="record_evidence_with_explicit_identity",
+                )
+            typed_payload: dict[str, Any] = {
+                "task_cid": tcid,
+                "evidence_kind": kind,
+                "digest": digest_text,
+            }
+            if body_map:
+                typed_payload["body"] = dict(body_map)
+            return self._route_typed_owner_mutation(
+                "record_evidence",
+                typed_payload,
+                caller="IntentRepository.record_evidence",
+                subject_id=tcid,
+            )
         with self._connection(write=True) as connection:
             task_row = connection.execute(
                 "SELECT 1 FROM tasks WHERE task_cid = ?", [tcid]
@@ -2725,6 +3231,24 @@ class IntentRepository:
                 "evidence_digest": digest,
             }
         )
+        if self.writes_through_typed_owner:
+            typed_payload: dict[str, Any] = {
+                "task_cid": tcid,
+                "outcome": outcome_text,
+                "evidence_digest": digest,
+            }
+            if argv_list:
+                typed_payload["argv"] = list(argv_list)
+            if attempt_id:
+                typed_payload["attempt_id"] = attempt_id
+            if body_map:
+                typed_payload["body"] = dict(body_map)
+            return self._route_typed_owner_mutation(
+                "record_validation_result",
+                typed_payload,
+                caller="IntentRepository.record_validation_result",
+                subject_id=tcid,
+            )
         with self._connection(write=True) as connection:
             task_row = connection.execute(
                 "SELECT 1 FROM tasks WHERE task_cid = ?", [tcid]
@@ -3064,6 +3588,27 @@ class IntentRepository:
         status_text = _status(new_status, allowed=_TASK_STATUSES, noun="task")
         receipt_map = _mapping(receipt, noun="status receipt")
         now = _utc_iso()
+        if self.writes_through_typed_owner:
+            if allow_completion_without_evidence:
+                self.reject_unsupported_legacy_path(
+                    caller="IntentRepository.cas_task_status",
+                    operation="allow_completion_without_evidence",
+                )
+            typed_payload: dict[str, Any] = {
+                "task_cid_or_alias": tcid,
+                "expected_revision": expected,
+                "status": status_text,
+            }
+            if receipt_map:
+                typed_payload["receipt"] = dict(receipt_map)
+            if evidence_digests is not None:
+                typed_payload["evidence_digests"] = list(evidence_digests)
+            return self._route_typed_owner_mutation(
+                "compare_and_set_status",
+                typed_payload,
+                caller="IntentRepository.cas_task_status",
+                subject_id=tcid,
+            )
 
         with self._connection(write=True) as connection:
             row = connection.execute(
@@ -3274,6 +3819,21 @@ class IntentRepository:
         penalty = _nonneg_int(selection_penalty, noun="selection_penalty")
         now_ms = int(self._clock_ms())
         retry_not_before = now_ms + delay
+        if self.writes_through_typed_owner:
+            typed_payload: dict[str, Any] = {
+                "task_cid": tcid,
+                "delay_ms": delay,
+            }
+            if reason_text:
+                typed_payload["reason"] = reason_text
+            if penalty:
+                typed_payload["selection_penalty"] = penalty
+            return self._route_typed_owner_mutation(
+                "record_queue_backoff",
+                typed_payload,
+                caller="IntentRepository.record_queue_backoff",
+                subject_id=tcid,
+            )
         with self._connection(write=True) as connection:
             task_row = connection.execute(
                 "SELECT 1 FROM tasks WHERE task_cid = ?", [tcid]
@@ -3371,6 +3931,13 @@ class IntentRepository:
 
     def record_queue_retry(self, *, task_cid: str) -> IntentReceipt:
         tcid = _identifier(task_cid, noun="task_cid")
+        if self.writes_through_typed_owner:
+            return self._route_typed_owner_mutation(
+                "record_queue_retry",
+                {"task_cid": tcid},
+                caller="IntentRepository.record_queue_retry",
+                subject_id=tcid,
+            )
         with self._connection(write=True) as connection:
             lease = connection.execute(
                 "SELECT attempt FROM leases WHERE task_cid = ?", [tcid]
@@ -6232,6 +6799,14 @@ def open_intent_repository(
 __all__ = (
     "INTENT_REPOSITORY_INTERFACE",
     "PLAN_REVISION_REPOSITORY_INTERFACE",
+    "TYPED_QUACK_OWNER_INTERFACE",
+    "QUACK_STATE_SERVER_HOST_INTERFACE",
+    "PRODUCTION_INTEGRATION_TASK_ID",
+    "PRODUCTION_AUTHORITY_SCHEMA",
+    "COMPATIBILITY_RECONCILE_SCHEMA",
+    "SUPPORTED_LEGACY_OPERATIONS",
+    "UNSUPPORTED_LEGACY_OPERATIONS",
+    "CALLER_REPLACEMENTS",
     "INTENT_REPOSITORY_SCHEMA",
     "PLAN_REVISION_REPOSITORY_SCHEMA",
     "INTENT_PLAN_PROJECTION_SCHEMA",
@@ -6254,12 +6829,17 @@ __all__ = (
     "IntentRepositoryNotOpenError",
     "IntentCompletionError",
     "IntentEvidenceError",
+    "IntentCompatibilityWarning",
+    "IntentUnsupportedPathError",
+    "IntentIndependentWriterError",
     "DuckDBUnavailableError",
     "IntentReceipt",
     "IntentSnapshot",
     "QueueEntry",
     "PlanHead",
     "PlanRevisionRepository",
+    "production_authority_contract",
+    "reject_plan_delta_production_waiver",
     "task_projection_spec_cid",
     "task_authority_spec_cid",
     "open_intent_repository",
