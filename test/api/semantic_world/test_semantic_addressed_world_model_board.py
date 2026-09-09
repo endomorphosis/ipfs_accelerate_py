@@ -2243,7 +2243,9 @@ def test_operator_admits_process_dead_generation_48_stale_ready_owner() -> None:
     recover_source = inspect.getsource(operator._recover_stale_quack)
     validate_source = inspect.getsource(operator._validate_offline_quack_start)
     stale_source = inspect.getsource(operator._m70_published_owner_is_stale_ready)
-    assert "_M70_GENERATION" in stale_source
+    dead_source = inspect.getsource(operator._m70_published_owner_is_process_dead)
+    assert "_M70_GENERATION" in dead_source
+    assert "_m70_published_owner_is_process_dead" in stale_source
     assert "lifecycle" in stale_source
     assert "_m70_published_owner_is_stale_ready" in start_source
     assert start_source.index("_m70_published_owner_is_stale_ready") < (

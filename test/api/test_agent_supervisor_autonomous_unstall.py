@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -45,8 +48,13 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement.campaign_refill_policy
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.campaign_resume import (
     CampaignResumeCoordinator,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSpec
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTaskState,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
+    SupervisorLoop,
+    SupervisorLoopConfig,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
@@ -1041,6 +1049,46 @@ def test_watchdog_reads_owner_status_from_quack_owner_state_dir(
     assert restart_calls == 0
     assert lane_report["action"] == "owner_process_dead"
     assert lane_report["reason"] == "published_ready_owner_pid_dead"
+
+
+def test_supervisor_loop_keeps_running_when_owner_process_dead(
+    tmp_path: Path,
+) -> None:
+    """A stale-ready owner death must not recycle the child before owner recovery."""
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    spec = ManagedDaemonSpec(
+        name="owner-dead-daemon",
+        schema="test.daemon",
+        repo_root=tmp_path,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon.json",
+        supervisor_status_path=state_dir / "supervisor.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure.json",
+        ensure_check_path=state_dir / "check.json",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+            watchdog_stale_after_seconds=1,
+        ),
+        monotonic=lambda: 10_000.0,
+    )
+    child = SimpleNamespace(pid=os.getpid(), log_path=None)
+    status = {
+        "owner_process_dead": True,
+        "authoritative_readiness_reason": "owner_process_dead",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    decision = loop.default_watchdog(child, status)
+    assert decision.action == "continue"
 
 
 def _learning_binding(**overrides: object) -> LearningCheckpointBinding:

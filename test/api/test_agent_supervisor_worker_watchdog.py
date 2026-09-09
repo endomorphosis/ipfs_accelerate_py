@@ -452,46 +452,6 @@ def test_supervisor_loop_graces_exact_sealed_runner_disappearance(
     assert expired.detail["worker_absence_age_seconds"] == 61.0
 
 
-def test_supervisor_loop_keeps_running_when_owner_process_dead(
-    tmp_path: Path,
-) -> None:
-    """A stale-ready owner death must not recycle the child before owner recovery."""
-
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-    spec = ManagedDaemonSpec(
-        name="owner-dead-daemon",
-        schema="test.daemon",
-        repo_root=tmp_path,
-        daemon_dir=state_dir,
-        runner=(sys.executable, "-c", "pass"),
-        status_path=state_dir / "daemon.json",
-        supervisor_status_path=state_dir / "supervisor.json",
-        supervisor_pid_path=state_dir / "supervisor.pid",
-        child_pid_path=state_dir / "child.pid",
-        supervisor_out_path=state_dir / "supervisor.out",
-        ensure_status_path=state_dir / "ensure.json",
-        ensure_check_path=state_dir / "check.json",
-    )
-    loop = SupervisorLoop(
-        SupervisorLoopConfig(
-            spec=spec,
-            command=(sys.executable, "-c", "pass"),
-            log_prefix="child",
-            watchdog_stale_after_seconds=1,
-        ),
-        monotonic=lambda: 10_000.0,
-    )
-    child = SimpleNamespace(pid=os.getpid(), log_path=None)
-    status = {
-        "owner_process_dead": True,
-        "authoritative_readiness_reason": "owner_process_dead",
-        "updated_at": datetime.now(UTC).isoformat(),
-    }
-    decision = loop.default_watchdog(child, status)
-    assert decision.action == "continue"
-
-
 @pytest.mark.parametrize(
     "mutation",
     [
