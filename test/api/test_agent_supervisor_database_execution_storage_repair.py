@@ -277,7 +277,17 @@ def test_rebuild_preserves_complete_execution_projection_and_catalog(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "execution.duckdb"
-    before = _seed_execution_store(path)
+    _seed_execution_store(path)
+    connection = open_duckdb_connection(path)
+    try:
+        connection.execute(
+            "INSERT INTO attempt_recovery_dispatch_fences VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ["fence:1", "attempt:1", "task:1", "evidence:1", "manifest:1", "credit:1",
+             "snapshot:1", 7, 3, 100, "installed"],
+        )
+        before = _database_execution_storage_projection_from_connection(connection)
+    finally:
+        connection.close()
     os.chmod(path, 0o664)
     wal_path = path.with_name(path.name + ".wal")
     wal_path.touch()
@@ -289,7 +299,8 @@ def test_rebuild_preserves_complete_execution_projection_and_catalog(
     assert receipt["logical_projection_equal"] is True
     assert receipt["pre_projection_root"] == before["projection_root"]
     assert receipt["post_projection_root"] == before["projection_root"]
-    assert receipt["table_count"] == 9
+    assert receipt["table_count"] == len(before["tables"])
+    assert "attempt_recovery_dispatch_fences" in {item["table"] for item in before["tables"]}
     assert receipt["index_count"] == 3
     assert set(receipt["row_counts"]) == {item["table"] for item in before["tables"]}
     assert all(receipt["row_counts"].values())
@@ -666,6 +677,44 @@ def test_portal_startup_art_fatal_repairs_before_claim_or_continuation(
     assert claims == 0
 
 
+def test_supervisor_quiesced_reconciliation_repairs_art_before_replay(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    before = _seed_execution_store(path)
+    daemon = _open_minimal_daemon(path)
+    failure = _execution_art_failure(daemon)
+    calls = []
+
+    def fail_read(**_kwargs: Any) -> Any:
+        calls.append("read")
+        raise failure
+
+    daemon._database_portal_bridge = object()
+    daemon._repair_database_portal_terminal_receipts = fail_read
+    try:
+        with pytest.raises(DatabaseImplementationExecutionStorageRepairedError) as captured:
+            daemon.reconcile_quiesced_database_portal_attempts(trigger="supervisor_startup")
+        assert calls == ["read"]
+        assert daemon._connection is None
+        assert captured.value.receipt["logical_projection_equal"] is True
+        assert captured.value.receipt["same_process_retry_permitted"] is False
+        assert captured.value.receipt["reconciliation_required"] is True
+    finally:
+        daemon.close()
+
+    replacement = _open_minimal_daemon(path)
+    try:
+        after = _database_execution_storage_projection_from_connection(replacement._connection)
+    finally:
+        replacement.close()
+    before_tables = {item["table"]: item for item in before["tables"]}
+    after_tables = {item["table"]: item for item in after["tables"]}
+    for table in before_tables:
+        if table != "daemon_execution_metadata":
+            assert after_tables[table] == before_tables[table]
+
+
 @pytest.mark.parametrize(
     "operation",
     ["fetchone", "fetchmany", "fetchall", "iteration"],
@@ -776,6 +825,13 @@ def test_transaction_art_fatal_is_not_masked_by_invalidated_rollback(
             assert failure is not None
             raise failure
 
+    class EmptyRead:
+        def fetchall(self) -> list[Any]:
+            return []
+
+        def fetchone(self) -> None:
+            return None
+
     class InvalidatedTransactionConnection:
         def execute(self, sql: str, _parameters: Any = None) -> Any:
             normalized = " ".join(str(sql).upper().split())
@@ -784,7 +840,7 @@ def test_transaction_art_fatal_is_not_masked_by_invalidated_rollback(
                 raise RuntimeError("connection invalidated")
             if normalized.startswith("UPDATE DATABASE_TASK_ATTEMPTS"):
                 return FatalFetch()
-            return object()
+            return EmptyRead()
 
         def close(self) -> None:
             return None

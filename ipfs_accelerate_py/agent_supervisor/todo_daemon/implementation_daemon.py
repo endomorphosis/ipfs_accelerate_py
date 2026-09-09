@@ -107459,6 +107459,21 @@ class DatabaseImplementationDaemon:
         trigger: str,
         force: bool = False,
     ) -> dict[str, Any]:
+        """Repair exact execution ART failures before a later reconciliation pass."""
+        try:
+            return self._reconcile_quiesced_database_portal_attempts(
+                trigger=trigger, force=force
+            )
+        except _DatabaseImplementationExecutionStorageArtFatal as exc:
+            self._raise_after_execution_storage_art_failure(exc)
+            raise AssertionError("execution ART recovery unexpectedly returned") from exc
+
+    def _reconcile_quiesced_database_portal_attempts(
+        self,
+        *,
+        trigger: str,
+        force: bool = False,
+    ) -> dict[str, Any]:
         """Reconcile nested Portal ownership before DB retry or redispatch.
 
         A database claim and its attempt-local Portal state are separate
@@ -108311,7 +108326,8 @@ class DatabaseImplementationDaemon:
         try:
             return self._run_once_database_authoritative()
         except _DatabaseImplementationExecutionStorageArtFatal as exc:
-            # This is the sole post-open recovery boundary. It covers the
+            # This dispatch recovery boundary complements quiesced reconciliation.
+            # It covers the
             # observed list_running_attempts() fatal without scattering
             # storage mutation across ordinary queries. The helper always
             # raises a typed terminal for this pass, so no claim, callback,
