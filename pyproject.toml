@@ -429,6 +429,18 @@ live-application = false
 live-client = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.next-bounded-pilot]
+schema = "ipfs_accelerate_py/assurance/next-bounded-pilot-receipt@1"
+interface = "AccelerateNextBoundedPilot@1"
+task-id = "PCPR-096"
+goal-id = "PCPR-G900"
+objective-kind = "declared_objective_to_release_next_bounded_pilot_recommendation"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
