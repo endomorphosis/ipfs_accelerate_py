@@ -258,3 +258,35 @@ def test_aseh_rejects_unadmitted_nested_samples(board, monkeypatch, case):
     assert result["progress_token"] == ""
     assert result["complete"] is False
     assert result["completion_candidate"] is False
+
+
+@pytest.mark.parametrize("field", ["blocked_task_ids", "failed_or_blocked_task_ids"])
+def test_native_blocker_ids_survive_probe_and_prevent_completion(board, monkeypatch, field):
+    config, _, _ = board
+    authority = {"status_counts": {"completed": 85}, "task_count": 85,
+                 "authenticated_query": True, field: ["DOEP-011", "DOEP-031", "DOEP-072"]}
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({"task_authority": authority}, ""))
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["blocked_task_ids"] == ["DOEP-011", "DOEP-031", "DOEP-072"]
+    assert result["health"] == "blocked"
+    assert result["completion_candidate"] is False
+    assert result["complete"] is False
+
+
+def test_native_blocker_identity_changes_progress_without_count_changes():
+    before = {"status_counts": {"blocked": 1}, "task_count": 1,
+              "failed_or_blocked_task_ids": ["DOEP-011"]}
+    after = {**before, "failed_or_blocked_task_ids": ["DOEP-031"]}
+    assert probe._progress(before) != probe._progress(after)
+    assert probe._progress(before) == probe._progress({
+        **before, "failed_or_blocked_task_ids": ["DOEP-011", "DOEP-011"],
+        "blocked_task_ids": ["DOEP-011"], "updated_at": "later"})
+
+
+@pytest.mark.parametrize("invalid", [None, "DOEP-011", {"DOEP-011": True}, [None, 7, {}, ""]])
+def test_malformed_native_blocker_ids_are_not_task_identities(board, monkeypatch, invalid):
+    config, _, _ = board
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({"task_authority": {
+        "status_counts": {"todo": 1}, "task_count": 1,
+        "failed_or_blocked_task_ids": invalid, "blocked_task_ids": ["DOEP-031"]}}, ""))
+    assert probe.observe_board(config, now=1000)["details"]["blocked_task_ids"] == ["DOEP-031"]

@@ -195,13 +195,25 @@ def _counts(authority: Mapping[str, Any]) -> dict[str, int]:
     return {}
 
 
+def _blocked_task_ids(authority: Mapping[str, Any]) -> list[str]:
+    """Normalize native operator blocker lists without treating text as an ID list."""
+    identities = set()
+    for key in ("blocked_task_ids", "failed_or_blocked_task_ids"):
+        values = authority.get(key)
+        if isinstance(values, list):
+            identities.update(value for value in values if isinstance(value, str) and value.strip())
+    return sorted(identities)
+
+
 def _progress(authority: Mapping[str, Any]) -> str:
     """Exclude heartbeats, snapshot CIDs and source revisions that change on reads."""
     counts = _counts(authority)
     fields = {key: authority[key] for key in (
         "event_cursor", "active_task_ids", "completed_task_ids",
-        "blocked_task_ids", "task_count"
+        "task_count"
     ) if key in authority}
+    if any(key in authority for key in ("blocked_task_ids", "failed_or_blocked_task_ids")):
+        fields["blocked_task_ids"] = _blocked_task_ids(authority)
     statuses = authority.get("task_statuses")
     if isinstance(statuses, dict) and statuses:
         fields["task_statuses"] = {key: value if isinstance(value, str)
@@ -377,7 +389,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         statuses = authority.get("task_statuses") or authority.get("task_status_by_alias")
         if isinstance(statuses, dict):
             counts = _counts({"task_statuses": statuses})
-    blocked = (native.get("blocked") is True or authority.get("blocked") is True
+    blocked_task_ids = _blocked_task_ids(authority)
+    blocked = (bool(blocked_task_ids) or native.get("blocked") is True or authority.get("blocked") is True
                or any(counts.get(status, 0) for status in BLOCKED)
                or int(authority.get("blocked_count") or 0) > 0)
     if blocked:
@@ -398,7 +411,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         reasons.append("task_observation_unavailable")
     else:
         health = "healthy"
-    candidate = bool(counts and sum(counts.values()) > 0
+    candidate = bool(not blocked and counts and sum(counts.values()) > 0
         and authority.get("task_count") == sum(counts.values())
         and all(key in COMPLETED for key in counts))
     result: dict[str, Any] = {
@@ -411,7 +424,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "authenticated_task_observation": authenticated,
             "task_count": authority.get("task_count", sum(counts.values()) if counts else None),
             "event_cursor": authority.get("event_cursor"),
-            "blocked_task_ids": authority.get("blocked_task_ids", []),
+            "blocked_task_ids": blocked_task_ids,
             "source_heads": _source_heads(board),
             "completion_gate": "separate_authoritative_closeout_verification_required"},
     }
