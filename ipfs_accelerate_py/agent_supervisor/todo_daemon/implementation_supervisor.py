@@ -8992,7 +8992,7 @@ class PortalSupervisorConfig:
     codebase_scan_min_open_tasks: int = 0
     codebase_scan_max_findings: int = 5
     codebase_scan_cooldown_seconds: int = 21600
-    codebase_refill_timeout_seconds: float = 0.0
+    codebase_refill_timeout_seconds: float = 600.0
     codebase_scan_depends_on: tuple[str, ...] = field(default_factory=tuple)
     codebase_scan_skip_prefixes: tuple[str, ...] = field(default_factory=tuple)
     allow_unscoped_codebase_refill: bool = False
@@ -9039,7 +9039,7 @@ class PortalSupervisorConfig:
     objective_scan_max_findings: int = 5
     objective_scan_cooldown_seconds: int = 21600
     objective_scan_exclude_paths: tuple[str, ...] = field(default_factory=tuple)
-    objective_refill_timeout_seconds: float = 0.0
+    objective_refill_timeout_seconds: float = 600.0
     objective_refill_max_epochs: int | None = None
     objective_refill_max_total_tasks: int | None = None
     objective_scan_depends_on: tuple[str, ...] = field(default_factory=tuple)
@@ -27434,7 +27434,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--codebase-refill-timeout-seconds",
         type=float,
-        default=0.0,
+        default=600.0,
         help=(
             "Abort supervisor-owned codebase refill after this many seconds. "
             "A timed-out codebase pass yields no todos and records a cooldown marker."
@@ -27648,7 +27648,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--objective-refill-timeout-seconds",
         type=float,
-        default=0.0,
+        default=600.0,
         help=(
             "Abort supervisor-owned objective refill after this many seconds. "
             "A timed-out objective pass yields no todos so codebase refill can still run."

@@ -21081,6 +21081,25 @@ def test_implementation_supervisor_runs_codebase_scan_after_goal_only_objective_
     assert result["codebase_deferred_reason"] == ""
 
 
+def test_supervisor_refill_timeout_defaults_cover_unconfigured_native_launches(tmp_path):
+    args = parse_implementation_supervisor_args([])
+    config = TodoSupervisorConfig(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "task_state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        state_dir=tmp_path,
+    )
+    assert args.objective_refill_timeout_seconds == config.objective_refill_timeout_seconds == 600.0
+    assert args.codebase_refill_timeout_seconds == config.codebase_refill_timeout_seconds == 600.0
+    explicit = parse_implementation_supervisor_args([
+        "--objective-refill-timeout-seconds", "0",
+        "--codebase-refill-timeout-seconds", "90",
+    ])
+    assert explicit.objective_refill_timeout_seconds == 0.0
+    assert explicit.codebase_refill_timeout_seconds == 90.0
+
+
 def test_implementation_supervisor_runs_codebase_scan_after_objective_refill_timeout(
     tmp_path,
     monkeypatch,

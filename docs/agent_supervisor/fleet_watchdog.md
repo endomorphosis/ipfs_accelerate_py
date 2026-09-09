@@ -188,3 +188,9 @@ operator holds, repair scheduling, non-authoritative observations and real Git
 publication races. Live sealed boards must adopt the supervisor correction
 through their own accepted source transition; the watchdog installation alone
 does not rewrite those seals.
+
+Supervisor objective and codebase refill passes default to a 600-second timeout,
+including native launches that omit the corresponding CLI options. A timed-out
+pass records its existing timeout/cooldown evidence and yields to scheduling.
+Explicit per-pass timeout settings remain supported; zero explicitly disables
+the in-process limit. Provider execution budgets are separate from refill limits.
