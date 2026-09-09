@@ -314,6 +314,24 @@ def mutation_operation(steps: Sequence[Mapping[str, Any]]) -> str:
         or not 1 <= len(steps) <= QUACK_OWNER_MUTATION_MAX_STEPS
     ):
         raise QuackOwnerMutationError("operation_shape_invalid")
+    # A closed read request uses the same authenticated owner transport. It is
+    # never admitted into a SQL mutation bundle and carries a fresh challenge.
+    if (
+        len(steps) == 1
+        and isinstance(steps[0], Mapping)
+        and steps[0].get("template_id") == "owner_snapshot@1"
+    ):
+        step = steps[0]
+        parameters = step.get("parameters")
+        if (
+            set(step) != {"template_id", "parameters"}
+            or not isinstance(parameters, list)
+            or len(parameters) != 1
+            or not isinstance(parameters[0], str)
+            or re.fullmatch(r"[0-9a-f]{32}", parameters[0]) is None
+        ):
+            raise QuackOwnerMutationError("operation_shape_invalid")
+        return "owner_snapshot@1"
     templates: list[str] = []
     for step in steps:
         if not isinstance(step, Mapping) or set(step) != {"template_id", "parameters"}:
@@ -789,9 +807,28 @@ def execute_mutation_bundle(
     token: str,
     inbox: Path,
 ) -> int:
+    """Publish a semantic transaction and return its authenticated row count."""
+    request = build_mutation_request(steps=steps, binding=binding, token=token)
+    result = execute_owner_request(
+        request, binding=binding, token=token, inbox=inbox
+    )
+    counts = result["rowcounts"]
+    return counts[0] if counts else -1
+
+
+def execute_owner_request(
+    request: Mapping[str, Any],
+    *,
+    binding: Mapping[str, Any],
+    token: str,
+    inbox: Path,
+) -> dict[str, Any]:
     """Publish one semantic transaction and admit only a signed terminal result."""
 
-    request = build_mutation_request(steps=steps, binding=binding, token=token)
+    request = validate_mutation_request(
+        request, request_id=request["request_id"], binding=binding, token=token
+    )
+    steps = request["steps"]
     request_id = request["request_id"]
     request_name = f"{request_id}.request.json"
     processing_name = f"{request_id}.processing.json"
@@ -804,9 +841,10 @@ def execute_mutation_bundle(
             retained_request = _request_for_retained_result(
                 retained, steps=steps, binding=binding, token=token
             )
-            return validate_mutation_result(
+            validate_mutation_result(
                 retained, request=retained_request, token=token
             )
+            return dict(retained)
         try:
             write_envelope_atomic_at(descriptor, request_name, request)
         except OSError as exc:
@@ -826,13 +864,13 @@ def execute_mutation_bundle(
         while time.monotonic() < deadline:
             if mutation_envelope_exists_at(descriptor, done_name):
                 result = read_envelope_at(descriptor, done_name)
-                rowcount = validate_mutation_result(
+                validate_mutation_result(
                     result, request=request, token=token
                 )
                 unlink_mutation_envelope_at(
                     descriptor, request_name, missing_ok=True
                 )
-                return rowcount
+                return dict(result)
             time.sleep(0.025)
         try:
             rename_mutation_envelope_noreplace_at(
@@ -854,9 +892,10 @@ def execute_mutation_bundle(
         while time.monotonic() < settlement:
             if mutation_envelope_exists_at(descriptor, done_name):
                 result = read_envelope_at(descriptor, done_name)
-                return validate_mutation_result(
+                validate_mutation_result(
                     result, request=request, token=token
                 )
+                return dict(result)
             if (
                 not mutation_envelope_exists_at(descriptor, processing_name)
                 and mutation_envelope_exists_at(descriptor, request_name)
@@ -1382,6 +1421,10 @@ def _record_matches(
 def mutation_effects_present(
     connection: Any, request: Mapping[str, Any]
 ) -> bool:
+    if request["operation"] == "owner_snapshot@1":
+        # An interrupted read is not a durable effect. Its caller needs a new
+        # challenge, rather than an invented observation of past owner state.
+        return False
     steps = request["steps"]
     event = _parameters(steps[-1], 10)
     event_row = connection.execute(
@@ -1471,6 +1514,10 @@ def execute_owner_mutation(
 ) -> tuple[list[int], dict[str, Any]]:
     """Validate and commit one admitted bundle on the exclusive writer."""
 
+    if request["operation"] == "owner_snapshot@1":
+        from .quack_owner_snapshot import execute_owner_snapshot
+
+        return [0], execute_owner_snapshot(connection, request)
     observed_now = int(time.time() * 1000) if now_ms is None else int(now_ms)
     if mutation_effects_present(connection, request):
         # Independent row equality is necessary but not sufficient: an
@@ -1682,6 +1729,7 @@ __all__ = (
     "build_mutation_request",
     "execute_mutation_bundle",
     "execute_owner_mutation",
+    "execute_owner_request",
     "mutation_binding_from_identity",
     "mutation_content_id",
     "mutation_envelope_exists_at",
