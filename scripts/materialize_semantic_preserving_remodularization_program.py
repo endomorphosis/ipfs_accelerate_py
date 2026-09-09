@@ -3478,6 +3478,52 @@ def _bind_bootstrap_launch_plan(
     }
 
 
+def _retain_closeout_owner(
+    config_path: Path, *, board: Any, broker: Any, monitor: Any,
+) -> str:
+    """Keep native closeout reads alive after the runner fences idle lanes."""
+    from ipfs_accelerate_py.agent_supervisor.runtime.terminal_closeout import (
+        retain_owner_for_closeout,
+    )
+
+    stopping = threading.Event()
+    prior_signals = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+
+    def request_stop(_signum: int, _frame: Any) -> None:
+        stopping.set()
+
+    def stopped() -> bool:
+        if stopping.is_set():
+            return True
+        try:
+            _assert_start_not_held(board)
+        except OperatorError:
+            return True
+        return False
+
+    def check_owner() -> None:
+        if broker.failure or monitor.failure:
+            raise OperatorError("SPAR owner control monitor failed during closeout")
+
+    try:
+        for sig in prior_signals:
+            signal.signal(sig, request_stop)
+        result = retain_owner_for_closeout(
+            observe=lambda: authoritative_status(config_path),
+            wait=stopping.wait,
+            stopped=stopped,
+            check_owner=check_owner,
+            output=lambda message: print(message, flush=True),
+        )
+        # The broker uses SIGTERM for fail-fast faults too. A signal-triggered
+        # wakeup must not turn a lost owner fence into a successful stop.
+        check_owner()
+        return result
+    finally:
+        for sig, handler in prior_signals.items():
+            signal.signal(sig, handler)
+
+
 def supervise(
     config_path: Path,
     *,
@@ -3653,6 +3699,12 @@ def supervise(
         prior_sigterm = None
         if broker.failure or monitor.failure:
             raise OperatorError("SPAR owner control monitor failed during supervisor execution")
+        if returncode == 0 and duration_seconds == float("inf"):
+            # The runner's terminal result only fences implementation lanes.
+            # Keep the exclusive Quack owner, monitor and native status grant
+            # until the independent goal/root acceptance adapter admits full
+            # completion, or the operator explicitly stops this generation.
+            _retain_closeout_owner(config_path, board=board, broker=broker, monitor=monitor)
         return returncode
     finally:
         failures: list[str] = []
