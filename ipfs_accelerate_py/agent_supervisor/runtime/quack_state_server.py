@@ -2434,7 +2434,9 @@ class InProcessQuackTransport:
             try:
                 import duckdb
 
-                client = duckdb.connect(":memory:")
+                # Readiness probes own a separate temporary database; inherit
+                # no machine-wide default worker pool before the first query.
+                client = duckdb.connect(":memory:", config={"threads": "1"})
                 try:
                     client.execute("LOAD quack")
                     for sql, params in query_attempts:

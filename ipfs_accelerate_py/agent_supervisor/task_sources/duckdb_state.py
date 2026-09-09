@@ -3321,7 +3321,9 @@ def _probe_quack_connection(connection: Any) -> None:
 def _attach_quack_once(uri: str, secret: str) -> tuple[Any, dict[str, Any]]:
     import duckdb
 
-    connection = duckdb.connect(":memory:")
+    # Bound native query workers before the temporary client exists. The
+    # authoritative writer's policy does not cover this separate database.
+    connection = duckdb.connect(":memory:", config={"threads": "1"})
     try:
         connection.execute("LOAD quack")
         try:

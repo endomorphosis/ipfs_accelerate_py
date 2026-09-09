@@ -165,3 +165,101 @@ SAWM's configuration explicitly requires a new operator source seal for a change
 revision, and protects both route and Grok runner source. Its existing retained
 successor is not a generic repair authorization. Its launchable source remains
 unchanged; a separately admitted source-successor update is still required.
+
+## Authorized continuation: fresh observations after 04:37 UTC
+
+The operator authorized preparing the SAWM successor seal and a clean PCTDD
+deployment alongside its unfinished checkout. The earlier process census must
+not be reused as a current idle/startup authorization:
+
+- ASEH remains at `7f9a2d...`, with a newer owner since the initial deployment.
+  Fresh generation 115/schema 4 health admitted its owner, broker
+  and scheduler, with one active task and a live Grok provider. The bootstrap
+  follow-up is committed as `91e5fb438d3e2b57dfc7431579de466b702e1687` but remains
+  undeployed. No supported finish-current-task pause was found; SIGTERM would
+  interrupt work, so neither the running source nor its process was changed.
+- PCTDD now has a live watchdog, state owner, master and lanes. Its accepted
+  runtime, launcher paths, store and unfinished checkout are not being replaced
+  while those processes are active. Clean preparation uses immutable revisions
+  separately from that checkout.
+- SAWM's selected checkout was initially clean at `3a3e4dabe`, then another
+  writer modified `scripts/materialize_semantic_addressed_world_model_program.py`
+  during inspection. This rollout did not make that edit. Source/seal preparation
+  must remain separate until that concurrent sealing work is reconciled.
+
+A live pressure probe returned `(1, "cgroup_cpu_pressure")` and a one-worker
+ceiling. The 78 bootstrap-cache, hashing-entrypoint, resource-budget and worker-
+slot regression cases passed again (one Python multithreaded-fork deprecation
+warning). These are verification results, not evidence that the pending follow-up
+has been deployed or that unrelated Grok sessions are resource-admitted.
+
+### SAWM clean source preparation
+
+Preparation root: `.worktrees/sawm-resource-hashing-budget`, branch
+`codex/sawm-resource-hashing-budget`, commit
+`1a625cbc300dd5392c1423a942277e082009c430`, based on immutable `3a3e4dabe`.
+The seven-file change adds the same resource budget and focused regression
+tests, admits the helper into the capsule/origin checks, and wraps the unchanged
+workspace fingerprint byte stream. Forty-nine focused tests passed, including
+isolated resource-capsule and sealed-runner checks. The preparation is clean;
+its runtime Python files are mode 0644.
+
+The production source-capsule materialize/seal/verify APIs also passed against
+that exact preparation commit and tree `a2af866df222c497d1f5329972730459a4bad52b`.
+The generated capsule CID is
+`sha256:950a091dfd1e1470e7c17a306336382973f4989c028162aa41abb02de498e9c3`;
+its archive digest is
+`sha256:7ee92e24d55019e1e275cca44a174d0920f004286d29a083efe54ae1021ba86b`.
+The real write-sealed descriptor was verified and closed. This capsule was not
+installed into the selected supervisor or presented as an operator receipt.
+
+This is a source preparation, **not an operator-admitted successor deployment**.
+The selected SAWM materializer, operator and both board/dependency validators
+were being changed concurrently by another writer. Those changes were not
+overwritten, committed or included in this preparation. Its new operator source
+seal must be created against their stable, reviewed authority; an ordinary
+source-capsule hash cannot substitute for that seal.
+
+### Native thread observations
+
+The active PCTDD watchdog has the installed nice-10, best-effort I/O-7 and CPU
+0–3 service policy. The sampled owner and master also had nice 10 and affinity
+0–3. The owner showed 149 threads, but an initial sample found 147 waiting on
+futexes, one on accept and the main thread sleeping. A later approximately
+67-second sample consumed about 21 CPU-seconds across all its threads, not
+149 continuously busy hashing workers.
+
+An isolated probe with CPU affinity 0–3 and native one-thread defaults increased
+from one thread to 20 on importing DuckDB alone; an explicit one-thread database
+connection did not remove that ambient pool. Thread counts therefore must not
+be conflated with the active hash-worker budget. Two temporary Quack transport
+client connections also lacked explicit DuckDB thread settings; bounding those
+connections is a separate preventive source change, not a claim to eliminate
+all library-created threads or identify every source of current CPU pressure.
+
+Quack's `v1.5-variegata` HTTP server source creates a fixed 128-worker pool and
+one listener; its comments explain that undersizing a per-keepalive-connection
+pool can deadlock catalog and scan clients. That is consistent with the observed
+149-thread composition, rather than evidence of 149 hash workers. No ad hoc
+native HTTP-pool reduction was made. See the
+[versioned upstream implementation](https://raw.githubusercontent.com/duckdb/duckdb-quack/v1.5-variegata/src/quack_http_server.cpp).
+
+A separate isolated comparison did demonstrate the temporary-client issue:
+after importing DuckDB, an uncapped connection increased the process from 20
+to 39 threads and reported SQL `threads=20`; a capped connection retained 20
+OS threads and reported SQL `threads=1`. The pending ASEH repair and clean
+PCTDD preparation therefore set `config={"threads": "1"}` at creation of their
+temporary Quack attach and live-query clients. This avoids creating that
+additional hardware-sized query pool; it does not remove DuckDB's import-time
+pool or Quack's HTTP workers.
+
+The ASEH temporary-client changes passed 11 new focused tests and 103 existing
+transport/server tests, including real default-transport readiness. They remain
+preparation changes until explicitly admitted into a new live source capsule.
+
+At 04:47 UTC, the earlier ASEH process snapshot was no longer current: generation
+115 and its provider had exited, and cron had started a new launcher/owner
+(generation 116) at the existing deployed source. Its old 04:39 status file was
+unhealthy with an `authoritative_board_stuck` failure and cannot establish the
+new owner's readiness or task liveness. No current health claim should be inferred
+from the earlier successful 04:37 observation.
