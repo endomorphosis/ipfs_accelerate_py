@@ -176,3 +176,22 @@ def test_doep_native_monitor_requires_current_exact_broker_binding(mutation, ava
               "handoff": {"owner_identity": dict(identity), "launch_id": "launch:test", "operator_pid": 44, "plan_root_cid": "plan:test", "repository_tree_id": "tree:test"}}
     mutation(native)
     assert bool(_doep_native_authority(native, identity, now=now)) is available
+
+
+@pytest.mark.parametrize("mutate,seconds,available", [
+    (lambda n: None, 1.0, True),
+    (lambda n: n["task_authority"].update(available=False), 1.0, False),
+    (lambda n: n["task_authority"]["identity"].update(generation=99), 1.0, False),
+    (lambda n: n["task_authority"].update(direct_database_file_open=True), 1.0, False),
+    (lambda n: None, 31.0, False),
+])
+def test_pctdd_direct_native_query_requires_exact_identity_and_bounded_latency(mutate, seconds, available):
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_fleet_observer import (
+        _pctdd_native_authority,
+    )
+    identity = {"server_id": "server:test", "database_uuid": "uuid:test", "generation": 1, "process_birth_id": "birth:test", "listen_uri": "quack:127.0.0.1:7777", "store_id": "test"}
+    native = {"schema": "ipfs_accelerate_py/agent-supervisor/parallel-content-sealing-proof-carrying-tdd-operator@1",
+              "task_authority": {"available": True, "authenticated_query": True, "direct_database_file_open": False, "transport": "quack_loopback_token_attach", "identity": dict(identity)},
+              "state_owner": {"lifecycle_consistent": True, "authoritative_lifecycle": {"available": True, "reason": "authenticated_live_quack_query", "direct_database_file_open": False, "latest": dict(identity)}}}
+    mutate(native)
+    assert bool(_pctdd_native_authority(native, identity, query_seconds=seconds)) is available

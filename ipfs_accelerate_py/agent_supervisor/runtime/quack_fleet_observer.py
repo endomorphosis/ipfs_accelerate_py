@@ -56,6 +56,27 @@ def _doep_native_authority(native: Mapping[str, Any], identity: Mapping[str, Any
     return dict(live) if 0 <= age <= 20 else {}
 
 
+def _pctdd_native_authority(native: Mapping[str, Any], identity: Mapping[str, Any], *, query_seconds: float) -> dict[str, Any]:
+    """PCTDD performs a fresh authenticated query, not a cached status read."""
+    candidate, state = native.get("task_authority", {}), native.get("state_owner", {})
+    if not isinstance(candidate, Mapping) or not isinstance(state, Mapping):
+        return {}
+    lifecycle = state.get("authoritative_lifecycle", {})
+    if not isinstance(lifecycle, Mapping):
+        return {}
+    returned = candidate.get("identity", {})
+    fields = ("server_id", "database_uuid", "generation", "process_birth_id", "listen_uri", "store_id")
+    if (native.get("schema") != "ipfs_accelerate_py/agent-supervisor/parallel-content-sealing-proof-carrying-tdd-operator@1"
+        or not 0 <= query_seconds <= 30 or candidate.get("available") is not True or candidate.get("authenticated_query") is not True
+        or candidate.get("direct_database_file_open") is not False or candidate.get("transport") != "quack_loopback_token_attach"
+        or lifecycle.get("available") is not True or lifecycle.get("reason") != "authenticated_live_quack_query"
+        or lifecycle.get("direct_database_file_open") is not False or state.get("lifecycle_consistent") is not True
+        or not isinstance(returned, Mapping) or any(returned.get(key) != identity.get(key) for key in fields)
+        or any(lifecycle.get("latest", {}).get(key) != identity.get(key) for key in fields)):
+        return {}
+    return dict(candidate)
+
+
 def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict[str, Any]:
     """Reuse native credential admission; never read task counts from replicas."""
     if adapter is None:
@@ -76,7 +97,9 @@ def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict
             result["reason"] = "native_owner_endpoint_mismatch"
             return result
         result["source_identity"] = {key: identity[key] for key in ("database_uuid", "generation", "process_birth_id", "listen_uri") if key in identity}
+        query_started = time.monotonic()
         native, error, _attempts = adapter._status_with_receipt_retry(board, birth)
+        query_seconds = time.monotonic() - query_started
         latest = adapter.read_json(Path(board["owner_status_path"]))
         latest_identity = latest.get("identity", {})
         if latest.get("lifecycle") != "ready" or not adapter.birth_matches(adapter.process_identity(birth.get("pid")), birth) or any(latest_identity.get(key) != value for key, value in result["source_identity"].items()):
@@ -88,6 +111,8 @@ def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict
         authority = {}
         if native.get("schema") == "ipfs_accelerate_py/agent-supervisor/database-board-status@1":
             authority = adapter._database_board_authority(native, board, latest, time.time())
+        elif board["id"] == "pctdd":
+            authority = _pctdd_native_authority(native, latest_identity, query_seconds=query_seconds)
         elif board["id"] == "doep":
             authority = _doep_native_authority(native, latest_identity, now=datetime.now(timezone.utc))
         elif board["id"] == "aseh":
@@ -95,7 +120,11 @@ def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict
             samples = receipt.get("samples", [])
             if native.get("broker_authenticated_receipt") is True and receipt.get("broker_authenticated") is True and samples:
                 candidate = samples[-1].get("authority", {})
-                if candidate.get("available") is True and candidate.get("transport") == "quack" and candidate.get("credential_path") == "sealed_memfd_broker":
+                binding = candidate.get("owner_binding", {})
+                started_ms = candidate.get("query_started_at_ms")
+                fresh = type(started_ms) is int and 0 <= time.time() - started_ms / 1000 <= 30
+                same_owner = isinstance(binding, Mapping) and all(binding.get(key) == latest_identity.get(key) for key in ("server_id", "database_uuid", "generation", "process_birth_id", "listen_uri", "store_id"))
+                if candidate.get("available") is True and candidate.get("transport") == "quack" and candidate.get("credential_path") == "sealed_memfd_broker" and fresh and same_owner:
                     authority = candidate
         else:
             candidate = native.get("task_authority", {})
@@ -104,7 +133,7 @@ def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict
             if candidate.get("available") is True and current and (candidate.get("authenticated_query") is True or candidate.get("transport") == "exclusive_owner_authenticated_quack_projection"):
                 authority = candidate
         if not authority:
-            result["reason"] = "native_quack_read_not_admitted"
+            result["reason"] = "native_projection_not_direct_query" if board["id"] == "spar" else "native_quack_read_not_admitted"
             return result
         # Retain the actual native authority payload plus digest of its operator
         # envelope. A daemon/watchdog projection cannot enter this branch.
@@ -114,6 +143,10 @@ def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict
         if board["id"] == "doep":
             sample_time = datetime.fromisoformat(authority["updated_at"].replace("Z", "+00:00"))
             result["native_receipt"]["valid_until"] = (sample_time + timedelta(seconds=20)).isoformat()
+        elif board["id"] == "aseh":
+            result["native_receipt"]["valid_until"] = datetime.fromtimestamp(authority["query_started_at_ms"] / 1000 + 30, timezone.utc).isoformat()
+        elif board["id"] == "pctdd":
+            result["native_receipt"]["valid_until"] = (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat()
         return result
     except (OSError, ValueError, TypeError, KeyError) as error:
         result.update(availability="unavailable", native_receipt={}, reason=f"native_read_failed:{type(error).__name__}")
@@ -124,7 +157,7 @@ def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict
 
 class FleetObserver:
     """Bounded source fanout; the native owner retains control and write authority."""
-    def __init__(self, server: Any, inventory_path: Path, output_path: Path, *, poll_seconds: float = 30):
+    def __init__(self, server: Any, inventory_path: Path, output_path: Path, *, poll_seconds: float = 10):
         if not 5 <= poll_seconds <= 300:
             raise ValueError("fleet poll interval must be between 5 and 300 seconds")
         self.server, self.inventory_path, self.output_path = server, inventory_path, output_path

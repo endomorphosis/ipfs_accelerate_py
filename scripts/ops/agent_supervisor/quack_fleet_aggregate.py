@@ -18,7 +18,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--deployment', type=Path, required=True)
     parser.add_argument('--inventory', type=Path, required=True)
-    parser.add_argument('--poll-seconds', type=float, default=30)
+    parser.add_argument('--poll-seconds', type=float, default=10)
     parser.add_argument('--query', action='store_true', help='Query the live aggregate owner through its read-only typed grant')
     args = parser.parse_args()
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_fleet_observer import (
