@@ -198,6 +198,8 @@ from .supervisor import (
 )
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
 from .supervisor_runtime import (
+    TYPED_FAIL_CLOSED_EXIT_CODE,
+    TYPED_CHILD_BLOCKER_STATUS,
     SUPERVISED_CHILD_IDENTITY_PATH_ENV,
     SUPERVISED_CHILD_OWNER_SCOPE_ENV,
     OwnerLiveness,
@@ -12409,6 +12411,13 @@ class PortalImplementationSupervisor:
                     },
                 )
                 self._reload_for_control_plane_update()
+            # Maintenance cannot repair a rejected sealed bootstrap. Preserve
+            # its blocker across the outer loop, including legacy result labels.
+            if (
+                result.last_exit_code == TYPED_FAIL_CLOSED_EXIT_CODE
+                or result.status == TYPED_CHILD_BLOCKER_STATUS
+            ):
+                return TYPED_FAIL_CLOSED_EXIT_CODE
             if result.status not in RECOVERABLE_SUPERVISOR_LOOP_STATUSES:
                 return 0
 

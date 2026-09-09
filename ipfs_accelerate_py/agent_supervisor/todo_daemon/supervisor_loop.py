@@ -19,6 +19,9 @@ from .supervisor import (
     worktree_phase_worker_status,
 )
 from .supervisor_runtime import (
+    TYPED_FAIL_CLOSED_EXIT_CODE,
+    TYPED_CHILD_BLOCKER_STATUS,
+    TYPED_FAIL_CLOSED_RECYCLE_REASON,
     RestartPolicy,
     SupervisedChild,
     SupervisedChildSpec,
@@ -667,6 +670,10 @@ class SupervisorLoop:
                 break
             run_duration = self.monotonic() - child_started_at
             self.restart_count += 1
+            if self.last_exit_code == TYPED_FAIL_CLOSED_EXIT_CODE:
+                final_status = TYPED_CHILD_BLOCKER_STATUS
+                self.last_recycle_reason = TYPED_FAIL_CLOSED_RECYCLE_REASON
+                break
             if self.config.max_restarts > 0 and self.restart_count >= self.config.max_restarts:
                 final_status = "max_restarts_reached" if recycled else "child_exited"
                 break

@@ -776,6 +776,11 @@ def build_python_module_command(
     return tuple(command)
 
 
+TYPED_FAIL_CLOSED_EXIT_CODE = 78
+TYPED_CHILD_BLOCKER_STATUS = "typed_child_blocker"
+TYPED_FAIL_CLOSED_RECYCLE_REASON = "typed_fail_closed_exit"
+
+
 def child_exit_should_restart(
     *,
     exit_code: Optional[int],
@@ -786,7 +791,7 @@ def child_exit_should_restart(
 ) -> bool:
     """Return whether a supervised child should be replaced after exit."""
 
-    if exit_code is None or stop_requested:
+    if exit_code is None or stop_requested or exit_code == TYPED_FAIL_CLOSED_EXIT_CODE:
         return False
     try:
         count = int(restart_count)
