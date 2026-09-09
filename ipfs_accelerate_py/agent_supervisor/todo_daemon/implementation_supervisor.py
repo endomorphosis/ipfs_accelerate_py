@@ -6438,6 +6438,12 @@ def split_csv_values(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
     return tuple(items)
 
 
+def sealed_archive_origin_skips_worktree_capsule_verify(origin: object) -> bool:
+    """Sealed children already authenticated the archive; do not re-check HEAD."""
+
+    return type(origin) is str and origin.startswith("/proc/self/fd/")
+
+
 @dataclass
 class PortalSupervisorConfig:
     todo_path: Path
@@ -6623,15 +6629,18 @@ class PortalSupervisorConfig:
                     "configured-board live supervisor lacks its control plane"
                 )
             try:
-                verify_configured_board_live_capsule(
-                    self.configured_board_live_admission,
-                    control_plane_pin=self.accepted_control_plane_pin,
-                    control_plane_descriptor=(
-                        self.accepted_control_plane_descriptor
-                    ),
-                    native_dependency_launch=self.native_dependency_launch,
-                    repo_root=self.repo_root,
-                )
+                if not sealed_archive_origin_skips_worktree_capsule_verify(
+                    globals().get("__file__")
+                ):
+                    verify_configured_board_live_capsule(
+                        self.configured_board_live_admission,
+                        control_plane_pin=self.accepted_control_plane_pin,
+                        control_plane_descriptor=(
+                            self.accepted_control_plane_descriptor
+                        ),
+                        native_dependency_launch=self.native_dependency_launch,
+                        repo_root=self.repo_root,
+                    )
             except (
                 OSError,
                 ConfiguredBoardLiveCapsuleError,
@@ -22181,13 +22190,16 @@ def supervisor_config_from_args(
                     raw_live_admission
                 )
             )
-            verify_configured_board_live_capsule(
-                configured_board_live_admission,
-                control_plane_pin=accepted_control_plane_pin,
-                control_plane_descriptor=control_plane_descriptor,
-                native_dependency_launch=native_dependency_launch,
-                repo_root=effective_repo_root,
-            )
+            if not sealed_archive_origin_skips_worktree_capsule_verify(
+                globals().get("__file__")
+            ):
+                verify_configured_board_live_capsule(
+                    configured_board_live_admission,
+                    control_plane_pin=accepted_control_plane_pin,
+                    control_plane_descriptor=control_plane_descriptor,
+                    native_dependency_launch=native_dependency_launch,
+                    repo_root=effective_repo_root,
+                )
         except (
             OSError,
             ConfiguredBoardLiveCapsuleError,

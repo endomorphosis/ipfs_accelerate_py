@@ -1181,6 +1181,21 @@ def test_supervisor_loop_keeps_running_when_owner_process_dead(
     assert decision.action == "continue"
 
 
+def test_sealed_archive_child_skips_worktree_capsule_verify() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        sealed_archive_origin_skips_worktree_capsule_verify,
+    )
+
+    assert sealed_archive_origin_skips_worktree_capsule_verify(
+        "/proc/self/fd/8/ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+        "implementation_supervisor.py"
+    )
+    assert not sealed_archive_origin_skips_worktree_capsule_verify(
+        "/home/barberb/lift_coding/ipfs_accelerate_py/agent_supervisor/"
+        "todo_daemon/implementation_supervisor.py"
+    )
+
+
 def test_supervisor_loop_retries_status_write(tmp_path: Path) -> None:
     """A single status-write collision must not drop the heartbeat."""
 
