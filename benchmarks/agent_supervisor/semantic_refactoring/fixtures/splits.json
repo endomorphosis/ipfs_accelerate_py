@@ -1,0 +1,55 @@
+{
+  "keep_domain_module_together": true,
+  "members": [
+    {
+      "constraint_class": "scc",
+      "domain": "state",
+      "module": "state.py"
+    },
+    {
+      "constraint_class": "scc",
+      "domain": "initialization",
+      "module": "initialization.py"
+    },
+    {
+      "constraint_class": "scc",
+      "domain": "dynamics",
+      "module": "dynamics.py"
+    },
+    {
+      "constraint_class": "scc",
+      "domain": "registries",
+      "module": "registries.py"
+    },
+    {
+      "constraint_class": "scc",
+      "domain": "async",
+      "module": "async_runtime.py"
+    },
+    {
+      "constraint_class": "scc",
+      "domain": "exceptions",
+      "module": "exceptions.py"
+    },
+    {
+      "constraint_class": "scc",
+      "domain": "resources",
+      "module": "resources.py"
+    },
+    {
+      "constraint_class": "scc",
+      "domain": "apis",
+      "module": "apis.py"
+    },
+    {
+      "constraint_class": "scc",
+      "domain": "seeded_defects",
+      "module": "seeded_defects.py"
+    }
+  ],
+  "network": "deny",
+  "schema": "ipfs_accelerate_py/agent-supervisor/spar-benchmark-split-policy@1",
+  "split_kind": "domain_scc_aligned",
+  "task_id": "SPAR-045",
+  "unsafe_intra_domain_split": false
+}
