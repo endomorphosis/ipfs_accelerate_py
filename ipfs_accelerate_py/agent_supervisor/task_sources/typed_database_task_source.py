@@ -873,7 +873,7 @@ class TypedDatabaseTaskSource:
 
     @staticmethod
     def _post_commit_route_field_state(task: TaskRecord) -> str:
-        """Classify only the retired post-commit receipt's route tuple."""
+        """Classify only known history-repairable recovery route tuples."""
 
         if task.status != "retrying" or not isinstance(task.body, Mapping):
             return "unrelated"
@@ -881,7 +881,13 @@ class TypedDatabaseTaskSource:
         if (
             not isinstance(receipt, Mapping)
             or receipt.get("operation")
-            != "database_portal_post_commit_candidate_recovery"
+            not in {
+                "database_portal_post_commit_candidate_recovery",
+                (
+                    "database_post_merge_declared_outputs_"
+                    "callback_integration_recovery"
+                ),
+            }
         ):
             return "unrelated"
         fields = {
