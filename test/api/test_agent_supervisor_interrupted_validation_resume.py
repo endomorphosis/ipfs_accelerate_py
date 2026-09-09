@@ -64,6 +64,16 @@ def test_snapshot_and_restore_skips_fresh_worktree(tmp_path: Path) -> None:
     assert (second / "docs" / "note.md").read_text(encoding="utf-8") == "migration\n"
 
 
+def test_checkpoint_importable_as_agent_supervisor_module() -> None:
+    from ipfs_accelerate_py.agent_supervisor.interrupted_validation_checkpoint import (
+        restore_interrupted_validation,
+        snapshot_implementation_workspace,
+    )
+
+    assert callable(restore_interrupted_validation)
+    assert callable(snapshot_implementation_workspace)
+
+
 def test_restore_does_not_clobber_dirty_worktree(tmp_path: Path) -> None:
     branch = "implementation/aseh-061-deadbeef-attempt-1-1"
     first = _seed_worktree(tmp_path / "one", branch=branch)

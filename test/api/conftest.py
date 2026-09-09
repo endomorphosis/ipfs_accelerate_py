@@ -19,3 +19,10 @@ sys.path.insert(0, repo_root_text)
 # Pin the package while the local checkout is first.  Later imports from
 # ipfs_accelerate_py/ipfs_kit_py may add sibling roots to ``sys.path``.
 import ipfs_datasets_py as _ipfs_datasets_py  # noqa: E402,F401
+
+# Hermetic validation sets PYTEST_DISABLE_PLUGIN_AUTOLOAD, so pytest11 entry
+# points do not load. conftest still does. The plugin no-ops outside
+# data/<board>/worktrees.
+pytest_plugins = (
+    "ipfs_accelerate_py.agent_supervisor.runtime.pytest_item_ledger_plugin",
+)
