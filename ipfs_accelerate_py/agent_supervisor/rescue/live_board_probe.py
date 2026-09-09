@@ -180,6 +180,62 @@ def _status_command(board: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
             return {}, "native_status_failed"
 
 
+def _status_with_receipt_retry(
+    board: Mapping[str, Any], expected_birth: Mapping[str, Any],
+) -> tuple[dict[str, Any], str, int]:
+    """Re-read an unavailable native receipt within one bounded publication window.
+
+    Slow authenticated queries can leave a gap between receipt expiry and the
+    next publication. Only the native reader may admit the replacement. Never
+    reuse a rejected sample, extend its TTL, or retry a blocked/stuck decision.
+    Recheck the exact owner around every invocation: some native commands open
+    offline authority if called after the owner exits.
+    """
+    def same_ready_owner() -> bool:
+        status = read_json(Path(board["owner_status_path"]))
+        birth = _object(_object(status.get("identity")).get("process_birth"))
+        return bool(status.get("lifecycle") == "ready"
+                    and birth_matches(birth, expected_birth)
+                    and birth_matches(process_identity(expected_birth.get("pid")), expected_birth))
+
+    def unavailable(native: Mapping[str, Any], error: str) -> bool:
+        return bool(not error and native.get("healthy") is False
+                    and native.get("owner_ready") is True
+                    and native.get("broker_authenticated_receipt") is False
+                    and native.get("receipt") == {}
+                    and not native.get("blocked") and not native.get("stuck")
+                    and _object(native.get("receipt_error")).get("reason")
+                    == "live_status_receipt_unavailable_or_invalid")
+
+    attempts = 0
+    native: dict[str, Any] = {}
+    error = ""
+    deadline = None
+    for index in range(4):
+        command_board = board
+        if index:
+            remaining = deadline - time.monotonic()
+            if remaining <= 5.0:
+                break
+            time.sleep(5.0)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            command_board = {**board, "status_timeout_seconds": min(
+                float(board.get("status_timeout_seconds", 45)), remaining)}
+        if not same_ready_owner():
+            return {}, "native_status_owner_changed", attempts
+        native, error = _status_command(command_board)
+        attempts += 1
+        if not same_ready_owner():
+            return {}, "native_status_owner_changed", attempts
+        if not unavailable(native, error):
+            return native, error, attempts
+        if deadline is None:
+            deadline = time.monotonic() + 20.0
+    return native, "native_receipt_unavailable_after_retry", attempts
+
+
 def _counts(authority: Mapping[str, Any]) -> dict[str, int]:
     counts = authority.get("status_counts")
     if isinstance(counts, dict) and counts and all(
@@ -344,10 +400,11 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
                 and projection_age is not None and projection_age <= 120):
             fresh_projections.append(projection)
     native, command_error = ({}, "")
+    native_status_attempts = 0
     # Several legacy status commands open the authoritative DB directly when no
     # owner is present. Never execute them during an outage.
     if owner_ready and board.get("status_argv"):
-        native, command_error = _status_command(board)
+        native, command_error, native_status_attempts = _status_with_receipt_retry(board, expected_birth)
         if command_error:
             reasons.append(command_error)
         if any(native.get(key) is False for key in ("ready", "healthy", "operational_ready")):
@@ -424,6 +481,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "authenticated_task_observation": authenticated,
             "task_count": authority.get("task_count", sum(counts.values()) if counts else None),
             "event_cursor": authority.get("event_cursor"),
+            "native_status_attempts": native_status_attempts,
             "blocked_task_ids": blocked_task_ids,
             "source_heads": _source_heads(board),
             "completion_gate": "separate_authoritative_closeout_verification_required"},

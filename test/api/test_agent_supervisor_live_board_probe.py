@@ -290,3 +290,120 @@ def test_malformed_native_blocker_ids_are_not_task_identities(board, monkeypatch
         "status_counts": {"todo": 1}, "task_count": 1,
         "failed_or_blocked_task_ids": invalid, "blocked_task_ids": ["DOEP-031"]}}, ""))
     assert probe.observe_board(config, now=1000)["details"]["blocked_task_ids"] == ["DOEP-031"]
+
+
+def _unavailable_native_receipt():
+    return {"healthy": False, "owner_ready": True,
+            "broker_authenticated_receipt": False, "receipt": {},
+            "receipt_error": {"error_type": "OperatorError",
+                              "reason": "live_status_receipt_unavailable_or_invalid"}}
+
+
+@pytest.fixture
+def receipt_clock(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(probe.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(probe.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    return clock
+
+
+def test_native_receipt_retry_admits_only_new_native_result(board, monkeypatch, receipt_clock):
+    config, identities, _ = board
+    config = {**config, "board_id": "aseh"}
+    replies = iter([(_unavailable_native_receipt(), ""), (_aseh_native_receipt(cursor=6653), "")])
+    calls = []
+    def status(config):
+        calls.append(config)
+        return next(replies)
+    monkeypatch.setattr(probe, "_status_command", status)
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["event_cursor"] == 6653
+    assert result["details"]["authenticated_task_observation"] is True
+    assert result["details"]["native_status_attempts"] == 2
+    assert result["complete"] is False
+    assert len(calls) == 2
+    assert 0 < calls[-1]["status_timeout_seconds"] <= 15
+
+
+def test_native_receipt_retry_is_bounded_and_never_admits_invalid_receipt(board, monkeypatch, receipt_clock):
+    config, identities, _ = board
+    calls = []
+    def status(config):
+        calls.append(config)
+        return _unavailable_native_receipt(), ""
+    monkeypatch.setattr(probe, "_status_command", status)
+    result = probe.observe_board({**config, "board_id": "aseh"}, now=1000)
+    assert 1 < len(calls) <= 4
+    assert receipt_clock[0] <= 20
+    assert result["details"]["authenticated_task_observation"] is False
+    assert result["details"]["task_counts"] == {}
+    assert "native_receipt_unavailable_after_retry" in result["reason_codes"]
+    assert result["complete"] is False
+
+
+@pytest.mark.parametrize("when", ["before_retry", "during_retry"])
+def test_native_receipt_retry_refuses_changed_owner_birth(board, monkeypatch, receipt_clock, when):
+    config, identities, _ = board
+    calls = []
+    def status(config):
+        calls.append(config)
+        if len(calls) == 2:
+            identities[50] = {**identities[50], "start_time_ticks": 21}
+            return _aseh_native_receipt(status="completed"), ""
+        return _unavailable_native_receipt(), ""
+    def sleep(seconds):
+        receipt_clock[0] += seconds
+        if when == "before_retry":
+            identities[50] = {**identities[50], "start_time_ticks": 21}
+    monkeypatch.setattr(probe.time, "sleep", sleep)
+    monkeypatch.setattr(probe, "_status_command", status)
+    result = probe.observe_board({**config, "board_id": "aseh"}, now=1000)
+    assert len(calls) == (1 if when == "before_retry" else 2)
+    assert result["details"]["authenticated_task_observation"] is False
+    assert "native_status_owner_changed" in result["reason_codes"]
+    assert result["completion_candidate"] is False
+
+
+@pytest.mark.parametrize("change,error", [
+    ({"healthy": True}, ""), ({"blocked": True}, ""), ({"stuck": True}, ""),
+    ({"owner_ready": False}, ""), ({"receipt_error": {}}, ""),
+    ({"receipt": {"samples": []}}, ""), ({}, "native_status_timeout"),
+])
+def test_native_receipt_retry_does_not_mask_other_health_decisions(board, monkeypatch, receipt_clock, change, error):
+    config, identities, _ = board
+    calls = []
+    def status(config):
+        calls.append(config)
+        return {**_unavailable_native_receipt(), **change}, error
+    monkeypatch.setattr(probe, "_status_command", status)
+    probe.observe_board(config, now=1000)
+    assert len(calls) == 1
+    assert receipt_clock[0] == 0
+
+
+def test_native_receipt_retry_timeout_consumes_remaining_window(board, monkeypatch, receipt_clock):
+    config, _, _ = board
+    calls = []
+    def status(config):
+        calls.append(config)
+        if len(calls) > 1:
+            receipt_clock[0] += config["status_timeout_seconds"]
+            return {}, "native_status_timeout"
+        return _unavailable_native_receipt(), ""
+    monkeypatch.setattr(probe, "_status_command", status)
+    result = probe.observe_board(config, now=1000)
+    assert len(calls) == 2
+    assert receipt_clock[0] == 20
+    assert "native_status_timeout" in result["reason_codes"]
+    assert result["details"]["authenticated_task_observation"] is False
+
+
+def test_native_receipt_retry_preserves_new_stuck_decision(board, monkeypatch, receipt_clock):
+    config, _, _ = board
+    stuck = {**_aseh_native_receipt(), "healthy": False, "stuck": True}
+    replies = iter([(_unavailable_native_receipt(), ""), (stuck, "")])
+    monkeypatch.setattr(probe, "_status_command", lambda _: next(replies))
+    result = probe.observe_board({**config, "board_id": "aseh"}, now=1000)
+    assert result["health"] == "stalled"
+    assert result["details"]["native_status_attempts"] == 2
+    assert result["complete"] is False

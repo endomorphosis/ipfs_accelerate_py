@@ -10,6 +10,14 @@ inventory binds each board to its exact checkout, runtime, configuration and
 native status/ensure commands. This accommodates older sealed runtimes without
 copying a newer supervisor into their accepted source trees.
 
+When the native status reader explicitly rejects an unavailable or invalid
+live receipt, the probe can re-read it up to three times within an additional
+20-second publication window. Each attempt rechecks the owner's exact process
+birth and readiness. The native reader must admit a new receipt with its usual
+freshness and identity checks; rejected samples are never used. Blocked, stuck,
+and command-failure decisions are returned immediately. Probe details include
+`native_status_attempts` so recovery from a publication gap is visible.
+
 ## Operation
 
 Two user services run continuously:
