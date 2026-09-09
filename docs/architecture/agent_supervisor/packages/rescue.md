@@ -68,6 +68,10 @@ claim history before and inside the native retry transaction. The handoff
 carries the original queue, binding, candidate, and target qualification in
 a fenced completion-recovery seed; it does not redispatch provider work or
 accept a task solely because files have landed.
+The generic missing-handshake retry excludes receiver key failures. Before
+provider setup, canonical task history fences any such failure unless the
+claim carries its exact retained completion seed; the full seed verifier
+still controls admission and target revalidation.
 
 Changed or dirty candidate worktrees, unknown or live process identities,
 stale revision history, foreign lanes, and missing candidate evidence retain
