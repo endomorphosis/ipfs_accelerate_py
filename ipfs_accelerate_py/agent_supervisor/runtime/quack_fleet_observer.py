@@ -78,6 +78,21 @@ def _pctdd_native_authority(native: Mapping[str, Any], identity: Mapping[str, An
     return dict(candidate)
 
 
+def _configured_source_integrity_verified(board: Mapping[str, Any], adapter: Any) -> bool:
+    """Configured source scopes require the immutable adapter's bounded check."""
+    if board.get("source_integrity_paths") is None:
+        return True
+    check = getattr(adapter, "_source_integrity", None)
+    if not callable(check):
+        return False
+    try:
+        integrity = check(board)
+    except Exception:  # noqa: BLE001 - an unavailable guard cannot admit a source
+        return False
+    return (isinstance(integrity, Mapping) and integrity.get("configured") is True
+            and integrity.get("valid") is True)
+
+
 def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict[str, Any]:
     """Reuse native credential admission; never read task counts from replicas."""
     if adapter is None:
@@ -85,6 +100,9 @@ def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict
     result = {"schema": SCHEMA, "source_id": board["id"], "observed_at": "", "availability": "unavailable",
               "source_identity": {}, "native_receipt": {}, "reason": "native_source_unavailable", "completion_authority": False}
     try:
+        if not _configured_source_integrity_verified(board, adapter):
+            result["reason"] = "source_integrity_not_verified"
+            return result
         if not Path(board["database_path"]).is_file() or not Path(board["config_path"]).is_file():
             result["reason"] = "native_configuration_or_database_missing"
             return result
@@ -101,6 +119,10 @@ def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict
         query_started = time.monotonic()
         native, error, _attempts = adapter._status_with_receipt_retry(board, birth)
         query_seconds = time.monotonic() - query_started
+        query_finished_at = datetime.now(timezone.utc)
+        if not _configured_source_integrity_verified(board, adapter):
+            result["reason"] = "source_integrity_not_verified"
+            return result
         latest = adapter.read_json(Path(board["owner_status_path"]))
         latest_identity = latest.get("identity", {})
         if latest.get("lifecycle") != "ready" or not adapter.birth_matches(adapter.process_identity(birth.get("pid")), birth) or any(latest_identity.get(key) != value for key, value in result["source_identity"].items()):
@@ -147,7 +169,7 @@ def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict
         elif board["id"] == "aseh":
             result["native_receipt"]["valid_until"] = datetime.fromtimestamp(authority["query_started_at_ms"] / 1000 + 30, timezone.utc).isoformat()
         elif board["id"] == "pctdd":
-            result["native_receipt"]["valid_until"] = (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat()
+            result["native_receipt"]["valid_until"] = (query_finished_at + timedelta(seconds=30)).isoformat()
         return result
     except (OSError, ValueError, TypeError, KeyError) as error:
         result.update(availability="unavailable", native_receipt={}, reason=f"native_read_failed:{type(error).__name__}")
