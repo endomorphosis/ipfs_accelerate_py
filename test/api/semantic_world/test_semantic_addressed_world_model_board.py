@@ -2332,6 +2332,48 @@ def test_operator_does_not_kill_coordinator_for_isolated_dead_lane() -> None:
         run_dir=run_dir,
     )
     assert rewritten_store == str(run_dir / "control.duckdb")
+    absolute_worktree = str(run_dir / "worktrees")
+    assert (
+        operator._rewrite_isolated_lane_relative_run_paths(
+            absolute_worktree, repo_root=repo_root, run_dir=run_dir
+        )
+        == absolute_worktree
+    )
+    admission_json = (
+        '{"admission_cid":"baguqeera","store_id":"'
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        'run-r2-m27/control.duckdb"}'
+    )
+    assert (
+        operator._rewrite_isolated_lane_relative_run_paths(
+            admission_json, repo_root=repo_root, run_dir=run_dir
+        )
+        == admission_json
+    )
+    env = operator._rewrite_isolated_lane_operational_env_paths(
+        {
+            "IPFS_ACCELERATE_AGENT_STATE_STORE_ID": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m27/control.duckdb"
+            ),
+            "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON": (
+                '{"store_id":"data/agent_supervisor/semantic_addressed_world_model/'
+                'run-r2-m27/control.duckdb"}'
+            ),
+            "IPFS_ACCELERATE_LIFECYCLE_STATE_ROOT": str(run_dir / "state/lane-0"),
+        },
+        repo_root=repo_root,
+        run_dir=run_dir,
+    )
+    assert env["IPFS_ACCELERATE_AGENT_STATE_STORE_ID"] == str(
+        run_dir / "control.duckdb"
+    )
+    assert '"store_id":"' + str(run_dir / "control.duckdb") + '"' in (
+        env["IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"]
+    )
+    assert env["IPFS_ACCELERATE_LIFECYCLE_STATE_ROOT"] == str(
+        run_dir / "state/lane-0"
+    )
     exact_cwd = operator._isolated_exact_source_worktree_path(
         run_dir, pin["source_head"]
     )

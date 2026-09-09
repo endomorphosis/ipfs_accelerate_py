@@ -18221,14 +18221,57 @@ def _rewrite_isolated_lane_relative_run_paths(
 ) -> str:
     """Make run-dir relative paths absolute so cwd can be the pin worktree."""
 
+    if (
+        not value
+        or value.startswith("/")
+        or value.startswith("{")
+        or value.startswith("[")
+    ):
+        return value
     try:
-        relative = Path(run_dir).resolve().relative_to(Path(repo_root).resolve())
+        relative = Path(run_dir).resolve().relative_to(Path(repo_root).resolve()).as_posix()
     except ValueError:
         return value
-    marker = relative.as_posix()
-    if not marker or marker == ".":
+    if not relative or relative == ".":
         return value
-    return value.replace(marker, str(Path(run_dir).resolve()))
+    if value == relative or value.startswith(relative + "/"):
+        return str(Path(run_dir).resolve()) + value[len(relative) :]
+    return value
+
+
+def _rewrite_isolated_lane_operational_env_paths(
+    env: Mapping[str, str],
+    *,
+    repo_root: Path,
+    run_dir: Path,
+) -> dict[str, str]:
+    """Absolutize operational run-dir paths without rewriting hashed JSON."""
+
+    rewritten = dict(env)
+    try:
+        relative = Path(run_dir).resolve().relative_to(Path(repo_root).resolve()).as_posix()
+    except ValueError:
+        return rewritten
+    if not relative or relative == ".":
+        return rewritten
+    absolute = str(Path(run_dir).resolve())
+    operational = {
+        "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON",
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_ID",
+        "IPFS_ACCELERATE_AGENT_EVENT_STORE_PATH",
+        "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH",
+    }
+    for key in operational:
+        value = rewritten.get(key)
+        if not isinstance(value, str) or not value:
+            continue
+        if value.startswith("{"):
+            rewritten[key] = value.replace('"' + relative, '"' + absolute)
+        else:
+            rewritten[key] = _rewrite_isolated_lane_relative_run_paths(
+                value, repo_root=repo_root, run_dir=run_dir
+            )
+    return rewritten
 
 
 def _rewrite_isolated_lane_peer_env(
@@ -18354,12 +18397,9 @@ def _recycle_isolated_lane_from_live_peer(
         )
         for part in argv
     ]
-    env = {
-        key: _rewrite_isolated_lane_relative_run_paths(
-            value, repo_root=repo_root, run_dir=run_dir
-        )
-        for key, value in env.items()
-    }
+    env = _rewrite_isolated_lane_operational_env_paths(
+        env, repo_root=repo_root, run_dir=run_dir
+    )
     log_dir = run_dir / "state" / f"lane-{int(dead_lane_index)}"
     log_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -18458,6 +18498,8 @@ def _recycle_isolated_lane_from_live_peer(
                 "reason": f"child_exited:{code}",
                 "new_pid": int(process.pid),
                 "log_path": str(log_path),
+                "cwd": str(cwd),
+                "source_head": source_head,
                 "admission": admission,
             }
         time.sleep(0.2)
@@ -18468,6 +18510,8 @@ def _recycle_isolated_lane_from_live_peer(
             "reason": f"child_exited:{code}",
             "new_pid": int(process.pid),
             "log_path": str(log_path),
+            "cwd": str(cwd),
+            "source_head": source_head,
             "admission": admission,
         }
     return {
