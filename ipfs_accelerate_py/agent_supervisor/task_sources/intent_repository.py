@@ -532,6 +532,32 @@ def _receipt_with_preserved_reopen_count(
     return stored
 
 
+
+def _store_control_receipt_preserving_reopen_budget(
+    body: dict[str, Any], receipt: Mapping[str, Any], *, completing: bool
+) -> None:
+    """Keep budget telemetry outside a receipt whose bytes will be sealed.
+
+    Completion event replay must reproduce the admitted receipt exactly too;
+    inherited counters belong to the task body, not the sealed receipt body.
+    """
+    prior = body.get("completion_receipt")
+    stored = _receipt_with_preserved_reopen_count(receipt, prior)
+    body["completion_receipt"] = dict(receipt) if completing else stored
+    if completing:
+        counts = []
+        for value in (body.get("unknown_callback_reopen_count"),
+                      stored.get("unknown_callback_reopen_count"),
+                      prior.get("unknown_callback_reopen_count") if isinstance(prior, Mapping) else None):
+            if value is not None:
+                try:
+                    counts.append(max(0, int(value)))
+                except (TypeError, ValueError):
+                    pass
+        if counts:
+            body["unknown_callback_reopen_count"] = max(counts)
+
+
 def database_task_alias_home_shard_index(task_alias: str, shard_count: int) -> int:
     """Return the shared deterministic alias-hash home lane."""
 
@@ -7771,9 +7797,8 @@ class IntentRepository:
                 now_ms=self._clock_ms(),
             )
             if receipt_map:
-                body_map["completion_receipt"] = _receipt_with_preserved_reopen_count(
-                    receipt_map,
-                    body_map.get("completion_receipt"),
+                _store_control_receipt_preserving_reopen_budget(
+                    body_map, receipt_map, completing=completing,
                 )
                 if receipt_map.get("operation") in {
                     "reopen_unimplemented_unknown_callback_quarantine",
@@ -9190,9 +9215,8 @@ class IntentRepository:
             else:
                 body = {}
             if receipt:
-                body["completion_receipt"] = _receipt_with_preserved_reopen_count(
-                    receipt,
-                    body.get("completion_receipt"),
+                _store_control_receipt_preserving_reopen_budget(
+                    body, receipt, completing=status in _COMPLETED_STATUSES,
                 )
             connection.execute(
                 """

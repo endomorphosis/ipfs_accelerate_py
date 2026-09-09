@@ -254,3 +254,29 @@ cancellation with the original candidate and quarantine history preserved;
 this does not claim that the old candidate merged or complete a task or goal.
 Changed native receipts, source roots or validation evidence must reject the
 review. Ordinary `cancel` continues to refuse quarantined work.
+
+
+SPAR native closeout requirements use the versioned `spar-closeout-profile@1`
+owner-local adapter. Its launcher verifies original bootstrap source hashes,
+reconstructs exact task/goal identities and dependencies, and refuses a changed
+completion policy. The admitted closeout read compares native contracts and
+current revision-bound completion receipts inside the owner transaction. It also
+reports a bounded fresh repository-forest observation and nomination-only report
+failures. These observations neither issue accepted semantic roots nor mutate
+native goals. All thirteen SPAR policy requirements remain mandatory, including
+required-mode receipts, noncompensable safety floors, and the self-hosted capstone.
+
+The remaining producer work belongs to the existing authorities: datasets must
+independently verify and issue accepted semantic-root evidence, and kit must
+verify the corresponding current source-forest CAS receipt. Unverified derived
+AST/CID records and aggregate observations cannot substitute for either. A
+subsequent SPAR-specific owner adapter must bind those real receipts to the exact
+native goal revisions, task receipts, declared mode/capstone/fixed-point evidence,
+and quiescent lane/merge obligations before performing native goal CAS settlement.
+The current profile explicitly reports these missing producer/admission paths;
+it does not use the older VRIF-specific four-producer goal contract.
+
+Task completion CAS and admitted-event replay preserve inherited unknown-callback
+reopen budgets on the task body without adding telemetry to a sealed completion
+receipt. Historical mismatches remain rejected by exact receipt equality until
+a separately admitted repair or event-projection recovery handles them.

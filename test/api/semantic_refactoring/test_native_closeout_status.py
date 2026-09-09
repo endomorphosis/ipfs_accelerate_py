@@ -51,6 +51,8 @@ def test_start_binds_readonly_population_and_never_rewrites_authority(
         "_load_config",
         lambda _: (SimpleNamespace(board_namespace="board:sealed"), {}),
     )
+    profile = object()
+    monkeypatch.setattr(m, "_native_closeout_profile", lambda *a: profile)
     before = path.read_bytes()
     if bad_seal:
         with pytest.raises(m.OperatorError):
@@ -63,6 +65,7 @@ def test_start_binds_readonly_population_and_never_rewrites_authority(
             "plan_root_cid": "plan:sealed",
             "repository_tree_id": "tree:sealed",
             "task_cids": ["task:one"],
+            "closeout_profile": profile,
         }
     assert path.read_bytes() == before
 

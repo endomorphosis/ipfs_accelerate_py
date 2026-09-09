@@ -5339,6 +5339,7 @@ class TypedStateOwnerGateway:
         self._status_bootstrap_uid = -1
         self._status_bootstrap_scope: dict[str, str] = {}
         self._database_status_binding: dict[str, Any] = {}
+        self._database_closeout_profile: Any = None
         self._derived_coordination_service: Any | None = None
         self._derived_bootstrap_token_digest: bytes | None = None
         self._fleet_read_bootstrap_token_digest: bytes | None = None
@@ -5597,6 +5598,7 @@ class TypedStateOwnerGateway:
         plan_root_cid: str,
         repository_tree_id: str,
         task_cids: Sequence[str],
+        closeout_profile: Any = None,
     ) -> None:
         """Admit read-only status for an explicitly sealed DatabaseTaskSource.
 
@@ -5631,6 +5633,12 @@ class TypedStateOwnerGateway:
             repository_tree_id=repository_tree_id,
             task_cids=cids,
         )
+        if closeout_profile is not None:
+            from .spar_closeout_profile import SparCloseoutProfile
+            if type(closeout_profile) is not SparCloseoutProfile:
+                raise TypedStateOwnerAuthorizationError("unknown native closeout profile")
+            closeout_profile.assert_scope(binding)
+            binding["closeout_profile_cid"] = closeout_profile.profile_cid
         with self._transaction_lock:
             with self._grants_lock:
                 if (
@@ -5641,10 +5649,12 @@ class TypedStateOwnerGateway:
                         "database status scope cannot be rebound"
                     )
                 self._database_status_binding = binding
+                self._database_closeout_profile = closeout_profile
             try:
                 scope = self._resolve_database_status_scope()
             except BaseException:
                 self._database_status_binding = {}
+                self._database_closeout_profile = None
                 raise
             with self._grants_lock:
                 self._status_bootstrap_scope = scope
@@ -6356,7 +6366,10 @@ class TypedStateOwnerGateway:
             )
             if include_closeout:
                 from .closeout_snapshot import capture_closeout_facts, seal_closeout_snapshot
-                validated = seal_closeout_snapshot(validated, capture_closeout_facts(self._connection))
+                facts = capture_closeout_facts(self._connection)
+                if self._database_closeout_profile is not None:
+                    facts["completion_profile"] = self._database_closeout_profile.evaluate(facts, validated)
+                validated = seal_closeout_snapshot(validated, facts)
             self._connection.execute("COMMIT")
             transaction_started = False
             return validated
