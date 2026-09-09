@@ -253,18 +253,22 @@ class SupervisorLoop:
         last_exit_code: Any = None,
         extra: Optional[Mapping[str, Any]] = None,
     ) -> bool:
-        try:
-            self._write_status(
-                status,
-                child=child,
-                run_id=run_id,
-                log_path=log_path,
-                last_exit_code=last_exit_code,
-                extra=extra,
-            )
-            return True
-        except Exception:
-            return False
+        last_error: Exception | None = None
+        for _attempt in range(2):
+            try:
+                self._write_status(
+                    status,
+                    child=child,
+                    run_id=run_id,
+                    log_path=log_path,
+                    last_exit_code=last_exit_code,
+                    extra=extra,
+                )
+                return True
+            except Exception as exc:
+                last_error = exc
+                self.sleep(0.01)
+        return last_error is None
 
     def _quiescent_child_log_activity(
         self,

@@ -20,7 +20,9 @@ import ipfs_accelerate_py.agent_supervisor.todo_daemon.core as daemon_core
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     DatabaseProgramConfig,
     SupervisorTrack,
+    admitted_live_capsule_relaunch_skips_source_successor,
     build_configured_multi_supervisor_cli_runner,
+    defer_live_unsafe_supervisor_restart,
     parse_track_spec,
     run_supervisor_tracks,
     start_track,
@@ -30,6 +32,30 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSp
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (
     SupervisorStatusContext,
 )
+
+
+def test_defer_live_unsafe_supervisor_restart_keeps_live_process() -> None:
+    assert defer_live_unsafe_supervisor_restart(
+        {"supervisor_status": "unsafe", "restart_supervisor": True},
+        process_live=True,
+    )
+    assert not defer_live_unsafe_supervisor_restart(
+        {"supervisor_status": "unsafe", "restart_supervisor": True},
+        process_live=False,
+    )
+    assert not defer_live_unsafe_supervisor_restart(
+        {"supervisor_status": "stale", "restart_supervisor": True},
+        process_live=True,
+    )
+
+
+def test_admitted_live_capsule_relaunch_skips_source_successor() -> None:
+    assert admitted_live_capsule_relaunch_skips_source_successor(
+        relaunch_admitted_live_capsule=True
+    )
+    assert not admitted_live_capsule_relaunch_skips_source_successor(
+        relaunch_admitted_live_capsule=False
+    )
 
 
 def test_cli_runner_forwards_outer_supervisor_startup_grace(tmp_path):
@@ -1732,6 +1758,77 @@ def test_isolated_restart_admission_retries_after_cooldown(
     assert any("heartbeat KEEP" in line for line in output), output
     assert starts.get("KEEP", 0) >= 1
     assert starts.get("FAIL", 0) >= 3
+    assert result["all_trees_fenced"] is True
+
+
+def test_unsafe_status_does_not_fence_a_live_supervisor(
+    tmp_path,
+    monkeypatch,
+):
+    """An unsafe status-file read must not kill a still-live supervisor."""
+
+    (tmp_path / "state").mkdir()
+    (tmp_path / "worker.py").write_text(
+        "\n".join(
+            [
+                "import json",
+                "import os",
+                "import signal",
+                "import sys",
+                "import time",
+                "from datetime import datetime, timezone",
+                "from pathlib import Path",
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "status = Path('state/example_supervisor_status.json')",
+                "while True:",
+                "    status.write_text(json.dumps({",
+                "        'status': 'running',",
+                "        'updated_at': datetime.now(timezone.utc).isoformat(),",
+                "        'supervisor_pid': os.getpid(),",
+                "    }), encoding='utf-8')",
+                "    time.sleep(0.02)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    original = runner.start_track
+    starts = 0
+
+    def count_starts(*args, **kwargs):
+        nonlocal starts
+        starts += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "start_track", count_starts)
+    monkeypatch.setattr(
+        runner,
+        "supervisor_status_health_fields",
+        lambda *_args, **_kwargs: {
+            "supervisor_status": "unsafe",
+            "restart_supervisor": True,
+        },
+    )
+    output: list[str] = []
+    result = run_supervisor_tracks(
+        [_track(tmp_path)],
+        repo_root=tmp_path,
+        common_args=[],
+        duration_seconds=0.35,
+        heartbeat_interval_seconds=0.05,
+        supervisor_status_stale_seconds=0.01,
+        supervisor_status_startup_grace_seconds=0.0,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        label="unsafe live defer",
+        output=output.append,
+    )
+
+    assert starts == 1, output
+    assert any(
+        "deferring unsafe-status restart" in line for line in output
+    ), output
+    assert not any("restarting stale" in line for line in output), output
     assert result["all_trees_fenced"] is True
 
 

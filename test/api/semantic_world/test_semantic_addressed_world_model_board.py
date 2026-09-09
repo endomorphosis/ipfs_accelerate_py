@@ -2232,6 +2232,34 @@ def test_operator_admits_process_dead_generation_47_stale_ready_owner() -> None:
     assert "_m69_published_owner_is_process_dead" in validate_source
 
 
+def test_operator_does_not_kill_coordinator_for_isolated_dead_lane() -> None:
+    """Isolated dead lanes require in-wave relaunch, never coordinator kill."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_isolated_lane_supervisor_recycle_test",
+    )
+    live_master = operator._admit_isolated_lane_supervisor_recycle(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=True,
+        dead_lane_count=1,
+    )
+    dead_master = operator._admit_isolated_lane_supervisor_recycle(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=False,
+        dead_lane_count=1,
+    )
+    assert live_master["admitted"] is False
+    assert live_master["kill_coordinator"] is False
+    assert live_master["in_wave_relaunch_required"] is True
+    assert live_master["reason"] == "healthy_coordinator_owns_in_wave_relaunch"
+    assert dead_master["admitted"] is True
+    assert dead_master["kill_coordinator"] is False
+    assert dead_master["reason"] == "master_down_isolated_lane_recycle"
+
+
 def test_operator_admits_process_dead_generation_48_stale_ready_owner() -> None:
     """M70 must settle a process-dead gen-48 ready owner before reusing 48."""
 

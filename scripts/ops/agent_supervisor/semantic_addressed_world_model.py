@@ -17987,6 +17987,46 @@ def _m70_published_owner_is_process_dead(config: Mapping[str, Any]) -> bool:
     return not listening
 
 
+def _admit_isolated_lane_supervisor_recycle(
+    *,
+    owner_ready: bool,
+    owner_alive: bool,
+    master_alive: bool,
+    dead_lane_count: int,
+) -> dict[str, object]:
+    """Isolated dead lanes require in-wave capsule relaunch, never coordinator kill.
+
+    A live ready owner plus a live master already owns fenced lane birth.
+    Killing that coordinator would interrupt healthy peer lanes.  Source
+    repair respawns the isolated lane inside the existing supervisor wave.
+    """
+
+    if not owner_ready or not owner_alive:
+        return {
+            "admitted": False,
+            "kill_coordinator": False,
+            "reason": "owner_not_ready",
+        }
+    if dead_lane_count < 1:
+        return {
+            "admitted": False,
+            "kill_coordinator": False,
+            "reason": "no_dead_lanes",
+        }
+    if master_alive:
+        return {
+            "admitted": False,
+            "kill_coordinator": False,
+            "in_wave_relaunch_required": True,
+            "reason": "healthy_coordinator_owns_in_wave_relaunch",
+        }
+    return {
+        "admitted": True,
+        "kill_coordinator": False,
+        "reason": "master_down_isolated_lane_recycle",
+    }
+
+
 def _m70_published_owner_is_stale_ready(config: Mapping[str, Any]) -> bool:
     """True when generation-48 is published ready but the process and listen are gone."""
 

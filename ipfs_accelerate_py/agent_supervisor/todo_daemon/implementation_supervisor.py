@@ -9138,7 +9138,16 @@ class PortalImplementationSupervisor:
                     payload["backpressure"] = True
                     payload["backpressure_reasons"] = reasons[:256]
         payload.update(self._control_plane_status_projection())
-        write_json_atomic(status_path, payload)
+        last_error: OSError | None = None
+        for _attempt in range(2):
+            try:
+                write_json_atomic(status_path, payload)
+                last_error = None
+                break
+            except OSError as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
         self._write_supervisor_maintenance_receipt(
             phase,
             status=status,

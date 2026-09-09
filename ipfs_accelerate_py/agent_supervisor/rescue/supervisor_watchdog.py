@@ -1694,6 +1694,8 @@ class SupervisorWatchdog:
             }
         restart_info = dict(lane_started or lane)
         restart_info.setdefault("pid_path", str(pid_check.get("pid_path") or ""))
+        if not bool(pid_check.get("alive")):
+            restart_info["unstall_class"] = "lane_supervisor_dead"
 
         def current_health() -> Mapping[str, Any]:
             current_pid = check_lane_pid(state_dir, state_prefix)
@@ -1821,10 +1823,14 @@ class SupervisorWatchdog:
                     "lane_id": bundle_key,
                     "healthy": False,
                     "reason": (
-                        heartbeat_check.get("state_reason")
-                        or heartbeat_check.get("reason")
-                        or pid_check.get("reason")
-                        or "lane_unhealthy"
+                        "lane_supervisor_dead"
+                        if not bool(pid_check.get("alive"))
+                        else (
+                            heartbeat_check.get("state_reason")
+                            or heartbeat_check.get("reason")
+                            or pid_check.get("reason")
+                            or "lane_unhealthy"
+                        )
                     ),
                 },
                 "process": {

@@ -904,6 +904,96 @@ def test_watchdog_does_not_restart_typed_fail_closed_exit(
     assert lane_report["heartbeat_check"].get("last_exit_code") == 78
 
 
+def test_watchdog_restarts_dead_lane_when_owner_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ready live owner must unstall a dead lane supervisor."""
+
+    state_dir = tmp_path / "lane-state"
+    state_dir.mkdir()
+    (state_dir / "lane_1_status.json").write_text(
+        json.dumps(
+            {
+                "state": "running",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    owner_status = tmp_path / "quack-state-server.status.json"
+    owner_status.write_text(
+        json.dumps(
+            {
+                "lifecycle": "ready",
+                "identity": {
+                    "generation": 48,
+                    "status": "ready",
+                    "process_birth": {"pid": 1_440_304},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "lanes.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "tree_id": "tree-1",
+                "owner_status_path": str(owner_status),
+                "autonomous_unstall_policy": {
+                    "enabled": True,
+                    "cooldown_ms": 0,
+                },
+                "lanes": [
+                    {
+                        "bundle_key": "lane-1",
+                        "state_dir": str(state_dir),
+                        "state_prefix": "lane_1",
+                    }
+                ],
+                "started": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    restart_calls = 0
+
+    def restart(lane: dict[str, Any]) -> dict[str, Any]:
+        nonlocal restart_calls
+        restart_calls += 1
+        assert lane.get("unstall_class") == "lane_supervisor_dead"
+        (state_dir / "lane_1_bundle_supervisor.pid").write_text(
+            "123\n",
+            encoding="utf-8",
+        )
+        (state_dir / "lane_1_status.json").write_text(
+            json.dumps({"state": "running"}),
+            encoding="utf-8",
+        )
+        return {
+            "restarted": True,
+            "new_pid": 123,
+            "receipt_id": "restart-receipt-ready-owner",
+        }
+
+    monkeypatch.setattr(
+        watchdog_module,
+        "pid_alive",
+        lambda pid: pid in {123, 1_440_304},
+    )
+    report = SupervisorWatchdog(
+        manifest_path=manifest_path,
+        repo_root=tmp_path,
+        lifecycle_restart=restart,
+    )._check_cycle()
+
+    lane_report = report["reports"][0]
+    assert restart_calls == 1
+    assert lane_report["action"] == "autonomous_unstall_recovered"
+    assert lane_report["autonomous_unstall"]["recovered"]
+
+
 def test_watchdog_does_not_restart_when_owner_process_dead(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1089,6 +1179,45 @@ def test_supervisor_loop_keeps_running_when_owner_process_dead(
     }
     decision = loop.default_watchdog(child, status)
     assert decision.action == "continue"
+
+
+def test_supervisor_loop_retries_status_write(tmp_path: Path) -> None:
+    """A single status-write collision must not drop the heartbeat."""
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    spec = ManagedDaemonSpec(
+        name="status-retry-daemon",
+        schema="test.daemon",
+        repo_root=tmp_path,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon.json",
+        supervisor_status_path=state_dir / "supervisor.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure.json",
+        ensure_check_path=state_dir / "check.json",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+        ),
+        sleep=lambda _seconds: None,
+    )
+    writes = {"count": 0}
+
+    def flaky_write(*_args: Any, **_kwargs: Any) -> None:
+        writes["count"] += 1
+        if writes["count"] == 1:
+            raise OSError("simulated status replace race")
+
+    loop._write_status = flaky_write  # type: ignore[method-assign]
+    assert loop._safe_write_status("running") is True
+    assert writes["count"] == 2
 
 
 def _learning_binding(**overrides: object) -> LearningCheckpointBinding:
