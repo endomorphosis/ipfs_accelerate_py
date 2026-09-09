@@ -42,3 +42,21 @@ def test_enqueue_cannot_inject_supersession_authority(tmp_path):
  queue,_,review=fixture(tmp_path)
  with pytest.raises(ValueError,match='queue-reserved'):
   queue.enqueue(branch_name='candidate',task_id='task',metadata={'reviewed_supersession':review})
+
+
+def test_supersession_replay_repairs_stage_receipt_after_commit_crash(tmp_path, monkeypatch):
+    queue, request, review = fixture(tmp_path)
+    original = queue._write_stage_receipt
+    def crash(_):
+        raise OSError("simulated crash after durable database commit")
+    monkeypatch.setattr(queue, "_write_stage_receipt", crash)
+    with pytest.raises(OSError):
+        queue.supersede_quarantined(request, review=review, verify_current_acceptance=lambda *_: True)
+    assert queue.get(request.request_id).status == "cancelled"
+    assert (queue.quarantine_dir / f"{request.request_id}.json").exists()
+    monkeypatch.setattr(queue, "_write_stage_receipt", original)
+    result = queue.supersede_quarantined(request, review=review, verify_current_acceptance=lambda *_: True)
+    assert result.status == "cancelled"
+    assert result.metadata["reviewed_supersession"] == review
+    assert (queue.cancelled_dir / f"{request.request_id}.json").is_file()
+    assert not (queue.quarantine_dir / f"{request.request_id}.json").exists()
