@@ -1963,7 +1963,18 @@ def _build_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any]:
     return server, paths, program
 
 
+def _assert_start_not_held(board: Any) -> None:
+    """Honor the fleet's existing operator stop files before native startup."""
+    runtime = board.path(board.runtime_paths["root"])
+    for name in ("HOLD", "OPERATOR_STOP", "watchdog.disabled", "watchdog.hold"):
+        candidate = runtime / name
+        if candidate.exists() or candidate.is_symlink():
+            raise OperatorError(f"SPAR native startup held by {candidate}")
+
+
 def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, Any, dict[str, Any]]:
+    board, _ = _load_config(config_path)
+    _assert_start_not_held(board)
     server, paths, program = _build_state_owner(config_path)
     try:
         identity = server.start()
@@ -3485,6 +3496,8 @@ def supervise(
         main as multi_supervisor_main,
     )
     board, config = _load_config(config_path)
+    if not dry_run:
+        _assert_start_not_held(board)
     current_head, current_tree = _assert_clean_current_tree(config)
     current_source_forest = _source_forest(config, head=current_head)
     preflight = preflight_configured_board(board)

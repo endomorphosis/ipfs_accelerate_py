@@ -14,6 +14,7 @@ def test_start_binds_readonly_population_and_never_rewrites_authority(
     tmp_path, monkeypatch, bad_seal
 ):
     m = _materializer()
+    monkeypatch.setattr(m, "_assert_start_not_held", lambda _: None)
     receipt = {
         "plan_root_cid": "plan:sealed",
         "repository_tree_id": "tree:sealed",
@@ -156,3 +157,20 @@ def test_native_status_preserves_unsettled_goals_and_owner_identity(
         assert json.loads(result["control"]["goals_json"]) == goals
         assert result["required_goal_count"] == 32
         assert result["completion_authority"] is False
+
+
+@pytest.mark.parametrize("name", ["HOLD", "OPERATOR_STOP", "watchdog.disabled", "watchdog.hold"])
+def test_native_start_honors_operator_hold_before_opening_authority(tmp_path, monkeypatch, name):
+    m = _materializer()
+    board = SimpleNamespace(runtime_paths={"root": "runtime"}, path=lambda _: tmp_path)
+    (tmp_path / name).write_text("owned operator hold")
+    monkeypatch.setattr(m, "_load_config", lambda _: (board, {}))
+    monkeypatch.setattr(m, "_build_state_owner", lambda _: pytest.fail("held startup opened authority"))
+    with pytest.raises(m.OperatorError, match="startup held"):
+        m._start_state_owner(tmp_path / "config")
+    assert (tmp_path / name).read_text() == "owned operator hold"
+
+
+def test_native_start_without_operator_hold_is_admitted(tmp_path):
+    m = _materializer()
+    m._assert_start_not_held(SimpleNamespace(runtime_paths={"root": "runtime"}, path=lambda _: tmp_path))
