@@ -480,3 +480,65 @@ def test_provider_output_during_native_receipt_wait_is_recent(board, monkeypatch
     assert result["busy"] is True
     assert [p["pid"] for p in result["details"]["providers"]] == [71]
     assert result["complete"] is False
+
+
+def _database_native_status(config, *, goal_status='completed'):
+    owner_status = probe.read_json(Path(config['owner_status_path']))
+    owner = {**owner_status['identity'], 'server_id': 'server:native',
+             'process_birth_id': 'birth:native', 'database_uuid': 'uuid:native',
+             'store_id': 'store:native', 'generation': 2, 'fence_epoch': 2}
+    _write(Path(config['owner_status_path']), {**owner_status, 'identity': owner})
+    config['task_namespace'] = 'board:native'
+    state = {'task_cid': 'cid:task', 'status': 'completed', 'revision': 3}
+    return {'schema': 'ipfs_accelerate_py/agent-supervisor/database-board-status@1',
+            'authoritative_task_observation': True, 'board_namespace': 'board:native',
+            'observed_at': 1000, 'owner_identity': owner,
+            'tasks': [{**state, 'task_alias': 'PCPR-096'}],
+            'control': {'task_count': 1, 'goal_count': 1, 'event_watermark': 7,
+                        'goals_json': json.dumps([{'goal_cid': 'goal:native', 'status': goal_status}])},
+            'completion_snapshot': {'schema': 'ipfs_accelerate_py/agent-supervisor/typed-completion-progress-snapshot@1',
+                'owner_identity': owner, 'completion_projection': {
+                    'task_states': [state], 'completion_receipts': [{'receipt_cid': 'cid:receipt'}]}}}
+
+
+def test_database_native_status_overrides_daemon_projection_without_closing_board(board, monkeypatch):
+    config, _, lane = board
+    native = _database_native_status(config)
+    monkeypatch.setattr(probe, '_status_command', lambda _: (native, ''))
+    _write(lane / 'pcpr_lane_0_task_state.json', {'heartbeat_at': 1000,
+        'projection_complete': True, 'task_count': 1, 'task_statuses': {'PCPR-096': 'blocked'}})
+    result = probe.observe_board(config, now=1000)
+    assert result['details']['authenticated_task_observation'] is True
+    assert result['details']['task_counts'] == {'completed': 1}
+    assert result['details']['completion_receipt_count'] == 1
+    assert result['completion_candidate'] is True
+    assert result['complete'] is False
+
+
+def test_database_terminal_tasks_do_not_hide_unsettled_goals(board, monkeypatch):
+    config, _, _ = board
+    native = _database_native_status(config, goal_status='active')
+    monkeypatch.setattr(probe, '_status_command', lambda _: (native, ''))
+    result = probe.observe_board(config, now=1000)
+    assert result['health'] == 'blocked'
+    assert result['details']['unsettled_goal_count'] == 1
+    assert 'board_has_unsettled_goals' in result['reason_codes']
+    assert result['completion_candidate'] is False
+    assert result['complete'] is False
+
+
+@pytest.mark.parametrize('drift', ['owner', 'namespace', 'task', 'age', 'goals'])
+def test_database_native_status_rejects_stale_or_foreign_population(board, monkeypatch, drift):
+    config, _, _ = board
+    native = _database_native_status(config)
+    if drift == 'owner':
+        native['owner_identity'] = {**native['owner_identity'], 'generation': 9}
+    elif drift == 'namespace': native['board_namespace'] = 'foreign'
+    elif drift == 'task': native['tasks'][0]['task_cid'] = 'foreign'
+    elif drift == 'age': native['observed_at'] = 900
+    else: native['control']['goals_json'] = '{}'
+    monkeypatch.setattr(probe, '_status_command', lambda _: (native, ''))
+    result = probe.observe_board(config, now=1000)
+    assert result['details']['authenticated_task_observation'] is False
+    assert 'native_database_status_not_admitted' in result['reason_codes']
+    assert result['complete'] is False

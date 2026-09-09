@@ -64,11 +64,12 @@ def validate_inventory(inventory: dict, repair_cwd: Path) -> None:
             value = entry.get(field)
             if not isinstance(value, str) or not Path(value).is_absolute():
                 raise ValueError(f"{identifier}: {field} must be an absolute path")
-        if not Path(entry["cwd"]).is_dir() or not Path(entry["config_path"]).is_file():
-            raise ValueError(f"{identifier}: board checkout and configuration must exist")
         holds = entry.get("hold_paths", [])
         if not isinstance(holds, list) or any(not isinstance(p, str) or not Path(p).is_absolute() for p in holds):
             raise ValueError(f"{identifier}: hold paths must be absolute paths")
+        unavailable = not Path(entry["cwd"]).is_dir() or not Path(entry["config_path"]).is_file()
+        if unavailable and not any(Path(hold).is_file() for hold in holds):
+            raise ValueError(f"{identifier}: board checkout and configuration must exist unless explicitly held")
         for field in ("ensure_argv", "status_argv"):
             argv = entry.get(field, [])
             if not isinstance(argv, list) or any(not isinstance(arg, str) or not arg for arg in argv):

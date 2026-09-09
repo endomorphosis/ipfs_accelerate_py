@@ -169,3 +169,21 @@ def test_external_owner_inventory_does_not_rewrite_native_unit(inputs):
     installer.install(source, inventory, board_root, enable=False)
     assert unit.read_text() == "external owner unit\n"
     assert "ensure" not in json.loads(Path(result["config"]).read_text())["boards"][0]
+
+
+def test_missing_checkout_can_be_retained_only_under_existing_explicit_hold(inputs):
+    source, inventory, board_root, _home = inputs
+    data = json.loads(inventory.read_text())
+    missing = board_root / 'lost-family'
+    data['boards'][0]['cwd'] = str(missing)
+    data['boards'][0]['config_path'] = str(missing / 'board.json')
+    hold = board_root / 'external-incident.hold'
+    data['boards'][0]['hold_paths'] = [str(hold)]
+    inventory.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match='explicitly held'):
+        installer.install(source, inventory, board_root, enable=False)
+    hold.write_text('Preserve missing authority; no rematerialization')
+    result = installer.install(source, inventory, board_root, enable=False)
+    installed = json.loads(Path(result['config']).read_text())
+    assert str(hold) in installed['boards'][0]['hold_files']
+    assert not missing.exists()

@@ -236,6 +236,63 @@ def _status_with_receipt_retry(
     return native, "native_receipt_unavailable_after_retry", attempts
 
 
+def _database_board_authority(native: Mapping[str, Any], board: Mapping[str, Any],
+                              owner_status: Mapping[str, Any], now: float) -> dict[str, Any]:
+    """Accept only a fresh native observation bound to the current ready owner.
+
+    The configured, sealed operator performs the credential admission and
+    completion snapshot validation. This adapter checks its exact owner and
+    population again; it never turns a task projection into a closeout gate.
+    """
+    if native.get("schema") != "ipfs_accelerate_py/agent-supervisor/database-board-status@1":
+        return {}
+    age = _age(native.get("observed_at"), now)
+    owner = _object(owner_status.get("identity"))
+    admitted = _object(native.get("owner_identity"))
+    snapshot = _object(native.get("completion_snapshot"))
+    snapshot_owner = _object(snapshot.get("owner_identity"))
+    keys = ("server_id", "process_birth_id", "database_uuid", "store_id", "generation", "fence_epoch")
+    if (native.get("authoritative_task_observation") is not True
+            or not board.get("task_namespace")
+            or native.get("board_namespace") != board.get("task_namespace")
+            or age is None or age > 30
+            or any(owner.get(key) in (None, "") or admitted.get(key) != owner.get(key)
+                   or snapshot_owner.get(key) != owner.get(key) for key in keys)
+            or snapshot.get("schema") != "ipfs_accelerate_py/agent-supervisor/typed-completion-progress-snapshot@1"):
+        return {}
+    tasks = native.get("tasks")
+    control = _object(native.get("control"))
+    projection = _object(snapshot.get("completion_projection"))
+    states = projection.get("task_states")
+    if (not isinstance(tasks, list) or not 1 <= len(tasks) <= 512
+            or not isinstance(states, list) or len(tasks) != len(states)
+            or control.get("task_count") != len(tasks)):
+        return {}
+    try:
+        identities = [(row["task_cid"], row["status"], row["revision"]) for row in tasks]
+        expected = [(row["task_cid"], row["status"], row["revision"]) for row in states]
+        aliases = [row["task_alias"] for row in tasks]
+        goals = json.loads(control["goals_json"])
+        if (any(not isinstance(alias, str) or not alias for alias in aliases)
+                or len(set(aliases)) != len(tasks)
+                or len({row[0] for row in identities}) != len(tasks)
+                or sorted(identities) != sorted(expected)
+                or not isinstance(goals, list) or len(goals) != control.get("goal_count")):
+            return {}
+        unsettled = [row["goal_cid"] for row in goals if row["status"] not in COMPLETED]
+        receipts = projection["completion_receipts"]
+        if not isinstance(receipts, list):
+            return {}
+    except (KeyError, TypeError, ValueError):
+        return {}
+    return {"authenticated_query": True, "task_count": len(tasks),
+            "task_statuses": {row["task_alias"]: row["status"] for row in tasks},
+            "event_cursor": control.get("event_watermark"),
+            "unsettled_goal_count": len(unsettled), "unsettled_goal_ids": unsettled,
+            "completion_receipt_count": len(receipts),
+            "blocked": bool(unsettled) and all(row["status"] in COMPLETED for row in tasks)}
+
+
 def _counts(authority: Mapping[str, Any]) -> dict[str, int]:
     counts = authority.get("status_counts")
     if isinstance(counts, dict) and counts and all(
@@ -444,12 +501,19 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         task_count = _object(authority.get("snapshot")).get("task_count")
         if type(task_count) is int and task_count >= 0:
             authority["task_count"] = task_count
+    database_authority = _database_board_authority(native, board, owner_status, now)
+    if native.get("schema") == "ipfs_accelerate_py/agent-supervisor/database-board-status@1":
+        if database_authority:
+            authority = database_authority
+        else:
+            authority = {}
+            reasons.append("native_database_status_not_admitted")
     source = "native_operator_status" if authority else "unavailable"
     authenticated = bool(authority and (authority.get("authenticated_query") is True
         or (board_id == "aseh" and native.get("broker_authenticated_receipt") is True)
         or (board_id == "doep" and native.get("status_age_seconds", float("inf")) <= 30)
         or authority.get("transport") == "exclusive_owner_authenticated_quack_projection"))
-    if fresh_projections and (not authority or board_id == "pcpr"):
+    if fresh_projections and (not authority or (board_id == "pcpr" and not authenticated)):
         # PCPR's checkpoint replica can lag by dozens of completions. Fresh
         # daemon projections are preferable for observing activity, never gates.
         authority = max(fresh_projections, key=lambda value: _age(value.get("heartbeat_at"), now) * -1)
@@ -464,8 +528,10 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
     blocked = (bool(blocked_task_ids) or native.get("blocked") is True or authority.get("blocked") is True
                or any(counts.get(status, 0) for status in BLOCKED)
                or int(authority.get("blocked_count") or 0) > 0)
-    if blocked:
+    if blocked and not database_authority.get("blocked"):
         reasons.append("board_has_blocked_or_quarantined_tasks")
+    if authority.get("unsettled_goal_count"):
+        reasons.append("board_has_unsettled_goals")
     if authority and not authenticated:
         reasons.append("task_observation_not_completion_authority")
     # Native receipt reads can wait while workers keep writing. Advance the
@@ -495,6 +561,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "owner": _public_identity(owner) if owner_live else {}, "owner_ready": owner_ready,
             "lanes": lanes, "providers": providers, "task_counts": counts, "progress_source": source,
             "authenticated_task_observation": authenticated,
+            "unsettled_goal_count": authority.get("unsettled_goal_count"),
+            "completion_receipt_count": authority.get("completion_receipt_count"),
             "task_count": authority.get("task_count", sum(counts.values()) if counts else None),
             "event_cursor": authority.get("event_cursor"),
             "native_status_attempts": native_status_attempts,

@@ -78,7 +78,17 @@ before reads. The resulting short-lived, kernel-peer-bound status grants expose
 only executor projections and the existing transactional completion snapshot;
 mutation commands remain unavailable. Changed namespace, plan, tree, or task
 population rejects the read. This adapter preserves the original task identity
-and does not infer goal satisfaction or release qualification from task counts.
+and does not infer goal satisfaction or release qualification from task counts. The live
+probe accepts the native `database-board-status@1` envelope only when its
+namespace, owner birth/generation and complete task population agree with the
+fresh completion snapshot. Unsettled goals remain visible and block closeout
+even when every task has completed.
+
+If a board checkout disappears, preserve its incident hold outside the missing
+directory. The installer can retain that unavailable board only while one of
+its explicit absolute hold paths is an existing file. It continues monitoring
+the outage and honors the hold; it never reconstructs authoritative task state
+from a JSON projection.
 
 ## Completion and Git publication
 
