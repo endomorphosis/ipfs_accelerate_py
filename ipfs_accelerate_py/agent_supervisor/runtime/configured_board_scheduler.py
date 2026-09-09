@@ -99,6 +99,7 @@ from .multi_supervisor_runner import (
     _read_stable_regular_json,
     _StableArtifactReadError,
     accepted_control_plane_pin_json,
+    apply_sealed_hashlib_launch_controls,
     build_configured_multi_supervisor_cli_runner,
     build_sealed_control_plane_module_command,
     parse_accepted_control_plane_pin,
@@ -3428,6 +3429,7 @@ def _launch_foreground_plan_bound_coordinator(
             if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
         }
         environment["PATH"] = "/usr/bin:/bin"
+        apply_sealed_hashlib_launch_controls(command, environment)
         process = subprocess.Popen(
             command,
             cwd=board.repo_root,
@@ -3513,6 +3515,7 @@ def _launch_detached_plan_bound_coordinator(
                 if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
             }
             launch_environment["PATH"] = "/usr/bin:/bin"
+            apply_sealed_hashlib_launch_controls(command, launch_environment)
             process = subprocess.Popen(
                 command,
                 cwd=accepted_tree_root,

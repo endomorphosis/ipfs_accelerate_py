@@ -1260,6 +1260,273 @@ def test_dead_predecessor_owner_session_identity_is_quarantined(
     assert not supervisor._managed_daemon_pid_path().exists()
 
 
+def test_dead_predecessor_python3_alias_identity_is_quarantined(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generic, _versioned, _alternate = _versioned_python_alias_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 362
+    command, scope = _predecessor_owner_identity(supervisor, pid=pid)
+    command[0] = str(generic)
+    identity_path = _write_identity(
+        supervisor,
+        pid=pid,
+        command=tuple(command),
+        owner_scope=scope,
+    )
+    identity = supervisor_module.load_supervised_child_identity(identity_path)
+    original = identity_path.read_bytes()
+
+    assert identity is not None
+    assert supervisor._managed_daemon_identity_matches_lane_scope(
+        identity,
+        pid=pid,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.DEAD,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_pid",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_lane_process",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail("dead predecessor was signalled"),
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is True
+    assert result["blocked"] is False
+    assert result["reason"] == (
+        "orphaned_dead_managed_database_identity_quarantined"
+    )
+    assert Path(result["quarantined"]["identity"]).read_bytes() == original
+    assert not identity_path.exists()
+    assert not supervisor._managed_daemon_pid_path().exists()
+
+
+def test_dead_predecessor_versioned_python_identity_with_generic_supervisor_is_quarantined(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generic, versioned, _alternate = _versioned_python_alias_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    # recover_setsid relaunches with sys.executable=python3 while the
+    # predecessor identity recorded the versioned python3.X argv0.
+    monkeypatch.setattr(supervisor_module.sys, "executable", str(generic))
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 365
+    command, scope = _predecessor_owner_identity(supervisor, pid=pid)
+    command[0] = str(versioned)
+    identity_path = _write_identity(
+        supervisor,
+        pid=pid,
+        command=tuple(command),
+        owner_scope=scope,
+    )
+    identity = supervisor_module.load_supervised_child_identity(identity_path)
+    original = identity_path.read_bytes()
+
+    assert identity is not None
+    assert supervisor._managed_daemon_identity_matches_lane_scope(
+        identity,
+        pid=pid,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.DEAD,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_pid",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_lane_process",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail("dead predecessor was signalled"),
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is True
+    assert result["blocked"] is False
+    assert result["reason"] == (
+        "orphaned_dead_managed_database_identity_quarantined"
+    )
+    assert Path(result["quarantined"]["identity"]).read_bytes() == original
+    assert not identity_path.exists()
+    assert not supervisor._managed_daemon_pid_path().exists()
+
+
+@pytest.mark.parametrize(
+    "alias_kind",
+    ["different", "missing", "relative", "arbitrary_same_inode"],
+)
+def test_lane_scope_match_rejects_unverified_executable_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    alias_kind: str,
+) -> None:
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 363
+    command, scope = _predecessor_owner_identity(supervisor, pid=pid)
+    if alias_kind == "different":
+        different_executable = tmp_path / "different-python"
+        different_executable.write_bytes(b"not the configured interpreter\n")
+        command[0] = str(different_executable)
+    elif alias_kind == "missing":
+        command[0] = str(tmp_path / "missing-python")
+    elif alias_kind == "relative":
+        command[0] = "relative-python-alias"
+    else:
+        arbitrary_alias = tmp_path / "python-equivalent-alias"
+        arbitrary_alias.symlink_to(Path(command[0]))
+        command[0] = str(arbitrary_alias)
+    identity_path = _write_identity(
+        supervisor,
+        pid=pid,
+        command=tuple(command),
+        owner_scope=scope,
+    )
+    identity = supervisor_module.load_supervised_child_identity(identity_path)
+
+    assert identity is not None
+    assert not supervisor._managed_daemon_identity_matches_lane_scope(
+        identity,
+        pid=pid,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: pytest.fail("unverified alias liveness was trusted"),
+    )
+    result = supervisor.ensure_managed_daemon_pid_file()
+    assert result["repaired"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "orphaned_managed_database_identity_scope_mismatch"
+    )
+    assert identity_path.exists()
+
+
+def test_lane_alias_is_revalidated_under_launch_lock_before_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generic, _versioned, alternate = _versioned_python_alias_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 364
+    command, scope = _predecessor_owner_identity(supervisor, pid=pid)
+    command[0] = str(generic)
+    identity_path = _write_identity(
+        supervisor,
+        pid=pid,
+        command=tuple(command),
+        owner_scope=scope,
+    )
+    original = identity_path.read_bytes()
+    liveness_calls = 0
+
+    def retarget_after_initial_match(_identity: object) -> OwnerLiveness:
+        nonlocal liveness_calls
+        liveness_calls += 1
+        if liveness_calls == 1:
+            generic.unlink()
+            generic.symlink_to(alternate.name)
+        return OwnerLiveness.DEAD
+
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        retarget_after_initial_match,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_pid",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_lane_process",
+        lambda **_kwargs: None,
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "orphaned_managed_database_identity_changed"
+    assert identity_path.read_bytes() == original
+    assert not tuple(identity_path.parent.glob("*.stale-child-identity-*"))
+
+
+def test_identity_guard_retries_instead_of_raising(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    calls = {"n": 0}
+    sleeps: list[float] = []
+    statuses: list[str] = []
+
+    def fake_guard() -> dict[str, object]:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "orphaned_managed_database_identity_scope_mismatch",
+            }
+        return {"repaired": True, "blocked": False, "reason": "missing"}
+
+    monkeypatch.setattr(supervisor, "ensure_managed_daemon_pid_file", fake_guard)
+    monkeypatch.setattr(
+        supervisor,
+        "_supervisor_loop_recovery_delay_seconds",
+        lambda: 0.01,
+    )
+    monkeypatch.setattr(supervisor_module.time, "sleep", sleeps.append)
+    monkeypatch.setattr(supervisor, "_record_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        supervisor,
+        "_write_supervisor_maintenance_status",
+        lambda phase, **kwargs: statuses.append(str(kwargs.get("status") or "")),
+    )
+
+    result = supervisor._await_unblocked_managed_daemon_pid_file()
+
+    assert result["blocked"] is False
+    assert calls["n"] == 3
+    assert sleeps == [0.01, 0.01]
+    assert statuses == ["deferred", "deferred"]
+
+
 def test_dead_identity_does_not_quarantine_live_predecessor_lane_process(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2502,6 +2769,142 @@ def test_supervisor_loop_preserves_markers_when_termination_is_unproven(
     assert identity_path.read_text(encoding="utf-8") == "unavailable\n"
 
 
+def test_supervisor_loop_relaunches_when_child_identity_is_already_dead(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DEAD extra-gate daemons relaunch instead of termination_blocked.
+
+    Recycle-during-in_progress leaves a DEAD identity. terminate still
+    returns False so a reused PID is never signalled. The loop must
+    relaunch. Extra-gate aliases still cannot bypass safe_to_restart=False.
+    """
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    pid_path = state_dir / "child.pid"
+    identity_path = state_dir / "child.identity.json"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("460\n", encoding="utf-8")
+    identity = SupervisedChildIdentity(
+        process_birth=ProcessBirthIdentity(
+            pid=460,
+            start_time_ticks=110,
+            boot_id="boot-test",
+            parent_pid=17,
+        ),
+        command=("python", "worker.py"),
+        owner_scope={"repo_root": str(repo)},
+        created_at="2026-08-03T00:00:00+00:00",
+    )
+    identity_path.write_text(
+        json.dumps(identity.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    child = SupervisedChild(
+        pid=460,
+        command=("python", "worker.py"),
+        log_path=state_dir / "child.log",
+        child_pid_path=pid_path,
+        identity_path=identity_path,
+        identity_record_id=identity.record_id,
+        identity_process_birth=identity.process_birth,
+        owned_process_group_id=460,
+    )
+    launches = {"n": 0}
+
+    def fake_launch(_spec, **_kwargs):
+        launches["n"] += 1
+        return child
+
+    polls = {"n": 0}
+
+    def fake_poll(_child):
+        polls["n"] += 1
+        return None if polls["n"] == 1 else 0
+
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "adopt_or_launch_supervised_child",
+        fake_launch,
+    )
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "_poll_child_exit",
+        fake_poll,
+    )
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "terminate_supervised_child",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "supervised_child_is_proven_dead",
+        lambda _child: True,
+    )
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "wait_for_child_exit",
+        lambda _child: pytest.fail("DEAD child exit was awaited"),
+    )
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.DEAD,
+    )
+    spec = ManagedDaemonSpec(
+        name="identity-required-daemon",
+        schema="test.identity-required-daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=("python", "worker.py"),
+        status_path=state_dir / "daemon-status.json",
+        supervisor_status_path=state_dir / "supervisor-status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=pid_path,
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure-status.json",
+        ensure_check_path=state_dir / "ensure-check.json",
+        supervisor_lock_path=state_dir / "supervisor.lock",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=child.command,
+            log_prefix="child",
+            heartbeat_seconds=0.01,
+            poll_seconds=0.01,
+            watchdog_startup_grace_seconds=0,
+            max_restarts=2,
+        ),
+        watchdog_hook=lambda *_args: SupervisorLoopDecision.recycle(
+            "stale_child"
+        ),
+        sleep=lambda _seconds: None,
+    )
+
+    result = loop.run()
+
+    assert launches["n"] == 2
+    assert result.status in {"max_restarts_reached", "child_exited"}
+    assert result.last_recycle_reason == "stale_child"
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
 def test_adopted_child_exit_is_proven_before_identity_markers_are_cleared(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2637,17 +3040,28 @@ def test_run_forever_honors_unproven_managed_daemon_block(
 ) -> None:
     supervisor = _supervisor(tmp_path)
     monkeypatch.setattr(supervisor, "ensure_event_log_file", lambda: {})
+    awaited = {"n": 0}
+
+    def fake_await() -> dict[str, object]:
+        awaited["n"] += 1
+        return {"blocked": False, "repaired": False, "reason": "missing"}
+
     monkeypatch.setattr(
         supervisor,
-        "ensure_managed_daemon_pid_file",
-        lambda: {
-            "blocked": True,
-            "reason": "managed_daemon_ownership_unproven",
-        },
+        "_await_unblocked_managed_daemon_pid_file",
+        fake_await,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "run_once",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("stop-after-identity-guard")
+        ),
     )
 
-    with pytest.raises(RuntimeError, match="managed_daemon_ownership_unproven"):
+    with pytest.raises(RuntimeError, match="stop-after-identity-guard"):
         supervisor._run_forever_loop()
+    assert awaited["n"] == 1
 
 
 def test_adopted_process_numeric_signal_methods_are_disabled() -> None:

@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from concurrent.futures import as_completed
@@ -44,6 +45,11 @@ from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.scheduling im
     ProofWorkItem,
     WorkClass,
     build_proof_schedule,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import (
+    HashingResourceTimeout,
+    hash_worker_limit,
+    hashing_worker_slot,
 )
 
 # This module is accelerate integration, not a pytest test module.
@@ -810,7 +816,11 @@ def _verify_one(
     allowlisted_verification_keys: frozenset[str],
     cancellation: CancellationToken | None,
     hooks: ParallelVerificationHooks | None,
+    deadline: float | None = None,
 ) -> UnitVerificationRecord:
+    verification_deadline = (
+        time.monotonic() + bounds.timeout_seconds if deadline is None else deadline
+    )
     if cancellation is not None:
         try:
             cancellation.check()
@@ -859,6 +869,56 @@ def _verify_one(
             ),
         )
 
+    remaining = verification_deadline - time.monotonic()
+    if remaining <= 0:
+        return _reject_unit(
+            unit, UnitVerificationReason.TIMEOUT,
+            "verification deadline expired before hash admission",
+        )
+    try:
+        # Only pure, size-bounded SHA/HMAC work occupies a shared worker slot.
+        # Cooperative hooks may themselves hash; run them outside admission
+        # so they never try to upgrade a shared slot to an exclusive batch.
+        with hashing_worker_slot(timeout=remaining):
+            record = _verify_payload(
+                unit,
+                allowlisted_signers=allowlisted_signers,
+                allowlisted_verification_keys=allowlisted_verification_keys,
+            )
+    except HashingResourceTimeout:
+        return _reject_unit(
+            unit, UnitVerificationReason.TIMEOUT,
+            "verification deadline expired waiting for hash admission",
+        )
+    if not record.accepted:
+        return record
+    if cancellation is not None:
+        try:
+            cancellation.check()
+        except ProcessControlError:
+            return _reject_unit(
+                unit,
+                UnitVerificationReason.CANCELLED,
+                "verification cancelled after unit check",
+                digest=record.digest,
+            )
+    if time.monotonic() >= verification_deadline:
+        return _reject_unit(
+            unit, UnitVerificationReason.TIMEOUT,
+            "verification deadline expired during unit check", digest=record.digest,
+        )
+    if hooks is not None and hooks.after_unit is not None:
+        hooks.after_unit(unit, record)
+    return record
+
+
+def _verify_payload(
+    unit: VerificationUnit,
+    *,
+    allowlisted_signers: frozenset[str],
+    allowlisted_verification_keys: frozenset[str],
+) -> UnitVerificationRecord:
+    """Pure checks for one already bounded unit; no hooks or owner requests."""
     observed = digest_bytes(unit.payload)
     if not _digests_equal(observed, unit.expected_digest):
         return _reject_unit(
@@ -970,18 +1030,6 @@ def _verify_one(
             f"unknown check kind {unit.kind!r}",
         )
 
-    if cancellation is not None:
-        try:
-            cancellation.check()
-        except ProcessControlError:
-            return _reject_unit(
-                unit,
-                UnitVerificationReason.CANCELLED,
-                "verification cancelled after unit check",
-                digest=observed,
-            )
-    if hooks is not None and hooks.after_unit is not None:
-        hooks.after_unit(unit, record)
     return record
 
 
@@ -1160,16 +1208,22 @@ def verify_units_in_parallel(
             allowlisted_verification_keys=keys,
             cancellation=cancellation,
             hooks=hooks,
+            deadline=deadline,
         )
 
-    workers = min(envelope.max_parallel, max(1, len(parsed)))
+    deadline = time.monotonic() + envelope.timeout_seconds
+    workers = hash_worker_limit(
+        min(envelope.max_parallel, max(1, len(parsed)))
+    )
     if parsed:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
                 pool.submit(_run, index): index for index in submit_order
             }
             try:
-                for future in as_completed(futures, timeout=envelope.timeout_seconds):
+                for future in as_completed(
+                    futures, timeout=max(0.0, deadline - time.monotonic())
+                ):
                     index = futures[future]
                     try:
                         index, record = future.result()

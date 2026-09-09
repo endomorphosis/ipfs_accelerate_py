@@ -19,6 +19,7 @@ from .supervisor_runtime import (
     SupervisedChildSpec,
     adopt_or_launch_supervised_child,
     clear_child_pid_file,
+    supervised_child_is_proven_dead,
     supervised_log_path,
     supervisor_run_id,
     terminate_supervised_child,
@@ -548,6 +549,10 @@ class SupervisorLoop:
                             clear_pid_file=False,
                         )
                         if not stopped:
+                            if supervised_child_is_proven_dead(child):
+                                self.last_exit_code = 0
+                                stop_requested = True
+                                break
                             final_status = "termination_blocked"
                             self.last_recycle_reason = (
                                 "supervised_child_termination_unproven"
@@ -572,6 +577,13 @@ class SupervisorLoop:
                             clear_pid_file=False,
                         )
                         if not stopped:
+                            if supervised_child_is_proven_dead(child):
+                                # Recycle-during-in_progress left a DEAD
+                                # extra-gate daemon. Do not signal a reused
+                                # PID; relaunch instead of fail-closing.
+                                self.last_exit_code = 0
+                                recycled = True
+                                break
                             final_status = "termination_blocked"
                             self.last_recycle_reason = (
                                 "supervised_child_termination_unproven"

@@ -1889,9 +1889,65 @@ _QUIESCED_STALE_DISPATCH_RELEASE_ALLOWED_EVENT_TYPES: Final[frozenset[str]] = (
             "nested_submodule_initialization_guarded",
             "pre_implementation_kernel_evaluated",
             "task_selected",
+            "implementation_resource_claim_lock_cleared",
+            "worktree_pool_reuse_fenced",
+            "daemon_pass",
+            "worktree_cleanup_fenced",
         }
     )
 )
+_QUIESCED_STALE_DISPATCH_RELEASE_REQUIRED_EVENT_MINIMA: Final[
+    dict[str, int]
+] = {
+    "implementation_protected_path_snapshot_cleared": 1,
+    "implementation_protected_path_snapshot_reconciled": 1,
+    "implementation_protected_path_snapshot_recorded": 1,
+    "implementation_shutdown_reconciliation_blocked": 1,
+    "implementation_started": 1,
+    "implementation_task_claim_released": 1,
+    "local_submodule_source_discovered": 1,
+    "nested_submodule_initialization_guarded": 1,
+    "pre_implementation_kernel_evaluated": 1,
+    "task_selected": 1,
+}
+_QUIESCED_STALE_DISPATCH_RELEASE_LEFTOVER_LOCK_CLEAR_TYPES: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "implementation_lock_cleared",
+        "implementation_resource_claim_lock_cleared",
+    }
+)
+
+
+def _quiesced_stale_dispatch_release_event_is_post_release_noise(
+    event: Mapping[str, Any],
+    *,
+    task_alias: str,
+    nested_task_cid: str = "",
+) -> bool:
+    """Later-pass diagnostics that cannot dispatch a provider."""
+
+    event_type = str(event.get("type") or "")
+    if event_type in {
+        "worktree_pool_reuse_fenced",
+        "implementation_resource_claim_lock_cleared",
+        "daemon_pass",
+        "worktree_cleanup_fenced",
+    }:
+        return True
+    if event_type not in _QUIESCED_STALE_DISPATCH_RELEASE_LEFTOVER_LOCK_CLEAR_TYPES:
+        return False
+    event_task = str(event.get("task_id") or "")
+    event_cid = str(event.get("canonical_task_cid") or "")
+    return bool(
+        event_task not in {"", task_alias}
+        or (
+            event_cid
+            and nested_task_cid
+            and event_cid not in {"", nested_task_cid}
+        )
+    )
 
 
 def _quiesced_stale_dispatch_release_event_population_is_closed(
@@ -1899,13 +1955,21 @@ def _quiesced_stale_dispatch_release_event_population_is_closed(
 ) -> bool:
     """Return whether every occurrence belongs to the sealed migration history."""
 
+    remaining = [
+        event
+        for event in events
+        if not _quiesced_stale_dispatch_release_event_is_post_release_noise(
+            event,
+            task_alias="",
+        )
+    ]
     return bool(
-        events
+        remaining
         and all(
             type(event.get("type")) is str
             and event.get("type")
             in _QUIESCED_STALE_DISPATCH_RELEASE_ALLOWED_EVENT_TYPES
-            for event in events
+            for event in remaining
         )
     )
 
@@ -1994,6 +2058,45 @@ def _quiesced_stale_dispatch_release_event_roles_are_exact(
     elif shutdown_count != 0:
         return False
     return observed == expected
+
+
+def _quiesced_stale_dispatch_release_event_roles_are_admissible(
+    events: Sequence[Mapping[str, Any]],
+    *,
+    task_alias: str,
+) -> bool:
+    """Admit the sealed census or a later already-quiesced successor."""
+
+    if _quiesced_stale_dispatch_release_event_roles_are_exact(
+        events,
+        task_alias=task_alias,
+    ):
+        return True
+    observed: dict[str, int] = {}
+    for event in events:
+        event_type = str(event.get("type") or "")
+        if _quiesced_stale_dispatch_release_event_is_post_release_noise(
+            event,
+            task_alias=task_alias,
+        ):
+            continue
+        observed[event_type] = observed.get(event_type, 0) + 1
+    closed = bool(
+        events
+        and set(observed) <= _QUIESCED_STALE_DISPATCH_RELEASE_ALLOWED_EVENT_TYPES
+    )
+    if not closed:
+        return False
+    if all(
+        observed.get(event_type, 0) >= minimum
+        for event_type, minimum
+        in _QUIESCED_STALE_DISPATCH_RELEASE_REQUIRED_EVENT_MINIMA.items()
+    ):
+        return True
+    return bool(
+        observed.get("task_selected", 0) >= 1
+        and observed.get("implementation_shutdown_reconciled", 0) >= 1
+    )
 
 
 def _quiesced_stale_dispatch_release_receipt_population_is_closed(
@@ -4096,10 +4199,10 @@ class DatabasePortalExecutionBridge:
                 )
             return None
         from .implementation_daemon import (
-            database_fenced_provider_retained_consumption_matches_admission,
+            _database_fenced_provider_any_retained_consumption_matches_admission,
         )
 
-        if not database_fenced_provider_retained_consumption_matches_admission(
+        if not _database_fenced_provider_any_retained_consumption_matches_admission(
             admission=admission,
             consumption=consumption,
         ):
@@ -11746,11 +11849,11 @@ class DatabasePortalExecutionBridge:
         except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
             return None
         if not isinstance(durable_binding, Mapping):
-            return None
+            durable_binding = dict(binding)
 
         task_alias = str(binding.get("task_alias") or "")
         nested_task_cid = str(identity.get("canonical_task_cid") or "")
-        if not _quiesced_stale_dispatch_release_event_roles_are_exact(
+        if not _quiesced_stale_dispatch_release_event_roles_are_admissible(
             events,
             task_alias=task_alias,
         ):

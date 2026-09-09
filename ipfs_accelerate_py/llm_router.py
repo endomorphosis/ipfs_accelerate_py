@@ -3612,15 +3612,16 @@ def _clean_grok_cli_output(text: str) -> str:
 
 
 def _grok_cli_command() -> str:
-    return (
-        _coalesce_env(
-            "ipfs_accelerate_py_GROK_CLI_CMD",
-            "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
-            "IPFS_DATASETS_PY_GROK_CLI_CMD",
-            "GROK_CLI_CMD",
-        )
-        or "grok"
+    configured = _coalesce_env(
+        "ipfs_accelerate_py_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+        "IPFS_DATASETS_PY_GROK_CLI_CMD",
+        "GROK_CLI_CMD",
     )
+    if configured:
+        return configured
+    found = find_grok_cli()
+    return found or "grok"
 
 
 def _grok_cli_auth_path() -> Path:
@@ -5070,6 +5071,19 @@ def build_goose_cli_env(
     return env
 
 
+def _grok_cli_well_known_binaries() -> tuple[Path, ...]:
+    """User install locations that systemd-minimal PATH omits."""
+
+    candidates = [
+        Path.home() / ".local" / "bin" / "grok",
+        Path.home() / ".grok" / "bin" / "grok",
+    ]
+    configured_home = os.getenv("GROK_HOME", "").strip()
+    if configured_home:
+        candidates.append(Path(configured_home).expanduser() / "bin" / "grok")
+    return tuple(candidates)
+
+
 def find_grok_cli() -> Optional[str]:
     """Locate the official Grok CLI binary without starting a process."""
 
@@ -5090,7 +5104,24 @@ def find_grok_cli() -> Optional[str]:
             found = shutil.which(parts[0])
             if found:
                 return found
-    return shutil.which("grok")
+    found = shutil.which("grok")
+    if found:
+        return found
+    # launch_detached / systemd user PATH often lacks ~/.local/bin.  The
+    # official grok install still lives there (and under ~/.grok/bin).
+    seen: set[str] = set()
+    for candidate in _grok_cli_well_known_binaries():
+        try:
+            resolved = candidate.expanduser()
+            key = str(resolved)
+            if key in seen:
+                continue
+            seen.add(key)
+            if resolved.is_file() and os.access(resolved, os.X_OK):
+                return key
+        except OSError:
+            continue
+    return None
 
 
 def _grok_default_model() -> str:

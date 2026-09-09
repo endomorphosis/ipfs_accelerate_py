@@ -1625,12 +1625,26 @@ def test_concurrent_remote_database_task_source_cas_has_one_typed_loser(
             install_schema=False,
             lock_timeout_seconds=0.05,
         )
+        bounded_writer = IntentRepository(
+            identity.listen_uri,
+            owner_id="lane:bounded-writer",
+            install_schema=False,
+            lock_timeout_seconds=0.05,
+        )
         try:
             with exclusive_file_lock(lock_path, timeout_seconds=1):
+                observed = bounded_reader.get_task("task:test")
+                assert observed is not None
+                assert (observed["status"], observed["revision"]) == (
+                    "completed",
+                    3,
+                )
                 with pytest.raises(TimeoutError, match="DuckDB .* lock"):
-                    bounded_reader.get_task("task:test")
+                    with bounded_writer._connection(write=True):
+                        pass
         finally:
             bounded_reader.close()
+            bounded_writer.close()
         successful_results = [
             json.loads(path.read_text(encoding="utf-8"))
             for path in server.mutation_inbox_path().glob("*.done.json")

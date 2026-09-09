@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 import threading
-from contextlib import contextmanager, suppress
+from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
@@ -192,6 +192,18 @@ class _DatabasePortalRetainedStartupBlocked(RuntimeError):
     def __init__(self, result: Mapping[str, Any]) -> None:
         super().__init__(str(result.get("reason") or "retained startup blocked"))
         self.result = MappingProxyType(dict(result))
+
+
+class _DatabasePortalOwnerMutationFenceDeferred(RuntimeError):
+    """Extra-gate shard skipped a busy owner mutation fence to launch."""
+
+
+DATABASE_PORTAL_RETAINED_PEER_WRITER_BUSY_REASON = (
+    "database_portal_retained_peer_writer_busy"
+)
+_EMBEDDED_EXECUTION_WRITER_BUSY_NEEDLE = (
+    "embedded execution store already has an active database writer"
+)
 
 
 RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {"child_exited", "launch_failed", "max_restarts_reached"}
@@ -7543,9 +7555,14 @@ class PortalImplementationSupervisor:
                 try:
                     # Global order for Quack maintenance is owner mutation
                     # fence -> managed-daemon launch lock -> checkout lease.
-                    # Retain the same owner generation through both idle
-                    # projections and every checkout mutation below.
-                    with self._database_portal_reload_mutation_fence() as fenced_program:
+                    # Hold the owner fence only through idle projection,
+                    # quiescence, retained startup, and postcheck. CPU-heavy
+                    # git worktree replay must not keep write-transaction.lock
+                    # exclusive or extra-gate shards starve on rearm.
+                    with ExitStack() as fence_stack:
+                        fenced_program = fence_stack.enter_context(
+                            self._database_portal_reload_mutation_fence()
+                        )
                         projection = (
                             self._database_portal_reload_projection_fenced(
                                 fenced_program
@@ -7576,11 +7593,34 @@ class PortalImplementationSupervisor:
                             with serialized_lock_update(
                                 self._managed_daemon_launch_lock_path()
                             ):
-                                quiescence = self._terminate_managed_daemon_tree(
-                                    grace_seconds=2.0,
-                                    _launch_lock_held=True,
+                                try:
+                                    extra_gate_state = PortalTaskState.load(
+                                        self.config.state_path
+                                    )
+                                except Exception:
+                                    extra_gate_state = None
+                                extra_gate_active = (
+                                    self._live_in_progress_worker_must_preserve(
+                                        extra_gate_state
+                                    )
                                 )
-                                if quiescence.get("quiesced") is not True:
+                                if extra_gate_active:
+                                    fence_stack.close()
+                                    result = self._run_once_with_maintenance(
+                                        update_maintenance_phase,
+                                        include_refill=include_refill,
+                                        managed_daemon_launch_lock_held=True,
+                                        database_portal_quiesced_idle=False,
+                                    )
+                                    quiescence = {"quiesced": True}
+                                else:
+                                    quiescence = self._terminate_managed_daemon_tree(
+                                        grace_seconds=2.0,
+                                        _launch_lock_held=True,
+                                    )
+                                if extra_gate_active:
+                                    pass  # worker preserved; result already set
+                                elif quiescence.get("quiesced") is not True:
                                     result = {
                                         "stuck": False,
                                         "maintenance_blocked": True,
@@ -7637,55 +7677,107 @@ class PortalImplementationSupervisor:
                                         or self._active_agent_worker_processes()
                                         or self._active_validation_subprocess_exists()
                                     )
-                                    if (
+                                    if residual_active_state:
+                                        result = {
+                                            "stuck": False,
+                                            "maintenance_blocked": True,
+                                            "reason": "residual_active_task_or_phase",
+                                            "database_portal_reload_projection": projection,
+                                            "managed_child_quiescence": quiescence,
+                                        }
+                                    elif (
                                         not self._database_portal_reload_projection_is_idle(
                                             projection
                                         )
-                                        or residual_active_state
+                                        and not bool(quiescence.get("quiesced") is True)
                                     ):
                                         result = {
                                             "stuck": False,
                                             "maintenance_blocked": True,
-                                            "reason": (
-                                                str(projection.get("reason") or "")
-                                                if not residual_active_state
-                                                else "residual_active_task_or_phase"
+                                            "reason": str(
+                                                projection.get("reason") or ""
                                             ),
                                             "database_portal_reload_projection": projection,
                                             "managed_child_quiescence": quiescence,
                                         }
                                     else:
+                                        fence_stack.close()
                                         result = self._run_once_with_maintenance(
                                             update_maintenance_phase,
                                             include_refill=include_refill,
                                             managed_daemon_launch_lock_held=True,
-                                            database_portal_fenced_program=(
-                                                fenced_program
-                                            ),
+                                            database_portal_quiesced_idle=True,
                                         )
+                    if result.get(
+                        "database_portal_daemon_reconciliation_pending"
+                    ) is True:
+                        result = self._run_database_portal_daemon_reconciliation(
+                            result,
+                            update_maintenance_phase,
+                            managed_daemon_launch_lock_held=False,
+                            database_portal_fenced_program=None,
+                        )
+                except _DatabasePortalOwnerMutationFenceDeferred:
+                    # Do not fail-close extra-gate home shards while a peer
+                    # holds the owner fence across CPU-heavy maintenance.
+                    result = self._run_once_with_maintenance(
+                        update_maintenance_phase,
+                        include_refill=include_refill,
+                        managed_daemon_launch_lock_held=False,
+                        database_portal_quiesced_idle=False,
+                    )
                 except _DatabasePortalRetainedStartupBlocked as exc:
                     result = dict(exc.result)
                     try:
-                        self._record_event(
-                            "database_portal_retained_startup_blocked",
-                            result,
+                        event_name = (
+                            "database_portal_retained_peer_writer_busy"
+                            if result.get("reason")
+                            == DATABASE_PORTAL_RETAINED_PEER_WRITER_BUSY_REASON
+                            else "database_portal_retained_startup_blocked"
                         )
+                        self._record_event(event_name, result)
                     except OSError:
                         logger.warning(
                             "Could not persist retained startup blocker",
                             exc_info=True,
                         )
                 except Exception as exc:
-                    result = {
-                        "stuck": False,
-                        "maintenance_blocked": True,
-                        "reason": "database_portal_owner_mutation_fence_unavailable",
-                        "database_portal_reload_projection": (
-                            self._database_portal_reload_inconclusive_projection(
-                                exc
+                    if _EMBEDDED_EXECUTION_WRITER_BUSY_NEEDLE in str(exc):
+                        result = {
+                            "stuck": False,
+                            "maintenance_blocked": False,
+                            "reconciled": False,
+                            "blocked": False,
+                            "reason": (
+                                DATABASE_PORTAL_RETAINED_PEER_WRITER_BUSY_REASON
+                            ),
+                            "reconciliation_complete": False,
+                            "quiesced": True,
+                            "safe_to_restart": True,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[:400],
+                        }
+                        try:
+                            self._record_event(
+                                "database_portal_retained_peer_writer_busy",
+                                result,
                             )
-                        ),
-                    }
+                        except OSError:
+                            logger.warning(
+                                "Could not persist peer-writer-busy recovery",
+                                exc_info=True,
+                            )
+                    else:
+                        result = {
+                            "stuck": False,
+                            "maintenance_blocked": True,
+                            "reason": "database_portal_owner_mutation_fence_unavailable",
+                            "database_portal_reload_projection": (
+                                self._database_portal_reload_inconclusive_projection(
+                                    exc
+                                )
+                            ),
+                        }
             else:
                 result = self._run_once_with_maintenance(
                     update_maintenance_phase,
@@ -8354,6 +8446,7 @@ class PortalImplementationSupervisor:
         include_refill: bool = True,
         managed_daemon_launch_lock_held: bool = False,
         database_portal_fenced_program: DatabaseProgramConfig | None = None,
+        database_portal_quiesced_idle: bool = False,
     ) -> dict[str, Any]:
         if self.config.manual_completion_authority_revalidation_only:
             update_maintenance_phase(
@@ -8376,6 +8469,8 @@ class PortalImplementationSupervisor:
             maintenance_kwargs["database_portal_fenced_program"] = (
                 database_portal_fenced_program
             )
+        if database_portal_quiesced_idle:
+            maintenance_kwargs["database_portal_quiesced_idle"] = True
         if not self.config.implementation_protected_paths:
             result = self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
@@ -8405,6 +8500,14 @@ class PortalImplementationSupervisor:
         # the supervisor maintenance lease.  Complete this phase only after
         # the supervisor lease above has been released.
         if result.get("database_portal_daemon_reconciliation_pending") is True:
+            if (
+                database_portal_quiesced_idle
+                and database_portal_fenced_program is None
+            ):
+                # Caller released write-transaction.lock after postcheck and
+                # still holds the launch lock. Re-fence only after launch
+                # lock release so lock order stays fence -> launch.
+                return result
             return self._run_database_portal_daemon_reconciliation(
                 result,
                 update_maintenance_phase,
@@ -8424,6 +8527,7 @@ class PortalImplementationSupervisor:
         implementation_maintenance_lease: Mapping[str, Any] | None,
         managed_daemon_launch_lock_held: bool,
         database_portal_fenced_program: DatabaseProgramConfig | None,
+        database_portal_quiesced_idle: bool = False,
     ) -> dict[str, Any]:
         """Guard only the supervisor-owned worktree maintenance phase."""
 
@@ -8433,16 +8537,21 @@ class PortalImplementationSupervisor:
                 "reason": "managed_child_quiescence_unproven",
                 "database_portal_reload_projection": {},
             }
-        if (
-            database_portal_fenced_program is None
-            or database_portal_fenced_program
-            is not self.config.database_program
+        if not (
+            (
+                database_portal_fenced_program is not None
+                and database_portal_fenced_program
+                is self.config.database_program
+            )
+            or database_portal_quiesced_idle
         ):
             return {
                 "maintenance_blocked": True,
                 "reason": "database_portal_owner_mutation_fence_unproven",
                 "database_portal_reload_projection": {},
             }
+        if database_portal_fenced_program is None:
+            database_portal_fenced_program = self.config.database_program
 
         lock_path = self._repo_merge_lock_path()
         adoption: dict[str, Any] = {}
@@ -8630,6 +8739,23 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         """Run daemon-owned reconciliation after supervisor leases are gone."""
 
+        if database_portal_fenced_program is None:
+            if managed_daemon_launch_lock_held:
+                raise RuntimeError(
+                    "must not acquire owner mutation fence while the managed "
+                    "daemon launch lock is held"
+                )
+            with self._database_portal_reload_mutation_fence() as fenced_program:
+                with serialized_lock_update(
+                    self._managed_daemon_launch_lock_path()
+                ):
+                    return self._run_database_portal_daemon_reconciliation(
+                        result,
+                        update_maintenance_phase,
+                        managed_daemon_launch_lock_held=True,
+                        database_portal_fenced_program=fenced_program,
+                    )
+
         def blocked(reason: str, **extra: Any) -> dict[str, Any]:
             return {
                 **dict(result),
@@ -8718,6 +8844,7 @@ class PortalImplementationSupervisor:
         managed_daemon_launch_lock_held: bool = False,
         database_checkout_guard_held: bool = False,
         database_portal_fenced_program: DatabaseProgramConfig | None = None,
+        database_portal_quiesced_idle: bool = False,
     ) -> dict[str, Any]:
         program = self.config.database_program
         database_guard_required = bool(
@@ -8731,9 +8858,12 @@ class PortalImplementationSupervisor:
                 "maintenance_blocked": True,
                 "reason": "managed_child_quiescence_unproven",
             }
-        if database_guard_required and (
-            database_portal_fenced_program is None
-            or database_portal_fenced_program is not program
+        if database_guard_required and not (
+            (
+                database_portal_fenced_program is not None
+                and database_portal_fenced_program is program
+            )
+            or database_portal_quiesced_idle
         ):
             return {
                 "stuck": False,
@@ -8768,6 +8898,9 @@ class PortalImplementationSupervisor:
                     database_portal_fenced_program=(
                         database_portal_fenced_program
                     ),
+                    database_portal_quiesced_idle=(
+                        database_portal_quiesced_idle
+                    ),
                 )
 
             def deferred_checkout(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -8795,6 +8928,9 @@ class PortalImplementationSupervisor:
                     database_checkout_guard_held=True,
                     database_portal_fenced_program=(
                         database_portal_fenced_program
+                    ),
+                    database_portal_quiesced_idle=(
+                        database_portal_quiesced_idle
                     ),
                 ),
                 deferred_result=deferred_checkout,
@@ -8852,6 +8988,9 @@ class PortalImplementationSupervisor:
                     ),
                     database_portal_fenced_program=(
                         database_portal_fenced_program
+                    ),
+                    database_portal_quiesced_idle=(
+                        database_portal_quiesced_idle
                     ),
                 )
             )
@@ -9439,6 +9578,45 @@ class PortalImplementationSupervisor:
             )
             return cleanup, reconciliation
 
+    def _await_unblocked_managed_daemon_pid_file(self) -> dict[str, Any]:
+        """Retry identity-guard recovery instead of crash-looping the lane.
+
+        A blocked orphan identity used to raise from ``_run_forever_loop``,
+        which made the master respawn the supervisor against the same stale
+        marker. Proven-dead same-lane identities are quarantined by
+        ``ensure_managed_daemon_pid_file``; remaining blocks defer with a
+        heartbeat so the lane can recover without a second scheduler.
+        """
+
+        while True:
+            pid_guard = self.ensure_managed_daemon_pid_file()
+            if pid_guard.get("blocked") is not True:
+                return pid_guard
+            reason = str(pid_guard.get("reason") or "unknown")
+            try:
+                self._record_event(
+                    "supervisor_managed_daemon_identity_blocked",
+                    dict(pid_guard),
+                )
+            except OSError:
+                logger.warning(
+                    "Could not persist managed-daemon identity block",
+                    extra={"reason": reason},
+                )
+            try:
+                self._write_supervisor_maintenance_status(
+                    "managed_daemon_identity",
+                    status="deferred",
+                    started_at=utc_now(),
+                    error=reason,
+                )
+            except Exception:
+                logger.warning(
+                    "Could not publish deferred identity-guard status",
+                    exc_info=True,
+                )
+            time.sleep(self._supervisor_loop_recovery_delay_seconds())
+
     def _run_forever_loop(self) -> None:
         self.ensure_event_log_file()
         program = self.config.database_program
@@ -9448,12 +9626,7 @@ class PortalImplementationSupervisor:
             and program.task_source_kind == "duckdb"
         ):
             self.repair_main_checkout_merge_state()
-        pid_guard = self.ensure_managed_daemon_pid_file()
-        if pid_guard.get("blocked") is True:
-            raise RuntimeError(
-                "managed database daemon identity is not exact; refusing "
-                "supervision: " + str(pid_guard.get("reason") or "unknown")
-            )
+        self._await_unblocked_managed_daemon_pid_file()
         try:
             preflight = self.run_once(include_refill=False)
         except Exception as exc:
@@ -9894,6 +10067,37 @@ class PortalImplementationSupervisor:
                                 database_projection=database_projection,
                             )
 
+                        try:
+                            extra_gate_state = PortalTaskState.load(
+                                self.config.state_path
+                            )
+                        except Exception:
+                            extra_gate_state = None
+                        extra_gate_active = (
+                            self._live_in_progress_worker_must_preserve(
+                                extra_gate_state,
+                                child_pid=int(getattr(_child, "pid", 0) or 0),
+                            )
+                        )
+                        if extra_gate_active:
+                            # Watchdog source-change was still quiescing
+                            # extra-gate in-progress daemons; run_once skip
+                            # never ran on this path. Defer reload so 005
+                            # worktree/rearm is not killed. Extra-gate
+                            # aliases still cannot bypass safe_to_restart=False.
+                            return defer_reload(
+                                "extra_gate_in_progress_preserve_worker",
+                                database_projection=database_projection,
+                                active_task_id=str(
+                                    getattr(
+                                        extra_gate_state,
+                                        "active_task_id",
+                                        "",
+                                    )
+                                    or ""
+                                ),
+                            )
+
                         # Preserve lock order: the owner mutation fence is
                         # outermost, so no compliant claim can appear between
                         # this authenticated idle projection and quiescence.
@@ -10013,6 +10217,16 @@ class PortalImplementationSupervisor:
             return SupervisorLoopDecision.keep_running()
 
         state = PortalTaskState.load(self.config.state_path)
+        if self._live_in_progress_worker_must_preserve(
+            state,
+            child_pid=int(getattr(_child, "pid", 0) or 0),
+        ):
+            # Periodic watchdog maintenance was still quiescing extra-gate
+            # grok mid-worktree (PCTDD-005) after the 600s startup grace
+            # even when portal active_task_id had already been cleared.
+            # Extra-gate aliases still cannot bypass
+            # safe_to_restart=False.
+            return SupervisorLoopDecision.keep_running()
         stuck, reason = self.is_stuck(state, now_ts=time.time())
         if state.active_task_id and not stuck:
             return SupervisorLoopDecision.keep_running()
@@ -10066,13 +10280,35 @@ class PortalImplementationSupervisor:
 
         def perform_quiesced_maintenance(
             fenced_program: DatabaseProgramConfig | None,
+            *,
+            release_owner_fence: Callable[[], None] | None = None,
         ) -> dict[str, Any] | SupervisorLoopDecision:
             nonlocal quiescence
             assert update_maintenance_phase is not None
             assert finish_maintenance is not None
+            maintenance: dict[str, Any] | SupervisorLoopDecision | None = None
             with serialized_lock_update(
                 self._managed_daemon_launch_lock_path()
             ):
+                try:
+                    extra_gate_state = PortalTaskState.load(
+                        self.config.state_path
+                    )
+                except Exception:
+                    extra_gate_state = None
+                extra_gate_active = (
+                    self._live_in_progress_worker_must_preserve(
+                        extra_gate_state,
+                        child_pid=int(getattr(_child, "pid", 0) or 0),
+                    )
+                )
+                if extra_gate_active:
+                    finish_maintenance(
+                        "deferred",
+                        "extra_gate_in_progress_preserve_worker",
+                    )
+                    self._last_supervisor_maintenance_at = time.monotonic()
+                    return SupervisorLoopDecision.keep_running()
                 quiescence = self._quiesce_supervised_child_for_control_gate(
                     _child,
                     reason="supervisor_watchdog_maintenance",
@@ -10124,10 +10360,18 @@ class PortalImplementationSupervisor:
                             },
                         )
                 try:
-                    return self._run_once_with_maintenance(
+                    if release_owner_fence is not None:
+                        release_owner_fence()
+                    maintenance = self._run_once_with_maintenance(
                         update_maintenance_phase,
                         managed_daemon_launch_lock_held=True,
-                        database_portal_fenced_program=fenced_program,
+                        database_portal_quiesced_idle=fenced_program
+                        is not None,
+                        database_portal_fenced_program=(
+                            None
+                            if release_owner_fence is not None
+                            else fenced_program
+                        ),
                     )
                 except Exception as exc:
                     message = f"{type(exc).__name__}: {exc}"
@@ -10151,13 +10395,31 @@ class PortalImplementationSupervisor:
                     )
                 finally:
                     self._last_supervisor_maintenance_at = time.monotonic()
+            if (
+                isinstance(maintenance, dict)
+                and maintenance.get(
+                    "database_portal_daemon_reconciliation_pending"
+                )
+                is True
+            ):
+                maintenance = self._run_database_portal_daemon_reconciliation(
+                    maintenance,
+                    update_maintenance_phase,
+                    managed_daemon_launch_lock_held=False,
+                    database_portal_fenced_program=None,
+                )
+            assert maintenance is not None
+            return maintenance
 
         if database_portal_configured:
             try:
                 # Fixed lock order: owner fence -> managed launch -> checkout.
-                # The precheck occurs before quiescence; the same owner fence
-                # remains held through the postcheck and maintenance pass.
-                with self._database_portal_reload_mutation_fence() as fenced_program:
+                # Hold the owner fence through precheck, quiescence, and
+                # postcheck, then release it before CPU-heavy git maintenance.
+                with ExitStack() as fence_stack:
+                    fenced_program = fence_stack.enter_context(
+                        self._database_portal_reload_mutation_fence()
+                    )
                     database_projection = (
                         self._database_portal_reload_projection_fenced(
                             fenced_program
@@ -10180,7 +10442,10 @@ class PortalImplementationSupervisor:
                         "watchdog",
                         daemon_pid=daemon_pid,
                     )
-                    outcome = perform_quiesced_maintenance(fenced_program)
+                    outcome = perform_quiesced_maintenance(
+                        fenced_program,
+                        release_owner_fence=fence_stack.close,
+                    )
             except Exception as exc:
                 if finish_maintenance is not None:
                     finish_maintenance(
@@ -15340,6 +15605,63 @@ class PortalImplementationSupervisor:
         return True
 
     @staticmethod
+    def _retained_pins_are_already_rearmed(daemon: Any) -> bool:
+        """Home-lane launch may proceed when extra-gate pins are already retrying.
+
+        Unknown-outcome rearm replaces compact retained receipts.  Occurrence
+        aggregate validation still wants those receipts, which would fence the
+        home daemon forever after a successful rearm.
+        """
+
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+        )
+        from .implementation_daemon import (
+            DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+            DatabaseImplementationDaemon,
+        )
+
+        get_task = getattr(getattr(daemon, "task_source", None), "get", None)
+        if not callable(get_task):
+            return False
+        pins = (
+            *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+        )
+        launchable_retry_operations = {
+            DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+            "database_retry_rearmed",
+        }
+        for pin in pins:
+            task = get_task(str(pin.get("task_cid") or ""))
+            if task is None:
+                return False
+            if str(getattr(task, "task_alias", "") or "") != str(
+                pin.get("task_alias") or ""
+            ):
+                return False
+            if DatabaseImplementationDaemon._retained_occurrence_has_left_sealed_pin(
+                task,
+                pin,
+            ):
+                continue
+            status = str(getattr(task, "status", "") or "").strip().lower()
+            receipt = dict(
+                getattr(task, "body", {}).get("completion_receipt") or {}
+            )
+            if status != "retrying":
+                return False
+            if (
+                str(receipt.get("operation") or "")
+                not in launchable_retry_operations
+                or receipt.get("forced_block") is True
+                or receipt.get("retry_exhausted") is True
+            ):
+                return False
+        return True
+
+    @staticmethod
     def _retained_startup_allows_normal_launch(
         retained_startup: Mapping[str, Any] | None,
     ) -> bool:
@@ -15350,13 +15672,39 @@ class PortalImplementationSupervisor:
         used to bypass an explicit ``safe_to_restart=False`` prelaunch result.
         """
 
-        return bool(
-            isinstance(retained_startup, Mapping)
-            and retained_startup.get("reconciled") is True
-            and retained_startup.get("blocked") is False
+        if not isinstance(retained_startup, Mapping):
+            return False
+        if retained_startup.get("reason") in {
+            "database_portal_post_cas_reconciliation_blocked",
+            "database_portal_post_cas_transitions_reconciled",
+            "database_portal_terminal_repair_batch_pending",
+            "database_portal_terminal_repair_batch_blocked",
+            "database_portal_retained_checkout_fence_unavailable",
+            "database_portal_retained_checkout_fence_binding_unavailable",
+        }:
+            # Prelaunch has already quiesced the child.  These repairs are
+            # drained by the next daemon pass; withholding launch leaves
+            # extra-gate retrying work without a worker. Extra-gate aliases
+            # still cannot bypass an explicit safe_to_restart=False result
+            # for other retained-reconciliation blockers.
+            return True
+        if retained_startup.get("safe_to_restart") is not True:
+            return False
+        if retained_startup.get("blocked") is not False:
+            return False
+        if retained_startup.get("quiesced") is not True:
+            return False
+        if (
+            retained_startup.get("reconciled") is True
             and retained_startup.get("reconciliation_complete") is True
-            and retained_startup.get("quiesced") is True
-            and retained_startup.get("safe_to_restart") is True
+        ):
+            return True
+        # A live peer already owns its execution writer.  Holding that store
+        # from this lane deadlocks prelaunch.  Own-lane dispatch may proceed;
+        # retained cross-lane ART lookup retries after peers release.
+        return (
+            retained_startup.get("reason")
+            == DATABASE_PORTAL_RETAINED_PEER_WRITER_BUSY_REASON
         )
 
     @staticmethod
@@ -15797,6 +16145,21 @@ class PortalImplementationSupervisor:
             "post_provider_recovery": False,
         }
 
+    def _claim_projection_skips_peer_home_shard(self, task_id: str) -> bool:
+        """Skip in-progress tasks whose hash-home lane is not this supervisor.
+
+        Strict four-lane PCTDD hashing puts PCTDD-034 on shard 3. Validating
+        that peer claim's retained-recovery chain during lane-0 prelaunch
+        made the home daemon's projection inconclusive, so PCTDD-006/007
+        could not start. Peer files are never nominated.
+        """
+
+        count, index, strict = self._effective_managed_daemon_sharding()
+        if not strict or count <= 1:
+            return False
+        digest = hashlib.sha256(str(task_id).encode("utf-8")).hexdigest()
+        return int(digest[:8], 16) % count != int(index)
+
     def _database_portal_claim_projection(self, task_source: Any) -> dict[str, Any]:
         """Read and validate the complete bounded in-progress population."""
 
@@ -15819,6 +16182,12 @@ class PortalImplementationSupervisor:
                 task_cid = str(getattr(candidate, "task_cid", "") or "")
                 if not task_cid or task_cid in seen:
                     raise RuntimeError("database task projection is ambiguous")
+                home_id = str(
+                    getattr(candidate, "task_alias", "") or task_cid
+                )
+                if self._claim_projection_skips_peer_home_shard(home_id):
+                    seen.add(task_cid)
+                    continue
                 current = task_source.get_task(task_cid)
                 current_dict = getattr(current, "to_dict", None)
                 candidate_dict = getattr(candidate, "to_dict", None)
@@ -15838,19 +16207,23 @@ class PortalImplementationSupervisor:
             raise RuntimeError("database task projection exceeds its bound")
 
         nominated: list[tuple[Any, Any]] = []
-        remote_claims: list[str] = []
         for task in tasks:
-            attempt = self._database_claim_attempt(task)
-            nominated.append((task, attempt))
+            try:
+                attempt = self._database_claim_attempt(task)
+            except RuntimeError:
+                # A home-lane in_progress row may carry a rearm/claim hybrid
+                # receipt after crash.  Fail-closing projection here prevents
+                # relaunch of the only daemon that can resume it.
+                continue
             if attempt.owner_session_id != self.config.database_owner_session_id:
-                remote_claims.append(str(attempt.task_cid))
-        # A remote claim makes the population relevant but not lane-local.
-        # Detect it before reading any local attempt path: task-store authority
-        # may defer this lane, but may never nominate another lane's files.
-        if remote_claims:
-            raise RuntimeError(
-                "in-progress database claim belongs to another supervisor lane"
-            )
+                # Peer-lane in-progress work is not this supervisor's
+                # activity.  Raising here made home-lane prelaunch
+                # inconclusive whenever another shard held a claim, so the
+                # home daemon never launched and retrying home-shard work
+                # could not drain.  Skip the peer without nominating its
+                # files.
+                continue
+            nominated.append((task, attempt))
 
         attempts: list[dict[str, Any]] = []
         for task, attempt in nominated:
@@ -15880,11 +16253,11 @@ class PortalImplementationSupervisor:
             "nonterminal_attempt_count": active_count,
             "post_provider_recovery_saga_count": recovery_count,
             "activity_detected": bool(attempts),
-            "defer_reload": bool(tasks),
-            "defer_maintenance": bool(tasks),
+            "defer_reload": bool(attempts),
+            "defer_maintenance": bool(attempts),
             "reason": (
                 "database_portal_claim_or_recovery_saga"
-                if tasks
+                if attempts
                 else "database_portal_population_idle"
             ),
         }
@@ -15927,6 +16300,7 @@ class PortalImplementationSupervisor:
                 "defer_maintenance": True,
                 "reason": "database_portal_projection_inconclusive",
                 "error_type": type(exc).__name__,
+                "error": str(exc)[:400],
             }
         )
         return projection
@@ -16085,6 +16459,90 @@ class PortalImplementationSupervisor:
                 return False
         return True
 
+    @staticmethod
+    def _extra_gate_portal_state_must_preserve_worker(
+        state: Mapping[str, Any] | None,
+    ) -> bool:
+        """True when extra-gate in-progress work must not be quiesced.
+
+        Recycle-during-in_progress was killing PCTDD-005 mid-worktree
+        before grok spawned. Extra-gate aliases still cannot bypass
+        ``safe_to_restart=False``.
+        """
+
+        if not isinstance(state, Mapping):
+            return False
+        active = str(state.get("active_task_id") or "")
+        return active in {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
+
+    def _live_in_progress_worker_must_preserve(
+        self,
+        state: Mapping[str, Any] | PortalTaskState | None = None,
+        *,
+        child_pid: int | None = None,
+    ) -> bool:
+        """Preserve a live grok even when portal active_task_id is empty.
+
+        After ``watchdog_startup_grace_seconds``, periodic maintenance
+        quiesced the managed daemon because PortalTaskState.active_task_id
+        had already been cleared while grok_cli_runner was still running
+        extra-gate PCTDD-005. Extra-gate aliases still cannot bypass
+        ``safe_to_restart=False``.
+        """
+
+        mapping: dict[str, Any] = {}
+        portal_state: PortalTaskState | None = None
+        if isinstance(state, PortalTaskState):
+            portal_state = state
+            mapping = {
+                "active_task_id": getattr(state, "active_task_id", ""),
+                "implementation_in_progress": bool(
+                    getattr(state, "implementation_in_progress", False)
+                ),
+            }
+        elif isinstance(state, Mapping):
+            mapping = dict(state)
+        if self._extra_gate_portal_state_must_preserve_worker(mapping):
+            return True
+        try:
+            workers = self._active_agent_worker_processes(portal_state)
+        except Exception:
+            workers = []
+        if workers:
+            return True
+        pid = int(child_pid or 0)
+        if pid <= 0:
+            return False
+        try:
+            return bool(active_codex_exec_workers(pid, mapping))
+        except Exception:
+            return False
+
+    def _database_portal_extra_gate_shard_must_wait_for_mutation_fence(
+        self,
+    ) -> bool:
+        """Home shards of retained PCTDD pins must wait for the owner fence.
+
+        Hash sharding puts PCTDD-005/006/007 on shard 0 and PCTDD-034 on
+        shard 3. Fail-closing shard 0 on a peer-held fence prevents the
+        home daemon from launching, so retrying extra-gate work never
+        drains. Every strict shard retries acquisition instead.
+        """
+
+        try:
+            shard = int(self.config.task_shard_index)
+        except (TypeError, ValueError):
+            return False
+        return shard in {0, 1, 2, 3}
+
+    @staticmethod
+    def _database_portal_mutation_fence_acquisition_timed_out(
+        exc: BaseException,
+    ) -> bool:
+        return isinstance(exc, TimeoutError) and "timed out acquiring DuckDB" in str(
+            exc
+        )
+
     @contextmanager
     def _database_portal_reload_mutation_fence(
         self,
@@ -16096,6 +16554,8 @@ class PortalImplementationSupervisor:
         before process-tree quiescence.  The existing owner mutation lock is
         the single write authority, so retain it across the precheck,
         quiescence, and postcheck instead of introducing another lock.
+        Extra-gate shards retry acquisition instead of fail-closing while a
+        peer still holds the fence across a read-only pass.
         """
 
         program = self.config.database_program
@@ -16110,6 +16570,9 @@ class PortalImplementationSupervisor:
             quack_owner_mutation_write_lock_path,
         )
 
+        extra_gate_wait = (
+            self._database_portal_extra_gate_shard_must_wait_for_mutation_fence()
+        )
         with self._database_reconciliation_program_environment(
             program,
             preserve_live_binding=True,
@@ -16117,8 +16580,28 @@ class PortalImplementationSupervisor:
             lock_path = quack_owner_mutation_write_lock_path(program.store_id)
             if lock_path is None:
                 raise RuntimeError("Quack projection lacks its owner lock")
-            with exclusive_file_lock(lock_path, timeout_seconds=2.0):
-                yield program
+            while True:
+                acquired = False
+                try:
+                    with exclusive_file_lock(lock_path, timeout_seconds=60.0):
+                        acquired = True
+                        yield program
+                    return
+                except TimeoutError as exc:
+                    if (
+                        acquired
+                        or not extra_gate_wait
+                        or not self._database_portal_mutation_fence_acquisition_timed_out(
+                            exc
+                        )
+                    ):
+                        raise
+                    # One bounded wait already elapsed. Extra-gate shards
+                    # must launch and rearm instead of looping forever on
+                    # a peer-held write-transaction.lock.
+                    raise _DatabasePortalOwnerMutationFenceDeferred(
+                        "extra-gate shard deferred owner mutation fence"
+                    ) from exc
 
     def _database_portal_reload_projection_fenced(
         self,
@@ -16256,6 +16739,11 @@ class PortalImplementationSupervisor:
                 )
             return base
         except Exception as exc:
+            logger.warning(
+                "database portal reload projection inconclusive: %s",
+                exc,
+                exc_info=True,
+            )
             return self._database_portal_reload_inconclusive_projection(exc)
         finally:
             if connection is not None:
@@ -17109,7 +17597,26 @@ class PortalImplementationSupervisor:
                     task_source=task_source,
                     install_schema=False,
                 )
-                peer.open()
+                try:
+                    peer.open()
+                except Exception as exc:
+                    if _EMBEDDED_EXECUTION_WRITER_BUSY_NEEDLE not in str(exc):
+                        raise
+                    raise _DatabasePortalRetainedStartupBlocked(
+                        {
+                            "reconciled": False,
+                            "blocked": False,
+                            "reason": (
+                                DATABASE_PORTAL_RETAINED_PEER_WRITER_BUSY_REASON
+                            ),
+                            "reconciliation_complete": False,
+                            "quiesced": True,
+                            "safe_to_restart": True,
+                            "peer_lane": lane,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[:400],
+                        }
+                    ) from exc
                 peers.append(peer)
                 lane_daemons[lane] = peer
 
@@ -17498,7 +18005,20 @@ class PortalImplementationSupervisor:
             )
 
         try:
+            home_lane_retained = False
             if retained_program:
+                from .database_portal_bridge import (
+                    DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS as _RETAINED_PINS,
+                    DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN as _PCTDD005_PIN,
+                )
+
+                home_lane_retained = any(
+                    daemon._task_home_shard_index(str(pin.get("task_alias") or ""))
+                    == effective_shard_index
+                    for pin in (*_RETAINED_PINS, _PCTDD005_PIN)
+                    if isinstance(pin, Mapping)
+                )
+            if retained_program and home_lane_retained:
                 retained_lane_daemons = (
                     self._bind_retained_recovery_lane_attempt_authorities(
                         daemon=daemon,
@@ -17590,8 +18110,21 @@ class PortalImplementationSupervisor:
                         return reconciliation
                     if reconciliation.get("reconciled") is not True:
                         return reconciliation
-                    if not retained_program:
-                        return reconciliation
+                    if not (retained_program and home_lane_retained):
+                        result = dict(reconciliation)
+                        result.update(
+                            {
+                                "reconciled": True,
+                                "blocked": False,
+                                "reconciliation_complete": True,
+                                "quiesced": True,
+                                "safe_to_restart": True,
+                                "reason": (
+                                    "database_portal_retained_not_home_lane"
+                                ),
+                            }
+                        )
+                        return result
                     if not owner_fence_held:
                         return {
                             **dict(reconciliation),
@@ -17741,20 +18274,31 @@ class PortalImplementationSupervisor:
                             )
                         )
                     except Exception as exc:
+                        writer_busy = (
+                            _EMBEDDED_EXECUTION_WRITER_BUSY_NEEDLE
+                            in str(exc)
+                        )
                         return {
                             **dict(reconciliation),
                             "reconciled": False,
-                            "blocked": True,
+                            "blocked": not writer_busy,
                             "reason": (
-                                "database_portal_retained_reconciliation_"
-                                "failed"
+                                DATABASE_PORTAL_RETAINED_PEER_WRITER_BUSY_REASON
+                                if writer_busy
+                                else (
+                                    "database_portal_retained_reconciliation_"
+                                    "failed"
+                                )
                             ),
                             "reconciliation_complete": False,
-                            "quiesced": False,
-                            "safe_to_restart": False,
+                            "quiesced": True,
+                            "safe_to_restart": writer_busy,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[:400],
                             "retained_occurrence_reconciliation": {
                                 "blocked": True,
                                 "error_type": type(exc).__name__,
+                                "error": str(exc)[:400],
                             },
                         }
                     finally:
@@ -17787,7 +18331,7 @@ class PortalImplementationSupervisor:
                         "pctdd005_successor_reconciliation_matches_current",
                         None,
                     )
-                    if not (
+                    exact_retained = bool(
                         pctdd005_reconciliation.get("blocked") is False
                         and database_pctdd005_historical_successor_reconciliation_valid(
                             pctdd005_reconciliation
@@ -17802,7 +18346,28 @@ class PortalImplementationSupervisor:
                         )
                         and callable(retained_matches_current)
                         and retained_matches_current(retained_reconciliation)
-                    ):
+                    )
+                    already_rearmed = (
+                        not exact_retained
+                        and self._retained_pins_are_already_rearmed(daemon)
+                    )
+                    if exact_retained or already_rearmed:
+                        result.update(
+                            {
+                                "reconciled": True,
+                                "blocked": False,
+                                "reconciliation_complete": True,
+                                "quiesced": True,
+                                "safe_to_restart": True,
+                                "reason": (
+                                    "database_portal_retained_already_rearmed"
+                                    if already_rearmed
+                                    else result.get("reason")
+                                    or "database_portal_retained_reconciled"
+                                ),
+                            }
+                        )
+                    else:
                         result.update(
                             {
                                 "reconciled": False,
@@ -17814,16 +18379,6 @@ class PortalImplementationSupervisor:
                                 "reconciliation_complete": False,
                                 "quiesced": False,
                                 "safe_to_restart": False,
-                            }
-                        )
-                    else:
-                        result.update(
-                            {
-                                "reconciled": True,
-                                "blocked": False,
-                                "reconciliation_complete": True,
-                                "quiesced": True,
-                                "safe_to_restart": True,
                             }
                         )
                     return result
@@ -23012,6 +23567,11 @@ class PortalImplementationSupervisor:
                 database_program=self.config.database_program,
             )
         )
+        from ..runtime.multi_supervisor_runner import (
+            apply_sealed_hashlib_launch_controls,
+        )
+
+        apply_sealed_hashlib_launch_controls(command, env)
         process = subprocess.Popen(
             command,
             cwd=self.config.repo_root,
@@ -23747,7 +24307,15 @@ class PortalImplementationSupervisor:
         observed: Sequence[str],
         expected: Sequence[str],
     ) -> tuple[Path, Path] | None:
-        """Return the one reviewed generic-to-versioned Python alias shape."""
+        """Return the reviewed python3 <-> python3.X sibling alias.
+
+        Either argv direction is admitted: a predecessor launched with the
+        generic ``python3`` symlink or with the versioned ``python3.X`` file
+        is the same reviewed shape.  The returned pair is always
+        ``(generic_symlink, versioned_file)`` so descriptor verification can
+        stay one-sided.  Owner session remains reboot-volatile and is not
+        part of this comparison.
+        """
 
         observed_tokens = tuple(str(part) for part in observed)
         expected_tokens = tuple(str(part) for part in expected)
@@ -23763,12 +24331,20 @@ class PortalImplementationSupervisor:
             not observed_executable.is_absolute()
             or not expected_executable.is_absolute()
             or observed_executable.parent != expected_executable.parent
-            or observed_executable.name != "python3"
-            or re.fullmatch(r"python3(?:\.\d+)+", expected_executable.name)
-            is None
         ):
             return None
-        return observed_executable, expected_executable
+        versioned_name = re.compile(r"python3(?:\.\d+)+")
+        if (
+            observed_executable.name == "python3"
+            and versioned_name.fullmatch(expected_executable.name) is not None
+        ):
+            return observed_executable, expected_executable
+        if (
+            expected_executable.name == "python3"
+            and versioned_name.fullmatch(observed_executable.name) is not None
+        ):
+            return expected_executable, observed_executable
+        return None
 
     @staticmethod
     def _stable_executable_alias_identity(
@@ -23777,11 +24353,13 @@ class PortalImplementationSupervisor:
     ) -> tuple[int, int] | None:
         """Verify the reviewed alias through stable held-file identities.
 
-        The historical command may use the generic sibling ``python3`` only
-        when it is the exact symlink to the versioned current executable.
-        Both pathnames are opened, checked against their path metadata again,
-        and bound to the executable image of this supervisor.  Group- or
-        other-writable path authorities are not admitted.
+        The historical command may use either the generic sibling ``python3``
+        or the versioned ``python3.X`` file.  The generic name is admitted
+        only when it is the exact symlink to the versioned current
+        executable.  Both pathnames are opened, checked against their path
+        metadata again, and bound to the executable image of this
+        supervisor.  Group- or other-writable path authorities are not
+        admitted.
         """
 
         shaped = PortalImplementationSupervisor._python_executable_alias_shape(
@@ -23790,7 +24368,7 @@ class PortalImplementationSupervisor:
         )
         if shaped is None:
             return None
-        observed_executable, expected_executable = shaped
+        generic_executable, versioned_executable = shaped
         descriptors: list[int] = []
 
         def trusted_directory_chain(
@@ -23823,11 +24401,11 @@ class PortalImplementationSupervisor:
 
         try:
             parent_chain_before = trusted_directory_chain(
-                expected_executable.parent
+                versioned_executable.parent
             )
-            observed_before = os.lstat(observed_executable)
-            expected_before = os.lstat(expected_executable)
-            link_before = os.readlink(observed_executable)
+            observed_before = os.lstat(generic_executable)
+            expected_before = os.lstat(versioned_executable)
+            link_before = os.readlink(generic_executable)
             if (
                 parent_chain_before is None
                 or not stat.S_ISLNK(observed_before.st_mode)
@@ -23836,7 +24414,7 @@ class PortalImplementationSupervisor:
                 or expected_before.st_uid != 0
                 or stat.S_IMODE(expected_before.st_mode) & 0o022
                 or not stat.S_IMODE(expected_before.st_mode) & 0o111
-                or link_before != expected_executable.name
+                or link_before != versioned_executable.name
             ):
                 return None
 
@@ -23844,8 +24422,8 @@ class PortalImplementationSupervisor:
             open_flags |= getattr(os, "O_CLOEXEC", 0)
             open_flags |= getattr(os, "O_NONBLOCK", 0)
             for path in (
-                observed_executable,
-                expected_executable,
+                generic_executable,
+                versioned_executable,
                 _CURRENT_PROCESS_EXECUTABLE_PATH,
             ):
                 descriptors.append(os.open(path, open_flags))
@@ -23854,13 +24432,13 @@ class PortalImplementationSupervisor:
             )
 
             parent_chain_after = trusted_directory_chain(
-                expected_executable.parent
+                versioned_executable.parent
             )
-            observed_after = os.lstat(observed_executable)
-            expected_after = os.lstat(expected_executable)
-            observed_target_after = os.stat(observed_executable)
-            expected_target_after = os.stat(expected_executable)
-            link_after = os.readlink(observed_executable)
+            observed_after = os.lstat(generic_executable)
+            expected_after = os.lstat(versioned_executable)
+            observed_target_after = os.stat(generic_executable)
+            expected_target_after = os.stat(versioned_executable)
+            link_after = os.readlink(generic_executable)
         except (AttributeError, OSError, TypeError, ValueError):
             return None
         finally:
@@ -24083,12 +24661,20 @@ class PortalImplementationSupervisor:
         observed_command = self._command_without_exact_owner_session(
             identity.command
         )
+        # Owner session is reboot-volatile. The reviewed python3 <-> python3.X
+        # sibling alias is the other admitted predecessor shape, matching the
+        # legacy namespace matcher. Exact argv or that alias both count as
+        # same-lane, including recover_setsid relaunches whose argv0 is the
+        # generic python3 while the predecessor recorded python3.X.
         return bool(
             expected_command is not None
             and observed_command is not None
             and expected_command[1] == expected_owner
             and observed_command[1] == observed_owner
-            and observed_command[0] == expected_command[0]
+            and self._commands_match_with_verified_executable_alias(
+                observed_command[0],
+                expected_command[0],
+            )
         )
 
     def _managed_daemon_identity_matches_legacy_namespace_lane_scope(
@@ -25050,12 +25636,23 @@ class PortalImplementationSupervisor:
                             )
                         )
                     )
+                    lane_revalidated = bool(
+                        not lane_exact
+                        or (
+                            current_identity is not None
+                            and self._managed_daemon_identity_matches_lane_scope(
+                                current_identity,
+                                pid=identity_pid,
+                            )
+                        )
+                    )
                     if (
                         pid_path.exists()
                         or pid_path.is_symlink()
                         or current_identity is None
                         or current_identity.record_id != identity.record_id
                         or not legacy_namespace_lane_revalidated
+                        or not lane_revalidated
                         or supervised_child_identity_liveness(current_identity)
                         is not OwnerLiveness.DEAD
                     ):

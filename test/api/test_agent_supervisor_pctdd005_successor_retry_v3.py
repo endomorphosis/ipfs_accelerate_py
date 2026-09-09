@@ -397,6 +397,35 @@ def test_pctdd005_historical_chain_is_additive_and_cross_closed(
         )
     )
 
+    historical_attempt = SimpleNamespace(
+        task_cid=pin["task_cid"],
+        task_alias=pin["task_alias"],
+        attempt_id=consumption["attempt_id"],
+        claim_id=consumption["claim_id"],
+        lease_id=consumption["lease_id"],
+        owner_session_id=consumption["owner_session_id"],
+        attempt_number=consumption["attempt_number"],
+        fencing_token=consumption["fencing_token"],
+        fence_epoch=consumption["fence_epoch"],
+        body={
+            "control_claim": {
+                "revision": pin["blocked_task_revision"] + 2,
+            },
+            "retry_budget": {
+                "retained_recovery_admission": admission,
+                "retained_recovery_consumption": consumption,
+            },
+        },
+    )
+    historical_policy = (
+        DatabasePortalExecutionBridge._retained_recovery_execution_policy(
+            historical_attempt
+        )
+    )
+    assert historical_policy is not None
+    assert historical_policy["allow_pool"] is False
+    assert historical_policy["seed_prior_attempt"] is False
+
     reconciliation = {
         "schema": (
             DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_RECONCILIATION_SCHEMA
@@ -458,6 +487,219 @@ def test_pctdd005_historical_chain_is_additive_and_cross_closed(
     assert not daemon.pctdd005_successor_reconciliation_matches_current(
         reconciliation
     )
+
+
+def test_pctdd005_historical_execution_policy_rejects_cross_generation_splice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin, legacy_admission = _admission(monkeypatch)
+    historical = dict(legacy_admission)
+    historical["schema"] = DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA
+    historical["historical_occurrence_authority_id"] = "sha256:" + "8" * 64
+    historical["controller_quiescence_receipt_id"] = "sha256:" + "9" * 64
+    historical["owner_storage_schema_fingerprint"] = _storage_schema_cid(
+        str(historical["owner_schema_fingerprint"])
+    )
+    historical.pop("admission_id")
+    historical["admission_id"] = _sha256(historical)
+    consumption = dict(
+        database_fenced_provider_historical_retained_consumption(
+            admission=historical,
+            attempt_id="attempt:pctdd005-historical",
+            claim_id="claim:pctdd005-historical",
+            lease_id="lease:pctdd005-historical",
+            owner_session_id="owner:pctdd005-historical",
+            attempt_number=7,
+            fencing_token=7,
+            fence_epoch=7,
+            expected_task_revision=pin["blocked_task_revision"] + 1,
+            expected_task_status="retrying",
+            resulting_task_revision=pin["blocked_task_revision"] + 2,
+            resulting_task_status="in_progress",
+        )
+    )
+    spliced = SimpleNamespace(
+        task_cid=pin["task_cid"],
+        task_alias=pin["task_alias"],
+        attempt_id=consumption["attempt_id"],
+        claim_id=consumption["claim_id"],
+        lease_id=consumption["lease_id"],
+        owner_session_id=consumption["owner_session_id"],
+        attempt_number=consumption["attempt_number"],
+        fencing_token=consumption["fencing_token"],
+        fence_epoch=consumption["fence_epoch"],
+        body={
+            "control_claim": {
+                "revision": pin["blocked_task_revision"] + 2,
+            },
+            "retry_budget": {
+                "retained_recovery_admission": legacy_admission,
+                "retained_recovery_consumption": consumption,
+            },
+        },
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="not an exact consumed chain",
+    ):
+        DatabasePortalExecutionBridge._retained_recovery_execution_policy(spliced)
+
+
+def test_no_provider_rearm_uses_nested_verifier_when_attempt_row_is_missing() -> None:
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    captured: dict[str, Any] = {}
+
+    class _Bridge:
+        def no_provider_dispatch_rearm_evidence(
+            self,
+            attempt: Any,
+            *,
+            outer_block_receipt: Mapping[str, Any],
+        ) -> Mapping[str, Any]:
+            captured["attempt_id"] = attempt.attempt_id
+            captured["phase"] = attempt.committed_phase
+            captured["receipt"] = dict(outer_block_receipt)
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-portal-deferred-provider-rearm-evidence@1"
+                ),
+                "evidence_id": "sha256:" + "a" * 64,
+                "provider_dispatched": False,
+            }
+
+    daemon._database_portal_bridge = _Bridge()
+    daemon.get_attempt = lambda _attempt_id: None
+    daemon._task_execution_spec_cid = lambda _task: "spec:cid"
+    daemon._database_portal_filesystem_quiesced_release_rearm_evidence = (
+        lambda *_args, **_kwargs: None
+    )
+    task = SimpleNamespace(
+        task_cid="baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
+        task_alias="PCTDD-005",
+        revision=29,
+        status="blocked",
+    )
+    receipt = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-retry-budget@1",
+        "operation": "database_unknown_outcome_blocked",
+        "reason": "callback_authority_incomplete_blocked",
+        "attempt_id": "attempt:80318cb2b8384964a8b784520d9bba70",
+        "claim_id": "claim:84143a5851a8491b849327790b4c3e01",
+        "task_cid": task.task_cid,
+        "attempt_number": 7,
+        "owner_session_id": "embedded-store:5a477a1db9402e639fecebb83f5f0873",
+        "fencing_token": 7,
+        "fence_epoch": 7,
+        "lease_id": "lease:db58ff48ac3b497eb60d9f261983622e",
+        "validation_spec_cid": "baguqeeranlxkjuo6ekwqkrwfzj34nuo532hbhk2kb6cn2wzwvit2ioovw73q",
+        "attempts_used": 2,
+        "max_task_attempts": 2,
+        "retry_exhausted": True,
+        "forced_block": True,
+        "authority_outcome": "unknown",
+    }
+    evidence = daemon._database_portal_no_provider_rearm_evidence(task, receipt)
+    assert evidence is not None
+    assert captured["attempt_id"] == receipt["attempt_id"]
+    assert captured["phase"] == "failed"
+    assert captured["receipt"]["attempt_number"] == 7
+
+
+def test_historical_population_admits_successive_controller_generations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin, legacy = _admission(monkeypatch)
+    def _hist(generation: int) -> dict[str, Any]:
+        admission = dict(legacy)
+        admission["schema"] = DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA
+        admission["historical_occurrence_authority_id"] = "sha256:" + "8" * 64
+        admission["controller_quiescence_receipt_id"] = "sha256:" + "9" * 64
+        admission["owner_storage_schema_fingerprint"] = _storage_schema_cid(
+            str(admission["owner_schema_fingerprint"])
+        )
+        admission["owner_live_generation"] = generation
+        admission.pop("admission_id", None)
+        admission["admission_id"] = _sha256(admission)
+        return admission
+
+    first = _hist(70)
+    second = _hist(71)
+    daemon = object.__new__(DatabaseImplementationDaemon)
+
+    class _Source:
+        def get(self, cid: str) -> Any:
+            if cid != pin["task_cid"]:
+                return None
+            return SimpleNamespace(
+                task_cid=pin["task_cid"],
+                task_alias=pin["task_alias"],
+                status="retrying",
+                revision=int(pin["blocked_task_revision"]) + 1,
+                body={"completion_receipt": {"retained_recovery_admission": second}},
+            )
+
+    daemon._task_source = _Source()
+    monkeypatch.setattr(
+        daemon_module,
+        "_database_fenced_provider_historical_recovery_authority",
+        lambda _value: {
+            "admission_schema": DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA,
+            "manifest_builder": lambda: {"ok": True},
+            "manifest_validator": lambda _manifest: True,
+            "pins": (pin,),
+        },
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "database_fenced_provider_historical_retained_admission_valid",
+        lambda _value: True,
+    )
+    assert daemon._retained_recovery_historical_population_durable_current(first) is True
+    assert daemon._retained_recovery_historical_population_durable_current(second) is True
+
+
+def test_historical_admission_fence_does_not_require_live_attempt_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        daemon_module,
+        "_database_fenced_provider_any_retained_admission_valid",
+        lambda _value: True,
+    )
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon._retained_recovery_dispatch_fence_is_current = (
+        lambda *_args, **_kwargs: pytest.fail("historical fence opened ART")
+    )
+    admission = {
+        "schema": DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA,
+    }
+    assert (
+        DatabaseImplementationDaemon._retained_recovery_admission_fence_is_current(
+            daemon,
+            admission,
+            allowed_states=frozenset({"admitted"}),
+        )
+        is True
+    )
+    assert (
+        DatabaseImplementationDaemon._retained_recovery_admission_fence_is_current(
+            daemon,
+            admission,
+            allowed_states=frozenset({"admission_pending"}),
+        )
+        is False
+    )
+
+
+def test_database_portal_wait_for_wake_sleeps_the_caller_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slept: list[float] = []
+    monkeypatch.setattr(daemon_module.time, "sleep", slept.append)
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon.wait_for_wake(20.0)
+    assert slept == [20.0]
 
 
 @pytest.mark.parametrize(
@@ -1512,3 +1754,48 @@ def test_retained_recovery_checkout_capability_resets_when_reconcile_raises(
         "__database_portal_checkout_mutation_lease_held__",
         None,
     ) is False
+
+
+def test_retained_reconciliation_validator_admits_generic_rearm_retrying() -> None:
+    """Home-lane prelaunch must accept extra-gate generic rearm as current."""
+
+    pins = tuple(bridge_module.DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS)
+    outcomes = [
+        {
+            "task_alias": pin["task_alias"],
+            "task_cid": pin["task_cid"],
+            "reconciled": True,
+            "blocked": False,
+            "reason": "retained_occurrence_already_rearmed",
+            "admission_id": "",
+            "consumption_id": "",
+        }
+        for pin in pins
+    ]
+    value = {
+        "schema": daemon_module.DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_RECONCILIATION_SCHEMA,
+        "attempted": True,
+        "reconciled": True,
+        "blocked": False,
+        "reason": "retained_occurrence_reconciliation_complete",
+        "expected_occurrence_count": len(pins),
+        "admitted_count": 0,
+        "already_consumed_count": len(pins),
+        "outcomes": outcomes,
+    }
+    assert daemon_module._database_fenced_provider_reconciliation_valid(
+        value,
+        schema=daemon_module.DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_RECONCILIATION_SCHEMA,
+        pins=pins,
+    )
+    # Extra-gate aliases still cannot mint restart authority from a blocked
+    # prelaunch result; this only admits an already-retrying generic rearm.
+    assert not supervisor_module.PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )

@@ -2098,6 +2098,34 @@ def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: O
     return True
 
 
+def supervised_child_is_proven_dead(child: SupervisedChild) -> bool:
+    """True when the recorded child identity is already DEAD.
+
+    ``terminate_supervised_child`` still returns False for DEAD identities so
+    a reused numeric PID is never signalled. Supervisor loop must relaunch
+    instead of fail-closing as ``termination_blocked``. Extra-gate aliases
+    still cannot bypass ``safe_to_restart=False``.
+    """
+
+    default_identity_path = supervised_child_identity_path(child.child_pid_path)
+    identity_path = child.identity_path or default_identity_path
+    identity_required = child.identity_path is not None
+    identity_enabled = bool(
+        identity_required
+        or identity_path.exists()
+        or identity_path.is_symlink()
+    )
+    if not identity_enabled:
+        try:
+            return not pid_alive(int(child.pid))
+        except (TypeError, ValueError):
+            return False
+    identity = load_supervised_child_identity(identity_path)
+    if not _supervised_child_identity_matches_handle(child, identity):
+        return False
+    return supervised_child_identity_liveness(identity) is OwnerLiveness.DEAD
+
+
 def terminate_supervised_child(
     child: SupervisedChild,
     *,
