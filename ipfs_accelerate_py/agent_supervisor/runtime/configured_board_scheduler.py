@@ -4806,6 +4806,7 @@ def configured_board_launch_plan(
             implement=implement,
         ),
         detach=(detach and not plan_bound),
+        survive_external_sigterm=not math.isfinite(duration_seconds),
         database_program=(program if board.database_program is not None else None),
     )
     runner_args = runner.args()

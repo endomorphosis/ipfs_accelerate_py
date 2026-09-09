@@ -4612,6 +4612,7 @@ def build_configured_multi_supervisor_cli_runner(
     tracks: Sequence[str] = (),
     common_args: Sequence[str] = (),
     detach: bool = False,
+    survive_external_sigterm: bool = False,
     database_program: DatabaseProgramConfig | None = None,
 ) -> ConfiguredMultiSupervisorCliRunner:
     """Build reusable multi-supervisor CLI argv from project-specific tracks."""
@@ -4679,6 +4680,8 @@ def build_configured_multi_supervisor_cli_runner(
         argv.append("--plan-bound-wave")
     for arg in common_args:
         argv.append(f"--common-arg={arg}")
+    if survive_external_sigterm:
+        argv.append("--survive-external-sigterm")
     if detach:
         argv.append("--detach")
     return ConfiguredMultiSupervisorCliRunner(tuple(argv))
@@ -11845,9 +11848,18 @@ def run_supervisor_tracks(
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
     require_configured_board_live_seal: str = "",
+    survive_external_sigterm: bool = False,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
-    """Run and supervise multiple tracks for the requested duration."""
+    """Run and supervise multiple tracks for the requested duration.
+
+    ``survive_external_sigterm`` is for exclusive owners whose lifetime is
+    bound to the board, not to the invoking job.  Session compaction, cron
+    cgroup teardown, and worker ``killpg`` can deliver SIGTERM to that
+    wrapper.  Ignoring SIGTERM after the handler is installed keeps the
+    owner alive so leftover ``in_progress`` work can finish; SIGINT still
+    stops the run.
+    """
 
     managed_tracks = list(tracks)
     live_profile_required = _configured_board_live_seal_required(
@@ -11923,6 +11935,12 @@ def run_supervisor_tracks(
     processes: dict[str, subprocess.Popen[bytes]] = {}
 
     def _handle_signal(signum: int, _frame: object) -> None:
+        if survive_external_sigterm and signum == signal.SIGTERM:
+            _emit(
+                output,
+                "ignored external SIGTERM after exclusive-owner identity",
+            )
+            return
         raise SupervisorRunInterrupted(f"received signal {signum}")
 
     previous_term = signal.getsignal(signal.SIGTERM)
@@ -12618,6 +12636,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "task transfers."
         ),
     )
+    parser.add_argument(
+        "--survive-external-sigterm",
+        action="store_true",
+        help=(
+            "Keep an exclusive owner running after an external SIGTERM. "
+            "SIGINT still stops the run."
+        ),
+    )
     parser.add_argument("--detach", action="store_true")
     return parser
 
@@ -13261,6 +13287,7 @@ def main(argv: list[str] | None = None) -> int:
             plan_bound_children=plan_bound_children,
             accepted_control_plane_pin=accepted_control_plane_pin,
             accepted_control_plane_descriptor=args.accepted_control_plane_fd,
+            survive_external_sigterm=bool(args.survive_external_sigterm),
             output=output,
         )
     if (
