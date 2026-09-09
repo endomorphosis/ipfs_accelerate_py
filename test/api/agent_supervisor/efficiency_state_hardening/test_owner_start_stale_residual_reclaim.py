@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import stat
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -110,6 +111,45 @@ def test_r21_observation_keeps_live_owner_marker(
         )
 
     assert marker_path.is_file()
+
+
+def test_assert_witness_skips_status_when_foreign_index_lock_is_held(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    witness = {
+        "head": head,
+        "tree": tree,
+        "status_digest": aseh_operator._identity(b""),
+        "branch_ref": "refs/heads/aseh",
+        "index_entries_digest": "unused",
+        "index_flags_digest": "unused",
+        "head_reflog_digest": "unused",
+        "branch_reflog_digest": "unused",
+    }
+    status_calls: list[tuple[str, ...]] = []
+
+    def fake_git(*arguments: str, **_kwargs: object) -> str:
+        if arguments and arguments[0] == "status":
+            status_calls.append(arguments)
+            raise subprocess.TimeoutExpired(("git",) + arguments, 60)
+        if arguments[:2] == ("rev-parse", "HEAD"):
+            return head
+        if arguments[:2] == ("rev-parse", "HEAD^{tree}"):
+            return tree
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(aseh_operator, "_ASEH_CANDIDATE_GIT_GUARD", None)
+    monkeypatch.setattr(aseh_operator, "_git_guard_index_lock_is_held", lambda: True)
+    monkeypatch.setattr(aseh_operator, "_git", fake_git)
+    aseh_operator._assert_candidate_authorization_witness(
+        witness,
+        expected_head=head,
+        expected_tree=tree,
+        boundary="sealed child vs parent git-guard",
+    )
+    assert status_calls == []
 
 
 def test_git_status_timeout_becomes_operator_error(
