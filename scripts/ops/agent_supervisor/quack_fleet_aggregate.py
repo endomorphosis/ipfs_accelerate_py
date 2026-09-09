@@ -19,6 +19,8 @@ def main():
     parser.add_argument('--deployment', type=Path, required=True)
     parser.add_argument('--inventory', type=Path, required=True)
     parser.add_argument('--poll-seconds', type=float, default=10)
+    parser.add_argument('--source-workers', type=int, default=16,
+                        help='Maximum concurrent native source reads (1-256)')
     parser.add_argument('--query', action='store_true', help='Query the live aggregate owner through its read-only typed grant')
     args = parser.parse_args()
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_fleet_observer import (
@@ -77,7 +79,8 @@ def main():
         identity = server.start()
         server.bind_fleet_observation_reads()
         print(json.dumps(identity.to_dict()), flush=True)
-        observer = FleetObserver(server, args.inventory, args.deployment.parent / 'aggregate-view.json', poll_seconds=args.poll_seconds)
+        observer = FleetObserver(server, args.inventory, args.deployment.parent / 'aggregate-view.json',
+                                 poll_seconds=args.poll_seconds, source_workers=args.source_workers)
         observer.start()
         while not stopping:
             if not observer.thread.is_alive() or time.monotonic() - observer.last_progress > 600:

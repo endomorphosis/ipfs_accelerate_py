@@ -20,6 +20,7 @@ from ..federation.fleet_observation import (
     FleetObservationStore,
     _fleet_templates,
     canonical,
+    validate_observation,
 )
 from ..task_sources.quack_state_client import QuackStateClient
 from ..task_sources.typed_state_owner import TypedStateOwnerConnection
@@ -155,13 +156,71 @@ def read_native_source(board: Mapping[str, Any], *, adapter: Any = None) -> dict
         result["observed_at"] = datetime.now(timezone.utc).isoformat()
 
 
+class _SourcePolls:
+    """Keep one read per source in flight without a fleet-wide cycle barrier."""
+    def __init__(self, poll_seconds: float, *, max_workers: int = 16, executor: Any = None):
+        self.poll_seconds, self.max_workers = poll_seconds, max_workers
+        self.executor = executor or ThreadPoolExecutor(max_workers=max_workers)
+        self.pending: dict[str, Any] = {}
+        self.keys: dict[str, str] = {}
+        self.next_poll: dict[str, float] = {}
+
+    def step(self, boards: list[dict[str, Any]], now: float) -> list[dict[str, Any]]:
+        current = {board["id"]: board for board in boards}
+        keys = {identifier: canonical(board) for identifier, board in current.items()}
+        for identifier, key in keys.items():
+            if self.keys.get(identifier) != key:
+                self.next_poll[identifier] = 0
+        self.keys = keys
+        self.next_poll = {identifier: self.next_poll.get(identifier, 0) for identifier in current}
+        samples = []
+        for identifier, (key, future) in list(self.pending.items()):
+            if identifier not in current:
+                future.cancel()
+            if not future.done():
+                continue
+            del self.pending[identifier]
+            # A result from a removed or changed inventory binding is history
+            # of an obsolete selection, not a current source observation.
+            if keys.get(identifier) != key:
+                continue
+            self.next_poll[identifier] = now + self.poll_seconds
+            try:
+                sample = validate_observation(future.result())
+                if sample["source_id"] != identifier:
+                    raise ValueError("native source returned a foreign observation")
+            except Exception as error:  # noqa: BLE001 - contain one source reader
+                sample = {"schema": SCHEMA, "source_id": identifier,
+                          "observed_at": datetime.now(timezone.utc).isoformat(),
+                          "availability": "unavailable", "source_identity": {}, "native_receipt": {},
+                          "reason": f"native_read_failed:{type(error).__name__}", "completion_authority": False}
+            samples.append(sample)
+        # Oldest due source first; never queue an unbounded number of threads
+        # or duplicate a slow source while its previous read is still running.
+        for identifier in sorted(current, key=lambda item: self.next_poll[item]):
+            if len(self.pending) >= self.max_workers:
+                break
+            if identifier in self.pending or self.next_poll[identifier] > now:
+                continue
+            self.pending[identifier] = (keys[identifier], self.executor.submit(read_native_source, current[identifier]))
+        return samples
+
+    def close(self):
+        self.executor.shutdown(wait=False, cancel_futures=True)
+
+
 class FleetObserver:
     """Bounded source fanout; the native owner retains control and write authority."""
-    def __init__(self, server: Any, inventory_path: Path, output_path: Path, *, poll_seconds: float = 10):
+    def __init__(self, server: Any, inventory_path: Path, output_path: Path, *, poll_seconds: float = 10,
+                 source_workers: int = 16):
         if not 5 <= poll_seconds <= 300:
             raise ValueError("fleet poll interval must be between 5 and 300 seconds")
+        if type(source_workers) is not int or not 1 <= source_workers <= 256:
+            raise ValueError("source workers must be between 1 and 256")
         self.server, self.inventory_path, self.output_path = server, inventory_path, output_path
         self.poll_seconds = poll_seconds
+        self.source_workers = source_workers
+        self._polls: _SourcePolls | None = None
         self.stop_event = threading.Event()
         self.last_progress = time.monotonic()
         self.thread = threading.Thread(target=self._run, name="quack-fleet-observer", daemon=True)
@@ -187,7 +246,7 @@ class FleetObserver:
             raise
         return client
 
-    def cycle(self) -> dict[str, Any]:
+    def cycle(self) -> dict[str, Any] | None:
         inventory = json.loads(self.inventory_path.read_text())
         if inventory.get("schema") != "ipfs_accelerate_py/taskboard-fleet-inventory@1":
             raise ValueError("native fleet inventory required")
@@ -195,8 +254,11 @@ class FleetObserver:
         ids = [board["id"] for board in boards]
         if not 1 <= len(boards) <= 4096 or len(set(ids)) != len(ids):
             raise ValueError("bounded unique native source inventory required")
-        with ThreadPoolExecutor(max_workers=min(16, len(boards))) as executor:
-            samples = list(executor.map(read_native_source, boards))
+        if self._polls is None:
+            self._polls = _SourcePolls(self.poll_seconds, max_workers=self.source_workers)
+        samples = self._polls.step(boards, time.monotonic())
+        if not samples:
+            return None
         client = self._client()
         try:
             store = FleetObservationStore(client)
@@ -205,24 +267,33 @@ class FleetObserver:
             view = store.view(ids)
             view["observed_at"] = datetime.now(timezone.utc).isoformat()
             view["registration_count"] = len(ids)
-            view["source_admission"] = {sample["source_id"]: sample["availability"] for sample in samples}
+            view["source_admission"] = {identifier: "available" if item["available"] else "unavailable"
+                                        for identifier, item in view["sources"].items()}
             return view
         finally:
             client.close()
 
     def _run(self):
-        while not self.stop_event.is_set():
-            try:
-                result = self.cycle()
-                self.last_progress = time.monotonic()
-            except Exception as error:  # noqa: BLE001 - isolate one bounded observation cycle
-                result = {"schema": "ipfs_accelerate_py/agent-supervisor/fleet-observer-error@1", "error": type(error).__name__,
-                          "reason": str(error)[:512], "completion_authority": False}
-            self.output_path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = self.output_path.with_suffix(".tmp")
-            temporary.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
-            os.replace(temporary, self.output_path)
-            self.stop_event.wait(self.poll_seconds)
+        try:
+            while not self.stop_event.is_set():
+                delay = 0.25
+                try:
+                    result = self.cycle()
+                    if result is not None:
+                        self.last_progress = time.monotonic()
+                except Exception as error:  # noqa: BLE001 - isolate one bounded observation cycle
+                    delay = self.poll_seconds
+                    result = {"schema": "ipfs_accelerate_py/agent-supervisor/fleet-observer-error@1", "error": type(error).__name__,
+                              "reason": str(error)[:512], "completion_authority": False}
+                if result is not None:
+                    self.output_path.parent.mkdir(parents=True, exist_ok=True)
+                    temporary = self.output_path.with_suffix(".tmp")
+                    temporary.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+                    os.replace(temporary, self.output_path)
+                self.stop_event.wait(delay)
+        finally:
+            if self._polls is not None:
+                self._polls.close()
 
     def start(self):
         self.thread.start()

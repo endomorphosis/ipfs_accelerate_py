@@ -34,6 +34,16 @@ Two user services run continuously:
   backoff. A new probe verifies recovery; a model's successful exit does not.
   The worker status distinguishes an empty queue from held jobs and jobs
   awaiting their next retry, and records the active board before dispatch.
+  Between jobs it also checks for recovered boards and actionable new evidence.
+  A recent watchdog sample selects a fresh native probe; cached status alone
+  cannot retire a repair. Authenticated healthy recovery retires the queued job
+  without starting another coding worker. Restored native admission, new source heads, admitted task
+  completions, changed blocked-task sets, or settled goals can advance a pending
+  continuation while retaining its coding attempt history and a five-minute
+  minimum gap after the previous job. Heartbeat, PID and event-cursor changes
+  alone do not shorten retries. Rechecks are limited to once per two minutes
+per queued board, honor holds before and after probing, and never publish a
+  board or change native task budgets.
 
 For a known stopped-owner condition, the watchdog invokes only the board's
 configured native ensure command. Otherwise it enqueues a repair. The coding
@@ -50,7 +60,8 @@ No local model service is started; the existing llama-server mask is retained.
 
 `OPERATOR_STOP`, `HOLD`, `watchdog.hold`, and `watchdog.disabled` files configured
 for a board prevent both ensure and coding-repair dispatch. Existing live
-workers are never killed merely because such a hold exists. Read-only probes
+workers are never killed merely because such a hold exists. A dangling symlink
+at a configured hold path still counts as a stop marker. Read-only probes
 continue during holds: `health` reports `operator_hold`, while `observed_health`
 and the observation contain the current underlying condition. To pause the whole
 fleet, stop both services; a currently running repair job has its own unit:
