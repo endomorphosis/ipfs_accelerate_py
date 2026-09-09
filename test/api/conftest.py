@@ -21,8 +21,10 @@ sys.path.insert(0, repo_root_text)
 import ipfs_datasets_py as _ipfs_datasets_py  # noqa: E402,F401
 
 # Hermetic validation sets PYTEST_DISABLE_PLUGIN_AUTOLOAD, so pytest11 entry
-# points do not load. conftest still does. The plugin no-ops outside
-# data/<board>/worktrees.
+# points do not load. conftest still does. The ledger/IVP plugin no-ops
+# outside data/<board>/worktrees; it enables proof-reuse write into durable
+# board state before the proof-reuse plugin configures.
 pytest_plugins = (
     "ipfs_accelerate_py.agent_supervisor.runtime.pytest_item_ledger_plugin",
+    "ipfs_accelerate_py.testing.proof_reuse.plugin",
 )
