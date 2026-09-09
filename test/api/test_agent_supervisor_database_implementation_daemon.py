@@ -6274,6 +6274,61 @@ def test_exact_legacy_protected_preservation_block_recovers_once(
         daemon.close()
 
 
+@pytest.mark.parametrize("defect", ["historical_revision", "foreign_attempt"])
+def test_protected_preservation_recovery_rejects_unbound_seed_without_rearming(
+    tmp_path: Path,
+    defect: str,
+) -> None:
+    """A preserved candidate alone cannot authorize a later blocked revision."""
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError(
+            "Portal consumed-attempt retry seed state conflicts with its receipt"
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:protected-preservation-unbound-{defect}",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.run_once()
+        attempt = daemon.get_attempt(failed["attempt_id"])
+        assert attempt is not None
+        before = daemon.task_source.get(attempt.task_cid)
+        assert before is not None and before.status == "blocked"
+        queue_before = daemon.task_source.get_queue_entry(attempt.task_cid)
+        seed = _protected_preservation_receipt(
+            daemon, attempt, source_task_revision=before.revision - 1,
+        )
+        if defect == "historical_revision":
+            seed["source_task_revision"] -= 1
+            assert seed["source_task_revision"] >= 1
+        else:
+            seed["attempt_id"] = "attempt:earlier-preserved-candidate"
+        seed.pop("receipt_id")
+        seed["receipt_id"] = daemon._database_portal_evidence_digest(seed)
+
+        with pytest.raises((
+            DatabaseImplementationAuthorityError,
+            DatabaseImplementationConflictError,
+        )):
+            daemon.recover_blocked_portal_protected_preservation(
+                attempt, retry_evidence=seed,
+            )
+
+        after = daemon.task_source.get(attempt.task_cid)
+        assert after is not None
+        assert after.status == before.status
+        assert after.revision == before.revision
+        assert after.body == before.body
+        assert daemon.task_source.get_queue_entry(attempt.task_cid) == queue_before
+        assert daemon.get_attempt(attempt.attempt_id) == attempt
+    finally:
+        daemon.close()
+
+
 def test_protected_reconciliation_self_lock_rearms_original_seed_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
