@@ -147,8 +147,10 @@ from ..task_sources.quack_owner_mutation import (
 from ..task_sources.typed_state_owner import (
     DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS,
     DATABASE_TASK_COMMANDS,
+    HASH_OBSERVATION_SERVICE_OPERATION,
     MAX_GRANT_BROKER_FRAME_BYTES,
     TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND,
+    TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION,
     TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT,
     TYPED_STATE_OWNER_GRANT_BROKER_CREDENTIAL_KINDS,
     TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA,
@@ -3972,9 +3974,9 @@ class QuackStateServer:
     def start_supervisor_grant_broker(self) -> Mapping[str, str]:
         """Start the closed credential handoff for configured supervisors.
 
-        The broker is a facet of this exact owner process. It delivers either
-        the strictly read-only Quack transport credential or a short-lived
-        same-peer grant for the server-selected six-command task vocabulary.
+        The broker is a facet of this exact owner process. It delivers the
+        strictly read-only Quack transport credential, a short-lived same-peer
+        grant for the six-command task vocabulary, or hash observations.
         Callers cannot select operations, authority, paths, or scopes.
         """
 
@@ -4032,6 +4034,15 @@ class QuackStateServer:
         ) -> str:
             if credential_kind == TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT:
                 return vault.resolve(identity.secret_handle)
+            if credential_kind == TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION:
+                token, _grant = gateway.issue_grant(
+                    client_id=client_id,
+                    process_birth_id=process_birth_id,
+                    allowed_operations=(HASH_OBSERVATION_SERVICE_OPERATION,),
+                    peer_pid=peer_pid,
+                    ttl_seconds=DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS,
+                )
+                return token
             if (
                 credential_kind
                 == TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND

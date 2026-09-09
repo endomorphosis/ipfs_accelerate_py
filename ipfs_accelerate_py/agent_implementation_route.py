@@ -5,6 +5,7 @@ from ``llm_router.py``. ``llm_router`` re-exports these names.
 """
 from __future__ import annotations
 
+import atexit
 import base64
 import binascii
 import fcntl
@@ -14,6 +15,7 @@ import io
 import importlib.machinery
 import importlib.util
 import json
+import mmap
 import os
 import re
 import secrets
@@ -28,7 +30,8 @@ import threading
 import time
 import uuid
 import zipfile
-from collections.abc import Mapping, Sequence
+from collections import OrderedDict
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -171,11 +174,13 @@ _AGENT_CONTROL_PLANE_REQUIRED_SQL_FILES = (
     "0002_causal_event_federation_core.sql",
     f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/"
     "0003_state_server_restart_identity.sql",
+    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/0004_hash_observations.sql",
 )
 _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "ipfs_accelerate_py/__init__.py",
     "ipfs_accelerate_py/llm_router.py",
     "ipfs_accelerate_py/agent_implementation_route.py",
+    "ipfs_accelerate_py/_hash_resources.py",
     "ipfs_accelerate_py/router_deps.py",
     "ipfs_accelerate_py/common/__init__.py",
     "ipfs_accelerate_py/common/meta_model_api.py",
@@ -5891,6 +5896,171 @@ def _agent_native_required_seals() -> int:
     )
 
 
+@dataclass(frozen=True)
+class _AgentImmutableVerification:
+    descriptor: int
+    identity: tuple[int, ...]
+    digest: str
+    size_bytes: int
+
+
+# The duplicate descriptors pin the actual immutable objects, preventing inode
+# reuse from turning a previous verification into authority for new bytes.
+# Neither mutable file metadata nor an on-disk receipt is a cache authority.
+_AGENT_IMMUTABLE_VERIFICATION_MAX_ENTRIES = 4
+_AGENT_IMMUTABLE_VERIFICATION_MAX_BYTES = 128 * 1024 * 1024
+_AGENT_IMMUTABLE_VERIFICATIONS: OrderedDict[
+    tuple[object, ...], _AgentImmutableVerification
+] = OrderedDict()
+_AGENT_IMMUTABLE_VERIFICATION_LOCK = threading.Lock()
+
+
+def _agent_immutable_descriptor_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return tuple(
+        int(getattr(metadata, name))
+        for name in (
+            "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+            "st_size", "st_mtime_ns", "st_ctime_ns",
+        )
+    )
+
+
+def _agent_clear_immutable_verifications() -> None:
+    with _AGENT_IMMUTABLE_VERIFICATION_LOCK:
+        while _AGENT_IMMUTABLE_VERIFICATIONS:
+            _, entry = _AGENT_IMMUTABLE_VERIFICATIONS.popitem(last=False)
+            os.close(entry.descriptor)
+
+
+def _agent_reset_immutable_verifications_after_fork() -> None:
+    global _AGENT_IMMUTABLE_VERIFICATION_LOCK
+    # A vanished parent thread may have held the inherited lock.  Child
+    # processes establish their own first verification and descriptor budget.
+    _AGENT_IMMUTABLE_VERIFICATION_LOCK = threading.Lock()
+    _agent_clear_immutable_verifications()
+
+
+atexit.register(_agent_clear_immutable_verifications)
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_agent_reset_immutable_verifications_after_fork)
+
+
+def _agent_verify_immutable_descriptor(
+    descriptor: int,
+    *,
+    expected_sha256: str,
+    maximum_bytes: int,
+    validation_key: tuple[object, ...] = ("sha256",),
+    validate: Callable[[int, int], str] | None = None,
+) -> None:
+    """Verify once per fully kernel-sealed object and exact validation policy.
+
+    All calls recheck seals, metadata, and the caller's expected digest.  A
+    cache hit cannot admit a writable file or a substituted descriptor.  The
+    optional validator binds additional semantics (the native ELF pin) before
+    admission; its complete expected policy belongs in ``validation_key``.
+    """
+
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", expected_sha256) is None:
+        raise ValueError("immutable descriptor expected digest is invalid")
+    required = _agent_native_required_seals()
+    retained = -1
+    try:
+        # Hash a held duplicate, so caller FD reuse cannot switch the object
+        # halfway through a read.  The public verifier also rechecks its FD.
+        retained = os.dup(descriptor)
+        os.set_inheritable(retained, False)
+        before = os.fstat(retained)
+        identity = _agent_immutable_descriptor_identity(before)
+        seals = int(fcntl.fcntl(retained, fcntl.F_GET_SEALS))
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or not 0 < before.st_size <= maximum_bytes
+            or seals & required != required
+        ):
+            raise ValueError("immutable descriptor is not fully sealed")
+        key = (identity, seals, validation_key)
+
+        def check_current_binding() -> None:
+            if (
+                _agent_immutable_descriptor_identity(os.fstat(retained)) != identity
+                or _agent_immutable_descriptor_identity(os.fstat(descriptor)) != identity
+                or int(fcntl.fcntl(retained, fcntl.F_GET_SEALS)) != seals
+                or int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS)) != seals
+            ):
+                raise ValueError("immutable descriptor identity changed")
+
+        def reuse_cached() -> bool:
+            # The caller holds the cache lock, but never waits for the process
+            # resource gate while holding it.  Warm hits need no global gate.
+            cached = _AGENT_IMMUTABLE_VERIFICATIONS.get(key)
+            if cached is not None:
+                if (
+                    _agent_immutable_descriptor_identity(os.fstat(cached.descriptor))
+                    != identity
+                    or int(fcntl.fcntl(cached.descriptor, fcntl.F_GET_SEALS)) != seals
+                ):
+                    del _AGENT_IMMUTABLE_VERIFICATIONS[key]
+                    os.close(cached.descriptor)
+                    cached = None
+            if cached is not None:
+                if cached.digest != expected_sha256:
+                    raise ValueError("immutable descriptor digest differs")
+                check_current_binding()
+                _AGENT_IMMUTABLE_VERIFICATIONS.move_to_end(key)
+                return True
+            return False
+
+        with _AGENT_IMMUTABLE_VERIFICATION_LOCK:
+            if reuse_cached():
+                return
+
+        from ._hash_resources import hashing_lock
+
+        # Keep one lock order across callers which already own the resource
+        # gate: resource -> cache.  Recheck after admission so racing misses
+        # still hash the object only once.
+        with hashing_lock(kind="sealed-bundle", exclusive=True):
+            with _AGENT_IMMUTABLE_VERIFICATION_LOCK:
+                if reuse_cached():
+                    return
+                check_current_binding()
+                if validate is None:
+                    digest = hashlib.sha256()
+                    offset = 0
+                    while offset < before.st_size:
+                        chunk = os.pread(
+                            retained, min(1024 * 1024, before.st_size - offset), offset
+                        )
+                        if not chunk:
+                            raise ValueError("immutable descriptor was truncated")
+                        digest.update(chunk)
+                        offset += len(chunk)
+                    observed_digest = "sha256:" + digest.hexdigest()
+                else:
+                    observed_digest = validate(retained, before.st_size)
+                if observed_digest != expected_sha256:
+                    raise ValueError("immutable descriptor digest differs")
+                check_current_binding()
+                if before.st_size <= _AGENT_IMMUTABLE_VERIFICATION_MAX_BYTES:
+                    while _AGENT_IMMUTABLE_VERIFICATIONS and (
+                        len(_AGENT_IMMUTABLE_VERIFICATIONS)
+                        >= _AGENT_IMMUTABLE_VERIFICATION_MAX_ENTRIES
+                        or sum(item.size_bytes for item in _AGENT_IMMUTABLE_VERIFICATIONS.values())
+                        + before.st_size > _AGENT_IMMUTABLE_VERIFICATION_MAX_BYTES
+                    ):
+                        _, evicted = _AGENT_IMMUTABLE_VERIFICATIONS.popitem(last=False)
+                        os.close(evicted.descriptor)
+                    if _AGENT_IMMUTABLE_VERIFICATION_MAX_ENTRIES > 0:
+                        _AGENT_IMMUTABLE_VERIFICATIONS[key] = _AgentImmutableVerification(
+                            retained, identity, expected_sha256, before.st_size
+                        )
+                        retained = -1
+    finally:
+        if retained >= 0:
+            os.close(retained)
+
+
 def _agent_native_python_executable_sha256() -> str:
     """Hash the exact running executable through the kernel's process fd."""
 
@@ -5958,10 +6128,10 @@ def _agent_native_checked_range(
     return offset, offset + size
 
 
-def _agent_parse_native_dependency_elf(raw: bytes) -> dict[str, object]:
+def _agent_parse_native_dependency_elf(raw: bytes | mmap.mmap) -> dict[str, object]:
     """Parse only the bounded ELF identity needed by native launch policy."""
 
-    if not isinstance(raw, bytes) or not 64 <= len(raw) <= _AGENT_NATIVE_DEPENDENCY_MAX_BYTES:
+    if not isinstance(raw, (bytes, mmap.mmap)) or not 64 <= len(raw) <= _AGENT_NATIVE_DEPENDENCY_MAX_BYTES:
         raise ValueError("native dependency ELF payload size is invalid")
     ident = raw[:16]
     if ident[:4] != b"\x7fELF" or ident[4] != 2 or ident[6] != 1:
@@ -6305,7 +6475,7 @@ def _agent_read_stable_native_dependency_source(path: Path | str) -> bytes:
 
 
 def _agent_native_dependency_pin_for_bytes(
-    raw: bytes,
+    raw: bytes | mmap.mmap,
     *,
     extension_filename: str,
     distribution_version: str,
@@ -6825,25 +6995,33 @@ def verify_agent_supervisor_native_dependency_sealed_fd(
             != (before.st_dev, before.st_ino, before.st_size)
         ):
             raise ValueError("native dependency sealed fd identity changed")
-        chunks: list[bytes] = []
-        offset = 0
-        while offset < binding.size_bytes:
-            chunk = os.pread(
-                descriptor,
-                min(64 * 1024, binding.size_bytes - offset),
-                offset,
-            )
-            if not chunk:
-                break
-            chunks.append(chunk)
-            offset += len(chunk)
+        def validate_native(held_descriptor: int, size_bytes: int) -> str:
+            # These bytes have all four kernel seals.  Mapping them read-only
+            # avoids simultaneously retaining a chunk list and its joined copy.
+            with mmap.mmap(held_descriptor, size_bytes, access=mmap.ACCESS_READ) as raw:
+                observed_pin = _agent_native_dependency_pin_for_bytes(
+                    raw,
+                    extension_filename=pin.extension_filename,
+                    distribution_version=pin.distribution_version,
+                    engine_version=pin.engine_version,
+                )
+            if observed_pin != pin:
+                raise ValueError("native dependency sealed payload does not match its pin")
+            return observed_pin.payload_sha256
+
+        _agent_verify_immutable_descriptor(
+            descriptor,
+            expected_sha256=pin.payload_sha256,
+            maximum_bytes=_AGENT_NATIVE_DEPENDENCY_MAX_BYTES,
+            validation_key=("native-elf-pin", pin),
+            validate=validate_native,
+        )
         after = os.fstat(descriptor)
         after_seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
         after_target = os.readlink(executable)
         after_path = os.stat(executable)
     except OSError as exc:
         raise ValueError("native dependency sealed fd is unavailable") from exc
-    raw = b"".join(chunks)
     observed = {
         "schema": _AGENT_NATIVE_DEPENDENCY_DESCRIPTOR_SCHEMA,
         "descriptor": descriptor,
@@ -6853,7 +7031,7 @@ def verify_agent_supervisor_native_dependency_sealed_fd(
         "st_uid": before.st_uid,
         "st_nlink": before.st_nlink,
         "size_bytes": before.st_size,
-        "payload_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "payload_sha256": pin.payload_sha256,
         "seals": before_seals,
     }
     metadata_identity = lambda item: (
@@ -6868,8 +7046,7 @@ def verify_agent_supervisor_native_dependency_sealed_fd(
         item.st_ctime_ns,
     )
     if (
-        offset != before.st_size
-        or observed != binding.as_dict()
+        observed != binding.as_dict()
         or before_seals != required_seals
         or after_seals != required_seals
         or before_target != expected_target
@@ -6881,14 +7058,6 @@ def verify_agent_supervisor_native_dependency_sealed_fd(
         != (after.st_dev, after.st_ino, after.st_size)
     ):
         raise ValueError("native dependency sealed fd identity changed")
-    observed_pin = _agent_native_dependency_pin_for_bytes(
-        raw,
-        extension_filename=pin.extension_filename,
-        distribution_version=pin.distribution_version,
-        engine_version=pin.engine_version,
-    )
-    if observed_pin != pin:
-        raise ValueError("native dependency sealed payload does not match its pin")
     return executable
 
 
@@ -7213,6 +7382,7 @@ def _agent_control_plane_source_files(
         "ipfs_accelerate_py",
         "ipfs_accelerate_py.llm_router",
         "ipfs_accelerate_py.agent_implementation_route",
+        "ipfs_accelerate_py._hash_resources",
         "ipfs_accelerate_py.router_deps",
         "ipfs_accelerate_py.common",
         "ipfs_accelerate_py.common.meta_model_api",
@@ -7996,22 +8166,14 @@ def verify_agent_implementation_sealed_control_plane(
             or seals & required != required
         ):
             raise ValueError("accepted control-plane descriptor is not sealed")
-        chunks: list[bytes] = []
-        offset = 0
-        while offset < before.st_size:
-            chunk = os.pread(
-                descriptor,
-                min(64 * 1024, before.st_size - offset),
-                offset,
-            )
-            if not chunk:
-                break
-            chunks.append(chunk)
-            offset += len(chunk)
+        _agent_verify_immutable_descriptor(
+            descriptor,
+            expected_sha256=pin.archive_sha256,
+            maximum_bytes=_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES,
+        )
         after = os.fstat(descriptor)
     except OSError as exc:
         raise ValueError("accepted control-plane descriptor is unavailable") from exc
-    archive = b"".join(chunks)
     identity = lambda item: (
         item.st_dev,
         item.st_ino,
@@ -8023,10 +8185,7 @@ def verify_agent_implementation_sealed_control_plane(
         item.st_ctime_ns,
     )
     if (
-        len(archive) != before.st_size
-        or identity(before) != identity(after)
-        or "sha256:" + hashlib.sha256(archive).hexdigest()
-        != pin.archive_sha256
+        identity(before) != identity(after)
     ):
         raise ValueError("accepted control-plane sealed archive drifted")
     executable = f"/proc/self/fd/{descriptor}"

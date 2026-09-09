@@ -61,11 +61,14 @@ TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT: Final = "read_transport"
 TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND: Final = (
     "database_task_command"
 )
+TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION: Final = "hash_observation"
+HASH_OBSERVATION_SERVICE_OPERATION: Final = "hash.observe"
 TYPED_STATE_OWNER_GRANT_BROKER_CREDENTIAL_KINDS: Final[frozenset[str]] = (
     frozenset(
         {
             TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT,
             TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND,
+            TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION,
         }
     )
 )
@@ -1090,6 +1093,24 @@ class TypedStateOwnerGateway:
         self._database_task_command_handler: Any | None = None
         self._commit_observer: Any | None = None
         self._last_observer_error_type = ""
+        self._hash_observation_store: Any | None = None
+        from .hash_observations import (
+            HashObservationStore,
+            HashObservationUnavailableError,
+        )
+
+        try:
+            self._hash_observation_store = HashObservationStore(
+                connection,
+                generation=(
+                    f"{self.identity.get('server_id', '')}:"
+                    f"{self.identity.get('generation', '')}"
+                ),
+            )
+        except HashObservationUnavailableError:
+            # Older/custom schema owners remain usable, but cannot serve
+            # hash observations before the additive migration is installed.
+            pass
 
     def configure_status_bootstrap(self) -> str:
         """Create the owner-local credential for peer-bound status sessions.
@@ -1352,7 +1373,11 @@ class TypedStateOwnerGateway:
         database_task_commands = frozenset(
             str(item) for item in allowed_database_task_commands
         )
-        if not operations.issubset(set(self.catalog) | set(_SERVICE_OPERATIONS)):
+        if not operations.issubset(
+            set(self.catalog)
+            | set(_SERVICE_OPERATIONS)
+            | {HASH_OBSERVATION_SERVICE_OPERATION}
+        ):
             raise TypedStateOwnerAuthorizationError(
                 "grant contains an operation absent from the server catalog"
             )
@@ -1926,6 +1951,53 @@ class TypedStateOwnerGateway:
                             with self._transaction_lock:
                                 result = self._execute(operation, parameters)
                         response = result
+                    elif action == "hash_observation":
+                        self._reject_unknown(
+                            request,
+                            {"schema", "action", "request_id", "observation"},
+                            "hash observation request",
+                        )
+                        if transaction_active:
+                            raise TypedStateOwnerAuthorizationError(
+                                "hash observations are unavailable inside a transaction"
+                            )
+                        if HASH_OBSERVATION_SERVICE_OPERATION not in grant.allowed_operations:
+                            raise TypedStateOwnerAuthorizationError(
+                                "hash observations are outside the client grant"
+                            )
+                        observation = request.get("observation")
+                        if not isinstance(observation, Mapping):
+                            raise TypedStateOwnerProtocolError(
+                                "hash observation request must be an object"
+                            )
+                        store = self._hash_observation_store
+                        if store is None:
+                            raise TypedStateOwnerProtocolError(
+                                "hash observation schema is unavailable"
+                            )
+                        # This identity is authenticated at the socket boundary;
+                        # callers cannot choose another process's lease owner.
+                        principal = json.dumps(
+                            [grant.peer_uid, grant.peer_pid,
+                             grant.peer_start_time_ticks, grant.client_id],
+                            separators=(",", ":"),
+                        )
+                        if not self._transaction_lock.acquire(timeout=30.0):
+                            raise TypedStateOwnerProtocolError(
+                                "hash observation admission timed out"
+                            )
+                        try:
+                            self._require_active_grant(
+                                grant,
+                                peer_identity=peer_identity,
+                                session_id=session_id,
+                            )
+                            observation_result = store.handle(
+                                dict(observation), principal=principal
+                            )
+                        finally:
+                            self._transaction_lock.release()
+                        response = {"ok": True, "result": dict(observation_result)}
                     elif action == "database_task_command":
                         self._reject_unknown(
                             request,
@@ -3734,6 +3806,21 @@ class TypedStateOwnerConnection:
         operations = self.grant.get("allowed_operations") or ()
         return "event.wait" in operations
 
+    def hash_observation(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Coordinate bounded hash reuse through the exclusive DuckDB owner."""
+
+        if not isinstance(request, Mapping):
+            raise TypedStateOwnerProtocolError(
+                "hash observation request must be an object"
+            )
+        response = self._request("hash_observation", observation=dict(request))
+        result = response.get("result")
+        if not isinstance(result, Mapping):
+            raise TypedStateOwnerProtocolError(
+                "hash observation response must be an object"
+            )
+        return dict(result)
+
     def wait_for_events(self, request: Any) -> Any:
         """Execute one bounded long wait inside the exclusive state owner."""
 
@@ -4154,7 +4241,28 @@ def request_database_task_command_credential(
     )
 
 
+def request_hash_observation_credential(
+    *,
+    store_id: str,
+    client_id: str,
+    process_birth_id: str,
+    timeout_seconds: float = 5.0,
+) -> str:
+    """Request only the peer-bound operational hash observation service."""
+
+    return _request_typed_state_owner_credential(
+        credential_kind=TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION,
+        store_id=store_id,
+        client_id=client_id,
+        process_birth_id=process_birth_id,
+        timeout_seconds=timeout_seconds,
+    )
+
+
 __all__ = [
+    "HASH_OBSERVATION_SERVICE_OPERATION",
+    "TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION",
+    "request_hash_observation_credential",
     "DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS",
     "DATABASE_TASK_COMMANDS",
     "OwnerOperation",
