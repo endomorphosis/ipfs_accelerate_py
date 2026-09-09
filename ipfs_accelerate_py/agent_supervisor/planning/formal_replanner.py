@@ -13,6 +13,10 @@ verifier receipt matches the repaired tree, property, assumptions, tool,
 policy, and bounds.  ``_addresses_counterexample`` alone never reduces the
 open-witness count from one to zero.
 
+:class:`FormalDeltaReplanner` / ``replan_affected_suffix`` reopen only the
+smallest dependent suffix of an impact or typed failure.  That path is not a
+competing planner and never grants completion authority.
+
 Only :class:`CodexRepairPacket` is model-facing.  It contains the selected
 transition and the already redacted, byte-bounded counterexample capsule; it
 never contains the source snapshot, rejected candidates, compiler diagnostics,
@@ -75,6 +79,10 @@ RESPONSIVE_REPLAN_DECISION_SCHEMA: Final = (
 DIAGNOSTIC_RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/retry-diagnostic-receipt@1"
 DELTA_PLAN_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/delta-plan-snapshot@1"
 DELTA_REPLAN_DECISION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/delta-replan-decision@1"
+AFFECTED_SUFFIX_REPLAN_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/affected-suffix-replan@1"
+)
+AFFECTED_SUFFIX_REPLAN_INTERFACE: Final = "AffectedSuffixReplanning@1"
 VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/verifier-backed-repair-closure@1"
 )
@@ -2785,6 +2793,40 @@ class FormalReplanner:
             cancelled=cancelled,
         )
 
+    def replan_affected_suffix(
+        self,
+        plan: DeltaPlan | Mapping[str, Any],
+        observation: BranchFailureObservation | Mapping[str, Any] | None = None,
+        *,
+        anchor_step_ids: Iterable[str] | None = None,
+        failure_event_id: str | None = None,
+        diagnostic_id: str | None = None,
+        failure_memory: PlanFailureMemory | None = None,
+        limits: DeltaReplanLimits | Mapping[str, Any] | None = None,
+        observed_at_milliseconds: int = 1,
+        now_milliseconds: int | None = None,
+        deadline_milliseconds: int | None = None,
+        cancelled: Any = None,
+        required_preserved_guarantee_step_ids: Iterable[str] = (),
+    ) -> DeltaReplanDecision:
+        """Invalidate only the affected dependent suffix; never a full rewrite."""
+
+        return FormalDeltaReplanner(
+            failure_memory=failure_memory,
+            limits=limits,
+        ).replan_affected_suffix(
+            plan,
+            observation,
+            anchor_step_ids=anchor_step_ids,
+            failure_event_id=failure_event_id,
+            diagnostic_id=diagnostic_id,
+            observed_at_milliseconds=observed_at_milliseconds,
+            now_milliseconds=now_milliseconds,
+            deadline_milliseconds=deadline_milliseconds,
+            cancelled=cancelled,
+            required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
+        )
+
     def generate_repairs(
         self,
         source: Mapping[str, Any],
@@ -3712,7 +3754,17 @@ class FormalDeltaReplanner:
     The operation is a single deterministic repair round.  It never regenerates
     an unaffected step and never promotes a pending step to accepted.  Durable
     retry state is delegated to :class:`PlanFailureMemory`.
+
+    ``replan_affected_suffix`` is the DOEP-G090.S2 named entrypoint over this
+    same carrier.  It is not a second planner: it only selects the smallest
+    dependent suffix, clears stale evidence on that suffix, and leaves the
+    preserved prefix untouched.  Assume-guarantee substitutions that bind only
+    to preserved steps remain eligible; required preserved guarantees that
+    intersect the invalidated suffix fail closed.
     """
+
+    INTERFACE: ClassVar[str] = AFFECTED_SUFFIX_REPLAN_INTERFACE
+    SCHEMA: ClassVar[str] = AFFECTED_SUFFIX_REPLAN_SCHEMA
 
     def __init__(
         self,
@@ -3964,6 +4016,217 @@ class FormalDeltaReplanner:
             limits=self.limits,
         )
 
+    def replan_from_anchors(
+        self,
+        plan: DeltaPlan | Mapping[str, Any],
+        anchor_step_ids: Iterable[str],
+        *,
+        failure_event_id: str,
+        diagnostic_id: str,
+        cancelled: Any = None,
+        required_preserved_guarantee_step_ids: Iterable[str] = (),
+    ) -> DeltaReplanDecision:
+        """Invalidate the smallest dependent suffix of explicit impact anchors.
+
+        Authoritative impact events already carry their own identity, so this
+        path does not consult :class:`PlanFailureMemory`.  It still refuses to
+        regenerate unaffected steps or authorize a full replan.
+        """
+
+        value = plan if isinstance(plan, DeltaPlan) else DeltaPlan.from_dict(plan)
+        anchors = _delta_identifiers(anchor_step_ids, "anchor_step_ids")
+        known = {item.step_id for item in value.steps}
+        if set(anchors).difference(known):
+            raise ReplannerValidationError("anchor_step_ids names a step outside the plan")
+        if not anchors:
+            raise ReplannerValidationError("anchor_step_ids must be non-empty")
+        event_id = _delta_identifier(failure_event_id, "failure_event_id")
+        diagnostic = _delta_identifier(diagnostic_id, "diagnostic_id")
+        if _cancelled(cancelled):
+            preserved, _, preserved_branches = self._branch_projection(value, set())
+            return DeltaReplanDecision(
+                original_plan_id=value.plan_id,
+                resulting_plan=value,
+                failure_event_id=event_id,
+                diagnostic_id=diagnostic,
+                stop_reason=DeltaReplanStopReason.CANCELLED,
+                direct_failure_step_ids=anchors,
+                invalidated_step_ids=(),
+                stale_dependency_step_ids=(),
+                preserved_step_ids=preserved,
+                reopened_branch_ids=(),
+                preserved_branch_ids=preserved_branches,
+                diagnostic_reused=False,
+                backoff_attempt=0,
+                backoff_milliseconds=0,
+                repair_attempts=0,
+                limits=self.limits,
+            )
+        suffix = self._dependent_suffix(value, anchors)
+        _, reopened, _ = self._branch_projection(value, set(suffix))
+        if (
+            len(suffix) > self.limits.max_invalidated_steps
+            or len(reopened) > self.limits.max_reopened_branches
+        ):
+            preserved, _, preserved_branches = self._branch_projection(value, set())
+            return DeltaReplanDecision(
+                original_plan_id=value.plan_id,
+                resulting_plan=value,
+                failure_event_id=event_id,
+                diagnostic_id=diagnostic,
+                stop_reason=DeltaReplanStopReason.REPAIR_BOUND_EXCEEDED,
+                direct_failure_step_ids=anchors,
+                invalidated_step_ids=(),
+                stale_dependency_step_ids=(),
+                preserved_step_ids=preserved,
+                reopened_branch_ids=(),
+                preserved_branch_ids=preserved_branches,
+                diagnostic_reused=False,
+                backoff_attempt=0,
+                backoff_milliseconds=0,
+                repair_attempts=0,
+                limits=self.limits,
+            )
+        invalidated = set(suffix)
+        resulting = DeltaPlan(
+            scope=value.scope,
+            steps=tuple(
+                item.invalidate() if item.step_id in invalidated else item for item in value.steps
+            ),
+        )
+        preserved, reopened, preserved_branches = self._branch_projection(value, invalidated)
+        decision = DeltaReplanDecision(
+            original_plan_id=value.plan_id,
+            resulting_plan=resulting,
+            failure_event_id=event_id,
+            diagnostic_id=diagnostic,
+            stop_reason=DeltaReplanStopReason.REPLAN_REQUIRED,
+            direct_failure_step_ids=anchors,
+            invalidated_step_ids=suffix,
+            stale_dependency_step_ids=tuple(sorted(invalidated.difference(anchors))),
+            preserved_step_ids=preserved,
+            reopened_branch_ids=reopened,
+            preserved_branch_ids=preserved_branches,
+            diagnostic_reused=False,
+            backoff_attempt=0,
+            backoff_milliseconds=0,
+            repair_attempts=1,
+            limits=self.limits,
+        )
+        _require_preserved_assume_guarantees(
+            decision,
+            required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
+        )
+        return decision
+
+    def replan_affected_suffix(
+        self,
+        plan: DeltaPlan | Mapping[str, Any],
+        observation: BranchFailureObservation | Mapping[str, Any] | None = None,
+        *,
+        anchor_step_ids: Iterable[str] | None = None,
+        failure_event_id: str | None = None,
+        diagnostic_id: str | None = None,
+        observed_at_milliseconds: int = 1,
+        now_milliseconds: int | None = None,
+        deadline_milliseconds: int | None = None,
+        cancelled: Any = None,
+        required_preserved_guarantee_step_ids: Iterable[str] = (),
+    ) -> DeltaReplanDecision:
+        """Named affected-suffix entrypoint over this delta carrier.
+
+        Prefer a typed failure observation when retry/backoff state matters.
+        Prefer explicit anchors when an authoritative impact cone already named
+        the seed steps.  Exactly one of those inputs must drive the repair.
+        """
+
+        has_observation = observation is not None
+        has_anchors = anchor_step_ids is not None
+        if has_observation == has_anchors:
+            raise ReplannerValidationError(
+                "replan_affected_suffix requires exactly one of observation or anchor_step_ids"
+            )
+        if has_observation:
+            decision = self.replan(
+                plan,
+                observation,  # type: ignore[arg-type]
+                observed_at_milliseconds=observed_at_milliseconds,
+                now_milliseconds=now_milliseconds,
+                deadline_milliseconds=deadline_milliseconds,
+                cancelled=cancelled,
+            )
+            _require_preserved_assume_guarantees(
+                decision,
+                required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
+            )
+            return decision
+        if not failure_event_id or not diagnostic_id:
+            raise ReplannerValidationError(
+                "anchor-driven affected-suffix replan requires failure_event_id and diagnostic_id"
+            )
+        return self.replan_from_anchors(
+            plan,
+            anchor_step_ids or (),
+            failure_event_id=failure_event_id,
+            diagnostic_id=diagnostic_id,
+            cancelled=cancelled,
+            required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
+        )
+
+
+def compute_affected_plan_suffix(
+    plan: DeltaPlan | Mapping[str, Any],
+    anchor_step_ids: Iterable[str],
+) -> tuple[str, ...]:
+    """Return the smallest dependent suffix of ``anchor_step_ids``."""
+
+    value = plan if isinstance(plan, DeltaPlan) else DeltaPlan.from_dict(plan)
+    anchors = _delta_identifiers(anchor_step_ids, "anchor_step_ids")
+    known = {item.step_id for item in value.steps}
+    if set(anchors).difference(known):
+        raise ReplannerValidationError("anchor_step_ids names a step outside the plan")
+    if not anchors:
+        raise ReplannerValidationError("anchor_step_ids must be non-empty")
+    return FormalDeltaReplanner._dependent_suffix(value, anchors)
+
+
+def preserved_assume_guarantee_step_ids(
+    decision: DeltaReplanDecision | Mapping[str, Any],
+    guarantee_step_ids: Iterable[str],
+) -> tuple[str, ...]:
+    """Project admitted guarantee steps that remain outside the invalidated suffix."""
+
+    value = (
+        decision if isinstance(decision, DeltaReplanDecision) else DeltaReplanDecision.from_dict(decision)
+    )
+    guarantees = _delta_identifiers(guarantee_step_ids, "guarantee_step_ids")
+    invalidated = set(value.invalidated_step_ids)
+    return tuple(step_id for step_id in guarantees if step_id not in invalidated)
+
+
+def _require_preserved_assume_guarantees(
+    decision: DeltaReplanDecision,
+    *,
+    required_preserved_guarantee_step_ids: Iterable[str],
+) -> None:
+    required = _delta_identifiers(
+        required_preserved_guarantee_step_ids,
+        "required_preserved_guarantee_step_ids",
+    )
+    if not required:
+        return
+    known = {item.step_id for item in decision.resulting_plan.steps}
+    if set(required).difference(known):
+        raise ReplannerValidationError(
+            "required_preserved_guarantee_step_ids names a step outside the plan"
+        )
+    leaked = sorted(set(required).intersection(decision.invalidated_step_ids))
+    if leaked:
+        raise ReplannerValidationError(
+            "assume-guarantee substitution requires preserved unaffected steps; "
+            f"invalidated required guarantee steps: {', '.join(leaked)}"
+        )
+
 
 CounterexampleDeltaReplanner = FormalDeltaReplanner
 DeltaReplanner = FormalDeltaReplanner
@@ -3971,6 +4234,7 @@ DeltaReplanResult = DeltaReplanDecision
 DeltaReplanBudget = DeltaReplanLimits
 DeltaPlanNode = DeltaPlanStep
 FormalPlanReplanner = FormalReplanner
+AffectedSuffixReplanner = FormalDeltaReplanner
 
 
 def replan_plan_delta(
@@ -4000,6 +4264,44 @@ def replan_plan_delta(
 
 
 delta_replan = replan_plan_delta
+
+
+def replan_affected_suffix(
+    plan: DeltaPlan | Mapping[str, Any],
+    observation: BranchFailureObservation | Mapping[str, Any] | None = None,
+    *,
+    anchor_step_ids: Iterable[str] | None = None,
+    failure_event_id: str | None = None,
+    diagnostic_id: str | None = None,
+    failure_memory: PlanFailureMemory | None = None,
+    limits: DeltaReplanLimits | Mapping[str, Any] | None = None,
+    observed_at_milliseconds: int = 1,
+    now_milliseconds: int | None = None,
+    deadline_milliseconds: int | None = None,
+    cancelled: Any = None,
+    required_preserved_guarantee_step_ids: Iterable[str] = (),
+) -> DeltaReplanDecision:
+    """Canonical affected-suffix replanning over :class:`FormalDeltaReplanner`.
+
+    This is not a competing planner.  It only reopens the smallest dependent
+    suffix and never grants completion authority or a full-plan rewrite.
+    """
+
+    return FormalDeltaReplanner(
+        failure_memory=failure_memory,
+        limits=limits,
+    ).replan_affected_suffix(
+        plan,
+        observation,
+        anchor_step_ids=anchor_step_ids,
+        failure_event_id=failure_event_id,
+        diagnostic_id=diagnostic_id,
+        observed_at_milliseconds=observed_at_milliseconds,
+        now_milliseconds=now_milliseconds,
+        deadline_milliseconds=deadline_milliseconds,
+        cancelled=cancelled,
+        required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
+    )
 
 
 def generate_plan_repairs(
@@ -4183,6 +4485,8 @@ def replan_critique(
 
 
 __all__ = [
+    "AFFECTED_SUFFIX_REPLAN_INTERFACE",
+    "AFFECTED_SUFFIX_REPLAN_SCHEMA",
     "BOUNDED_REFINEMENT_EVIDENCE_ID",
     "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID",
     "CODEX_REPAIR_PACKET_SCHEMA",
@@ -4198,6 +4502,7 @@ __all__ = [
     "RESPONSIVE_REPLAN_DECISION_SCHEMA",
     "RESPONSIVE_REPLAN_SIGNAL_KINDS",
     "VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA",
+    "AffectedSuffixReplanner",
     "CodexRepairPacket",
     "CounterexampleDeltaReplanner",
     "DeltaPlan",
@@ -4233,9 +4538,12 @@ __all__ = [
     "WitnessClosureStatus",
     "PlanSnapshot",
     "PlanStep",
+    "compute_affected_plan_suffix",
     "delta_replan",
     "evaluate_verifier_backed_closure",
     "generate_plan_repairs",
+    "preserved_assume_guarantee_step_ids",
+    "replan_affected_suffix",
     "replan_plan_delta",
     "replan_if_changed",
     "replan_critique",
