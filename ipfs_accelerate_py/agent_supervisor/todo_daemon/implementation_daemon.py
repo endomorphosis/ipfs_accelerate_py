@@ -98874,6 +98874,10 @@ class DatabaseImplementationDaemon:
             ).strip()
             if not task_cid:
                 continue
+            # Missing lifecycle metadata is not evidence of peer death.
+            # Reuse the exact shared receipt/local failure/expired lease gate.
+            if not self._stale_control_claim_is_recoverable(task):
+                continue
             updated = self._parse_control_task_updated_at(
                 getattr(task, "updated_at", None)
             )

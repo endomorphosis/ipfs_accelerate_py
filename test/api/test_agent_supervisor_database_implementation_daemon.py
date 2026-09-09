@@ -11989,7 +11989,7 @@ def test_run_once_unstalls_stale_in_progress_gate_and_claims(
         daemon.close()
 
 
-def test_orphan_in_progress_unstall_retries_gate_without_live_claim(
+def test_orphan_in_progress_unstall_preserves_unbound_control_row(
     tmp_path: Path,
 ) -> None:
     from datetime import datetime, timedelta, timezone
@@ -12015,15 +12015,10 @@ def test_orphan_in_progress_unstall_retries_gate_without_live_claim(
                 [stale, "task:cid:001"],
             )
         unstalled = daemon.reconcile_stale_in_progress_gates()
-        assert any(
-            item.get("task_cid") == "task:cid:001"
-            and item.get("reason")
-            == "in_progress_without_live_worktree_lifecycle_owner"
-            for item in unstalled
-        )
+        assert unstalled == []
         retried = daemon.task_source.get("task:cid:001")
         assert retried is not None
-        assert retried.status == "retrying"
+        assert retried.status == "in_progress"
     finally:
         daemon.close()
 
