@@ -224,8 +224,9 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         prior_report = _prior_report_context(job.get("report_path"), directory)
         stamp = f"{int(now)}-{attempts}"
         report = directory / f"report-{stamp}.json"
+        log_path = directory / f"worker-{stamp}.log"
         job.update(status="running", last_started_at=now, attempts=attempts,
-                   report_path=str(report),
+                   report_path=str(report), log_path=str(log_path),
                    next_attempt_at=now + min(policy.get("max_backoff_seconds", 21600),
                                              policy.get("retry_seconds", 1800) * 2 ** min(attempts - 1, 4)))
         write_json(path, job)
@@ -240,7 +241,6 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
             "--property=MemoryMax=16G", "--property=UMask=0077",
             *policy["argv"], "-C", policy["cwd"],
             "--output-last-message", str(directory / f"last-message-{stamp}.txt"), "-"]
-    log_path = directory / f"worker-{stamp}.log"
     if any(Path(p).exists() for p in board.get("hold_files", [])):
         return {"status": "operator_hold", "board_id": board["id"]}
     with prompt.open("rb") as inp, log_path.open("wb") as log:

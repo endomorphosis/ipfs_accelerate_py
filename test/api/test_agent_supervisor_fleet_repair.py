@@ -142,6 +142,10 @@ def test_run_job_keeps_backoff_for_idle_healthy_probe(tmp_path, monkeypatch):
         def __init__(self, *args, **kwargs):
             self.prompt = kwargs["stdin"].read().decode()
             assert "continue regression fix" in self.prompt
+            active = read_json(path)
+            assert active["status"] == "running"
+            assert active["log_path"] == kwargs["stdout"].name
+            assert Path(active["log_path"]).exists()
         def wait(self, timeout):
             return 0
     monkeypatch.setattr(repair, "command", command)
