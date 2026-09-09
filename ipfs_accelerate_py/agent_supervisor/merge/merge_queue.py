@@ -1542,6 +1542,8 @@ class MergeQueue:
         if not str(task_id).strip():
             raise ValueError("task_id must not be empty")
         metadata_dict = dict(metadata or {})
+        if "reviewed_supersession" in metadata_dict or "supersession_preserved_quarantine" in metadata_dict:
+            raise ValueError("quarantine supersession metadata is queue-reserved")
         if _FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY in metadata_dict:
             raise ValueError(
                 "false-positive completion reopen metadata is queue-reserved"
@@ -2675,6 +2677,94 @@ class MergeQueue:
         cancelled = self._request_from_row(row)
         receipt_path = self._write_stage_receipt(cancelled)
         return replace(cancelled, file_path=receipt_path)
+
+    def supersede_quarantined(
+        self,
+        request: MergeRequest,
+        *,
+        review: Mapping[str, Any],
+        verify_current_acceptance: Callable[[MergeRequest, Mapping[str, Any]], bool],
+    ) -> MergeRequest:
+        """Retire an obsolete candidate after exact owner/operator acceptance review.
+
+        The callback must independently verify the named current task receipt,
+        source root and validation evidence. A caller-provided accepted flag is
+        insufficient. The original candidate and failure history are preserved;
+        this transition neither completes a task nor claims the old bytes merged.
+        """
+        from ..task_sources.control_plane_contracts import content_identity
+
+        fields = {
+            "schema", "request_id", "candidate_commit", "task_cid",
+            "accepted_task_revision", "completion_receipt_cid",
+            "current_target_commit", "validation_evidence_cid", "reason",
+            "review_id",
+        }
+        reviewed = dict(review)
+        body = {key: value for key, value in reviewed.items() if key != "review_id"}
+        if (
+            set(reviewed) != fields
+            or reviewed.get("schema") != "ipfs_accelerate_py/agent-supervisor/merge-quarantine-supersession-review@1"
+            or reviewed.get("review_id") != content_identity(body)
+            or reviewed.get("request_id") != request.request_id
+            or reviewed.get("candidate_commit") != request.commit_sha
+            or reviewed.get("task_cid") != request.canonical_identity
+            or type(reviewed.get("accepted_task_revision")) is not int
+            or reviewed["accepted_task_revision"] < 1
+            or any(not isinstance(reviewed.get(key), str) or not reviewed[key].strip()
+                   for key in ("completion_receipt_cid", "current_target_commit", "validation_evidence_cid", "reason"))
+            or not callable(verify_current_acceptance)
+        ):
+            raise MergeQueueIntegrityError("quarantine supersession review is not exact")
+        now = self._clock()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?", (request.request_id,)
+            ).fetchone()
+            if row is None:
+                raise MergeQueueFenceError("supersession request disappeared")
+            self._require_row_target(row, operation="supersede", request_id=request.request_id)
+            current = self._request_from_row(row)
+            existing = current.metadata.get("reviewed_supersession")
+            if current.status == "cancelled" and existing == reviewed:
+                if verify_current_acceptance(current, reviewed) is not True:
+                    raise MergeQueueFenceError("replayed supersession acceptance is no longer current")
+                connection.commit()
+                return current
+            if (
+                current.status != "quarantined"
+                or current.commit_sha != request.commit_sha
+                or current.canonical_identity != request.canonical_identity
+                or current.claim_generation != request.claim_generation
+                or current.target_repository_id != request.target_repository_id
+                or current.target_branch != request.target_branch
+                or verify_current_acceptance(current, reviewed) is not True
+            ):
+                raise MergeQueueFenceError("supersession no longer matches reviewed native acceptance")
+            metadata = dict(current.metadata)
+            metadata["reviewed_supersession"] = reviewed
+            metadata["supersession_preserved_quarantine"] = {
+                "failure_reason": current.failure_reason,
+                "failure_count": current.failure_count,
+                "claim_generation": current.claim_generation,
+            }
+            connection.execute(
+                """UPDATE merge_requests SET status='cancelled', failure_reason=?,
+                   metadata_json=?, claim_generation=claim_generation + 1,
+                   retry_not_before=0, finished_at=?, updated_at=?
+                   WHERE request_id=? AND status='quarantined' AND claim_generation=?""",
+                ("superseded_after_native_acceptance_review", json.dumps(metadata, sort_keys=True),
+                 now, now, request.request_id, request.claim_generation),
+            )
+            if verify_current_acceptance(current, reviewed) is not True:
+                raise MergeQueueFenceError("native acceptance changed before supersession commit")
+            updated = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?", (request.request_id,)
+            ).fetchone()
+            connection.commit()
+        result = self._request_from_row(updated)
+        return replace(result, file_path=self._write_stage_receipt(result))
 
     def revive_quarantined(
         self,
