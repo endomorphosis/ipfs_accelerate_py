@@ -2731,38 +2731,39 @@ class MergeQueue:
                 if verify_current_acceptance(current, reviewed) is not True:
                     raise MergeQueueFenceError("replayed supersession acceptance is no longer current")
                 connection.commit()
-                return current
-            if (
-                current.status != "quarantined"
-                or current.commit_sha != request.commit_sha
-                or current.canonical_identity != request.canonical_identity
-                or current.claim_generation != request.claim_generation
-                or current.target_repository_id != request.target_repository_id
-                or current.target_branch != request.target_branch
-                or verify_current_acceptance(current, reviewed) is not True
-            ):
-                raise MergeQueueFenceError("supersession no longer matches reviewed native acceptance")
-            metadata = dict(current.metadata)
-            metadata["reviewed_supersession"] = reviewed
-            metadata["supersession_preserved_quarantine"] = {
-                "failure_reason": current.failure_reason,
-                "failure_count": current.failure_count,
-                "claim_generation": current.claim_generation,
-            }
-            connection.execute(
-                """UPDATE merge_requests SET status='cancelled', failure_reason=?,
-                   metadata_json=?, claim_generation=claim_generation + 1,
-                   retry_not_before=0, finished_at=?, updated_at=?
-                   WHERE request_id=? AND status='quarantined' AND claim_generation=?""",
-                ("superseded_after_native_acceptance_review", json.dumps(metadata, sort_keys=True),
-                 now, now, request.request_id, request.claim_generation),
-            )
-            if verify_current_acceptance(current, reviewed) is not True:
-                raise MergeQueueFenceError("native acceptance changed before supersession commit")
-            updated = connection.execute(
-                "SELECT * FROM merge_requests WHERE request_id=?", (request.request_id,)
-            ).fetchone()
-            connection.commit()
+                updated = row
+            else:
+                if (
+                    current.status != "quarantined"
+                    or current.commit_sha != request.commit_sha
+                    or current.canonical_identity != request.canonical_identity
+                    or current.claim_generation != request.claim_generation
+                    or current.target_repository_id != request.target_repository_id
+                    or current.target_branch != request.target_branch
+                    or verify_current_acceptance(current, reviewed) is not True
+                ):
+                    raise MergeQueueFenceError("supersession no longer matches reviewed native acceptance")
+                metadata = dict(current.metadata)
+                metadata["reviewed_supersession"] = reviewed
+                metadata["supersession_preserved_quarantine"] = {
+                    "failure_reason": current.failure_reason,
+                    "failure_count": current.failure_count,
+                    "claim_generation": current.claim_generation,
+                }
+                connection.execute(
+                    """UPDATE merge_requests SET status='cancelled', failure_reason=?,
+                       metadata_json=?, claim_generation=claim_generation + 1,
+                       retry_not_before=0, finished_at=?, updated_at=?
+                       WHERE request_id=? AND status='quarantined' AND claim_generation=?""",
+                    ("superseded_after_native_acceptance_review", json.dumps(metadata, sort_keys=True),
+                     now, now, request.request_id, request.claim_generation),
+                )
+                if verify_current_acceptance(current, reviewed) is not True:
+                    raise MergeQueueFenceError("native acceptance changed before supersession commit")
+                updated = connection.execute(
+                    "SELECT * FROM merge_requests WHERE request_id=?", (request.request_id,)
+                ).fetchone()
+                connection.commit()
         result = self._request_from_row(updated)
         return replace(result, file_path=self._write_stage_receipt(result))
 
