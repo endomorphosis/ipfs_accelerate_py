@@ -77,6 +77,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
     DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
+    DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
 )
@@ -2311,6 +2312,47 @@ def test_recoverable_accepted_source_portal_failure_auto_rearms_blocked_task(
         third = daemon.run_once()
         assert third["selection_idle_reason"] == "no_ready_tasks"
         assert third.get("portal_failure_rearms") == []
+    finally:
+        daemon.close()
+
+
+def test_protected_path_deferral_settles_instead_of_pinning_running_claim(
+    tmp_path: Path,
+) -> None:
+    fail = {"enabled": True}
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        if fail["enabled"]:
+            raise DatabasePortalBridgeDeferred(
+                "implementation_protected_path_mutated"
+            )
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-protected-path",
+        provider_fn=provider,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        first_result = first["implementation_result"]
+        assert first_result["portal_terminal_failure"] is True
+        assert first_result["status"] == "blocked"
+        assert first_result["reason"] == "implementation_protected_path_mutated"
+        first_attempt = daemon.get_attempt(first["attempt_id"])
+        assert first_attempt is not None
+        assert first_attempt.status == "failed"
+        task = daemon.task_source.get(first_attempt.task_cid)
+        assert task is not None
+        assert task.status == "blocked"
+
+        fail["enabled"] = False
+        second = daemon.run_once()
+        rearms = second.get("portal_failure_rearms") or []
+        assert len(rearms) == 1
+        assert rearms[0]["reason"] == "implementation_protected_path_mutated"
+        assert second["implementation_result"]["status"] == "succeeded"
     finally:
         daemon.close()
 

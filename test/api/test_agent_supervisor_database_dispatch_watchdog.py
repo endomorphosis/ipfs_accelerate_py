@@ -32,6 +32,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     DATABASE_AUTHORITY_UNAVAILABLE_REASON,
     DATABASE_BLOCKED_PORTAL_FRONTIER_REASON,
     DATABASE_IDLE_DAEMON_STALL_REASON,
+    DATABASE_STALE_ACTIVE_CLAIM_REASON,
     SHARED_AUTHORITY_TERMINAL_STATUS,
     SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND,
     SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA,
@@ -437,6 +438,65 @@ def test_database_watchdog_recycles_stale_idle_child_for_same_shard_ready_work(
     assert decision.detail["attempt_budget_consumed"] is False
     assert decision.detail["provider_invocation_consumed"] is False
     assert maintenance_calls == []
+
+
+def test_database_watchdog_recycles_stale_active_claim_from_prior_child(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": True,
+            "reason": "authoritative_readiness_observed",
+            "task_source_revision": 41,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": ["SAWM-013"],
+            "same_shard_active_task_ids": ["SAWM-013"],
+            "blocked_recoverable_task_ids": [],
+            "same_shard_blocked_recoverable_task_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {
+            "available": True,
+            "stale": True,
+            "reason": "heartbeat_belongs_to_prior_child",
+            "active_task_id": "SAWM-013",
+        },
+    )
+    requeue_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_requeue_stale_active_database_claims",
+        lambda: requeue_calls.append({"ok": True})
+        or {
+            "attempted": True,
+            "reason": DATABASE_STALE_ACTIVE_CLAIM_REASON,
+            "expired_count": 1,
+            "expired_task_ids": ["sha256:task"],
+        },
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "recycle"
+    assert decision.reason == DATABASE_STALE_ACTIVE_CLAIM_REASON
+    assert requeue_calls == [{"ok": True}]
+    assert events[0][0] == "stale_active_claim_prior_child_detected"
 
 
 def test_database_watchdog_rearms_idle_blocked_portal_frontier(

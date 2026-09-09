@@ -67933,11 +67933,25 @@ DATABASE_PORTAL_FAILURE_QUARANTINE_SCHEMA = (
 _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON = (
     "Portal accepted-source transition is not the exact Git merge"
 )
+_RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON = (
+    "implementation_protected_path_mutated"
+)
 _LIVE_OWNER_PORTAL_CLAIM_FAILURE_REARM_REASON = (
     "live_owner_zero_provider_portal_claim_failure"
 )
 _AUTOMATIC_PORTAL_FAILURE_REARM_EVENT = (
     "automatic_recoverable_portal_failure_rearmed"
+)
+_INFLIGHT_PORTAL_DEFER_REASONS = frozenset(
+    {
+        "Portal task projection is not complete",
+        "external_protected_checkout_recovery_required",
+        "inflight_process",
+        "inflight_process_missing",
+        "worktree_lifecycle_claim_exists",
+        "provider_capacity_exhausted",
+        "cross-attempt worktree Git observation is unavailable",
+    }
 )
 DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1 = (
     "ipfs_accelerate_py/agent-supervisor/database-control-claim-binding@1"
@@ -70284,19 +70298,25 @@ class DatabaseImplementationDaemon:
                 if receipt is None:
                     continue
                 try:
-                    recoverable = self._portal_failure_matches_recoverable_reason(
-                        receipt,
-                        attempt,
-                        _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON,
+                    recoverable_reason = next(
+                        (
+                            candidate
+                            for candidate in (
+                                _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON,
+                                _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON,
+                            )
+                            if self._portal_failure_matches_recoverable_reason(
+                                receipt,
+                                attempt,
+                                candidate,
+                            )
+                        ),
+                        "",
                     )
                 except Exception:
                     continue
-                if recoverable:
-                    matched = (
-                        attempt,
-                        receipt,
-                        _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON,
-                    )
+                if recoverable_reason:
+                    matched = (attempt, receipt, recoverable_reason)
                     break
             if matched is None:
                 body = task.body if isinstance(getattr(task, "body", None), Mapping) else {}
@@ -73321,28 +73341,44 @@ class DatabaseImplementationDaemon:
             )
 
             if isinstance(exc, DatabasePortalBridgeDeferred):
-                # Grok/Codex is still in flight. Keep the exact running
-                # attempt so the next pass can accept the same projection
-                # instead of failing it and racing a replacement claim.
-                try:
-                    self._renew_attempt_lease(
-                        attempt
-                        if isinstance(attempt, DatabaseTaskAttempt)
-                        else self.get_attempt(
-                            str(getattr(attempt, "attempt_id", "") or attempt)
+                reason = str(exc)
+                inflight = (
+                    reason in _INFLIGHT_PORTAL_DEFER_REASONS
+                    or "capacity" in reason
+                    or "backoff" in reason
+                    or reason.startswith("Portal task projection")
+                )
+                if inflight:
+                    # Grok/Codex is still in flight. Keep the exact running
+                    # attempt so the next pass can accept the same projection
+                    # instead of failing it and racing a replacement claim.
+                    try:
+                        self._renew_attempt_lease(
+                            attempt
+                            if isinstance(attempt, DatabaseTaskAttempt)
+                            else self.get_attempt(
+                                str(getattr(attempt, "attempt_id", "") or attempt)
+                            )
+                            or attempt
                         )
-                        or attempt
-                    )
-                except Exception:
-                    pass
-                return {
-                    "resumed": True,
-                    "deferred": True,
-                    "reason": str(exc),
-                    "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
-                    "task_alias": str(getattr(attempt, "task_alias", "") or ""),
-                    "status": "running",
-                }
+                    except Exception:
+                        pass
+                    return {
+                        "resumed": True,
+                        "deferred": True,
+                        "reason": reason,
+                        "attempt_id": str(
+                            getattr(attempt, "attempt_id", "") or ""
+                        ),
+                        "task_alias": str(
+                            getattr(attempt, "task_alias", "") or ""
+                        ),
+                        "status": "running",
+                    }
+                # Protected-path and other non-inflight deferrals must not
+                # pin the claim after this process dies. Settle them like a
+                # terminal Portal miss so the next pass can rearm/retry.
+                exc = DatabasePortalBridgeError(reason)
             if not isinstance(exc, DatabasePortalBridgeError):
                 raise
             try:
