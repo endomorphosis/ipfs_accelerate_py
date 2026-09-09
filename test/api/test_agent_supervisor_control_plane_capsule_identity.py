@@ -459,12 +459,14 @@ def test_reviewed_capsule_manifest_closes_identity_dependencies() -> None:
     dependencies = set(llm_router._AGENT_CONTROL_PLANE_RELATIVE_FILES)
     assert {
         "ipfs_accelerate_py/utils/cid_utils.py",
+        "ipfs_accelerate_py/_hash_resources.py",
         "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
         "0002_causal_event_federation_core.sql",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
         "0003_state_server_restart_identity.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
     }.issubset(dependencies)
 
 
@@ -556,12 +558,14 @@ def test_explicit_sql_directory_never_reads_bundled_resources(
     "missing",
     [
         "ipfs_accelerate_py/utils/cid_utils.py",
+        "ipfs_accelerate_py/_hash_resources.py",
         "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
         "0002_causal_event_federation_core.sql",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
         "0003_state_server_restart_identity.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
     ],
 )
 def test_capsule_missing_identity_dependency_is_denied(
@@ -578,12 +582,14 @@ def test_capsule_missing_identity_dependency_is_denied(
     "substituted",
     [
         "ipfs_accelerate_py/utils/cid_utils.py",
+        "ipfs_accelerate_py/_hash_resources.py",
         "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
         "0002_causal_event_federation_core.sql",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
         "0003_state_server_restart_identity.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
     ],
 )
 def test_capsule_substituted_identity_dependency_is_denied(
@@ -633,6 +639,9 @@ targets = [
     name + ".runtime.configured_board_scheduler",
     name + ".runtime.multi_supervisor_runner",
     name + ".todo_daemon.implementation_supervisor",
+    name + ".runtime.shared_hashing",
+    name + ".task_sources.hash_observations",
+    "ipfs_accelerate_py._hash_resources",
 ]
 modules = [importlib.import_module(target) for target in targets]
 raw = identity.cid_for_bytes(b"")
@@ -688,6 +697,7 @@ assert migration_ids == [
     "0001_control_plane",
     "0002_causal_event_federation_core",
     "0003_state_server_restart_identity",
+    "0004_hash_observations",
 ]
 assert catalog.fingerprint() == sys.argv[2]
 assert schema.default_control_plane_schema().sql_text() == catalog.get(1).sql_text
@@ -699,6 +709,13 @@ assert (
     migrations.read_bundled_sql_text("0003_state_server_restart_identity.sql")
     == catalog.get(3).sql_text
 )
+assert (
+    migrations.read_bundled_sql_text("0004_hash_observations.sql")
+    == catalog.get(4).sql_text
+)
+operational = schema.load_datasets_authoritative_operational_catalog()
+assert operational.latest_version == 2
+assert operational.get(2).sql_text == catalog.get(4).sql_text
 loaded = [
     module for module_name, module in sys.modules.items()
     if module_name == "ipfs_accelerate_py"
@@ -760,7 +777,12 @@ def test_real_isolated_sealed_capsule_imports_control_plane_and_mints_cids(
         result = json.loads(completed.stdout)
         assert result["raw"] == KNOWN_EMPTY_RAW_CID
         assert result["dag"] == KNOWN_A_1_DAG_JSON_CID
-        assert len(result["targets"]) == 3
+        assert len(result["targets"]) == 6
+        assert {
+            "ipfs_accelerate_py.agent_supervisor.runtime.shared_hashing",
+            "ipfs_accelerate_py.agent_supervisor.task_sources.hash_observations",
+            "ipfs_accelerate_py._hash_resources",
+        }.issubset(result["targets"])
         assert not marker.exists()
     finally:
         os.close(sealed.descriptor)
@@ -788,6 +810,7 @@ def test_real_isolated_sealed_capsule_loads_exact_bundled_sql_resources(
         "0001_control_plane",
         "0002_causal_event_federation_core",
         "0003_state_server_restart_identity",
+        "0004_hash_observations",
     ]
     source = _clean_control_plane_source(tmp_path / "source")
     pin = _real_materialized_pin(source, tmp_path / "capsules")
@@ -897,10 +920,10 @@ def test_real_materializer_hashes_a_new_tracked_sql_migration(
     source = _clean_control_plane_source(tmp_path / "source")
     relative = (
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
-        "0004_future_capsule_contract.sql"
+        "0005_future_capsule_contract.sql"
     )
     migration = source / relative
-    migration.write_text("SELECT 4;\n", encoding="utf-8")
+    migration.write_text("SELECT 5;\n", encoding="utf-8")
     migration.chmod(0o644)
     _git(source, "add", "--", relative)
     _git(source, "commit", "-qm", "add tracked SQL migration")
@@ -913,7 +936,7 @@ def test_real_materializer_hashes_a_new_tracked_sql_migration(
         ).read_text(encoding="utf-8")
     )
     assert manifest["files"][relative] == (
-        "sha256:" + hashlib.sha256(b"SELECT 4;\n").hexdigest()
+        "sha256:" + hashlib.sha256(b"SELECT 5;\n").hexdigest()
     )
 
 
@@ -995,7 +1018,7 @@ def test_real_materializer_denies_a_missing_required_sql_migration(
     source = _clean_control_plane_source(tmp_path / "source")
     relative = (
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
-        "0003_state_server_restart_identity.sql"
+        "0004_hash_observations.sql"
     )
     (source / relative).unlink()
     _git(source, "add", "--", relative)

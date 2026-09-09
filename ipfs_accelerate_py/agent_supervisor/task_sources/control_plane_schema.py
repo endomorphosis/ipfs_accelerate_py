@@ -1374,7 +1374,7 @@ def datasets_authoritative_operational_schema_sql() -> str:
 
 
 def load_datasets_authoritative_operational_catalog() -> MigrationCatalog:
-    """Return the checksum-bound one-migration operational profile catalog."""
+    """Return the unchanged base profile plus additive operational migrations."""
 
     sql_text = datasets_authoritative_operational_schema_sql()
     required_relation_names = tuple(
@@ -1411,7 +1411,20 @@ def load_datasets_authoritative_operational_catalog() -> MigrationCatalog:
             f"#{DATASETS_AUTHORITATIVE_OPERATIONAL_PROFILE_ID}"
         ),
     )
-    return MigrationCatalog.from_migrations((migration,))
+    hash_observations = ControlPlaneMigration.from_sql(
+        version=2,
+        migration_id="0002_operational_hash_observations",
+        sql_text=read_bundled_sql_text("0004_hash_observations.sql"),
+        description="Bounded operational hash observations and fenced claims",
+        postconditions=(
+            "SELECT COUNT(*) = 1 FROM information_schema.tables "
+            "WHERE table_schema = 'main' AND table_name = 'hash_observations'",
+        ),
+        source_path="0004_hash_observations.sql#operational-profile@2",
+    )
+    # The profile's version 1 SQL and checksum stay untouched. The shared
+    # cache is operational derived evidence, not a semantic authority table.
+    return MigrationCatalog.from_migrations((migration, hash_observations))
 
 
 def install_control_plane_schema(
@@ -1656,6 +1669,7 @@ def verify_datasets_authoritative_operational_schema(
         "migration_checksum": expected_migration.checksum,
         "catalog_fingerprint": catalog.fingerprint(),
         "required_tables_ok": [],
+        "extension_tables_ok": [],
         "views_ok": [],
         "join_critical_ok": [],
         "task_columns_ok": [],
@@ -1686,6 +1700,11 @@ def verify_datasets_authoritative_operational_schema(
             if table not in relations:
                 raise ControlPlaneSchemaInstallError(f"operational-profile table missing: {table}")
             report["required_tables_ok"].append(table)
+        if "hash_observations" not in relations:
+            raise ControlPlaneSchemaInstallError(
+                "operational-profile extension table missing: hash_observations"
+            )
+        report["extension_tables_ok"].append("hash_observations")
         for view in DIAGNOSTIC_VIEWS:
             if view not in relations:
                 raise ControlPlaneSchemaInstallError(
@@ -1721,6 +1740,27 @@ def verify_datasets_authoritative_operational_schema(
                 f"expected={expected_migration.migration_id}/"
                 f"{expected_migration.checksum}"
             )
+
+        for extension in catalog:
+            if extension.version == expected_migration.version:
+                continue
+            extension_row = connection.execute(
+                "SELECT migration_id, checksum FROM schema_migrations WHERE version = ?",
+                [extension.version],
+            ).fetchone()
+            if extension_row is None:
+                raise ControlPlaneSchemaInstallError(
+                    "operational-profile extension migration receipt is missing"
+                )
+            extension_identity = (
+                (extension_row["migration_id"], extension_row["checksum"])
+                if isinstance(extension_row, Mapping)
+                else (extension_row[0], extension_row[1])
+            )
+            if extension_identity != (extension.migration_id, extension.checksum):
+                raise ControlPlaneSchemaInstallError(
+                    "operational-profile extension migration identity/checksum mismatch"
+                )
 
         root_contract = connection.execute(
             """

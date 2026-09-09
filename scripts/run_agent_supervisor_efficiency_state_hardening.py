@@ -45,6 +45,8 @@ if str(ROOT) not in sys.path:
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (  # noqa: E402
     content_identity,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import hashing_lock  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.runtime.shared_hashing import hash_descriptor  # noqa: E402
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (  # noqa: E402
     KNOWN_NON_WORKTREE_PHASES,
 )
@@ -9926,6 +9928,11 @@ def _repair_provider_cleanup_fence_known_baseline_receipt_id(
 def _trusted_receipt_validation_python() -> str:
     """Qualify the immutable lexical Python command bound by ASEH receipts."""
 
+    with hashing_lock(kind="trusted-executable", exclusive=True):
+        return _trusted_receipt_validation_python_unlocked()
+
+
+def _trusted_receipt_validation_python_unlocked() -> str:
     global _ASEH_RECEIPT_VALIDATION_PYTHON_IDENTITY
     command = Path(ASEH_RECEIPT_VALIDATION_PYTHON)
     try:
@@ -23268,9 +23275,20 @@ def _trusted_git_environment() -> dict[str, str]:
     }
 
 
-def _trusted_git_executable() -> str:
-    """Bind the root-owned Git executable and reject name/identity drift."""
+def _trusted_git_executable(*, strict: bool = False) -> str:
+    """Bind root-owned Git, checking live metadata on every observation.
 
+    Routine calls trust local filesystem metadata and the authenticated owner's
+    bounded hash observations. ``strict=True`` (or cache TTL zero) rereads bytes.
+    Root ownership, descriptor admission, path identity and process-local drift
+    checks are still mandatory on both cache hits and misses.
+    """
+
+    # Never hold a hash worker/global lock while waiting for another producer.
+    return _trusted_git_executable_unlocked(strict=strict)
+
+
+def _trusted_git_executable_unlocked(*, strict: bool = False) -> str:
     global _TRUSTED_GIT_IDENTITY
     try:
         lexical = os.lstat(TRUSTED_GIT)
@@ -23286,12 +23304,7 @@ def _trusted_git_executable() -> str:
                 expected_path=TRUSTED_GIT,
             )
             opened = os.fstat(descriptor)
-            digest = hashlib.sha256()
-            while True:
-                block = os.read(descriptor, 1024 * 1024)
-                if not block:
-                    break
-                digest.update(block)
+            digest = hash_descriptor(descriptor, strict=strict).sha256
             after = os.fstat(descriptor)
         finally:
             os.close(descriptor)
@@ -23303,7 +23316,7 @@ def _trusted_git_executable() -> str:
         "st_mtime_ns", "st_ctime_ns",
     )
     identity = tuple(int(getattr(opened, field)) for field in fields) + (
-        int.from_bytes(digest.digest(), "big"),
+        int(digest, 16),
     )
     if (
         not stat.S_ISREG(opened.st_mode)

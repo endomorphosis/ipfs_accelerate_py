@@ -53,6 +53,7 @@ REQUIRED_PACKAGE_SQL_FILENAMES: Final[tuple[str, ...]] = (
     "0001_control_plane.sql",
     "0002_causal_event_federation_core.sql",
     "0003_state_server_restart_identity.sql",
+    "0004_hash_observations.sql",
 )
 
 # Outcomes recorded on MigrationReceipt.

@@ -1801,19 +1801,11 @@ def _safe_cid_filename(cid: str) -> str:
 
 
 def _cid_for_bytes(data: bytes) -> str:
-    # Prefer multiformats CIDv1 (raw, sha2-256) when available.
-    try:
-        from multiformats import CID, multihash  # type: ignore
+    # The closed raw/sha2-256 profile is available inside isolated capsules too.
+    # Compute one digest and encode it; a checksum-shaped fallback is not a CID.
+    from .utils.cid_utils import cid_for_bytes
 
-        mh = multihash.digest(data, "sha2-256")
-        try:
-            cid = CID("base32", 1, "raw", mh)
-        except TypeError:
-            # Older constructor variant.
-            cid = CID("base32", "raw", mh)
-        return str(cid)
-    except Exception:
-        return "sha256_" + hashlib.sha256(data).hexdigest()
+    return cid_for_bytes(data)
 
 
 def _cid_for_text(text: str) -> str:

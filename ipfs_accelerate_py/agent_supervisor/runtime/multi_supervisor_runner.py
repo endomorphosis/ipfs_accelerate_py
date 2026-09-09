@@ -62,6 +62,7 @@ from ...llm_router import (
     verify_agent_supervisor_native_dependency_sealed_fd,
     verify_agent_implementation_sealed_control_plane,
 )
+from ..._hash_resources import hashing_lock
 from ..control.lifecycle_orchestrator import (
     CONFIGURATION_ROOT_ENV,
     FENCING_EPOCH_ENV,
@@ -164,7 +165,30 @@ SEALED_CONTROL_PLANE_MODULES = frozenset(
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
     }
 )
-SEALED_CONTROL_PLANE_BOOTSTRAP = r'''import array,ctypes,fcntl,hashlib,json,os,socket,stat,struct,sys
+SEALED_CONTROL_PLANE_BOOTSTRAP = r'''import array,ctypes,fcntl,hashlib,json,os,socket,stat,struct,sys,time
+from contextlib import contextmanager
+@contextmanager
+def _hash_budget():
+    # Same lock as _hash_resources, before any capsule code is trusted/imported.
+    path='/tmp/ipfs-accelerate-heavy-hash-'+str(os.geteuid())+'.lock'
+    lock=os.open(path,os.O_RDWR|os.O_CREAT|os.O_CLOEXEC|os.O_NOFOLLOW,0o600)
+    acquired=False
+    try:
+        metadata=os.fstat(lock)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid!=os.geteuid() or metadata.st_nlink!=1 or stat.S_IMODE(metadata.st_mode)&0o022: raise SystemExit(78)
+        deadline=time.monotonic()+60.0
+        while True:
+            try:
+                fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB); acquired=True; break
+            except BlockingIOError:
+                if time.monotonic()>=deadline: raise SystemExit(78)
+                time.sleep(0.05)
+        current=os.stat(path,follow_symlinks=False)
+        if (current.st_dev,current.st_ino)!=(metadata.st_dev,metadata.st_ino) or os.fstat(lock).st_nlink!=1: raise SystemExit(78)
+        yield
+    finally:
+        if acquired: fcntl.flock(lock,fcntl.LOCK_UN)
+        os.close(lock)
 def _state_authority_handoff():
     names=('IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_ADDRESS','IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_PID','IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_START','IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_BOOT_ID','IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_LOSS_POLICY')
     values={name:os.environ.get(name,'').strip() for name in names}
@@ -241,24 +265,25 @@ try:
     command_line=open('/proc/self/cmdline','rb').read().split(b'\0')
     code_index=command_line.index(b'-c')+1
     if 'sha256:'+hashlib.sha256(command_line[code_index]).hexdigest()!=expected_bootstrap: raise SystemExit(78)
-    executable=os.open('/proc/self/exe',os.O_RDONLY|getattr(os,'O_CLOEXEC',0))
-    try:
-        executable_hash=hashlib.sha256()
-        while True:
-            block=os.read(executable,65536)
+    with _hash_budget():
+        executable=os.open('/proc/self/exe',os.O_RDONLY|getattr(os,'O_CLOEXEC',0))
+        try:
+            executable_hash=hashlib.sha256()
+            while True:
+                block=os.read(executable,65536)
+                if not block: break
+                executable_hash.update(block)
+        finally: os.close(executable)
+        if 'sha256:'+executable_hash.hexdigest()!=expected_python: raise SystemExit(78)
+        required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
+        metadata=os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size<=0 or fcntl.fcntl(fd,fcntl.F_GET_SEALS)&required!=required: raise SystemExit(78)
+        archive_hash=hashlib.sha256(); offset=0
+        while offset<metadata.st_size:
+            block=os.pread(fd,min(65536,metadata.st_size-offset),offset)
             if not block: break
-            executable_hash.update(block)
-    finally: os.close(executable)
-    if 'sha256:'+executable_hash.hexdigest()!=expected_python: raise SystemExit(78)
-    required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
-    metadata=os.fstat(fd)
-    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size<=0 or fcntl.fcntl(fd,fcntl.F_GET_SEALS)&required!=required: raise SystemExit(78)
-    archive_hash=hashlib.sha256(); offset=0
-    while offset<metadata.st_size:
-        block=os.pread(fd,min(65536,metadata.st_size-offset),offset)
-        if not block: break
-        archive_hash.update(block); offset+=len(block)
-    if offset!=metadata.st_size or 'sha256:'+archive_hash.hexdigest()!=pin['archive_sha256']: raise SystemExit(78)
+            archive_hash.update(block); offset+=len(block)
+        if offset!=metadata.st_size or 'sha256:'+archive_hash.hexdigest()!=pin['archive_sha256']: raise SystemExit(78)
     archive='/proc/self/fd/'+str(fd)
     path_metadata=os.stat(archive)
     if (path_metadata.st_dev,path_metadata.st_ino)!=(metadata.st_dev,metadata.st_ino): raise SystemExit(78)
@@ -299,7 +324,7 @@ try:
     target_origin=namespace.get('__file__')
     if type(target_origin) is not str or not target_origin.startswith(prefix): raise SystemExit(78)
     for name,loaded in tuple(sys.modules.items()):
-        if name=='ipfs_accelerate_py' or name=='ipfs_accelerate_py.llm_router' or name.startswith('ipfs_accelerate_py.agent_supervisor'):
+        if name in {'ipfs_accelerate_py','ipfs_accelerate_py.llm_router','ipfs_accelerate_py.agent_implementation_route','ipfs_accelerate_py._hash_resources'} or name.startswith('ipfs_accelerate_py.agent_supervisor'):
             origin=getattr(loaded,'__file__',None)
             if type(origin) is not str or not origin.startswith(prefix): raise SystemExit(78)
     main=namespace.get('main')
@@ -625,6 +650,15 @@ def admit_retained_control_plane_interpreter(
 ) -> RetainedControlPlaneInterpreter:
     """Validate an inherited exact interpreter without reopening its name."""
 
+    with hashing_lock(kind="trusted-executable", exclusive=True):
+        return _admit_retained_control_plane_interpreter_unlocked(
+            descriptor=descriptor, argv0=argv0, expected_sha256=expected_sha256
+        )
+
+
+def _admit_retained_control_plane_interpreter_unlocked(
+    *, descriptor: int, argv0: str, expected_sha256: str,
+) -> RetainedControlPlaneInterpreter:
     if (
         isinstance(descriptor, bool)
         or not isinstance(descriptor, int)
@@ -684,6 +718,13 @@ def retain_control_plane_interpreter(
 ) -> RetainedControlPlaneInterpreter:
     """Open, hash, and retain the exact root-owned Python executable."""
 
+    with hashing_lock(kind="trusted-executable", exclusive=True):
+        return _retain_control_plane_interpreter_unlocked(python_executable)
+
+
+def _retain_control_plane_interpreter_unlocked(
+    python_executable: str,
+) -> RetainedControlPlaneInterpreter:
     executable = Path(python_executable).resolve(strict=True)
     lexical = os.lstat(executable)
     descriptor = os.open(
@@ -1170,12 +1211,19 @@ DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     DATABASE_PROGRAM_JSON_ENV,
 )
 
+HASH_RESOURCE_ENV_NAMES: tuple[str, ...] = (
+    "IPFS_HASH_CACHE_TTL_SECONDS",
+    "IPFS_HASH_MAX_WORKERS",
+    "IPFS_HASH_LOCK_TIMEOUT_SECONDS",
+)
+
 _PLAN_BOUND_PROFILE_ENV_NAMES = frozenset(
     {
         *ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
         *_ROUTE_AUTHORIZATION_ENV_NAMES,
         *_PROVIDER_EXECUTABLE_ENV_NAMES,
         *DATABASE_PROGRAM_ENV_NAMES,
+        *HASH_RESOURCE_ENV_NAMES,
         PROVIDER_EXTERNAL_ISOLATION_ENV,
         TRUSTED_DUCKDB_HOME_ENV,
     }
@@ -6712,6 +6760,11 @@ def start_track(
             )
         raise
     launch_environment = profile.launch_environment(0)
+    # Resource policy is non-secret and follows the host's supervisor handoff.
+    # An explicit sealed profile value takes precedence over ambient defaults.
+    for name in HASH_RESOURCE_ENV_NAMES:
+        if name not in launch_environment and str(os.environ.get(name, "") or "").strip():
+            launch_environment[name] = os.environ[name]
     # Both ordinary configured-board tracks and plan-bound tracks need the
     # live owner socket plus sealed broker descriptor. Lifecycle profiles are
     # positive projections, so ambient inheritance cannot supply these later.
