@@ -76636,6 +76636,17 @@ class PortalImplementationDaemon:
         recovery_owner = str(
             metadata.get("protected_recovery_owner") or ""
         )
+        producer = str(metadata.get("producer") or "")
+        if producer == "objective-refill":
+            # Idle-lane generated-board refill holds the board merge lock
+            # with a live supervisor pid. That must not fence claimed
+            # implementation (SPAR-050) or burn typed deferral budget.
+            # Merge still serializes on the same lock later.
+            return {
+                "required": False,
+                "adopted": False,
+                "ignored_producer": producer,
+            }
         if recovery_owner and recovery_owner != "implementation_daemon":
             # Recovery journals form an owner-tagged union. The supervisor
             # and its managed daemon carry different guards because they
@@ -88990,6 +89001,9 @@ _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS = frozenset(
         "worktree_lifecycle_transition_failed",
         "inflight_process",
         "external_protected_checkout_recovery_required",
+        # Peer-supervisor generated-board refill is a wait, not a defect.
+        # Counting it exhausts SPAR-050 and fences the last board task.
+        "external_protected_recovery_owner_active",
     }
 )
 # Provider-capacity deferrals already have dedicated backoff.  Counting a
