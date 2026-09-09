@@ -19,13 +19,14 @@ import subprocess
 import tempfile
 import time
 from collections import Counter
-from datetime import datetime, timezone
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
-
+from typing import Any
 
 SCHEMA = "ipfs_accelerate_py/taskboard-fleet-live-probe@1"
 MAX_JSON_BYTES = 8 * 1024 * 1024
+MAX_SOURCE_INDEX_BYTES = 2 * 1024 * 1024
 COMPLETED = frozenset({"complete", "completed", "done", "accepted", "succeeded"})
 BLOCKED = frozenset({"blocked", "quarantined", "failed", "error"})
 PROVIDER_MODULES = frozenset({
@@ -414,11 +415,80 @@ def _source_heads(board: Mapping[str, Any]) -> dict[str, str]:
     return heads
 
 
+def _source_integrity(board: Mapping[str, Any]) -> dict[str, Any]:
+    """Reject dirty configured control-plane paths without importing their code.
+
+    This is a read-only cleanliness constraint, not native source qualification
+    or proof of what an already running interpreter has loaded.
+    """
+    entries = board.get("source_integrity_paths")
+    if entries is None:
+        return {"configured": False, "valid": True}
+    result: dict[str, Any] = {"configured": True, "valid": False,
+                              "scope": "configured_control_plane_cleanliness"}
+    if not isinstance(entries, list) or not 1 <= len(entries) <= 4:
+        return {**result, "reason": "invalid_source_integrity_configuration"}
+    deadline = time.monotonic() + 5
+    checked = []
+    try:
+        for entry in entries:
+            repository = entry.get("repository") if isinstance(entry, dict) else None
+            paths = entry.get("paths") if isinstance(entry, dict) else None
+            if (not isinstance(repository, str) or not Path(repository).is_absolute()
+                    or not isinstance(paths, list) or not 1 <= len(paths) <= 64
+                    or any(not isinstance(p, str) or not p or not Path(p).parts or Path(p).is_absolute()
+                           or any(part in {"..", ".git"} for part in Path(p).parts)
+                           or p in {".", "./"} for p in paths)):
+                return {**result, "reason": "invalid_source_integrity_configuration"}
+            root = Path(repository).resolve(strict=True)
+            argv = ["git", "--literal-pathspecs", "-c", "core.fsmonitor=false",
+                    "-c", "core.untrackedCache=false", "-c", "core.quotePath=true", "-C", str(root)]
+
+            def git(*arguments: str, command=argv) -> tuple[int, bytes]:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(command, 5)
+                with tempfile.TemporaryFile() as output:
+                    completed = subprocess.run([*command, *arguments], stdout=output,
+                                               stderr=subprocess.DEVNULL, timeout=remaining,
+                                               env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"}, check=False)
+                    output.seek(0)
+                    return completed.returncode, output.read(MAX_SOURCE_INDEX_BYTES + 1)
+
+            code, top = git("rev-parse", "--show-toplevel")
+            if code or Path(os.fsdecode(top).strip()).resolve() != root:
+                return {**result, "reason": "source_repository_unavailable"}
+            code, tracked = git("ls-files", "-v", "--stage", "-z", "--error-unmatch", "--", *paths)
+            if code or not tracked:
+                return {**result, "reason": "source_paths_not_tracked"}
+            if (len(tracked) > MAX_SOURCE_INDEX_BYTES or not tracked.endswith(b"\0")
+                    or any(not record.startswith((b"H 100644 ", b"H 100755 "))
+                           or b" 0\t" not in record
+                           for record in tracked[:-1].split(b"\0"))):
+                # Git status otherwise hides edits behind assume-unchanged or
+                # skip-worktree flags. Symlinks/gitlinks can hide mutable code
+                # outside the scope; nested repositories need explicit entries.
+                return {**result, "reason": "source_index_not_verifiable"}
+            code, status = git("status", "--porcelain=v1", "-z", "--untracked-files=all",
+                               "--ignore-submodules=none", "--", *paths)
+            if code:
+                return {**result, "reason": "source_integrity_query_failed"}
+            checked.append({"repository": str(root), "paths": paths})
+            if status:
+                return {**result, "reason": "configured_control_plane_dirty", "checked": checked,
+                        "status_digest": hashlib.sha256(status).hexdigest(),
+                        "status_truncated": len(status) > MAX_SOURCE_INDEX_BYTES}
+        return {**result, "valid": True, "reason": "configured_control_plane_clean", "checked": checked}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {**result, "reason": "source_integrity_unavailable"}
+
+
 def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict[str, Any]:
     started = time.monotonic()
     now = time.time() if now is None else now
     board_id = str(board.get("board_id", board.get("id", ""))).lower()
     reasons: list[str] = []
+    source_integrity = _source_integrity(board)
     owner_status = read_json(Path(board["owner_status_path"]))
     expected_birth = _object(_object(owner_status.get("identity")).get("process_birth"))
     owner = process_identity(expected_birth.get("pid"))
@@ -474,7 +544,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
     native_status_attempts = 0
     # Several legacy status commands open the authoritative DB directly when no
     # owner is present. Never execute them during an outage.
-    if owner_ready and board.get("status_argv"):
+    if source_integrity["valid"] and owner_ready and board.get("status_argv"):
         native, command_error, native_status_attempts = _status_with_receipt_retry(board, expected_birth)
         if command_error:
             reasons.append(command_error)
@@ -545,7 +615,12 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
     # Native receipt reads can wait while workers keep writing. Advance the
     # provider sample clock so output during that wait is not future-dated.
     providers = _provider_busy(lanes, board, now + max(0.0, time.monotonic() - started))
-    if not owner_live:
+    if source_integrity["configured"] and source_integrity["valid"]:
+        source_integrity = _source_integrity(board)
+    if not source_integrity["valid"]:
+        reasons.append("source_integrity_not_verified")
+        health = "degraded"
+    elif not owner_live:
         health = "stopped"
     elif blocked:
         health = "blocked"
@@ -558,14 +633,14 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         reasons.append("task_observation_unavailable")
     else:
         health = "healthy"
-    candidate = bool(not blocked and counts and sum(counts.values()) > 0
+    candidate = bool(source_integrity["valid"] and not blocked and counts and sum(counts.values()) > 0
         and authority.get("task_count") == sum(counts.values())
         and all(key in COMPLETED for key in counts))
     result: dict[str, Any] = {
         "schema": SCHEMA, "board_id": board_id, "health": health, "reason_codes": sorted(set(reasons)),
         "progress_token": _progress(authority), "busy": bool(providers), "complete": False,
         "completion_candidate": candidate,
-        "details": {"observed_at": datetime.fromtimestamp(now, timezone.utc).isoformat(),
+        "details": {"observed_at": datetime.fromtimestamp(now, UTC).isoformat(),
             "owner": _public_identity(owner) if owner_live else {}, "owner_ready": owner_ready,
             "lanes": lanes, "providers": providers, "task_counts": counts, "progress_source": source,
             "authenticated_task_observation": authenticated,
@@ -576,6 +651,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "native_status_attempts": native_status_attempts,
             "blocked_task_ids": blocked_task_ids,
             "source_heads": _source_heads(board),
+            "source_integrity": source_integrity,
             "completion_gate": "separate_authoritative_closeout_verification_required"},
     }
     if health == "stopped" and board.get("ensure_argv"):

@@ -45,6 +45,15 @@ from ipfs_accelerate_py.agent_supervisor.rescue.<module> import ...
 3. Update this README when you add or move modules.
 4. Add focused tests under `test/api/` (or the package’s established suite).
 
+## Retained callback evidence
+
+Legacy auxiliary merge events that omit a canonical task key may be ignored
+only when the same verified event chain contains an exact validation start,
+worktree, enqueue request, candidate, and later fully bound implementation
+result. That later result supplies completion evidence through the ordinary
+verifier. Auxiliary events never acquire an inferred identity or become
+completion receipts, and nonempty mismatched keys remain errors.
+
 ## Program evidence (optional)
 
 Historical domain-layout and feature programs may cite this package in boards

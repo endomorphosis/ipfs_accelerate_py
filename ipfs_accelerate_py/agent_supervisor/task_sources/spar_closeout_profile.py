@@ -209,6 +209,8 @@ class SparCloseoutProfile:
         ):
             raise ValueError("SPAR closeout profile is not the closed v1 contract")
         self.profile_cid = content_identity(p)
+        self._kit_source_forest = None
+        self._kit_source_forest_error = "kit_source_forest_producer_not_bound"
 
     def assert_scope(self, binding: Mapping[str, Any]) -> None:
         p = self._profile
@@ -217,6 +219,32 @@ class SparCloseoutProfile:
             for key in ("board_namespace", "plan_root_cid", "repository_tree_id")
         ) or sorted(binding["task_cids"]) != sorted(t["task_cid"] for t in p["tasks"]):
             raise ValueError("SPAR closeout profile differs from native status scope")
+
+    def publish_source_forest(self, connection: Any, *, transaction_lock: Any,
+                              owner_identity: Mapping[str, Any]) -> dict[str, Any]:
+        """Launcher-only kit persistence; native status never calls this writer."""
+        from ..semantic_state.kit_source_forest import (
+            KitSourceForestPersistence, source_manifest,
+        )
+        try:
+            source = observe_source(self._repository_root, self._profile["nested_repositories"])
+            if self._kit_source_forest is None:
+                self._kit_source_forest = KitSourceForestPersistence.bind(
+                    self._profile, self.profile_cid, repository_root=self._repository_root,
+                    source=source, connection=connection, transaction_lock=transaction_lock,
+                    owner_identity=owner_identity,
+                )
+            receipt = self._kit_source_forest.publish(source)
+            after = observe_source(self._repository_root, self._profile["nested_repositories"])
+            if source_manifest(self._profile, self.profile_cid, source) != source_manifest(self._profile, self.profile_cid, after):
+                raise ValueError("source forest changed during kit publication")
+            self._kit_source_forest_error = ""
+            return receipt
+        except Exception as error:  # noqa: BLE001 - retain owner and exact missing component
+            self._kit_source_forest_error = type(error).__name__ + ":" + str(error)[:512]
+            return {"admitted": False, "reason": "kit_source_forest_publication_deferred",
+                    "error": self._kit_source_forest_error, "completion_authority": False,
+                    "semantic_acceptance_authority": False}
 
     def evaluate(
         self, facts: Mapping[str, Any], snapshot: Mapping[str, Any]
@@ -345,10 +373,14 @@ class SparCloseoutProfile:
                 "repository_forest_cid"
             ) != source["source_forest"]["source_forest_root"]:
                 blockers.append("final_report_current_source_forest_mismatch")
+        kit = (self._kit_source_forest.observe(source) if self._kit_source_forest is not None
+               else {"admitted": False, "reason": self._kit_source_forest_error,
+                     "completion_authority": False, "semantic_acceptance_authority": False})
+        if kit.get("admitted") is not True:
+            blockers.append("kit_source_forest_cas_receipt_producer_and_admission_required")
         blockers.extend(
             [
                 "datasets_independent_accepted_root_producer_and_admission_required",
-                "kit_source_forest_cas_receipt_producer_and_admission_required",
                 "required_mode_roots_safety_floors_capstone_fixed_point_acceptance_required",
                 "spar_native_goal_cas_settlement_adapter_required",
                 "runtime_lane_and_merge_queue_settlement_receipt_required",
@@ -365,6 +397,7 @@ class SparCloseoutProfile:
             "task_evidence": task_evidence,
             "goal_requirements": goal_requirements,
             "source_observation": source,
+            "kit_source_forest_persistence": kit,
             "blockers": sorted(set(blockers)),
         }
         return {**result, "observation_cid": content_identity(result)}

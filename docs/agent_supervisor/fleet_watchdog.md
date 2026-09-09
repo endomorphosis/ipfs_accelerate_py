@@ -41,9 +41,18 @@ Two user services run continuously:
   completions, changed blocked-task sets, or settled goals can advance a pending
   continuation while retaining its coding attempt history and a five-minute
   minimum gap after the previous job. Heartbeat, PID and event-cursor changes
-  alone do not shorten retries. Rechecks are limited to once per two minutes
-per queued board, honor holds before and after probing, and never publish a
-  board or change native task budgets.
+  alone do not shorten retries. Each coding attempt also records a fresh
+  configured probe before launch. Authenticated source or native task evidence
+  changed by the final probe earns another pass five minutes after finish,
+  preserving the attempt count even if the worker exits unsuccessfully. A
+  successful worker report alone earns no continuation. For older finished
+  jobs, a recorded native reconciliation within three minutes before launch
+  can supply the baseline for up to six hours after finish; a matching fresh
+  probe and an exact attempt/report marker admit this continuation only once.
+  Rechecks are limited to once per two minutes per queued board, honor holds
+  before and after probing, and never publish a board or change native task
+  budgets. Configured source integrity must pass before recovery or publication
+  can be verified, even when native health temporarily reports healthy.
 
 For a known stopped-owner condition, the watchdog invokes only the board's
 configured native ensure command. Otherwise it enqueues a repair. The coding
@@ -297,3 +306,27 @@ generation, complete native populations, and settled claims/effects/runtime
 records under the existing owner lock. Busy or unrecognized states defer repair;
 nonmatching bodies are reported without mutation. No offline store is opened and
 no semantic acceptance, task completion, or goal acceptance is issued.
+
+A board inventory can additionally set `source_integrity_paths` to a list of
+objects containing an absolute `repository` and relative `paths`. Scope these
+paths to executable control-plane code; unrelated task edits remain permitted.
+For example, an accelerator checkout can select
+`ipfs_accelerate_py/agent_supervisor` and `scripts/ops/agent_supervisor`.
+
+The standalone probe checks those Git paths before importing native status code
+and again after the read. Dirty, missing, invalid or timed-out scopes report
+`source_integrity_not_verified`, suppress automatic ensure and completion
+candidacy, and cannot verify a repair as healthy or published. The check has a
+five-second Git deadline, disables optional index writes and uses literal
+pathspecs. Hidden index flags, symlinks, nested gitlinks and truncated file
+lists are rejected; each nested repository needs its own explicit entry. It never restores files or signals existing providers.
+
+This is a conservative cleanliness constraint. It does not prove the bytes
+already loaded by running interpreters, qualify a new commit, or replace a
+native sealed runtime descriptor. An external writer that keeps changing live
+control-plane code must be reconciled with the recovery owner; repeated source
+restoration alone cannot establish lasting qualification.
+
+The semantic-preserving remodularization owner can persist and re-read its
+[kit source-forest CAS component](kit_source_forest.md) through the existing
+native authority. This component does not settle semantic acceptance or goals.

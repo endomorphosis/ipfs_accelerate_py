@@ -11484,6 +11484,17 @@ class DatabasePortalExecutionBridge:
                 str(event.get("canonical_task_key") or "")
                 != completion_task_key
             ):
+                from .retained_completion_events import legacy_merge_observation_is_anchored
+
+                if legacy_merge_observation_is_anchored(
+                    events, event_index=event_index,
+                    completion_index=completion_index, alias=alias,
+                    task_cid=event_task_cid, task_key=completion_task_key,
+                ):
+                    # This observation adds no completion authority. The
+                    # later fully bound result still traverses every ordinary
+                    # candidate, integration and completion check below.
+                    continue
                 raise DatabasePortalBridgeError(
                     "Portal completion source canonical task key mismatches"
                 )

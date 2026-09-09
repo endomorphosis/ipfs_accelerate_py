@@ -38,6 +38,13 @@ python3 -m ipfs_accelerate_py.agent_supervisor.runtime.quack_fleet_topology \
 
 The output retains exact sealed board selections. A missing native database or
 configuration registers an unavailable source and does not recreate it from JSON.
+When a source inventory configures `source_integrity_paths`, the observer uses
+its bounded adapter check before importing native status code and after the
+query. Missing check support, dirty selected paths or an inconclusive check
+produces `source_integrity_not_verified` with no admitted receipt. Unconfigured
+sources retain their native admission rules. These Git checks observe selected
+control-plane cleanliness; they do not prove loaded bytes or replace native
+source qualification. Post-query checks do not extend receipt expiry.
 Each new owner uses its own endpoint, database and owner-state directory.
 The default dedicated ports are 27841 and 27842, below the usual Linux client
 ephemeral range. Check the host range when overriding them: an outgoing client
@@ -127,3 +134,14 @@ The aggregate worker also has an independent 600-second progress deadline;
 source query failures are retained as unavailable observations, while a stopped
 or hung worker makes the owner process exit for systemd recovery. Repeated
 control-write failures do not refresh that progress deadline.
+
+
+The aggregate observation writer reuses one native client and one grant bound to
+its exact owner identity and process birth. It renews that grant through the
+native owner before expiry, including before a transport reconnect. A failed
+write closes the connection; a later poll may reconnect with the same live
+grant. Expiry or owner replacement retires the cached binding, and each cycle
+attempts at most one renewal and one attach. This keeps ordinary polling from growing
+the owner's grant registry or revocation history. Observer shutdown closes its
+client and revokes the single remaining grant. No source admission, receipt TTL,
+or semantic acceptance policy changes with this lifecycle repair.

@@ -513,3 +513,97 @@ def test_repository_id_mismatch_fails_closed(durable: IpfsKitDurableStateAdapter
     )
     with pytest.raises(DurableStateIntegrityError, match="repository_id"):
         durable.compare_and_swap_root("example/repo", None, foreign)
+
+
+def test_cas_receipt_reuses_immutable_kit_transition(durable):
+    repo = "example/repo"
+    boot = _put_manifest(durable, _manifest(label="receipt-bootstrap"))
+    first = durable.compare_and_swap_root_receipt(repo, None, boot)
+    transition = durable.get(first.transition_cid)
+    assert transition["namespace"] == repo
+    assert transition["new_root_cid"] == boot
+    assert transition["expected_root_cid"] is None
+    assert transition["operation_id"] == first.operation_id
+    assert first.expected is None
+    assert first.published == durable.read_root(repo)
+    assert not first.idempotent_replay
+    replay = durable.compare_and_swap_root_receipt(repo, None, boot)
+    assert replay.transition_cid == first.transition_cid
+    assert replay.published == first.published
+    assert replay.idempotent_replay
+    assert len(durable.store.root_transitions(repo)) == 1
+
+
+def test_cas_receipt_rejects_replay_after_exact_content_aba(durable):
+    repo = "example/repo"
+    boot = _put_manifest(durable, _manifest(label="receipt-aba-boot"))
+    initial = durable.compare_and_swap_root(repo, None, boot)
+    a = _put_manifest(durable, _manifest(
+        disposition=AcceptanceDisposition.ACCEPTED.value, label="receipt-aba-a"))
+    first = durable.compare_and_swap_root(repo, initial, a)
+    b = _put_manifest(durable, _manifest(
+        disposition=AcceptanceDisposition.ACCEPTED.value, label="receipt-aba-b"))
+    second = durable.compare_and_swap_root(repo, first, b)
+    last = durable.compare_and_swap_root(repo, second, a)
+    assert last.root_cid == first.root_cid
+    assert last.generation == 4
+    with pytest.raises(DurableStateIntegrityError, match="generation"):
+        durable.compare_and_swap_root(repo, initial, a)
+    assert durable.read_root(repo) == last
+    assert len(durable.store.root_transitions(repo)) == 4
+
+
+@pytest.mark.parametrize("field,value", [
+    ("namespace", "foreign/repo"),
+    ("operation_id", "foreign-operation"),
+    ("expected_root_cid", _cid("foreign-predecessor")),
+    ("expected_revision", True),
+    ("new_root_cid", _cid("foreign-successor")),
+    ("new_revision", True),
+    ("schema", "foreign/transition@1"),
+    ("created_at_ms", False),
+    ("unexpected_field", "not-in-contract"),
+])
+def test_cas_receipt_rejects_foreign_immutable_transition(durable, monkeypatch, field, value):
+    repo = "example/repo"
+    boot = _put_manifest(durable, _manifest(label="receipt-foreign"))
+    first = durable.compare_and_swap_root_receipt(repo, None, boot)
+    # Persist an actual CID-addressed altered block, then substitute that CID
+    # in a replay response. A valid CID is insufficient without exact bindings.
+    altered = dict(durable.get(first.transition_cid))
+    altered[field] = value
+    altered_cid = durable._cs.cid_for_artifact(altered)
+    # put indexes typed transitions, so use an immutable block write to model
+    # a foreign response without replacing the legitimate transition index.
+    data = json.dumps(altered, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    durable.store._write_block(altered_cid, data)
+    original = durable.store.compare_and_swap_state_root
+
+    def substituted(*args, **kwargs):
+        result = original(*args, **kwargs)
+        result["after"]["transition_cid"] = altered_cid
+        result["before"] = dict(result["after"])
+        return result
+
+    monkeypatch.setattr(durable.store, "compare_and_swap_state_root", substituted)
+    with pytest.raises(DurableStateIntegrityError, match="transition"):
+        durable.compare_and_swap_root_receipt(repo, None, boot)
+    assert durable.read_root(repo) == first.published
+
+
+def test_cas_receipt_missing_transition_block_fails_closed(durable, monkeypatch):
+    repo = "example/repo"
+    boot = _put_manifest(durable, _manifest(label="receipt-missing"))
+    first = durable.compare_and_swap_root_receipt(repo, None, boot)
+    original = durable.store.compare_and_swap_state_root
+
+    def missing(*args, **kwargs):
+        result = original(*args, **kwargs)
+        result["after"]["transition_cid"] = _cid("absent-transition")
+        result["before"] = dict(result["after"])
+        return result
+
+    monkeypatch.setattr(durable.store, "compare_and_swap_state_root", missing)
+    with pytest.raises(DurableStateIntegrityError):
+        durable.compare_and_swap_root_receipt(repo, None, boot)
+    assert durable.read_root(repo) == first.published

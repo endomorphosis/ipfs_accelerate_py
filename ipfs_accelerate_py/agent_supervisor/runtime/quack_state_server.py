@@ -3633,6 +3633,16 @@ class QuackStateServer:
             raise QuackStateServerControlError("typed command gateway is unavailable")
         return gateway.recover_legacy_completion_projections()
 
+    def publish_spar_source_forest(self) -> dict[str, Any]:
+        """Publish the kit persistence component from the qualified launcher."""
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError("kit source publication requires a ready owner")
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError("typed command gateway is unavailable")
+        return gateway.publish_spar_source_forest()
+
     def bind_database_status_scope(self, **binding: Any) -> None:
         """Bind a non-federated sealed board to peer-bound read-only status."""
         with self._lock:
