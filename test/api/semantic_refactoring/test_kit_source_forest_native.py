@@ -285,3 +285,47 @@ def test_source_change_after_commit_stays_unaccepted_until_next_production_cas(
     assert not view(native_source)["kit_source_forest_persistence"]["admitted"]
     store.compare_and_swap_state_root = original
     assert gateway.publish_spar_source_forest()["admitted"]
+
+
+@pytest.mark.parametrize("change", ["parent_dirty", "nested_dirty", "nested_checkout"])
+def test_observation_rechecks_entire_forest_after_reports(native_source, monkeypatch, change):
+    gateway, connection, profile, _, _, root = native_source
+    kit = root / "ipfs_kit_py"
+    report = root / sp.REPORTS[0]
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text('{}')
+    if change == "nested_checkout":
+        previous = git(kit, "rev-parse", "HEAD")
+        (kit / "new-version.txt").write_text('new')
+        successor = commit(kit)
+        git(kit, "checkout", "--detach", previous)
+    commit(root)
+    original_read = Path.read_bytes
+    changed = []
+
+    def mutate_after_report(path):
+        result = original_read(path)
+        if path == report and not changed:
+            changed.append(True)
+            if change == "parent_dirty":
+                (root / "program.py").write_text('version = 2')
+            elif change == "nested_dirty":
+                (kit / "ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py").write_text('# dirty')
+            else:
+                git(kit, "checkout", "--detach", successor)
+        return result
+
+    monkeypatch.setattr(Path, "read_bytes", mutate_after_report)
+    result = OBSERVE_SOURCE(str(root), profile._profile["nested_repositories"])
+    assert changed and result["available"] is False
+    assert result["reason"] == "current_source_observation_unavailable"
+
+
+@pytest.mark.parametrize("hint", ["--assume-unchanged", "--skip-worktree"])
+def test_observation_refuses_hidden_parent_dirty_bytes(native_source, hint):
+    gateway, connection, profile, _, _, root = native_source
+    git(root, "update-index", hint, "program.py")
+    (root / "program.py").write_text('version = 2')
+    assert git(root, "status", "--porcelain=v1") == ""
+    result = OBSERVE_SOURCE(str(root), profile._profile["nested_repositories"])
+    assert result["available"] is False

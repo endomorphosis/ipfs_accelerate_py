@@ -84,10 +84,21 @@ def observe_source(
         )
         return result.stdout.strip()
 
+    def clean_status(path: Path) -> str:
+        status = git(path, "status", "--porcelain=v1", "--untracked-files=all")
+        # Git's index hints can hide tracked working bytes from status.
+        flags = git(path, "ls-files", "-v", "-z")
+        if any(row and (row[0].islower() or row[0] == "S")
+               for row in flags.split("\0")):
+            raise ValueError("source index hides tracked worktree bytes")
+        return status
+
     try:
         head = git(root, "rev-parse", "HEAD")
         tree = git(root, "rev-parse", "HEAD^{tree}")
-        clean = not git(root, "status", "--porcelain=v1", "--untracked-files=all")
+        root_status = clean_status(root)
+        clean = not root_status
+        observations = []
         nested = []
         for spec in nested_repositories:
             relative = spec["path"]
@@ -96,9 +107,9 @@ def observe_source(
                 raise ValueError("nested source path escapes repository")
             revision = git(path, "rev-parse", "HEAD")
             nested_tree = git(path, "rev-parse", "HEAD^{tree}")
-            clean = clean and not git(
-                path, "status", "--porcelain=v1", "--untracked-files=all"
-            )
+            status = clean_status(path)
+            clean = clean and not status
+            observations.append((path, revision, nested_tree, status))
             gitlink = git(root, "ls-tree", head, "--", relative).split()
             if len(gitlink) < 3 or gitlink[:3] != ["160000", "commit", revision]:
                 raise ValueError("nested source differs from parent gitlink")
@@ -154,7 +165,17 @@ def observe_source(
                     ),
                 }
             )
-        if git(root, "rev-parse", "HEAD") != head:
+        # Recheck the whole sampled forest after reading reports. A stable
+        # outer HEAD alone does not fence a concurrent nested checkout or edit.
+        for path, revision, nested_tree, status in observations:
+            if (not path.resolve().is_relative_to(root.resolve())
+                    or git(path, "rev-parse", "HEAD") != revision
+                    or git(path, "rev-parse", "HEAD^{tree}") != nested_tree
+                    or clean_status(path) != status):
+                raise ValueError("nested source changed during observation")
+        if (git(root, "rev-parse", "HEAD") != head
+                or git(root, "rev-parse", "HEAD^{tree}") != tree
+                or clean_status(root) != root_status):
             raise ValueError("source changed during observation")
         return {
             "available": True,
