@@ -211,6 +211,19 @@ SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND = (
 )
 DATABASE_AUTHORITY_UNAVAILABLE_REASON = "database_authority_unavailable"
 DATABASE_AUTHORITY_UNAVAILABLE_MIN_PROBES = 3
+RETRYABLE_READINESS_ERROR_TYPES = frozenset(
+    {
+        "OutOfMemoryException",
+        "MemoryError",
+    }
+)
+TYPED_FAIL_CLOSED_OUTER_RECOVERY_BACKOFF_SECONDS = (
+    30.0,
+    60.0,
+    120.0,
+    300.0,
+    600.0,
+)
 SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/supervisor-maintenance-receipt@1"
 )
@@ -6856,6 +6869,10 @@ class PortalImplementationSupervisor:
             None
         )
         self._database_authority_unavailable_probe_count = 0
+        self._readiness_probe_backoff_until = 0.0
+        self._readiness_probe_backoff_result: dict[str, Any] | None = None
+        self._readiness_retryable_failure_streak = 0
+        self._typed_fail_closed_recovery_count = 0
         self._worktree_worker_phase = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
         self._checkout_mutation_context = threading.local()
@@ -7397,6 +7414,13 @@ class PortalImplementationSupervisor:
         if not self._database_authority_enabled() or program is None:
             return base
 
+        now_monotonic = time.monotonic()
+        if (
+            now_monotonic < float(self._readiness_probe_backoff_until or 0.0)
+            and isinstance(self._readiness_probe_backoff_result, dict)
+        ):
+            return dict(self._readiness_probe_backoff_result)
+
         try:
             from ..task_sources.database_task_source import (
                 MAX_QUERY_LIMIT,
@@ -7487,6 +7511,9 @@ class PortalImplementationSupervisor:
             ready_ids = [task_id(task) for task in ready]
             active_ids = [task_id(task) for task in active]
             blocked_ids = [task_id(task) for task in blocked_recoverable]
+            self._readiness_retryable_failure_streak = 0
+            self._readiness_probe_backoff_until = 0.0
+            self._readiness_probe_backoff_result = None
             return {
                 **base,
                 "available": True,
@@ -7516,15 +7543,28 @@ class PortalImplementationSupervisor:
                 ],
             }
         except Exception as exc:
+            error_type = type(exc).__name__
             logger.warning(
                 "Authoritative database readiness probe failed closed: %s",
-                type(exc).__name__,
+                error_type,
             )
-            return {
+            result = {
                 **base,
                 "reason": "authoritative_readiness_unavailable",
-                "error_type": type(exc).__name__,
+                "error_type": error_type,
             }
+            if error_type in RETRYABLE_READINESS_ERROR_TYPES:
+                self._readiness_retryable_failure_streak += 1
+                delay = min(
+                    120.0,
+                    15.0
+                    * (2 ** max(0, self._readiness_retryable_failure_streak - 1)),
+                )
+                self._readiness_probe_backoff_until = (
+                    time.monotonic() + delay
+                )
+                self._readiness_probe_backoff_result = dict(result)
+            return result
 
     def _database_authority_unavailable_after_seconds(self) -> float:
         """Return the existing-watchdog-bound authority outage window.
@@ -7696,7 +7736,9 @@ class PortalImplementationSupervisor:
             "generation_restart_authorized": False,
             "control_plane_reload_authorized": False,
             "operator_successor_required": (
-                readiness.get("available") is not True
+                circuit.get("terminal") is True
+                and str(readiness.get("error_type") or "")
+                not in RETRYABLE_READINESS_ERROR_TYPES
             ),
             "owner_process_dead": (
                 str(readiness.get("reason") or "") == "owner_process_dead"
@@ -10630,6 +10672,14 @@ class PortalImplementationSupervisor:
             if result.status not in RECOVERABLE_SUPERVISOR_LOOP_STATUSES:
                 return
 
+            if (
+                result.status == "typed_child_blocker"
+                or result.last_exit_code == 78
+            ):
+                self._typed_fail_closed_recovery_count += 1
+            else:
+                self._typed_fail_closed_recovery_count = 0
+
             if not self._is_board_maintenance_leader():
                 recovery = {
                     "skipped": True,
@@ -10670,13 +10720,30 @@ class PortalImplementationSupervisor:
                 {
                     "loop_result": result_payload,
                     "delay_seconds": delay_seconds,
+                    "typed_fail_closed_recovery_count": (
+                        self._typed_fail_closed_recovery_count
+                    ),
                 },
             )
             time.sleep(delay_seconds)
 
     def _supervisor_loop_recovery_delay_seconds(self) -> float:
-        """Back off between outer loop recovery attempts without exceeding one check interval."""
+        """Back off between outer loop recovery attempts.
 
+        Ordinary launch/child exits stay bounded by one check interval.
+        Typed fail-closed (exit 78) previously tight-looped that interval,
+        respawning a child that immediately died.  Use a longer exponential
+        backoff so memory pressure can clear and the same sealed command is
+        not relaunched every poll.
+        """
+
+        count = int(self._typed_fail_closed_recovery_count or 0)
+        if count > 0:
+            index = min(
+                count - 1,
+                len(TYPED_FAIL_CLOSED_OUTER_RECOVERY_BACKOFF_SECONDS) - 1,
+            )
+            return float(TYPED_FAIL_CLOSED_OUTER_RECOVERY_BACKOFF_SECONDS[index])
         return max(5.0, min(float(self.config.check_interval), 60.0))
 
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
@@ -10842,6 +10909,11 @@ class PortalImplementationSupervisor:
                 # persistent failure may stop only after every live mutation,
                 # worker, validation, descendant, and protected lease is gone.
                 if circuit.get("terminal") is True:
+                    if (
+                        str(readiness.get("error_type") or "")
+                        in RETRYABLE_READINESS_ERROR_TYPES
+                    ):
+                        return SupervisorLoopDecision.keep_running()
                     guard = self._database_authority_terminal_guard(
                         state=state,
                         child=_child,

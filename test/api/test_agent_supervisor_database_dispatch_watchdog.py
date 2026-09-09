@@ -609,6 +609,65 @@ def test_database_watchdog_persistent_authority_loss_is_typed_terminal(
     ]
 
 
+def test_database_watchdog_oom_readiness_is_retryable_not_operator_successor(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "OutOfMemoryException",
+            "task_source_revision": 0,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_authority_unavailable_after_seconds",
+        lambda: 0.0,
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={}),
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    decisions = []
+    for _index in range(3):
+        supervisor._last_supervisor_maintenance_at = 0.0
+        decisions.append(
+            supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+        )
+
+    assert {decision.action for decision in decisions} == {"continue"}
+    fields = loop.config.status_extra_fields
+    assert fields["authoritative_readiness_error_type"] == "OutOfMemoryException"
+    assert fields["operator_successor_required"] is False
+    assert fields["shared_authority_terminal"] is False
+    assert fields["generation_restart_authorized"] is False
+
+
+def test_typed_fail_closed_outer_recovery_backs_off(
+    tmp_path,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=2)
+    assert supervisor._supervisor_loop_recovery_delay_seconds() == 5.0
+    supervisor._typed_fail_closed_recovery_count = 1
+    assert supervisor._supervisor_loop_recovery_delay_seconds() == 30.0
+    supervisor._typed_fail_closed_recovery_count = 3
+    assert supervisor._supervisor_loop_recovery_delay_seconds() == 120.0
+    supervisor._typed_fail_closed_recovery_count = 9
+    assert supervisor._supervisor_loop_recovery_delay_seconds() == 600.0
+    supervisor._typed_fail_closed_recovery_count = 0
+    assert supervisor._supervisor_loop_recovery_delay_seconds() == 5.0
+
+
 def test_database_watchdog_authority_circuit_resets_after_live_query(
     tmp_path,
     monkeypatch,
@@ -1769,6 +1828,7 @@ def test_authoritative_database_readiness_filters_manual_and_home_shard(
             return SimpleNamespace(tasks=tasks, revision=51, next_cursor="")
 
         def list_tasks(self, *, status, limit):
+            observed.setdefault("list_statuses", []).append(status)
             observed["active_status"] = status
             observed["active_limit"] = limit
             return SimpleNamespace(tasks=(), revision=52, next_cursor="")
@@ -1787,4 +1847,7 @@ def test_authoritative_database_readiness_filters_manual_and_home_shard(
     assert result["same_shard_ready_task_ids"] == [home_id]
     assert observed["target"] == "quack:127.0.0.1:24068"
     assert observed["install_schema"] is False
-    assert observed["active_status"] == ("claimed", "in_progress", "running")
+    assert observed["list_statuses"] == [
+        ("claimed", "in_progress", "running"),
+        ("blocked",),
+    ]
