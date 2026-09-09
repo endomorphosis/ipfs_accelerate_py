@@ -6358,8 +6358,8 @@ class DatabasePortalExecutionBridge:
             current_commit=head_text,
             board_namespace=str(source_event.get("board_namespace") or ""),
             task_alias=task_alias,
-            task_cid=task_cid,
-            canonical_task_key=task_key,
+            task_cid=portal_task_cid,
+            canonical_task_key=portal_task_key,
         )
         if entries is None:
             return None
@@ -6728,8 +6728,8 @@ class DatabasePortalExecutionBridge:
                         else ""
                     ),
                     task_alias=task_alias,
-                    task_cid=task_cid,
-                    canonical_task_key=task_key,
+                    task_cid=portal_task_cid,
+                    canonical_task_key=portal_task_key,
                 )
                 is None
                 for item in (checks or ())
@@ -7165,8 +7165,8 @@ class DatabasePortalExecutionBridge:
                 else ""
             ),
             task_alias=task_alias,
-            task_cid=task_cid,
-            canonical_task_key=task_key,
+            task_cid=portal_task_cid,
+            canonical_task_key=portal_task_key,
         )
         if entries is None:
             return None
