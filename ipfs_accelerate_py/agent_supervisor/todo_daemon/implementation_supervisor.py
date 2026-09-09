@@ -7284,6 +7284,20 @@ class PortalImplementationSupervisor:
 
             if program.authority_mode == "quack":
                 program.assert_quack_not_demoted(candidate_mode="quack")
+                if str(program.store_id or ""):
+                    from ..task_sources.duckdb_state import discover_live_quack_endpoint
+
+                    store_path = Path(str(program.store_id))
+                    discovery = discover_live_quack_endpoint(
+                        store_path
+                        if store_path.is_absolute()
+                        else self.config.repo_root / store_path
+                    )
+                    rejections = str(
+                        (discovery.details or {}).get("rejections") or ""
+                    )
+                    if "owner_process_not_alive" in rejections:
+                        return {**base, "reason": "owner_process_dead"}
                 target: str | Path = str(program.quack_endpoint or "")
                 if not target:
                     raise ValueError("configured Quack endpoint is absent")
@@ -7536,6 +7550,9 @@ class PortalImplementationSupervisor:
             "control_plane_reload_authorized": False,
             "operator_successor_required": (
                 readiness.get("available") is not True
+            ),
+            "owner_process_dead": (
+                str(readiness.get("reason") or "") == "owner_process_dead"
             ),
             # SupervisorLoop status extras are update-only.  Publish closed
             # reset values on every observation so a recovered authority

@@ -2207,6 +2207,52 @@ def test_operator_admits_process_dead_generation_46_owner_already_stopped() -> N
     )
 
 
+def test_operator_admits_process_dead_generation_47_stale_ready_owner() -> None:
+    """M70 must recover a process-dead gen-47 ready owner before minting 48."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m70_process_dead_gen47_test",
+    )
+    start_source = inspect.getsource(operator._run_quack_start)
+    recover_source = inspect.getsource(operator._recover_stale_quack)
+    validate_source = inspect.getsource(operator._validate_offline_quack_start)
+    assert "_m69_published_owner_is_process_dead" in start_source
+    assert start_source.index("_M70_SUCCESSOR_KEY") < start_source.index(
+        "_m69_published_owner_is_process_dead"
+    )
+    assert "M70 stale recovery requires a proved-dead generation-47 owner" in (
+        recover_source
+    )
+    assert "_M70_PRIOR_GENERATION" in recover_source
+    assert "m70-generation-47-stale-owner-recovery-receipt.json" in recover_source
+    assert "admitted_stopped_generation_47_restart_to_generation_48" in (
+        validate_source
+    )
+    assert "_m69_published_owner_is_process_dead" in validate_source
+
+
+def test_operator_admits_process_dead_generation_48_owner_reuse() -> None:
+    """M70 must reuse generation 48 when that owner is proved dead and stopped."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m70_process_dead_gen48_reuse_test",
+    )
+    start_source = inspect.getsource(operator._start_quack)
+    validate_source = inspect.getsource(operator._validate_offline_quack_start)
+    dead_source = inspect.getsource(operator._m70_published_owner_is_process_dead)
+    assert "_M70_GENERATION" in dead_source
+    assert "reuse_expected_generation" in start_source
+    assert start_source.index("_m70_published_owner_is_process_dead") < (
+        start_source.index("reuse_expected_generation")
+    )
+    assert "admitted_stopped_generation_48_reuse" in validate_source
+    assert validate_source.index("_m70_published_owner_is_process_dead") < (
+        validate_source.index("_m69_published_owner_is_process_dead")
+    )
+
+
 def test_operator_live_preflight_selects_m68_head_projection_before_m66() -> None:
     """M68 must bind the live projection CID and verify M68 heads before M66."""
 

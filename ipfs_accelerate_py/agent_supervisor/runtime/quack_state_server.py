@@ -926,6 +926,7 @@ class QuackStateServerConfig:
     expected_database_uuid: str | None = None
     expected_store_id: str | None = None
     expected_listen_uri: str | None = None
+    reuse_expected_generation: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "database_path", Path(self.database_path))
@@ -962,6 +963,13 @@ class QuackStateServerConfig:
             ):
                 raise ValueError(f"{field_name} must be a non-empty canonical string or None")
             object.__setattr__(self, field_name, expected_value)
+        object.__setattr__(
+            self, "reuse_expected_generation", bool(self.reuse_expected_generation)
+        )
+        if self.reuse_expected_generation and self.expected_generation is None:
+            raise ValueError(
+                "reuse_expected_generation requires expected_generation"
+            )
         if self.port < 0 or self.port > 65535:
             raise ValueError("port must be in 0..65535")
         assert_bind_admitted(self.host, remote_policy=self.remote_bind_policy)
@@ -4255,6 +4263,13 @@ class QuackStateServer:
         if row is None:
             return 1
         current = int(row[0] if not isinstance(row, Mapping) else row.get(list(row.keys())[0], 0))
+        expected = self.config.expected_generation
+        if (
+            self.config.reuse_expected_generation
+            and expected is not None
+            and current == expected
+        ):
+            return expected
         return max(1, current + 1)
 
     def _assert_expected_startup_binding(
@@ -5426,6 +5441,7 @@ def build_server(
     expected_database_uuid: str | None = None,
     expected_store_id: str | None = None,
     expected_listen_uri: str | None = None,
+    reuse_expected_generation: bool = False,
     transport: QuackTransport | None = None,
     capability_probe: Callable[..., QuackCapabilityReport] | None = None,
     migrate: Callable[..., MigrationRunReport] | None = None,
@@ -5449,6 +5465,7 @@ def build_server(
         expected_database_uuid=expected_database_uuid,
         expected_store_id=expected_store_id,
         expected_listen_uri=expected_listen_uri,
+        reuse_expected_generation=reuse_expected_generation,
     )
     return QuackStateServer(
         config=config,

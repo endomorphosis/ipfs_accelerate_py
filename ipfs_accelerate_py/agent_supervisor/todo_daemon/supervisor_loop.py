@@ -314,6 +314,14 @@ class SupervisorLoop:
         }
 
     def default_watchdog(self, child: SupervisedChild, current_status: Mapping[str, Any]) -> SupervisorLoopDecision:
+        readiness_reason = str(
+            current_status.get("authoritative_readiness_reason") or ""
+        )
+        if (
+            current_status.get("owner_process_dead") is True
+            or readiness_reason == "owner_process_dead"
+        ):
+            return SupervisorLoopDecision.keep_running()
         heartbeat = heartbeat_snapshot(
             current_status,
             stale_after_seconds=self.config.watchdog_stale_after_seconds,

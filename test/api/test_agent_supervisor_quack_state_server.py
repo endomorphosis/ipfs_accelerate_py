@@ -2059,6 +2059,35 @@ def test_expected_startup_binding_fails_before_credentials_transport_or_publicat
     assert list((tmp_path / "state").glob("*.quack-token")) == []
 
 
+def test_reuse_expected_generation_restarts_current_generation(
+    tmp_path: Path,
+) -> None:
+    """A proved-dead owner may restart the sealed generation instead of minting."""
+
+    connection = FakeConnection(max_generation=47)
+    transport = FakeQuackTransport()
+    server = build_server(
+        database_path=tmp_path / "control.duckdb",
+        state_dir=tmp_path / "state",
+        port=4242,
+        transport=transport,
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        migrate=lambda _path: _migration_report(),
+        connection_factory=lambda _path: connection,
+        process_birth_factory=lambda: _birth(),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+        expected_generation=47,
+        expected_database_uuid=_UUID,
+        expected_store_id="control.duckdb",
+        expected_listen_uri="quack:127.0.0.1:4242",
+        reuse_expected_generation=True,
+    )
+    identity = server.start()
+    assert identity.generation == 47
+    assert transport.started is True
+    server.stop()
+
+
 def test_ready_requires_live_query(tmp_path: Path) -> None:
     transport = FakeQuackTransport(fail_live_query=True)
     server = _server(tmp_path, transport=transport)

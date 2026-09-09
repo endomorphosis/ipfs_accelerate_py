@@ -17944,6 +17944,49 @@ def _quack_args(config: Mapping[str, Any], command: str) -> list[str]:
     ]
 
 
+def _m70_published_owner_is_process_dead(config: Mapping[str, Any]) -> bool:
+    """True when the published generation-48 owner PID is gone and listen is down."""
+
+    owner = config.get("quack_owner")
+    if not isinstance(owner, Mapping):
+        return False
+    status_path = (
+        REPO_ROOT / str(owner.get("state_dir") or "") / "quack-state-server.status.json"
+    )
+    try:
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+    identity = status.get("identity") if isinstance(status, Mapping) else None
+    if not isinstance(identity, Mapping):
+        return False
+    birth = identity.get("process_birth")
+    try:
+        pid = int(birth.get("pid") or 0) if isinstance(birth, Mapping) else 0
+        generation = int(identity.get("generation") or 0)
+    except (TypeError, ValueError):
+        return False
+    lifecycle = str(status.get("lifecycle") or "")
+    if (
+        generation != _M70_GENERATION
+        or pid <= 1
+        or lifecycle not in {"ready", "stopped", "starting"}
+    ):
+        return False
+    if Path(f"/proc/{pid}").exists():
+        return False
+    probe = socket.socket()
+    probe.settimeout(0.4)
+    try:
+        probe.connect(("127.0.0.1", int(_M70_TARGET_QUACK_PORT)))
+        listening = True
+    except OSError:
+        listening = False
+    finally:
+        probe.close()
+    return not listening
+
+
 def _m69_published_owner_is_process_dead(config: Mapping[str, Any]) -> bool:
     """True when the published generation-47 owner PID is gone and listen is down."""
 
@@ -18041,7 +18084,12 @@ def _recover_stale_quack(config: Mapping[str, Any]) -> Mapping[str, Any]:
     ):
         raise OperatorError("stale Quack recovery store binding differs")
     active = _active_source_repair_materialization(config)
-    if active.get("migration_revision") == _M69_MIGRATION_REVISION:
+    if active.get("migration_revision") == _M70_MIGRATION_REVISION:
+        if not _m69_published_owner_is_process_dead(config):
+            raise OperatorError(
+                "M70 stale recovery requires a proved-dead generation-47 owner"
+            )
+    elif active.get("migration_revision") == _M69_MIGRATION_REVISION:
         if not _m69_published_owner_is_process_dead(config):
             raise OperatorError(
                 "M69 stale recovery requires a proved-dead generation-47 owner"
@@ -18171,7 +18219,36 @@ def _recover_stale_quack(config: Mapping[str, Any]) -> Mapping[str, Any]:
     )
 
     receipt_filename = None
-    if active.get("migration_revision") == _M69_MIGRATION_REVISION:
+    if active.get("migration_revision") == _M70_MIGRATION_REVISION:
+        status_path = (
+            REPO_ROOT
+            / str(owner.get("state_dir") or "")
+            / "quack-state-server.status.json"
+        )
+        try:
+            published = json.loads(status_path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            published = {}
+        identity = (
+            published.get("identity") if isinstance(published, Mapping) else None
+        )
+        if (
+            isinstance(published, Mapping)
+            and published.get("recovered_stale_owner") is True
+            and str(published.get("lifecycle") or "") == "stopped"
+            and isinstance(identity, Mapping)
+            and int(identity.get("generation") or 0) == _M70_PRIOR_GENERATION
+        ):
+            return MappingProxyType(
+                {
+                    "recovered": True,
+                    "already": True,
+                    "generation": _M70_PRIOR_GENERATION,
+                    "server_id": str(identity.get("server_id") or ""),
+                }
+            )
+        receipt_filename = "m70-generation-47-stale-owner-recovery-receipt.json"
+    elif active.get("migration_revision") == _M69_MIGRATION_REVISION:
         status_path = (
             REPO_ROOT
             / str(owner.get("state_dir") or "")
@@ -18234,7 +18311,11 @@ def _recover_stale_quack(config: Mapping[str, Any]) -> Mapping[str, Any]:
         "database_path": REPO_ROOT / str(owner["database_path"]),
         "state_dir": REPO_ROOT / str(owner["state_dir"]),
         "expected_store_id": store_id,
-        "expected_generation": generation,
+        "expected_generation": (
+            _M70_PRIOR_GENERATION
+            if active.get("migration_revision") == _M70_MIGRATION_REVISION
+            else generation
+        ),
         "expected_database_uuid": database_uuid,
     }
     if receipt_filename is not None:
@@ -19286,7 +19367,50 @@ def _validate_offline_quack_start(
     """Revalidate committed controls and the exact store before native LOAD."""
 
     if _M70_SUCCESSOR_KEY in config:
-        _active_source_repair_materialization(config)
+        active_materialization = _active_source_repair_materialization(config)
+        if _m70_published_owner_is_process_dead(config):
+            return MappingProxyType(
+                {
+                    "dependency_valid": True,
+                    "board_valid": True,
+                    "prior_authority": active_materialization,
+                    "store": {
+                        "valid": True,
+                        "action": "admitted_stopped_generation_48_reuse",
+                        "prior_generation": _M70_GENERATION,
+                        "target_generation": _M70_GENERATION,
+                        "prior_event_watermark": _M70_PRIOR_EVENT_WATERMARK,
+                        "reuse_expected_generation": True,
+                        "prior_process_birth_verified_dead": True,
+                        "client_token_vault_absent": True,
+                        "prestart_authorization_consumed": False,
+                    },
+                }
+            )
+        if _m69_published_owner_is_process_dead(config):
+            recovered = _recover_stale_quack(config)
+            return MappingProxyType(
+                {
+                    "dependency_valid": True,
+                    "board_valid": True,
+                    "prior_authority": active_materialization,
+                    "store": {
+                        "valid": True,
+                        "action": (
+                            "admitted_stopped_generation_47_restart_to_generation_48"
+                        ),
+                        "prior_generation": _M70_PRIOR_GENERATION,
+                        "target_generation": _M70_GENERATION,
+                        "prior_event_watermark": _M70_PRIOR_EVENT_WATERMARK,
+                        "m68_receipt_preserved_exactly": True,
+                        "prior_process_birth_verified_dead": True,
+                        "client_token_vault_absent": True,
+                        "prestart_authorization_consumed": False,
+                        "stale_ready_recovered": True,
+                        **dict(recovered),
+                    },
+                }
+            )
     elif _M69_SUCCESSOR_KEY in config:
         _active_source_repair_materialization(config)
     elif _M68_SUCCESSOR_KEY in config:
@@ -21145,8 +21269,12 @@ def _run_quack_start(
 
     if _M70_SUCCESSOR_KEY in config:
         _active_source_repair_materialization(config)
+        if _m69_published_owner_is_process_dead(config):
+            _recover_stale_quack(config)
     elif _M69_SUCCESSOR_KEY in config:
         _active_source_repair_materialization(config)
+        if _m69_published_owner_is_process_dead(config):
+            _recover_stale_quack(config)
     elif _M68_SUCCESSOR_KEY in config:
         _active_source_repair_materialization(config)
         if _m68_published_owner_is_process_dead(config):
@@ -21282,6 +21410,8 @@ def _start_quack(
                 config["database_program"]["quack_endpoint"]
             ),
         }
+        if _m70_published_owner_is_process_dead(config):
+            expected_startup["reuse_expected_generation"] = True
         if not expected_startup["expected_database_uuid"]:
             raise OperatorError("M70 expected startup binding differs")
     elif _M69_SUCCESSOR_KEY in config:
@@ -21297,10 +21427,6 @@ def _start_quack(
                 config["database_program"]["quack_endpoint"]
             ),
         }
-        if _m69_published_owner_is_process_dead(config) or (
-            identity_status := False
-        ):
-            expected_startup["reuse_expected_generation"] = True
         if not expected_startup["expected_database_uuid"]:
             raise OperatorError("M69 expected startup binding differs")
     elif _M68_SUCCESSOR_KEY in config:

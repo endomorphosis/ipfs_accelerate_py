@@ -1317,6 +1317,40 @@ def read_scheduler_snapshot(manifest_path: Path) -> dict[str, Any]:
     return dict(snapshot) if isinstance(snapshot, dict) else {}
 
 
+def published_owner_process_dead(
+    manifest: Mapping[str, Any],
+    *,
+    repo_root: Path,
+) -> bool:
+    """True when the published owner PID is gone. Lanes must not restart first."""
+
+    raw = manifest.get("owner_status_path") or ""
+    if not raw:
+        return False
+    path = Path(str(raw))
+    if not path.is_absolute():
+        path = Path(repo_root) / path
+    try:
+        status = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+    if not isinstance(status, dict):
+        return False
+    identity = status.get("identity")
+    if not isinstance(identity, Mapping):
+        return False
+    birth = identity.get("process_birth")
+    if not isinstance(birth, Mapping):
+        return False
+    try:
+        pid = int(birth.get("pid") or 0)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 1:
+        return False
+    return not pid_alive(pid)
+
+
 def check_lane_pid(state_dir: Path, state_prefix: str) -> dict[str, Any]:
     """Check if a lane's supervisor process is alive by its PID file."""
     pid_path = state_dir / f"{state_prefix}_bundle_supervisor.pid"
@@ -1642,6 +1676,12 @@ class SupervisorWatchdog:
         policy = self.autonomous_unstall_policy or self._manifest_unstall_policy(manifest)
         if policy is None or not policy.enabled:
             return None
+        if published_owner_process_dead(manifest, repo_root=self.repo_root):
+            return {
+                "recovered": False,
+                "quarantined": True,
+                "reason": "published_ready_owner_pid_dead",
+            }
         restart_info = dict(lane_started or lane)
         restart_info.setdefault("pid_path", str(pid_check.get("pid_path") or ""))
 
@@ -1987,6 +2027,20 @@ class SupervisorWatchdog:
             if typed_fail_closed:
                 report["action"] = "typed_child_blocker"
                 report["reason"] = "typed_fail_closed_exit"
+
+            if needs_restart and published_owner_process_dead(
+                manifest, repo_root=self.repo_root
+            ):
+                report["action"] = "owner_process_dead"
+                report["reason"] = "published_ready_owner_pid_dead"
+                report["status"] = lifecycle_status_projection(
+                    pid_check=pid_check,
+                    heartbeat_check=heartbeat_check,
+                    state="blocked",
+                    target_id=str(bundle_key),
+                )
+                reports.append(report)
+                continue
 
             if needs_restart:
                 unstall_result = self._watchdog_unstall(
