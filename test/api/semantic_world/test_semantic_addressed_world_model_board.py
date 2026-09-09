@@ -2302,6 +2302,10 @@ def test_operator_does_not_kill_coordinator_for_isolated_dead_lane() -> None:
     assert env["IPFS_ACCELERATE_LIFECYCLE_TARGET_ID"].endswith("v1-0")
     assert env["IPFS_ACCELERATE_LIFECYCLE_STATE_ROOT"].endswith("lane-0")
     assert dead_master["admitted"] is True
+    assert operator._isolated_lane_relaunch_pass_fds(3, 4) == (3, 4)
+    assert operator._isolated_lane_relaunch_pass_fds(7, 8) == (7, 8)
+    assert 7 not in operator._isolated_lane_relaunch_pass_fds(3, 4)
+    assert 8 not in operator._isolated_lane_relaunch_pass_fds(3, 4)
     assert dead_master["kill_coordinator"] is False
     assert dead_master["reason"] == "master_down_isolated_lane_recycle"
 

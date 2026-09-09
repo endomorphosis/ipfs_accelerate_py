@@ -23,6 +23,7 @@ import shutil
 import signal
 import socket
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -18064,6 +18065,12 @@ def _rewrite_isolated_lane_peer_argv(
     return rewritten
 
 
+def _isolated_lane_relaunch_pass_fds(native_src: int, capsule_src: int) -> tuple[int, ...]:
+    """Pass only opened master memfds; destination 7/8 are created by dup2."""
+
+    return tuple(dict.fromkeys((int(native_src), int(capsule_src))))
+
+
 def _rewrite_isolated_lane_peer_env(
     env: Mapping[str, str],
     *,
@@ -18087,6 +18094,194 @@ def _rewrite_isolated_lane_peer_env(
             if old in value:
                 rewritten[key] = value.replace(old, new)
     return rewritten
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 1:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _recycle_isolated_lane_from_live_peer(
+    *,
+    repo_root: Path,
+    run_dir: Path,
+    master_pid: int,
+    peer_supervisor_pid: int,
+    dead_lane_index: int,
+    peer_lane_index: int,
+    native_fd: int = 7,
+    capsule_fd: int = 8,
+) -> dict[str, object]:
+    """Respawn one isolated lane from a live peer's sealed argv and master FDs."""
+
+    repo_root = Path(repo_root)
+    run_dir = Path(run_dir)
+    admission = _admit_isolated_lane_supervisor_recycle(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=_pid_alive(int(master_pid)),
+        dead_lane_count=1,
+        master_capsule_fds_live=all(
+            Path(f"/proc/{int(master_pid)}/fd/{int(fd)}").exists()
+            for fd in (native_fd, capsule_fd)
+        ),
+    )
+    if not admission.get("admitted") or admission.get("kill_coordinator"):
+        return {
+            "restarted": False,
+            "reason": str(admission.get("reason") or "not_admitted"),
+            "admission": admission,
+        }
+    if not _pid_alive(int(peer_supervisor_pid)):
+        return {"restarted": False, "reason": "peer_supervisor_dead"}
+    peer_args = [
+        part.decode("utf-8", "strict")
+        for part in Path(f"/proc/{int(peer_supervisor_pid)}/cmdline")
+        .read_bytes()
+        .split(b"\0")
+        if part
+    ]
+    argv = _rewrite_isolated_lane_peer_argv(
+        peer_args,
+        peer_index=int(peer_lane_index),
+        dead_index=int(dead_lane_index),
+    )
+    peer_env = {}
+    for item in Path(f"/proc/{int(peer_supervisor_pid)}/environ").read_bytes().split(
+        b"\0"
+    ):
+        if not item or b"=" not in item:
+            continue
+        key, value = item.split(b"=", 1)
+        peer_env[key.decode("utf-8", "strict")] = value.decode("utf-8", "strict")
+    env = _rewrite_isolated_lane_peer_env(
+        peer_env,
+        peer_index=int(peer_lane_index),
+        dead_index=int(dead_lane_index),
+    )
+    log_dir = run_dir / "state" / f"lane-{int(dead_lane_index)}"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    log_path = log_dir / (
+        f"sawm_lane_{int(dead_lane_index)}_8h_run_{stamp}.log"
+    )
+    native_src = os.open(
+        f"/proc/{int(master_pid)}/fd/{int(native_fd)}",
+        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
+    )
+    capsule_src = os.open(
+        f"/proc/{int(master_pid)}/fd/{int(capsule_fd)}",
+        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
+    )
+    native_dst = int(native_fd)
+    capsule_dst = int(capsule_fd)
+
+    def _dup_cloexec(src: int) -> int:
+        copied = os.dup(src)
+        flags = fcntl.fcntl(copied, fcntl.F_GETFD)
+        fcntl.fcntl(copied, fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
+        return copied
+
+    saved_dst: dict[int, int] = {}
+    for dst in (native_dst, capsule_dst):
+        try:
+            saved_dst[dst] = _dup_cloexec(dst)
+        except OSError:
+            pass
+
+    def _restore_parent_dst() -> None:
+        for dst, saved in saved_dst.items():
+            try:
+                os.dup2(saved, dst)
+            except OSError:
+                pass
+            try:
+                os.close(saved)
+            except OSError:
+                pass
+        for src in (native_src, capsule_src):
+            try:
+                os.close(src)
+            except OSError:
+                pass
+
+    try:
+        os.dup2(native_src, native_dst)
+        os.dup2(capsule_src, capsule_dst)
+        for fd in (native_dst, capsule_dst):
+            flags = fcntl.fcntl(fd, fcntl.F_GETFD)
+            fcntl.fcntl(fd, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
+            try:
+                os.set_inheritable(fd, True)
+            except OSError:
+                pass
+    except OSError as exc:
+        _restore_parent_dst()
+        return {
+            "restarted": False,
+            "reason": f"{type(exc).__name__}",
+            "admission": admission,
+        }
+
+    handle = log_path.open("ab")
+    try:
+        process = subprocess.Popen(
+            argv,
+            cwd=str(repo_root),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            close_fds=True,
+            pass_fds=_isolated_lane_relaunch_pass_fds(native_dst, capsule_dst),
+            start_new_session=True,
+        )
+    except Exception as exc:
+        handle.close()
+        _restore_parent_dst()
+        return {
+            "restarted": False,
+            "reason": f"{type(exc).__name__}",
+            "admission": admission,
+        }
+    handle.close()
+    _restore_parent_dst()
+    deadline = time.monotonic() + 8.0
+    while time.monotonic() < deadline:
+        code = process.poll()
+        if code is not None:
+            return {
+                "restarted": False,
+                "reason": f"child_exited:{code}",
+                "new_pid": int(process.pid),
+                "log_path": str(log_path),
+                "admission": admission,
+            }
+        time.sleep(0.2)
+    code = process.poll()
+    if code is not None:
+        return {
+            "restarted": False,
+            "reason": f"child_exited:{code}",
+            "new_pid": int(process.pid),
+            "log_path": str(log_path),
+            "admission": admission,
+        }
+    return {
+        "restarted": True,
+        "new_pid": int(process.pid),
+        "log_path": str(log_path),
+        "admission": admission,
+    }
 
 
 def _m70_published_owner_is_stale_ready(config: Mapping[str, Any]) -> bool:
