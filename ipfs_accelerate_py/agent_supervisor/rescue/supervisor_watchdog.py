@@ -1322,7 +1322,11 @@ def published_owner_process_dead(
     *,
     repo_root: Path,
 ) -> bool:
-    """True when the published owner PID is gone. Lanes must not restart first."""
+    """True when the published owner PID is gone. Lanes must not restart first.
+
+    Includes stale-ready owners whose status still says ready after the PID
+    disappeared. The operator settles that owner before any lane unstall.
+    """
 
     raw = manifest.get("owner_status_path") or ""
     if not raw:

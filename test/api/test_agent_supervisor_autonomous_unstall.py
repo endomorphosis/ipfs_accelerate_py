@@ -973,7 +973,7 @@ def test_watchdog_reads_owner_status_from_quack_owner_state_dir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Configured-board manifests may bind the owner via quack_owner.state_dir."""
+    """A generation-48 stale-ready owner bound via quack_owner.state_dir must not unstall lanes."""
 
     state_dir = tmp_path / "lane-state"
     state_dir.mkdir()

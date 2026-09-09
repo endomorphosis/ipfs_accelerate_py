@@ -2232,6 +2232,34 @@ def test_operator_admits_process_dead_generation_47_stale_ready_owner() -> None:
     assert "_m69_published_owner_is_process_dead" in validate_source
 
 
+def test_operator_admits_process_dead_generation_48_stale_ready_owner() -> None:
+    """M70 must settle a process-dead gen-48 ready owner before reusing 48."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m70_process_dead_gen48_stale_ready_test",
+    )
+    start_source = inspect.getsource(operator._run_quack_start)
+    recover_source = inspect.getsource(operator._recover_stale_quack)
+    validate_source = inspect.getsource(operator._validate_offline_quack_start)
+    stale_source = inspect.getsource(operator._m70_published_owner_is_stale_ready)
+    assert "_M70_GENERATION" in stale_source
+    assert "lifecycle" in stale_source
+    assert "_m70_published_owner_is_stale_ready" in start_source
+    assert start_source.index("_m70_published_owner_is_stale_ready") < (
+        start_source.index("_m69_published_owner_is_process_dead")
+    )
+    assert "m70-generation-48-stale-owner-recovery-receipt.json" in (
+        recover_source
+    )
+    assert "stale-ready generation-48 owner" in recover_source
+    assert "_m70_published_owner_is_stale_ready" in validate_source
+    assert "stale_ready_recovered" in validate_source
+    assert validate_source.index("_m70_published_owner_is_stale_ready") < (
+        validate_source.index("admitted_stopped_generation_48_reuse")
+    )
+
+
 def test_operator_admits_process_dead_generation_48_owner_reuse() -> None:
     """M70 must reuse generation 48 when that owner is proved dead and stopped."""
 
@@ -2240,7 +2268,9 @@ def test_operator_admits_process_dead_generation_48_owner_reuse() -> None:
         "sawm_operator_m70_process_dead_gen48_reuse_test",
     )
     start_source = inspect.getsource(operator._start_quack)
+    run_source = inspect.getsource(operator._run_quack_start)
     validate_source = inspect.getsource(operator._validate_offline_quack_start)
+    recover_source = inspect.getsource(operator._recover_stale_quack)
     dead_source = inspect.getsource(operator._m70_published_owner_is_process_dead)
     assert "_M70_GENERATION" in dead_source
     assert "reuse_expected_generation" in start_source
@@ -2250,6 +2280,11 @@ def test_operator_admits_process_dead_generation_48_owner_reuse() -> None:
     assert "admitted_stopped_generation_48_reuse" in validate_source
     assert validate_source.index("_m70_published_owner_is_process_dead") < (
         validate_source.index("_m69_published_owner_is_process_dead")
+    )
+    assert "_m70_published_owner_is_stale_ready" in recover_source
+    assert "m70-generation-48-stale-owner-recovery-receipt.json" in recover_source
+    assert run_source.index("_m70_published_owner_is_stale_ready") < (
+        run_source.index("_m69_published_owner_is_process_dead")
     )
 
 
