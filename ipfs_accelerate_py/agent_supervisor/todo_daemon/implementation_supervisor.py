@@ -7584,25 +7584,26 @@ class PortalImplementationSupervisor:
                 ]
                 blocked_recoverable: list[Any] = []
                 blocked_revision = 0
-                try:
-                    blocked_page = source.list_tasks(
-                        status=("blocked",),
-                        limit=MAX_QUERY_LIMIT,
-                    )
-                    if not blocked_page.next_cursor:
-                        blocked_recoverable = [
-                            task
-                            for task in blocked_page.tasks
-                            if self._database_task_in_scope(task)
-                            and self._blocked_task_is_recoverable_portal_frontier(
-                                task,
-                                source,
-                            )
-                        ]
-                        blocked_revision = int(blocked_page.revision)
-                except Exception:
-                    blocked_recoverable = []
-                    blocked_revision = 0
+                if self._is_board_maintenance_leader():
+                    try:
+                        blocked_page = source.list_tasks(
+                            status=("blocked",),
+                            limit=MAX_QUERY_LIMIT,
+                        )
+                        if not blocked_page.next_cursor:
+                            blocked_recoverable = [
+                                task
+                                for task in blocked_page.tasks
+                                if self._database_task_in_scope(task)
+                                and self._blocked_task_is_recoverable_portal_frontier(
+                                    task,
+                                    source,
+                                )
+                            ]
+                            blocked_revision = int(blocked_page.revision)
+                    except Exception:
+                        blocked_recoverable = []
+                        blocked_revision = 0
 
             def task_id(task: Any) -> str:
                 return str(
@@ -7663,9 +7664,11 @@ class PortalImplementationSupervisor:
                     15.0
                     * (2 ** max(0, self._readiness_retryable_failure_streak - 1)),
                 )
+                delay += max(0, int(self.config.task_shard_index)) * 15.0
                 self._readiness_probe_backoff_until = (
                     time.monotonic() + delay
                 )
+                result["cached_retryable_backoff"] = True
                 self._readiness_probe_backoff_result = dict(result)
             return result
 
@@ -7701,6 +7704,32 @@ class PortalImplementationSupervisor:
 
         threshold = self._database_authority_unavailable_after_seconds()
         available = readiness.get("available") is True
+        if (
+            not available
+            and readiness.get("cached_retryable_backoff") is True
+        ):
+            since = self._database_authority_unavailable_since_monotonic
+            count = int(self._database_authority_unavailable_probe_count or 0)
+            age = (
+                max(0.0, now_monotonic - since)
+                if since is not None
+                else 0.0
+            )
+            terminal = bool(
+                count >= DATABASE_AUTHORITY_UNAVAILABLE_MIN_PROBES
+                and age >= threshold
+            )
+            return {
+                "schema": DATABASE_AUTHORITY_WATCHDOG_SCHEMA,
+                "state": "terminal" if terminal else "suspect",
+                "unavailable_probe_count": int(count),
+                "unavailable_age_seconds": round(age, 3),
+                "unavailable_after_seconds": threshold,
+                "minimum_unavailable_probes": (
+                    DATABASE_AUTHORITY_UNAVAILABLE_MIN_PROBES
+                ),
+                "terminal": terminal,
+            }
         if available:
             previous_count = self._database_authority_unavailable_probe_count
             self._database_authority_unavailable_since_monotonic = None
@@ -10949,6 +10978,49 @@ class PortalImplementationSupervisor:
             status_extra_fields=dict(proof_rollout_status_fields),
         )
 
+    def _recycle_if_stale_active_claim(
+        self,
+        loop: SupervisorLoop,
+        child: Any,
+        *,
+        now_ts: float,
+        same_shard_active_task_ids: Sequence[str] | None = None,
+        task_source_revision: int = 0,
+    ) -> SupervisorLoopDecision | None:
+        """Expire a prior-child in-progress claim and recycle the idle daemon."""
+
+        heartbeat = self._database_pass_heartbeat_status(
+            child,
+            now_ts=now_ts,
+        )
+        prior_child = (
+            heartbeat.get("reason") == "heartbeat_belongs_to_prior_child"
+        )
+        stale_active = bool(
+            heartbeat.get("stale") is True
+            and str(heartbeat.get("active_task_id") or "").strip()
+        )
+        if not (prior_child or stale_active):
+            return None
+        requeue = self._requeue_stale_active_database_claims()
+        detail = {
+            "same_shard_active_task_ids": list(
+                same_shard_active_task_ids or ()
+            ),
+            "database_daemon_pass_heartbeat": dict(heartbeat),
+            "stale_active_claim_requeue": requeue,
+            "task_source_revision": int(task_source_revision or 0),
+        }
+        self._set_loop_status_fields(loop, detail)
+        self._record_event(
+            "stale_active_claim_prior_child_detected",
+            detail,
+        )
+        return SupervisorLoopDecision.recycle(
+            DATABASE_STALE_ACTIVE_CLAIM_REASON,
+            detail=detail,
+        )
+
     def _supervisor_loop_watchdog_decision(
         self,
         _loop: SupervisorLoop,
@@ -11021,6 +11093,13 @@ class PortalImplementationSupervisor:
                         str(readiness.get("error_type") or "")
                         in RETRYABLE_READINESS_ERROR_TYPES
                     ):
+                        recycle = self._recycle_if_stale_active_claim(
+                            _loop,
+                            _child,
+                            now_ts=now_ts,
+                        )
+                        if recycle is not None:
+                            return recycle
                         return SupervisorLoopDecision.keep_running()
                     guard = self._database_authority_terminal_guard(
                         state=state,
@@ -11054,6 +11133,13 @@ class PortalImplementationSupervisor:
                             DATABASE_AUTHORITY_UNAVAILABLE_REASON,
                             status=SHARED_AUTHORITY_TERMINAL_STATUS,
                         )
+                recycle = self._recycle_if_stale_active_claim(
+                    _loop,
+                    _child,
+                    now_ts=now_ts,
+                )
+                if recycle is not None:
+                    return recycle
                 return SupervisorLoopDecision.keep_running()
 
         # Shared database authority is probed before a source-reload deferral:
@@ -11148,36 +11234,17 @@ class PortalImplementationSupervisor:
                 readiness.get("same_shard_active_task_ids") or ()
             )
             if same_shard_active_task_ids:
-                heartbeat = self._database_pass_heartbeat_status(
+                recycle = self._recycle_if_stale_active_claim(
+                    _loop,
                     _child,
                     now_ts=now_ts,
+                    same_shard_active_task_ids=same_shard_active_task_ids,
+                    task_source_revision=int(
+                        readiness.get("task_source_revision") or 0
+                    ),
                 )
-                prior_child = (
-                    heartbeat.get("reason") == "heartbeat_belongs_to_prior_child"
-                )
-                stale_active = bool(
-                    heartbeat.get("stale") is True
-                    and str(heartbeat.get("active_task_id") or "").strip()
-                )
-                if prior_child or stale_active:
-                    requeue = self._requeue_stale_active_database_claims()
-                    detail = {
-                        "same_shard_active_task_ids": same_shard_active_task_ids,
-                        "database_daemon_pass_heartbeat": dict(heartbeat),
-                        "stale_active_claim_requeue": requeue,
-                        "task_source_revision": int(
-                            readiness.get("task_source_revision") or 0
-                        ),
-                    }
-                    self._set_loop_status_fields(_loop, detail)
-                    self._record_event(
-                        "stale_active_claim_prior_child_detected",
-                        detail,
-                    )
-                    return SupervisorLoopDecision.recycle(
-                        DATABASE_STALE_ACTIVE_CLAIM_REASON,
-                        detail=detail,
-                    )
+                if recycle is not None:
+                    return recycle
                 return SupervisorLoopDecision.keep_running()
             if readiness.get("active_task_ids"):
                 return SupervisorLoopDecision.keep_running()

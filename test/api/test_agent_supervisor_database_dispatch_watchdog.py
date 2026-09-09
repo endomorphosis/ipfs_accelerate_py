@@ -499,6 +499,67 @@ def test_database_watchdog_recycles_stale_active_claim_from_prior_child(
     assert events[0][0] == "stale_active_claim_prior_child_detected"
 
 
+def test_database_watchdog_oom_still_recycles_prior_child_stale_claim(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "OutOfMemoryException",
+            "task_source_revision": 0,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {
+            "available": True,
+            "stale": True,
+            "reason": "heartbeat_belongs_to_prior_child",
+            "active_task_id": "SAWM-008",
+        },
+    )
+    requeue_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_requeue_stale_active_database_claims",
+        lambda: requeue_calls.append({"ok": True})
+        or {
+            "attempted": True,
+            "reason": DATABASE_STALE_ACTIVE_CLAIM_REASON,
+            "expired_count": 1,
+            "expired_task_ids": ["sha256:task"],
+        },
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "recycle"
+    assert decision.reason == DATABASE_STALE_ACTIVE_CLAIM_REASON
+    assert requeue_calls == [{"ok": True}]
+    assert events[0][0] == "stale_active_claim_prior_child_detected"
+    fields = loop.config.status_extra_fields
+    assert fields["operator_successor_required"] is False
+    assert fields["authoritative_readiness_error_type"] == "OutOfMemoryException"
+
+
 def test_database_watchdog_rearms_idle_blocked_portal_frontier(
     tmp_path,
     monkeypatch,
@@ -1983,5 +2044,4 @@ def test_authoritative_database_readiness_filters_manual_and_home_shard(
     assert observed["install_schema"] is False
     assert observed["list_statuses"] == [
         ("claimed", "in_progress", "running"),
-        ("blocked",),
     ]
