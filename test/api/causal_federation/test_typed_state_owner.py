@@ -1608,6 +1608,56 @@ def test_grant_is_kernel_bound_to_an_independent_process(tmp_path: Path) -> None
     assert process.exitcode == 0
 
 
+def test_status_bootstrap_cannot_admit_unbound_non_federated_board(
+    tmp_path: Path,
+) -> None:
+    """A published status token alone cannot authorize legacy board closeout."""
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    gateway, connection = _gateway(db, socket_path)
+    try:
+        bootstrap_token = gateway.configure_status_bootstrap()
+        # PCPR-style boards have tasks but no admitted federation slice.
+        assert connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] == 1
+        with pytest.raises(
+            TypedStateOwnerAuthorizationError,
+            match="requires one dedicated-store federation slice",
+        ):
+            gateway.bind_status_bootstrap_scope()
+        for status_bootstrap in (False, True):
+            with pytest.raises(TypedStateOwnerError):
+                TypedStateOwnerConnection(
+                    socket_path=socket_path,
+                    token=bootstrap_token,
+                    client_id=STATUS_BOOTSTRAP_CLIENT_ID,
+                    process_birth_id="birth:unbound-board-status",
+                    store_id="control.duckdb",
+                    timeout_seconds=2.0,
+                    status_bootstrap=status_bootstrap,
+                )
+        assert gateway.capability()["active_grants"] == 0
+        # Rejected operator reads must leave the ordinary worker path usable.
+        token, _grant = gateway.issue_grant(
+            client_id="client:worker-after-rejected-status",
+            allowed_operations=("whoami_metadata",),
+        )
+        client = TypedStateOwnerConnection(
+            socket_path=socket_path,
+            token=token,
+            client_id="client:worker-after-rejected-status",
+            process_birth_id="birth:worker-after-rejected-status",
+            store_id="control.duckdb",
+        )
+        try:
+            assert client.execute_operation("whoami_metadata").fetchone() is not None
+        finally:
+            client.close()
+    finally:
+        gateway.stop()
+        connection.close()
+
+
 def test_status_bootstrap_rebinds_each_distinct_process_read_only(
     tmp_path: Path,
 ) -> None:
