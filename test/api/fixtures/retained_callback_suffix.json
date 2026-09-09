@@ -1,0 +1,603 @@
+{
+  "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+  "task_alias": "DOEP-013",
+  "revisions": [
+    {
+      "revision": 1,
+      "status": "todo",
+      "body": {
+        "title": "retained callback fixture"
+      }
+    },
+    {
+      "revision": 2,
+      "status": "in_progress",
+      "body": {
+        "title": "retained callback fixture"
+      }
+    },
+    {
+      "revision": 3,
+      "status": "in_progress",
+      "body": {
+        "title": "retained callback fixture"
+      }
+    },
+    {
+      "revision": 4,
+      "status": "quarantined",
+      "body": {
+        "title": "retained callback fixture"
+      }
+    },
+    {
+      "revision": 5,
+      "status": "retrying",
+      "body": {
+        "title": "retained callback fixture"
+      }
+    },
+    {
+      "revision": 6,
+      "status": "in_progress",
+      "body": {
+        "title": "retained callback fixture"
+      }
+    },
+    {
+      "revision": 7,
+      "status": "in_progress",
+      "body": {
+        "title": "retained callback fixture"
+      }
+    },
+    {
+      "revision": 8,
+      "status": "blocked",
+      "body": {
+        "title": "retained callback fixture",
+        "completion_receipt": {
+          "attempt_id": "attempt:bda91a17f14645a0b0f6c0faf7b8eba3",
+          "attempt_number": 2,
+          "claim_id": "claim:86c473a4bf14478393bfe68f2720f6fb",
+          "control_expected_revision": 7,
+          "control_expected_status": "in_progress",
+          "coordination": {},
+          "execution_finished_at_ms": 1788984098058,
+          "execution_phase": "failed",
+          "execution_revision": 3,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-013",
+            "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+            "task_contract_cid": "baguqeera4kvsekd7gzrwpfhkufjie7wuntq2xwcyvf5mgxkhpndc7325hhja",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+          "fence_epoch": 2,
+          "fencing_token": 2,
+          "lease_id": "lease:d91c007319634211acec8ebfeeeab1d4",
+          "operation": "database_portal_terminal_failure",
+          "owner_session_id": "doep-v1-executor:shard:1-of-4:track:73508a56da23",
+          "reason": "Portal completion source canonical task key mismatches",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "revision": 9,
+      "status": "retrying",
+      "body": {
+        "title": "retained callback fixture",
+        "completion_receipt": {
+          "attempt_id": "attempt:bda91a17f14645a0b0f6c0faf7b8eba3",
+          "attempt_number": 2,
+          "backoff_ms": 0,
+          "backoff_seconds": 0,
+          "claim_id": "claim:86c473a4bf14478393bfe68f2720f6fb",
+          "control_expected_revision": 8,
+          "control_expected_status": "blocked",
+          "coordination": {
+            "attempt_id": "attempt:bda91a17f14645a0b0f6c0faf7b8eba3",
+            "attempt_number": 2,
+            "claim_absent": false,
+            "claim_id": "claim:86c473a4bf14478393bfe68f2720f6fb",
+            "claim_revision": 6,
+            "claim_state": "expired",
+            "coordination_attempt_revision": 2,
+            "coordination_attempt_status": "expired",
+            "expired_now": false,
+            "expires_at_ms": 1788984156736,
+            "historical_expired": true,
+            "lease_state": "expired",
+            "observed_at_ms": 1788985574770,
+            "successor": {},
+            "superseded_by_newer_fence": false
+          },
+          "evidence_source": "portal_completion_handshake_reclassified",
+          "execution_finished_at_ms": 1788984098058,
+          "execution_phase": "failed",
+          "execution_revision": 3,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-013",
+            "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+            "task_contract_cid": "baguqeera4kvsekd7gzrwpfhkufjie7wuntq2xwcyvf5mgxkhpndc7325hhja",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+          "fence_epoch": 2,
+          "fencing_token": 2,
+          "lease_id": "lease:d91c007319634211acec8ebfeeeab1d4",
+          "operation": "database_portal_validation_retry_recovery",
+          "owner_session_id": "doep-v1-executor:shard:1-of-4:track:73508a56da23",
+          "queue_reason": "database_portal_retry:attempt:bda91a17f14645a0b0f6c0faf7b8eba3:portal_completion_handshake_retry",
+          "queue_receipt": {},
+          "queue_reused": false,
+          "reason": "portal_completion_handshake_retry",
+          "retry_not_before_ms": 1788985574834
+        }
+      }
+    },
+    {
+      "revision": 10,
+      "status": "in_progress",
+      "body": {
+        "title": "retained callback fixture",
+        "completion_receipt": {
+          "attempt_id": "attempt:6bbbefbef0f949d093a067bf77960b03",
+          "attempt_number": 3,
+          "claim_id": "claim:ac9bad7389e9475db8e2ed977ea10a95",
+          "claim_phase_schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-reservation@1",
+          "claim_process_attestation": {
+            "boot_id": "006c44d2-c190-4cce-9a49-35ab689b243f",
+            "client_id": "database-implementation-daemon:doep-v1-executor:shard:1-of-4:track:73508a56da23",
+            "grant_id": "owner-grant:fbe1be9d-091b-43d3-89d2-69568a48bcf4",
+            "parent_pid": 3921580,
+            "pid": 3928957,
+            "process_birth_id": "birth:73c80a0d9dfc5c12b62447770151c678",
+            "schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1",
+            "start_time_ticks": 39527878,
+            "uid": 1000
+          },
+          "claimed_from_revision": 9,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-013",
+            "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+            "task_contract_cid": "baguqeera4kvsekd7gzrwpfhkufjie7wuntq2xwcyvf5mgxkhpndc7325hhja",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+          "fence_epoch": 3,
+          "fencing_token": 3,
+          "idle_lane_work_stealing": "",
+          "lease_id": "lease:81f2d4587eb944c7977b820a264f9a34",
+          "operation": "database_claim",
+          "owner_session_id": "doep-v1-executor:shard:1-of-4:track:73508a56da23",
+          "strict_task_sharding": true,
+          "task_prefix": "DOEP-",
+          "task_shard_count": 4,
+          "task_shard_index": 1
+        }
+      }
+    },
+    {
+      "revision": 11,
+      "status": "in_progress",
+      "body": {
+        "title": "retained callback fixture",
+        "completion_receipt": {
+          "admitted_from_revision": 10,
+          "attempt_execution_phase": "claimed",
+          "attempt_execution_revision": 1,
+          "attempt_id": "attempt:6bbbefbef0f949d093a067bf77960b03",
+          "attempt_number": 3,
+          "claim_id": "claim:ac9bad7389e9475db8e2ed977ea10a95",
+          "claim_phase_schema": "ipfs_accelerate_py/agent-supervisor/typed-database-attempt-admission@1",
+          "claim_process_attestation": {
+            "boot_id": "006c44d2-c190-4cce-9a49-35ab689b243f",
+            "client_id": "database-implementation-daemon:doep-v1-executor:shard:1-of-4:track:73508a56da23",
+            "grant_id": "owner-grant:fbe1be9d-091b-43d3-89d2-69568a48bcf4",
+            "parent_pid": 3921580,
+            "pid": 3928957,
+            "process_birth_id": "birth:73c80a0d9dfc5c12b62447770151c678",
+            "schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1",
+            "start_time_ticks": 39527878,
+            "uid": 1000
+          },
+          "claimed_from_revision": 9,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-013",
+            "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+            "task_contract_cid": "baguqeera4kvsekd7gzrwpfhkufjie7wuntq2xwcyvf5mgxkhpndc7325hhja",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+          "fence_epoch": 3,
+          "fencing_token": 3,
+          "idle_lane_work_stealing": "",
+          "lease_id": "lease:81f2d4587eb944c7977b820a264f9a34",
+          "operation": "database_attempt_admitted",
+          "owner_session_id": "doep-v1-executor:shard:1-of-4:track:73508a56da23",
+          "strict_task_sharding": true,
+          "task_prefix": "DOEP-",
+          "task_shard_count": 4,
+          "task_shard_index": 1
+        }
+      }
+    },
+    {
+      "revision": 12,
+      "status": "retrying",
+      "body": {
+        "title": "retained callback fixture",
+        "completion_receipt": {
+          "attempt_id": "attempt:6bbbefbef0f949d093a067bf77960b03",
+          "attempt_number": 3,
+          "backoff_ms": 300000,
+          "backoff_seconds": 300,
+          "claim_id": "claim:ac9bad7389e9475db8e2ed977ea10a95",
+          "control_expected_revision": 11,
+          "control_expected_status": "in_progress",
+          "coordination": {
+            "attempt_id": "attempt:6bbbefbef0f949d093a067bf77960b03",
+            "attempt_number": 3,
+            "claim_id": "claim:ac9bad7389e9475db8e2ed977ea10a95"
+          },
+          "evidence_source": "typed_portal_deferral",
+          "execution_finished_at_ms": 1788985609338,
+          "execution_phase": "failed",
+          "execution_revision": 3,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-013",
+            "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+            "task_contract_cid": "baguqeera4kvsekd7gzrwpfhkufjie7wuntq2xwcyvf5mgxkhpndc7325hhja",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+          "fence_epoch": 3,
+          "fencing_token": 3,
+          "lease_id": "lease:81f2d4587eb944c7977b820a264f9a34",
+          "operation": "database_portal_retry",
+          "owner_session_id": "doep-v1-executor:shard:1-of-4:track:73508a56da23",
+          "queue_reason": "database_portal_retry:attempt:6bbbefbef0f949d093a067bf77960b03:validation_project_dependency_preflight_failed",
+          "queue_receipt": {
+            "changed": true,
+            "details": {
+              "attempt_id": "attempt:6bbbefbef0f949d093a067bf77960b03",
+              "attempt_number": 3,
+              "claim_id": "claim:ac9bad7389e9475db8e2ed977ea10a95",
+              "expected_task_revision": 11,
+              "operation": "task.retry.cooldown.record",
+              "queue_revision": 3,
+              "reason": "database_portal_retry:attempt:6bbbefbef0f949d093a067bf77960b03:validation_project_dependency_preflight_failed",
+              "retry_not_before_ms": 1788985909466,
+              "schema": "ipfs_accelerate_py/agent-supervisor/typed-retry-cooldown@1",
+              "store_revision_before": 6,
+              "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5"
+            },
+            "event_id": "sha256:50d1b39698e4fe9e647976e8c505416163cc24cd8302fb1d530c928564c2728b",
+            "event_type": "TASK_RETRY_COOLDOWN_RECORDED",
+            "global_sequence": 0,
+            "recorded_at": "typed-state-owner",
+            "revision": 3,
+            "schema": "ipfs_accelerate_py/agent-supervisor/intent-receipt@1",
+            "subject_id": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5"
+          },
+          "queue_reused": false,
+          "reason": "validation_project_dependency_preflight_failed",
+          "retry_not_before_ms": 1788985909466
+        }
+      }
+    },
+    {
+      "revision": 13,
+      "status": "in_progress",
+      "body": {
+        "title": "retained callback fixture",
+        "completion_receipt": {
+          "attempt_id": "attempt:7749e6d8b6c44130a5e003c118178b3d",
+          "attempt_number": 4,
+          "claim_id": "claim:eb15a844df2c4529916bec45907dc15c",
+          "claim_phase_schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-reservation@1",
+          "claim_process_attestation": {
+            "boot_id": "006c44d2-c190-4cce-9a49-35ab689b243f",
+            "client_id": "database-implementation-daemon:doep-v1-executor:shard:1-of-4:track:73508a56da23",
+            "grant_id": "owner-grant:971d1397-a288-4b70-84c3-4eba00332040",
+            "parent_pid": 4036384,
+            "pid": 4059481,
+            "process_birth_id": "birth:93be0b3330fdbd624c355d83ab55fc55",
+            "schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1",
+            "start_time_ticks": 39564295,
+            "uid": 1000
+          },
+          "claimed_from_revision": 12,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-013",
+            "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+            "task_contract_cid": "baguqeera4kvsekd7gzrwpfhkufjie7wuntq2xwcyvf5mgxkhpndc7325hhja",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+          "fence_epoch": 4,
+          "fencing_token": 4,
+          "idle_lane_work_stealing": "",
+          "lease_id": "lease:e8a7fc24923941a0b7fdd2d3a72b2d00",
+          "operation": "database_claim",
+          "owner_session_id": "doep-v1-executor:shard:1-of-4:track:73508a56da23",
+          "strict_task_sharding": true,
+          "task_prefix": "DOEP-",
+          "task_shard_count": 4,
+          "task_shard_index": 1
+        }
+      }
+    },
+    {
+      "revision": 14,
+      "status": "in_progress",
+      "body": {
+        "title": "retained callback fixture",
+        "completion_receipt": {
+          "admitted_from_revision": 13,
+          "attempt_execution_phase": "claimed",
+          "attempt_execution_revision": 1,
+          "attempt_id": "attempt:7749e6d8b6c44130a5e003c118178b3d",
+          "attempt_number": 4,
+          "claim_id": "claim:eb15a844df2c4529916bec45907dc15c",
+          "claim_phase_schema": "ipfs_accelerate_py/agent-supervisor/typed-database-attempt-admission@1",
+          "claim_process_attestation": {
+            "boot_id": "006c44d2-c190-4cce-9a49-35ab689b243f",
+            "client_id": "database-implementation-daemon:doep-v1-executor:shard:1-of-4:track:73508a56da23",
+            "grant_id": "owner-grant:971d1397-a288-4b70-84c3-4eba00332040",
+            "parent_pid": 4036384,
+            "pid": 4059481,
+            "process_birth_id": "birth:93be0b3330fdbd624c355d83ab55fc55",
+            "schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1",
+            "start_time_ticks": 39564295,
+            "uid": 1000
+          },
+          "claimed_from_revision": 12,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-013",
+            "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+            "task_contract_cid": "baguqeera4kvsekd7gzrwpfhkufjie7wuntq2xwcyvf5mgxkhpndc7325hhja",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+          "fence_epoch": 4,
+          "fencing_token": 4,
+          "idle_lane_work_stealing": "",
+          "lease_id": "lease:e8a7fc24923941a0b7fdd2d3a72b2d00",
+          "operation": "database_attempt_admitted",
+          "owner_session_id": "doep-v1-executor:shard:1-of-4:track:73508a56da23",
+          "strict_task_sharding": true,
+          "task_prefix": "DOEP-",
+          "task_shard_count": 4,
+          "task_shard_index": 1
+        }
+      }
+    },
+    {
+      "revision": 15,
+      "status": "blocked",
+      "body": {
+        "title": "retained callback fixture",
+        "completion_receipt": {
+          "attempt_id": "attempt:7749e6d8b6c44130a5e003c118178b3d",
+          "attempt_number": 4,
+          "claim_id": "claim:eb15a844df2c4529916bec45907dc15c",
+          "control_expected_revision": 14,
+          "control_expected_status": "in_progress",
+          "coordination": {},
+          "execution_finished_at_ms": 1788985941700,
+          "execution_phase": "failed",
+          "execution_revision": 3,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-013",
+            "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+            "task_contract_cid": "baguqeera4kvsekd7gzrwpfhkufjie7wuntq2xwcyvf5mgxkhpndc7325hhja",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca",
+          "fence_epoch": 4,
+          "fencing_token": 4,
+          "lease_id": "lease:e8a7fc24923941a0b7fdd2d3a72b2d00",
+          "operation": "database_portal_terminal_failure",
+          "owner_session_id": "doep-v1-executor:shard:1-of-4:track:73508a56da23",
+          "reason": "retained callback recovery requires exact source seed before dispatch",
+          "retryable": false
+        }
+      }
+    }
+  ],
+  "attempts": [
+    {
+      "attempt_id": "attempt:bda91a17f14645a0b0f6c0faf7b8eba3",
+      "claim_id": "claim:86c473a4bf14478393bfe68f2720f6fb",
+      "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+      "task_alias": "DOEP-013",
+      "attempt_number": 2,
+      "owner_session_id": "doep-v1-executor:shard:1-of-4:track:73508a56da23",
+      "fencing_token": 2,
+      "fence_epoch": 2,
+      "lease_id": "lease:d91c007319634211acec8ebfeeeab1d4",
+      "committed_phase": "failed",
+      "status": "failed",
+      "started_at_ms": 1788984034822,
+      "finished_at_ms": 1788984098058,
+      "revision": 3,
+      "body_json": "{\"execution_route_binding\":{\"execution_mode\":\"grok-codex\",\"plan_root_cid\":\"sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4\",\"policy_id\":\"baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca\",\"repository_tree_id\":\"sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe\",\"schema\":\"ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1\",\"source_revision\":1,\"task_alias\":\"DOEP-013\",\"task_cid\":\"sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5\",\"task_contract_cid\":\"baguqeera4kvsekd7gzrwpfhkufjie7wuntq2xwcyvf5mgxkhpndc7325hhja\",\"task_revision\":1},\"worktree_id\":\"\"}"
+    },
+    {
+      "attempt_id": "attempt:6bbbefbef0f949d093a067bf77960b03",
+      "claim_id": "claim:ac9bad7389e9475db8e2ed977ea10a95",
+      "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+      "task_alias": "DOEP-013",
+      "attempt_number": 3,
+      "owner_session_id": "doep-v1-executor:shard:1-of-4:track:73508a56da23",
+      "fencing_token": 3,
+      "fence_epoch": 3,
+      "lease_id": "lease:81f2d4587eb944c7977b820a264f9a34",
+      "committed_phase": "failed",
+      "status": "failed",
+      "started_at_ms": 1788985576869,
+      "finished_at_ms": 1788985609338,
+      "revision": 3,
+      "body_json": "{\"execution_route_binding\":{\"execution_mode\":\"grok-codex\",\"plan_root_cid\":\"sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4\",\"policy_id\":\"baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca\",\"repository_tree_id\":\"sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe\",\"schema\":\"ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1\",\"source_revision\":1,\"task_alias\":\"DOEP-013\",\"task_cid\":\"sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5\",\"task_contract_cid\":\"baguqeera4kvsekd7gzrwpfhkufjie7wuntq2xwcyvf5mgxkhpndc7325hhja\",\"task_revision\":1},\"worktree_id\":\"\"}"
+    },
+    {
+      "attempt_id": "attempt:7749e6d8b6c44130a5e003c118178b3d",
+      "claim_id": "claim:eb15a844df2c4529916bec45907dc15c",
+      "task_cid": "sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5",
+      "task_alias": "DOEP-013",
+      "attempt_number": 4,
+      "owner_session_id": "doep-v1-executor:shard:1-of-4:track:73508a56da23",
+      "fencing_token": 4,
+      "fence_epoch": 4,
+      "lease_id": "lease:e8a7fc24923941a0b7fdd2d3a72b2d00",
+      "committed_phase": "failed",
+      "status": "failed",
+      "started_at_ms": 1788985940246,
+      "finished_at_ms": 1788985941700,
+      "revision": 3,
+      "body_json": "{\"execution_route_binding\":{\"execution_mode\":\"grok-codex\",\"plan_root_cid\":\"sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4\",\"policy_id\":\"baguqeerawswrm2prlsmggblcxtmn2o7xxvt2w4mkwce56pawto4ffcyhmdca\",\"repository_tree_id\":\"sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe\",\"schema\":\"ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1\",\"source_revision\":1,\"task_alias\":\"DOEP-013\",\"task_cid\":\"sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5\",\"task_contract_cid\":\"baguqeera4kvsekd7gzrwpfhkufjie7wuntq2xwcyvf5mgxkhpndc7325hhja\",\"task_revision\":1},\"worktree_id\":\"\"}"
+    }
+  ],
+  "phases": [
+    {
+      "attempt_id": "attempt:6bbbefbef0f949d093a067bf77960b03",
+      "phase": "claimed",
+      "committed_at_ms": 1788985578057,
+      "fencing_token": 3,
+      "fence_epoch": 3,
+      "revision": 1,
+      "body_json": "{}"
+    },
+    {
+      "attempt_id": "attempt:6bbbefbef0f949d093a067bf77960b03",
+      "phase": "context",
+      "committed_at_ms": 1788985578751,
+      "fencing_token": 3,
+      "fence_epoch": 3,
+      "revision": 2,
+      "body_json": "{\"resumed\":true}"
+    },
+    {
+      "attempt_id": "attempt:6bbbefbef0f949d093a067bf77960b03",
+      "phase": "failed",
+      "committed_at_ms": 1788985609338,
+      "fencing_token": 3,
+      "fence_epoch": 3,
+      "revision": 3,
+      "body_json": "{\"attempt_consumed\":false,\"backoff_seconds\":300,\"deferred\":true,\"portal_retryable_failure\":true,\"portal_terminal_failure\":false,\"provider_dispatched\":false,\"reason\":\"validation_project_dependency_preflight_failed\",\"typed_deferral\":{\"attempt_consumed\":false,\"attempt_id\":\"attempt:6bbbefbef0f949d093a067bf77960b03\",\"deferral_fingerprint\":\"sha256:d5e814ccf49d6d40bc3fe89ef76edfc8c3782fae3d5eb5b43583016b1ecadedb\",\"generation_fingerprint\":\"sha256:95c984c75368d85fa41bf1e913f89ef18be9544d16add339c499774bcf1a1df3\",\"provider_dispatched\":false,\"reason\":\"validation_project_dependency_preflight_failed\",\"schema\":\"ipfs_accelerate_py/agent-supervisor/database-portal-typed-deferral@1\",\"state_schema_revision\":\"1\",\"task_cid\":\"sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5\",\"task_generation\":\"sha256:9512c44dd447a08c3b2991756943a55ee76cc927eb5025988bbbfd334d0793c5\",\"typed_deferral_slot_consumed\":true},\"typed_deferral_slot_consumed\":true}"
+    },
+    {
+      "attempt_id": "attempt:7749e6d8b6c44130a5e003c118178b3d",
+      "phase": "claimed",
+      "committed_at_ms": 1788985940784,
+      "fencing_token": 4,
+      "fence_epoch": 4,
+      "revision": 1,
+      "body_json": "{}"
+    },
+    {
+      "attempt_id": "attempt:7749e6d8b6c44130a5e003c118178b3d",
+      "phase": "context",
+      "committed_at_ms": 1788985941251,
+      "fencing_token": 4,
+      "fence_epoch": 4,
+      "revision": 2,
+      "body_json": "{\"resumed\":true}"
+    },
+    {
+      "attempt_id": "attempt:7749e6d8b6c44130a5e003c118178b3d",
+      "phase": "failed",
+      "committed_at_ms": 1788985941700,
+      "fencing_token": 4,
+      "fence_epoch": 4,
+      "revision": 3,
+      "body_json": "{\"attempt_consumed\":\"unknown\",\"backoff_seconds\":0,\"deferred\":false,\"portal_retryable_failure\":false,\"portal_terminal_failure\":true,\"provider_dispatched\":\"unknown\",\"reason\":\"retained callback recovery requires exact source seed before dispatch\",\"typed_deferral_slot_consumed\":\"unknown\"}"
+    },
+    {
+      "attempt_id": "attempt:bda91a17f14645a0b0f6c0faf7b8eba3",
+      "phase": "claimed",
+      "committed_at_ms": 1788984035362,
+      "fencing_token": 2,
+      "fence_epoch": 2,
+      "revision": 1,
+      "body_json": "{}"
+    },
+    {
+      "attempt_id": "attempt:bda91a17f14645a0b0f6c0faf7b8eba3",
+      "phase": "context",
+      "committed_at_ms": 1788984036109,
+      "fencing_token": 2,
+      "fence_epoch": 2,
+      "revision": 2,
+      "body_json": "{\"resumed\":true}"
+    },
+    {
+      "attempt_id": "attempt:bda91a17f14645a0b0f6c0faf7b8eba3",
+      "phase": "failed",
+      "committed_at_ms": 1788984098058,
+      "fencing_token": 2,
+      "fence_epoch": 2,
+      "revision": 3,
+      "body_json": "{\"attempt_consumed\":\"unknown\",\"backoff_seconds\":0,\"deferred\":false,\"portal_retryable_failure\":false,\"portal_terminal_failure\":true,\"provider_dispatched\":\"unknown\",\"reason\":\"Portal completion source canonical task key mismatches\",\"typed_deferral_slot_consumed\":\"unknown\"}"
+    }
+  ]
+}

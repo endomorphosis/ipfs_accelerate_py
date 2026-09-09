@@ -96893,7 +96893,7 @@ class DatabaseImplementationDaemon:
                 "typed retry attempt floor has no exact cooldown validator"
             )
         try:
-            validate(
+            queue_entry = validate(
                 str(task.task_cid),
                 expected_attempt_identity=identity,
                 expected_reason=str(receipt.get("queue_reason") or ""),
@@ -96910,7 +96910,7 @@ class DatabaseImplementationDaemon:
             }:
                 raise
             return 0
-        return int(identity["attempt_number"])
+        return max(int(identity["attempt_number"]), int(queue_entry.attempt))
 
     def _recover_lost_typed_claim_reservations(
         self,

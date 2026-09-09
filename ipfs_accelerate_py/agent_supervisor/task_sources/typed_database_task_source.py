@@ -1078,6 +1078,19 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "retry cooldown differs from the task revision lineage"
             )
+        if "retained_callback_binding" in extension_values:
+            from .retained_callback_cooldown import validate_binding
+            try:
+                binding = validate_binding(extension_values["retained_callback_binding"])
+            except TypedStateOwnerError as exc:
+                raise TaskSourceIntegrityError("retained callback cooldown witness is invalid") from exc
+            if (binding["task_cid"] != task.task_cid
+                    or binding["task_alias"] != task.task_alias
+                    or binding["task_revision"] != task.revision
+                    or binding["task_body_cid"] != content_identity(dict(body))
+                    or binding["source_receipt"] != receipt_values):
+                raise TaskSourceIntegrityError("retained callback cooldown task changed")
+            receipt_values.update(binding["identity"])
         exact_bindings = {
             "attempt_id": extension_values.get("attempt_id"),
             "claim_id": extension_values.get("claim_id"),
@@ -1111,6 +1124,9 @@ class TypedDatabaseTaskSource:
         if (
             operation in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
             and post_merge_shape
+            # The closed historical migration binds its original receipt and
+            # later floor in the owner-issued witness checked above.
+            and "retained_callback_binding" not in extension_values
         ):
             queue_receipt = receipt_values.get("queue_receipt")
             expected_queue_receipt = _post_merge_retry_queue_receipt(
@@ -2693,6 +2709,7 @@ class TypedDatabaseTaskSource:
         reason: str,
         selection_penalty: int = 0,
         now_ms: int | None = None,
+        retained_callback_binding: Mapping[str, Any] | None = None,
     ) -> IntentReceipt:
         """Persist and reproduce one owner-mediated typed retry cooldown."""
 
@@ -2723,6 +2740,8 @@ class TypedDatabaseTaskSource:
             reason=reason,
             selection_penalty=selection_penalty,
             now_ms=selected_now,
+            **({"retained_callback_binding": retained_callback_binding}
+               if retained_callback_binding is not None else {}),
         )
         if not result.accepted:
             raise TaskSourceConflictError(
@@ -3044,12 +3063,17 @@ class TypedDatabaseTaskSource:
                     raise TaskSourceIntegrityError(
                         "typed cooldown expected attempt identity is invalid"
                     )
+                identity_extension = extension
+                if "retained_callback_binding" in extension:
+                    # The caller names the preserved source; the QueueEntry
+                    # returned below names the independently bound later floor.
+                    identity_extension = task.body["completion_receipt"]
                 mismatches = [
                     name
                     for name in sorted(required_identity)
-                    if type(extension.get(name))
+                    if type(identity_extension.get(name))
                     is not type(supplied_identity.get(name))
-                    or extension.get(name) != supplied_identity.get(name)
+                    or identity_extension.get(name) != supplied_identity.get(name)
                 ]
                 if mismatches:
                     raise TaskSourceIntegrityError(
@@ -3112,6 +3136,18 @@ class TypedDatabaseTaskSource:
                 )
                 continue
             try:
+                if row is not None and int(row["attempt"]) > int(payload["attempt_number"]):
+                    from .retained_callback_cooldown import (
+                        build_binding,
+                        payload_from_binding,
+                    )
+                    history = self.task_revision_history_projection(task.task_cid)
+                    binding = build_binding(
+                        task={"task_cid": task.task_cid, "task_alias": task.task_alias,
+                              "revision": task.revision, "status": task.status, "body": task.body},
+                        history=history, prior_queue=row,
+                    )
+                    payload = payload_from_binding(binding)
                 receipt = self.record_task_retry_cooldown(**payload)
             except Exception as exc:
                 outcomes.append(
