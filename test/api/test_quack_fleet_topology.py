@@ -121,10 +121,20 @@ def test_attach_rejects_foreign_managed_socket_before_transport(topology, tmp_pa
 
 
 def test_real_typed_owner_attach_and_wrong_grant_fail_closed(topology, tmp_path):
-    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import install_control_plane_schema
-    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import open_duckdb_connection
-    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import QuackStateClient, QuackClientTransportError
-    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import TypedStateOwnerGateway, TypedStateOwnerError
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+        install_control_plane_schema,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_duckdb_connection,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
+        QuackClientTransportError,
+        QuackStateClient,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TypedStateOwnerError,
+        TypedStateOwnerGateway,
+    )
 
     db = tmp_path / "source.duckdb"
     install_control_plane_schema(db, application_version="0.0.45", tool_version="1.5.2", owner_id="fleet:test")
@@ -169,7 +179,9 @@ def test_missing_source_is_registered_unavailable_without_creating_database(topo
 
 
 def test_database_program_defaults_require_real_quack_binding(topology):
-    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import DatabaseProgramConfig
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        DatabaseProgramConfig,
+    )
     source = topology["sources"][0]["database_program"]
     program = DatabaseProgramConfig.from_mapping(source)
     assert program.authority_mode == "quack"

@@ -10,8 +10,9 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from .multi_supervisor_runner import DatabaseProgramConfig
 
@@ -127,6 +128,8 @@ def compile_topology(
             receipt = _path(isolation, state_root)
             _require(receipt.is_relative_to(owner_dir), "isolation receipt must belong to its exact owner")
             argv.extend(["--isolation-receipt-json", str(receipt)])
+        if role == "derived_coordination":
+            argv.append("--derived-coordination")
         argv.extend(["--json", "start"])
         bindings[role] = {"database_program": checked.to_dict(), "database_path": str(database),
                           "state_dir": str(owner_dir), "start_argv": argv, "managed_by_fleet": True}
@@ -180,7 +183,7 @@ def systemd_unit(owner_argv: Sequence[str], *, role: str) -> str:
 
 def attach_typed_instance(
     deployment: Mapping[str, Any], instance_id: str, *, socket_path: Path,
-    token: str, client_id: str, process_birth_id: str,
+    token: str, client_id: str, process_birth_id: str, derived_repository_id: str = "",
 ) -> Any:
     """Attach the existing typed Quack client using an owner-issued grant.
 
@@ -199,7 +202,8 @@ def attach_typed_instance(
     _require(socket_path.is_absolute(), "typed socket path must be absolute")
     if instance.get("managed_by_fleet"):
         from ..task_sources.typed_state_owner import (
-            TYPED_STATE_OWNER_SOCKET_FILENAME, compact_default_owner_socket_path,
+            TYPED_STATE_OWNER_SOCKET_FILENAME,
+            compact_default_owner_socket_path,
         )
         expected = compact_default_owner_socket_path(
             Path(instance["state_dir"]) / TYPED_STATE_OWNER_SOCKET_FILENAME,
@@ -209,7 +213,8 @@ def attach_typed_instance(
 
     def connect(_endpoint: Any) -> Any:
         return TypedStateOwnerConnection(socket_path=socket_path, token=token, client_id=client_id,
-                                         process_birth_id=process_birth_id, store_id=program.store_id)
+                                         process_birth_id=process_birth_id, store_id=program.store_id,
+                                         derived_repository_id=derived_repository_id)
 
     client = QuackStateClient(owner_id=client_id, store_id=program.store_id,
                               process_birth_id=process_birth_id, connection_factory=connect)

@@ -1,10 +1,10 @@
-import hashlib
 import json
-from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.rescue.verification_deferral_start_hook import main
+from ipfs_accelerate_py.agent_supervisor.rescue.verification_deferral_start_hook import (
+    main,
+)
 
 
 @pytest.mark.parametrize('hold_kind', ['inventory', 'fleet', 'HOLD', 'OPERATOR_STOP', 'broken_symlink', None])

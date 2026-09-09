@@ -3453,6 +3453,7 @@ _TASK_STATUS_UPDATE_COMMANDS: Final[frozenset[str]] = frozenset(
 _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
     set(_COMMAND_MUTATION_CATALOG)
     - {
+        "fleet.observation.record",
         "task.status.cas",
         "task.status.cas.receipt",
         "task.retry.cooldown.record",

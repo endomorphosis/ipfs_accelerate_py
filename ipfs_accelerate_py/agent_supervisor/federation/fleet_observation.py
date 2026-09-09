@@ -3,16 +3,28 @@
 Snapshots are ordinary content-addressed artifacts with federation history
 receipts. They never mutate source tasks, leases, acceptance, or semantic roots.
 """
+# Retain datetime parsing compatibility with supported Python runtimes.
+# ruff: noqa: UP017, FURB162
 from __future__ import annotations
 
 import hashlib
 import json
 import re
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
-from typing import Any, Mapping, Sequence
+from typing import Any
 
-from ..task_sources.control_plane_contracts import CommandKind, StateAuthorityClass, StateCommand
-from ..task_sources.quack_state_client import QuackStateClient, StatementKind, StatementTemplate, TransportMode
+from ..task_sources.control_plane_contracts import (
+    CommandKind,
+    StateAuthorityClass,
+    StateCommand,
+)
+from ..task_sources.quack_state_client import (
+    QuackStateClient,
+    StatementKind,
+    StatementTemplate,
+    TransportMode,
+)
 
 SCHEMA = "ipfs_accelerate_py/agent-supervisor/fleet-source-observation@1"
 OPERATION = "fleet.observation.record"
@@ -36,7 +48,7 @@ def validate_observation(value: Mapping[str, Any]) -> dict[str, Any]:
     if timestamp.tzinfo is None:
         raise ValueError("observation time must include a timezone")
     if not isinstance(value["source_identity"], Mapping) or not isinstance(value["native_receipt"], Mapping):
-        raise ValueError("native observation identity and receipt must be objects")
+        raise TypeError("native observation identity and receipt must be objects")
     if value["availability"] == "available":
         identity = value["source_identity"]
         if not all(identity.get(key) for key in ("database_uuid", "generation", "process_birth_id", "listen_uri")):
@@ -127,7 +139,10 @@ class FleetObservationStore:
             return {"observation_cid": cid, "source_id": value["source_id"], "completion_authority": False}
         return client.submit_command(command, apply=apply)
 
-    def view(self, source_ids: Sequence[str]) -> dict[str, Any]:
+    def view(self, source_ids: Sequence[str], *, max_age_seconds: float = 60, now: datetime | None = None) -> dict[str, Any]:
+        if not 1 <= max_age_seconds <= 300:
+            raise ValueError("source freshness must be bounded")
+        observed = now or datetime.now(timezone.utc)
         if len(source_ids) > 4096 or len(set(source_ids)) != len(source_ids):
             raise ValueError("bounded unique source ids required")
         sources = {}
@@ -140,6 +155,19 @@ class FleetObservationStore:
                     if observation_cid(value) != rows[0]["cid"]:
                         raise ValueError("stored observation checksum differs")
                     selected[key] = value
+            current = selected.get("current")
+            age = None if current is None else (observed - datetime.fromisoformat(current["observed_at"].replace("Z", "+00:00"))).total_seconds()
+            selected["available"] = bool(current and current["availability"] == "available" and age is not None and 0 <= age <= max_age_seconds)
+            valid_until = (current or {}).get("native_receipt", {}).get("valid_until")
+            if valid_until:
+                try:
+                    selected["available"] &= observed <= datetime.fromisoformat(valid_until.replace("Z", "+00:00"))
+                except (TypeError, ValueError):
+                    selected["available"] = False
+            selected["age_seconds"] = age
+            selected["reason"] = "" if selected["available"] else (
+                "source_observation_absent" if current is None else
+                "source_observation_stale" if age is None or not 0 <= age <= max_age_seconds or current["availability"] == "available" else current["reason"])
             sources[source_id] = selected
         return {"schema": "ipfs_accelerate_py/agent-supervisor/fleet-aggregate-view@1", "sources": sources,
                 "control_store_id": self.client.store_id, "control_generation": self.client.load_generation().generation,
