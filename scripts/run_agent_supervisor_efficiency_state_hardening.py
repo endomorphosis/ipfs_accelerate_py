@@ -5812,6 +5812,12 @@ def _stop_signal_handlers(
         requested.set()
 
     try:
+        if survive_external_sigterm:
+            # Omitting a SIGTERM handler restores SIG_DFL and kills the
+            # exclusive-owner wrapper. Ignore it instead so session
+            # compaction cannot tear down a healthy board.
+            prior[signal.SIGTERM] = signal.getsignal(signal.SIGTERM)
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
         for signum in caught:
             prior[signum] = signal.getsignal(signum)
             signal.signal(signum, request_stop)
