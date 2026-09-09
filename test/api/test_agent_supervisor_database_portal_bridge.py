@@ -68,6 +68,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA,
+    DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA,
     DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
     DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
     DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA,
@@ -178,6 +179,290 @@ def _record() -> SimpleNamespace:
             "completion_contract": "Focused validation passes",
         },
     )
+
+
+def _post_commit_candidate_fixture(
+    tmp_path: Path,
+) -> tuple[
+    DatabasePortalExecutionBridge,
+    DatabaseTaskAttempt,
+    SimpleNamespace,
+    object,
+    dict[str, object],
+    list[str],
+]:
+    """Create one real, clean candidate with the exact terminal handoff suffix."""
+
+    repo = tmp_path / "post-commit-repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Post Commit Recovery",
+            "-c",
+            "user.email=post-commit@example.invalid",
+            "add",
+            "README.md",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Post Commit Recovery",
+            "-c",
+            "user.email=post-commit@example.invalid",
+            "commit",
+            "-qm",
+            "base",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    baseline = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    branch = "implementation/lgswf-004-post-commit"
+    worktree_root = tmp_path / "managed-worktrees"
+    worktree_root.mkdir()
+    workspace = worktree_root / "candidate"
+    subprocess.run(
+        ["git", "worktree", "add", "-q", "-b", branch, str(workspace), baseline],
+        cwd=repo,
+        check=True,
+    )
+    (workspace / "inventory").mkdir()
+    (workspace / "inventory" / "result.json").write_text(
+        '{"recovered": true}\n', encoding="utf-8"
+    )
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=workspace,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    def workspace_identity() -> dict[str, object]:
+        status = git("status", "--porcelain=v1", "--untracked-files=all")
+        return {
+            "branch": git("branch", "--show-current"),
+            "errors": [],
+            "head": git("rev-parse", "HEAD"),
+            "status_bytes": len(status.encode("utf-8")),
+            "status_clean": not status,
+            "status_fingerprint": (
+                "sha256:" + hashlib.sha256(status.encode("utf-8")).hexdigest()
+            ),
+            "tree": git("rev-parse", "HEAD^{tree}"),
+            "verified": True,
+        }
+
+    pre_workspace = workspace_identity()
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Post Commit Recovery",
+            "-c",
+            "user.email=post-commit@example.invalid",
+            "add",
+            "inventory/result.json",
+        ],
+        cwd=workspace,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Post Commit Recovery",
+            "-c",
+            "user.email=post-commit@example.invalid",
+            "commit",
+            "-qm",
+            "candidate",
+        ],
+        cwd=workspace,
+        check=True,
+    )
+    implementation_commit = git("rev-parse", "HEAD")
+    post_workspace = workspace_identity()
+    candidate_fingerprint = "sha256:" + hashlib.sha256(
+        b"inventory/result.json"
+    ).hexdigest()
+
+    def handoff(
+        phase: str,
+        observed_workspace: dict[str, object],
+    ) -> dict[str, object]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "validated-candidate-handoff-guard@1"
+            ),
+            "allowed": True,
+            "phase": phase,
+            "reasons": [],
+            "task_id": "LGSWF-004",
+            "attempt": 1,
+            "baseline_ref": baseline,
+            "baseline_commit": baseline,
+            "board_namespace": "post-commit-recovery-test",
+            "canonical_task_cid": "task:cid:004",
+            "canonical_task_key": "task/v1/current-authority-inventory",
+            "expected_branch": branch,
+            "implementation_commit": (
+                implementation_commit if phase == "post_commit" else ""
+            ),
+            "expected_fingerprint": candidate_fingerprint,
+            "validated_fingerprint": candidate_fingerprint,
+            "current_fingerprint": candidate_fingerprint,
+            "candidate_entry_count": 1,
+            "submodule_expansion_count": 0,
+            "collection_error": "",
+            "validated_workspace": dict(pre_workspace),
+            "workspace_before": dict(observed_workspace),
+            "workspace_after": dict(observed_workspace),
+            "final_tree": observed_workspace["tree"],
+            "final_status_fingerprint": observed_workspace[
+                "status_fingerprint"
+            ],
+        }
+
+    record = _record()
+    record.dependencies = ()
+    record.status = "quarantined"
+    factory_calls: list[str] = []
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "post-commit-attempts",
+        repository_root=repo,
+        worktree_root=worktree_root,
+        portal_factory=lambda _paths, alias: factory_calls.append(alias),
+    )
+    source = _attempt()
+    paths, _binding = bridge._ensure_attempt_projection(source, record)
+    append_jsonl_event(
+        paths.events,
+        "implementation_started",
+        {
+            "task_id": source.task_alias,
+            "board_namespace": "post-commit-recovery-test",
+            "canonical_task_cid": "task:cid:004",
+            "canonical_task_key": "task/v1/current-authority-inventory",
+            "attempt": 1,
+            "branch": branch,
+            "baseline_ref": baseline,
+            "worktree_path": str(workspace),
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_candidate_handoff_verified",
+        handoff("pre_commit", pre_workspace),
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_candidate_handoff_verified",
+        handoff("post_commit", post_workspace),
+    )
+    # Portal's pool reset can detach and restore the lifecycle worktree after
+    # the post-commit guard while the exact implementation ref remains.
+    subprocess.run(
+        ["git", "checkout", "-q", "--detach", baseline],
+        cwd=workspace,
+        check=True,
+    )
+    receipt = dict(bridge.recover_post_commit_candidate(source))
+    return bridge, source, record, paths, receipt, factory_calls
+
+
+def test_bridge_reuses_exact_post_commit_candidate_without_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, source, record, _paths, seed, factory_calls = (
+        _post_commit_candidate_fixture(tmp_path)
+    )
+    assert seed["schema"] == DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA
+    assert seed["attempt_id"] == source.attempt_id
+    assert seed["provider_dispatched"] is True
+    assert seed["merge_attempted"] is False
+    assert seed["source_workspace_disposition"] == "clean_detached_baseline"
+
+    target = replace(
+        source,
+        attempt_id="attempt:post-commit-target",
+        claim_id="claim:post-commit-target",
+        lease_id="lease:post-commit-target",
+        attempt_number=2,
+        fencing_token=8,
+        owner_session_id="session:post-commit-target",
+    )
+    record.revision += 1
+    record.status = "in_progress"
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": target.attempt_id,
+            "claim_id": target.claim_id,
+            "lease_id": target.lease_id,
+            "owner_session_id": target.owner_session_id,
+            "attempt_number": target.attempt_number,
+            "fencing_token": target.fencing_token,
+            "fence_epoch": target.fence_epoch,
+            "post_commit_candidate_source_attempt_id": source.attempt_id,
+            "post_commit_candidate_recovery_seed": dict(seed),
+        },
+    }
+    reconciliations: list[dict[str, object]] = []
+
+    def reconcile(**kwargs: object) -> dict[str, object]:
+        reconciliations.append(dict(kwargs))
+        return {"accepted": True, "provider_dispatched": False}
+
+    monkeypatch.setattr(
+        bridge,
+        "_reconcile_protected_preservation_seed",
+        reconcile,
+    )
+
+    result = bridge.run_provider(target)
+
+    assert result == {"accepted": True, "provider_dispatched": False}
+    assert len(reconciliations) == 1
+    assert reconciliations[0]["seed"] == seed
+    assert factory_calls == []
+
+
+def test_bridge_post_commit_candidate_later_event_fails_closed(
+    tmp_path: Path,
+) -> None:
+    bridge, source, _record_value, paths, _seed, factory_calls = (
+        _post_commit_candidate_fixture(tmp_path)
+    )
+    append_jsonl_event(paths.events, "owner_restarted", {"task_id": source.task_alias})
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="exact terminal event suffix",
+    ):
+        bridge.recover_post_commit_candidate(source)
+
+    assert factory_calls == []
 
 
 def test_datasets_authority_marker_reaches_provider_without_state_secrets(
@@ -13258,6 +13543,71 @@ def test_callback_integration_source_requires_exact_receipt_event_and_blobs(
     assert provider_source is not None
     assert provider_source["task_cid"] == database_task_cid
     assert provider_source["source_event_id"] == provider_source_event["event_id"]
+
+    # The queue callback may land, update the projection, and emit its final
+    # implementation event immediately before the database owner disappears.
+    # In that crash suffix no task_completed event exists yet; the exact
+    # queued source, reconciliation, status projection, and daemon-pass tail
+    # are the retained evidence.
+    landed_source_event = json.loads(json.dumps(provider_source_event))
+    landed_source_event.update(
+        sequence=21,
+        event_id="sha256:" + "9" * 64,
+        board_namespace="task-projection.md",
+    )
+    queued_event = {
+        "type": "worktree_reconciliation_candidate_queued",
+        "sequence": 18,
+        "event_id": "sha256:" + "a" * 64,
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "implementation_commit": candidate,
+        "request_id": request_id,
+    }
+    landed_reconciliation = {
+        **reconciliation_event,
+        "sequence": 19,
+        "event_id": "sha256:" + "b" * 64,
+    }
+    landed_status = {
+        "type": "todo_status_updated",
+        "sequence": 20,
+        "event_id": "sha256:" + "c" * 64,
+        **todo,
+        "board_namespace": "task-projection.md",
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+    }
+    daemon_pass = {
+        "type": "daemon_pass",
+        "sequence": 22,
+        "event_id": "sha256:" + "d" * 64,
+        "previous_event_id": landed_source_event["event_id"],
+    }
+    bridge._verified_event_chain = lambda _paths: [
+        queued_event,
+        landed_reconciliation,
+        landed_status,
+        landed_source_event,
+        daemon_pass,
+    ]
+    bridge._completion_event_evidence = lambda *_args, **_kwargs: None
+    bridge._exact_callback_reconciliation_for_completion_source = (
+        lambda *_args, **_kwargs: True
+    )
+    bridge._verify_projection = lambda *_args, **_kwargs: "- Status: completed\n"
+
+    landed_source = bridge._callback_integration_source_evidence(
+        request,
+        projection,
+        train=train,
+    )
+
+    assert landed_source is not None
+    assert landed_source["source_event_id"] == landed_source_event["event_id"]
+    assert landed_source_event["provider_dispatched"] is True
+
     explicit_target = json.loads(json.dumps(modern_source_event))
     explicit_target["merge_result"]["target_commit"] = "9" * 40
     bridge._verified_event_chain = lambda _paths: [
@@ -14811,14 +15161,22 @@ def test_callback_v3_porcelain_rejects_non_worktree_content_changes(
 
 
 @pytest.mark.parametrize(
-    "terminal_reason",
+    ("source_status", "terminal_reason"),
     [
-        "Portal completion lacks one exact evaluated baseline",
-        "Portal callback reconciliation binding is invalid",
+        (
+            "blocked",
+            "Portal completion lacks one exact evaluated baseline",
+        ),
+        (
+            "blocked",
+            "Portal callback reconciliation binding is invalid",
+        ),
+        ("quarantined", "provider_callback_outcome_unknown"),
     ],
 )
 def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     monkeypatch: pytest.MonkeyPatch,
+    source_status: str,
     terminal_reason: str,
 ) -> None:
     daemon = object.__new__(DatabaseImplementationDaemon)
@@ -14842,9 +15200,22 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     task = SimpleNamespace(
         task_cid=attempt.task_cid,
         task_alias=attempt.task_alias,
-        status="blocked",
+        status=source_status,
         revision=12,
-        body={"completion_receipt": {"operation": "terminal"}},
+        body={
+            "completion_receipt": {
+                "operation": (
+                    "database_portal_neutral_failure_quarantine"
+                    if source_status == "quarantined"
+                    else "terminal"
+                ),
+                "failure_kind": (
+                    "provider_callback_outcome_unknown"
+                    if source_status == "quarantined"
+                    else ""
+                ),
+            }
+        },
     )
     candidate = "a" * 40
     integration = "b" * 40
@@ -14940,7 +15311,12 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     monkeypatch.setattr(
         daemon,
         "_post_merge_source_admitted",
-        lambda *_args: True,
+        lambda *_args: source_status == "blocked",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_unknown_callback_post_merge_source_admitted",
+        lambda *_args: source_status == "quarantined",
     )
     monkeypatch.setattr(
         daemon,
@@ -15015,6 +15391,7 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     seed = transition["post_merge_completion_recovery_seed"]
     assert seed["qualification_kind"] == "callback_integration"
     assert seed["terminal_reason"] == terminal_reason
+    assert transition["control_expected_status"] == source_status
     assert captured["status"] == "retrying"
     assert result["recovered"] is True
     assert result["write_count"] == 2
@@ -15038,7 +15415,11 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     monkeypatch.setattr(
         daemon,
         "_post_merge_completion_terminal_receipt_from_history",
-        lambda **_kwargs: {"reason": terminal_reason},
+        lambda **_kwargs: (
+            {"failure_kind": terminal_reason}
+            if source_status == "quarantined"
+            else {"reason": terminal_reason}
+        ),
     )
     replay = daemon._verified_post_merge_declared_output_recovery_state(
         attempt,

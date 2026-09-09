@@ -1301,6 +1301,11 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
     assert callbacks["protected_reconciliation_self_lock_recovery"] == (
         bridge.recover_protected_reconciliation_self_lock
     )
+    assert callbacks["post_commit_candidate_recovery_fn"] == (
+        bridge.recover_post_commit_candidate
+    )
+    pending_consume = callbacks["merge_train_recovery"]["pending_merge_consume_fn"]
+    assert callable(pending_consume)
     assert callbacks["merge_train_recovery"] == {
         "merge_queue": bridge.merge_queue,
         "repo_root": repo,
@@ -1310,6 +1315,7 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             "external/ipfs_datasets",
             "external/ipfs_kit",
         ),
+        "pending_merge_consume_fn": pending_consume,
     }
     assert callbacks["pending_merge_consume"] == (
         bridge.consume_pending_same_board_merge
