@@ -2245,16 +2245,62 @@ def test_operator_does_not_kill_coordinator_for_isolated_dead_lane() -> None:
         master_alive=True,
         dead_lane_count=1,
     )
+    live_fds = operator._admit_isolated_lane_supervisor_recycle(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=True,
+        dead_lane_count=1,
+        master_capsule_fds_live=True,
+    )
     dead_master = operator._admit_isolated_lane_supervisor_recycle(
         owner_ready=True,
         owner_alive=True,
         master_alive=False,
         dead_lane_count=1,
     )
+    argv = operator._rewrite_isolated_lane_peer_argv(
+        [
+            "--state-dir",
+            "/run/state/lane-1",
+            "--state-prefix",
+            "sawm_lane_1",
+            "--task-shard-index",
+            "1",
+            "--keep",
+            "semantic-addressed-world-model-v1",
+        ],
+        peer_index=1,
+        dead_index=0,
+    )
+    env = operator._rewrite_isolated_lane_peer_env(
+        {
+            "IPFS_ACCELERATE_LIFECYCLE_TARGET_ID": (
+                "supervisor-track:semantic-addressed-world-model-v1-1"
+            ),
+            "IPFS_ACCELERATE_LIFECYCLE_STATE_ROOT": "/run/state/lane-1",
+        },
+        peer_index=1,
+        dead_index=0,
+    )
     assert live_master["admitted"] is False
     assert live_master["kill_coordinator"] is False
     assert live_master["in_wave_relaunch_required"] is True
     assert live_master["reason"] == "healthy_coordinator_owns_in_wave_relaunch"
+    assert live_fds["admitted"] is True
+    assert live_fds["kill_coordinator"] is False
+    assert live_fds["action"] == "lane_only_sealed_relaunch"
+    assert argv == [
+        "--state-dir",
+        "/run/state/lane-0",
+        "--state-prefix",
+        "sawm_lane_0",
+        "--task-shard-index",
+        "0",
+        "--keep",
+        "semantic-addressed-world-model-v1",
+    ]
+    assert env["IPFS_ACCELERATE_LIFECYCLE_TARGET_ID"].endswith("v1-0")
+    assert env["IPFS_ACCELERATE_LIFECYCLE_STATE_ROOT"].endswith("lane-0")
     assert dead_master["admitted"] is True
     assert dead_master["kill_coordinator"] is False
     assert dead_master["reason"] == "master_down_isolated_lane_recycle"

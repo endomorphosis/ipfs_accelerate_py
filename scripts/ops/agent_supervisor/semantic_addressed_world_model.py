@@ -17993,12 +17993,14 @@ def _admit_isolated_lane_supervisor_recycle(
     owner_alive: bool,
     master_alive: bool,
     dead_lane_count: int,
+    master_capsule_fds_live: bool = False,
 ) -> dict[str, object]:
     """Isolated dead lanes require in-wave capsule relaunch, never coordinator kill.
 
     A live ready owner plus a live master already owns fenced lane birth.
-    Killing that coordinator would interrupt healthy peer lanes.  Source
-    repair respawns the isolated lane inside the existing supervisor wave.
+    Killing that coordinator would interrupt healthy peer lanes.  When the
+    master still holds its sealed capsule FDs, one isolated lane may be
+    respawned from a live peer argv without replacing the coordinator.
     """
 
     if not owner_ready or not owner_alive:
@@ -18013,6 +18015,14 @@ def _admit_isolated_lane_supervisor_recycle(
             "kill_coordinator": False,
             "reason": "no_dead_lanes",
         }
+    if master_alive and master_capsule_fds_live:
+        return {
+            "admitted": True,
+            "kill_coordinator": False,
+            "in_wave_relaunch_required": True,
+            "action": "lane_only_sealed_relaunch",
+            "reason": "lane_only_sealed_relaunch",
+        }
     if master_alive:
         return {
             "admitted": False,
@@ -18025,6 +18035,58 @@ def _admit_isolated_lane_supervisor_recycle(
         "kill_coordinator": False,
         "reason": "master_down_isolated_lane_recycle",
     }
+
+
+def _rewrite_isolated_lane_peer_argv(
+    args: Sequence[str],
+    *,
+    peer_index: int,
+    dead_index: int,
+) -> list[str]:
+    """Copy a live peer supervisor argv onto one isolated dead lane."""
+
+    peer = int(peer_index)
+    dead = int(dead_index)
+    if peer < 0 or dead < 0 or peer == dead:
+        raise ValueError("isolated lane relaunch indexes are invalid")
+    rewritten = list(args)
+    replacements = {
+        f"/state/lane-{peer}": f"/state/lane-{dead}",
+        f"sawm_lane_{peer}": f"sawm_lane_{dead}",
+    }
+    for index, value in enumerate(rewritten):
+        for old, new in replacements.items():
+            if old in value:
+                rewritten[index] = value.replace(old, new)
+    for index, value in enumerate(rewritten[:-1]):
+        if value == "--task-shard-index" and rewritten[index + 1] == str(peer):
+            rewritten[index + 1] = str(dead)
+    return rewritten
+
+
+def _rewrite_isolated_lane_peer_env(
+    env: Mapping[str, str],
+    *,
+    peer_index: int,
+    dead_index: int,
+) -> dict[str, str]:
+    """Copy a live peer supervisor environment onto one isolated dead lane."""
+
+    peer = int(peer_index)
+    dead = int(dead_index)
+    rewritten = dict(env)
+    replacements = {
+        f"/state/lane-{peer}": f"/state/lane-{dead}",
+        f"sawm_lane_{peer}": f"sawm_lane_{dead}",
+        f"semantic-addressed-world-model-v1-{peer}": (
+            f"semantic-addressed-world-model-v1-{dead}"
+        ),
+    }
+    for key, value in list(rewritten.items()):
+        for old, new in replacements.items():
+            if old in value:
+                rewritten[key] = value.replace(old, new)
+    return rewritten
 
 
 def _m70_published_owner_is_stale_ready(config: Mapping[str, Any]) -> bool:
