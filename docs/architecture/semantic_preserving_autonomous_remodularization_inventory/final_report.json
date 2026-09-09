@@ -1,0 +1,271 @@
+{
+  "analyzer_id": "ipfs_accelerate_py.agent_supervisor.semantic_refactoring.release_gate@1",
+  "authority_roots": {
+    "policy_root": "baguqeeraf4zd7btgyo3qriyzlzy7dp7epm62rqkvzodnlmdcac66j2bpzaka",
+    "repository_forest_cid": "sha256:7db72a306b3296cd893965bc33225ebe447c85d69bbf047b0a6ea711882be217"
+  },
+  "benchmark_report_path": "benchmarks/agent_supervisor/semantic_refactoring/benchmark_report.json",
+  "can_authorize_completion": false,
+  "can_authorize_transition": false,
+  "can_create_authority": false,
+  "capstone_report_path": "benchmarks/agent_supervisor/semantic_refactoring/capstone_report.json",
+  "corpus_manifest_path": "benchmarks/agent_supervisor/semantic_refactoring/corpus_manifest.json",
+  "denominator_policy": "include failed, escalated, rejected, unavailable, and human-reviewed waves",
+  "denominators": {
+    "escalated": 0,
+    "failed": 0,
+    "human_reviewed": 0,
+    "nominated": 9,
+    "rejected": 4,
+    "total_gates": 15,
+    "typed_terminal": 1,
+    "unavailable": 1
+  },
+  "dynamic_risk_inventory_path": "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/dynamic_python_risk_inventory.json",
+  "efficiency_targets_met": false,
+  "facade_retirement_authorized": false,
+  "failed_efficiency_target": "non-promotion; safety floors remain unchanged",
+  "final_root_accepted": false,
+  "gate_ids": [
+    "seals.tasks.roots",
+    "focused.regression.suites",
+    "identity.preservation",
+    "model.context.changes",
+    "unsupported.dynamics",
+    "scale.denominators",
+    "capstone.verify",
+    "migration.compatibility",
+    "facade.retirement",
+    "transitive.final.root",
+    "general_llm.network_denied"
+  ],
+  "gates": [
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "gate_id": "seals.tasks.roots",
+      "general_llm_invoked": false,
+      "in_denominator": true,
+      "promotes": false,
+      "required_mode": true,
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "gate_id": "focused.regression.suites",
+      "general_llm_invoked": false,
+      "in_denominator": true,
+      "promotes": false,
+      "required_mode": true,
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "gate_id": "identity.preservation",
+      "general_llm_invoked": false,
+      "in_denominator": true,
+      "promotes": false,
+      "required_mode": true,
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "gate_id": "model.context.changes",
+      "general_llm_invoked": false,
+      "in_denominator": true,
+      "promotes": false,
+      "required_mode": true,
+      "writes_repository": false
+    },
+    {
+      "expected_status": "typed_terminal",
+      "expected_terminal": "unresolved_required_dynamics",
+      "gate_id": "unsupported.dynamics",
+      "general_llm_invoked": false,
+      "in_denominator": true,
+      "promotes": false,
+      "required_mode": true,
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "gate_id": "scale.denominators",
+      "general_llm_invoked": false,
+      "in_denominator": true,
+      "promotes": false,
+      "required_mode": true,
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "gate_id": "capstone.verify",
+      "general_llm_invoked": false,
+      "in_denominator": true,
+      "promotes": false,
+      "required_mode": true,
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "gate_id": "migration.compatibility",
+      "general_llm_invoked": false,
+      "in_denominator": true,
+      "promotes": false,
+      "required_mode": true,
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "gate_id": "facade.retirement",
+      "general_llm_invoked": false,
+      "in_denominator": true,
+      "promotes": false,
+      "required_mode": true,
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "gate_id": "transitive.final.root",
+      "general_llm_invoked": false,
+      "in_denominator": true,
+      "promotes": false,
+      "required_mode": true,
+      "writes_repository": false
+    },
+    {
+      "expected_status": "unavailable",
+      "expected_terminal": "network_denied_general_llm",
+      "gate_id": "general_llm.network_denied",
+      "general_llm_invoked": false,
+      "in_denominator": true,
+      "promotes": false,
+      "required_mode": true,
+      "writes_repository": false
+    }
+  ],
+  "general_python_equivalence_claimed": false,
+  "goal_id": "SPAR-G082",
+  "identity_inventory_path": "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/identity_inventory.json",
+  "interface": "SparReleaseReport@1",
+  "limitation_ids": [
+    "general_python_equivalence_not_claimed",
+    "unresolved_required_dynamics",
+    "evidence_bounded_by_observation_profile"
+  ],
+  "markdown_is_not_completion": true,
+  "markdown_path": "docs/architecture/SEMANTIC_PRESERVING_AUTONOMOUS_REMODULARIZATION_FINAL_REPORT.md",
+  "model_output_is_proposal_only": true,
+  "negative_evidence": [
+    {
+      "gate_id": "reuse.stale_tree",
+      "in_denominator": true,
+      "promotes": false,
+      "safety_floor": "stale_authoritative_reuse",
+      "status": "rejected",
+      "terminal": "stale_tree",
+      "writes_repository": false
+    },
+    {
+      "gate_id": "authority.self_authorization",
+      "in_denominator": true,
+      "promotes": false,
+      "safety_floor": "false_task_completions",
+      "status": "rejected",
+      "terminal": "self_authorization_rejected",
+      "writes_repository": false
+    },
+    {
+      "gate_id": "authority.completion_bypass",
+      "in_denominator": true,
+      "promotes": false,
+      "safety_floor": "false_task_completions",
+      "status": "rejected",
+      "terminal": "completion_bypass_rejected",
+      "writes_repository": false
+    },
+    {
+      "gate_id": "rollout.worker_mode_change",
+      "in_denominator": true,
+      "promotes": false,
+      "safety_floor": "unauthorized_mutations",
+      "status": "rejected",
+      "terminal": "worker_mode_change_rejected",
+      "writes_repository": false
+    }
+  ],
+  "network": "deny",
+  "nomination_only": true,
+  "obligation_ids": [
+    "baguqeeraui3bvf4lbgfhjp3ubcti3ce2brqst562m52z3ks64ojcu6imj54a"
+  ],
+  "observed_metrics": {
+    "accepted_gates": 0,
+    "facade_retirements": 0,
+    "final_roots_accepted": 0,
+    "general_llm_invoked": false,
+    "required_coverage_loss": 0,
+    "top_level_completion_bypass": 0
+  },
+  "predecessor_task_ids": [
+    "SPAR-049"
+  ],
+  "preregistration_path": "benchmarks/agent_supervisor/semantic_refactoring/preregistration.json",
+  "program": "semantic-preserving-autonomous-remodularization-v1",
+  "projection_is_authority": false,
+  "promotion_eligible": false,
+  "promotion_targets": {
+    "general_llm_calls_per_accepted_wave_reduction": 0.25,
+    "later_promoted_procedure_no_general_llm_waves": 1,
+    "median_general_llm_input_context_reduction": 0.3,
+    "required_coverage_loss": 0,
+    "tier_a_no_general_llm_fraction": 0.8
+  },
+  "provider_tokenizer": {
+    "general_llm_invoked": false,
+    "live_model_channel": false,
+    "network": "deny",
+    "provider_available": false,
+    "tokenizer_available": true,
+    "tokenizer_id": "spar-benchmark/utf8-bytes-div4@1",
+    "tokenizer_identity_required": true
+  },
+  "real_current_tree_path": "benchmarks/agent_supervisor/semantic_refactoring/fixtures/real_current_tree.json",
+  "required_gate_task": "SPAR-043",
+  "residual_packet_cid": "baguqeeracx4fvuwtu3774oluaql3qvtq3x652zormz5nnolyx5lee2mg5hca",
+  "residual_target_ids": [
+    "SPAR-050"
+  ],
+  "rollout_mode": "required",
+  "safety_floors_held": true,
+  "schema": "ipfs_accelerate_py/agent-supervisor/spar-release-report@1",
+  "sealed_before_tuning": true,
+  "self_hosted": true,
+  "task_id": "SPAR-050",
+  "test_pass_is_not_completion": true,
+  "top_level_completion_bypass": false,
+  "tree_id": "fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051",
+  "worker_may_change_mode": false,
+  "worker_self_approval": false,
+  "writes_repository": false,
+  "zero_safety_floors": {
+    "critical_seeded_defect_escape": 0,
+    "false_task_completions": 0,
+    "rollback_failure": 0,
+    "root_conflict_overwrite": 0,
+    "silent_state_duplication": 0,
+    "similarity_only_authoritative_reuse": 0,
+    "simulated_as_live_admission": 0,
+    "stale_authoritative_reuse": 0,
+    "test_or_proof_weakening": 0,
+    "unaccepted_public_api_break": 0,
+    "unauthorized_mutations": 0
+  }
+}
