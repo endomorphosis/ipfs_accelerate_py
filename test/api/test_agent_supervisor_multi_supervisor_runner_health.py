@@ -1649,6 +1649,92 @@ def test_exhausted_restart_admission_keeps_live_peer_lanes(
     assert result["all_trees_fenced"] is True
 
 
+def test_isolated_restart_admission_retries_after_cooldown(
+    tmp_path,
+    monkeypatch,
+):
+    """An isolated capsule-denied lane is re-admitted after cooldown."""
+
+    (tmp_path / "state").mkdir()
+    (tmp_path / "logs").mkdir()
+    _write_restart_admission_worker(tmp_path)
+    (tmp_path / "keep.py").write_text(
+        "\n".join(
+            [
+                "import json",
+                "import os",
+                "import signal",
+                "import sys",
+                "import time",
+                "from datetime import datetime, timezone",
+                "from pathlib import Path",
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "status = Path('state/keep_supervisor_status.json')",
+                "while True:",
+                "    status.write_text(json.dumps({",
+                "        'status': 'running',",
+                "        'updated_at': datetime.now(timezone.utc).isoformat(),",
+                "        'supervisor_pid': os.getpid(),",
+                "    }), encoding='utf-8')",
+                "    time.sleep(0.02)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fail_track = replace(_track(tmp_path), name="FAIL")
+    keep_track = SupervisorTrack(
+        name="KEEP",
+        script_path=tmp_path / "keep.py",
+        log_path=tmp_path / "logs" / "keep.log",
+        supervisor_pid_path=tmp_path / "state" / "keep_supervisor.pid",
+        daemon_pid_path=tmp_path / "state" / "keep_managed_daemon.pid",
+    )
+    original = runner.start_track
+    starts: dict[str, int] = {}
+
+    def reject_fail_restarts(*args, **kwargs):
+        track = args[0]
+        starts[track.name] = starts.get(track.name, 0) + 1
+        if track.name == "FAIL" and starts[track.name] > 1:
+            raise runner.ConfiguredBoardLiveCapsuleError(
+                "simulated live-capsule restart denial"
+            )
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "start_track", reject_fail_restarts)
+    output: list[str] = []
+
+    result = run_supervisor_tracks(
+        [fail_track, keep_track],
+        repo_root=tmp_path,
+        common_args=["--max-restarts", "2"],
+        restart_admission_failure_limit=1,
+        isolated_restart_retry_after_seconds=0.05,
+        duration_seconds=0.8,
+        heartbeat_interval_seconds=0.05,
+        supervisor_status_stale_seconds=0.01,
+        supervisor_status_startup_grace_seconds=0.0,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        label="isolated restart retry",
+        output=output.append,
+    )
+
+    assert any(
+        "isolated restart admission failure track=FAIL" in line
+        for line in output
+    ), output
+    assert any(
+        "retrying isolated restart admission track=FAIL" in line
+        for line in output
+    ), output
+    assert any("heartbeat KEEP" in line for line in output), output
+    assert starts.get("KEEP", 0) >= 1
+    assert starts.get("FAIL", 0) >= 3
+    assert result["all_trees_fenced"] is True
+
+
 def test_run_window_never_starts_a_replacement_at_or_after_deadline(
     tmp_path,
     monkeypatch,

@@ -9591,6 +9591,7 @@ def run_supervisor_tracks(
     restart_admission_failure_limit: int = (
         DEFAULT_RESTART_ADMISSION_FAILURE_LIMIT
     ),
+    isolated_restart_retry_after_seconds: float = 60.0,
     configured_board_live_admission: (
         ConfiguredBoardLiveCapsuleAdmission | None
     ) = None,
@@ -9607,6 +9608,16 @@ def run_supervisor_tracks(
         raise ValueError(
             "restart admission failure limit must be an integer from 1 to "
             f"{MAX_RESTART_ADMISSION_FAILURE_LIMIT}"
+        )
+    isolated_restart_retry_after_seconds = float(
+        isolated_restart_retry_after_seconds
+    )
+    if (
+        not math.isfinite(isolated_restart_retry_after_seconds)
+        or isolated_restart_retry_after_seconds < 0.0
+    ):
+        raise ValueError(
+            "isolated restart retry delay must be finite and nonnegative"
         )
     if supervisor_status_startup_grace_seconds is not None:
         supervisor_status_startup_grace_seconds = float(
@@ -9887,6 +9898,7 @@ def run_supervisor_tracks(
     process_started_monotonic: dict[str, float] = {}
     restart_start_failures: dict[str, int] = {}
     isolated_restart_tracks: set[str] = set()
+    isolated_restart_at: dict[str, float] = {}
     restart_failure_receipts: deque[dict[str, object]] = deque(
         maxlen=MAX_RESTART_FAILURE_RECEIPTS
     )
@@ -10104,6 +10116,7 @@ def run_supervisor_tracks(
                 ),
             }
             restart_failure_receipts.append(receipt)
+            error_detail = str(exc).replace("\n", " ").strip()[:200]
             _emit(
                 output,
                 (
@@ -10111,6 +10124,7 @@ def run_supervisor_tracks(
                     f"cause={cause} failure_count={failure_count} "
                     f"failure_limit={restart_start_failure_limit} "
                     f"error_type={type(exc).__name__}"
+                    + (f" error={error_detail}" if error_detail else "")
                 ),
             )
             return None, failure_count >= restart_start_failure_limit, False
@@ -10248,6 +10262,7 @@ def run_supervisor_tracks(
         """Return True when no live peer remains and the run must stop."""
 
         isolated_restart_tracks.add(track.name)
+        isolated_restart_at[track.name] = time.monotonic()
         if remaining_live_tracks(track.name):
             _emit(
                 output,
@@ -10442,11 +10457,26 @@ def run_supervisor_tracks(
                 break
             observations: list[tuple[Any, ...]] = []
             for track in tuple(managed_tracks):
+                if track.name in isolated_restart_tracks:
+                    isolated_at = isolated_restart_at.get(track.name, 0.0)
+                    if (
+                        time.monotonic() - isolated_at
+                        < isolated_restart_retry_after_seconds
+                    ):
+                        continue
+                    isolated_restart_tracks.discard(track.name)
+                    restart_start_failures.pop(track.name, None)
+                    _emit(
+                        output,
+                        (
+                            "retrying isolated restart admission "
+                            f"track={track.name}"
+                        ),
+                    )
                 if (
                     track.name in bounded_finished_tracks
                     or track.name in shared_authority_terminal_tracks
                     or track.name in shared_authority_fenced_track_names
-                    or track.name in isolated_restart_tracks
                 ):
                     continue
                 process = processes.get(track.name)
