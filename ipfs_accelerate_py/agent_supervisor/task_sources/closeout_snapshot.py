@@ -65,11 +65,16 @@ def capture_closeout_facts(connection: Any) -> dict[str, Any]:
         if table not in available:
             relations[table] = {"available": False, "rows": [], "truncated": False}
             continue
-        where = " WHERE " + predicate if predicate else ""
+        if predicate:
+            state_column = predicate.split(" ", 1)[0]
+            where = f" WHERE ({state_column} IS NULL OR ({predicate}))"
+        else:
+            where = ""
         result = connection.execute(
             f"SELECT * FROM {table}{where} ORDER BY {order} LIMIT {MAX_ROWS + 1}"
         )
         from .typed_state_owner import _result_columns
+
         columns = _result_columns(result)
         raw = result.fetchall()
         rows = [
