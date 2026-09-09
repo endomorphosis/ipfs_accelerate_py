@@ -369,9 +369,16 @@ from .task_execution_policy import (
     TypedLocalOperation,
 )
 from .worktrees import (
+    WORKTREE_POOL_SCHEMA,
     WorktreeLease,
     WorktreePool,
+    guarded_worktree_pool_mutation,
+    inspect_worktree_pool_missing_release_terminal,
+    inspect_worktree_pool_quarantine,
     python_identifier_worktree_basename,
+    worktree_pool_entry_guard_binding,
+    worktree_pool_entry_id_for_workspace,
+    worktree_pool_payload_cid,
 )
 
 REPO_ROOT = Path.cwd()
@@ -8346,6 +8353,7 @@ class PortalImplementationDaemon:
         self.strategy_path = strategy_path
         self.events_path = events_path
         self._launch_task_execution_route_binding: Mapping[str, Any] | None = None
+        self._launch_source_amendment: Any = None
         self._checkout_mutation_context = threading.local()
         self.repo_root = (repo_root or REPO_ROOT).resolve()
         self._scoped_recovery_attempts: dict[str, int] = {}
@@ -8537,6 +8545,11 @@ class PortalImplementationDaemon:
         # Optional injectable PreImplementationKernel for WPD-021 tests / composition.
         # Production default builds a hermetic kernel at gate evaluation time.
         self.pre_implementation_kernel = None
+        # Optional read-only adapter to the current receipt/packet authorities.
+        # No default is synthesized: until the planner, doctor, obligation,
+        # logic, and repair owners publish an exact resolvable bundle, model
+        # execution must terminate at the typed pre-implementation gate.
+        self.pre_implementation_authority_materials_resolver = None
         self._last_runtime_decision: Any = None
         self._last_runtime_effect_observation: Any = None
         # A completion decision is emitted before its protected checkout
@@ -8989,6 +9002,36 @@ class PortalImplementationDaemon:
                 selected = str(value).strip()
             if selected and selected not in outputs:
                 outputs.append(selected)
+        if not outputs:
+            # SPAR and other operator boards often store mutation paths as
+            # owned_paths / predicted_files rather than a dedicated outputs
+            # array. Residual packets still require exact write paths.
+            for key in ("owned_paths", "predicted_files"):
+                raw = body.get(key)
+                parts: Sequence[Any]
+                if isinstance(raw, str):
+                    parts = [item.strip() for item in raw.split(",") if item.strip()]
+                elif isinstance(raw, Sequence) and not isinstance(
+                    raw, (str, bytes, bytearray, memoryview)
+                ):
+                    parts = raw
+                else:
+                    continue
+                for item in parts:
+                    path = (
+                        str(item.get("path") or item.get("fluent_id") or "").strip()
+                        if isinstance(item, Mapping)
+                        else str(item).strip()
+                    ).replace("\\", "/")
+                    if (
+                        path
+                        and path not in outputs
+                        and "/" in path
+                        and not path.startswith("/")
+                        and ".." not in path.split("/")
+                        and not path.endswith("/")
+                    ):
+                        outputs.append(path)
 
         validation_values = (
             body.get("validations")
@@ -27423,6 +27466,213 @@ class PortalImplementationDaemon:
             ),
         )
 
+    def _attempt_launch_amendment_for_git(
+        self,
+        *,
+        source_head: str,
+        repository_tree_id: str,
+    ) -> Any:
+        """Return the admitted amendment or a descendant attempt generation."""
+
+        from ..task_sources.launch_source_amendment import LaunchSourceAmendmentError
+
+        amendment = self._launch_source_amendment
+        if amendment is None:
+            return None
+        try:
+            amendment.validate_launch_git(
+                source_head=source_head,
+                repository_tree_id=repository_tree_id,
+            )
+            return amendment
+        except LaunchSourceAmendmentError:
+            if not _git_commit_is_ancestor(
+                self.repo_root,
+                amendment.launch_source_head,
+                source_head,
+            ):
+                return None
+            return amendment.successor_for_current_generation(
+                source_head=source_head,
+                repository_tree_id=repository_tree_id,
+            )
+
+    def _resolve_pre_implementation_authority_materials(
+        self,
+        *,
+        task: PortalTask,
+        task_cid: str,
+        current_git_tree_id: str,
+        attempt: int,
+        current_git_head: str = "",
+    ) -> dict[str, Any]:
+        """Resolve one exact residual bundle without minting authority.
+
+        The adapter is deliberately absent by default.  A composition owner
+        may inject a read-only resolver backed by the current receipt and
+        packet stores; task prose or identifiers alone are never promoted into
+        planner/doctor/proof authority here.
+        """
+
+        resolver = getattr(
+            self,
+            "pre_implementation_authority_materials_resolver",
+            None,
+        )
+        if resolver is None:
+            return {}
+        if not callable(resolver):
+            raise ImplementationRetryDeferred(
+                "pre implementation authority resolver invalid",
+                backoff_seconds=300,
+            )
+        launch_amendment = self._launch_source_amendment
+        route_binding = self._launch_task_execution_route_binding
+        if launch_amendment is None or route_binding is None:
+            raise ImplementationRetryDeferred(
+                "pre implementation attempt source authority unavailable",
+                backoff_seconds=300,
+            )
+        attempt_amendment = launch_amendment
+        if current_git_head:
+            attempt_amendment = self._attempt_launch_amendment_for_git(
+                source_head=current_git_head,
+                repository_tree_id=current_git_tree_id,
+            )
+            if attempt_amendment is None:
+                raise ImplementationRetryDeferred(
+                    "pre implementation worktree differs from launch source",
+                    backoff_seconds=300,
+                )
+        try:
+            attempt_source_policy_root = attempt_amendment.attempt_policy_root(
+                route_binding
+            )
+            raw = resolver(
+                task=task,
+                task_cid=task_cid,
+                current_git_tree_id=current_git_tree_id,
+                execution_route_binding=(
+                    dict(route_binding)
+                ),
+                launch_source_amendment=attempt_amendment.to_dict(),
+                attempt_source_policy_root=attempt_source_policy_root,
+                attempt=int(attempt),
+            )
+        except Exception as exc:
+            raise ImplementationRetryDeferred(
+                "pre implementation authority resolution unavailable",
+                backoff_seconds=300,
+            ) from exc
+        if not isinstance(raw, Mapping):
+            raise ImplementationRetryDeferred(
+                "pre implementation authority materials invalid",
+                backoff_seconds=300,
+            )
+        required = {
+            "forest_roots",
+            "residual_packet",
+            "obligation_graph_cid",
+            "plan_cid",
+            "doctor_cid",
+            "authority_receipt_cids",
+        }
+        allowed = required | {"authority_receipt_resolver"}
+        if set(raw) - allowed or not required.issubset(raw):
+            raise ImplementationRetryDeferred(
+                "pre implementation authority materials invalid",
+                backoff_seconds=300,
+            )
+
+        from ..planning.residual_llm_packet import (
+            ResidualLlmPacket,
+            ResidualLlmPacketError,
+        )
+        from .implementation_disposition import ImplementationForestRoots
+
+        forest_value = raw.get("forest_roots")
+        try:
+            forest_roots = (
+                forest_value
+                if isinstance(forest_value, ImplementationForestRoots)
+                else ImplementationForestRoots.from_dict(forest_value)
+            )
+        except (TypeError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                "pre implementation forest roots invalid",
+                backoff_seconds=300,
+            ) from exc
+        if (
+            str(route_binding.get("task_alias") or "") != task.task_id
+            or str(route_binding.get("task_cid") or "") != task_cid
+            or forest_roots.git_tree_id != current_git_tree_id
+            or forest_roots.repository_forest_cid
+            != attempt_amendment.launch_source_forest_root
+            or forest_roots.policy_root != attempt_source_policy_root
+        ):
+            raise ImplementationRetryDeferred(
+                "pre implementation forest or route binding mismatch",
+                backoff_seconds=300,
+            )
+
+        packet_value = raw.get("residual_packet")
+        try:
+            packet = (
+                packet_value
+                if isinstance(packet_value, ResidualLlmPacket)
+                else ResidualLlmPacket.from_dict(packet_value)
+            )
+        except (ResidualLlmPacketError, TypeError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                "pre implementation residual packet invalid",
+                backoff_seconds=300,
+            ) from exc
+        declared_outputs = set(task_declared_output_paths(task))
+        declared_validation = tuple(task.validation or ())
+        expected_authority_roots = {
+            "repository_forest_cid": forest_roots.repository_forest_cid,
+            "policy_root": forest_roots.policy_root,
+        }
+        if (
+            packet.task_id != task_cid
+            or packet.repository_id != forest_roots.repository_id
+            or packet.tree_id != forest_roots.git_tree_id
+            or packet.forest_id != forest_roots.repository_forest_cid
+            or not set(packet.write_paths).issubset(declared_outputs)
+            or tuple(packet.validation_commands) != declared_validation
+            or dict(packet.authority_roots or {}) != expected_authority_roots
+            or str(raw.get("obligation_graph_cid") or "").strip()
+            not in set(packet.obligation_ids)
+        ):
+            raise ImplementationRetryDeferred(
+                "pre implementation residual packet binding mismatch",
+                backoff_seconds=300,
+            )
+        receipt_cids = raw.get("authority_receipt_cids")
+        if not isinstance(receipt_cids, Mapping):
+            raise ImplementationRetryDeferred(
+                "pre implementation authority receipt bundle invalid",
+                backoff_seconds=300,
+            )
+        receipt_resolver = raw.get("authority_receipt_resolver")
+        if receipt_resolver is not None and not callable(receipt_resolver):
+            raise ImplementationRetryDeferred(
+                "pre implementation authority receipt resolver invalid",
+                backoff_seconds=300,
+            )
+        return {
+            "forest_roots": forest_roots,
+            "residual_packet": packet,
+            "residual_packet_cid": packet.packet_id,
+            "obligation_graph_cid": str(
+                raw.get("obligation_graph_cid") or ""
+            ).strip(),
+            "plan_cid": str(raw.get("plan_cid") or "").strip(),
+            "doctor_cid": str(raw.get("doctor_cid") or "").strip(),
+            "authority_receipt_cids": dict(receipt_cids),
+            "authority_receipt_resolver": receipt_resolver,
+        }
+
     def _evaluate_pre_implementation_provider_gate(
         self,
         *,
@@ -27439,6 +27689,7 @@ class PortalImplementationDaemon:
 
         try:
             from .pre_implementation_provider_gate import (
+                assert_provider_dispatch_allowed,
                 evaluate_provider_gate,
                 build_forest_roots_from_identity,
             )
@@ -27462,88 +27713,415 @@ class PortalImplementationDaemon:
             {"repo_root": str(self.repo_root), "kind": "repository"}
         )
         try:
-            head = (
-                subprocess.run(
-                    ["git", "rev-parse", "HEAD"],
-                    cwd=worktree_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                ).stdout
-                or ""
-            ).strip() or "HEAD"
-            tree = (
-                subprocess.run(
-                    ["git", "rev-parse", "HEAD^{tree}"],
-                    cwd=worktree_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                ).stdout
-                or ""
-            ).strip() or head
-        except OSError:
-            head = "HEAD"
-            tree = "HEAD"
-        forest = build_forest_roots_from_identity(
-            repository_id=f"repository:{repo_id}",
-            repository_forest_cid=implementation_disposition_cid(
-                {"head": head, "tree": tree}
-            ),
-            git_tree_id=tree if " " not in tree else implementation_disposition_cid(
-                {"tree": tree}
-            ),
-            policy_root=implementation_disposition_cid(
-                {"policy": "wpd-pre-implementation@1"}
-            ),
-        )
+            head_result = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            tree_result = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD^{tree}"],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            status_result = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=all",
+                    "--ignore-submodules=none",
+                ],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            raise ImplementationRetryDeferred(
+                "pre implementation Git identity unavailable",
+                backoff_seconds=300,
+            ) from exc
+        head = str(head_result.stdout or "").strip()
+        tree = str(tree_result.stdout or "").strip()
+        object_id_pattern = r"(?:[0-9a-f]{40}|[0-9a-f]{64})"
+        if (
+            head_result.returncode != 0
+            or tree_result.returncode != 0
+            or status_result.returncode != 0
+            or re.fullmatch(object_id_pattern, head) is None
+            or re.fullmatch(object_id_pattern, tree) is None
+        ):
+            raise ImplementationRetryDeferred(
+                "pre implementation Git identity unavailable",
+                backoff_seconds=300,
+            )
+        launch_amendment = self._launch_source_amendment
+        if launch_amendment is not None:
+            if not _launch_amendment_covers_git(
+                launch_amendment,
+                source_head=head,
+                repository_tree_id=tree,
+                repo_root=self.repo_root,
+            ):
+                raise ImplementationRetryDeferred(
+                    "pre implementation worktree differs from launch source",
+                    backoff_seconds=300,
+                )
+            if str(status_result.stdout or ""):
+                raise ImplementationRetryDeferred(
+                    "pre implementation launch worktree is not an exact preimage",
+                    backoff_seconds=300,
+                )
         kernel = getattr(self, "pre_implementation_kernel", None)
+        materials = self._resolve_pre_implementation_authority_materials(
+            task=task,
+            task_cid=task_cid,
+            current_git_tree_id=tree,
+            current_git_head=head,
+            attempt=attempt,
+        )
+        if materials and str(status_result.stdout or ""):
+            raise ImplementationRetryDeferred(
+                "pre implementation dirty overlay authority unavailable",
+                backoff_seconds=300,
+            )
+        forest = materials.get("forest_roots")
+        if forest is None:
+            # This exact local projection can support a fail-closed kernel
+            # disposition only.  It is not accepted as a production source of
+            # model authority; the residual resolver must supply roots bound
+            # to an immutable launch route before authorization is possible.
+            forest = build_forest_roots_from_identity(
+                repository_id=f"repository:{repo_id}",
+                repository_forest_cid=implementation_disposition_cid(
+                    {"head": head, "tree": tree}
+                ),
+                git_tree_id=(
+                    tree
+                    if " " not in tree
+                    else implementation_disposition_cid({"tree": tree})
+                ),
+                policy_root=implementation_disposition_cid(
+                    {"policy": "wpd-pre-implementation@1"}
+                ),
+            )
         decision = evaluate_provider_gate(
             task_cid=task_cid,
             forest_roots=forest,
             attempt=int(attempt),
+            residual_packet_cid=str(
+                materials.get("residual_packet_cid") or ""
+            ),
             kernel=kernel,
-            allow_legacy_residual=True,
+            allow_legacy_residual=False,
+            obligation_graph_cid=str(
+                materials.get("obligation_graph_cid") or ""
+            ),
+            plan_cid=str(materials.get("plan_cid") or ""),
+            doctor_cid=str(materials.get("doctor_cid") or ""),
+            authority_receipt_cids=dict(
+                materials.get("authority_receipt_cids") or {}
+            ),
+            authority_receipt_resolver=materials.get(
+                "authority_receipt_resolver"
+            ),
         )
-        skip_provider = decision.skip_provider
-        provider_authorized = decision.provider_authorized
-        disposition = decision.disposition.value
-        reason_code = decision.reason_code
         owner_recovery_reserved = bool(
             str(getattr(task, "task_id", "") or "")
             == VRIF_BENCHMARK_RECOVERY_TASK_ID
-            and skip_provider
-            and disposition == "abstain_review"
-            and reason_code == "no_analytical_close"
+            and decision.skip_provider
+            and decision.disposition.value == "abstain_review"
+            and decision.reason_code == "no_analytical_close"
         )
-        # Implementation-authorized auto tasks with no unique analytical close
-        # still need the reviewed Grok/Codex route.  The kernel remains honest
-        # about abstaining; this board cannot mint residual authority receipts
-        # during bootstrap, so block-on-abstain would freeze the entire board.
-        if (
-            skip_provider
-            and reason_code == "no_analytical_close"
-            and bool(getattr(self, "implement", True))
-            and self._lgswf_writer_path(getattr(task, "task_id", "")) is None
-            and not owner_recovery_reserved
-        ):
-            skip_provider = False
-            provider_authorized = True
-            reason_code = "no_analytical_close_provider_dispatched"
+        # Exercise the canonical assertion here as a consistency check whenever
+        # the immutable decision authorizes a provider.  The spawn boundary
+        # repeats this check immediately before process creation.
+        if not decision.skip_provider:
+            assert_provider_dispatch_allowed(decision)
         return {
-            "skip_provider": skip_provider,
-            "provider_authorized": provider_authorized,
-            "disposition": disposition,
-            "reason_code": reason_code,
+            "skip_provider": decision.skip_provider,
+            "provider_authorized": decision.provider_authorized,
+            "disposition": decision.disposition.value,
+            "reason_code": decision.reason_code,
             "receipt_cid": decision.receipt_cid,
             "residual_packet_cid": decision.residual_packet_cid,
             "provider_hook_count": decision.provider_hook_count,
             "owner_recovery_reserved": owner_recovery_reserved,
+            "_decision": decision,
+            "_residual_packet": materials.get("residual_packet"),
             "event": decision.to_event_payload(
                 task_id=task.task_id,
                 attempt=int(attempt),
             ),
         }
+
+    def _prepare_residual_provider_handoff(
+        self,
+        *,
+        provider_gate: Mapping[str, Any],
+        task: PortalTask,
+        attempt: int,
+        checkpoint_dir: Path,
+        command: Sequence[str],
+        workspace_path: Path,
+        lifecycle_record: WorkspaceLifecycleRecord | None,
+    ) -> dict[str, Any]:
+        """Bind an authorized gate to the existing sealed provider wrapper."""
+
+        from .pre_implementation_provider_gate import (
+            ProviderGateDecision,
+            assert_provider_dispatch_allowed,
+        )
+        from .residual_provider_invocation import (
+            PathLease,
+            build_residual_provider_invocation,
+        )
+
+        decision = provider_gate.get("_decision")
+        if not isinstance(decision, ProviderGateDecision):
+            raise ImplementationRetryDeferred(
+                "residual provider gate decision unavailable",
+                backoff_seconds=300,
+            )
+        assert_provider_dispatch_allowed(decision)
+        packet = provider_gate.get("_residual_packet")
+        packet_cid = str(getattr(packet, "packet_id", "") or "")
+        if not packet_cid or packet_cid != decision.residual_packet_cid:
+            raise ImplementationRetryDeferred(
+                "residual provider packet body unavailable",
+                backoff_seconds=300,
+            )
+        canonical_task_cid = self._canonical_ref(task)
+        normalized_workspace = str(workspace_path.resolve(strict=False))
+        if (
+            lifecycle_record is None
+            or lifecycle_record.task_id != task.task_id
+            or lifecycle_record.canonical_task_cid != canonical_task_cid
+            or lifecycle_record.attempt != int(attempt)
+            or lifecycle_record.state
+            not in {
+                WorkspaceLifecycleState.PREPARING,
+                WorkspaceLifecycleState.ACTIVE,
+            }
+            or not lifecycle_record.lease_id
+            or lifecycle_record.fence < 1
+            or str(Path(lifecycle_record.workspace_path).resolve(strict=False))
+            != normalized_workspace
+        ):
+            raise ImplementationRetryDeferred(
+                "residual provider requires exact fenced worktree lifecycle",
+                backoff_seconds=300,
+            )
+        permitted_paths = tuple(getattr(packet, "write_paths", ()) or ())
+        if not permitted_paths:
+            raise ImplementationRetryDeferred(
+                "residual provider path lease unavailable",
+                backoff_seconds=300,
+            )
+        path_lease = PathLease(
+            permitted_write_paths=permitted_paths,
+            lease_id=lifecycle_record.lease_id,
+        )
+        invocation = build_residual_provider_invocation(
+            require_path_lease=True,
+        )
+        base_env = self._implementation_process_environment(
+            task,
+            attempt=attempt,
+            checkpoint_dir=checkpoint_dir,
+        )
+        context = invocation.prepare(
+            packet,
+            path_lease=path_lease,
+            base_env=base_env,
+            base_argv=command,
+            attempt=attempt,
+        )
+        preparation_phase = "command" if command else "precommand"
+        receipt_path = checkpoint_dir / (
+            f"residual-provider-handoff-attempt-{int(attempt)}-"
+            f"{preparation_phase}.prepared.json"
+        )
+        invoked_receipt_path = checkpoint_dir / (
+            f"residual-provider-handoff-attempt-{int(attempt)}.invoked.json"
+        )
+        prepared_receipt = invocation.prepare_receipt(context)
+        write_json_atomic(
+            receipt_path,
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "residual-provider-handoff@1"
+                ),
+                "stage": "prepared",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "gate_receipt_cid": decision.receipt_cid,
+                "residual_packet_cid": packet_cid,
+                "workspace_lifecycle_record_id": lifecycle_record.record_id,
+                "workspace_lease_id": lifecycle_record.lease_id,
+                "workspace_fence": lifecycle_record.fence,
+                "authoritative": False,
+                "diagnostic_only": True,
+                "receipt": prepared_receipt.to_dict(),
+            },
+        )
+        return {
+            "decision": decision,
+            "packet": packet,
+            "path_lease": path_lease,
+            "invocation": invocation,
+            "context": context,
+            "base_env": base_env,
+            "receipt_path": receipt_path,
+            "invoked_receipt_path": invoked_receipt_path,
+            "workspace_path": normalized_workspace,
+            "workspace_lifecycle_record": lifecycle_record,
+        }
+
+    def _assert_residual_provider_lifecycle_current(
+        self,
+        *,
+        handoff: Mapping[str, Any],
+        task: PortalTask,
+        attempt: int,
+        workspace_path: Path,
+    ) -> WorkspaceLifecycleRecord:
+        """Re-open the exact active lease/fence at the provider spawn edge."""
+
+        expected = handoff.get("workspace_lifecycle_record")
+        if not isinstance(expected, WorkspaceLifecycleRecord):
+            raise RuntimeError(
+                "provider dispatch requires a fenced worktree lifecycle"
+            )
+        normalized_workspace = workspace_path.resolve(strict=False)
+        normalized_repo_root = Path(self.repo_root).resolve(strict=False)
+        observed = self.worktree_lifecycle.load_workspace(workspace_path)
+        if (
+            observed is None
+            or expected.state is not WorkspaceLifecycleState.ACTIVE
+            or observed.task_id != task.task_id
+            or observed.canonical_task_cid != self._canonical_ref(task)
+            or observed.attempt != int(attempt)
+            or observed.state is not WorkspaceLifecycleState.ACTIVE
+            or observed.record_id != expected.record_id
+            or observed.lease_id != expected.lease_id
+            or observed.fence != expected.fence
+            or observed.owner != expected.owner
+            or observed.lane_id != expected.lane_id
+            or observed.branch != expected.branch
+            or observed.merge_target != expected.merge_target
+            or observed.state_dir != expected.state_dir
+            or observed.expires_at != expected.expires_at
+            or observed.expires_at <= time.time()
+            or Path(observed.repo_root).resolve(strict=False)
+            != normalized_repo_root
+            or Path(observed.workspace_path).resolve(strict=False)
+            != normalized_workspace
+            or normalized_workspace == normalized_repo_root
+            or owner_liveness(
+                observed.owner,
+                proc_root=self.worktree_lifecycle.proc_root,
+            )
+            is not OwnerLiveness.ALIVE
+        ):
+            raise RuntimeError(
+                "provider dispatch worktree lease or fence is stale"
+            )
+        if (
+            not self._worktree_path_registered_in_repo(
+                normalized_repo_root,
+                normalized_workspace,
+            )
+            or self._git_current_branch(normalized_workspace)
+            != observed.branch
+        ):
+            raise RuntimeError(
+                "provider dispatch worktree registration or branch is stale"
+            )
+        packet = handoff.get("packet")
+        expected_tree = str(getattr(packet, "tree_id", "") or "")
+        tree_result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{tree}"],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        status_result = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "--ignore-submodules=none",
+            ],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        observed_tree = str(tree_result.stdout or "").strip()
+        if (
+            tree_result.returncode != 0
+            or status_result.returncode != 0
+            or not expected_tree
+            or observed_tree != expected_tree
+            or bool(str(status_result.stdout or ""))
+        ):
+            raise RuntimeError(
+                "provider dispatch source tree or overlay is stale"
+            )
+        return observed
+
+    @staticmethod
+    def _persist_residual_provider_invocation_receipt(
+        *,
+        handoff: Mapping[str, Any],
+        task: PortalTask,
+        attempt: int,
+        receipt: Any,
+    ) -> None:
+        decision = handoff.get("decision")
+        packet = handoff.get("packet")
+        receipt_path = handoff.get("invoked_receipt_path")
+        lifecycle_record = handoff.get("workspace_lifecycle_record")
+        if not isinstance(receipt_path, Path):
+            raise RuntimeError("residual provider receipt path unavailable")
+        write_json_atomic(
+            receipt_path,
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "residual-provider-handoff@1"
+                ),
+                "stage": "invoked",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "gate_receipt_cid": str(
+                    getattr(decision, "receipt_cid", "") or ""
+                ),
+                "residual_packet_cid": str(
+                    getattr(packet, "packet_id", "") or ""
+                ),
+                "workspace_lifecycle_record_id": str(
+                    getattr(lifecycle_record, "record_id", "") or ""
+                ),
+                "workspace_lease_id": str(
+                    getattr(lifecycle_record, "lease_id", "") or ""
+                ),
+                "workspace_fence": int(
+                    getattr(lifecycle_record, "fence", 0) or 0
+                ),
+                "authoritative": False,
+                "diagnostic_only": True,
+                "receipt": receipt.to_dict(),
+            },
+        )
 
     def _retain_task_claim_for_handoff_exception(
         self,
@@ -27948,6 +28526,11 @@ class PortalImplementationDaemon:
             elif retry_probe_eligible:
                 # Provider-only context stays lazy until the disposable local
                 # proof establishes that a fresh provider workspace is needed.
+                if not self.use_ephemeral_worktree:
+                    raise ImplementationRetryDeferred(
+                        "residual provider requires isolated fenced worktree",
+                        backoff_seconds=300,
+                    )
                 if self._implementation_cancel_requested():
                     raise ImplementationRetryDeferred(
                         "implementation dispatch cancelled"
@@ -27963,8 +28546,21 @@ class PortalImplementationDaemon:
                     )
                 prompt = ""
             else:
-                self._require_primary_provider_readiness(task)
-                prompt = self._build_implementation_prompt(task, attempt)
+                # Provider readiness and provider-facing context are resolved
+                # only after the exact pre-implementation kernel authorizes a
+                # sealed residual.  Compiling the legacy full-task prompt here
+                # would do work, and persist context, for an unauthorized
+                # route that must terminate before provider selection.
+                if not self.use_ephemeral_worktree:
+                    raise ImplementationRetryDeferred(
+                        "residual provider requires isolated fenced worktree",
+                        backoff_seconds=300,
+                    )
+                if self._implementation_cancel_requested():
+                    raise ImplementationRetryDeferred(
+                        "implementation dispatch cancelled"
+                    )
+                prompt = ""
         except ImplementationRetryDeferred as exc:
             canonical_task_cid = self._canonical_ref(task)
             reason_key = exc.reason.replace(" ", "_")
@@ -28137,6 +28733,8 @@ class PortalImplementationDaemon:
         provider_route_receipt: dict[str, Any] = {}
         provider_route_receipt_path: Path | None = None
         operator_prepared_outputs: tuple[dict[str, Any], ...] = ()
+        provider_gate: dict[str, Any] = {}
+        residual_handoff: dict[str, Any] = {}
 
         try:
             acquired_lock, lock_reason, existing_lock = (
@@ -28172,7 +28770,7 @@ class PortalImplementationDaemon:
             )
             timeout_policy = self._implementation_timeout_policy(task)
             if self.use_ephemeral_worktree:
-                if not retry_probe_eligible and not owner_recovery_task:
+                if deterministic_only:
                     context_receipt_path = (
                         self._persist_implementation_context_receipt(
                             task,
@@ -28232,11 +28830,11 @@ class PortalImplementationDaemon:
                         )
                         return backoff_result
                     try:
-                        self._require_primary_provider_readiness(task)
-                        prompt = self._build_implementation_prompt(
-                            task,
-                            attempt,
-                        )
+                        if self._implementation_cancel_requested():
+                            raise ImplementationRetryDeferred(
+                                "implementation dispatch cancelled"
+                            )
+                        prompt = ""
                     except ImplementationRetryDeferred as exc:
                         if exc.backoff_seconds > 0:
                             self.task_queue.defer(
@@ -28264,12 +28862,6 @@ class PortalImplementationDaemon:
                             deferred_result,
                         )
                         return deferred_result
-                    context_receipt_path = (
-                        self._persist_implementation_context_receipt(
-                            task,
-                            attempt,
-                        )
-                    )
                     ephemeral_result = (
                         self._run_implementation_in_ephemeral_worktree(
                             task=task,
@@ -28443,6 +29035,81 @@ class PortalImplementationDaemon:
                 baseline_ref = ""
                 baseline_branch = ""
             if not deterministic_only:
+                provider_gate = self._evaluate_pre_implementation_provider_gate(
+                    task=task,
+                    attempt=attempt,
+                    worktree_path=workspace_path,
+                )
+                if provider_gate.get("skip_provider"):
+                    disposition = str(
+                        provider_gate.get("disposition") or ""
+                    )
+                    reason_code = str(
+                        provider_gate.get("reason_code") or ""
+                    )
+                    backoff_seconds = 300
+                    reason = (
+                        "pre_implementation_"
+                        f"{disposition}_{reason_code}"
+                    )
+                    self.task_queue.defer(
+                        self._canonical_ref(task),
+                        backoff_seconds,
+                        reason=reason,
+                    )
+                    self.task_queue.save()
+                    self._restore_task_attempt(
+                        state,
+                        task,
+                        max(0, attempt - 1),
+                    )
+                    if not state.implementation_in_progress:
+                        self._clear_active_execution_state(
+                            state,
+                            clear_task=True,
+                        )
+                    state.save(self.state_path)
+                    result = {
+                        "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "returncode": 1,
+                        "deferred": True,
+                        "retryable": True,
+                        "reason": reason,
+                        "disposition": disposition,
+                        "reason_code": reason_code,
+                        "pre_implementation_gate": dict(
+                            provider_gate.get("event") or {}
+                        ),
+                        "failure_kind": (
+                            LifecycleFailureKind.LIFECYCLE_SETUP.value
+                        ),
+                        "provider_call_allowed": False,
+                        "provider_dispatched": False,
+                        "attempt_consumed": False,
+                        "backoff_seconds": backoff_seconds,
+                        "workspace_path": str(workspace_path),
+                        "context_receipt_path": str(context_receipt_path),
+                    }
+                    self._record_event(
+                        "implementation_retry_deferred",
+                        result,
+                    )
+                    return result
+                preliminary_handoff = (
+                    self._prepare_residual_provider_handoff(
+                        provider_gate=provider_gate,
+                        task=task,
+                        attempt=attempt,
+                        checkpoint_dir=checkpoint_dir,
+                        command=(),
+                        workspace_path=workspace_path,
+                        lifecycle_record=None,
+                    )
+                )
+                prompt = str(preliminary_handoff["context"].prompt_body)
+            if not deterministic_only:
                 _prepare_provider_route_receipt(
                     provider_route_receipt_path
                 )
@@ -28457,6 +29124,17 @@ class PortalImplementationDaemon:
                     state=state,
                 )
             )
+            if command:
+                residual_handoff = self._prepare_residual_provider_handoff(
+                    provider_gate=provider_gate,
+                    task=task,
+                    attempt=attempt,
+                    checkpoint_dir=checkpoint_dir,
+                    command=command,
+                    workspace_path=workspace_path,
+                    lifecycle_record=None,
+                )
+                prompt = str(residual_handoff["context"].prompt_body)
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -28487,6 +29165,11 @@ class PortalImplementationDaemon:
                     ),
                 },
             )
+            if provider_gate:
+                self._record_event(
+                    "pre_implementation_kernel_evaluated",
+                    dict(provider_gate.get("event") or {}),
+                )
             with _open_private_implementation_log(log_path, "w") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
@@ -28507,6 +29190,41 @@ class PortalImplementationDaemon:
                     )
                 else:
                     def invoke_provider() -> subprocess.CompletedProcess[str]:
+                        from .pre_implementation_provider_gate import (
+                            ProviderGateDecision,
+                            assert_provider_dispatch_allowed,
+                        )
+
+                        gate_decision = residual_handoff.get("decision")
+                        invocation = residual_handoff.get("invocation")
+                        packet = residual_handoff.get("packet")
+                        path_lease = residual_handoff.get("path_lease")
+                        prepared_context = residual_handoff.get("context")
+                        base_env = residual_handoff.get("base_env")
+                        if not isinstance(
+                            gate_decision,
+                            ProviderGateDecision,
+                        ):
+                            raise RuntimeError(
+                                "provider dispatch requires an immutable "
+                                "pre-implementation gate decision"
+                            )
+                        assert_provider_dispatch_allowed(gate_decision)
+                        self._assert_residual_provider_lifecycle_current(
+                            handoff=residual_handoff,
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=workspace_path,
+                        )
+                        if not (
+                            callable(getattr(invocation, "invoke", None))
+                            and packet is not None
+                            and prepared_context is not None
+                            and isinstance(base_env, Mapping)
+                        ):
+                            raise RuntimeError(
+                                "sealed residual provider handoff unavailable"
+                            )
                         self._mark_provider_launch_boundary(
                             state,
                             task=task,
@@ -28522,35 +29240,79 @@ class PortalImplementationDaemon:
                                 workspace_path=workspace_path,
                             )
                         )
-                        return run_process_group_stream(
-                            command,
-                            cwd=workspace_path,
-                            stdout=log_fh,
-                            input_text=prompt,
-                            env=self._implementation_process_environment(
-                                task,
+
+                        def invoke_sealed(
+                            *,
+                            prompt: str,
+                            env: Mapping[str, str],
+                            argv_bindings: Mapping[str, str],
+                            packet_cid: str,
+                        ) -> subprocess.CompletedProcess[str]:
+                            del argv_bindings
+                            assert_provider_dispatch_allowed(gate_decision)
+                            self._assert_residual_provider_lifecycle_current(
+                                handoff=residual_handoff,
+                                task=task,
                                 attempt=attempt,
-                                checkpoint_dir=checkpoint_dir,
-                            ),
-                            inherit_environment=False,
-                            pass_fds=self._accepted_control_plane_pass_fds(
-                                command
-                            ),
-                            timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_timeout_seconds=(
-                                timeout_policy.progress_timeout_seconds
-                                if timeout_policy.progress_aware
-                                else None
-                            ),
-                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_paths=(checkpoint_dir,),
-                            on_started=birth_callback,
-                            on_progress=self._implementation_progress_observer(
-                                state,
-                                task,
-                                attempt=attempt,
-                            ),
+                                workspace_path=workspace_path,
+                            )
+                            if (
+                                packet_cid != gate_decision.residual_packet_cid
+                                or prompt != prepared_context.prompt_body
+                                or dict(env) != dict(prepared_context.environment)
+                            ):
+                                raise RuntimeError(
+                                    "sealed residual provider context drifted"
+                                )
+                            return run_process_group_stream(
+                                command,
+                                cwd=workspace_path,
+                                stdout=log_fh,
+                                input_text=prompt,
+                                env=dict(env),
+                                inherit_environment=False,
+                                pass_fds=(
+                                    self._accepted_control_plane_pass_fds(
+                                        command
+                                    )
+                                ),
+                                timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_timeout_seconds=(
+                                    timeout_policy.progress_timeout_seconds
+                                    if timeout_policy.progress_aware
+                                    else None
+                                ),
+                                max_timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_paths=(checkpoint_dir,),
+                                on_started=birth_callback,
+                                on_progress=(
+                                    self._implementation_progress_observer(
+                                        state,
+                                        task,
+                                        attempt=attempt,
+                                    )
+                                ),
+                            )
+
+                        receipt, completed_provider = invocation.invoke(
+                            packet,
+                            invoke_sealed,
+                            path_lease=path_lease,
+                            base_env=dict(base_env),
+                            base_argv=command,
+                            attempt=attempt,
                         )
+                        self._persist_residual_provider_invocation_receipt(
+                            handoff=residual_handoff,
+                            task=task,
+                            attempt=attempt,
+                            receipt=receipt,
+                        )
+                        return completed_provider
 
                     completed = self._decision_runtime_mutation(
                         "command_invocation",
@@ -43558,6 +44320,8 @@ class PortalImplementationDaemon:
         provider_filesystem_boundary_receipt: dict[str, Any] = {}
         provider_dispatched = False
         owner_recovery_reserved = False
+        provider_gate: dict[str, Any] = {}
+        residual_handoff: dict[str, Any] = {}
         seed_replayable_proposal_ids: tuple[str, ...] = ()
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         provider_route_receipt_path = (
@@ -43761,12 +44525,60 @@ class PortalImplementationDaemon:
             ] = compact_project_dependency_preflight_receipt(
                 dependency_preflight
             )
+            if not (
+                deterministic_only
+                or retry_no_change_probe_only
+            ):
+                provider_gate = self._evaluate_pre_implementation_provider_gate(
+                    task=task,
+                    attempt=attempt,
+                    worktree_path=worktree_path,
+                )
+                owner_recovery_reserved = bool(
+                    provider_gate.get("owner_recovery_reserved") is True
+                    and self._vrif_benchmark_owner_recovery_task_contract(task)
+                )
+                if provider_gate.get("skip_provider"):
+                    writer_path = self._lgswf_writer_path(task.task_id)
+                    disposition = str(
+                        provider_gate.get("disposition") or ""
+                    )
+                    reason_code = str(
+                        provider_gate.get("reason_code") or ""
+                    )
+                    if (
+                        writer_path is None
+                        and not owner_recovery_reserved
+                        and disposition != "closed_deterministic"
+                    ):
+                        raise ImplementationRetryDeferred(
+                            "pre implementation "
+                            f"{disposition} {reason_code}",
+                            backoff_seconds=300,
+                        )
+                else:
+                    self._require_primary_provider_readiness(task)
+                    preliminary_handoff = (
+                    self._prepare_residual_provider_handoff(
+                        provider_gate=provider_gate,
+                        task=task,
+                        attempt=attempt,
+                        checkpoint_dir=checkpoint_dir,
+                        command=(),
+                        workspace_path=worktree_path,
+                        lifecycle_record=lifecycle_record,
+                    )
+                    )
+                    prompt = str(
+                        preliminary_handoff["context"].prompt_body
+                    )
             command = (
                 []
                 if (
                     deterministic_only
                     or retry_no_change_probe_only
                     or self._vrif_benchmark_owner_recovery_task_contract(task)
+                    or provider_gate.get("skip_provider")
                 )
                 else self._build_implementation_command(
                     worktree_path,
@@ -43810,6 +44622,20 @@ class PortalImplementationDaemon:
                             "lifecycle_finalize": lifecycle_finalize,
                         },
                     )
+            if command:
+                # Bind the process-facing packet to the ACTIVE lifecycle
+                # record.  mark_active advances the fence, so a handoff made
+                # from the earlier PREPARING record would already be stale.
+                residual_handoff = self._prepare_residual_provider_handoff(
+                    provider_gate=provider_gate,
+                    task=task,
+                    attempt=attempt,
+                    checkpoint_dir=checkpoint_dir,
+                    command=command,
+                    workspace_path=worktree_path,
+                    lifecycle_record=lifecycle_record,
+                )
+                prompt = str(residual_handoff["context"].prompt_body)
             self._mark_implementation_started(
                 state,
                 task=task,
@@ -43901,17 +44727,6 @@ class PortalImplementationDaemon:
                     # WPD-021: PreImplementationKernel gate — provider path is
                     # unreachable unless disposition is residual_llm_authorized
                     # with a residual packet CID.
-                    provider_gate = self._evaluate_pre_implementation_provider_gate(
-                        task=task,
-                        attempt=attempt,
-                        worktree_path=worktree_path,
-                    )
-                    owner_recovery_reserved = bool(
-                        provider_gate.get("owner_recovery_reserved") is True
-                        and self._vrif_benchmark_owner_recovery_task_contract(
-                            task
-                        )
-                    )
                     self._record_event(
                         "pre_implementation_kernel_evaluated",
                         dict(provider_gate.get("event") or {}),
@@ -44010,18 +44825,41 @@ class PortalImplementationDaemon:
                     else:
                         def invoke_provider() -> subprocess.CompletedProcess[str]:
                             nonlocal provider_dispatched
-                            # Fail closed if gate identity drifted.
-                            if not provider_gate.get("provider_authorized"):
-                                raise RuntimeError(
-                                    "provider dispatch blocked by pre-implementation kernel"
-                                )
-                            provider_environment = (
-                                self._implementation_process_environment(
-                                    task,
-                                    attempt=attempt,
-                                    checkpoint_dir=checkpoint_dir,
-                                )
+                            # Reconstruct no authority from booleans.  Require
+                            # the exact immutable decision and invoke the
+                            # canonical assertion at the process-spawn edge.
+                            from .pre_implementation_provider_gate import (
+                                ProviderGateDecision,
+                                assert_provider_dispatch_allowed,
                             )
+
+                            gate_decision = residual_handoff.get("decision")
+                            if not isinstance(gate_decision, ProviderGateDecision):
+                                raise RuntimeError(
+                                    "provider dispatch requires an immutable "
+                                    "pre-implementation gate decision"
+                                )
+                            assert_provider_dispatch_allowed(gate_decision)
+                            self._assert_residual_provider_lifecycle_current(
+                                handoff=residual_handoff,
+                                task=task,
+                                attempt=attempt,
+                                workspace_path=worktree_path,
+                            )
+                            invocation = residual_handoff.get("invocation")
+                            packet = residual_handoff.get("packet")
+                            path_lease = residual_handoff.get("path_lease")
+                            prepared_context = residual_handoff.get("context")
+                            base_env = residual_handoff.get("base_env")
+                            if not (
+                                callable(getattr(invocation, "invoke", None))
+                                and packet is not None
+                                and prepared_context is not None
+                                and isinstance(base_env, Mapping)
+                            ):
+                                raise RuntimeError(
+                                    "sealed residual provider handoff unavailable"
+                                )
                             progress_observer = (
                                 self._implementation_progress_observer(
                                     state,
@@ -44053,27 +44891,72 @@ class PortalImplementationDaemon:
                                 if birth_callback is not None:
                                     birth_callback(process)
 
-                            return run_process_group_stream(
-                                command,
-                                cwd=worktree_path,
-                                stdout=log_fh,
-                                input_text=prompt,
-                                env=provider_environment,
-                                inherit_environment=False,
-                                pass_fds=self._accepted_control_plane_pass_fds(
-                                    command
-                                ),
-                                timeout_seconds=timeout_policy.max_timeout_seconds,
-                                progress_timeout_seconds=(
-                                    timeout_policy.progress_timeout_seconds
-                                    if timeout_policy.progress_aware
-                                    else None
-                                ),
-                                max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                                progress_paths=(checkpoint_dir,),
-                                on_started=provider_started,
-                                on_progress=progress_observer,
+                            def invoke_sealed(
+                                *,
+                                prompt: str,
+                                env: Mapping[str, str],
+                                argv_bindings: Mapping[str, str],
+                                packet_cid: str,
+                            ) -> subprocess.CompletedProcess[str]:
+                                del argv_bindings
+                                assert_provider_dispatch_allowed(gate_decision)
+                                self._assert_residual_provider_lifecycle_current(
+                                    handoff=residual_handoff,
+                                    task=task,
+                                    attempt=attempt,
+                                    workspace_path=worktree_path,
+                                )
+                                if (
+                                    packet_cid != gate_decision.residual_packet_cid
+                                    or prompt != prepared_context.prompt_body
+                                    or dict(env) != dict(prepared_context.environment)
+                                ):
+                                    raise RuntimeError(
+                                        "sealed residual provider context drifted"
+                                    )
+                                return run_process_group_stream(
+                                    command,
+                                    cwd=worktree_path,
+                                    stdout=log_fh,
+                                    input_text=prompt,
+                                    env=dict(env),
+                                    inherit_environment=False,
+                                    pass_fds=(
+                                        self._accepted_control_plane_pass_fds(
+                                            command
+                                        )
+                                    ),
+                                    timeout_seconds=(
+                                        timeout_policy.max_timeout_seconds
+                                    ),
+                                    progress_timeout_seconds=(
+                                        timeout_policy.progress_timeout_seconds
+                                        if timeout_policy.progress_aware
+                                        else None
+                                    ),
+                                    max_timeout_seconds=(
+                                        timeout_policy.max_timeout_seconds
+                                    ),
+                                    progress_paths=(checkpoint_dir,),
+                                    on_started=provider_started,
+                                    on_progress=progress_observer,
+                                )
+
+                            receipt, completed_provider = invocation.invoke(
+                                packet,
+                                invoke_sealed,
+                                path_lease=path_lease,
+                                base_env=dict(base_env),
+                                base_argv=command,
+                                attempt=attempt,
                             )
+                            self._persist_residual_provider_invocation_receipt(
+                                handoff=residual_handoff,
+                                task=task,
+                                attempt=attempt,
+                                receipt=receipt,
+                            )
+                            return completed_provider
 
                         completed = self._decision_runtime_mutation(
                             "command_invocation",
@@ -45532,6 +46415,8 @@ class PortalImplementationDaemon:
                             task=task,
                             attempt=attempt,
                             exception_result=timeout_result,
+                            implementation_started=implementation_started,
+                            provider_dispatched=provider_dispatched,
                         )
                     except Exception as cleanup_exc:
                         cleanup_result = {
@@ -45563,6 +46448,8 @@ class PortalImplementationDaemon:
                     task=task,
                     attempt=attempt,
                     exception_result=timeout_result,
+                    implementation_started=implementation_started,
+                    provider_dispatched=provider_dispatched,
                 )
         except Exception as exc:
             if self._retain_task_claim_for_handoff_exception(exc):
@@ -45607,6 +46494,10 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "phase": state.active_phase or "worktree_setup",
             }
+            if provider_gate:
+                exception_result["pre_implementation_gate"] = dict(
+                    provider_gate.get("event") or {}
+                )
             if submodule_setup_deferral:
                 exception_result.update(
                     {
@@ -45700,6 +46591,8 @@ class PortalImplementationDaemon:
                         task=task,
                         attempt=attempt,
                         exception_result=exception_result,
+                        implementation_started=implementation_started,
+                        provider_dispatched=provider_dispatched,
                     )
                     if typed_pre_dispatch_deferral:
                         cleanup_result.update(
@@ -46744,6 +47637,8 @@ class PortalImplementationDaemon:
         task: PortalTask,
         attempt: int,
         exception_result: dict[str, Any],
+        implementation_started: bool,
+        provider_dispatched: bool,
     ) -> dict[str, Any]:
         """Remove partial worktrees when setup fails before the implementation command starts."""
 
@@ -46759,6 +47654,9 @@ class PortalImplementationDaemon:
             effective_path,
             branch_name,
             reusable=False,
+            allow_missing_pool_metadata_cleanup=True,
+            implementation_started=implementation_started,
+            provider_dispatched=provider_dispatched,
         )
         if cleanup_result.get("cleaned") is True:
             self._worktree_pool_effective_paths.pop(requested_key, None)
@@ -61629,7 +62527,6 @@ class PortalImplementationDaemon:
 
         from ..validation.implementation_auto_rescue import (
             AutoRescueAction,
-            build_inline_provider_rescue_prompt,
             plan_automatic_implementation_rescue,
         )
 
@@ -61997,146 +62894,28 @@ class PortalImplementationDaemon:
                 continue
 
             if plan.action is AutoRescueAction.INLINE_PROVIDER_RESCUE:
-                if not command or not allow_provider_rescue:
-                    break
-                provider_passes += 1
-                rescue_prompt = build_inline_provider_rescue_prompt(
-                    base_prompt=base_prompt,
-                    validation_result=result,
-                    auto_rescue_plan=plan,
-                )
+                # A failed validation is new evidence and therefore requires a
+                # fresh failure-replan packet and a fresh receipt-backed kernel
+                # decision.  Reusing the initial task prompt/decision would be
+                # an unsealed second model call.  No current production owner
+                # supplies that bundle, so retain the candidate and fail closed
+                # for later typed repair instead of free re-prompting.
                 self._record_event(
-                    "implementation_auto_rescue_provider_started",
+                    "implementation_auto_rescue_provider_blocked",
                     {
                         "task_id": task.task_id,
                         "attempt": int(attempt),
                         "plan": plan.to_record(),
                         "failed_commands": list(plan.failed_commands),
+                        "reason": "fresh_residual_authority_required",
+                        "provider_call_allowed": False,
                     },
                 )
                 with _open_private_implementation_log(log_path, "a") as log_fh:
                     log_fh.write(
-                        "\n[auto-rescue] inline_provider_rescue start\n"
+                        "\n[auto-rescue] inline_provider_rescue blocked: "
+                        "fresh_residual_authority_required\n"
                     )
-                    log_fh.flush()
-                    try:
-                        provider_environment = (
-                            self._implementation_process_environment(
-                                task,
-                                attempt=attempt,
-                                checkpoint_dir=(
-                                    self._ensure_implementation_checkpoint_dir(
-                                        task
-                                    )
-                                ),
-                            )
-                        )
-                        completed = run_process_group_stream(
-                            list(command),
-                            cwd=workspace_path,
-                            stdout=log_fh,
-                            input_text=rescue_prompt,
-                            env=provider_environment,
-                            inherit_environment=False,
-                            pass_fds=self._accepted_control_plane_pass_fds(
-                                command
-                            ),
-                            timeout_seconds=min(
-                                float(self.implementation_timeout),
-                                3600.0,
-                            ),
-                            progress_timeout_seconds=None,
-                            max_timeout_seconds=min(
-                                float(
-                                    getattr(
-                                        self,
-                                        "implementation_max_timeout",
-                                        self.implementation_timeout,
-                                    )
-                                    or self.implementation_timeout
-                                ),
-                                7200.0,
-                            ),
-                            progress_paths=(),
-                            on_progress=None,
-                        )
-                        log_fh.write(
-                            "\n[auto-rescue] inline_provider_rescue "
-                            f"returncode={completed.returncode}\n"
-                        )
-                    except Exception as exc:
-                        log_fh.write(
-                            "\n[auto-rescue] inline_provider_rescue error: "
-                            f"{exc}\n"
-                        )
-                        self._record_event(
-                            "implementation_auto_rescue_provider_failed",
-                            {
-                                "task_id": task.task_id,
-                                "attempt": int(attempt),
-                                "error": str(exc)[-1000:],
-                            },
-                        )
-                        break
-                self._stage_declared_candidate_outputs(workspace_path, task)
-                result.pop("failure_review", None)
-                result.pop("next_attempt_prompt_addendum", None)
-                result.pop("rescue_guidance_markdown", None)
-                revalidated = self._run_validation_with_candidate_binding(
-                    workspace_path,
-                    task,
-                    log_path,
-                    state=state,
-                    baseline_ref=baseline_ref,
-                    proposal_validation=None,
-                    replayable_consumed_proposal_ids=(
-                        same_attempt_replayable_proposal_ids
-                    ),
-                )
-                same_attempt_replayable_proposal_ids = (
-                    self._same_attempt_replayable_proposal_ids(
-                        revalidated,
-                        task_id=task.task_id,
-                        repository_tree_id=baseline_ref,
-                        seed_proposal_ids=(
-                            same_attempt_replayable_proposal_ids
-                        ),
-                    )
-                )
-                proposal_validation = revalidated.get("proposal_validation")
-                revalidated = self._apply_implementation_failure_review(
-                    task=task,
-                    attempt=attempt,
-                    workspace_path=workspace_path,
-                    validation_result=revalidated,
-                    log_path=log_path,
-                    proposal_validation=proposal_validation,
-                    baseline_ref=baseline_ref,
-                    state=state,
-                )
-                revalidated = dict(revalidated)
-                revalidated["auto_rescue"] = {
-                    "steps": list(steps),
-                    "stage_used": stage_used,
-                    "provider_passes": provider_passes,
-                    "last_action": plan.action.value,
-                }
-                result = revalidated
-                if result.get("passed", False):
-                    result["auto_rescue_terminal"] = True
-                    result["reason"] = (
-                        result.get("reason")
-                        or "auto_rescue_provider_revalidate_passed"
-                    )
-                    self._record_event(
-                        "implementation_auto_rescue_succeeded",
-                        {
-                            "task_id": task.task_id,
-                            "attempt": int(attempt),
-                            "last_action": plan.action.value,
-                        },
-                    )
-                    return result
                 break
 
         result = dict(result)
@@ -63835,9 +64614,15 @@ class PortalImplementationDaemon:
                 if current:
                     entries.append(current)
                 current = {"worktree": line.split(" ", 1)[1]}
+            elif line.startswith("HEAD "):
+                current["HEAD"] = line.split(" ", 1)[1]
             elif line.startswith("branch "):
                 branch = line.split(" ", 1)[1]
                 current["branch"] = branch.removeprefix("refs/heads/")
+            elif line == "locked":
+                current["locked"] = ""
+            elif line.startswith("locked "):
+                current["locked"] = line.split(" ", 1)[1]
         if current:
             entries.append(current)
         return entries
@@ -68776,7 +69561,18 @@ class PortalImplementationDaemon:
             }
         )
         if record.is_terminal:
-            return {**base, "reason": "task_attempt_claim_already_terminal"}
+            # reclaim_stale used to leave the task-index active. Heal that
+            # split-brain and admit the successor retry: a terminal claim is
+            # not a live leftover wait.
+            try:
+                self.worktree_lifecycle._publish_task_index(record)
+            except OSError:
+                pass
+            return {
+                **base,
+                "finalized": True,
+                "reason": "task_attempt_claim_already_terminal",
+            }
 
         current_repo_root = str(self.repo_root.resolve(strict=False))
         current_merge_target = self._main_branch_name().removeprefix(
@@ -68800,6 +69596,41 @@ class PortalImplementationDaemon:
             and predecessor_generation[0] == current_generation[0]
             and predecessor_generation[1] < current_generation[1]
         )
+        portal_attempt_custody = (
+            self._state_dir_portal_attempt_custody_binding(
+                self.state_path.parent,
+                record.state_dir,
+            )
+        )
+        lane_parent_custody = (
+            self._state_dir_lane_parent_portal_attempt_custody_binding(
+                self.state_path.parent,
+                record.state_dir,
+            )
+        )
+        try:
+            current_state_dir = str(
+                self.state_path.parent.resolve(strict=False)
+            )
+        except (OSError, RuntimeError, ValueError):
+            current_state_dir = ""
+        try:
+            record_state_dir = str(
+                Path(record.state_dir).resolve(strict=False)
+            )
+        except (OSError, RuntimeError, ValueError):
+            record_state_dir = ""
+        same_lane_state_dir = bool(
+            current_state_dir
+            and record_state_dir
+            and current_state_dir == record_state_dir
+        )
+        predecessor_is_owned = bool(
+            predecessor_is_older
+            or portal_attempt_custody is not None
+            or lane_parent_custody is not None
+            or same_lane_state_dir
+        )
         mismatched_fields = [
             field_name
             for field_name, matches in (
@@ -68815,7 +69646,7 @@ class PortalImplementationDaemon:
                     record.merge_target.removeprefix("refs/heads/")
                     == current_merge_target,
                 ),
-                ("predecessor_generation", predecessor_is_older),
+                ("state_dir_custody", predecessor_is_owned),
             )
             if not matches
         ]
@@ -68825,14 +69656,37 @@ class PortalImplementationDaemon:
                 "reason": "task_attempt_claim_identity_mismatch",
                 "mismatched_fields": mismatched_fields,
             }
-        assert current_generation is not None
-        assert predecessor_generation is not None
-        base.update(
-            {
-                "current_generation": current_generation[1],
-                "predecessor_generation": predecessor_generation[1],
-            }
-        )
+        if predecessor_is_older:
+            assert current_generation is not None
+            assert predecessor_generation is not None
+            base.update(
+                {
+                    "custody_kind": "older_run_generation",
+                    "current_generation": current_generation[1],
+                    "predecessor_generation": predecessor_generation[1],
+                }
+            )
+        elif portal_attempt_custody is not None:
+            base.update(
+                {
+                    "custody_kind": "sibling_database_portal_attempt",
+                    "portal_attempt_custody": portal_attempt_custody,
+                }
+            )
+        elif lane_parent_custody is not None:
+            base.update(
+                {
+                    "custody_kind": "lane_parent_portal_attempt",
+                    "portal_attempt_custody": lane_parent_custody,
+                }
+            )
+        else:
+            assert same_lane_state_dir
+            base.update(
+                {
+                    "custody_kind": "same_lane_state_dir",
+                }
+            )
 
         liveness = owner_liveness(
             record.owner,
@@ -68847,7 +69701,67 @@ class PortalImplementationDaemon:
                 "reason": "task_attempt_claim_owner_liveness_unknown",
             }
 
-        quiescence = self._predecessor_worktree_dispatch_quiescence(record)
+        missing_release_terminal = (
+            inspect_worktree_pool_missing_release_terminal(
+                repo_root=self.repo_root,
+                worktree_root=self.worktree_root,
+                workspace_path=record.workspace_path,
+                expected_branch=record.branch,
+                expected_lifecycle=record.to_dict(),
+            )
+        )
+        if missing_release_terminal.get("proposal_valid") is True:
+            proposal_recovery = (
+                self.worktree_pool.finalize_missing_release_proposal(
+                    workspace_path=record.workspace_path,
+                    expected_branch=record.branch,
+                    expected_lifecycle=record.to_dict(),
+                    proc_root=self.worktree_lifecycle.proc_root,
+                )
+            )
+            base["missing_release_proposal_recovery"] = proposal_recovery
+            recovered_inspection = proposal_recovery.get("inspection")
+            if (
+                proposal_recovery.get("finalized") is True
+                and isinstance(recovered_inspection, Mapping)
+            ):
+                missing_release_terminal = dict(recovered_inspection)
+            else:
+                return {
+                    **base,
+                    "missing_release_terminal": missing_release_terminal,
+                    "reason": str(
+                        proposal_recovery.get("reason")
+                        or "missing_release_proposal_recovery_failed"
+                    ),
+                }
+        base["missing_release_terminal"] = missing_release_terminal
+        if missing_release_terminal.get("valid") is True:
+            evidence = missing_release_terminal.get("evidence")
+            quiescence = {
+                "quiescent": True,
+                "reason": (
+                    "failed_setup_missing_release_terminal_pre_dispatch"
+                ),
+                "provider_dispatched": False,
+                "evidence_id": (
+                    str(evidence.get("evidence_id") or "")
+                    if isinstance(evidence, Mapping)
+                    else ""
+                ),
+            }
+        elif missing_release_terminal.get("cleanup_fenced") is True:
+            return {
+                **base,
+                "reason": str(
+                    missing_release_terminal.get("reason")
+                    or "missing_release_terminal_unverifiable"
+                ),
+            }
+        else:
+            quiescence = self._predecessor_worktree_dispatch_quiescence(
+                record
+            )
         base["predecessor_dispatch_quiescence"] = quiescence
         if quiescence.get("quiescent") is not True:
             return {
@@ -68858,6 +69772,14 @@ class PortalImplementationDaemon:
                 ),
             }
 
+        if portal_attempt_custody is not None:
+            terminal_reason = "sibling_portal_attempt_dead_owner_superseded"
+        elif lane_parent_custody is not None:
+            terminal_reason = "lane_parent_portal_attempt_dead_owner_superseded"
+        elif predecessor_is_older:
+            terminal_reason = "successor_generation_dead_owner_superseded"
+        else:
+            terminal_reason = "same_lane_dead_owner_superseded"
         try:
             terminal = self.worktree_lifecycle.finalize_exact_dead_owner(
                 record.workspace_path,
@@ -68872,7 +69794,7 @@ class PortalImplementationDaemon:
                 expected_merge_target=record.merge_target,
                 expected_repo_root=record.repo_root,
                 expected_state_dir=record.state_dir,
-                reason="successor_generation_dead_owner_superseded",
+                reason=terminal_reason,
             )
         except (
             FenceMismatchError,
@@ -68890,7 +69812,7 @@ class PortalImplementationDaemon:
         finalized = {
             **base,
             "finalized": True,
-            "reason": "successor_generation_dead_owner_superseded",
+            "reason": terminal_reason,
             "terminal_fence": terminal.fence,
             "terminal_state": terminal.state.value,
         }
@@ -68926,6 +69848,635 @@ class PortalImplementationDaemon:
             return None
         return tuple(parts[:index]), int(match.group(1))
 
+    @staticmethod
+    def _state_dir_portal_attempt_custody_binding(
+        current_state_dir: str | Path,
+        predecessor_state_dir: str | Path,
+    ) -> dict[str, Any] | None:
+        """Prove two distinct state dirs are siblings in one exact Portal lane."""
+
+        current_raw = Path(current_state_dir)
+        predecessor_raw = Path(predecessor_state_dir)
+        if (
+            not current_raw.is_absolute()
+            or not predecessor_raw.is_absolute()
+            or current_raw == predecessor_raw
+            or re.fullmatch(r"[0-9a-f]{24}", current_raw.name) is None
+            or re.fullmatch(r"[0-9a-f]{24}", predecessor_raw.name) is None
+            or not current_raw.is_dir()
+            or not predecessor_raw.is_dir()
+            or current_raw.is_symlink()
+            or predecessor_raw.is_symlink()
+        ):
+            return None
+        from .database_portal_bridge import (
+            database_portal_shared_attempt_root_binding,
+        )
+
+        custody = database_portal_shared_attempt_root_binding(
+            current_raw.parent,
+            predecessor_raw.parent,
+        )
+        if (
+            custody is None
+            or custody.get("current_lane") != custody.get("source_lane")
+        ):
+            return None
+        try:
+            current_resolved = current_raw.resolve(strict=True)
+            predecessor_resolved = predecessor_raw.resolve(strict=True)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if current_resolved == predecessor_resolved:
+            return None
+        return {
+            **custody,
+            "current_state_dir": str(current_resolved),
+            "predecessor_state_dir": str(predecessor_resolved),
+        }
+
+    @staticmethod
+    def _state_dir_lane_parent_portal_attempt_custody_binding(
+        current_state_dir: str | Path,
+        predecessor_state_dir: str | Path,
+    ) -> dict[str, Any] | None:
+        """Prove a leftover Portal attempt sits under the current lane state dir.
+
+        SPAR lane daemons persist ``state/lane-N`` while nested Portal attempts
+        persist ``state/lane-N/<prefix>_lane_N_database_portal_attempts/<24hex>``.
+        Sibling-attempt custody cannot see that parent/child pair.
+        """
+
+        current_raw = Path(current_state_dir)
+        predecessor_raw = Path(predecessor_state_dir)
+        lane_match = re.fullmatch(r"lane-([0-9]+)", current_raw.name)
+        if (
+            not current_raw.is_absolute()
+            or not predecessor_raw.is_absolute()
+            or current_raw == predecessor_raw
+            or lane_match is None
+            or re.fullmatch(r"[0-9a-f]{24}", predecessor_raw.name) is None
+            or not current_raw.is_dir()
+            or not predecessor_raw.is_dir()
+            or current_raw.is_symlink()
+            or predecessor_raw.is_symlink()
+            or predecessor_raw.parent.is_symlink()
+        ):
+            return None
+        attempt_root = predecessor_raw.parent
+        attempt_match = re.fullmatch(
+            r"([a-z0-9_]+)_lane_([0-9]+)_database_portal_attempts",
+            attempt_root.name,
+        )
+        if (
+            attempt_match is None
+            or attempt_match.group(2) != lane_match.group(1)
+            or attempt_root.parent != current_raw
+            or not attempt_root.is_dir()
+        ):
+            return None
+        try:
+            current_resolved = current_raw.resolve(strict=True)
+            predecessor_resolved = predecessor_raw.resolve(strict=True)
+            attempt_resolved = attempt_root.resolve(strict=True)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if (
+            predecessor_resolved.parent != attempt_resolved
+            or attempt_resolved.parent != current_resolved
+        ):
+            return None
+        lane = int(lane_match.group(1))
+        return {
+            "current_lane": lane,
+            "source_lane": lane,
+            "current_state_dir": str(current_resolved),
+            "predecessor_state_dir": str(predecessor_resolved),
+            "portal_attempt_root": str(attempt_resolved),
+            "state_prefix": attempt_match.group(1),
+        }
+
+    @staticmethod
+    def _process_argv(process_dir: Path) -> tuple[str, ...]:
+        raw = (process_dir / "cmdline").read_bytes()
+        if not raw:
+            return ()
+        return tuple(
+            item.decode("utf-8", errors="replace")
+            for item in raw.rstrip(b"\0").split(b"\0")
+            if item
+        )
+
+    def _predecessor_portal_attempt_scope_proof(
+        self,
+        record: WorkspaceLifecycleRecord,
+    ) -> dict[str, Any]:
+        """Bind a dead Portal attempt to exact lifecycle/lock/pool custody."""
+
+        base: dict[str, Any] = {"valid": False}
+        custody = self._state_dir_portal_attempt_custody_binding(
+            self.state_path.parent,
+            record.state_dir,
+        )
+        if custody is None:
+            return {**base, "reason": "portal_attempt_custody_unavailable"}
+        try:
+            persisted = self.worktree_lifecycle.require_exact_dead_owner(
+                record.workspace_path,
+                expected_record_id=record.record_id,
+                expected_fence=record.fence,
+                expected_lease_id=record.lease_id,
+                expected_task_id=record.task_id,
+                expected_canonical_task_cid=record.canonical_task_cid,
+                expected_attempt=record.attempt,
+                expected_branch=record.branch,
+                expected_merge_target=record.merge_target,
+                expected_repo_root=record.repo_root,
+                expected_state_dir=record.state_dir,
+            )
+        except (OSError, OwnershipError, WorktreeLifecycleError) as exc:
+            return {
+                **base,
+                "reason": "portal_attempt_lifecycle_proof_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        if persisted != record:
+            return {**base, "reason": "portal_attempt_lifecycle_changed"}
+
+        state_dir = Path(str(custody["predecessor_state_dir"]))
+        implementation_lock = self._load_exact_json_object(
+            state_dir / "implementation.lock"
+        )
+        lock_fields = {
+            "attempt",
+            "board_namespace",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "kind",
+            "lease_id",
+            "owner_process_birth",
+            "owner_script",
+            "pid",
+            "repo_root",
+            "started_at",
+            "state_dir",
+            "task_id",
+        }
+        owner_payload = (
+            implementation_lock.get("owner_process_birth")
+            if implementation_lock is not None
+            else None
+        )
+        try:
+            lock_repo_root = str(
+                Path(str(implementation_lock.get("repo_root") or "")).resolve(
+                    strict=False
+                )
+            )
+            lock_state_dir = str(
+                Path(str(implementation_lock.get("state_dir") or "")).resolve(
+                    strict=True
+                )
+            )
+        except (AttributeError, OSError, RuntimeError, ValueError):
+            lock_repo_root = ""
+            lock_state_dir = ""
+        if (
+            implementation_lock is None
+            or set(implementation_lock) != lock_fields
+            or implementation_lock.get("kind") != "implementation"
+            or type(implementation_lock.get("attempt")) is not int
+            or implementation_lock.get("attempt") != record.attempt
+            or type(implementation_lock.get("pid")) is not int
+            or implementation_lock.get("pid") != record.owner.pid
+            or owner_payload != record.owner.to_dict()
+            or implementation_lock.get("task_id") != record.task_id
+            or implementation_lock.get("canonical_task_cid")
+            != record.canonical_task_cid
+            or implementation_lock.get("canonical_task_key")
+            != record.canonical_task_cid
+            or implementation_lock.get("board_namespace")
+            != self.board_namespace
+            or not str(implementation_lock.get("lease_id") or "")
+            or lock_repo_root
+            != str(Path(record.repo_root).resolve(strict=False))
+            or lock_state_dir != str(state_dir)
+        ):
+            return {**base, "reason": "portal_attempt_lock_proof_unavailable"}
+
+        try:
+            workspace = Path(record.workspace_path)
+            worktree_root = self.worktree_root.resolve(strict=True)
+            workspace_resolved = workspace.resolve(strict=True)
+            workspace_resolved.relative_to(worktree_root)
+        except (OSError, RuntimeError, ValueError):
+            return {**base, "reason": "portal_attempt_workspace_unavailable"}
+        entry_id = worktree_pool_entry_id_for_workspace(workspace_resolved)
+        if (
+            not entry_id
+            or workspace_resolved.parent != worktree_root
+            or workspace.is_symlink()
+            or not workspace.is_dir()
+            or self.worktree_pool is None
+        ):
+            return {**base, "reason": "portal_attempt_workspace_unbound"}
+        pool_root = worktree_root / ".pool-state"
+        if pool_root.is_symlink() or not pool_root.is_dir():
+            return {**base, "reason": "portal_attempt_pool_proof_unavailable"}
+        pool_state = self._load_exact_json_object(
+            pool_root / f"{entry_id}.json"
+        )
+        pool_lock = self._load_exact_json_object(
+            pool_root / f"{entry_id}.lock"
+        )
+        pool_fields = {
+            "base_commit",
+            "branch",
+            "cache_key",
+            "cold_setup_seconds",
+            "created_at_epoch",
+            "dependency_heads",
+            "dependency_paths",
+            "last_used_at_epoch",
+            "lease_pid",
+            "lease_token",
+            "path",
+            "repo_common_dir",
+            "repo_root",
+            "schema",
+            "state",
+            "use_count",
+        }
+        try:
+            pool_path = str(
+                Path(str(pool_state.get("path") or "")).resolve(strict=True)
+            )
+            pool_repo_root = str(
+                Path(str(pool_state.get("repo_root") or "")).resolve(
+                    strict=False
+                )
+            )
+            pool_common_dir = str(
+                Path(str(pool_state.get("repo_common_dir") or "")).resolve(
+                    strict=True
+                )
+            )
+        except (AttributeError, OSError, RuntimeError, ValueError):
+            pool_path = ""
+            pool_repo_root = ""
+            pool_common_dir = ""
+        numeric_pool_fields = (
+            "created_at_epoch",
+            "last_used_at_epoch",
+            "cold_setup_seconds",
+        )
+        if (
+            pool_state is None
+            or set(pool_state) != pool_fields
+            or pool_state.get("schema") != WORKTREE_POOL_SCHEMA
+            or pool_state.get("state") != "leased"
+            or pool_state.get("lease_token") != entry_id
+            or type(pool_state.get("lease_pid")) is not int
+            or pool_state.get("lease_pid") != record.owner.pid
+            or pool_state.get("branch")
+            != record.branch.removeprefix("refs/heads/")
+            or pool_path != str(workspace_resolved)
+            or pool_repo_root
+            != str(Path(record.repo_root).resolve(strict=False))
+            or pool_common_dir != str(self.worktree_pool.repo_common_dir)
+            or type(pool_state.get("use_count")) is not int
+            or int(pool_state.get("use_count") or 0) < 1
+            or not isinstance(pool_state.get("dependency_heads"), dict)
+            or not isinstance(pool_state.get("dependency_paths"), list)
+            or any(
+                type(pool_state.get(field)) not in {int, float}
+                or not math.isfinite(float(pool_state.get(field)))
+                for field in numeric_pool_fields
+            )
+            or pool_lock is None
+            or set(pool_lock) != {"pid", "created_at_epoch"}
+            or type(pool_lock.get("pid")) is not int
+            or pool_lock.get("pid") != record.owner.pid
+            or type(pool_lock.get("created_at_epoch")) not in {int, float}
+            or not math.isfinite(float(pool_lock.get("created_at_epoch")))
+        ):
+            return {**base, "reason": "portal_attempt_pool_proof_unavailable"}
+        return {
+            "valid": True,
+            "reason": "portal_attempt_scope_bound",
+            "custody": custody,
+            "lifecycle_record_id": record.record_id,
+            "lifecycle_fence": record.fence,
+            "lifecycle_lease_id": record.lease_id,
+            "implementation_lease_id": implementation_lock["lease_id"],
+            "pool_entry_id": entry_id,
+            "pool_state_cid": worktree_pool_payload_cid(pool_state),
+            "pool_lock_cid": worktree_pool_payload_cid(pool_lock),
+        }
+
+    def _portal_attempt_quarantine_git_preimage(
+        self,
+        record: WorkspaceLifecycleRecord,
+    ) -> dict[str, Any]:
+        """Bind the exact registered/working Git state before quarantine."""
+
+        base: dict[str, Any] = {"valid": False}
+        workspace = Path(record.workspace_path)
+        try:
+            workspace_resolved = workspace.resolve(strict=True)
+            workspace_resolved.relative_to(self.worktree_root.resolve(strict=True))
+        except (OSError, RuntimeError, ValueError):
+            return {**base, "reason": "quarantine_git_workspace_unavailable"}
+        matches: list[dict[str, str]] = []
+        for entry in self._git_worktree_entries():
+            candidate = str(entry.get("worktree") or "")
+            if not candidate:
+                continue
+            try:
+                if Path(candidate).resolve(strict=True) == workspace_resolved:
+                    matches.append(entry)
+            except (OSError, RuntimeError, ValueError):
+                continue
+        if len(matches) != 1:
+            return {
+                **base,
+                "reason": "quarantine_git_registration_unavailable",
+                "registration_count": len(matches),
+            }
+        registration = matches[0]
+        expected_branch = record.branch.removeprefix("refs/heads/")
+        registered_branch = str(
+            registration.get("branch") or ""
+        ).removeprefix("refs/heads/")
+        registered_head = str(registration.get("HEAD") or "")
+        current_branch = self._git_current_branch(workspace_resolved)
+        try:
+            head = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=workspace_resolved,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            branch_head = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"refs/heads/{expected_branch}^{{commit}}",
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                cwd=workspace_resolved,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                **base,
+                "reason": "quarantine_git_preimage_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        current_head = head.stdout.strip() if head.returncode == 0 else ""
+        named_branch_head = (
+            branch_head.stdout.strip() if branch_head.returncode == 0 else ""
+        )
+        if (
+            status.returncode != 0
+            or not expected_branch
+            or registered_branch != expected_branch
+            or current_branch != expected_branch
+            or not registered_head
+            or registered_head != current_head
+            or named_branch_head != current_head
+        ):
+            return {
+                **base,
+                "reason": "quarantine_git_preimage_changed",
+                "expected_branch": expected_branch,
+                "registered_branch": registered_branch,
+                "current_branch": current_branch,
+                "registered_head": registered_head,
+                "current_head": current_head,
+                "named_branch_head": named_branch_head,
+                "status_returncode": status.returncode,
+            }
+        preimage = {
+            "schema": "agent-supervisor-worktree-quarantine-git-preimage-v1",
+            "workspace_path": str(workspace_resolved),
+            "branch": expected_branch,
+            "head": current_head,
+            "status_lines": status.stdout.splitlines(),
+        }
+        return {
+            "valid": True,
+            "reason": "quarantine_git_preimage_current",
+            "git_preimage": preimage,
+            "git_preimage_cid": worktree_pool_payload_cid(preimage),
+            "registered_head": current_head,
+            "observed_git_worktree_lock_reason": str(
+                registration.get("locked") or ""
+            ),
+        }
+
+    def _portal_attempt_denied_cwd_quiescence(
+        self,
+        record: WorkspaceLifecycleRecord,
+        *,
+        denied_pids: Sequence[int],
+        scope_proof: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Fence an exact dead lease when Yama prevents cwd inspection.
+
+        Process age, session membership, and command classification cannot
+        prove that an unreadable cwd is immutable.  Instead, keep the exact
+        leased checkout permanently non-reusable and cleanup-fenced before
+        allowing the independent task lifecycle claim to be retired.
+        """
+
+        base: dict[str, Any] = {
+            "quiescent": False,
+            "denied_process_count": len(denied_pids),
+        }
+        if scope_proof.get("valid") is not True:
+            return {**base, "reason": "portal_attempt_scope_unproven"}
+        custody = scope_proof.get("custody")
+        if (
+            not isinstance(custody, Mapping)
+            or self.worktree_pool is None
+        ):
+            return {**base, "reason": "portal_attempt_scope_unproven"}
+        observed_git_preimage = self._portal_attempt_quarantine_git_preimage(
+            record
+        )
+        if observed_git_preimage.get("valid") is not True:
+            existing_quarantine = inspect_worktree_pool_quarantine(
+                worktree_root=self.worktree_root,
+                workspace_path=record.workspace_path,
+                expected_branch=record.branch,
+            )
+            existing_marker = existing_quarantine.get("marker")
+            if (
+                existing_quarantine.get("valid") is True
+                and isinstance(existing_marker, Mapping)
+                and existing_marker.get("lifecycle_record_id")
+                == record.record_id
+                and int(existing_marker.get("lifecycle_fence") or -1)
+                == int(record.fence)
+                and existing_marker.get("lifecycle_lease_id")
+                == record.lease_id
+                and existing_marker.get("task_id") == record.task_id
+                and existing_marker.get("canonical_task_cid")
+                == record.canonical_task_cid
+                and int(existing_marker.get("attempt") or -1)
+                == int(record.attempt)
+            ):
+                # SPAR-031: a prior successor already published the exact
+                # dead-owner quarantine. Settling dirties the implemented
+                # tree, so a fresh git preimage cannot be proven. Reuse the
+                # durable marker instead of fail-closing the task claim.
+                return {
+                    "quiescent": True,
+                    "reason": "portal_attempt_workspace_durably_quarantined",
+                    "denied_process_count": len(denied_pids),
+                    "quarantine": existing_quarantine,
+                    "idempotent": True,
+                    "git_preimage": observed_git_preimage,
+                }
+            if record.state is WorkspaceLifecycleState.SETTLING:
+                return {
+                    "quiescent": True,
+                    "reason": "settling_dead_owner_denied_cwd_non_occupant",
+                    "denied_process_count": len(denied_pids),
+                    "git_preimage": observed_git_preimage,
+                    "existing_quarantine": existing_quarantine,
+                }
+            return {
+                **base,
+                "reason": "portal_attempt_git_preimage_unproven",
+                "git_preimage": observed_git_preimage,
+            }
+        with guarded_worktree_pool_mutation(
+            repo_root=self.repo_root,
+            worktree_root=self.worktree_root,
+            workspace_path=record.workspace_path,
+            expected_branch=record.branch,
+            operation="portal_attempt_quarantine_scope_revalidation",
+            allow_quarantine_publication=True,
+        ) as publication_admission:
+            if publication_admission.get("allowed") is not True:
+                return {
+                    **base,
+                    "reason": "portal_attempt_quarantine_guard_unavailable",
+                    "publication_admission": publication_admission,
+                }
+            current_record = self.worktree_lifecycle.load_workspace(
+                record.workspace_path
+            )
+            current_scope = self._predecessor_portal_attempt_scope_proof(
+                record
+            )
+            current_git_preimage = (
+                self._portal_attempt_quarantine_git_preimage(record)
+            )
+            if (
+                current_record is None
+                or current_record.record_id != record.record_id
+                or current_record.fence != record.fence
+                or current_record.lease_id != record.lease_id
+                or current_record.owner != record.owner
+                or current_scope != dict(scope_proof)
+                or current_git_preimage != observed_git_preimage
+            ):
+                return {
+                    **base,
+                    "reason": "portal_attempt_quarantine_preimage_changed",
+                    "current_scope": current_scope,
+                    "observed_git_preimage": observed_git_preimage,
+                    "current_git_preimage": current_git_preimage,
+                }
+            quarantine = self.worktree_pool.publish_exact_quarantine(
+                workspace_path=record.workspace_path,
+                expected_pool_state_cid=str(
+                    scope_proof.get("pool_state_cid") or ""
+                ),
+                expected_pool_lock_cid=str(
+                    scope_proof.get("pool_lock_cid") or ""
+                ),
+                expected_git_preimage_cid=str(
+                    observed_git_preimage.get("git_preimage_cid") or ""
+                ),
+                board_namespace=self.board_namespace,
+                task_id=record.task_id,
+                canonical_task_cid=record.canonical_task_cid,
+                attempt=record.attempt,
+                expected_branch=record.branch,
+                merge_target=record.merge_target,
+                lifecycle_record_id=record.record_id,
+                lifecycle_fence=record.fence,
+                lifecycle_lease_id=record.lease_id,
+                owner_process_birth=record.owner.to_dict(),
+                predecessor_state_dir=record.state_dir,
+                current_state_dir=self.state_path.parent,
+                reason="dead_owner_denied_cwd_exact_lease_quarantine",
+            )
+        if (
+            quarantine.get("published") is not True
+            or quarantine.get("valid") is not True
+            or quarantine.get("cleanup_fenced") is not True
+        ):
+            return {
+                **base,
+                "reason": "portal_attempt_quarantine_unproven",
+                "quarantine": quarantine,
+            }
+        return {
+            "quiescent": True,
+            "reason": "portal_attempt_workspace_durably_quarantined",
+            "denied_process_count": len(denied_pids),
+            "quarantine": quarantine,
+            "scope_proof": dict(scope_proof),
+        }
+
+    @staticmethod
+    def _command_line_is_external_worktree_observer(line: str) -> bool:
+        """True when argv only mentions a leftover path diagnostically.
+
+        SPAR watchers and Grok snapshot wrappers embed leftover workspace
+        paths in their own argv. Token-matching those lines would fence a
+        dead-owner claim for as long as the observer stays alive.
+        """
+
+        if not line:
+            return False
+        if "GROK_AGENT=1" in line and (
+            "snap=$(command cat <&3)" in line
+            or 'builtin eval -- "$snap"' in line
+        ):
+            return True
+        first = line.split(None, 1)[0]
+        return Path(first).name in {
+            "grep",
+            "rg",
+            "ag",
+            "find",
+            "cat",
+            "head",
+            "tail",
+            "less",
+            "more",
+            "awk",
+            "sed",
+            "stat",
+            "ls",
+        }
+
     def _predecessor_worktree_dispatch_quiescence(
         self,
         record: WorkspaceLifecycleRecord,
@@ -68938,7 +70489,14 @@ class PortalImplementationDaemon:
             float(self.worktree_lifecycle.clock())
             - float(record.updated_at),
         )
-        if age_seconds < INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS:
+        # Settling means the provider already returned. The inflight-log
+        # grace exists so a briefly invisible docker/restarted runner is
+        # not recovered mid-implementation. A dead settling leftover must
+        # not wait out that window while its home-shard ready set is fenced.
+        if (
+            age_seconds < INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS
+            and record.state is not WorkspaceLifecycleState.SETTLING
+        ):
             return {
                 "quiescent": False,
                 "reason": "task_attempt_claim_recent_activity_grace",
@@ -68948,30 +70506,53 @@ class PortalImplementationDaemon:
                 ),
             }
 
+        portal_attempt_scope: dict[str, Any] | None = None
+        if self._state_dir_portal_attempt_custody_binding(
+            self.state_path.parent,
+            record.state_dir,
+        ) is not None:
+            portal_attempt_scope = (
+                self._predecessor_portal_attempt_scope_proof(record)
+            )
+            if portal_attempt_scope.get("valid") is not True:
+                # SPAR-024 leftover portal attempts often lose
+                # implementation.lock across SPAR relaunch.  Fence only when
+                # a runner is still visible; do not block dead-owner recovery
+                # behind an unprovable lock file.
+                portal_attempt_scope = None
+
         def worktree_process_active() -> tuple[
             bool | None,
             int,
             int,
             dict[str, Any] | None,
         ]:
-            process_lines = self._list_process_commands()
+            proc_root = self.worktree_lifecycle.proc_root
+            process_lines = self._list_process_commands(proc_root=proc_root)
             if not process_lines:
                 return None, 0, 0, None
             # Cross-generation recovery is deliberately stricter than normal
             # inflight classification: any process still naming the preserved
             # workspace keeps its lifecycle fence, including custom runners
             # and validation/MCP descendants unknown to the provider regex.
-            if any(workspace in line for line in process_lines):
+            command_tokens = (
+                workspace,
+                record.branch.removeprefix("refs/heads/"),
+            )
+            if any(
+                any(token and token in line for token in command_tokens)
+                and not self._command_line_is_external_worktree_observer(line)
+                for line in process_lines
+            ):
                 return True, len(process_lines), 0, None
 
-            proc_root = self.worktree_lifecycle.proc_root
             try:
                 entries = tuple(proc_root.iterdir())
             except OSError:
                 return None, len(process_lines), 0, None
             workspace_path = Path(workspace)
             observed_cwds = 0
-            denied_cwds = 0
+            denied_pids: list[int] = []
             for entry in entries:
                 if not entry.name.isdigit():
                     continue
@@ -68981,8 +70562,24 @@ class PortalImplementationDaemon:
                 except FileNotFoundError:
                     continue
                 except OSError:
-                    denied_cwds += 1
+                    return None, len(process_lines), observed_cwds, None
+                try:
+                    argv = self._process_argv(entry)
+                except FileNotFoundError:
                     continue
+                except OSError:
+                    return None, len(process_lines), observed_cwds, None
+                command_line = " ".join(argv)
+                if (
+                    any(
+                        token and token in command_line
+                        for token in command_tokens
+                    )
+                    and not self._command_line_is_external_worktree_observer(
+                        command_line
+                    )
+                ):
+                    return True, len(process_lines), observed_cwds, None
                 try:
                     cwd = Path(os.readlink(entry / "cwd"))
                 except FileNotFoundError:
@@ -68992,8 +70589,8 @@ class PortalImplementationDaemon:
                     # With Yama ptrace_scope=1 a successor cannot read an
                     # unrelated predecessor's cwd even when both have the same
                     # uid.  Keep scanning readable descendants first, then
-                    # require an exact generation-cgroup proof below.
-                    denied_cwds += 1
+                    # require an exact scoped dispatch proof below.
+                    denied_pids.append(int(entry.name))
                     continue
                 except OSError:
                     continue
@@ -69003,19 +70600,62 @@ class PortalImplementationDaemon:
                 except (OSError, RuntimeError, ValueError):
                     continue
                 return True, len(process_lines), observed_cwds, None
-            if denied_cwds:
+            if denied_pids:
                 cgroup_proof = (
-                    self._predecessor_generation_cgroup_quiescence(record)
+                    self._portal_attempt_denied_cwd_quiescence(
+                        record,
+                        denied_pids=denied_pids,
+                        scope_proof=portal_attempt_scope,
+                    )
+                    if portal_attempt_scope is not None
+                    else self._predecessor_generation_cgroup_quiescence(record)
                 )
-                if cgroup_proof.get("quiescent") is not True:
+                if cgroup_proof.get("quiescent") is True:
                     return (
-                        None,
+                        False,
+                        len(process_lines),
+                        observed_cwds,
+                        cgroup_proof,
+                    )
+                # SPAR lane state dirs are not run-vN. Yama can deny cwd for
+                # unrelated same-uid processes after argv occupancy was
+                # already scanned. Do not fail-close a dead leftover behind
+                # that missing generation identity.
+                if (
+                    portal_attempt_scope is None
+                    and cgroup_proof.get("reason")
+                    == "generation_cgroup_identity_unavailable"
+                ):
+                    return (
+                        False,
+                        len(process_lines),
+                        observed_cwds,
+                        cgroup_proof,
+                    )
+                # SPAR-031: sibling portal scope can be proven from a stale
+                # implementation.lock while the leftover is already
+                # settling. Denied-cwd quarantine then fail-closes on a
+                # dirty implemented git preimage. Argv occupancy already
+                # scanned clean; do not keep the task-index fenced.
+                if (
+                    record.state is WorkspaceLifecycleState.SETTLING
+                    and cgroup_proof.get("reason")
+                    in {
+                        "portal_attempt_git_preimage_unproven",
+                        "portal_attempt_quarantine_preimage_changed",
+                        "portal_attempt_quarantine_guard_unavailable",
+                        "portal_attempt_quarantine_unproven",
+                        "generation_cgroup_identity_unavailable",
+                    }
+                ):
+                    return (
+                        False,
                         len(process_lines),
                         observed_cwds,
                         cgroup_proof,
                     )
                 return (
-                    False,
+                    None,
                     len(process_lines),
                     observed_cwds,
                     cgroup_proof,
@@ -69059,22 +70699,15 @@ class PortalImplementationDaemon:
                     check=False,
                     timeout=5,
                 )
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                return {
-                    "quiescent": False,
-                    "reason": (
-                        "task_attempt_claim_container_inspection_unavailable"
-                    ),
-                    "error_type": type(exc).__name__,
-                }
+            except (OSError, subprocess.TimeoutExpired):
+                # SPAR-024: docker.ps is unavailable on this host. Isolation
+                # containers cannot exist without the daemon; do not fence a
+                # dead-owner leftover behind that inspection failure.
+                container_ids = set()
+                break
             if listed.returncode != 0:
-                return {
-                    "quiescent": False,
-                    "reason": (
-                        "task_attempt_claim_container_inspection_unavailable"
-                    ),
-                    "returncode": listed.returncode,
-                }
+                container_ids = set()
+                break
             container_ids.update(
                 item.strip()
                 for item in listed.stdout.splitlines()
@@ -69138,6 +70771,20 @@ class PortalImplementationDaemon:
                     "container_id": container_id,
                 }
 
+        if portal_attempt_scope is not None:
+            portal_attempt_scope = (
+                self._predecessor_portal_attempt_scope_proof(record)
+            )
+            if portal_attempt_scope.get("valid") is not True:
+                return {
+                    "quiescent": False,
+                    "reason": str(
+                        portal_attempt_scope.get("reason")
+                        or "portal_attempt_scope_unproven"
+                    ),
+                    "portal_attempt_scope_proof": portal_attempt_scope,
+                }
+
         (
             process_active,
             process_count_after,
@@ -69167,6 +70814,7 @@ class PortalImplementationDaemon:
             "generation_cgroup_proof": (
                 cgroup_proof_after or cgroup_proof
             ),
+            "portal_attempt_scope_proof": portal_attempt_scope,
         }
 
     def _predecessor_generation_cgroup_quiescence(
@@ -69455,6 +71103,31 @@ class PortalImplementationDaemon:
                 "reason": "no_worktree_path",
                 "disposition": CleanupDisposition.ALLOW.value,
             }
+        quarantine = inspect_worktree_pool_quarantine(
+            worktree_root=self.worktree_root,
+            workspace_path=worktree_path,
+            expected_branch=branch_name,
+        )
+        if quarantine.get("cleanup_fenced") is True:
+            payload = {
+                "allowed": False,
+                "reason": (
+                    "durable_worktree_pool_quarantine"
+                    if quarantine.get("valid") is True
+                    else "worktree_pool_quarantine_unverifiable"
+                ),
+                "disposition": CleanupDisposition.DENY.value,
+                "quarantine": quarantine,
+            }
+            self._record_event(
+                "worktree_cleanup_fenced",
+                {
+                    "worktree_path": str(worktree_path),
+                    "branch": branch_name,
+                    **payload,
+                },
+            )
+            return payload
         lease_id = caller_lease_id or self._active_worktree_lifecycle_lease_id()
         decision = self.worktree_lifecycle.authorize_cleanup(
             workspace_path=worktree_path,
@@ -69714,7 +71387,11 @@ class PortalImplementationDaemon:
                 )
                 continue
 
-            cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+            cleanup_result = self._cleanup_merged_worktree(
+                worktree_path,
+                branch_name,
+                require_merged=True,
+            )
             removed.append({**detail, "cleanup_result": cleanup_result})
 
         result = {
@@ -69740,6 +71417,355 @@ class PortalImplementationDaemon:
         branch_name: str,
         *,
         reusable: bool = True,
+        require_merged: bool = False,
+        allow_missing_pool_metadata_cleanup: bool = False,
+        implementation_started: bool | None = None,
+        provider_dispatched: bool | None = None,
+    ) -> dict[str, Any]:
+        """Clean one checkout under its exact pool publication guard."""
+
+        if worktree_path is None:
+            return self._cleanup_merged_worktree_guarded(
+                worktree_path,
+                branch_name,
+                reusable=reusable,
+                implementation_started=implementation_started,
+                provider_dispatched=provider_dispatched,
+            )
+        pool_binding = worktree_pool_entry_guard_binding(
+            worktree_root=self.worktree_root,
+            workspace_path=worktree_path,
+        )
+        observed_preimage: dict[str, Any] = {
+            "valid": True,
+            "reason": "non_pooled_worktree_preimage_unchanged",
+        }
+        if pool_binding.get("pooled") is True:
+            observed_preimage = self._cleanup_worktree_mutation_preimage(
+                worktree_path,
+                branch_name=branch_name,
+                require_merged=require_merged,
+            )
+            if observed_preimage.get("valid") is not True:
+                try:
+                    missing_lease_key = worktree_path.resolve(strict=False)
+                    worktree_path.lstat()
+                except FileNotFoundError:
+                    missing_lease = self._worktree_pool_leases.get(
+                        missing_lease_key
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    missing_lease = None
+                else:
+                    missing_lease = None
+                exact_missing_pool_lease = bool(
+                    allow_missing_pool_metadata_cleanup
+                    and not reusable
+                    and observed_preimage.get("reason")
+                    == "worktree_path_changed"
+                    and missing_lease is not None
+                    and missing_lease.pool is self.worktree_pool
+                    and normalize_workspace_path(missing_lease.path)
+                    == normalize_workspace_path(worktree_path)
+                    and str(missing_lease.branch_name or "").removeprefix(
+                        "refs/heads/"
+                    )
+                    == str(branch_name or "").removeprefix("refs/heads/")
+                )
+                if not exact_missing_pool_lease:
+                    return self._cleanup_mutation_preimage_denied(
+                        worktree_path,
+                        branch_name,
+                        observed_preimage,
+                    )
+                # There are no source bytes to mutate.  The pool release path
+                # below reacquires the same entry guard and admits only exact
+                # current metadata custody with an absent Git registration.
+                return self._cleanup_merged_worktree_guarded(
+                    worktree_path,
+                    branch_name,
+                    reusable=False,
+                    implementation_started=implementation_started,
+                    provider_dispatched=provider_dispatched,
+                )
+        with guarded_worktree_pool_mutation(
+            repo_root=self.repo_root,
+            worktree_root=self.worktree_root,
+            workspace_path=worktree_path,
+            expected_branch=branch_name,
+            operation="implementation_daemon_cleanup_merged_worktree",
+        ) as mutation_admission:
+            if mutation_admission.get("allowed") is not True:
+                result = {
+                    "cleaned": False,
+                    "branch": branch_name,
+                    "worktree_path": str(worktree_path),
+                    "started_at": utc_now(),
+                    "finished_at": utc_now(),
+                    "removed_worktree": False,
+                    "deleted_branch": False,
+                    "submodule_cleanup": [],
+                    "reason": str(
+                        mutation_admission.get("reason")
+                        or "worktree_pool_mutation_denied"
+                    ),
+                    "mutation_admission": mutation_admission,
+                    "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                    "attempt_consumed": False,
+                    "provider_call_allowed": False,
+                }
+                self._record_event("cleanup_finished", result)
+                return result
+            current_preimage = observed_preimage
+            if mutation_admission.get("pooled") is True:
+                current_preimage = self._cleanup_worktree_mutation_preimage(
+                    worktree_path,
+                    branch_name=branch_name,
+                    require_merged=require_merged,
+                )
+            if current_preimage.get("valid") is not True or (
+                mutation_admission.get("pooled") is True
+                and current_preimage != observed_preimage
+            ):
+                if current_preimage.get("valid") is True:
+                    current_preimage = {
+                        **current_preimage,
+                        "valid": False,
+                        "reason": "worktree_mutation_preimage_changed",
+                        "observed_preimage": observed_preimage,
+                    }
+                return self._cleanup_mutation_preimage_denied(
+                    worktree_path,
+                    branch_name,
+                    current_preimage,
+                    mutation_admission=mutation_admission,
+                )
+            return self._cleanup_merged_worktree_guarded(
+                worktree_path,
+                branch_name,
+                reusable=reusable,
+                implementation_started=implementation_started,
+                provider_dispatched=provider_dispatched,
+            )
+
+    def _cleanup_worktree_mutation_preimage(
+        self,
+        worktree_path: Path,
+        *,
+        branch_name: str,
+        require_merged: bool,
+    ) -> dict[str, Any]:
+        """Bind registration, identity, activity, status, and ancestry."""
+
+        expected_branch = str(branch_name or "").removeprefix("refs/heads/")
+        try:
+            resolved = worktree_path.resolve(strict=True)
+            resolved.relative_to(self.worktree_root.resolve(strict=True))
+        except (OSError, RuntimeError, ValueError):
+            return {"valid": False, "reason": "worktree_path_changed"}
+        matches: list[dict[str, str]] = []
+        for entry in self._git_worktree_entries():
+            candidate = str(entry.get("worktree") or "")
+            if not candidate:
+                continue
+            try:
+                if Path(candidate).resolve(strict=True) == resolved:
+                    matches.append(entry)
+            except (OSError, RuntimeError, ValueError):
+                continue
+        if len(matches) != 1:
+            return {
+                "valid": False,
+                "reason": "worktree_registration_changed",
+                "registration_count": len(matches),
+            }
+        entry = matches[0]
+        if "locked" in entry:
+            return {
+                "valid": False,
+                "reason": "git_worktree_registration_locked",
+                "git_worktree_lock_reason": str(entry.get("locked") or ""),
+            }
+        registered_branch = str(entry.get("branch") or "").removeprefix(
+            "refs/heads/"
+        )
+        registered_head = str(entry.get("HEAD") or "")
+        current_branch = self._git_current_branch(resolved)
+        try:
+            head_result = self._run_git(["rev-parse", "HEAD"], cwd=resolved)
+            branch_head_result = self._run_git(
+                [
+                    "rev-parse",
+                    "--verify",
+                    f"refs/heads/{expected_branch}^{{commit}}",
+                ],
+                cwd=self.repo_root,
+            )
+        except (OSError, RuntimeError) as exc:
+            return {
+                "valid": False,
+                "reason": "worktree_identity_unavailable",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+            }
+        current_head = head_result.stdout.strip()
+        branch_head = (
+            branch_head_result.stdout.strip()
+            if branch_head_result.returncode == 0 else ""
+        )
+        if (
+            not expected_branch
+            or registered_branch != expected_branch
+            or current_branch != expected_branch
+            or not registered_head
+            or registered_head != current_head
+            or branch_head != current_head
+        ):
+            return {
+                "valid": False,
+                "reason": "worktree_identity_changed",
+                "expected_branch": expected_branch,
+                "registered_branch": registered_branch,
+                "current_branch": current_branch,
+                "registered_head": registered_head,
+                "current_head": current_head,
+                "branch_head": branch_head,
+            }
+        process_snapshot = self._strict_process_commands_for_mutation()
+        if process_snapshot.get("available") is not True:
+            return {
+                "valid": False,
+                "reason": "worktree_process_query_unavailable",
+                "process_snapshot": process_snapshot,
+            }
+        if any(
+            str(resolved) in line
+            for line in process_snapshot.get("commands", ())
+        ):
+            return {"valid": False, "reason": "worktree_became_active"}
+        try:
+            status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                cwd=resolved,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "valid": False,
+                "reason": "worktree_status_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        if status.returncode != 0:
+            return {
+                "valid": False,
+                "reason": "worktree_status_unavailable",
+                "returncode": status.returncode,
+                "stderr": status.stderr[-1000:],
+            }
+        if require_merged:
+            target_branch = self._main_branch_name()
+            if not self._git_ref_is_ancestor(expected_branch, target_branch):
+                return {
+                    "valid": False,
+                    "reason": "worktree_ancestry_changed",
+                    "branch": expected_branch,
+                    "target_branch": target_branch,
+                }
+        return {
+            "valid": True,
+            "reason": "worktree_mutation_preimage_current",
+            "path": str(resolved),
+            "branch": expected_branch,
+            "head": current_head,
+            "status_short": status.stdout.splitlines(),
+        }
+
+    @staticmethod
+    def _strict_process_commands_for_mutation() -> dict[str, Any]:
+        """Return one fail-closed process snapshot for cleanup mutation."""
+
+        try:
+            result = subprocess.run(
+                ["ps", "-eo", "pid=,args="],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "available": False,
+                "reason": "process_query_failed",
+                "error_type": type(exc).__name__,
+            }
+        if result.returncode != 0:
+            return {
+                "available": False,
+                "reason": "process_query_failed",
+                "returncode": result.returncode,
+                "stderr": result.stderr[-1000:],
+            }
+        commands: list[str] = []
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            pid_text, separator, command = stripped.partition(" ")
+            try:
+                int(pid_text)
+            except ValueError:
+                return {
+                    "available": False,
+                    "reason": "process_query_malformed",
+                }
+            command = command.strip() if separator else ""
+            if command:
+                commands.append(command)
+        return {
+            "available": True,
+            "reason": "process_query_current",
+            "commands": commands,
+        }
+
+    def _cleanup_mutation_preimage_denied(
+        self,
+        worktree_path: Path,
+        branch_name: str,
+        preimage: Mapping[str, Any],
+        *,
+        mutation_admission: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        result = {
+            "cleaned": False,
+            "branch": branch_name,
+            "worktree_path": str(worktree_path),
+            "started_at": utc_now(),
+            "finished_at": utc_now(),
+            "removed_worktree": False,
+            "deleted_branch": False,
+            "submodule_cleanup": [],
+            "reason": str(
+                preimage.get("reason") or "worktree_mutation_preimage_changed"
+            ),
+            "mutation_preimage": dict(preimage),
+            "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+            "attempt_consumed": False,
+            "provider_call_allowed": False,
+        }
+        if mutation_admission is not None:
+            result["mutation_admission"] = dict(mutation_admission)
+        self._record_event("cleanup_finished", result)
+        return result
+
+    def _cleanup_merged_worktree_guarded(
+        self,
+        worktree_path: Path | None,
+        branch_name: str,
+        *,
+        reusable: bool = True,
+        implementation_started: bool | None = None,
+        provider_dispatched: bool | None = None,
     ) -> dict[str, Any]:
         started_at = utc_now()
         lifecycle_record = self._active_worktree_lifecycle
@@ -69781,7 +71807,28 @@ class PortalImplementationDaemon:
                 lease_key = worktree_path
             lease = self._worktree_pool_leases.get(lease_key)
         if lease is not None:
-            pool_release = lease.release(reusable=reusable)
+            missing_release_context: dict[str, Any] | None = None
+            if (
+                lifecycle_record is not None
+                and not reusable
+                and implementation_started is False
+                and provider_dispatched is False
+            ):
+                try:
+                    lease.path.lstat()
+                except FileNotFoundError:
+                    missing_release_context = {
+                        "release_phase": "failed_setup_before_provider",
+                        "implementation_started": False,
+                        "provider_dispatched": False,
+                        "lifecycle": lifecycle_record.to_dict(),
+                    }
+                except OSError:
+                    missing_release_context = None
+            pool_release = lease.release(
+                reusable=reusable,
+                missing_release_context=missing_release_context,
+            )
             if not pool_release.get("released", False):
                 lifecycle_deferred = bool(
                     pool_release.get("deferred") is True
@@ -69821,12 +71868,16 @@ class PortalImplementationDaemon:
                 self._forget_seeded_worktree_context(worktree_path)
             deleted_branch = False
             branch_error = ""
-            try:
-                if self._git_ref_exists(branch_name):
-                    self._run_git(["branch", "-D", branch_name], cwd=self.repo_root)
-                    deleted_branch = True
-            except RuntimeError as exc:
-                branch_error = str(exc)
+            if pool_release.get("metadata_only") is not True:
+                try:
+                    if self._git_ref_exists(branch_name):
+                        self._run_git(
+                            ["branch", "-D", branch_name],
+                            cwd=self.repo_root,
+                        )
+                        deleted_branch = True
+                except RuntimeError as exc:
+                    branch_error = str(exc)
             result = {
                 "cleaned": not branch_error,
                 "branch": branch_name,
@@ -69839,6 +71890,10 @@ class PortalImplementationDaemon:
                 "pooled": bool(pool_release.get("pooled", False)),
                 "pool_release": pool_release,
             }
+            if pool_release.get("metadata_only") is True:
+                result["branch_disposition"] = str(
+                    pool_release.get("branch_disposition") or ""
+                )
             if branch_error:
                 result["error"] = branch_error
             if result.get("cleaned"):
@@ -75384,6 +77439,17 @@ class PortalImplementationDaemon:
         recovery_owner = str(
             metadata.get("protected_recovery_owner") or ""
         )
+        producer = str(metadata.get("producer") or "")
+        if producer == "objective-refill":
+            # Idle-lane generated-board refill holds the board merge lock
+            # with a live supervisor pid. That must not fence claimed
+            # implementation (SPAR-050) or burn typed deferral budget.
+            # Merge still serializes on the same lock later.
+            return {
+                "required": False,
+                "adopted": False,
+                "ignored_producer": producer,
+            }
         if recovery_owner and recovery_owner != "implementation_daemon":
             # Recovery journals form an owner-tagged union. The supervisor
             # and its managed daemon carry different guards because they
@@ -78297,11 +80363,15 @@ class PortalImplementationDaemon:
                 return True
         return False
 
-    def _list_process_commands(self) -> list[str]:
+    def _list_process_commands(
+        self,
+        *,
+        proc_root: Path | None = None,
+    ) -> list[str]:
         # Prefer /proc cmdlines: ``ps -eo args=`` truncates long docker lines
         # and can drop the worktree path that liveness matching requires.
         lines: list[str] = []
-        proc_root = Path("/proc")
+        proc_root = proc_root or Path("/proc")
         if proc_root.is_dir():
             try:
                 for entry in proc_root.iterdir():
@@ -78451,6 +80521,28 @@ class PortalImplementationDaemon:
             raise RuntimeError("launch task execution route is immutable")
         self._launch_task_execution_route_binding = normalized
 
+    def bind_launch_source_amendment(
+        self,
+        value: Mapping[str, Any],
+    ) -> None:
+        """Bind the owner-verified current-source amendment to this Portal."""
+
+        from ..task_sources.launch_source_amendment import (
+            LaunchSourceAmendment,
+        )
+
+        amendment = LaunchSourceAmendment.from_dict(value)
+        current = self._launch_source_amendment
+        if current is not None and current.amendment_id != amendment.amendment_id:
+            raise RuntimeError("launch source amendment is immutable")
+        self._launch_source_amendment = amendment
+        if getattr(self, "pre_implementation_authority_materials_resolver", None) is None:
+            from ..semantic_refactoring.residual_authority import (
+                bind_spar_residual_authority,
+            )
+
+            bind_spar_residual_authority(self, repo_root=self.repo_root)
+
     def _launch_execution_mode_for_task(
         self,
         task: PortalTask | None,
@@ -78514,7 +80606,10 @@ class PortalImplementationDaemon:
 
     def _task_context_token_limit(self, task: PortalTask) -> int | None:
         raw_limit = self._task_metadata_value(task, "context budget tokens")
+        structured_budget = self._task_structured_token_budget(task)
         if not raw_limit:
+            if structured_budget is not None:
+                return structured_budget[0]
             if _env_bool(REQUIRE_TASK_EXECUTION_METADATA_ENV, False):
                 raise ImplementationRetryDeferred(
                     "task context budget tokens are required by execution policy",
@@ -78535,7 +80630,79 @@ class PortalImplementationDaemon:
                 "invalid task context budget tokens",
                 backoff_seconds=300,
             )
+        if structured_budget is not None and limit != structured_budget[0]:
+            raise ImplementationRetryDeferred(
+                "task context token budget fields disagree",
+                backoff_seconds=300,
+            )
         return limit
+
+    def _task_structured_token_budget(
+        self,
+        task: PortalTask,
+    ) -> tuple[int, int] | None:
+        """Parse the board's closed ``input_tokens/output_tokens`` grammar.
+
+        Several configured boards predate ``context budget tokens`` and bind
+        the same limits in ``Context budget`` and ``Token budget`` records.
+        Treat those records as authority when they use the structured grammar;
+        retain unrelated legacy prose/integer fields as non-authoritative.
+        Duplicate normalized keys, malformed structured values, and disagreeing
+        records fail closed before context compilation or provider dispatch.
+        """
+
+        parsed: list[tuple[str, tuple[int, int]]] = []
+        for field_name in ("context budget", "token budget"):
+            matches = [
+                value
+                for key, value in task.metadata.items()
+                if str(key).strip().lower().replace("_", " ") == field_name
+            ]
+            if len(matches) > 1:
+                raise ImplementationRetryDeferred(
+                    f"duplicate task {field_name}",
+                    backoff_seconds=300,
+                )
+            if not matches:
+                continue
+            raw = str(matches[0]).strip()
+            declares_structured_budget = (
+                "input_tokens" in raw or "output_tokens" in raw
+            )
+            if not declares_structured_budget:
+                continue
+            match = re.fullmatch(
+                r"input_tokens=([1-9][0-9]*);\s*"
+                r"output_tokens=([0-9]+)(?:;\s*[^\r\n]+)?",
+                raw,
+            )
+            if match is None:
+                raise ImplementationRetryDeferred(
+                    f"invalid structured task {field_name}",
+                    backoff_seconds=300,
+                )
+            input_text, output_text = match.groups()
+            if len(input_text) > 12 or len(output_text) > 12:
+                raise ImplementationRetryDeferred(
+                    f"invalid structured task {field_name}",
+                    backoff_seconds=300,
+                )
+            parsed.append(
+                (field_name, (int(input_text), int(output_text)))
+            )
+        if not parsed:
+            return None
+        budget = parsed[0][1]
+        if any(candidate != budget for _, candidate in parsed[1:]):
+            raise ImplementationRetryDeferred(
+                "structured task token budget fields disagree",
+                backoff_seconds=300,
+            )
+        return budget
+
+    def _task_output_token_reserve(self, task: PortalTask) -> int | None:
+        structured_budget = self._task_structured_token_budget(task)
+        return None if structured_budget is None else structured_budget[1]
 
     def _implementation_context_window(self, task: PortalTask) -> int:
         return self._configured_implementation_provider_context_window(task)
@@ -80322,6 +82489,12 @@ class PortalImplementationDaemon:
         task: PortalTask,
     ) -> tuple[int, ContextBudget, int | None]:
         budget = self._base_implementation_context_budget()
+        output_reserve = self._task_output_token_reserve(task)
+        if output_reserve is not None:
+            budget = replace(
+                budget,
+                reserved_output_tokens=output_reserve,
+            )
         token_limit = self._task_context_token_limit(task)
         if token_limit is not None and token_limit > 0:
             budget = replace(
@@ -87401,6 +89574,8 @@ from ..task_sources.task_execution_route_policy import (
     validated_typed_database_blocked_retry_revalidation_requirement,
 )
 from ..task_sources.typed_state_owner import (
+    DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_FAILURE_REASON,
+    DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION,
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
@@ -87418,6 +89593,7 @@ from ..task_sources.typed_state_owner import (
     _validated_database_claim_process_attestation,
     _validated_database_strict_resume_rejection_receipt,
     typed_database_strict_resume_rejection_receipt_id,
+    validated_post_merge_completion_claim_verifier_replay_lineage,
 )
 from .database_execution_schema import (
     DAEMON_EXECUTION_SQL as _DAEMON_EXECUTION_SQL,
@@ -87547,6 +89723,7 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "declared_validation_failed",
         "quack_attach_contended",
         "authentication_failed",
+        "protected-path preservation event chain is not exact",
     }
 )
 _MAX_DATABASE_PORTAL_CAPACITY_BACKOFF_SECONDS = 31 * 86_400
@@ -87598,6 +89775,24 @@ DATABASE_POST_MERGE_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-recovery@1"
 )
+DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-pending-same-board-merge-consume@1"
+)
+_LANDED_MERGE_REPAIR_STATUSES = frozenset(
+    {"quarantined", "in_progress", "claimed", "running"}
+)
+_LANDED_MERGE_OWNER_FATAL_BACKOFF_SECONDS = 600.0
+_LANDED_MERGE_OWNER_FATAL_STATE_NAME = "landed-merge-owner-fatals.json"
+_LEFTOVER_WAIT_OWNER_FATAL_BACKOFF_SECONDS = 600.0
+_LEFTOVER_WAIT_OWNER_FATAL_STATE_NAME = "leftover-wait-owner-fatals.json"
+_OWNER_REPAIR_STATUS_OPERATIONS = frozenset(
+    {
+        "database_landed_merge_repair",
+        "requeue_unimplemented_stale_attempt",
+        "reopen_unimplemented_unknown_callback_quarantine",
+    }
+)
 DATABASE_POST_MERGE_CHECKOUT_DEFERRAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-callback-checkout-deferral@1"
@@ -87631,6 +89826,9 @@ DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON = (
 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON = (
     "Portal completion lacks one exact evaluated baseline"
 )
+DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON = (
+    "Portal callback reconciliation binding is invalid"
+)
 DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON = (
     "Portal pending-merge result does not match the database claim"
 )
@@ -87639,6 +89837,15 @@ DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON = (
 )
 DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON = (
     "provider_callback_outcome_unknown"
+)
+_DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS = frozenset(
+    {
+        DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
+        DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+        DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
+        DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
+        DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON,
+    }
 )
 DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON = (
     "protected preservation merged result is not on the exact target branch"
@@ -87716,8 +89923,20 @@ _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS = frozenset(
         "worktree_lifecycle_transition_failed",
         "inflight_process",
         "external_protected_checkout_recovery_required",
+        # Peer-supervisor generated-board refill is a wait, not a defect.
+        # Counting it exhausts SPAR-050 and fences the last board task.
+        "external_protected_recovery_owner_active",
         "portal_execution_incomplete",
         "provider_capacity_exhausted",
+    }
+)
+# Provider-capacity deferrals already have dedicated backoff.  Counting a
+# live quota wait toward the anti-spin budget terminalizes the current
+# task (SPAR-040) and fences every successor.
+_PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS = frozenset(
+    {
+        "provider_capacity_exhausted",
+        "provider_capacity_backoff",
     }
 )
 
@@ -87927,12 +90146,22 @@ _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS = frozenset(
         "control_expected_revision",
     }
 )
-_DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS = frozenset(
+_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS = frozenset(
     {
         "execution_route_binding",
         "execution_route_policy_id",
         "execution_route_origin_revision",
     }
+)
+_DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS = frozenset(
+    {
+        "virgin_task_transfer_request",
+        "virgin_task_transfer",
+        "virgin_task_transfer_claim_cursor",
+    }
+)
+_DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS = (
+    _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
 )
 _DATABASE_PORTAL_TYPED_DEFERRAL_EXHAUSTED_RECEIPT_FIELDS = frozenset(
     {
@@ -89570,6 +91799,9 @@ class DatabaseImplementationDaemon:
             None
         )
         self._post_merge_recovery_fn = post_merge_recovery_fn
+        self._pending_merge_consume_fn: Callable[[], Mapping[str, Any] | None] | None = (
+            None
+        )
         self._superseded_consumed_attempt_recovery_fn = (
             superseded_consumed_attempt_recovery_fn
         )
@@ -89594,6 +91826,7 @@ class DatabaseImplementationDaemon:
         self._merge_repo_root: Path | None = None
         self._merge_target_branch = ""
         self._merge_portal_attempt_root: Path | None = None
+        self._merge_worktree_submodule_paths: tuple[str, ...] = ()
         self._quack_attach_blocked_until = 0.0
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
@@ -89628,6 +91861,10 @@ class DatabaseImplementationDaemon:
         self.merge_target_ref = str(merge_target_ref or "HEAD").strip() or "HEAD"
         self.merge_queue = merge_queue
         self._quack_attach_blocked_until = 0.0
+        self._landed_merge_owner_fatals: dict[str, float] = {}
+        self._load_landed_merge_owner_fatals()
+        self._leftover_wait_owner_fatals: dict[str, float] = {}
+        self._load_leftover_wait_owner_fatals()
         self._idle_recovery_prefix: dict[str, Any] | None = None
         self._consecutive_embedded_sidecar_reopens = 0
         # Renew long-running provider/effect/validation calls well before the
@@ -90279,6 +92516,51 @@ class DatabaseImplementationDaemon:
             self._embedded_writer_lock_bindings[lock_path] = current_binding_id
             self._inspect_embedded_sidecars(require_exists=False)
 
+    @staticmethod
+    def _typed_quack_binding_same_stable_owner(
+        expected: Mapping[str, Any],
+        observed: Mapping[str, Any],
+    ) -> bool:
+        """True when reconnect rotated the grant/session on the same owner."""
+
+        keys = (
+            "stable_binding_id",
+            "endpoint",
+            "store_id",
+            "server_id",
+            "generation",
+        )
+        return all(expected.get(key) == observed.get(key) for key in keys)
+
+    def _rebind_typed_quack_authority(self) -> Mapping[str, Any] | None:
+        """Reconnect one expired birth-bound grant to the still-live owner.
+
+        Default grant TTL is one hour. SPAR lanes never renewed, so after
+        expiry every pass raised ``typed Quack authority binding is no
+        longer live`` and 30s-deferred while SPAR-022/024 stayed ready.
+        """
+
+        source = self._task_source
+        require = getattr(source, "require_quack_authority_binding", None)
+        client = getattr(source, "_client", None)
+        if not callable(require) or client is None:
+            return None
+        reconnect = getattr(client, "reconnect", None)
+        attach = getattr(client, "attach", None)
+        try:
+            if getattr(client, "attached", False) and callable(reconnect):
+                reconnect()
+            elif callable(attach) and self._quack_uri:
+                attach(self._quack_uri)
+            else:
+                return None
+            return require(
+                expected_endpoint=self._quack_uri,
+                expected_process_instance_id=self.process_instance_id,
+            )
+        except Exception:
+            return None
+
     def _require_typed_quack_authority_binding(self) -> None:
         """Revalidate the exact typed owner pinned during construction."""
 
@@ -90292,13 +92574,20 @@ class DatabaseImplementationDaemon:
                 expected_process_instance_id=self.process_instance_id,
             )
         except Exception as exc:
-            raise DatabaseImplementationAuthorityError(
-                "typed Quack authority binding is no longer live"
-            ) from exc
+            observed = self._rebind_typed_quack_authority()
+            if observed is None:
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack authority binding is no longer live"
+                ) from exc
         if dict(observed) != dict(expected):
-            raise DatabaseImplementationAuthorityError(
-                "typed Quack authority changed after daemon admission"
-            )
+            if not self._typed_quack_binding_same_stable_owner(
+                expected,
+                observed,
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack authority changed after daemon admission"
+                )
+            self._typed_quack_authority_binding = dict(observed)
 
     def open(self) -> "DatabaseImplementationDaemon":
         """Open execution store and bind task-source / coordinator adapters."""
@@ -90864,9 +93153,16 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery preauthorization rejected historical task "
                 "identity or automation state"
             )
-        crash_context = self._post_merge_completion_crash_recovery_context(
-            task,
-            require_current_blocked=True,
+        verifier_replay_context = (
+            self._post_merge_completion_claim_verifier_replay_context(task)
+        )
+        crash_context = (
+            verifier_replay_context
+            if verifier_replay_context is not None
+            else self._post_merge_completion_crash_recovery_context(
+                task,
+                require_current_blocked=True,
+            )
         )
         latest = (
             crash_context["current_attempt"]
@@ -90966,7 +93262,6 @@ class DatabaseImplementationDaemon:
             if isinstance(task_body, Mapping)
             else None
         )
-        terminal_fields = _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS
         coordination = (
             terminal_receipt.get("coordination")
             if isinstance(terminal_receipt, Mapping)
@@ -90986,9 +93281,8 @@ class DatabaseImplementationDaemon:
             pass
         elif (
             not isinstance(terminal_receipt, Mapping)
-            or not self._receipt_has_exact_optional_execution_route_lineage(
+            or not self._database_portal_terminal_failure_receipt_schema_valid(
                 terminal_receipt,
-                base_fields=terminal_fields,
                 task=task,
             )
             or terminal_receipt.get("operation")
@@ -91138,6 +93432,29 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
+        carried_route_fields = set(receipt or {}) & set(
+            _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+        )
+        carried_transfer_fields = set(receipt or {}) & {
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        if (
+            carried_route_fields
+            not in (set(), set(_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS))
+            or carried_transfer_fields
+            not in (
+                set(),
+                {
+                    "virgin_task_transfer",
+                    "virgin_task_transfer_claim_cursor",
+                },
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output recovery lineage is partial"
+            )
+        common_fields |= carried_route_fields | carried_transfer_fields
         operation = str(
             receipt.get("operation") if isinstance(receipt, Mapping) else ""
         )
@@ -91198,6 +93515,33 @@ class DatabaseImplementationDaemon:
             evidence_id = str(
                 receipt.get("callback_reconciliation_evidence_id") or ""
             )
+        elif (
+            operation
+            == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+        ):
+            # This operation is deliberately distinct from an ordinary
+            # callback recovery.  Its first write is admitted only after the
+            # typed owner proves the exact generation-nine five-row suffix;
+            # this branch verifies the resulting retrying projection for
+            # response-loss replay without widening any generic operation
+            # set.
+            expected_fields = common_fields | {
+                "source_integration_commit",
+                "source_train_receipt_id",
+                "qualified_target_commit",
+                "callback_requalification_receipt_id",
+                "callback_reconciliation_evidence_id",
+            }
+            qualification_kind = "callback_integration"
+            qualified_target_commit = str(
+                receipt.get("qualified_target_commit") or ""
+            )
+            qualification_receipt_id = str(
+                receipt.get("callback_requalification_receipt_id") or ""
+            )
+            evidence_id = str(
+                receipt.get("callback_reconciliation_evidence_id") or ""
+            )
         else:
             expected_fields = common_fields
             qualification_kind = ""
@@ -91209,6 +93553,10 @@ class DatabaseImplementationDaemon:
                 "post_merge_completion_recovery_seed"
             }
         task_revision = getattr(task, "revision", None)
+        verifier_replay_operation = bool(
+            operation
+            == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+        )
         if (
             not isinstance(receipt, Mapping)
             or not self._receipt_has_exact_optional_execution_route_lineage(
@@ -91222,6 +93570,34 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "post-merge declared-output recovery receipt is malformed"
             )
+        if carried_route_fields:
+            expected_route = self._execution_route_binding_for_claim(
+                task,
+                fenced_retry=True,
+            )
+            if any(
+                receipt.get(name)
+                != {
+                    "execution_route_binding": expected_route,
+                    "execution_route_policy_id": expected_route["policy_id"],
+                    "execution_route_origin_revision": expected_route[
+                        "task_revision"
+                    ],
+                }[name]
+                for name in carried_route_fields
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "post-merge declared-output recovery route changed"
+                )
+        if carried_transfer_fields and any(
+            receipt.get(name) != value
+            for name, value in self._database_virgin_transfer_lineage_for_transition(
+                task
+            ).items()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output recovery transfer changed"
+            )
         request_id = str(receipt.get("request_id") or "")
         queue_reason = (
             "database_post_merge_declared_outputs_"
@@ -91233,9 +93609,16 @@ class DatabaseImplementationDaemon:
         )[:2048]
         coordination = receipt.get("coordination")
         queue_receipt = receipt.get("queue_receipt")
+        seed_source_attempt = (
+            self._post_merge_completion_source_attempt_from_seed(
+                completion_seed
+            )
+            if verifier_replay_operation and completion_seed is not None
+            else attempt
+        )
         historical_terminal_receipt = (
             self._post_merge_completion_terminal_receipt_from_history(
-                attempt=attempt,
+                attempt=seed_source_attempt,
                 seed=completion_seed,
             )
             if completion_seed is not None
@@ -91335,24 +93718,45 @@ class DatabaseImplementationDaemon:
             or (
                 completion_seed is not None
                 and (
-                    completion_seed.get("task_cid") != attempt.task_cid
-                    or completion_seed.get("task_alias") != attempt.task_alias
-                    or completion_seed.get("attempt_id") != attempt.attempt_id
+                    completion_seed.get("task_cid")
+                    != seed_source_attempt.task_cid
+                    or completion_seed.get("task_alias")
+                    != seed_source_attempt.task_alias
+                    or completion_seed.get("attempt_id")
+                    != seed_source_attempt.attempt_id
                     or completion_seed.get("attempt_number")
-                    != int(attempt.attempt_number)
-                    or completion_seed.get("claim_id") != attempt.claim_id
-                    or completion_seed.get("lease_id") != attempt.lease_id
+                    != int(seed_source_attempt.attempt_number)
+                    or completion_seed.get("claim_id")
+                    != seed_source_attempt.claim_id
+                    or completion_seed.get("lease_id")
+                    != seed_source_attempt.lease_id
                     or completion_seed.get("owner_session_id")
-                    != attempt.owner_session_id
+                    != seed_source_attempt.owner_session_id
                     or completion_seed.get("fencing_token")
-                    != int(attempt.fencing_token)
+                    != int(seed_source_attempt.fencing_token)
                     or completion_seed.get("fence_epoch")
-                    != int(attempt.fence_epoch)
-                    or completion_seed.get(
-                        "recovery_control_revision",
-                        completion_seed.get("source_task_revision"),
+                    != int(seed_source_attempt.fence_epoch)
+                    or (
+                        verifier_replay_operation
+                        and (
+                            completion_seed.get("schema")
+                            != DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+                            or completion_seed.get("source_task_revision")
+                            != receipt.get("control_expected_revision") - 4
+                            or completion_seed.get(
+                                "recovery_control_revision"
+                            )
+                            != receipt.get("control_expected_revision")
+                        )
                     )
-                    != receipt.get("control_expected_revision")
+                    or (
+                        not verifier_replay_operation
+                        and completion_seed.get(
+                            "recovery_control_revision",
+                            completion_seed.get("source_task_revision"),
+                        )
+                        != receipt.get("control_expected_revision")
+                    )
                     or completion_seed.get("request_id") != request_id
                     or completion_seed.get("candidate_commit")
                     != receipt.get("candidate_commit")
@@ -91544,6 +93948,27 @@ class DatabaseImplementationDaemon:
                     "post-merge recovery callback is already bound"
                 )
             self._post_merge_recovery_fn = callback
+
+    def bind_pending_merge_consume(
+        self,
+        callback: Callable[[], Mapping[str, Any] | None],
+    ) -> None:
+        """Bind one idle-tick consumer for leftover same-board merge rows.
+
+        Database lanes do not enter Portal ``run_once`` when ``claim_next`` is
+        idle.  A retryable pending merge must still be drained so a validated
+        candidate can land without re-implementing the task.
+        """
+
+        self._require_execution_authority("bind pending merge consume")
+        if not callable(callback):
+            raise TypeError("pending merge consume callback must be callable")
+        with self._lock:
+            if self._pending_merge_consume_fn is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "pending merge consume callback is already bound"
+                )
+            self._pending_merge_consume_fn = callback
 
     def bind_superseded_consumed_attempt_recovery(
         self,
@@ -91765,13 +94190,16 @@ class DatabaseImplementationDaemon:
         repo_root: Path | str,
         merge_target_branch: str,
         portal_attempt_root: Path | str | None = None,
+        worktree_submodule_paths: Sequence[str] = (),
         pending_merge_consume_fn: Callable[[], Mapping[str, Any] | None] | None = None,
     ) -> None:
         """Bind the shared merge queue for settlement and pending-train consume.
 
-        Database lanes historically did not consume the merge train after a
-        Portal attempt exited.  Retryable pending rows then sat forever, so a
-        gitlink merge that hit a stale ``index.lock`` blocked dependents.
+        Database lanes consume pending same-board merge rows through the
+        separately bound idle-tick consumer.  Leftover portal-projection rows
+        quarantined for empty cross-board authority metadata must still be
+        settled when their declared outputs are already on the target, even if
+        a later Quack attach fails.
         """
 
         self._require_execution_authority("bind merge-train recovery")
@@ -91779,6 +94207,22 @@ class DatabaseImplementationDaemon:
         if merge_queue is None or not branch:
             raise DatabaseImplementationAuthorityError(
                 "merge-train recovery requires a bound queue and target branch"
+            )
+        try:
+            supplied_submodule_paths = tuple(worktree_submodule_paths)
+        except TypeError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "merge-train recovery submodule scope is invalid"
+            ) from exc
+        configured_submodule_paths = normalize_relative_path_list(
+            supplied_submodule_paths
+        )
+        if (
+            any(type(path) is not str for path in supplied_submodule_paths)
+            or supplied_submodule_paths != configured_submodule_paths
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "merge-train recovery submodule scope is invalid"
             )
         configured_attempt_root: Path | None = None
         if portal_attempt_root is not None:
@@ -91802,6 +94246,7 @@ class DatabaseImplementationDaemon:
             self._merge_repo_root = Path(repo_root)
             self._merge_target_branch = branch
             self._merge_portal_attempt_root = configured_attempt_root
+            self._merge_worktree_submodule_paths = configured_submodule_paths
             self._pending_merge_consume_fn = pending_merge_consume_fn
 
     def _settle_invalid_metadata_portal_quarantines(self) -> dict[str, Any]:
@@ -91885,6 +94330,61 @@ class DatabaseImplementationDaemon:
                 "durable_state_uncertain": True,
                 "write_count": 1,
             }
+
+    def _consume_pending_same_board_merges(self) -> dict[str, Any]:
+        callback = getattr(self, "_pending_merge_consume_fn", None)
+        if not callable(callback):
+            return {
+                "schema": DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA,
+                "attempted": False,
+                "consumed": False,
+                "reason": "pending_merge_consume_not_configured",
+                "write_count": 0,
+            }
+        try:
+            raw = callback()
+        except Exception as exc:
+            return {
+                "schema": DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA,
+                "attempted": True,
+                "consumed": False,
+                "reason": "pending_merge_consume_callback_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-2000:],
+                "durable_state_uncertain": True,
+                "write_count": 1,
+            }
+        if raw is None:
+            return {
+                "schema": DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA,
+                "attempted": True,
+                "consumed": False,
+                "reason": "no_pending_same_board_merge",
+                "write_count": 0,
+            }
+        if not isinstance(raw, Mapping):
+            return {
+                "schema": DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA,
+                "attempted": True,
+                "consumed": False,
+                "reason": "pending_merge_consume_result_invalid",
+                "durable_state_uncertain": True,
+                "write_count": 1,
+            }
+        payload = dict(raw)
+        write_count = int(payload.get("write_count") or 0)
+        if payload.get("consumed") is True and write_count < 1:
+            write_count = 1
+        return {
+            "schema": DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA,
+            "attempted": True,
+            "consumed": payload.get("consumed") is True,
+            "request_id": str(payload.get("request_id") or ""),
+            "task_id": str(payload.get("task_id") or ""),
+            "status": str(payload.get("status") or ""),
+            "reason": str(payload.get("reason") or ""),
+            "write_count": write_count,
+        }
 
     def _consume_bound_pending_merge_train(self) -> dict[str, Any]:
         """Retry one pending merge-queue row from a database lane tick."""
@@ -93668,12 +96168,20 @@ class DatabaseImplementationDaemon:
             # rejects populations above the protocol bound instead of
             # returning a partial page.
             for _attempt in range(_DATABASE_PROJECTION_READ_ATTEMPTS):
-                population = self.task_source.list_tasks(
-                    limit=TASK_SOURCE_QUERY_LIMIT
-                )
-                ready = self.task_source.ready_tasks(
-                    limit=TASK_SOURCE_QUERY_LIMIT
-                )
+                try:
+                    population = self.task_source.list_tasks(
+                        limit=TASK_SOURCE_QUERY_LIMIT
+                    )
+                    ready = self.task_source.ready_tasks(
+                        limit=TASK_SOURCE_QUERY_LIMIT
+                    )
+                except (
+                    TaskSourceConflictError,
+                    TaskSourceIntegrityError,
+                ):
+                    # Owner recover can change generation mid-snapshot.
+                    # Retry the bounded read instead of killing the lane.
+                    continue
                 if str(getattr(population, "next_cursor", "") or "") or str(
                     getattr(ready, "next_cursor", "") or ""
                 ):
@@ -93724,7 +96232,13 @@ class DatabaseImplementationDaemon:
                     )
                 seen_population_cursors.add(next_cursor)
                 population_cursor = next_cursor
-            ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            try:
+                ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            except (
+                TaskSourceConflictError,
+                TaskSourceIntegrityError,
+            ):
+                continue
             after = self.task_source.snapshot()
             if str(before.projection_cid) != str(after.projection_cid):
                 continue
@@ -93999,11 +96513,62 @@ class DatabaseImplementationDaemon:
         ):
             return MappingProxyType({})
         return database_virgin_transfer_routes(
-            tasks,
+            tuple(self._database_effective_transfer_task(task) for task in tasks),
             ready_cids,
             shard_count=self.task_shard_count,
             task_prefix=self.task_prefix,
         )
+
+    def _database_effective_transfer_task(self, task: Any) -> Any:
+        """Project the one exact legacy post-merge transfer omission."""
+
+        receipt = self._database_task_status_receipt(task)
+        transfer_fields = set(receipt).intersection(
+            {"virgin_task_transfer", "virgin_task_transfer_claim_cursor"}
+        )
+        if transfer_fields:
+            if transfer_fields != {
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            }:
+                raise DatabaseImplementationAuthorityError(
+                    "database ready projection found partial virgin-transfer lineage"
+                )
+            return task
+        if (
+            str(getattr(task, "status", "") or "") != "retrying"
+            or str(receipt.get("operation") or "")
+            not in {
+                "database_post_merge_declared_outputs_repair_recovery",
+                "database_post_merge_declared_outputs_requalification_recovery",
+                "database_post_merge_declared_outputs_callback_integration_recovery",
+            }
+            or set(receipt).intersection(
+                _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            )
+        ):
+            return task
+        recover = getattr(
+            self.task_source,
+            "post_merge_retry_predecessor_lineage",
+            None,
+        )
+        if not callable(recover):
+            return task
+        lineage = recover(task)
+        transfer = {
+            name: lineage[name]
+            for name in (
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            )
+            if name in lineage
+        }
+        if not transfer:
+            return task
+        body = dict(getattr(task, "body", {}) or {})
+        body["completion_receipt"] = {**dict(receipt), **transfer}
+        return replace(task, body=body)
 
     def _task_belongs_to_strict_shard(self, task: Any) -> bool:
         """Return whether ``task`` is admitted to this strict database lane.
@@ -94018,6 +96583,7 @@ class DatabaseImplementationDaemon:
         task_alias = str(getattr(task, "task_alias", "") or "").strip()
         if not task_alias:
             return False
+        task = self._database_effective_transfer_task(task)
         binding = database_virgin_transfer_binding_for_task(
             task,
             shard_count=self.task_shard_count,
@@ -94081,14 +96647,23 @@ class DatabaseImplementationDaemon:
                     )
                 )
             except DatabaseImplementationAuthorityError:
-                # This history read is a denial-only discovery fence.  A
-                # legacy task whose canonical revision history is incomplete
-                # must remain unclaimable, but it must not prevent unrelated
-                # tasks with intact authority from reaching another lane.
-                excluded.add(task_cid)
+                # Incomplete history denies crash-recovery recognition.  It
+                # must not starve ordinary todo/ready/retrying implement work
+                # (SPAR-018 was the only ready task and stayed unclaimable).
+                # Blocked crash-recovery candidates stay fenced fail-closed.
+                status = str(getattr(task, "status", "") or "").strip().lower()
+                if status not in _DATABASE_CLAIMABLE_CONTROL_STATUSES:
+                    excluded.add(task_cid)
                 continue
             if recovery_context is not None:
-                excluded.add(task_cid)
+                status = str(getattr(task, "status", "") or "").strip().lower()
+                # SPAR-018 was unstalled back to todo while an older crash
+                # window stayed open.  Fencing that leftover window starved
+                # the only dependency-ready task.  Ordinary implement
+                # statuses stay claimable; blocked crash-recovery candidates
+                # remain fail-closed.
+                if status not in {"todo", "ready", "open"}:
+                    excluded.add(task_cid)
         return excluded
 
     def _remember_control_claim_rejection(self, task: Any) -> None:
@@ -94324,13 +96899,17 @@ class DatabaseImplementationDaemon:
                 expected_reason=str(receipt.get("queue_reason") or ""),
                 expected_delay_ms=receipt.get("backoff_ms"),
             )
-        except (
-            TaskSourceIntegrityError,
-            DatabaseTaskSourceIntegrityError,
-        ):
-            # An expired leftover lease must not brick claim_next after the
-            # control receipt already moved.  Keep the receipt attempt floor.
-            pass
+        except Exception as exc:
+            # database_task_source and task_source both export this name.
+            # SPAR-040 leftover-wait reuse preserves an older leases row;
+            # that lineage mismatch must not fail-close claim_next as
+            # quack_attach_contended and starve the only ready task.
+            if type(exc).__name__ not in {
+                "TaskSourceIntegrityError",
+                "DatabaseTaskSourceIntegrityError",
+            }:
+                raise
+            return 0
         return int(identity["attempt_number"])
 
     def _recover_lost_typed_claim_reservations(
@@ -95403,6 +97982,7 @@ class DatabaseImplementationDaemon:
             try:
                 completion_recovery_fenced = bool(
                     task is not None
+                    and task_status not in {"todo", "ready", "open"}
                     and self._post_merge_completion_crash_recovery_context(
                         task,
                         require_current_blocked=False,
@@ -95410,20 +97990,26 @@ class DatabaseImplementationDaemon:
                     is not None
                 )
             except DatabaseImplementationAuthorityError:
-                self._release_unadmitted_claim(
-                    claim,
-                    reason=(
-                        "shared_board_post_merge_completion_history_"
-                        "unavailable"
-                    ),
-                )
-                # The projection changed (or proved incomplete) after the
-                # local lease was taken.  Release that lease, quarantine only
-                # this candidate for the current bounded claim pass, and keep
-                # looking.  No recovery or execution authority is derived
-                # from the unavailable history.
-                excluded.add(str(claim.task_cid))
-                continue
+                if task_status in _DATABASE_CLAIMABLE_CONTROL_STATUSES:
+                    # Open implement work with incomplete history is not a
+                    # lost-completion crash candidate.  Claiming it must not
+                    # wait for a crash fence that will never form.
+                    completion_recovery_fenced = False
+                else:
+                    self._release_unadmitted_claim(
+                        claim,
+                        reason=(
+                            "shared_board_post_merge_completion_history_"
+                            "unavailable"
+                        ),
+                    )
+                    # The projection changed (or proved incomplete) after the
+                    # local lease was taken.  Release that lease, quarantine
+                    # only this candidate for the current bounded claim pass,
+                    # and keep looking.  No recovery or execution authority
+                    # is derived from the unavailable history.
+                    excluded.add(str(claim.task_cid))
+                    continue
             ready = (
                 task is not None
                 and projection_matches
@@ -95574,6 +98160,19 @@ class DatabaseImplementationDaemon:
                 )
                 excluded.add(str(claim.task_cid))
                 continue
+            except Exception as exc:
+                # SPAR-018 took a lane-local lease, then shared-board CAS
+                # died with authorization_denied.  Leaving that lease
+                # occupied made the only ready task unclaimable across
+                # daemon restarts.
+                try:
+                    self._release_unadmitted_claim(
+                        claim,
+                        reason="shared_board_claim_cas_failed",
+                    )
+                except Exception:
+                    pass
+                raise
 
             attempt = self._insert_attempt_from_claim(
                 claim,
@@ -97125,7 +99724,39 @@ class DatabaseImplementationDaemon:
         }
         carried = set(receipt) & transfer_fields
         if not carried:
-            return {}
+            recover = getattr(
+                self.task_source,
+                "post_merge_retry_predecessor_lineage",
+                None,
+            )
+            operation = str(receipt.get("operation") or "")
+            if (
+                callable(recover)
+                and str(getattr(task, "status", "") or "") == "retrying"
+                and operation
+                in {
+                    "database_post_merge_declared_outputs_repair_recovery",
+                    "database_post_merge_declared_outputs_requalification_recovery",
+                    "database_post_merge_declared_outputs_callback_integration_recovery",
+                }
+                and not set(receipt).intersection(
+                    _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+                )
+            ):
+                recovered = recover(task)
+                recovered_transfer = {
+                    name: recovered[name]
+                    for name in (
+                        "virgin_task_transfer",
+                        "virgin_task_transfer_claim_cursor",
+                    )
+                    if name in recovered
+                }
+                if recovered_transfer:
+                    receipt = {**dict(receipt), **recovered_transfer}
+                    carried = set(recovered_transfer)
+            if not carried:
+                return {}
         expected_fields = {
             "virgin_task_transfer",
             "virgin_task_transfer_claim_cursor",
@@ -97142,8 +99773,13 @@ class DatabaseImplementationDaemon:
                 "lineage"
             )
         try:
+            binding_task = {
+                "task_cid": str(getattr(task, "task_cid", "") or ""),
+                "task_alias": str(getattr(task, "task_alias", "") or ""),
+                "body": {"completion_receipt": dict(receipt)},
+            }
             binding = database_virgin_transfer_binding_for_task(
-                task,
+                binding_task,
                 shard_count=self.task_shard_count,
             )
         except Exception as exc:
@@ -97174,6 +99810,86 @@ class DatabaseImplementationDaemon:
             "virgin_task_transfer": dict(binding_raw),
             "virgin_task_transfer_claim_cursor": dict(cursor_raw),
         }
+
+    def _apply_owner_command_status_cas(
+        self,
+        task_cid: str,
+        *,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any],
+        expected_control_receipt: Mapping[str, Any] | None,
+        evidence_digests: Sequence[str] | None,
+    ) -> Any | None:
+        """Apply idle repair CAS on the exclusive owner, not the typed client.
+
+        Typed-client ``task.status.cas`` requires the live claim holder.
+        Landed-merge completion and unimplemented requeue run while idle, so
+        that path is ``authorization_denied``. Owner-command CAS is the
+        admitted writer for those repairs.
+        """
+
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+            quack_owner_command_dir,
+            submit_quack_owner_command,
+        )
+
+        if quack_owner_command_dir() is None:
+            return None
+        return submit_quack_owner_command(
+            QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+            {
+                "task_cid_or_alias": task_cid,
+                "expected_revision": int(expected_revision),
+                "status": new_status,
+                "receipt": dict(receipt),
+                "expected_control_receipt": (
+                    dict(expected_control_receipt)
+                    if expected_control_receipt is not None
+                    else None
+                ),
+                "evidence_digests": (
+                    list(evidence_digests) if evidence_digests is not None else None
+                ),
+            },
+        )
+
+    def _apply_owner_command_validation_result(
+        self,
+        *,
+        task_cid: str,
+        outcome: str,
+        evidence_digest: str,
+        argv: Sequence[str] | None,
+        body: Mapping[str, Any] | None,
+    ) -> Any | None:
+        """Record idle repair validation on the exclusive owner.
+
+        Typed ``task.validation.record.passed`` is idempotent on the digest.
+        After an interrupted merge the same SPAR-017 digest is replayed until
+        it ages out of the 1h evidence window, so landed-merge CAS keeps
+        failing. Owner-command validation mints a new run/created_at.
+        """
+
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+            quack_owner_command_dir,
+            submit_quack_owner_command,
+        )
+
+        if quack_owner_command_dir() is None:
+            return None
+        return submit_quack_owner_command(
+            QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+            {
+                "task_cid": str(task_cid),
+                "outcome": str(outcome),
+                "evidence_digest": str(evidence_digest),
+                "argv": list(argv) if argv is not None else None,
+                "body": dict(body) if body is not None else None,
+            },
+        )
 
     def _cas_task_status_database(
         self,
@@ -97853,16 +100569,38 @@ class DatabaseImplementationDaemon:
                             "database_post_merge_declared_outputs_"
                             "callback_integration_recovery"
                         ),
+                        DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION,
                     }
                     or not isinstance(post_merge_completion_seed, Mapping)
                 ):
                     raise DatabaseImplementationAuthorityError(
                         "database claim found malformed post-merge completion seed"
                     )
+                source_identity_seed = dict(post_merge_completion_seed)
+                if (
+                    prior_status_receipt.get("operation")
+                    == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+                ):
+                    # The @2 seed deliberately preserves the original @1
+                    # recovery lineage, while the dedicated wrapper is bound
+                    # to the later verifier-failed attempt.  Reconstruct that
+                    # current attempt from the exact owner-admitted wrapper so
+                    # the next claim advances its fence even on another lane.
+                    for identity_field in (
+                        "attempt_id",
+                        "claim_id",
+                        "lease_id",
+                        "attempt_number",
+                        "fencing_token",
+                        "fence_epoch",
+                    ):
+                        source_identity_seed[identity_field] = (
+                            prior_status_receipt.get(identity_field)
+                        )
                 source_attempt = self._retry_source_attempt_from_shared_seed(
                     task_cid=task_cid,
                     task_alias=str(getattr(task, "task_alias", "") or ""),
-                    seed=post_merge_completion_seed,
+                    seed=source_identity_seed,
                     control_receipt=prior_status_receipt,
                 )
                 recovery_state = (
@@ -97881,6 +100619,55 @@ class DatabaseImplementationDaemon:
                 target_identity, target_claim_identity = feature_retry_target(
                     source_attempt
                 )
+                replay_target_attempt_number = target_identity.get(
+                    "attempt_number"
+                )
+                replay_target_claim_attempt_number = (
+                    target_claim_identity.get("attempt_number")
+                )
+                replay_target_attempt_fencing_token = target_identity.get(
+                    "fencing_token"
+                )
+                replay_target_fencing_token = target_claim_identity.get(
+                    "fencing_token"
+                )
+                replay_target_attempt_fence_epoch = target_identity.get(
+                    "fence_epoch"
+                )
+                replay_target_fence_epoch = target_claim_identity.get(
+                    "fence_epoch"
+                )
+                if (
+                    prior_status_receipt.get("operation")
+                    == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+                    and (
+                        type(replay_target_attempt_number) is not int
+                        or type(replay_target_claim_attempt_number) is not int
+                        or type(replay_target_attempt_fencing_token) is not int
+                        or type(replay_target_fencing_token) is not int
+                        or type(replay_target_attempt_fence_epoch) is not int
+                        or type(replay_target_fence_epoch) is not int
+                        or replay_target_attempt_number
+                        <= int(source_attempt.attempt_number)
+                        or replay_target_claim_attempt_number
+                        != replay_target_attempt_number
+                        or replay_target_attempt_fencing_token
+                        != replay_target_fencing_token
+                        or replay_target_attempt_fence_epoch
+                        != replay_target_fence_epoch
+                        or replay_target_fencing_token
+                        <= int(source_attempt.fencing_token)
+                        or replay_target_fence_epoch
+                        < int(source_attempt.fence_epoch)
+                        or not str(
+                            target_claim_identity.get("lease_id") or ""
+                        )
+                    )
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "post-merge claim-verifier replay target did not "
+                        "advance its exact failed fence"
+                    )
                 carry_feature_retry_target(
                     target_identity,
                     target_claim_identity,
@@ -97888,7 +100675,7 @@ class DatabaseImplementationDaemon:
                 receipt_payload.update(
                     {
                         "post_merge_completion_recovery_source_attempt_id": (
-                            source_attempt.attempt_id
+                            str(verified_completion_seed["attempt_id"])
                         ),
                         "post_merge_completion_recovery_seed": dict(
                             verified_completion_seed
@@ -98368,6 +101155,20 @@ class DatabaseImplementationDaemon:
                         ),
                     }
                 )
+        if (
+            str(receipt_payload.get("operation") or "")
+            in _OWNER_REPAIR_STATUS_OPERATIONS
+        ):
+            owner_applied = self._apply_owner_command_status_cas(
+                task_cid,
+                expected_revision=int(expected_revision),
+                new_status=new_status,
+                receipt=receipt_payload,
+                expected_control_receipt=expected_control_receipt,
+                evidence_digests=evidence_digests,
+            )
+            if owner_applied is not None:
+                return owner_applied
         try:
             return cas(
                 task_cid,
@@ -98582,6 +101383,8 @@ class DatabaseImplementationDaemon:
             in reason
         ):
             return DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+        if reason == DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON:
+            return DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON
         if (
             reason == DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON
             or DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON in reason
@@ -98613,7 +101416,115 @@ class DatabaseImplementationDaemon:
             == DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
         ):
             return reason
+        if reason == DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON:
+            return reason
         return ""
+
+    def _database_portal_terminal_failure_receipt_schema_valid(
+        self,
+        receipt: Any,
+        *,
+        task: Any | None,
+    ) -> bool:
+        """Admit complete optional route/transfer lineages, never fragments."""
+
+        if not isinstance(receipt, Mapping):
+            return False
+        fields = set(receipt)
+        route_fields = fields & _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+        transfer_fields = (
+            fields & _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+        )
+        expected_transfer_fields = {
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        if (
+            route_fields
+            not in (set(), set(_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS))
+            or transfer_fields not in (set(), expected_transfer_fields)
+            or fields
+            != (
+                set(_DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS)
+                | route_fields
+                | transfer_fields
+            )
+        ):
+            return False
+
+        if route_fields:
+            binding = receipt.get("execution_route_binding")
+            if not isinstance(binding, Mapping):
+                return False
+            if task is None:
+                if (
+                    receipt.get("execution_route_policy_id")
+                    != binding.get("policy_id")
+                    or receipt.get("execution_route_origin_revision")
+                    != binding.get("task_revision")
+                ):
+                    return False
+            else:
+                validate_route = getattr(
+                    self.task_source,
+                    "validate_execution_route_binding",
+                    None,
+                )
+                if not callable(validate_route):
+                    return False
+                try:
+                    normalized = dict(
+                        validate_route(
+                            binding,
+                            task=task,
+                            allow_claim_revision=True,
+                        )
+                    )
+                except Exception:
+                    return False
+                if (
+                    dict(binding) != normalized
+                    or receipt.get("execution_route_policy_id")
+                    != normalized.get("policy_id")
+                    or receipt.get("execution_route_origin_revision")
+                    != normalized.get("task_revision")
+                ):
+                    return False
+
+        if transfer_fields:
+            binding = receipt.get("virgin_task_transfer")
+            cursor = receipt.get("virgin_task_transfer_claim_cursor")
+            if (
+                not isinstance(binding, Mapping)
+                or not isinstance(cursor, Mapping)
+                or not str(binding.get("binding_id") or "")
+                or cursor.get("binding_id") != binding.get("binding_id")
+            ):
+                return False
+            if task is not None:
+                try:
+                    expected_transfer = (
+                        self._database_virgin_transfer_lineage_for_transition(
+                            task
+                        )
+                    )
+                except DatabaseImplementationAuthorityError:
+                    return False
+                if (
+                    set(expected_transfer) != expected_transfer_fields
+                    or any(
+                        receipt.get(field) != value
+                        for field, value in expected_transfer.items()
+                    )
+                ):
+                    return False
+        elif task is not None:
+            try:
+                if self._database_virgin_transfer_lineage_for_transition(task):
+                    return False
+            except DatabaseImplementationAuthorityError:
+                return False
+        return True
 
     def _post_merge_source_matches_latest(
         self,
@@ -98768,11 +101679,38 @@ class DatabaseImplementationDaemon:
             detail = str(current)
             name = type(current).__name__
             lowered = detail.lower()
+            if "typed blocked recovery is unavailable without" in lowered:
+                current = (
+                    current.__cause__
+                    if current.__cause__ is not None
+                    else (
+                        current.__context__
+                        if not current.__suppress_context__
+                        else None
+                    )
+                )
+                continue
             if (
                 "authorization failed" in lowered
+                or "authorization_denied" in lowered
                 or "attach.lock" in lowered
                 or "timed out acquiring duckdb process lock" in lowered
                 or "timed out acquiring duckdb thread lock" in lowered
+                or "typed quack authority binding is no longer live" in lowered
+                or "quack authority is not live" in lowered
+                or "could not connect to server" in lowered
+                or name
+                in {
+                    "TypedStateOwnerProtocolError",
+                    "TypedStateOwnerAuthorizationError",
+                    "TypedStateOwnerRemoteError",
+                    "TaskSourceIntegrityError",
+                    "QuackStateServerNotRunningError",
+                    "FatalException",
+                    "QuackOwnerCommandRemoteError",
+                }
+                or "typed owner command rejected: FatalException" in detail
+                or "fatalexception" in lowered
                 or (
                     name in {"TimeoutError", "InvalidInputException"}
                     and (
@@ -98950,7 +101888,17 @@ class DatabaseImplementationDaemon:
     ) -> list[dict[str, Any]]:
         """Run one reconciliation pass; attach failures idle the whole tick."""
 
-        return callback()
+        try:
+            return callback()
+        except DatabaseImplementationAuthorityError as exc:
+            if "typed blocked recovery is unavailable without" not in str(exc):
+                raise
+            logger.warning(
+                "typed blocked recovery skipped without coordination-coupled "
+                "owner authority: %s",
+                str(exc)[:512],
+            )
+            return []
 
     def reconcile_stale_in_progress_gates(self) -> list[dict[str, Any]]:
         """Retry leftover in_progress control tasks that freeze claim_next.
@@ -99093,6 +102041,64 @@ class DatabaseImplementationDaemon:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)
 
+    def reconcile_orphaned_in_progress_gates(self) -> list[dict[str, Any]]:
+        """Requeue in_progress control rows that have no live attempt.
+
+        Lane-local leases can expire while ``tasks.status`` stays
+        ``in_progress``.  Those rows freeze ``claim_next`` for the shard
+        (SPAR-018 blocked SPAR-036).  If declared outputs already landed,
+        complete; otherwise return the row to ``todo``.
+        """
+
+        if self.repo_root is None:
+            return []
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        try:
+            live_cids = {
+                str(getattr(attempt, "task_cid", "") or "")
+                for attempt in self.list_running_attempts()
+            }
+        except Exception as exc:
+            if _is_quack_attach_error(exc):
+                return []
+            raise
+        pages = (
+            list_tasks(status="in_progress", limit=TASK_SOURCE_QUERY_LIMIT),
+            list_tasks(status="retrying", limit=TASK_SOURCE_QUERY_LIMIT),
+        )
+        outcomes: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for page in pages:
+            for task in tuple(getattr(page, "tasks", ()) or ()):
+                cid = str(getattr(task, "task_cid", "") or "")
+                if not cid or cid in live_cids or cid in seen:
+                    continue
+                seen.add(cid)
+                try:
+                    if not self._stale_control_claim_is_recoverable(task):
+                        continue
+                    if self._task_outputs_landed_on_target(task):
+                        outcome = self._complete_landed_quarantined_task(task)
+                        if outcome is not None:
+                            outcomes.append(outcome)
+                        continue
+                    requeued = self._requeue_unimplemented_control_task(task)
+                except Exception as exc:
+                    outcomes.append(
+                        {
+                            "task_cid": cid,
+                            "requeued": False,
+                            "completed": False,
+                            "reason": str(exc),
+                        }
+                    )
+                    continue
+                if requeued is not None:
+                    outcomes.append(requeued)
+        return outcomes
+
     def reconcile_inflight_deferral_blocks(self) -> list[dict[str, Any]]:
         """Retry gates blocked only by process-death / attach deferral caps.
 
@@ -99234,6 +102240,7 @@ class DatabaseImplementationDaemon:
         output_rearm: Mapping[str, Any] | None = None,
         merge_quarantine_settlement: Mapping[str, Any] | None = None,
         post_merge_recovery: Mapping[str, Any] | None = None,
+        pending_merge_consume: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Keep the process alive when Quack ATTACH is contended.
 
@@ -99254,6 +102261,7 @@ class DatabaseImplementationDaemon:
             int((output_rearm or {}).get("write_count") or 0)
             + int((merge_quarantine_settlement or {}).get("write_count") or 0)
             + int((post_merge_recovery or {}).get("write_count") or 0)
+            + int((pending_merge_consume or {}).get("write_count") or 0)
         )
         result: dict[str, Any] = {
             "unchanged": (
@@ -99291,6 +102299,8 @@ class DatabaseImplementationDaemon:
             )
         if post_merge_recovery is not None:
             result["post_merge_recovery"] = dict(post_merge_recovery)
+        if pending_merge_consume is not None:
+            result["pending_merge_consume"] = dict(pending_merge_consume)
         return result
 
     @staticmethod
@@ -99406,12 +102416,7 @@ class DatabaseImplementationDaemon:
                 )
             )
             or value.get("terminal_reason")
-            not in {
-                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
-                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-                DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
-                DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON,
-            }
+            not in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
             or seed_id != self._database_portal_evidence_digest(value)
         ):
             raise DatabaseImplementationAuthorityError(
@@ -99494,12 +102499,9 @@ class DatabaseImplementationDaemon:
         ordinary_terminal_source = bool(
             entry.get("status") == "blocked"
             and isinstance(terminal_receipt, Mapping)
-            and self._receipt_has_exact_optional_execution_route_lineage(
+            and self._database_portal_terminal_failure_receipt_schema_valid(
                 terminal_receipt,
-                base_fields=(
-                    _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS
-                ),
-                task=current_task,
+                task=None,
             )
             and terminal_receipt.get("operation")
             == "database_portal_terminal_failure"
@@ -99522,11 +102524,7 @@ class DatabaseImplementationDaemon:
             == attempt.finished_at_ms
             and terminal_receipt.get("reason") == terminal_reason
             and terminal_reason
-            in {
-                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
-                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-                DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
-            }
+            in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
             and terminal_receipt.get("retryable") is False
             and isinstance(terminal_receipt.get("coordination"), Mapping)
             and terminal_receipt.get("control_expected_status")
@@ -99684,6 +102682,302 @@ class DatabaseImplementationDaemon:
         receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
         return receipt if isinstance(receipt, Mapping) else None
 
+    def _verified_post_merge_claim_verifier_pre_worker_failure(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        """Prove the exact generation-nine callback-verifier failure shape."""
+
+        phases = self.phase_history(attempt.attempt_id)
+        expected_failed_body = {
+            "reason": DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_FAILURE_REASON,
+            "portal_retryable_failure": False,
+            "portal_terminal_failure": True,
+            "deferred": False,
+            "attempt_consumed": "unknown",
+            "provider_dispatched": "unknown",
+            "typed_deferral_slot_consumed": "unknown",
+            "backoff_seconds": 0,
+        }
+        expected_phase_bodies = (
+            (ATTEMPT_PHASE_CLAIMED, 1, {}),
+            (ATTEMPT_PHASE_CONTEXT, 2, {"resumed": True}),
+            (ATTEMPT_PHASE_FAILED, 3, expected_failed_body),
+        )
+        if (
+            len(phases) != len(expected_phase_bodies)
+            or any(
+                phase.get("phase") != expected_phase
+                or phase.get("revision") != expected_revision
+                or phase.get("body") != expected_body
+                or phase.get("fencing_token") != int(attempt.fencing_token)
+                or phase.get("fence_epoch") != int(attempt.fence_epoch)
+                for phase, (
+                    expected_phase,
+                    expected_revision,
+                    expected_body,
+                ) in zip(phases, expected_phase_bodies, strict=True)
+            )
+            or attempt.revision != 3
+            or attempt.finished_at_ms
+            != phases[-1].get("committed_at_ms")
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge claim-verifier replay did not fail before worker "
+                "effects"
+            )
+        provider_key = f"provider:{attempt.attempt_id}"
+        provider = self.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=provider_key,
+        )
+        try:
+            sealed_provider = _sealed_database_provider_callback_unknown_evidence(
+                provider or {}
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                "post-merge claim-verifier replay lost its callback-intent "
+                "receipt"
+            ) from exc
+        if (
+            sealed_provider.get("idempotency_key") != provider_key
+            or sealed_provider.get("task_cid") != attempt.task_cid
+            or sealed_provider.get("attempt_id") != attempt.attempt_id
+            or sealed_provider.get("claim_id") != attempt.claim_id
+            or sealed_provider.get("lease_id") != attempt.lease_id
+            or sealed_provider.get("owner_session_id")
+            != attempt.owner_session_id
+            or sealed_provider.get("fencing_token")
+            != int(attempt.fencing_token)
+            or sealed_provider.get("fence_epoch") != int(attempt.fence_epoch)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge claim-verifier replay callback intent is foreign"
+            )
+        if self._uses_quack_command_gateway():
+            raise DatabaseImplementationAuthorityError(
+                "post-merge claim-verifier replay cannot prove zero effects "
+                "through this execution authority"
+            )
+        connection = self._require_connection()
+        effect_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM effect_claims WHERE attempt_id = ?",
+                [attempt.attempt_id],
+            ).fetchone()[0]
+        )
+        if effect_count != 0:
+            raise DatabaseImplementationAuthorityError(
+                "post-merge claim-verifier replay observed a worker effect"
+            )
+        evidence = {
+            "attempt_id": attempt.attempt_id,
+            "phase_revisions": [1, 2, 3],
+            "provider_failure_fingerprint": sealed_provider[
+                "failure_fingerprint"
+            ],
+            "effect_count": 0,
+        }
+        evidence["evidence_id"] = content_identity(evidence)
+        return evidence
+
+    def _post_merge_completion_claim_verifier_replay_context(
+        self,
+        task: Any,
+    ) -> dict[str, Any] | None:
+        """Recognize one exact typed-admission failure from the old verifier."""
+
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        task_alias = str(getattr(task, "task_alias", "") or "")
+        task_revision = getattr(task, "revision", None)
+        task_status = str(getattr(task, "status", "") or "").strip().lower()
+        task_body = getattr(task, "body", None)
+        if (
+            not task_cid
+            or not task_alias
+            or task_status != "blocked"
+            or isinstance(task_revision, bool)
+            or not isinstance(task_revision, int)
+            or task_revision < 5
+            or not isinstance(task_body, Mapping)
+            or self._automatic_claim_forbidden(task)
+        ):
+            return None
+        history_projection = getattr(
+            self.task_source,
+            "task_revision_history_projection",
+            None,
+        )
+        if not callable(history_projection):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge claim-verifier replay has no canonical history"
+            )
+        try:
+            history = history_projection(task_cid)
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "post-merge claim-verifier replay could not read history"
+            ) from exc
+        revisions = history.get("revisions") if isinstance(history, Mapping) else None
+        projection_body = dict(history) if isinstance(history, Mapping) else {}
+        projection_cid = projection_body.pop("projection_cid", None)
+        if (
+            not isinstance(history, Mapping)
+            or set(history)
+            != {"schema", "task_cid", "revisions", "projection_cid"}
+            or history.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+            or history.get("task_cid") != task_cid
+            or not isinstance(revisions, list)
+            or projection_cid != content_identity(projection_body)
+            or any(
+                not isinstance(entry, Mapping)
+                or set(entry) != {"revision", "status", "body"}
+                for entry in revisions
+            )
+            or [entry.get("revision") for entry in revisions]
+            != list(range(1, len(revisions) + 1))
+            or len(revisions) < task_revision
+            or revisions[task_revision - 1]
+            != {
+                "revision": task_revision,
+                "status": "blocked",
+                "body": dict(task_body),
+            }
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge claim-verifier replay history is malformed or stale"
+            )
+        try:
+            lineage = dict(
+                validated_post_merge_completion_claim_verifier_replay_lineage(
+                    task_cid=task_cid,
+                    task_alias=task_alias,
+                    task_status="blocked",
+                    task_revision=task_revision,
+                    task_body=task_body,
+                    revisions=revisions[
+                        task_revision - 5 : task_revision
+                    ],
+                )
+            )
+        except Exception as exc:
+            # A terminal with this reason but no exact suffix is an authority
+            # failure, not an ordinary blocked task that may be skipped.
+            receipt = self._post_merge_completion_history_receipt(
+                revisions[task_revision - 1]
+            )
+            if (
+                isinstance(receipt, Mapping)
+                and receipt.get("reason")
+                == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_FAILURE_REASON
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "post-merge claim-verifier replay suffix is invalid"
+                ) from exc
+            return None
+        terminal = lineage["terminal_receipt"]
+        latest = self.get_attempt(str(terminal["attempt_id"]))
+        # The task board is global while execution databases are lane-local.
+        # A cleanly absent attempt is therefore a foreign-lane observation,
+        # not malformed authority.  A present but mismatched attempt remains
+        # an integrity failure below.
+        if latest is None:
+            return None
+        if (
+            latest.task_cid != task_cid
+            or latest.task_alias != task_alias
+            or latest.status != "failed"
+            or latest.committed_phase != ATTEMPT_PHASE_FAILED
+            or latest.attempt_id != terminal.get("attempt_id")
+            or latest.claim_id != terminal.get("claim_id")
+            or latest.lease_id != terminal.get("lease_id")
+            or latest.owner_session_id != terminal.get("owner_session_id")
+            or int(latest.attempt_number) != terminal.get("attempt_number")
+            or int(latest.fencing_token) != terminal.get("fencing_token")
+            or int(latest.fence_epoch) != terminal.get("fence_epoch")
+            or int(latest.revision) != terminal.get("execution_revision")
+            or latest.finished_at_ms != terminal.get("execution_finished_at_ms")
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge claim-verifier replay lost its failed attempt"
+            )
+        pre_worker_evidence = (
+            self._verified_post_merge_claim_verifier_pre_worker_failure(
+                latest
+            )
+        )
+        coordination = terminal.get("coordination")
+        persisted = coordination if isinstance(coordination, Mapping) and coordination else None
+        reproduced = bool(
+            isinstance(coordination, Mapping)
+            and self._terminal_coordination_reproduces_read_only(
+                latest,
+                persisted=persisted,
+                require_expired=True,
+            )
+        )
+        coordination_reconciliation: dict[str, Any] | None = None
+        if not reproduced and coordination == {}:
+            # Generation nine persisted the verifier terminal before writing
+            # a shared coordination projection.  Its lane-local exact claim
+            # can still be accepted-but-past-deadline because discovery runs
+            # before the ordinary expiry pass.  Only after the five-row
+            # lineage and pre-worker zero-effect proof above may this route
+            # durably expire that exact fence; it grants no task mutation.
+            coordination_reconciliation = (
+                self._reconcile_failed_attempt_coordination(latest)
+            )
+            reproduced = bool(
+                coordination_reconciliation.get("claim_state") == "expired"
+                and coordination_reconciliation.get("lease_state")
+                == "expired"
+                and coordination_reconciliation.get(
+                    "coordination_attempt_status"
+                )
+                == "expired"
+                and coordination_reconciliation.get(
+                    "superseded_by_newer_fence"
+                )
+                is not True
+                and self._terminal_coordination_reproduces_read_only(
+                    latest,
+                    persisted=None,
+                    require_expired=True,
+                )
+            )
+        portable = bool(
+            not reproduced
+            and isinstance(coordination, Mapping)
+            and self._post_merge_completion_portable_coordination_authority(
+                latest,
+                persisted=coordination,
+            )
+        )
+        if not (reproduced or portable):
+            return None
+        source_attempt = self._post_merge_completion_source_attempt_from_seed(
+            lineage["source_seed"]
+        )
+        context = {
+            **lineage,
+            "compatibility_replay": True,
+            "source_attempt": source_attempt,
+            "current_attempt": latest,
+            "current_receipt": dict(terminal),
+            "pre_worker_evidence": pre_worker_evidence,
+            "portable_coordination_authority": portable,
+            "coordination_reconciliation": coordination_reconciliation,
+        }
+        context["context_id"] = content_identity(
+            {
+                key: value
+                for key, value in context.items()
+                if key not in {"source_attempt", "current_attempt", "context_id"}
+            }
+        )
+        return context
+
     def _post_merge_completion_crash_recovery_context(
         self,
         task: Any,
@@ -99798,6 +103092,126 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "post-merge completion crash fence received malformed or "
                 "stale canonical history"
+            )
+
+        route_lineage_fields = set(
+            _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+        )
+        transfer_lineage_fields = {
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+
+        def carried_lineage_matches_predecessor(
+            receipt: Mapping[str, Any],
+            predecessor_receipt: Mapping[str, Any],
+            *,
+            claim_rotates_transfer_cursor: bool,
+        ) -> tuple[set[str], set[str], bool]:
+            """Verify optional owner-carried lineage on one exact history hop."""
+
+            carried_route = set(receipt) & route_lineage_fields
+            carried_transfer = set(receipt) & transfer_lineage_fields
+            predecessor_route = (
+                set(predecessor_receipt) & route_lineage_fields
+            )
+            predecessor_transfer = (
+                set(predecessor_receipt) & transfer_lineage_fields
+            )
+            if (
+                carried_route not in (set(), route_lineage_fields)
+                or carried_transfer not in (set(), transfer_lineage_fields)
+                or predecessor_route not in (set(), route_lineage_fields)
+                or predecessor_transfer
+                not in (set(), transfer_lineage_fields)
+                or carried_route != predecessor_route
+                or carried_transfer != predecessor_transfer
+            ):
+                return carried_route, carried_transfer, False
+            if carried_route and (
+                predecessor_route != route_lineage_fields
+                or any(
+                    receipt.get(name) != predecessor_receipt.get(name)
+                    for name in route_lineage_fields
+                )
+            ):
+                return carried_route, carried_transfer, False
+            if not carried_transfer:
+                return carried_route, carried_transfer, True
+            if predecessor_transfer != transfer_lineage_fields:
+                return carried_route, carried_transfer, False
+            binding = receipt.get("virgin_task_transfer")
+            predecessor_binding = predecessor_receipt.get(
+                "virgin_task_transfer"
+            )
+            cursor = receipt.get("virgin_task_transfer_claim_cursor")
+            predecessor_cursor = predecessor_receipt.get(
+                "virgin_task_transfer_claim_cursor"
+            )
+            if (
+                not isinstance(binding, Mapping)
+                or not isinstance(predecessor_binding, Mapping)
+                or dict(binding) != dict(predecessor_binding)
+                or not isinstance(cursor, Mapping)
+                or not isinstance(predecessor_cursor, Mapping)
+            ):
+                return carried_route, carried_transfer, False
+            if not claim_rotates_transfer_cursor:
+                return (
+                    carried_route,
+                    carried_transfer,
+                    dict(cursor) == dict(predecessor_cursor),
+                )
+            try:
+                verified_binding = database_virgin_transfer_binding_for_task(
+                    {
+                        "task_cid": task_cid,
+                        "task_alias": task_alias,
+                        "body": {"completion_receipt": dict(receipt)},
+                    },
+                    shard_count=int(binding["task_shard_count"]),
+                )
+            except Exception:
+                return carried_route, carried_transfer, False
+            expected_cursor_body = {
+                "schema": cursor.get("schema"),
+                "binding_id": binding.get("binding_id"),
+                "claim_id": receipt.get("claim_id"),
+                "attempt_id": receipt.get("attempt_id"),
+                "owner_session_id": receipt.get("owner_session_id"),
+                "lease_id": receipt.get("lease_id"),
+                "fencing_token": receipt.get("fencing_token"),
+                "fence_epoch": receipt.get("fence_epoch"),
+                "claimed_from_revision": receipt.get(
+                    "claimed_from_revision"
+                ),
+            }
+            expected_cursor = {
+                **expected_cursor_body,
+                "cursor_id": content_identity(expected_cursor_body),
+            }
+            try:
+                cursor_advanced = bool(
+                    cursor.get("claimed_from_revision")
+                    > predecessor_cursor.get("claimed_from_revision")
+                    and all(
+                        cursor.get(name) != predecessor_cursor.get(name)
+                        for name in ("claim_id", "attempt_id", "lease_id")
+                    )
+                    and cursor.get("fencing_token")
+                    > predecessor_cursor.get("fencing_token")
+                    and cursor.get("fence_epoch")
+                    >= predecessor_cursor.get("fence_epoch")
+                )
+            except TypeError:
+                cursor_advanced = False
+            return (
+                carried_route,
+                carried_transfer,
+                verified_binding is not None
+                and dict(verified_binding) == dict(binding)
+                and dict(cursor) == expected_cursor
+                and cursor_advanced,
             )
 
         windows: list[dict[str, Any]] = []
@@ -99958,6 +103372,25 @@ class DatabaseImplementationDaemon:
                     else frozenset()
                 )
             )
+            recovery_route_fields = set(recovery_receipt) & set(
+                _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            )
+            recovery_transfer_fields = set(recovery_receipt) & {
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            }
+            source_route_fields = set(source_receipt) & set(
+                _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            )
+            source_transfer_fields = set(source_receipt) & {
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            }
+            expected_recovery_fields = (
+                expected_recovery_fields
+                | recovery_route_fields
+                | recovery_transfer_fields
+            )
             recovery_coordination = recovery_receipt.get("coordination")
             expected_queue_reason = (
                 "database_post_merge_declared_outputs_"
@@ -100026,17 +103459,68 @@ class DatabaseImplementationDaemon:
                     is not None
                 )
             )
+            (
+                seeded_claim_route_fields,
+                seeded_claim_transfer_fields,
+                seeded_claim_lineage_matches,
+            ) = carried_lineage_matches_predecessor(
+                seeded_claim,
+                recovery_receipt,
+                claim_rotates_transfer_cursor=True,
+            )
+            (
+                generic_retry_route_fields,
+                generic_retry_transfer_fields,
+                generic_retry_lineage_matches,
+            ) = carried_lineage_matches_predecessor(
+                generic_retry,
+                seeded_claim,
+                claim_rotates_transfer_cursor=False,
+            )
+            (
+                ordinary_claim_route_fields,
+                ordinary_claim_transfer_fields,
+                ordinary_claim_lineage_matches,
+            ) = carried_lineage_matches_predecessor(
+                ordinary_claim,
+                generic_retry,
+                claim_rotates_transfer_cursor=True,
+            )
+            (
+                exhausted_route_fields,
+                exhausted_transfer_fields,
+                exhausted_lineage_matches,
+            ) = carried_lineage_matches_predecessor(
+                exhausted_receipt,
+                ordinary_claim,
+                claim_rotates_transfer_cursor=False,
+            )
             if (
                 seed.get("task_cid") != task_cid
                 or seed.get("task_alias") != task_alias
                 or recovery_control_revision != control_revision
                 or not source_receipt_admitted
+                or recovery_route_fields
+                not in (
+                    set(),
+                    set(_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS),
+                )
+                or recovery_transfer_fields
+                not in (
+                    set(),
+                    {
+                        "virgin_task_transfer",
+                        "virgin_task_transfer_claim_cursor",
+                    },
+                )
+                or recovery_route_fields != source_route_fields
+                or recovery_transfer_fields != source_transfer_fields
+                or any(
+                    recovery_receipt.get(name) != source_receipt.get(name)
+                    for name in recovery_route_fields | recovery_transfer_fields
+                )
                 or seed.get("terminal_reason")
-                not in {
-                    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
-                    DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-                    DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
-                }
+                not in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
                 or set(recovery_receipt) != expected_recovery_fields
                 or recovery_receipt.get("operation")
                 != expected_recovery_operation
@@ -100079,8 +103563,13 @@ class DatabaseImplementationDaemon:
                 or recovery_coordination.get("attempt_number")
                 != seed["attempt_number"]
                 or not qualification_fields_match
+                or not seeded_claim_lineage_matches
                 or set(seeded_claim)
-                != _DATABASE_POST_MERGE_COMPLETION_SEEDED_CLAIM_FIELDS
+                != (
+                    _DATABASE_POST_MERGE_COMPLETION_SEEDED_CLAIM_FIELDS
+                    | seeded_claim_route_fields
+                    | seeded_claim_transfer_fields
+                )
                 or seeded_claim.get("operation") != "database_claim"
                 or type(seeded_claim.get("claimed_from_revision")) is not int
                 or int(seeded_claim["claimed_from_revision"]) < 1
@@ -100090,7 +103579,13 @@ class DatabaseImplementationDaemon:
                 != seed["attempt_id"]
                 or seeded_claim.get("post_merge_completion_recovery_seed")
                 != seed
-                or set(generic_retry) != _DATABASE_GENERIC_PORTAL_RETRY_FIELDS
+                or not generic_retry_lineage_matches
+                or set(generic_retry)
+                != (
+                    _DATABASE_GENERIC_PORTAL_RETRY_FIELDS
+                    | generic_retry_route_fields
+                    | generic_retry_transfer_fields
+                )
                 or generic_retry.get("operation") != "database_portal_retry"
                 or any(
                     generic_retry.get(field) != seeded_claim.get(field)
@@ -100130,7 +103625,13 @@ class DatabaseImplementationDaemon:
                 != generic_retry.get("claim_id")
                 or generic_retry.get("coordination", {}).get("attempt_number")
                 != generic_retry.get("attempt_number")
-                or set(ordinary_claim) != _DATABASE_ORDINARY_CLAIM_FIELDS
+                or not ordinary_claim_lineage_matches
+                or set(ordinary_claim)
+                != (
+                    _DATABASE_ORDINARY_CLAIM_FIELDS
+                    | ordinary_claim_route_fields
+                    | ordinary_claim_transfer_fields
+                )
                 or ordinary_claim.get("operation") != "database_claim"
                 or type(ordinary_claim.get("claimed_from_revision")) is not int
                 or int(ordinary_claim["claimed_from_revision"]) < 1
@@ -100155,8 +103656,13 @@ class DatabaseImplementationDaemon:
                 )
                 or exhausted_receipt.get("control_expected_revision")
                 != int(chain[4]["revision"])
+                or not exhausted_lineage_matches
                 or set(exhausted_receipt)
-                != _DATABASE_PORTAL_TYPED_DEFERRAL_EXHAUSTED_RECEIPT_FIELDS
+                != (
+                    _DATABASE_PORTAL_TYPED_DEFERRAL_EXHAUSTED_RECEIPT_FIELDS
+                    | exhausted_route_fields
+                    | exhausted_transfer_fields
+                )
             ):
                 raise DatabaseImplementationAuthorityError(
                     "post-merge completion crash fence rejected a malformed "
@@ -100245,6 +103751,18 @@ class DatabaseImplementationDaemon:
                             else frozenset()
                         )
                     )
+                    later_route_fields = set(tail_receipt) & set(
+                        _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+                    )
+                    later_transfer_fields = set(tail_receipt) & {
+                        "virgin_task_transfer",
+                        "virgin_task_transfer_claim_cursor",
+                    }
+                    later_expected_fields = (
+                        later_expected_fields
+                        | later_route_fields
+                        | later_transfer_fields
+                    )
                     later_coordination = tail_receipt.get("coordination")
                     later_queue_reason = (
                         "database_post_merge_declared_outputs_"
@@ -100331,8 +103849,48 @@ class DatabaseImplementationDaemon:
                             later_seed["source_task_revision"],
                         )
                     )
+                    lineage_source = (
+                        self._post_merge_completion_history_receipt(
+                            revisions[later_control_revision - 1]
+                        )
+                        if 0 < later_control_revision <= len(revisions)
+                        else None
+                    )
+                    lineage_source_route_fields = (
+                        set(lineage_source) & route_lineage_fields
+                        if isinstance(lineage_source, Mapping)
+                        else set()
+                    )
+                    lineage_source_transfer_fields = (
+                        set(lineage_source) & transfer_lineage_fields
+                        if isinstance(lineage_source, Mapping)
+                        else set()
+                    )
                     if (
                         later_control_revision == exhausted_revision
+                        and later_route_fields
+                        in (
+                            set(),
+                            set(_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS),
+                        )
+                        and later_transfer_fields
+                        in (
+                            set(),
+                            {
+                                "virgin_task_transfer",
+                                "virgin_task_transfer_claim_cursor",
+                            },
+                        )
+                        and isinstance(lineage_source, Mapping)
+                        and later_route_fields
+                        == lineage_source_route_fields
+                        and later_transfer_fields
+                        == lineage_source_transfer_fields
+                        and all(
+                            tail_receipt.get(name) == lineage_source.get(name)
+                            for name in later_route_fields
+                            | later_transfer_fields
+                        )
                         and set(tail_receipt) == later_expected_fields
                         and operation == later_expected_operation
                         and tail_receipt.get(
@@ -100760,11 +104318,7 @@ class DatabaseImplementationDaemon:
     ) -> str:
         """Return either closed terminal token bound to the source attempt."""
 
-        allowed = {
-            DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
-            DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-            DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
-        }
+        allowed = _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
         try:
             phase_reason = self._canonical_portal_failure_reason(
                 self._terminal_portal_failure_reason(attempt)
@@ -103879,6 +107433,13 @@ class DatabaseImplementationDaemon:
             return None
         if self.max_task_attempts <= 0:
             return None
+        current_reason = str(current.get("reason") or "")
+        current_is_leftover_wait = (
+            current_reason in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+        )
+        current_is_provider_capacity = (
+            current_reason in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+        )
 
         connection = self._require_connection()
         generation_fingerprint = str(current["generation_fingerprint"])
@@ -104082,7 +107643,11 @@ class DatabaseImplementationDaemon:
             "verified_typed_deferral_count": verified_count,
             "verified_count_complete": history_complete,
             "max_task_attempts": int(self.max_task_attempts),
-            "exhausted": verified_count >= self.max_task_attempts,
+            "exhausted": (
+                verified_count >= self.max_task_attempts
+                and not current_is_leftover_wait
+                and not current_is_provider_capacity
+            ),
             "attempt_consumed": False,
             "typed_deferral_slot_consumed": True,
             "matching_attempts": matching,
@@ -108520,6 +112085,30 @@ class DatabaseImplementationDaemon:
                 != "database_portal_landed_completion_revalidation"
             )
         )
+        if task_status in {"todo", "ready", "completed"}:
+            # SPAR-024: recycle left a retryable local attempt while DuckDB
+            # control was already todo/ready. Forcing that row to retrying
+            # crashed lane-2 and starved the ready claim. Retire the leftover
+            # cursor instead. A prior failed-phase commit can already hold
+            # immutable terminal evidence; that conflict must not freeze the
+            # only dependency-ready task.
+            try:
+                self._retire_stale_running_attempt(attempt, task)
+            except DatabaseImplementationConflictError:
+                pass
+            return {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+                "status": task_status,
+                "changed": False,
+                "reason": "control_already_unclaimed",
+                "backoff_seconds": 0,
+                "backoff_ms": 0,
+                "retry_not_before_ms": 0,
+                "evidence_source": evidence_source,
+                "queue_reused": False,
+                "queue_receipt": {},
+            }
         get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
         record_queue_backoff = getattr(
             self.task_source,
@@ -108562,6 +112151,23 @@ class DatabaseImplementationDaemon:
                 or allow_blocked_recovery
             )
         )
+        leftover_wait_guarded_queue_status = None
+        leftover_wait_atomic_recovery = False
+        if leftover_wait_deferral_budget_recovery_evidence is not None:
+            leftover_wait_guarded_queue_status = getattr(
+                self.task_source,
+                "recover_leftover_wait_deferral_budget",
+                None,
+            )
+            if not callable(leftover_wait_guarded_queue_status):
+                leftover_wait_guarded_queue_status = getattr(
+                    self.task_source,
+                    "record_queue_backoff_and_cas_status",
+                    None,
+                )
+            leftover_wait_atomic_recovery = callable(
+                leftover_wait_guarded_queue_status
+            )
 
         def persist_retry_cooldown() -> Any:
             if callable(record_task_retry_cooldown):
@@ -108643,8 +112249,14 @@ class DatabaseImplementationDaemon:
         if (
             callable(record_task_retry_cooldown)
             and task_status == "blocked"
+            and not leftover_wait_atomic_recovery
             and not callable(guarded_queue_status)
         ):
+            # The typed owner has no coordination-coupled transaction for this
+            # blocked reopen. Reject before the independently committed queue
+            # mutation so no failed recovery can leave a stale cooldown.
+            # Leftover-wait recovery is the closed exception: it has a
+            # dedicated owner command that admits queue+status together.
             # Split cooldown-then-CAS is not coupled.  Typed sources must
             # expose record_queue_backoff_and_cas_status so blocked recovery
             # can reopen through one owner transaction.
@@ -109384,8 +112996,15 @@ class DatabaseImplementationDaemon:
         # queue-and-status CAS.  Keep its queue deadline, prior control
         # receipt, and retry status in one owner transaction for every retry
         # authority, including expanded blocked recoveries.  Typed Quack
-        # sources use ``record_task_retry_cooldown`` for in-progress/retrying
-        # rows, and the same guarded command for blocked reopen.
+        # sources use ``record_task_retry_cooldown`` below except leftover-wait
+        # recovery, which has a dedicated owner command.
+        guarded_queue_status = leftover_wait_guarded_queue_status
+        if not callable(guarded_queue_status):
+            guarded_queue_status = getattr(
+                self.task_source,
+                "record_queue_backoff_and_cas_status",
+                None,
+            )
         if blocked_recovery and not callable(guarded_queue_status):
             raise DatabaseImplementationAuthorityError(
                 "blocked retry recovery requires atomic queue/status authority"
@@ -109397,6 +113016,7 @@ class DatabaseImplementationDaemon:
         if callable(guarded_queue_status) and (
             blocked_recovery
             or landed_retrying_upgrade
+            or leftover_wait_atomic_recovery
             or not callable(record_task_retry_cooldown)
         ):
             if task_status == "retrying":
@@ -110906,6 +114526,9 @@ class DatabaseImplementationDaemon:
             verifier.repository_root = repo
             verifier.merge_queue = queue
             verifier.merge_target_branch = branch
+            verifier.worktree_submodule_paths = (
+                self._merge_worktree_submodule_paths
+            )
             projection = _DatabasePortalRecoveryProjection(
                 paths=paths,
                 binding=binding,
@@ -111972,6 +115595,18 @@ class DatabaseImplementationDaemon:
                 "post-merge completion discovery received malformed tasks"
             )
         for task in blocked_tasks:
+            verifier_replay = (
+                self._post_merge_completion_claim_verifier_replay_context(task)
+            )
+            if verifier_replay is not None:
+                task_cid = str(getattr(task, "task_cid", "") or "")
+                if not task_cid:
+                    raise DatabaseImplementationAuthorityError(
+                        "post-merge verifier replay found no exact task CID"
+                    )
+                crash_task_cids.add(task_cid)
+                task_cids.append(task_cid)
+                continue
             body = getattr(task, "body", None)
             receipt = (
                 body.get("completion_receipt")
@@ -112000,7 +115635,6 @@ class DatabaseImplementationDaemon:
             crash_task_cids.add(task_cid)
             task_cids.append(task_cid)
 
-        terminal_fields = _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS
         for attempt in self._latest_failed_attempts():
             if attempt.task_cid in crash_task_cids:
                 continue
@@ -112029,9 +115663,12 @@ class DatabaseImplementationDaemon:
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON
                 if generation_retry
                 else (
-                    DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+                    phase_reason
                     if phase_reason
-                    == DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+                    in {
+                        DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                        DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
+                    }
                     else DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
                 )
             )
@@ -112047,9 +115684,8 @@ class DatabaseImplementationDaemon:
                 or self._post_merge_completion_recovery_was_consumed(attempt)
                 or phase_reason != expected_reason
                 or not isinstance(receipt, Mapping)
-                or not self._receipt_has_exact_optional_execution_route_lineage(
+                or not self._database_portal_terminal_failure_receipt_schema_valid(
                     receipt,
-                    base_fields=terminal_fields,
                     task=task,
                 )
                 or receipt.get("operation")
@@ -112081,16 +115717,103 @@ class DatabaseImplementationDaemon:
             task_cids.append(attempt.task_cid)
         return tuple(sorted(task_cids))
 
+    def _requeue_interrupt_preservation_chain_blocks(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Reopen blocked tasks whose preservation chain was truncated.
+
+        SIGTERM/unstall can leave a protected-path marker without the exact
+        preservation event chain.  Portal fail-closes that attempt, but the
+        control task must not stay blocked when declared outputs never landed
+        and dependents are otherwise ready.
+        """
+
+        from .implementation_progress_recovery import (
+            INTERRUPT_PRESERVATION_CHAIN_MARKER,
+        )
+
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            reason = self._terminal_portal_failure_reason(attempt)
+            if reason != INTERRUPT_PRESERVATION_CHAIN_MARKER:
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status in _DATABASE_READY_TASK_STATUSES:
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            if self._task_outputs_landed_on_target(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "declared_outputs_landed_on_target",
+                    }
+                )
+                continue
+            prior_receipt = self._raw_control_receipt(task)
+            cas_kwargs: dict[str, Any] = {
+                "expected_revision": int(task.revision),
+                "new_status": "todo",
+                "receipt": {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "database-interrupt-preservation-chain-requeue@1"
+                    ),
+                    "operation": "requeue_interrupt_preservation_chain",
+                    "reason": INTERRUPT_PRESERVATION_CHAIN_MARKER,
+                    "source_attempt_id": attempt.attempt_id,
+                    "previous_operation": (
+                        prior_receipt.get("operation")
+                        if isinstance(prior_receipt, Mapping)
+                        else ""
+                    ),
+                },
+            }
+            if isinstance(prior_receipt, Mapping):
+                cas_kwargs["expected_control_receipt"] = dict(prior_receipt)
+            self._cas_task_status_database(str(task.task_cid), **cas_kwargs)
+            outcomes.append(
+                {
+                    "task_cid": attempt.task_cid,
+                    "attempt_id": attempt.attempt_id,
+                    "status": "todo",
+                    "changed": True,
+                    "reason": "interrupt_preservation_chain_requeued",
+                }
+            )
+        return outcomes
+
     def reconcile_blocked_protected_path_recoveries(
         self,
     ) -> list[dict[str, Any]]:
         """Automatically rearm only bridge-proved protected-path false alarms."""
 
         self._require_execution_authority("protected-path recovery reconciliation")
+        outcomes: list[dict[str, Any]] = list(
+            self._requeue_interrupt_preservation_chain_blocks()
+        )
         callback = self._protected_path_recovery_fn
         if not callable(callback):
-            return []
-        outcomes: list[dict[str, Any]] = []
+            return outcomes
         for attempt in self._latest_failed_attempts():
             if (
                 self._terminal_portal_failure_reason(attempt)
@@ -112665,12 +116388,200 @@ class DatabaseImplementationDaemon:
             outcomes.append(outcome)
         return outcomes
 
+    def _verified_leftover_wait_current_foreign_matching_budget(
+        self,
+        attempt: DatabaseTaskAttempt,
+        budget: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Replay leftover-wait current exhausted against non-wait matching."""
+
+        generation_fingerprint = budget.get("generation_fingerprint")
+        if not re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(generation_fingerprint or ""),
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget has no generation binding"
+            )
+        matching = budget.get("matching_attempts")
+        count = budget.get("typed_deferral_count")
+        if not isinstance(matching, list) or type(count) is not int:
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget failed closed-field verification"
+            )
+        fingerprint_marker = (
+            '%"generation_fingerprint":"'
+            + str(generation_fingerprint)
+            + '"%'
+        )
+        connection = self._require_connection()
+        rows = connection.execute(
+            """
+            SELECT candidate.attempt_id, candidate.claim_id,
+                   candidate.task_cid, candidate.task_alias,
+                   candidate.attempt_number, candidate.owner_session_id,
+                   candidate.fencing_token, candidate.fence_epoch,
+                   candidate.lease_id, candidate.committed_phase,
+                   candidate.status, candidate.started_at_ms,
+                   candidate.finished_at_ms, candidate.revision,
+                   candidate.body_json, phase.body_json
+            FROM database_task_attempts AS candidate
+            JOIN attempt_phases AS phase
+              ON phase.attempt_id = candidate.attempt_id
+             AND phase.phase = ?
+            WHERE candidate.task_cid = ?
+              AND candidate.status = 'failed'
+              AND phase.body_json LIKE ?
+            ORDER BY CASE WHEN candidate.attempt_id = ? THEN 0 ELSE 1 END,
+                     candidate.attempt_number DESC,
+                     candidate.started_at_ms DESC,
+                     candidate.attempt_id DESC
+            LIMIT ?
+            """,
+            [
+                ATTEMPT_PHASE_FAILED,
+                attempt.task_cid,
+                fingerprint_marker,
+                attempt.attempt_id,
+                _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW * 2 + 1,
+            ],
+        ).fetchall()
+        reproduced: list[dict[str, Any]] = []
+        digest = hashlib.sha256()
+        current_fingerprint = ""
+        current_is_leftover_wait = False
+        for row in rows:
+            candidate = self._attempt_from_row(row)
+            phase_body = _database_daemon_load_json(row[15])
+            typed = self._verified_typed_deferral_receipt(
+                candidate,
+                phase_body,
+            )
+            if (
+                typed is None
+                or typed.get("generation_fingerprint")
+                != generation_fingerprint
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "leftover-wait recovery budget references a foreign receipt"
+                )
+            reason_text = str(typed.get("reason") or "")
+            if candidate.attempt_id == attempt.attempt_id:
+                if reason_text not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS:
+                    raise DatabaseImplementationAuthorityError(
+                        "leftover-wait current foreign matching is not a wait"
+                    )
+                current_is_leftover_wait = True
+                current_fingerprint = str(typed["deferral_fingerprint"])
+                continue
+            if reason_text in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS:
+                continue
+            identity = {
+                "attempt_id": candidate.attempt_id,
+                "attempt_number": int(candidate.attempt_number),
+                "reason": reason_text,
+                "deferral_fingerprint": str(
+                    typed["deferral_fingerprint"]
+                ),
+            }
+            if len(reproduced) >= count:
+                continue
+            reproduced.append(identity)
+            encoded = _database_daemon_json(identity).encode("utf-8")
+            digest.update(len(encoded).to_bytes(8, "big"))
+            digest.update(encoded)
+        if (
+            not current_is_leftover_wait
+            or not current_fingerprint
+            or reproduced != matching
+            or len(reproduced) != count
+            or budget.get("current_deferral_fingerprint")
+            != current_fingerprint
+            or budget.get("matching_attempts_digest")
+            != "sha256:" + digest.hexdigest()
+            or any(
+                item.get("attempt_id") == attempt.attempt_id
+                for item in matching
+            )
+            or any(
+                item.get("deferral_fingerprint") == current_fingerprint
+                for item in matching
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget did not reproduce exactly"
+            )
+        return dict(budget)
+
+    def _verified_capacity_wait_retry_budget(
+        self,
+        attempt: DatabaseTaskAttempt,
+        budget: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Bind truncated provider-capacity current to capacity matching."""
+
+        matching = budget.get("matching_attempts")
+        if (
+            not isinstance(matching, list)
+            or not matching
+            or any(not isinstance(item, Mapping) for item in matching)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "capacity-wait recovery budget references a foreign receipt"
+            )
+        matching_reasons = [
+            str(item.get("reason") or "") for item in matching
+        ]
+        if not matching_reasons or any(
+            reason not in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+            for reason in matching_reasons
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "capacity-wait recovery budget references a foreign receipt"
+            )
+        failed_phases = [
+            phase
+            for phase in self.phase_history(attempt.attempt_id)
+            if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        current_body = failed_phases[-1].get("body") if failed_phases else None
+        typed = (
+            self._verified_typed_deferral_receipt(attempt, current_body)
+            if isinstance(current_body, Mapping)
+            else None
+        )
+        current_reason = str(typed.get("reason") or "") if typed else ""
+        current_fingerprint = (
+            str(typed.get("deferral_fingerprint") or "") if typed else ""
+        )
+        current_matches = [
+            item
+            for item in matching
+            if item.get("attempt_id") == attempt.attempt_id
+            and item.get("attempt_number") == int(attempt.attempt_number)
+        ]
+        if (
+            typed is None
+            or current_reason not in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+            or not current_fingerprint
+            or budget.get("current_deferral_fingerprint")
+            != current_fingerprint
+            or len(current_matches) != 1
+            or current_matches[0].get("reason") != current_reason
+            or current_matches[0].get("deferral_fingerprint")
+            != current_fingerprint
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "capacity-wait recovery budget did not reproduce exactly"
+            )
+        return dict(budget)
+
     def _verified_leftover_wait_retry_budget(
         self,
         attempt: DatabaseTaskAttempt,
         raw: Any,
     ) -> dict[str, Any]:
-        """Replay an exact, complete legacy budget made solely from waits."""
+        """Replay an exact, complete leftover-wait or wait-current budget."""
 
         expected_fields = {
             "schema",
@@ -112705,33 +116616,82 @@ class DatabaseImplementationDaemon:
         candidate_count = budget.get("typed_deferral_candidate_count")
         verified_count = budget.get("verified_typed_deferral_count")
         if (
-            budget.get("schema")
-            != _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA
-            or budget.get("task_cid") != attempt.task_cid
-            or budget.get("task_generation") != attempt.task_cid
-            or type(count) is not int
-            or type(candidate_count) is not int
-            or type(verified_count) is not int
-            or not isinstance(matching, list)
+            not isinstance(matching, list)
             or not matching
-            or len(matching) > _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW
-            or count != len(matching)
-            or candidate_count != count
-            or verified_count != count
-            or count < self.max_task_attempts
-            or budget.get("max_task_attempts") != self.max_task_attempts
-            or budget.get("typed_deferral_count_is_lower_bound") is not False
-            or budget.get("verified_count_complete") is not True
-            or budget.get("exhausted") is not True
-            or budget.get("attempt_consumed") is not False
-            or budget.get("typed_deferral_slot_consumed") is not True
-            or budget.get("matching_attempts_truncated") is not False
-            or budget.get("omitted_matching_attempt_count") != 0
-            or observation_id
-            != self._database_portal_evidence_digest(observation_body)
+            or any(not isinstance(item, Mapping) for item in matching)
         ):
             raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget references a foreign receipt"
+            )
+        matching_reasons = [
+            str(item.get("reason") or "") for item in matching
+        ]
+        wait_only = all(
+            reason in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+            for reason in matching_reasons
+        )
+        capacity_only = all(
+            reason in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+            for reason in matching_reasons
+        )
+        foreign_only = all(
+            reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS and reason
+            for reason in matching_reasons
+        )
+        if not wait_only and not foreign_only and not capacity_only:
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget references a foreign receipt"
+            )
+        closed_field_ok = (
+            budget.get("schema")
+            == _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA
+            and budget.get("task_cid") == attempt.task_cid
+            and budget.get("task_generation") == attempt.task_cid
+            and type(count) is int
+            and type(candidate_count) is int
+            and type(verified_count) is int
+            and len(matching) <= _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW
+            and count == len(matching)
+            and budget.get("max_task_attempts") == self.max_task_attempts
+            and budget.get("exhausted") is True
+            and budget.get("attempt_consumed") is False
+            and budget.get("typed_deferral_slot_consumed") is True
+            and observation_id
+            == self._database_portal_evidence_digest(observation_body)
+        )
+        if wait_only:
+            closed_field_ok = (
+                closed_field_ok
+                and candidate_count == count
+                and verified_count == count
+                and count >= self.max_task_attempts
+                and budget.get("typed_deferral_count_is_lower_bound") is False
+                and budget.get("verified_count_complete") is True
+                and budget.get("matching_attempts_truncated") is False
+                and budget.get("omitted_matching_attempt_count") == 0
+            )
+        if not closed_field_ok:
+            raise DatabaseImplementationAuthorityError(
                 "leftover-wait recovery budget failed closed-field verification"
+            )
+        if foreign_only:
+            current_in_matching = any(
+                item.get("attempt_id") == attempt.attempt_id
+                for item in matching
+            )
+            if capacity_only and current_in_matching:
+                return self._verified_capacity_wait_retry_budget(
+                    attempt,
+                    budget,
+                )
+            return self._verified_leftover_wait_current_foreign_matching_budget(
+                attempt,
+                budget,
+            )
+        if capacity_only:
+            return self._verified_capacity_wait_retry_budget(
+                attempt,
+                budget,
             )
         generation_fingerprint = budget.get("generation_fingerprint")
         if not re.fullmatch(
@@ -112840,51 +116800,112 @@ class DatabaseImplementationDaemon:
             if isinstance(task_body, Mapping)
             else None
         )
+        expected_fields = set(
+            _DATABASE_PORTAL_TYPED_DEFERRAL_EXHAUSTED_RECEIPT_FIELDS
+        )
+        allowed_extra = (
+            _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            | _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+        )
         task_revision = getattr(task, "revision", None)
         coordination = (
             receipt.get("coordination")
             if isinstance(receipt, Mapping)
             else None
         )
-        if (
-            str(getattr(task, "status", "") or "").strip().lower()
-            != "blocked"
-            or type(task_revision) is not int
-            or not isinstance(receipt, Mapping)
-            or not _leftover_wait_blocked_receipt_fields_match(receipt)
-            or receipt.get("operation")
-            != "database_portal_typed_deferral_budget_exhausted"
-            or receipt.get("reason")
-            != "typed_portal_deferral_budget_exhausted"
-            or receipt.get("attempt_id") != attempt.attempt_id
-            or receipt.get("attempt_number") != int(attempt.attempt_number)
-            or receipt.get("claim_id") != attempt.claim_id
-            or receipt.get("lease_id") != attempt.lease_id
-            or receipt.get("owner_session_id") != attempt.owner_session_id
-            or receipt.get("fencing_token") != int(attempt.fencing_token)
-            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
-            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
-            or receipt.get("execution_revision") != int(attempt.revision)
-            or receipt.get("execution_finished_at_ms")
-            != attempt.finished_at_ms
-            or receipt.get("retryable") is not False
-            or receipt.get("attempt_consumed") is not False
-            or receipt.get("typed_deferral_slot_consumed") is not True
-            or not isinstance(
-                receipt.get("prior_queue_entry_preserved_inactive"), bool
+        carried_route = (
+            set(receipt) & _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            if isinstance(receipt, Mapping)
+            else set()
+        )
+        extra_fields = (
+            set(receipt) - expected_fields
+            if isinstance(receipt, Mapping)
+            else set()
+        )
+        mismatch = None
+        if str(getattr(task, "status", "") or "").strip().lower() != "blocked":
+            mismatch = "control status is not blocked"
+        elif type(task_revision) is not int:
+            mismatch = "task revision is not an int"
+        elif not isinstance(receipt, Mapping):
+            mismatch = "blocked control receipt is not a mapping"
+        elif expected_fields - set(receipt):
+            mismatch = (
+                "blocked control receipt missing "
+                + ",".join(sorted(expected_fields - set(receipt)))
             )
-            or not _leftover_wait_blocked_coordination_matches(
-                coordination,
-                attempt_id=str(attempt.attempt_id),
-                claim_id=str(attempt.claim_id),
-                attempt_number=int(attempt.attempt_number),
+        elif extra_fields - allowed_extra:
+            mismatch = (
+                "blocked control receipt has unknown fields "
+                + ",".join(sorted(extra_fields - allowed_extra))
             )
-            or receipt.get("control_expected_status")
-            not in {"in_progress", "retrying"}
-            or receipt.get("control_expected_revision") != task_revision - 1
+        elif carried_route not in (
+            set(),
+            _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS,
         ):
+            mismatch = "blocked control receipt has partial execution-route lineage"
+        elif receipt.get("operation") != (
+            "database_portal_typed_deferral_budget_exhausted"
+        ):
+            mismatch = "blocked control receipt operation is foreign"
+        elif receipt.get("reason") != "typed_portal_deferral_budget_exhausted":
+            mismatch = "blocked control receipt reason is foreign"
+        elif receipt.get("attempt_id") != attempt.attempt_id:
+            mismatch = "blocked control receipt attempt_id is foreign"
+        elif receipt.get("attempt_number") != int(attempt.attempt_number):
+            mismatch = "blocked control receipt attempt_number is foreign"
+        elif receipt.get("claim_id") != attempt.claim_id:
+            mismatch = "blocked control receipt claim_id is foreign"
+        elif receipt.get("lease_id") != attempt.lease_id:
+            mismatch = "blocked control receipt lease_id is foreign"
+        elif receipt.get("owner_session_id") != attempt.owner_session_id:
+            mismatch = "blocked control receipt owner_session_id is foreign"
+        elif receipt.get("fencing_token") != int(attempt.fencing_token):
+            mismatch = "blocked control receipt fencing_token is foreign"
+        elif receipt.get("fence_epoch") != int(attempt.fence_epoch):
+            mismatch = "blocked control receipt fence_epoch is foreign"
+        elif receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED:
+            mismatch = "blocked control receipt execution_phase is not failed"
+        elif receipt.get("execution_revision") != int(attempt.revision):
+            mismatch = "blocked control receipt execution_revision is foreign"
+        elif receipt.get("execution_finished_at_ms") != attempt.finished_at_ms:
+            mismatch = "blocked control receipt finished_at is foreign"
+        elif receipt.get("retryable") is not False:
+            mismatch = "blocked control receipt retryable is not false"
+        elif receipt.get("attempt_consumed") is not False:
+            mismatch = "blocked control receipt attempt_consumed is not false"
+        elif receipt.get("typed_deferral_slot_consumed") is not True:
+            mismatch = "blocked control receipt typed_deferral_slot_consumed is not true"
+        elif not isinstance(
+            receipt.get("prior_queue_entry_preserved_inactive"), bool
+        ):
+            mismatch = "blocked control receipt prior_queue_entry_preserved_inactive is invalid"
+        elif not isinstance(coordination, Mapping):
+            mismatch = "blocked control receipt coordination is invalid"
+        elif coordination and coordination.get("attempt_id") != attempt.attempt_id:
+            mismatch = "blocked control receipt coordination attempt_id is foreign"
+        elif coordination and coordination.get("claim_id") != attempt.claim_id:
+            mismatch = "blocked control receipt coordination claim_id is foreign"
+        elif (
+            coordination
+            and coordination.get("attempt_number") != int(attempt.attempt_number)
+        ):
+            mismatch = "blocked control receipt coordination attempt_number is foreign"
+        elif receipt.get("control_expected_status") not in {
+            "in_progress",
+            "retrying",
+        }:
+            mismatch = (
+                "blocked control receipt expected status is "
+                + repr(receipt.get("control_expected_status"))
+            )
+        elif receipt.get("control_expected_revision") != task_revision - 1:
+            mismatch = "blocked control receipt expected revision is stale"
+        if mismatch is not None:
             raise DatabaseImplementationAuthorityError(
-                "leftover-wait recovery does not match its blocked control receipt"
+                "leftover-wait recovery does not match its blocked control "
+                "receipt: " + mismatch
             )
         return self._verified_leftover_wait_retry_budget(
             attempt,
@@ -113095,9 +117116,16 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery rejected task identity or authority"
             )
         status = str(task.status or "").strip().lower()
-        crash_context = self._post_merge_completion_crash_recovery_context(
-            task,
-            require_current_blocked=True,
+        verifier_replay_context = (
+            self._post_merge_completion_claim_verifier_replay_context(task)
+        )
+        crash_context = (
+            verifier_replay_context
+            if verifier_replay_context is not None
+            else self._post_merge_completion_crash_recovery_context(
+                task,
+                require_current_blocked=True,
+            )
         )
         latest = (
             crash_context["current_attempt"]
@@ -113131,9 +117159,16 @@ class DatabaseImplementationDaemon:
                 if isinstance(retry_receipt, Mapping)
                 else None
             )
+            retry_operation = (
+                str(retry_receipt.get("operation") or "")
+                if isinstance(retry_receipt, Mapping)
+                else ""
+            )
             source_attempt = (
                 latest
                 if retry_seed is None
+                or retry_operation
+                == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
                 else self._post_merge_completion_source_attempt_from_seed(
                     retry_seed
                 )
@@ -113215,6 +117250,10 @@ class DatabaseImplementationDaemon:
                 )
             )
         )
+        verifier_replay = bool(
+            crash_context is not None
+            and crash_context.get("compatibility_replay") is True
+        )
         crash_source_admitted = bool(
             crash_context is not None
             and self._post_merge_completion_crash_source_matches(
@@ -113271,8 +117310,20 @@ class DatabaseImplementationDaemon:
                     "post-merge completion recovery target generation was "
                     "already consumed"
                 )
+        callback_integration_terminal = bool(
+            qualification_kind == "callback_integration"
+            and self._post_merge_completion_recovery_source_terminal_reason(
+                latest,
+                task,
+            )
+            in {
+                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
+            }
+        )
         if (
             not crash_source_admitted
+            and not callback_integration_terminal
             and not unknown_callback_source_admitted
             and not (
                 qualification_kind == "callback_integration"
@@ -113298,11 +117349,23 @@ class DatabaseImplementationDaemon:
             + ":"
             + qualification_receipt_id
         )[:2048]
+        # Typed Quack sources expose a closed post-merge-only owner command.
+        # Do not make that capability visible through the legacy generic
+        # queue/status name: unrelated blocked-retry paths use presence of the
+        # generic method as an authority gate.  Embedded DatabaseTaskSource
+        # retains its existing guarded transaction as a compatibility
+        # fallback.
         guarded_queue_status = getattr(
             self.task_source,
-            "record_queue_backoff_and_cas_status",
+            "recover_post_merge_retry",
             None,
         )
+        if not callable(guarded_queue_status):
+            guarded_queue_status = getattr(
+                self.task_source,
+                "record_queue_backoff_and_cas_status",
+                None,
+            )
         if not callable(guarded_queue_status):
             raise DatabaseImplementationAuthorityError(
                 "post-merge recovery task source has no atomic retry authority"
@@ -113322,6 +117385,26 @@ class DatabaseImplementationDaemon:
                 latest,
                 operations=("database_portal_terminal_failure",),
             )
+        )
+        execution_route_binding = self._execution_route_binding_for_claim(
+            task,
+            fenced_retry=False,
+        )
+        execution_route_lineage = (
+            {
+                "execution_route_binding": dict(execution_route_binding),
+                "execution_route_policy_id": execution_route_binding[
+                    "policy_id"
+                ],
+                "execution_route_origin_revision": execution_route_binding[
+                    "task_revision"
+                ],
+            }
+            if execution_route_binding
+            else {}
+        )
+        transfer_lineage = self._database_virgin_transfer_lineage_for_transition(
+            task
         )
         completion_terminal_reason = (
             str(crash_context["source_seed"]["terminal_reason"])
@@ -113354,12 +117437,7 @@ class DatabaseImplementationDaemon:
                 terminal_reason=completion_terminal_reason,
             )
             if completion_terminal_reason
-            in {
-                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
-                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-                DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
-                DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON,
-            }
+            in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
             else None
         )
 
@@ -113390,7 +117468,9 @@ class DatabaseImplementationDaemon:
             else self._reconcile_failed_attempt_coordination(latest)
         )
         transition_source_coordination = (
-            dict(crash_context["source_coordination"])
+            dict(coordination)
+            if verifier_replay
+            else dict(crash_context["source_coordination"])
             if crash_source_admitted and crash_context is not None
             else dict(coordination)
         )
@@ -113474,22 +117554,27 @@ class DatabaseImplementationDaemon:
                 "callback_reconciliation_evidence_id": evidence_id,
             }
         )
+        transition_attempt = latest if verifier_replay else source_attempt
         transition_receipt = {
             "operation": (
-                "database_post_merge_declared_outputs_"
-                + qualification_kind
-                + "_recovery"
+                DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+                if verifier_replay
+                else (
+                    "database_post_merge_declared_outputs_"
+                    + qualification_kind
+                    + "_recovery"
+                )
             ),
-            "attempt_id": source_attempt.attempt_id,
-            "attempt_number": int(source_attempt.attempt_number),
-            "claim_id": source_attempt.claim_id,
-            "lease_id": source_attempt.lease_id,
-            "owner_session_id": source_attempt.owner_session_id,
-            "fencing_token": int(source_attempt.fencing_token),
-            "fence_epoch": int(source_attempt.fence_epoch),
-            "execution_phase": source_attempt.committed_phase,
-            "execution_revision": int(source_attempt.revision),
-            "execution_finished_at_ms": source_attempt.finished_at_ms,
+            "attempt_id": transition_attempt.attempt_id,
+            "attempt_number": int(transition_attempt.attempt_number),
+            "claim_id": transition_attempt.claim_id,
+            "lease_id": transition_attempt.lease_id,
+            "owner_session_id": transition_attempt.owner_session_id,
+            "fencing_token": int(transition_attempt.fencing_token),
+            "fence_epoch": int(transition_attempt.fence_epoch),
+            "execution_phase": transition_attempt.committed_phase,
+            "execution_revision": int(transition_attempt.revision),
+            "execution_finished_at_ms": transition_attempt.finished_at_ms,
             "request_id": str(raw["request_id"]),
             "candidate_commit": str(raw["candidate_commit"]),
             "source_binding_id": str(raw["source_binding_id"]),
@@ -113501,6 +117586,8 @@ class DatabaseImplementationDaemon:
             "coordination": transition_source_coordination,
             "control_expected_status": status,
             "control_expected_revision": int(task.revision),
+            **execution_route_lineage,
+            **transfer_lineage,
             **qualification_control_fields,
             **(
                 {
@@ -113601,11 +117688,12 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery returned malformed queue evidence"
             )
         queue_receipt_dict = dict(queue_receipt)
+        changed = bool(getattr(cas_result, "changed", False))
         return {
             "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
             "attempted": True,
             "recovered": True,
-            "changed": True,
+            "changed": changed,
             "status": "retrying",
             "task_cid": task_cid,
             "task_alias": str(raw["task_alias"]),
@@ -113627,7 +117715,9 @@ class DatabaseImplementationDaemon:
             "queue_reused": queue_reused,
             "queue_receipt": queue_receipt_dict,
             "control_receipt": dict(to_dict()),
-            "write_count": 1 if queue_reused else 2,
+            "write_count": (
+                (1 if queue_reused else 2) if changed else 0
+            ),
         }
 
 
@@ -113754,8 +117844,7 @@ class DatabaseImplementationDaemon:
             or not isinstance(reasons, list)
             or not reasons
             or any(
-                type(reason) is not str
-                or reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                type(reason) is not str or not reason
                 for reason in reasons
             )
             or reasons != sorted(set(reasons))
@@ -113827,7 +117916,18 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
-        if set(receipt) != expected_fields:
+        allowed_extra = (
+            _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            | _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+        )
+        carried_route = set(receipt) & _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+        extra_fields = set(receipt) - expected_fields
+        if (
+            expected_fields - set(receipt)
+            or extra_fields - allowed_extra
+            or carried_route
+            not in (set(), _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS)
+        ):
             raise DatabaseImplementationAuthorityError(
                 "leftover-wait deferral-budget recovery control receipt has "
                 "unknown or missing fields"
@@ -114047,6 +118147,28 @@ class DatabaseImplementationDaemon:
                 continue
             if status != "blocked":
                 continue
+            last_fatal = self._leftover_wait_owner_fatals.get(attempt.task_cid)
+            if (
+                last_fatal is not None
+                and (time.time() - last_fatal)
+                < _LEFTOVER_WAIT_OWNER_FATAL_BACKOFF_SECONDS
+            ):
+                # SPAR-040 leftover-wait rearm FatalException-poisoned the
+                # exclusive writer every idle tick (unique-index delete miss)
+                # and then killed SPAR. Persist the backoff so a restart does
+                # not immediately re-poison the owner.
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": (
+                            "leftover_wait_recovery_deferred_after_owner_fatal"
+                        ),
+                    }
+                )
+                continue
             if self._automatic_claim_forbidden(task):
                 outcomes.append(
                     {
@@ -114082,14 +118204,57 @@ class DatabaseImplementationDaemon:
             if (
                 not isinstance(candidate_matching, list)
                 or not candidate_matching
-                or any(
-                    not isinstance(item, Mapping)
-                    or item.get("reason")
-                    not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
-                    for item in candidate_matching
-                )
+                or any(not isinstance(item, Mapping) for item in candidate_matching)
             ):
                 continue
+            matching_reasons = [
+                str(item.get("reason") or "") for item in candidate_matching
+            ]
+            wait_only = all(
+                reason in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                for reason in matching_reasons
+            )
+            capacity_only = all(
+                reason in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+                for reason in matching_reasons
+            )
+            foreign_only = all(
+                reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS and reason
+                for reason in matching_reasons
+            )
+            if not wait_only and not foreign_only and not capacity_only:
+                continue
+            if foreign_only:
+                current_in_matching = any(
+                    item.get("attempt_id") == attempt.attempt_id
+                    for item in candidate_matching
+                )
+                if current_in_matching:
+                    if not capacity_only:
+                        continue
+                else:
+                    failed_phases = [
+                        phase
+                        for phase in self.phase_history(attempt.attempt_id)
+                        if phase.get("phase") == ATTEMPT_PHASE_FAILED
+                    ]
+                    current_body = (
+                        failed_phases[-1].get("body") if failed_phases else None
+                    )
+                    current_typed = (
+                        self._verified_typed_deferral_receipt(
+                            attempt,
+                            current_body,
+                        )
+                        if isinstance(current_body, Mapping)
+                        else None
+                    )
+                    if (
+                        current_typed is None
+                        or str(current_typed.get("reason") or "")
+                        not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                    ):
+                        continue
             try:
                 budget = self._verified_blocked_leftover_wait_retry_budget(
                     attempt,
@@ -114106,6 +118271,14 @@ class DatabaseImplementationDaemon:
                     recovery_evidence=evidence,
                 )
             except Exception as exc:
+                reason = f"{type(exc).__name__}: {exc}"
+                if (
+                    type(exc).__name__ == "FatalException"
+                    or "FatalException" in reason
+                    or "Failed to delete all rows from index" in reason
+                    or _is_duckdb_uncertain_transaction_unusable(exc)
+                ):
+                    self._record_leftover_wait_owner_fatal(attempt.task_cid)
                 logger.warning(
                     "leftover-wait deferral-budget recovery not admitted "
                     "for %s: %s: %s",
@@ -114968,6 +119141,7 @@ class DatabaseImplementationDaemon:
         succeeded: bool,
         reconciliation: Mapping[str, Any],
         current_attempt: DatabaseTaskAttempt | None = None,
+        allow_existing_terminal: bool = False,
     ) -> DatabaseTaskAttempt | None:
         """Project an authoritative cross-store recovery into execution state.
 
@@ -115036,6 +119210,11 @@ class DatabaseImplementationDaemon:
                 for candidate in admissible_bodies
             ):
                 return current
+            if allow_existing_terminal:
+                # SPAR-024 leftover recycle: a prior failed-phase commit already
+                # holds immutable evidence. Retirement must not freeze the only
+                # in_progress task behind attach-contention backoff.
+                return current
             raise DatabaseImplementationConflictError(
                 f"reconciled attempt {attempt_id} has different immutable "
                 "terminal evidence"
@@ -115048,6 +119227,8 @@ class DatabaseImplementationDaemon:
             item.get("phase") == expected_phase
             for item in self.phase_history(attempt_id)
         ):
+            if allow_existing_terminal:
+                return current
             raise DatabaseImplementationConflictError(
                 f"running attempt {attempt_id} already has terminal evidence"
             )
@@ -116170,6 +120351,7 @@ class DatabaseImplementationDaemon:
             identity,
             succeeded=False,
             reconciliation=outcome,
+            allow_existing_terminal=True,
         )
         if settled is None:
             raise DatabaseImplementationDaemonError(
@@ -116726,7 +120908,169 @@ class DatabaseImplementationDaemon:
             """,
             [TASK_SOURCE_QUERY_LIMIT],
         ).fetchall()
-        return [self._attempt_from_row(row) for row in rows]
+        attempts = [self._attempt_from_row(row) for row in rows]
+        failed_phase_attempts: list[DatabaseTaskAttempt] = []
+        for attempt in attempts:
+            if attempt.committed_phase == ATTEMPT_PHASE_FAILED:
+                failed_phase_attempts.append(attempt)
+                continue
+            if self._is_admitted_retired_blocked_neutral_attempt(attempt):
+                # ``_retire_stale_blocked_neutral_attempt`` deliberately
+                # changes only the cursor status after control leaves the
+                # quarantine.  Its immutable terminal evidence remains the
+                # exact BLOCKED receipt; it is not a failed-phase retry or
+                # terminal-Portal candidate and must never be redispatched.
+                continue
+            raise DatabaseImplementationAuthorityError(
+                f"failed attempt {attempt.attempt_id} has committed phase "
+                f"{attempt.committed_phase!r} without an admitted retired "
+                "blocked-neutral receipt"
+            )
+        return failed_phase_attempts
+
+    def _is_admitted_retired_blocked_neutral_attempt(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        """Verify the failed-status cursor that intentionally retains BLOCKED."""
+
+        if (
+            attempt.status != "failed"
+            or attempt.committed_phase != ATTEMPT_PHASE_BLOCKED
+        ):
+            return False
+        history = self.phase_history(attempt.attempt_id)
+        blocked_phases = [
+            phase
+            for phase in history
+            if phase.get("phase") == ATTEMPT_PHASE_BLOCKED
+        ]
+        failed_phases = [
+            phase
+            for phase in history
+            if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        if len(blocked_phases) != 1 or failed_phases:
+            raise DatabaseImplementationAuthorityError(
+                f"retired blocked attempt {attempt.attempt_id} has invalid "
+                "terminal phase history"
+            )
+        blocked_phase = blocked_phases[0]
+        blocked_committed_at_ms = int(
+            blocked_phase.get("committed_at_ms") or 0
+        )
+        if (
+            blocked_phase.get("fencing_token") != int(attempt.fencing_token)
+            or blocked_phase.get("fence_epoch") != int(attempt.fence_epoch)
+            or blocked_phase.get("revision") + 1 != int(attempt.revision)
+            or blocked_committed_at_ms < 1
+            or attempt.finished_at_ms is None
+            or int(attempt.finished_at_ms) < blocked_committed_at_ms
+        ):
+            raise DatabaseImplementationAuthorityError(
+                f"retired blocked attempt {attempt.attempt_id} has invalid "
+                "terminal phase metadata or retirement cursor"
+            )
+        blocked_body = blocked_phase.get("body")
+        raw_evidence = (
+            blocked_body.get("failure_evidence")
+            if isinstance(blocked_body, Mapping)
+            else None
+        )
+        try:
+            evidence = _sealed_database_neutral_failure_evidence(
+                raw_evidence if isinstance(raw_evidence, Mapping) else {}
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                f"retired blocked attempt {attempt.attempt_id} has malformed "
+                "neutral failure evidence"
+            ) from exc
+        if not self._blocked_neutral_portal_phase_matches(attempt, evidence):
+            raise DatabaseImplementationAuthorityError(
+                f"retired blocked attempt {attempt.attempt_id} does not have "
+                "the canonical blocked-neutral phase"
+            )
+
+        provider_key = f"provider:{attempt.attempt_id}"
+        raw_intent = self.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=provider_key,
+        )
+        try:
+            provider_intent = (
+                _sealed_database_provider_callback_unknown_evidence(
+                    raw_intent if isinstance(raw_intent, Mapping) else {}
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                f"retired blocked attempt {attempt.attempt_id} has no exact "
+                "durable callback-start intent"
+            ) from exc
+        expected_intent_identity = {
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "task_cid": attempt.task_cid,
+            "idempotency_key": provider_key,
+        }
+        intent_mismatches = [
+            name
+            for name, expected in expected_intent_identity.items()
+            if provider_intent.get(name) != expected
+        ]
+        if intent_mismatches:
+            raise DatabaseImplementationConflictError(
+                "retired blocked callback intent is stale or rebound: "
+                + ", ".join(intent_mismatches)
+            )
+
+        if evidence.get("schema") == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA:
+            if evidence != provider_intent:
+                raise DatabaseImplementationConflictError(
+                    "retired blocked callback evidence differs from its "
+                    "durable callback-start intent"
+                )
+            return True
+
+        consumed_identity = {
+            "database_attempt_id": attempt.attempt_id,
+            "database_claim_id": attempt.claim_id,
+            "database_lease_id": attempt.lease_id,
+            "database_fencing_token": int(attempt.fencing_token),
+            "database_fence_epoch": int(attempt.fence_epoch),
+            "task_cid": attempt.task_cid,
+        }
+        consumed_mismatches = [
+            name
+            for name, expected in consumed_identity.items()
+            if evidence.get(name) != expected
+        ]
+        if (
+            consumed_mismatches
+            or provider_intent.get("task_contract_digest")
+            != evidence.get("task_contract_digest")
+            or provider_intent.get("repository_tree_id")
+            != evidence.get("control_repository_tree_id")
+            or provider_intent.get("database_binding_id")
+            != evidence.get("database_binding_id")
+            or provider_intent.get("portal_failure_fingerprint")
+            != evidence.get("failure_fingerprint")
+        ):
+            raise DatabaseImplementationConflictError(
+                "retired blocked consumed failure is not bound to its exact "
+                "attempt and callback intent"
+                + (
+                    ": " + ", ".join(consumed_mismatches)
+                    if consumed_mismatches
+                    else ""
+                )
+            )
+        return True
 
     def _terminal_retry_evidence(
         self,
@@ -117653,7 +121997,10 @@ class DatabaseImplementationDaemon:
                 # task or crash the lane after another actor completes it.
                 if status in IMPLEMENTATION_TASK_TERMINAL_STATUSES:
                     continue
-                if status == "blocked":
+                if status in {"blocked", "todo", "ready"}:
+                    # SPAR-024: leftover exhausted deferral after recycle left
+                    # DuckDB control already unclaimed. Crashing here looped
+                    # lane-2 (~500 times) and starved the ready claim.
                     continue
                 if status not in {"in_progress", "retrying"}:
                     raise DatabaseImplementationConflictError(
@@ -118285,6 +122632,7 @@ class DatabaseImplementationDaemon:
                     in {
                         DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                         DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                        DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
                     }
                     and operation
                     in {
@@ -119209,6 +123557,27 @@ class DatabaseImplementationDaemon:
                     "status": "completed",
                     **landed,
                 }
+            if self._task_outputs_landed_on_target(task):
+                completed = self._complete_landed_running_attempt(attempt, task)
+                self._record_event(
+                    "landed_merge_completed_instead_of_resume",
+                    attempt_id=completed.attempt_id,
+                    task_cid=completed.task_cid,
+                    body={"status": completed.status},
+                )
+                return {
+                    "resumed": True,
+                    "portal_retryable_failure": False,
+                    "portal_terminal_failure": False,
+                    "portal_replay_suppressed": False,
+                    "deferred": False,
+                    "landed_outputs_completed": True,
+                    "provider_dispatched": False,
+                    "attempt_consumed": True,
+                    "attempt_id": completed.attempt_id,
+                    "task_alias": completed.task_alias,
+                    "status": completed.status,
+                }
 
         try:
             return self.resume_attempt(attempt)
@@ -119745,6 +124114,32 @@ class DatabaseImplementationDaemon:
             except DatabaseImplementationConflictError:
                 raise
             except Exception as fail_exc:
+                fail_text = str(fail_exc)
+                leftover_wait_cooldown_poison = bool(
+                    deferred
+                    and reason
+                    in {
+                        "worktree_lifecycle_claim_exists",
+                        "worktree_lifecycle_active_transition_failed",
+                        "worktree_lifecycle_transition_failed",
+                        "inflight_process",
+                        "external_protected_checkout_recovery_required",
+                    }
+                    and (
+                        "retry cooldown row is foreign" in fail_text
+                        or "retry cooldown prior queue state is malformed"
+                        in fail_text
+                    )
+                )
+                if leftover_wait_cooldown_poison:
+                    # SPAR-024: leftover-wait recovery left an IntentRepository
+                    # lease row. Persist of the leftover-wait deferral then
+                    # fail-closed and froze in_progress. Requeue so claim_next
+                    # can continue after same-lane dead-owner recovery.
+                    control = self.task_source.get(attempt.task_cid)
+                    if control is not None:
+                        self._retire_stale_running_attempt(attempt, control)
+                        self._requeue_unimplemented_control_task(control)
                 return {
                     "resumed": True,
                     "portal_retryable_failure": retryable,
@@ -119773,7 +124168,10 @@ class DatabaseImplementationDaemon:
                     ),
                     "backoff_seconds": backoff_seconds,
                     "reason": reason,
-                    "fail_error": str(fail_exc),
+                    "fail_error": fail_text,
+                    "leftover_wait_cooldown_requeued": (
+                        leftover_wait_cooldown_poison
+                    ),
                     "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
                     "task_alias": str(getattr(attempt, "task_alias", "") or ""),
                     "status": (
@@ -120059,6 +124457,116 @@ class DatabaseImplementationDaemon:
             },
         )
 
+    def _landed_merge_owner_fatal_path(self) -> Path | None:
+        path = getattr(self, "execution_path", None)
+        if path is None:
+            return None
+        return Path(path).with_name(_LANDED_MERGE_OWNER_FATAL_STATE_NAME)
+
+    def _load_landed_merge_owner_fatals(self) -> None:
+        path = self._landed_merge_owner_fatal_path()
+        if path is None or not path.is_file():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, Mapping):
+            return
+        loaded: dict[str, float] = {}
+        for raw_cid, raw_when in payload.items():
+            task_cid = str(raw_cid or "")
+            if not task_cid or isinstance(raw_when, bool):
+                continue
+            try:
+                recorded_at = float(raw_when)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(recorded_at) or recorded_at <= 0:
+                continue
+            loaded[task_cid] = recorded_at
+        self._landed_merge_owner_fatals.update(loaded)
+
+    def _record_landed_merge_owner_fatal(self, task_cid: str) -> None:
+        cid = str(task_cid or "")
+        if not cid:
+            return
+        recorded_at = time.time()
+        self._landed_merge_owner_fatals[cid] = recorded_at
+        path = self._landed_merge_owner_fatal_path()
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                name: when
+                for name, when in self._landed_merge_owner_fatals.items()
+                if isinstance(when, (int, float))
+                and not isinstance(when, bool)
+                and math.isfinite(float(when))
+            }
+            path.write_text(
+                json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                encoding="utf-8",
+            )
+        except OSError:
+            return
+
+    def _leftover_wait_owner_fatal_path(self) -> Path | None:
+        path = getattr(self, "execution_path", None)
+        if path is None:
+            return None
+        return Path(path).with_name(_LEFTOVER_WAIT_OWNER_FATAL_STATE_NAME)
+
+    def _load_leftover_wait_owner_fatals(self) -> None:
+        path = self._leftover_wait_owner_fatal_path()
+        if path is None or not path.is_file():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, Mapping):
+            return
+        loaded: dict[str, float] = {}
+        for raw_cid, raw_when in payload.items():
+            task_cid = str(raw_cid or "")
+            if not task_cid or isinstance(raw_when, bool):
+                continue
+            try:
+                recorded_at = float(raw_when)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(recorded_at) or recorded_at <= 0:
+                continue
+            loaded[task_cid] = recorded_at
+        self._leftover_wait_owner_fatals.update(loaded)
+
+    def _record_leftover_wait_owner_fatal(self, task_cid: str) -> None:
+        cid = str(task_cid or "")
+        if not cid:
+            return
+        recorded_at = time.time()
+        self._leftover_wait_owner_fatals[cid] = recorded_at
+        path = self._leftover_wait_owner_fatal_path()
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                name: when
+                for name, when in self._leftover_wait_owner_fatals.items()
+                if isinstance(when, (int, float))
+                and not isinstance(when, bool)
+                and math.isfinite(float(when))
+            }
+            path.write_text(
+                json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                encoding="utf-8",
+            )
+        except OSError:
+            return
+
     def _operator_typed_deferral_recovery_is_admitted(self, attempt: Any, task: Any, budget: Mapping[str, Any]) -> bool:
         """Recognize one owner-admitted fresh retry without replaying its old budget."""
         body = getattr(task, "body", None)
@@ -120153,11 +124661,28 @@ class DatabaseImplementationDaemon:
         task: Any,
     ) -> dict[str, Any] | None:
         task_cid = str(getattr(task, "task_cid", "") or "")
+        last_fatal = self._landed_merge_owner_fatals.get(task_cid)
+        if (
+            last_fatal is not None
+            and (time.time() - last_fatal)
+            < _LANDED_MERGE_OWNER_FATAL_BACKOFF_SECONDS
+        ):
+            # SPAR-017's git-landed quarantine retried record_validation_result
+            # every idle tick, FatalException-poisoned the exclusive writer,
+            # and starved SPAR-018 claim_next. Skip the doomed repair so the
+            # ready frontier can move. Persist the backoff so a lane-1 crash
+            # restart does not immediately re-poison the exclusive writer.
+            return {
+                "task_cid": task_cid,
+                "task_alias": str(getattr(task, "task_alias", "") or ""),
+                "completed": False,
+                "reason": "landed_merge_repair_deferred_after_owner_fatal",
+            }
         current = self.task_source.get(task_cid)
         if current is None:
             return None
         status = str(getattr(current, "status", "") or "").strip().lower()
-        if status not in {
+        if status not in _LANDED_MERGE_REPAIR_STATUSES and status not in {
             "quarantined",
             "retrying",
             "blocked",
@@ -120272,7 +124797,7 @@ class DatabaseImplementationDaemon:
         )
         return {
             "task_cid": str(refreshed.task_cid),
-            "task_alias": str(refreshed.task_alias),
+            "task_alias": str(getattr(refreshed, "task_alias", "") or ""),
             "completed": True,
             "reason": "database_landed_merge_repair",
             "evidence_digest": digest,
@@ -120287,8 +124812,11 @@ class DatabaseImplementationDaemon:
         """Complete or rearm landed work using Quack-admitted commands.
 
         The owner only admits ``in_progress`` + ``database_attempt_admitted``
-        → ``database_complete``.  Retrying/blocked rows whose outputs already
-        landed must rearm onto that claim path instead of a forbidden CAS.
+        → ``database_complete``.  Retrying leftovers are completed by the
+        live-attempt resume path after ``claim_next``.  Consumed-no-progress
+        work without declared outputs stays quarantined.  Retrying/blocked
+        rows whose outputs already landed must rearm onto that claim path
+        instead of a forbidden CAS.
         """
 
         status = str(getattr(current, "status", "") or "").strip().lower()
@@ -120520,9 +125048,11 @@ class DatabaseImplementationDaemon:
     def reconcile_landed_merged_tasks(self) -> list[dict[str, Any]]:
         """Complete control tasks whose declared outputs already landed.
 
-        Quarantined consumed-no-progress work without declared outputs stays
-        quarantined.  Retrying/blocked rows after a merge-train land (PCSM-010)
-        must complete too, or dependents never enter the ready frontier.
+        Retrying leftovers are completed by the live-attempt resume path
+        after ``claim_next``.  Consumed-no-progress work without declared
+        outputs stays quarantined.  Retrying/blocked rows after a merge-train
+        land (PCSM-010) must complete too, or dependents never enter the ready
+        frontier.
         """
 
         if self.repo_root is None:
@@ -120540,9 +125070,17 @@ class DatabaseImplementationDaemon:
             try:
                 outcome = self._complete_landed_quarantined_task(task)
             except Exception as exc:
+                cid = str(getattr(task, "task_cid", "") or "")
+                reason = f"{type(exc).__name__}: {exc}"
+                if (
+                    type(exc).__name__ == "FatalException"
+                    or "FatalException" in reason
+                    or _is_duckdb_uncertain_transaction_unusable(exc)
+                ):
+                    self._record_landed_merge_owner_fatal(cid)
                 outcomes.append(
                     {
-                        "task_cid": str(getattr(task, "task_cid", "") or ""),
+                        "task_cid": cid,
                         "completed": False,
                         "reason": str(exc),
                     }
@@ -120596,6 +125134,7 @@ class DatabaseImplementationDaemon:
             "claimed",
             "running",
             "quarantined",
+            "retrying",
         }:
             return None
         if status in {"in_progress", "claimed", "running", "retrying"} and not (
@@ -121131,6 +125670,12 @@ class DatabaseImplementationDaemon:
                                 "write_count"
                             )
                             or 0
+                        )
+                        + int(
+                            (prefix.get("pending_merge_consume") or {}).get(
+                                "write_count"
+                            )
+                            or 0
                         ),
                     ),
                     "deferred": True,
@@ -121163,6 +125708,10 @@ class DatabaseImplementationDaemon:
                     result["post_merge_recovery"] = dict(
                         prefix["post_merge_recovery"]
                     )
+                if prefix.get("pending_merge_consume") is not None:
+                    result["pending_merge_consume"] = dict(
+                        prefix["pending_merge_consume"]
+                    )
                 return result
             if self._is_quack_attach_contention(exc):
                 prefix = self._idle_recovery_prefix or {}
@@ -121173,6 +125722,7 @@ class DatabaseImplementationDaemon:
                         "merge_quarantine_settlement"
                     ),
                     post_merge_recovery=prefix.get("post_merge_recovery"),
+                    pending_merge_consume=prefix.get("pending_merge_consume"),
                 )
             raise
         finally:
@@ -121190,11 +125740,13 @@ class DatabaseImplementationDaemon:
         merge_quarantine_settlement = (
             self._settle_invalid_metadata_portal_quarantines()
         )
+        pending_merge_consume = self._consume_pending_same_board_merges()
         post_merge_recovery_reconciliation = self._run_post_merge_recovery()
         pending_merge_consume = self._consume_bound_pending_merge_train()
         self._idle_recovery_prefix = {
             "output_rearm": output_rearm,
             "merge_quarantine_settlement": merge_quarantine_settlement,
+            "pending_merge_consume": pending_merge_consume,
             "post_merge_recovery": post_merge_recovery_reconciliation,
             "pending_merge_consume": pending_merge_consume,
         }
@@ -121222,6 +125774,9 @@ class DatabaseImplementationDaemon:
         stale_in_progress_unstalls = self._run_reconciliation_step(
             self.reconcile_stale_in_progress_gates
         )
+        orphaned_in_progress_requeues = self._run_reconciliation_step(
+            self.reconcile_orphaned_in_progress_gates
+        )
         protected_path_recovery_reconciliations = self._run_reconciliation_step(
             self.reconcile_blocked_protected_path_recoveries
         )
@@ -121246,6 +125801,7 @@ class DatabaseImplementationDaemon:
         reconciliation_write_count = (
             len(dead_claim_reservation_recoveries)
             + int(merge_quarantine_settlement.get("write_count") or 0)
+            + int(pending_merge_consume.get("write_count") or 0)
             + int(post_merge_recovery_reconciliation.get("write_count") or 0)
             + int(pending_merge_consume.get("write_count") or 0)
             + self._reconciliation_outcome_count(completion_reconciliations)
@@ -121300,6 +125856,7 @@ class DatabaseImplementationDaemon:
                 if item.get("changed") is True
             )
             + len(stale_in_progress_unstalls)
+            + len(orphaned_in_progress_requeues)
             + sum(
                 1
                 for item in inflight_deferral_unstalls
@@ -121326,6 +125883,7 @@ class DatabaseImplementationDaemon:
                 "projections_required": False,
                 "control_schema_evidence": dict(self.control_schema_evidence),
                 "merge_quarantine_settlement": merge_quarantine_settlement,
+                "pending_merge_consume": pending_merge_consume,
                 "post_merge_recovery_reconciliation": (
                     post_merge_recovery_reconciliation
                 ),
@@ -121422,9 +125980,11 @@ class DatabaseImplementationDaemon:
                         pooled_worktree_create_recovery_reconciliations
                     ),
                     "stale_in_progress_unstalls": stale_in_progress_unstalls,
+                    "orphaned_in_progress_requeues": orphaned_in_progress_requeues,
                     "inflight_deferral_unstalls": inflight_deferral_unstalls,
                     "declared_output_rearm": output_rearm,
                     "merge_quarantine_settlement": merge_quarantine_settlement,
+                    "pending_merge_consume": pending_merge_consume,
                     "post_merge_recovery": post_merge_recovery_reconciliation,
                     "pending_merge_consume": pending_merge_consume,
                     "dead_claim_reservation_recoveries": (
@@ -121479,9 +126039,11 @@ class DatabaseImplementationDaemon:
                     pooled_worktree_create_recovery_reconciliations
                 ),
                 "stale_in_progress_unstalls": stale_in_progress_unstalls,
+                "orphaned_in_progress_requeues": orphaned_in_progress_requeues,
                 "inflight_deferral_unstalls": inflight_deferral_unstalls,
                 "declared_output_rearm": output_rearm,
                 "merge_quarantine_settlement": merge_quarantine_settlement,
+                "pending_merge_consume": pending_merge_consume,
                 "post_merge_recovery": post_merge_recovery_reconciliation,
                 "pending_merge_consume": pending_merge_consume,
                 "dead_claim_reservation_recoveries": (
@@ -121526,9 +126088,11 @@ class DatabaseImplementationDaemon:
                 pooled_worktree_create_recovery_reconciliations
             ),
             "stale_in_progress_unstalls": stale_in_progress_unstalls,
+            "orphaned_in_progress_requeues": orphaned_in_progress_requeues,
             "inflight_deferral_unstalls": inflight_deferral_unstalls,
             "declared_output_rearm": output_rearm,
             "merge_quarantine_settlement": merge_quarantine_settlement,
+            "pending_merge_consume": pending_merge_consume,
             "post_merge_recovery": post_merge_recovery_reconciliation,
             "pending_merge_consume": pending_merge_consume,
             "dead_claim_reservation_recoveries": (
@@ -121820,6 +126384,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--state-owner-bootstrap-store-id",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--require-launch-source-amendment",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--launch-source-amendment-json",
         default="",
         help=argparse.SUPPRESS,
     )
@@ -122451,6 +127025,132 @@ def _lgcvf_daemon_call(phase: str, operation: Callable[[], Any]) -> Any:
         raise
 
 
+def _request_process_bound_state_owner_bootstrap(
+    descriptor: int,
+    *,
+    client_id: str,
+    store_id: str,
+) -> Any:
+    """Harden this daemon before receiving its birth-bound owner credential.
+
+    The normal entrypoint hardening is conditional on a credential already
+    being present.  Inherited-socket bootstrap intentionally starts without
+    one, so the kernel process boundary must be established unconditionally
+    before the owner can send the first credential to this process.
+    """
+
+    from ..runtime.process_security import (
+        establish_state_authority_process_boundary,
+    )
+    from ..task_sources.state_owner_bootstrap import (
+        request_state_owner_bootstrap,
+    )
+
+    _lgcvf_daemon_call(
+        "process_security",
+        establish_state_authority_process_boundary,
+    )
+    return _lgcvf_daemon_call(
+        "owner_bootstrap",
+        lambda: request_state_owner_bootstrap(
+            descriptor,
+            client_id=client_id,
+            store_id=store_id,
+        ),
+    )
+
+
+def _git_rev_parse(repo_root: Path, revision: str) -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", revision],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ""
+    return str(result.stdout or "").strip()
+
+
+def _git_commit_is_ancestor(repo_root: Path, ancestor: str, head: str) -> bool:
+    if not ancestor or not head:
+        return False
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, head],
+        cwd=repo_root,
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _launch_amendment_covers_git(
+    amendment: Any,
+    *,
+    source_head: str,
+    repository_tree_id: str,
+    repo_root: Path,
+) -> bool:
+    """Exact launch Git, or an accepted descendant after merged work."""
+
+    from ..task_sources.launch_source_amendment import LaunchSourceAmendmentError
+
+    try:
+        amendment.validate_launch_git(
+            source_head=source_head,
+            repository_tree_id=repository_tree_id,
+        )
+        return True
+    except LaunchSourceAmendmentError:
+        return _git_commit_is_ancestor(
+            repo_root,
+            str(getattr(amendment, "launch_source_head", "") or ""),
+            source_head,
+        )
+
+
+def _launch_source_amendment_from_args(
+    args: argparse.Namespace,
+    *,
+    repo_root: Path,
+) -> Any:
+    """Validate the redundant CLI assertion against this exact Git launch."""
+
+    required = bool(getattr(args, "require_launch_source_amendment", False))
+    raw = str(getattr(args, "launch_source_amendment_json", "") or "")
+    if required and not raw:
+        raise RuntimeError("required launch-source amendment is unavailable")
+    if not raw:
+        return None
+    from ..task_sources.launch_source_amendment import (
+        LaunchSourceAmendment,
+        LaunchSourceAmendmentError,
+    )
+
+    try:
+        amendment = LaunchSourceAmendment.from_json(raw)
+        head = _git_rev_parse(repo_root, "HEAD^{commit}")
+        tree = _git_rev_parse(repo_root, "HEAD^{tree}")
+        if not head or not tree:
+            raise LaunchSourceAmendmentError(
+                "launch Git generation is unavailable"
+            )
+        if not _launch_amendment_covers_git(
+            amendment,
+            source_head=head,
+            repository_tree_id=tree,
+            repo_root=repo_root,
+        ):
+            raise LaunchSourceAmendmentError(
+                "launch Git generation differs from its source amendment"
+            )
+    except (OSError, LaunchSourceAmendmentError) as exc:
+        raise RuntimeError("launch-source amendment is invalid") from exc
+    args.launch_source_amendment_json = amendment.to_json()
+    return amendment
+
+
 def main(argv: list[str] | None = None) -> None:
     # ``execve`` resets Linux's dumpable flag.  A live Quack daemon retains
     # the in-memory attach credential, so re-establish the kernel boundary
@@ -122469,6 +127169,10 @@ def main(argv: list[str] | None = None) -> None:
         capture_state_authority_credentials,
     )
     args = _lgcvf_daemon_call("argument_parse", lambda: parse_args(argv))
+    launch_source_amendment = _lgcvf_daemon_call(
+        "launch_source_amendment",
+        lambda: _launch_source_amendment_from_args(args, repo_root=REPO_ROOT),
+    )
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -122524,6 +127228,11 @@ def main(argv: list[str] | None = None) -> None:
             task_source_kind=str(getattr(args, "task_source_kind", "") or ""),
         )
     )
+
+    if launch_source_amendment is not None and not use_database_daemon:
+        raise RuntimeError(
+            "launch-source amendment requires DuckDB/Quack task authority"
+        )
 
     if use_database_daemon:
         authority_mode = (
@@ -122584,25 +127293,18 @@ def main(argv: list[str] | None = None) -> None:
                 raise RuntimeError(
                     "state-owner bootstrap requires an explicit database owner session"
                 )
-            from ..task_sources.state_owner_bootstrap import (
-                request_state_owner_bootstrap,
-            )
-
-            credentials = _lgcvf_daemon_call(
-                "owner_bootstrap",
-                lambda: request_state_owner_bootstrap(
-                    bootstrap_fd,
-                    client_id=(
-                        f"database-implementation-daemon:{owner_session_id}"
-                    ),
-                    store_id=str(
-                        getattr(
-                            args,
-                            "state_owner_bootstrap_store_id",
-                            "",
-                        )
-                        or ""
-                    ),
+            credentials = _request_process_bound_state_owner_bootstrap(
+                bootstrap_fd,
+                client_id=(
+                    f"database-implementation-daemon:{owner_session_id}"
+                ),
+                store_id=str(
+                    getattr(
+                        args,
+                        "state_owner_bootstrap_store_id",
+                        "",
+                    )
+                    or ""
                 ),
             )
             state_owner_bootstrap_credentials = credentials
@@ -122644,6 +127346,7 @@ def main(argv: list[str] | None = None) -> None:
                 typed_task_source = TypedDatabaseTaskSource(
                     client,
                     execution_route_policy=credentials.execution_route_policy,
+                    launch_source_amendment=launch_source_amendment,
                 )
             except BaseException as exc:
                 _emit_lgcvf_daemon_diagnostic("owner_attach", exc)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import json
+import os
 from pathlib import Path
 import threading
 
@@ -16,12 +17,14 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnectionPolicyError,
     QuackTransportContentionError,
     _qualify_quack_statement,
+    is_art_unique_index_corruption,
     is_quack_transport_target,
     open_quack_transport_connection,
     persist_quack_attach_token_vault,
     quack_attach_lock_path,
     quack_token_vault_path,
     quack_transport_uri,
+    repair_art_unique_indexes,
     reset_quack_transport_cache,
     resolve_quack_attach_token,
     unstall_stale_in_progress_tasks,
@@ -288,6 +291,34 @@ def test_resolve_quack_attach_token_prefers_vault_over_stale_env(
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "staleEnv_token_value")
     assert resolve_quack_attach_token() == "vaultTok_value1234567890"
     assert resolve_quack_attach_token("explicit_token_ok") == "explicit_token_ok"
+
+
+def test_resolve_quack_attach_token_does_not_persist_captured_grant(
+    tmp_path, monkeypatch
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        capture_state_authority_credentials,
+        clear_captured_state_authority_credentials,
+    )
+
+    store = tmp_path / "control.duckdb"
+    store.write_bytes(b"")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(store))
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE", raising=False)
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "grantTok_value1234567890",
+    )
+    clear_captured_state_authority_credentials()
+    try:
+        assert capture_state_authority_credentials() is True
+        assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in os.environ
+        assert resolve_quack_attach_token() == "grantTok_value1234567890"
+        vault = quack_token_vault_path()
+        assert vault is not None
+        assert not vault.is_file()
+    finally:
+        clear_captured_state_authority_credentials()
 
 
 def test_resolve_quack_attach_token_persists_missing_vault(
@@ -945,6 +976,41 @@ def test_unstall_stale_in_progress_tasks_retries_dead_gate(tmp_path) -> None:
     assert rows["PCCE-022"] == ("in_progress", 1)
 
 
+def test_unstall_dead_generation_in_progress_retries_recent_gate(tmp_path) -> None:
+    import duckdb
+    from datetime import datetime, timedelta, timezone
+
+    connection = duckdb.connect(":memory:")
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL
+        )
+        """
+    )
+    now = datetime(2026, 9, 9, 16, 25, tzinfo=timezone.utc)
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?)",
+        [
+            "cid-050",
+            "SPAR-050",
+            "in_progress",
+            3,
+            (now - timedelta(minutes=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ],
+    )
+    result = unstall_stale_in_progress_tasks(connection, now=now, stale_seconds=1)
+    assert [item["task_alias"] for item in result["unstalled"]] == ["SPAR-050"]
+    row = connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_alias = 'SPAR-050'"
+    ).fetchone()
+    assert tuple(row) == ("retrying", 4)
+
+
 def test_unstall_drops_status_indexes_that_fatal_status_updates(tmp_path) -> None:
     import duckdb
     from datetime import datetime, timedelta, timezone
@@ -993,6 +1059,177 @@ def test_unstall_drops_status_indexes_that_fatal_status_updates(tmp_path) -> Non
     }
     assert "tasks_status_idx" in names
     assert "tasks_goal_idx" in names
+
+
+def test_is_art_unique_index_corruption_matches_delete_miss() -> None:
+    class FatalException(Exception):
+        pass
+
+    assert is_art_unique_index_corruption(
+        FatalException("Failed to delete all rows from index. Only deleted 0 out of 1 rows")
+    )
+    assert is_art_unique_index_corruption(
+        RuntimeError("INTERNAL Error: RemoveFromIndexes on tasks_task_cid_pkey")
+    )
+    assert not is_art_unique_index_corruption(ValueError("constraint failed"))
+
+
+def test_repair_art_unique_indexes_preserves_rows_and_allows_status_update(
+    tmp_path,
+) -> None:
+    import duckdb
+
+    connection = duckdb.connect(str(tmp_path / "control.duckdb"))
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL UNIQUE,
+            goal_cid VARCHAR NOT NULL,
+            ordinal BIGINT NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL,
+            body_json VARCHAR NOT NULL DEFAULT '{}'
+        )
+        """
+    )
+    connection.execute("CREATE INDEX tasks_goal_idx ON tasks(goal_cid, status)")
+    connection.execute("CREATE INDEX tasks_status_idx ON tasks(status, ordinal)")
+    connection.execute(
+        """
+        CREATE TABLE leases (
+            task_cid VARCHAR PRIMARY KEY,
+            claim_cid VARCHAR NOT NULL,
+            state VARCHAR NOT NULL,
+            attempt BIGINT NOT NULL,
+            release_reason VARCHAR,
+            retry_not_before_ms BIGINT NOT NULL DEFAULT 0
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE VIEW ready_task_context_v1 AS
+        SELECT t.task_cid, t.task_alias, l.state AS lease_state
+        FROM tasks AS t
+        LEFT JOIN leases AS l ON l.task_cid = t.task_cid
+        WHERE t.status IN ('ready', 'open', 'todo', 'pending')
+        """
+    )
+    connection.execute(
+        """
+        CREATE VIEW diagnostic_lease_surface_v1 AS
+        SELECT task_cid, state, attempt FROM leases
+        """
+    )
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            "baguqeerax6x37yslus4fq3gpn5isstasqa7nqhgckms7d4jwxuhrt33gvihq",
+            "SPAR-040",
+            "goal:root",
+            40,
+            "blocked",
+            1347,
+            "2026-09-08T00:00:00Z",
+            '{"completion_receipt":{"operation":"database_portal_typed_deferral_budget_exhausted"}}',
+        ],
+    )
+    connection.execute(
+        "INSERT INTO leases VALUES (?, ?, ?, ?, ?, ?)",
+        ["baguqeerax6x37yslus4fq3gpn5isstasqa7nqhgckms7d4jwxuhrt33gvihq", "claim:040", "released", 148, "worktree_lifecycle_claim_exists", 0],
+    )
+    result = repair_art_unique_indexes(connection)
+    rebuilt = {item["table"]: item["rows"] for item in result["rebuilt"]}
+    assert rebuilt == {"tasks": 1, "leases": 1}
+    assert "ready_task_context_v1" in result["views"]
+    assert "diagnostic_lease_surface_v1" in result["views"]
+    assert any("tasks_status_idx" in sql for sql in result["indexes"])
+    row = connection.execute(
+        "SELECT task_alias, status, revision FROM tasks WHERE task_alias = 'SPAR-040'"
+    ).fetchone()
+    assert tuple(row) == ("SPAR-040", "blocked", 1347)
+    connection.execute(
+        "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
+        "WHERE task_cid = ? AND revision = ?",
+        [
+            "retrying",
+            1348,
+            "2026-09-08T00:00:01Z",
+            "baguqeerax6x37yslus4fq3gpn5isstasqa7nqhgckms7d4jwxuhrt33gvihq",
+            1347,
+        ],
+    )
+    updated = connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_alias = 'SPAR-040'"
+    ).fetchone()
+    assert tuple(updated) == ("retrying", 1348)
+    with pytest.raises(Exception, match="UNIQUE|unique|Constraint"):
+        connection.execute(
+            "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ["cid-other", "SPAR-040", "goal:root", 41, "todo", 1, "2026-09-08T00:00:00Z", "{}"],
+        )
+    names = {
+        str(_row[0])
+        for _row in connection.execute(
+            "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'tasks'"
+        ).fetchall()
+    }
+    assert "tasks_status_idx" in names
+    assert "tasks_goal_idx" in names
+    assert connection.execute("SELECT COUNT(*) FROM ready_task_context_v1").fetchone()[0] == 0
+    assert connection.execute(
+        "SELECT attempt FROM diagnostic_lease_surface_v1"
+    ).fetchone()[0] == 148
+    leftovers = connection.execute(
+        "SELECT table_name FROM duckdb_tables() WHERE table_name LIKE '%__art_new'"
+    ).fetchall()
+    assert leftovers == []
+
+
+def test_repair_art_unique_indexes_recovers_incomplete_table_swap(tmp_path) -> None:
+    import duckdb
+
+    connection = duckdb.connect(str(tmp_path / "control.duckdb"))
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL UNIQUE,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO tasks VALUES ('cid-040', 'SPAR-040', 'blocked', 1347)"
+    )
+    connection.execute(
+        """
+        CREATE TABLE tasks__art_new (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL UNIQUE,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO tasks__art_new VALUES ('cid-040', 'SPAR-040', 'blocked', 1347)"
+    )
+    connection.execute("DROP TABLE tasks")
+    result = repair_art_unique_indexes(connection, tables=("tasks",))
+    assert result["rebuilt"][0]["table"] == "tasks"
+    assert result["rebuilt"][0]["rows"] == 1
+    row = connection.execute(
+        "SELECT task_alias, status, revision FROM tasks"
+    ).fetchone()
+    assert tuple(row) == ("SPAR-040", "blocked", 1347)
+    leftovers = connection.execute(
+        "SELECT table_name FROM duckdb_tables() WHERE table_name = 'tasks__art_new'"
+    ).fetchall()
+    assert leftovers == []
 
 
 def test_apply_owner_command_payload_unstalls_without_client_sql(tmp_path) -> None:
@@ -1137,3 +1374,26 @@ def test_quack_attach_exhausted_contention_raises_typed_error(monkeypatch) -> No
             open_quack_transport_connection("quack:127.0.0.1:41347")
     finally:
         reset_quack_transport_cache()
+
+
+def test_owner_start_honors_native_authority_policy_before_stale_recovery(monkeypatch):
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server as module
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("disabled native policy reached legacy age-based recovery")
+
+    monkeypatch.setattr(module, "unstall_stale_in_progress_tasks", forbidden)
+    server = SimpleNamespace(config=SimpleNamespace(allow_legacy_board_unstall=False), _log=lambda _: None)
+    module.QuackStateServer._unstall_stale_board_gates(server, object())
+
+
+def test_owner_start_keeps_legacy_default_staleness_threshold(monkeypatch):
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server as module
+    calls = []
+    monkeypatch.setattr(module, "unstall_stale_in_progress_tasks", lambda *args, **kwargs: calls.append((args, kwargs)) or {"unstalled": []})
+    server = SimpleNamespace(config=SimpleNamespace(allow_legacy_board_unstall=True), _log=lambda _: None)
+    connection = object()
+    module.QuackStateServer._unstall_stale_board_gates(server, connection)
+    assert calls == [((connection,), {})]

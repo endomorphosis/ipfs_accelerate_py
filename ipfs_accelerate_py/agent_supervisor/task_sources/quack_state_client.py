@@ -91,19 +91,24 @@ from .typed_state_owner import (
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
+    TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+    TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA,
     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION,
     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TypedStateOwnerError,
     _legacy_unstall_recovery_receipt,
+    _post_merge_retry_queue_receipt,
+    _post_merge_retry_recovery_command_digest,
     _process_birth_content_id,
     _process_runtime_facts,
     _protected_qualification_completion_command_digest,
     _protected_qualification_validation_identity_material,
-    _validated_legacy_unstall_claim_receipt,
     _strict_scalar_equal,
     _validated_database_claim_process_attestation,
+    _validated_legacy_unstall_claim_receipt,
+    _validated_post_merge_retry_recovery_parameters,
     _validated_stored_retry_cooldown,
     completion_progress_request,
     open_typed_state_owner_connection,
@@ -547,6 +552,27 @@ def _default_templates() -> dict[str, StatementTemplate]:
             parameter_names=(),
             kind=StatementKind.QUERY,
             description="Bounded authoritative executor control-plane snapshot",
+        ),
+        "executor_active_plan_revision_by_identity": StatementTemplate(
+            name="executor_active_plan_revision_by_identity",
+            sql=(
+                "SELECT p.plan_cid, p.goal_cid, p.plan_alias, "
+                "p.status AS plan_status, p.revision AS plan_revision, "
+                "p.body_json AS plan_head_body_json, "
+                "r.plan_cid AS revision_plan_cid, "
+                "r.revision AS revision_number, "
+                "r.body_json AS plan_revision_body_json, "
+                "r.recorded_at AS revision_recorded_at FROM plans AS p "
+                "INNER JOIN plan_revisions AS r ON "
+                "r.plan_cid = p.plan_cid AND r.revision = p.revision "
+                "WHERE p.plan_cid = ? AND p.status = 'active' "
+                "ORDER BY p.plan_cid ASC LIMIT 2"
+            ),
+            parameter_names=("plan_cid",),
+            kind=StatementKind.QUERY,
+            description=(
+                "Read one active plan head joined to its exact persisted revision"
+            ),
         ),
         "executor_retry_cooldown_by_task": StatementTemplate(
             name="executor_retry_cooldown_by_task",
@@ -3238,6 +3264,390 @@ class QuackStateClient:
                 "queue_revision": new_queue_revision,
                 "retry_not_before_ms": values["retry_not_before_ms"],
                 "historic_liveness": "dead",
+                "store_revision_before": generation.revision,
+            }
+
+        return self.submit_command(command, apply=apply_recovery)
+
+    def recover_post_merge_retry(
+        self,
+        *,
+        task_cid: str,
+        expected_task_revision: int,
+        task_body: Mapping[str, Any],
+        expected_control_receipt: Mapping[str, Any],
+        transition_receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
+        now_ms: int | None = None,
+    ) -> CASResult:
+        """Atomically cool and reopen one exact post-merge blocked task."""
+
+        task = str(task_cid or "").strip()
+        prior_body = dict(task_body)
+        prior_receipt = dict(expected_control_receipt)
+        transition = dict(transition_receipt)
+        if (
+            not task
+            or isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision < 1
+            or prior_body.get("completion_receipt") != prior_receipt
+            or prior_receipt.get("operation")
+            == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+            or transition.get("queue_receipt") != {}
+            or transition.get("control_expected_status") != "blocked"
+            or transition.get("control_expected_revision")
+            != expected_task_revision
+        ):
+            raise QuackClientError(
+                "post-merge retry requires one exact unprotected blocked control"
+            )
+        text_identity: dict[str, str] = {}
+        for name in (
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+        ):
+            member = transition.get(name)
+            if (
+                type(member) is not str
+                or not member.strip()
+                or member != member.strip()
+                or len(member.encode("utf-8")) > 1_024
+                or any(marker in member for marker in ("\x00", "\n", "\r"))
+            ):
+                raise QuackClientError(
+                    f"post-merge retry {name} is invalid"
+                )
+            text_identity[name] = member
+        integer_identity: dict[str, int] = {}
+        for name in (
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+        ):
+            member = transition.get(name)
+            if isinstance(member, bool) or not isinstance(member, int) or member < 1:
+                raise QuackClientError(
+                    f"post-merge retry {name} is invalid"
+                )
+            integer_identity[name] = member
+        reason_text = str(reason or "").strip()
+        if (
+            not reason_text
+            or reason_text != transition.get("queue_reason")
+            or len(reason_text.encode("utf-8")) > 2_048
+            or any(marker in reason_text for marker in ("\x00", "\n", "\r"))
+            or isinstance(delay_ms, bool)
+            or not isinstance(delay_ms, int)
+            or not 0 <= delay_ms <= 86_400_000
+            or isinstance(selection_penalty, bool)
+            or not isinstance(selection_penalty, int)
+            or not 0 <= selection_penalty <= 1_000_000
+        ):
+            raise QuackClientError(
+                "post-merge retry queue policy is invalid"
+            )
+        selected_now = int(time.time() * 1_000) if now_ms is None else now_ms
+        if (
+            isinstance(selected_now, bool)
+            or not isinstance(selected_now, int)
+            or selected_now < 0
+        ):
+            raise QuackClientError("post-merge retry now_ms is invalid")
+        if exact_retry_not_before_ms is None:
+            started_at_ms = selected_now
+            retry_not_before_ms = selected_now + delay_ms
+        else:
+            if (
+                isinstance(exact_retry_not_before_ms, bool)
+                or not isinstance(exact_retry_not_before_ms, int)
+                or exact_retry_not_before_ms < delay_ms
+            ):
+                raise QuackClientError(
+                    "post-merge retry exact deadline is invalid"
+                )
+            retry_not_before_ms = exact_retry_not_before_ms
+            started_at_ms = exact_retry_not_before_ms - delay_ms
+
+        prior_rows = self.execute(
+            "executor_retry_cooldown_by_task", {"task_cid": task}
+        )
+        if len(prior_rows) > 1:
+            raise QuackClientError(
+                "post-merge retry cooldown identity is ambiguous"
+            )
+        prior_queue: dict[str, Any] = {}
+        if prior_rows:
+            try:
+                prior_queue = _validated_stored_retry_cooldown(
+                    prior_rows[0], task_cid=task
+                )
+            except TypedStateOwnerError as exc:
+                raise QuackClientError(
+                    "post-merge retry prior cooldown is malformed"
+                ) from exc
+        expected_queue_revision = -1
+        expected_queue_attempt = 0
+        if prior_queue:
+            prior_attempt = int(prior_queue["attempt"])
+            current_attempt = integer_identity["attempt_number"]
+            prior_extension = dict(prior_queue["extension"])
+            if prior_attempt == current_attempt:
+                replay_identity = {
+                    "task_cid": task,
+                    "expected_task_revision": expected_task_revision,
+                    **text_identity,
+                    **integer_identity,
+                    "delay_ms": delay_ms,
+                    "selection_penalty": selection_penalty,
+                    "consecutive_failures": current_attempt,
+                    "reason": reason_text,
+                }
+                if any(
+                    prior_extension.get(name) != expected
+                    for name, expected in replay_identity.items()
+                ):
+                    raise QuackClientError(
+                        "post-merge retry refuses a same-attempt foreign cooldown"
+                    )
+                started_at_ms = int(prior_extension["started_at_ms"])
+                retry_not_before_ms = int(
+                    prior_extension["retry_not_before_ms"]
+                )
+                expected_queue_revision = int(
+                    prior_extension["expected_queue_revision"]
+                )
+                expected_queue_attempt = int(
+                    prior_extension["expected_queue_attempt"]
+                )
+            elif prior_attempt < current_attempt:
+                expected_queue_revision = int(prior_queue["revision"])
+                expected_queue_attempt = prior_attempt
+            else:
+                raise QuackClientError(
+                    "post-merge retry refuses a newer cooldown"
+                )
+
+        extension = {
+            "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "task_cid": task,
+            "expected_task_revision": expected_task_revision,
+            **text_identity,
+            **integer_identity,
+            "delay_ms": delay_ms,
+            "started_at_ms": started_at_ms,
+            "retry_not_before_ms": retry_not_before_ms,
+            "selection_penalty": selection_penalty,
+            "consecutive_failures": integer_identity["attempt_number"],
+            "reason": reason_text,
+            "expected_queue_revision": expected_queue_revision,
+            "expected_queue_attempt": expected_queue_attempt,
+        }
+        extension_json = canonical_json_bytes(extension).decode("utf-8")
+        resolution_cid = content_identity(
+            {
+                "typed_retry_cooldown": extension,
+                "started_at_ms": started_at_ms,
+            }
+        )
+        cooldown_parameters = {
+            **extension,
+            "resolution_cid": resolution_cid,
+        }
+        queue_receipt = _post_merge_retry_queue_receipt(
+            cooldown_parameters
+        )
+        final_transition = {
+            **transition,
+            "queue_receipt": queue_receipt,
+        }
+        final_body = {
+            **prior_body,
+            "completion_receipt": final_transition,
+        }
+        final_body_json = canonical_json_bytes(final_body).decode("utf-8")
+        seed = transition.get("post_merge_completion_recovery_seed")
+        parameters = {
+            "schema": TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA,
+            "operation": TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+            "task_cid": task,
+            "expected_task_revision": expected_task_revision,
+            "expected_task_status": "blocked",
+            "expected_control_receipt_json": canonical_json_bytes(
+                prior_receipt
+            ).decode("utf-8"),
+            "transition_operation": str(transition.get("operation") or ""),
+            "transition_receipt_json": canonical_json_bytes(
+                transition
+            ).decode("utf-8"),
+            "final_transition_receipt_json": canonical_json_bytes(
+                final_transition
+            ).decode("utf-8"),
+            "recovery_seed_json": (
+                canonical_json_bytes(dict(seed)).decode("utf-8")
+                if isinstance(seed, Mapping)
+                else ""
+            ),
+            **{
+                name: member
+                for name, member in extension.items()
+                if name != "schema"
+            },
+            "resolution_cid": resolution_cid,
+            "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "extension_json": extension_json,
+            "status": "retrying",
+        }
+        _validated_post_merge_retry_recovery_parameters(parameters)
+        digest = _post_merge_retry_recovery_command_digest(parameters)
+        session = self._require_session()
+        live = self.load_generation()
+        command = StateCommand(
+            command_id=f"cmd:post-merge-retry-recovery:{digest}",
+            command_kind=CommandKind.CLAIM,
+            store_id=self.store_id,
+            session_id=session.session_id,
+            expected_generation=live.generation,
+            expected_revision=live.revision,
+            fence_epoch=live.fence_epoch,
+            idempotency_key=f"executor-post-merge-retry-recovery:{digest}",
+            authority_class=StateAuthorityClass.AUTHORITATIVE,
+            parameters=parameters,
+        )
+
+        def apply_recovery(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            values = dict(active.parameters)
+            observed_result = txn.execute_named_operation(
+                "executor_retry_cooldown_by_task",
+                (values["task_cid"],),
+            )
+            observed_rows = _fetch_all(observed_result)
+            if len(observed_rows) > 1:
+                raise OptimisticConflictError(
+                    "post-merge retry cooldown became ambiguous"
+                )
+            observed = (
+                _row_mapping(
+                    _result_columns(observed_result), observed_rows[0]
+                )
+                if observed_rows
+                else {}
+            )
+            queue_revision = int(values["expected_queue_revision"])
+            queue_attempt = int(values["expected_queue_attempt"])
+            if (
+                (queue_revision == -1 and observed)
+                or (queue_revision >= 0 and not observed)
+                or (
+                    observed
+                    and (
+                        int(observed.get("revision") or -1) != queue_revision
+                        or int(observed.get("attempt") or -1) != queue_attempt
+                        or str(observed.get("extension_schema") or "")
+                        != TYPED_RETRY_COOLDOWN_SCHEMA
+                    )
+                )
+            ):
+                raise OptimisticConflictError(
+                    "post-merge retry expected cooldown is stale"
+                )
+            new_queue_revision = (
+                1 if queue_revision == -1 else queue_revision + 1
+            )
+            common = (
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                new_queue_revision,
+                values["extension_schema"],
+                values["extension_json"],
+            )
+            if queue_revision == -1:
+                queue_operation = "executor_insert_retry_cooldown"
+                queue_parameters = (
+                    values["task_cid"], *common, -1
+                )
+            else:
+                queue_operation = "executor_update_retry_cooldown"
+                queue_parameters = (
+                    *common,
+                    values["task_cid"],
+                    queue_revision,
+                    queue_attempt,
+                    values["attempt_number"],
+                    TYPED_RETRY_COOLDOWN_SCHEMA,
+                )
+            if _fetch_one(
+                txn.execute_named_operation(
+                    queue_operation, queue_parameters
+                )
+            ) is None:
+                raise OptimisticConflictError(
+                    "post-merge retry cooldown CAS failed"
+                )
+            revision = int(values["expected_task_revision"])
+            recorded_at = self._clock()
+            if _fetch_one(
+                txn.execute_named_operation(
+                    "executor_cas_task_status_receipt",
+                    (
+                        "retrying",
+                        revision + 1,
+                        recorded_at,
+                        final_body_json,
+                        values["task_cid"],
+                        revision,
+                    ),
+                )
+            ) is None:
+                raise OptimisticConflictError(
+                    "post-merge retry task CAS failed"
+                )
+            if _fetch_one(
+                txn.execute_named_operation(
+                    "executor_insert_task_revision_history",
+                    (values["task_cid"], revision + 1),
+                )
+            ) is None:
+                raise OptimisticConflictError(
+                    "post-merge retry history append failed"
+                )
+            validated = _validated_post_merge_retry_recovery_parameters(
+                values
+            )
+            return {
+                "schema": TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA,
+                "operation": TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+                "task_cid": values["task_cid"],
+                "transition_operation": values["transition_operation"],
+                "task_revision": revision + 1,
+                "queue_revision": new_queue_revision,
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "previous_status": "blocked",
+                "queue_reused": queue_revision >= 0,
+                "queue_receipt": dict(validated["queue_receipt"]),
+                "transition_receipt": dict(
+                    validated["final_transition_receipt"]
+                ),
                 "store_revision_before": generation.revision,
             }
 

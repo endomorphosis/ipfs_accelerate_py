@@ -167,6 +167,37 @@ def test_daemon_marks_only_live_compatible_foreign_owner_transient(
     assert lock_path.read_bytes() == original
 
 
+def test_objective_refill_journal_does_not_fence_claimed_implementation(
+    tmp_path: Path,
+) -> None:
+    daemon, repo = _daemon(tmp_path)
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="AUTO-001",
+        owner_script="implementation_supervisor.py",
+    )
+    metadata.update(
+        {
+            "protected_recovery_required": True,
+            "protected_recovery_owner": "implementation_supervisor",
+            "producer": "objective-refill",
+            "operation": "generated_dirty_repair",
+            "pid": os.getpid(),
+        }
+    )
+    lock_path = daemon._repo_merge_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
+
+    result = daemon._adopt_protected_checkout_recovery()
+
+    assert result["required"] is False
+    assert result["adopted"] is False
+    assert result["ignored_producer"] == "objective-refill"
+    assert lock_path.exists()
+
+
 @pytest.mark.parametrize(
     "foreign_case",
     (

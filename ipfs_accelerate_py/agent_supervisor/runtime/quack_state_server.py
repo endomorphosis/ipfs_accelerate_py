@@ -116,9 +116,11 @@ from ..task_sources.duckdb_state import (
     open_duckdb_connection,
     open_quack_state_owner_connection,
     quack_owner_command_response,
+    quack_owner_command_signature,
     quack_owner_mutation_content_id,
     quack_owner_mutation_inbox_path,
     quack_owner_mutation_mac,
+    repair_art_unique_indexes,
     unstall_stale_in_progress_tasks,
     validate_quack_owner_command,
     validate_quack_owner_command_request,
@@ -301,7 +303,15 @@ _MUTATION_SQL_TEMPLATES: Final[Mapping[str, str]] = MappingProxyType(
             "state, started_at_ms, release_reason, retry_not_before_ms, "
             "owner_session_id, fence_epoch, revision, extension_schema, "
             "extension_json) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (task_cid) DO UPDATE SET "
+            "attempt = leases.attempt + 1, "
+            "retry_not_before_ms = excluded.retry_not_before_ms, "
+            "release_reason = excluded.release_reason, "
+            "state = 'released', "
+            "extension_schema = excluded.extension_schema, "
+            "extension_json = excluded.extension_json, "
+            "revision = leases.revision + 1"
         ),
         QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE: (
             "UPDATE leases SET attempt = ?, retry_not_before_ms = ?, "
@@ -2350,6 +2360,7 @@ class QuackTransport(Protocol):
         *,
         identity: StateServerIdentity,
         token: str,
+        retry_transient_birth: bool = True,
     ) -> Mapping[str, Any]:
         """Return live identity observation used for readiness."""
 
@@ -2576,13 +2587,16 @@ class InProcessQuackTransport:
         *,
         identity: StateServerIdentity,
         token: str,
+        retry_transient_birth: bool = True,
     ) -> Mapping[str, Any]:
         if not self._started:
             raise QuackStateServerReadyError("transport has not started")
         # Prove the listener, authentication, request worker, and response path
         # are all usable.  Named token/disable_ssl arguments match the admitted
         # Quack 1.5.5 surface; positional 4-arg calls are a last compatibility
-        # attempt only.
+        # attempt only.  Periodic owner projection must not retry the 2.5s
+        # birth window: that holds the exclusive owner lock and starves typed
+        # lane attach.
         query_attempts = (
             (
                 "SELECT * FROM quack_query(?, ?, token := ?, disable_ssl := ?)",
@@ -2598,7 +2612,9 @@ class InProcessQuackTransport:
         try:
             import duckdb
 
-            deadline = time.monotonic() + QUACK_LIVE_QUERY_BIRTH_TIMEOUT_SECONDS
+            deadline = time.monotonic()
+            if retry_transient_birth:
+                deadline += QUACK_LIVE_QUERY_BIRTH_TIMEOUT_SECONDS
             while True:
                 client = duckdb.connect(":memory:")
                 try:
@@ -2627,16 +2643,15 @@ class InProcessQuackTransport:
         except Exception as exc:
             last_error = exc
         if last_error is not None or rows is None:
-            # An in-memory sidecar does not share the exclusive serve
-            # connection id.  Fall back to the owner connection that called
-            # quack_serve.
-            for sql, params in query_attempts:
-                try:
-                    rows = connection.execute(sql, params).fetchall()
-                    last_error = None
-                    break
-                except Exception as exc:  # pragma: no cover - extension-version path
-                    last_error = exc
+            # Never execute quack_query on the exclusive serve connection.
+            # That shares the serve connection id, raises IOException, and
+            # knocks the TCP listener down. Periodic SPAR projection then
+            # treats the port as dead, force-bounces quack_serve, and poisons
+            # every typed lane with DuckDBConnectionPolicyError.
+            raise QuackStateServerReadyError(
+                "authenticated remote live query failed: "
+                f"{type(last_error).__name__ if last_error is not None else 'sidecar live query returned no rows'}"
+            ) from last_error
         if last_error is not None:
             raise QuackStateServerReadyError(
                 f"authenticated remote live query failed: {type(last_error).__name__}"
@@ -2746,8 +2761,9 @@ class FakeQuackTransport:
         *,
         identity: StateServerIdentity,
         token: str,
+        retry_transient_birth: bool = True,
     ) -> Mapping[str, Any]:
-        del connection, token
+        del connection, token, retry_transient_birth
         if self.fail_live_query:
             raise QuackStateServerReadyError("injected live query failure")
         if not self.started or self._identity is None:
@@ -3606,6 +3622,7 @@ class QuackStateServer:
             _atomic_write_text(path, token, mode=0o600)
             return path
 
+
     def bind_database_status_scope(self, **binding: Any) -> None:
         """Bind a non-federated sealed board to peer-bound read-only status."""
         with self._lock:
@@ -3645,6 +3662,9 @@ class QuackStateServer:
     def mutation_inbox_path(self) -> Path:
         """Return the owner-only inbox used for unsupported remote DML."""
 
+        override = getattr(self, "_mutation_inbox_override", None)
+        if override is not None:
+            return Path(override)
         return quack_owner_mutation_inbox_path(self.runtime_registry_path)
 
     @property
@@ -4615,13 +4635,48 @@ class QuackStateServer:
                 self._read_replica_observation["live"] = False
             raise
 
-    def _unstall_stale_board_gates(self, connection: Any) -> None:
-        """Retry leftover in_progress gates before quack_serve occupies the writer."""
+    def _repair_art_unique_indexes(self, connection: Any) -> None:
+        """Rebuild ART unique indexes after unclean shutdown / reboot."""
 
+        try:
+            result = repair_art_unique_indexes(connection)
+        except Exception as exc:
+            self._log(
+                "art unique-index repair failed: "
+                f"{type(exc).__name__}: {str(exc)[:300]}"
+            )
+            raise
+        rebuilt = result.get("rebuilt") or []
+        skipped = result.get("skipped") or []
+        tables = ",".join(
+            str(item.get("table") or "")
+            for item in rebuilt
+            if isinstance(item, Mapping)
+        ) or "none"
+        rows = ",".join(
+            str(item.get("rows") or 0)
+            for item in rebuilt
+            if isinstance(item, Mapping)
+        ) or "0"
+        skip = ",".join(
+            str(item.get("table") or "")
+            for item in skipped
+            if isinstance(item, Mapping)
+        ) or "none"
+        self._log(
+            f"art unique-index repair tables={tables} rows={rows} skipped={skip}"
+        )
+
+    def _unstall_stale_board_gates(self, connection: Any) -> None:
+        """Honor authority policy before considering legacy stale task gates.
+
+        Exclusive database ownership does not prove that an old effect or
+        implementer is dead. Typed boards recover exact claims through their
+        native recovery authority; startup must not bypass that policy.
+        """
         if not self.config.allow_legacy_board_unstall:
             self._log("legacy board unstall disabled by task-authority policy")
             return
-
         try:
             result = unstall_stale_in_progress_tasks(connection)
         except Exception as exc:
@@ -5780,6 +5835,42 @@ class QuackStateServer:
             finally:
                 path.unlink(missing_ok=True)
 
+    def _quack_owner_command_hmac_token(
+        self,
+        request: Mapping[str, Any],
+    ) -> str:
+        """Return the vault or live birth-bound grant token that signed ``request``."""
+
+        assert self._identity is not None
+        assert self._vault is not None
+        vault_token = self._vault.resolve(self._identity.secret_handle)
+        writer = str(request.get("writer_identity") or "")
+        writer_pid: int | None = None
+        match = re.fullmatch(r"supervisor-process:([1-9][0-9]{0,19})", writer)
+        if match is not None:
+            writer_pid = int(match.group(1))
+        candidates = [vault_token]
+        gateway = self._command_gateway
+        if gateway is not None:
+            candidates.extend(
+                gateway.live_owner_command_hmac_tokens(writer_pid=writer_pid)
+            )
+        observed = str(request.get("signature") or "")
+        matched = ""
+        for token in candidates:
+            try:
+                expected = quack_owner_command_signature(request, token)
+            except DuckDBConnectionPolicyError:
+                continue
+            if hmac.compare_digest(observed, expected):
+                matched = token
+                break
+        if not matched:
+            raise DuckDBConnectionPolicyError(
+                "quack owner command authorization is invalid"
+            )
+        return matched
+
     def _service_owner_command_request(
         self,
         *,
@@ -5833,7 +5924,7 @@ class QuackStateServer:
         response: dict[str, Any] | None = None
         try:
             request = _read_bounded_canonical_json(processing)
-            token = self._vault.resolve(self._identity.secret_handle)
+            token = self._quack_owner_command_hmac_token(request)
             configured_generation = str(
                 os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "")
                 or ""
@@ -5872,22 +5963,40 @@ class QuackStateServer:
             finally:
                 repository.close()
             try:
-                self._refresh_read_replica()
+                replica_live = (
+                    self._transport_connection is not None
+                    and (self._read_replica_observation or {}).get("live") is True
+                )
+                if not replica_live:
+                    # Recopying a live replica stops quack_serve and revokes
+                    # typed grants, so SPAR-018 CAS died with
+                    # authorization_denied while the owner stayed ready.
+                    self._refresh_read_replica()
+            except BaseException as exc:
+                # Replica projection is non-authoritative.  Fail-closing the
+                # exclusive serve here dropped SPAR-018 grant issuance
+                # (QuackStateServerNotRunningError) while the owner process
+                # was still alive.
+                self._log(
+                    "typed owner command replica refresh failed: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                self._read_replica_observation = {
+                    **self._read_replica_observation,
+                    "live": False,
+                    "refresh_failure_class": type(exc).__name__,
+                }
+            try:
                 self._write_status_strict()
             except BaseException as exc:  # commit may already be durable
                 self._log(
-                    "typed owner command replica refresh failed: "
+                    "typed owner command status publication failed: "
                     f"{type(exc).__name__}: {exc}"
                 )
                 try:
                     self._stop_transport_connection(observe_closed=True)
                 except Exception:
                     pass
-                self._read_replica_observation = {
-                    **self._read_replica_observation,
-                    "live": False,
-                    "refresh_failure_class": type(exc).__name__,
-                }
                 self._lifecycle = ServerLifecycle.FAILED
                 try:
                     self._write_status()
@@ -5926,17 +6035,46 @@ class QuackStateServer:
             # Publication failure is not a repository rejection.  Keep the
             # processing claim so a later pass can replay the durable result
             # and publish the same authenticated response.
+            reconnect = getattr(self._connection, "reconnect_exclusive_owner", None)
+            if (
+                callable(reconnect)
+                and (
+                    type(exc).__name__ == "FatalException"
+                    or getattr(self._connection, "_poisoned", False) is True
+                    or getattr(self._connection, "_connection", True) is None
+                )
+            ):
+                # SPAR-017 record_validation_result FatalException poisoned the
+                # exclusive writer, so SPAR-018 claim_next died on the next
+                # typed statement. Reconnect in place; replica owns TCP.
+                try:
+                    reconnect()
+                    self._log(
+                        "exclusive owner reconnected after typed owner "
+                        f"command {type(exc).__name__}"
+                    )
+                except Exception:
+                    pass
             if response is not None:
                 raise
             if request is None:
                 published = True
             else:
-                token = self._vault.resolve(self._identity.secret_handle)
+                try:
+                    token = self._quack_owner_command_hmac_token(request)
+                except DuckDBConnectionPolicyError:
+                    token = self._vault.resolve(self._identity.secret_handle)
+                detail = " ".join(str(exc).split())
+                if len(detail) > 240:
+                    detail = detail[:240] + "..."
+                rejected = f"typed owner command rejected: {type(exc).__name__}"
+                if detail:
+                    rejected = f"{rejected}: {detail}"
                 response = quack_owner_command_response(
                     request,
                     token=token,
                     error_code=quack_owner_command_error_code(exc),
-                    error_message=f"typed owner command rejected: {type(exc).__name__}",
+                    error_message=rejected,
                 )
                 _atomic_write_json(done, response, mode=0o600)
                 published = True
@@ -6012,7 +6150,10 @@ class QuackStateServer:
             repository.close()
         if result is None:
             return False
-        token = self._vault.resolve(self._identity.secret_handle)
+        try:
+            token = self._quack_owner_command_hmac_token(request)
+        except DuckDBConnectionPolicyError:
+            token = self._vault.resolve(self._identity.secret_handle)
         response = quack_owner_command_response(
             request,
             token=token,
@@ -6407,6 +6548,7 @@ class QuackStateServer:
                 # Quack and therefore keeps external access disabled for its
                 # entire lifetime.
                 self._publish_identity_rows(connection, identity, capability)
+                self._repair_art_unique_indexes(connection)
                 self._unstall_stale_board_gates(connection)
                 # A supervisor must never be able to reuse the HTTP Quack
                 # credential to obtain a generic SQL surface.  Only the owner
@@ -6524,19 +6666,29 @@ class QuackStateServer:
             if not owner._lock_open:  # noqa: SLF001 - cleanup proof
                 self._owner = None
 
-    def ready(self) -> dict[str, Any]:
+    def ready(self, *, retry_transient_birth: bool = True) -> dict[str, Any]:
         """Return readiness observation or raise if not ready.
 
         Ready requires:
         * lifecycle is READY
         * live transport query succeeds
         * store / generation / schema / server identities match the published set
+
+        Periodic projection passes ``retry_transient_birth=False`` so a
+        contended loopback handshake cannot hold the owner lock for the
+        2.5s birth window and starve typed lane attach.
         """
 
         with self._owner_transaction_lock:
-            return self._ready_transaction_serialized()
+            return self._ready_transaction_serialized(
+                retry_transient_birth=retry_transient_birth
+            )
 
-    def _ready_transaction_serialized(self) -> dict[str, Any]:
+    def _ready_transaction_serialized(
+        self,
+        *,
+        retry_transient_birth: bool = True,
+    ) -> dict[str, Any]:
         """Inspect readiness without interleaving another owner transaction."""
 
         with self._lock:
@@ -6609,6 +6761,7 @@ class QuackStateServer:
                 self._transport_connection,
                 identity=identity,
                 token=token,
+                retry_transient_birth=retry_transient_birth,
             )
             meta = self._read_meta(self._connection)
             if meta.get("database_uuid") and meta["database_uuid"] != identity.database_uuid:

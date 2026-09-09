@@ -298,6 +298,11 @@ class StateOwnerBootstrapCredentials:
 
         os.environ[TYPED_STATE_OWNER_TOKEN_ENV] = self.token
         os.environ[TYPED_STATE_OWNER_SOCKET_ENV] = self.socket_path
+        # Capture before provider children inherit environ. Idle owner-command
+        # HMAC still needs the birth-bound grant after argv/env scrubbing.
+        from ..runtime.process_security import capture_state_authority_credentials
+
+        capture_state_authority_credentials()
         return {
             "endpoint": self.endpoint,
             "store_id": self.store_id,

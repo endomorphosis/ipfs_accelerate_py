@@ -314,6 +314,11 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 
 # Proof-Carrying Architecture Refactorer compact control and evidence sources.
 /data/agent_supervisor/proof_carrying_architecture_refactorer/
+/data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/
+!config/agent_supervisor_semantic_preserving_remodularization_scheduler.json
+!config/semantic_preserving_autonomous_remodularization_dependencies.seal.json
+!docs/architecture/semantic_preserving_autonomous_remodularization_inventory/*.json
+!benchmarks/agent_supervisor/semantic_refactoring/preregistration.json
 !config/agent_supervisor_architecture_refactorer_scheduler.json
 !docs/architecture/architecture_refactorer_inventory/*.json
 !benchmarks/agent_supervisor/architecture_refactorer/*.json

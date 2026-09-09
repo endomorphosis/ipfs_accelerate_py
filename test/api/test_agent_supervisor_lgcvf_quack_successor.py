@@ -6180,6 +6180,199 @@ def test_typed_retry_writer_and_reader_share_one_closed_vocabulary() -> None:
         )
 
 
+def test_leftover_wait_reused_queue_skips_stale_cooldown_lineage() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskRecord,
+        TaskSourceIntegrityError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    identity = {
+        "attempt_id": "attempt:leftover-wait-reused",
+        "claim_id": "claim:leftover-wait-reused",
+        "lease_id": "lease:leftover-wait-reused",
+        "owner_session_id": "session:leftover-wait-reused",
+        "attempt_number": 450,
+        "fencing_token": 450,
+        "fence_epoch": 450,
+    }
+    stale_cooldown = {
+        "extension": {
+            **identity,
+            "expected_task_revision": 443,
+            "reason": "database_portal_retry:stale-preserved-lease",
+            "delay_ms": 30_000,
+            "retry_not_before_ms": 1,
+        }
+    }
+    task = TaskRecord(
+        task_cid="task:spar-040",
+        task_alias="SPAR-040",
+        goal_cid="goal:spar-040",
+        ordinal=40,
+        status="retrying",
+        revision=1347,
+        body={
+            "completion_receipt": {
+                "operation": (
+                    "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                ),
+                "queue_reused": True,
+                "queue_reason": (
+                    "database_portal_retry:attempt:leftover-wait-reused:"
+                    "leftover_wait_deferral_budget_cleared"
+                ),
+                "backoff_ms": 0,
+                "retry_not_before_ms": 0,
+                "control_expected_revision": 1346,
+                **identity,
+            }
+        },
+    )
+    TypedDatabaseTaskSource._validate_retrying_cooldown_binding(
+        task,
+        stale_cooldown,
+    )
+    with pytest.raises(
+        TaskSourceIntegrityError,
+        match="retry cooldown differs from the task revision lineage",
+    ):
+        TypedDatabaseTaskSource._validate_retrying_cooldown_binding(
+            TaskRecord(
+                task_cid=task.task_cid,
+                task_alias=task.task_alias,
+                goal_cid=task.goal_cid,
+                ordinal=task.ordinal,
+                status="retrying",
+                revision=task.revision,
+                body={
+                    "completion_receipt": {
+                        **dict(task.body["completion_receipt"]),
+                        "operation": "database_portal_retry",
+                        "queue_reused": False,
+                    }
+                },
+            ),
+            stale_cooldown,
+        )
+
+
+def test_leftover_wait_queue_cooldown_does_not_fail_ready_projection() -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskRecord,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    task = TaskRecord(
+        task_cid="task:spar-024",
+        task_alias="SPAR-024",
+        goal_cid="goal:spar-024",
+        ordinal=24,
+        status="todo",
+        revision=3,
+        body={},
+        dependencies=(),
+    )
+    generation = SimpleNamespace(content_id="gen:stable", revision=1)
+    foreign_row = {
+        "task_cid": "task:spar-024",
+        "claim_cid": "claim:leftover-wait",
+        "resolution_cid": "sha256:" + ("a" * 64),
+        "claimant_did": "session:leftover-wait",
+        "logical_epoch": 1,
+        "fencing_token": 1,
+        "expires_at_ms": 0,
+        "attempt": 1,
+        "state": "released",
+        "started_at_ms": 1,
+        "release_reason": "leftover_wait_deferral_budget_cleared",
+        "retry_not_before_ms": 0,
+        "owner_session_id": "session:leftover-wait",
+        "fence_epoch": 1,
+        "revision": 1,
+        "extension_schema": "not-a-typed-retry-cooldown",
+        "extension_json": "{}",
+    }
+
+    class _Client:
+        def load_generation(self) -> SimpleNamespace:
+            return generation
+
+        def execute(
+            self, name: str, params: dict[str, object]
+        ) -> list[dict[str, object]]:
+            if name == "executor_retry_cooldown_page":
+                return [foreign_row]
+            return []
+
+    source = object.__new__(TypedDatabaseTaskSource)
+    source._client = _Client()
+    source._snapshot_material = lambda: ({}, ((task, {}),), 1)
+    source._repair_legacy_unstalled_records = lambda *_a, **_k: False
+
+    snapshot_row, records, revision, cooldowns = source._stable_ready_material()
+    assert snapshot_row == {}
+    assert revision == 1
+    assert records[0][0].task_alias == "SPAR-024"
+    assert dict(cooldowns) == {}
+
+
+def test_leftover_wait_queue_cooldown_does_not_fail_queue_entry() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    foreign_row = {
+        "task_cid": "task:spar-024",
+        "claim_cid": "claim:leftover-wait",
+        "resolution_cid": "sha256:" + ("a" * 64),
+        "claimant_did": "session:leftover-wait",
+        "logical_epoch": 1,
+        "fencing_token": 1,
+        "expires_at_ms": 0,
+        "attempt": 340,
+        "state": "released",
+        "started_at_ms": 1,
+        "release_reason": (
+            "database_portal_retry:attempt:dead:"
+            "leftover_wait_deferral_budget_cleared"
+        ),
+        "retry_not_before_ms": 0,
+        "owner_session_id": "session:leftover-wait",
+        "fence_epoch": 1,
+        "revision": 220,
+        "extension_schema": (
+            "ipfs_accelerate_py/agent-supervisor/intent-queue-entry@1"
+        ),
+        "extension_json": (
+            '{"consecutive_failures":340,"reason":'
+            '"database_portal_retry:attempt:dead:'
+            'leftover_wait_deferral_budget_cleared","selection_penalty":0}'
+        ),
+    }
+
+    class _Client:
+        def execute(
+            self, name: str, params: dict[str, object]
+        ) -> list[dict[str, object]]:
+            if name == "executor_retry_cooldown_by_task":
+                assert params == {"task_cid": "task:spar-024"}
+                return [foreign_row]
+            return []
+
+    source = object.__new__(TypedDatabaseTaskSource)
+    source._client = _Client()
+
+    assert source.get_queue_entry("task:spar-024") is None
+    assert source._retry_cooldown_row("task:spar-024") is None
+
+
 def test_projection_plane_pins_all_writes_and_reopens_from_logical_paths(
     tmp_path: Path,
 ) -> None:

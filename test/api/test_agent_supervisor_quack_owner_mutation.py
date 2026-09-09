@@ -376,6 +376,99 @@ def _typed_claim_receipt(
     }
 
 
+def test_typed_claim_cas_admits_ready_task_with_preexisting_history_gap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A leftover requeue gap must not starve the next home-shard claim.
+
+    SPAR-018 jumped 47 -> 49 and omitted history row 48. Commit used to
+    require COUNT(*) == new revision, so the only dependency-ready CAS
+    died with authorization_denied.
+    """
+
+    database = tmp_path / "control.duckdb"
+    _seed(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-history-gap-owner",
+        store_id="typed-history-gap-claim-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:history-gap-claim",
+        allowed_command_operations=("task.status.cas.receipt",),
+    )
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        connection = server._connection  # noqa: SLF001
+        body_json = connection.execute(
+            "SELECT body_json FROM tasks WHERE task_cid = ?",
+            [ready.task_cid],
+        ).fetchone()[0]
+        recorded_at = connection.execute(
+            "SELECT recorded_at FROM task_revisions WHERE task_cid = ? "
+            "AND revision = 1",
+            [ready.task_cid],
+        ).fetchone()[0]
+        connection.execute(
+            """
+            INSERT INTO task_revisions (
+                task_cid, revision, status, body_json, recorded_at
+            ) VALUES (?, 3, 'todo', ?, ?)
+            """,
+            [ready.task_cid, body_json, recorded_at],
+        )
+        connection.execute(
+            """
+            UPDATE tasks SET revision = 3, status = 'todo', body_json = ?
+            WHERE task_cid = ?
+            """,
+            [body_json, ready.task_cid],
+        )
+        connection.commit()
+        gapped = source.get_task(ready.task_cid)
+        assert gapped is not None
+        assert (gapped.status, gapped.revision) == ("todo", 3)
+        history = connection.execute(
+            """
+            SELECT COUNT(*) AS n, MIN(revision) AS lo, MAX(revision) AS hi
+            FROM task_revisions WHERE task_cid = ?
+            """,
+            [ready.task_cid],
+        ).fetchone()
+        assert tuple(history[index] for index in range(3)) == (2, 1, 3)
+        claimed = source.compare_and_set_status(
+            gapped.task_cid,
+            gapped.revision,
+            "in_progress",
+            _typed_claim_receipt(
+                source,
+                lane="history-gap",
+                claimed_from_revision=gapped.revision,
+            ),
+        ).task
+        assert (claimed.status, claimed.revision) == ("in_progress", 4)
+        after = connection.execute(
+            """
+            SELECT COUNT(*) AS n, MIN(revision) AS lo, MAX(revision) AS hi
+            FROM task_revisions WHERE task_cid = ?
+            """,
+            [ready.task_cid],
+        ).fetchone()
+        assert tuple(after[index] for index in range(3)) == (3, 1, 4)
+    finally:
+        source.close()
+        server.stop()
+
+
 def _typed_owner_completion_state(connection: Any) -> dict[str, Any]:
     """Capture every durable surface a rejected completion could mutate."""
 
@@ -1071,6 +1164,96 @@ def test_owner_command_requires_strict_status_publication_before_signed_success(
         assert server._connection.execute(  # noqa: SLF001
             "SELECT attempt FROM leases WHERE task_cid = 'task:test'"
         ).fetchone()[0] == 1
+    finally:
+        server.stop()
+
+
+def test_owner_command_skips_replica_refresh_when_replica_already_live(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server, _identity, token, _database = _server(tmp_path)
+    request = _owner_command_request(server, token, request_id="2" * 32)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+    refreshes: list[bool] = []
+
+    def count_refresh(*_args: object, **_kwargs: object) -> dict[str, object]:
+        refreshes.append(True)
+        raise AssertionError("must not bounce a live replica")
+
+    server._transport_connection = object()
+    server._read_replica_observation = {"live": True}
+    monkeypatch.setattr(server, "_refresh_read_replica", count_refresh)
+    try:
+        _publish(server, request)
+        assert server.service_mutation_inbox() == 1
+        response = _done(server, request)
+        assert response["ok"] is True
+        assert refreshes == []
+        assert server.lifecycle.value == "ready"
+        assert server._read_replica_observation.get("live") is True
+    finally:
+        server.stop()
+
+
+def test_owner_command_fatal_reconnects_exclusive_writer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server, _identity, token, _database = _server(tmp_path)
+    request = _owner_command_request(server, token, request_id="2" * 32)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+    reconnects: list[bool] = []
+    FatalException = type("FatalException", (Exception,), {})
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise FatalException("catalog")
+
+    def reconnect() -> None:
+        reconnects.append(True)
+
+    connection = server._connection
+    connection.reconnect_exclusive_owner = reconnect
+    connection._poisoned = True
+    monkeypatch.setattr(quack_server_module, "execute_quack_owner_command", boom)
+    try:
+        _publish(server, request)
+        assert server.service_mutation_inbox() == 1
+        assert reconnects == [True]
+        assert server.lifecycle.value == "ready"
+    finally:
+        server.stop()
+
+
+def test_owner_command_replica_refresh_failure_keeps_serve_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server, _identity, token, _database = _server(tmp_path)
+    request = _owner_command_request(server, token, request_id="2" * 32)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+
+    def fail_replica() -> None:
+        raise quack_server_module.QuackStateServerReadyError(
+            "injected replica refresh failure"
+        )
+
+    server._read_replica_observation = {
+        **dict(server._read_replica_observation or {}),
+        "live": False,
+    }
+    monkeypatch.setattr(server, "_refresh_read_replica", fail_replica)
+    try:
+        _publish(server, request)
+        assert server.service_mutation_inbox() == 1
+        response = _done(server, request)
+        assert response["ok"] is True
+        assert server.lifecycle.value == "ready"
+        assert server._read_replica_observation.get("live") is False
+        assert (
+            server._read_replica_observation.get("refresh_failure_class")
+            == "QuackStateServerReadyError"
+        )
     finally:
         server.stop()
 

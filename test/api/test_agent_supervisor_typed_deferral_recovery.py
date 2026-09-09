@@ -934,6 +934,179 @@ def test_generic_stale_forged_and_mismatched_rearms_remain_blocked(
         assert source.get_task(blocked.task_cid).status == "blocked"
 
 
+def _block_capacity_exhausted(
+    source: DatabaseTaskSource,
+    *,
+    truncated: bool = False,
+) -> tuple[TaskRecord, dict[str, object]]:
+    task = _materialize(source, alias="VRIF-capacity-wait")
+    running = source.compare_and_set_status(
+        task.task_cid,
+        task.revision,
+        "in_progress",
+        {"operation": "test_capacity_wait_claim"},
+    ).task
+    attempt_id = "attempt:capacity-wait"
+    attempt_number = 450 if truncated else 1
+    matching = [
+        {
+            "attempt_id": attempt_id,
+            "attempt_number": attempt_number,
+            "reason": "provider_capacity_exhausted",
+            "deferral_fingerprint": "sha256:" + ("6" * 64),
+        }
+    ]
+    budget_body: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-typed-deferral-budget@1"
+        ),
+        "task_cid": running.task_cid,
+        "task_generation": running.task_cid,
+        "generation_fingerprint": "sha256:" + ("5" * 64),
+        "current_deferral_fingerprint": matching[0]["deferral_fingerprint"],
+        "typed_deferral_candidate_count": 4 if truncated else 1,
+        "typed_deferral_count": 1,
+        "typed_deferral_count_is_lower_bound": truncated,
+        "verified_typed_deferral_count": 4 if truncated else 1,
+        "verified_count_complete": not truncated,
+        "max_task_attempts": 4 if truncated else 1,
+        "exhausted": True,
+        "attempt_consumed": False,
+        "typed_deferral_slot_consumed": True,
+        "matching_attempts": matching,
+        "matching_attempts_digest": _matching_attempts_digest(matching),
+        "matching_attempts_truncated": truncated,
+        "omitted_matching_attempt_count": 0,
+    }
+    budget = {**budget_body, "observation_id": _sha256_identity(budget_body)}
+    block_receipt = {
+        "operation": "database_portal_typed_deferral_budget_exhausted",
+        "attempt_id": attempt_id,
+        "attempt_number": attempt_number,
+        "claim_id": "claim:capacity-wait",
+        "lease_id": "lease:capacity-wait",
+        "owner_session_id": "session:capacity-wait",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "execution_phase": "failed",
+        "execution_revision": 3,
+        "execution_finished_at_ms": 2_000_000,
+        "reason": "typed_portal_deferral_budget_exhausted",
+        "retryable": False,
+        "attempt_consumed": False,
+        "typed_deferral_slot_consumed": True,
+        "retry_budget": budget,
+        "prior_queue_entry_preserved_inactive": True,
+        "coordination": {
+            "attempt_id": attempt_id,
+            "claim_id": "claim:capacity-wait",
+            "attempt_number": attempt_number,
+        },
+        "control_expected_status": "in_progress",
+        "control_expected_revision": running.revision,
+    }
+    blocked = source.compare_and_set_status(
+        running.task_cid,
+        running.revision,
+        "blocked",
+        block_receipt,
+    ).task
+    assert blocked.status == "blocked"
+    return blocked, budget
+
+
+def test_guarded_capacity_wait_recovery_updates_queue_and_status_atomically(
+    tmp_path: Path,
+) -> None:
+    with DatabaseTaskSource(tmp_path / "control.duckdb") as source:
+        blocked, budget = _block_capacity_exhausted(source)
+        request = _leftover_wait_recovery_request(blocked, budget)
+        blocked_receipt = dict(blocked.body["completion_receipt"])
+
+        result = source.record_queue_backoff_and_cas_status(
+            task_cid=blocked.task_cid,
+            expected_revision=blocked.revision,
+            expected_control_receipt=blocked_receipt,
+            status="retrying",
+            receipt=request,
+            delay_ms=0,
+            reason=str(request["queue_reason"]),
+            exact_retry_not_before_ms=int(request["retry_not_before_ms"]),
+        )
+
+        assert result["cas_result"].changed is True
+        assert result["previous_status"] == "blocked"
+        observed = source.get_task(blocked.task_cid)
+        queue = source.get_queue_entry(blocked.task_cid)
+        assert observed is not None and observed.status == "retrying"
+        seed = observed.body["completion_receipt"][
+            "leftover_wait_deferral_budget_recovery_seed"
+        ]
+        assert seed["exhausting_reasons"] == ["provider_capacity_exhausted"]
+        assert queue is not None
+        assert queue.reason == request["queue_reason"]
+
+
+def test_guarded_truncated_capacity_wait_recovery_updates_queue_and_status_atomically(
+    tmp_path: Path,
+) -> None:
+    with DatabaseTaskSource(tmp_path / "control.duckdb") as source:
+        blocked, budget = _block_capacity_exhausted(source, truncated=True)
+        request = _leftover_wait_recovery_request(blocked, budget)
+        blocked_receipt = dict(blocked.body["completion_receipt"])
+
+        result = source.record_queue_backoff_and_cas_status(
+            task_cid=blocked.task_cid,
+            expected_revision=blocked.revision,
+            expected_control_receipt=blocked_receipt,
+            status="retrying",
+            receipt=request,
+            delay_ms=0,
+            reason=str(request["queue_reason"]),
+            exact_retry_not_before_ms=int(request["retry_not_before_ms"]),
+        )
+
+        assert result["cas_result"].changed is True
+        assert result["previous_status"] == "blocked"
+        observed = source.get_task(blocked.task_cid)
+        assert observed is not None and observed.status == "retrying"
+        assert observed.body["completion_receipt"][
+            "leftover_wait_deferral_budget_recovery_seed"
+        ]["exhausting_reasons"] == ["provider_capacity_exhausted"]
+
+
+def test_guarded_capacity_wait_recovery_reuses_existing_queue(
+    tmp_path: Path,
+) -> None:
+    with DatabaseTaskSource(tmp_path / "control.duckdb") as source:
+        blocked, budget = _block_capacity_exhausted(source, truncated=True)
+        source.record_queue_backoff(
+            task_cid=blocked.task_cid,
+            delay_ms=300_000,
+            reason="database_portal_retry:attempt:capacity-wait:provider_capacity_exhausted",
+        )
+        request = _leftover_wait_recovery_request(blocked, budget)
+        blocked_receipt = dict(blocked.body["completion_receipt"])
+
+        result = source.record_queue_backoff_and_cas_status(
+            task_cid=blocked.task_cid,
+            expected_revision=blocked.revision,
+            expected_control_receipt=blocked_receipt,
+            status="retrying",
+            receipt=request,
+            delay_ms=0,
+            reason=str(request["queue_reason"]),
+            exact_retry_not_before_ms=int(request["retry_not_before_ms"]),
+        )
+
+        assert result["cas_result"].changed is True
+        observed = source.get_task(blocked.task_cid)
+        queue = source.get_queue_entry(blocked.task_cid)
+        assert observed is not None and observed.status == "retrying"
+        assert queue is not None
+
+
 def test_ordinary_cas_rejects_exact_leftover_wait_recovery_without_queue(
     tmp_path: Path,
 ) -> None:

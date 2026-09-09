@@ -2926,6 +2926,86 @@ def test_non_plan_detach_refuses_unsafe_legacy_pid_projection(
     assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
 
 
+def test_adopt_or_create_master_pid_quarantines_dead_leftover_after_reboot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    stale_pid = 2473796
+    pid_path.write_bytes(f"{stale_pid}\n".encode("ascii"))
+    os.chmod(pid_path, 0o600)
+    stale_inode = os.lstat(pid_path).st_ino
+    probes: list[tuple[int, int]] = []
+
+    def absent_probe(pid: int, signal_number: int) -> None:
+        probes.append((pid, signal_number))
+        raise ProcessLookupError(errno.ESRCH, "no such process")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", absent_probe)
+    multi_runner_module._adopt_or_create_current_master_pid_projection(pid_path)
+
+    assert probes == [(stale_pid, 0)]
+    assert pid_path.read_text(encoding="ascii") == f"{os.getpid()}\n"
+    assert stat.S_IMODE(os.lstat(pid_path).st_mode) == 0o600
+    quarantines = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.quarantine")
+    )
+    receipts = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.receipt.json")
+    )
+    assert len(quarantines) == len(receipts) == 1
+    assert quarantines[0].read_bytes() == f"{stale_pid}\n".encode("ascii")
+    assert os.lstat(quarantines[0]).st_ino == stale_inode
+    receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+    assert receipt["legacy_pid"] == stale_pid
+    assert receipt["liveness_evidence"]["errno"] == "ESRCH"
+
+
+def test_adopt_or_create_master_pid_keeps_this_runner_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_bytes(f"{os.getpid()}\n".encode("ascii"))
+    os.chmod(pid_path, 0o600)
+    inode = os.lstat(pid_path).st_ino
+
+    def unexpected_probe(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("current runner PID must be adopted without ESRCH")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", unexpected_probe)
+    multi_runner_module._adopt_or_create_current_master_pid_projection(pid_path)
+
+    assert pid_path.read_bytes() == f"{os.getpid()}\n".encode("ascii")
+    assert os.lstat(pid_path).st_ino == inode
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+@pytest.mark.parametrize("liveness", ("live", "unknown"))
+def test_adopt_or_create_master_pid_refuses_live_or_unknown_leftover(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    liveness: str,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_bytes(b"987654\n")
+    os.chmod(pid_path, 0o600)
+
+    def probe(_pid: int, signal_number: int) -> None:
+        assert signal_number == 0
+        if liveness == "unknown":
+            raise PermissionError(errno.EPERM, "not permitted")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", probe)
+    with pytest.raises(ValueError, match=liveness):
+        multi_runner_module._adopt_or_create_current_master_pid_projection(pid_path)
+    assert pid_path.read_bytes() == b"987654\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
 def test_non_plan_detach_spawn_failure_discards_exact_reservation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

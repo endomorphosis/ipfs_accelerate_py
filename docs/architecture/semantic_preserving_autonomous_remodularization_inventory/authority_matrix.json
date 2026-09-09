@@ -1,0 +1,49 @@
+{
+  "program": "semantic-preserving-autonomous-remodularization-v1",
+  "rules": [
+    {
+      "authority": "formal semantic authority",
+      "concern": "semantic capsules, identities, contracts, graphs, proofs, selection",
+      "duplicate_authority_forbidden": true,
+      "owner": "ipfs_datasets_py"
+    },
+    {
+      "authority": "storage and retrieval authority",
+      "concern": "verified bytes/CIDs, blocks, projection storage, VFS, WAL, CAS, recovery",
+      "duplicate_authority_forbidden": true,
+      "owner": "ipfs_kit_py"
+    },
+    {
+      "authority": "operational refactoring authority",
+      "concern": "planning, context, routes, worktrees, validation, merge, acceptance",
+      "duplicate_authority_forbidden": true,
+      "owner": "ipfs_accelerate_py"
+    },
+    {
+      "authority": "live operational authority",
+      "concern": "goals, tasks, dependencies, lifecycle, leases, fences, CAS, evidence, completion",
+      "duplicate_authority_forbidden": true,
+      "owner": "DuckDB/DatabaseTaskSource@1 via Quack"
+    },
+    {
+      "authority": "non-authoritative rebuildable projection",
+      "concern": "history and benchmark projection",
+      "duplicate_authority_forbidden": true,
+      "owner": "DuckLake"
+    },
+    {
+      "authority": "advisory=false authority",
+      "concern": "candidate similarity/ranking",
+      "duplicate_authority_forbidden": true,
+      "owner": "existing vector/hybrid indexes"
+    },
+    {
+      "authority": "proposal-only",
+      "concern": "model-generated hypotheses/diffs",
+      "duplicate_authority_forbidden": true,
+      "owner": "current model router"
+    }
+  ],
+  "schema": "spar/authority-matrix@1",
+  "worker_control_paths_mutable": false
+}

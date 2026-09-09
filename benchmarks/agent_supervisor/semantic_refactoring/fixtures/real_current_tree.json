@@ -1,0 +1,14 @@
+{
+  "admitted_path": "ipfs_accelerate_py/agent_supervisor/semantic_refactoring/rollout.py",
+  "kind": "rights_admitted_current_tree_module",
+  "name": "real_current_tree",
+  "network": "deny",
+  "rights_admitted": true,
+  "rights_basis": "current_tree_owned",
+  "schema": "ipfs_accelerate_py/agent-supervisor/spar-benchmark-real-current-tree@1",
+  "synthetic": false,
+  "target_loc": null,
+  "task_id": "SPAR-045",
+  "third_party_source": false,
+  "whole_repository_dump": false
+}

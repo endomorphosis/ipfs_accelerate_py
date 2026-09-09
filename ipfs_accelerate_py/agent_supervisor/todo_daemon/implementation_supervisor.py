@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from ...llm_router import (
     AgentImplementationControlPlanePin,
@@ -178,6 +178,7 @@ from .implementation_daemon import (
     normalize_status,
     normalize_focus_tracks,
     normalize_implementation_protected_paths,
+    normalize_llm_merge_resolver_command,
     normalize_relative_path_list,
     parse_task_file,
     parse_task_text,
@@ -218,6 +219,8 @@ from .supervisor_runtime import (
 from .worktrees import (
     WORKTREE_POOL_SCHEMA,
     WorktreePool,
+    guarded_worktree_pool_mutation,
+    inspect_worktree_pool_quarantine,
     pid_is_alive,
     python_identifier_worktree_basename,
 )
@@ -260,10 +263,18 @@ CONTROL_PLANE_SOURCE_PATHS = (
 )
 
 
-def _read_control_plane_source_snapshot() -> dict[str, Any]:
-    """Return the current accelerator control-plane tree and file identity."""
+def _read_control_plane_source_snapshot(
+    repository_root: Path | None = None,
+) -> dict[str, Any]:
+    """Return listed control-plane file identity plus informational Git ids.
 
-    repository_root = Path(__file__).resolve().parents[3]
+    ``source_id`` hashes CONTROL_PLANE_SOURCE_PATHS only. The agent_supervisor
+    tree id is reported for status, but implementation merges under that tree
+    must not force supervisor execv unless those listed files changed.
+    """
+
+    if repository_root is None:
+        repository_root = Path(__file__).resolve().parents[3]
 
     def git_revision(revision: str) -> str:
         try:
@@ -308,11 +319,11 @@ def _read_control_plane_source_snapshot() -> dict[str, Any]:
 
     identity_payload = {
         "schema": CONTROL_PLANE_SOURCE_SCHEMA,
-        "control_plane_tree_id": control_plane_tree_id,
         "sources": sources,
     }
     return {
         **identity_payload,
+        "control_plane_tree_id": control_plane_tree_id,
         "repository_revision": repository_revision,
         "repository_root": str(repository_root),
         "source_id": content_identity(identity_payload),
@@ -7942,7 +7953,32 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                         "completed workspace is outside its exact pool root"
                     )
 
-                with serialized_lock_update(pool_lock_path):
+                with guarded_worktree_pool_mutation(
+                    repo_root=pool.repo_root,
+                    worktree_root=pool.worktree_root,
+                    workspace_path=workspace_path,
+                    expected_branch=branch_name,
+                    operation="plan_bound_completed_pool_discard",
+                ) as pool_mutation_admission:
+                    if pool_mutation_admission.get("allowed") is not True:
+                        raise PlanBoundHandoffRecoveryRequired(
+                            "completed workspace pool mutation custody is "
+                            "unavailable"
+                        )
+                    quarantine = inspect_worktree_pool_quarantine(
+                        worktree_root=pool.worktree_root,
+                        workspace_path=workspace_path,
+                        expected_branch=branch_name,
+                    )
+                    if quarantine.get("cleanup_fenced") is True:
+                        raise PlanBoundHandoffRecoveryRequired(
+                            "completed workspace has durable quarantine custody"
+                            if quarantine.get("valid") is True
+                            else (
+                                "completed workspace quarantine custody is "
+                                "unverifiable"
+                            )
+                        )
                     pool_state = secure_optional_json(pool_state_path)
                     pool_lock = secure_optional_json(pool_lock_path)
                     if pool_state is None:
@@ -8898,6 +8934,8 @@ class PortalSupervisorConfig:
     database_owner_session_id: str = ""
     state_owner_bootstrap_fd: int = -1
     state_owner_bootstrap_store_id: str = ""
+    require_launch_source_amendment: bool = False
+    launch_source_amendment_json: str = ""
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
@@ -9120,6 +9158,104 @@ class PortalSupervisorConfig:
             raise ValueError(
                 "idle_lane_work_stealing requires strict multi-lane sharding"
             )
+        generic_bootstrap_requested = bool(
+            self.configured_board_live_context is None
+            and (
+                self.state_owner_bootstrap_fd >= 3
+                or self.state_owner_bootstrap_store_id
+                or self.database_owner_session_id
+            )
+        )
+        if self.require_launch_source_amendment and not self.launch_source_amendment_json:
+            raise SupervisorSchedulerConfigError(
+                "required launch-source amendment is unavailable"
+            )
+        if self.launch_source_amendment_json:
+            from ..task_sources.launch_source_amendment import (
+                LaunchSourceAmendment,
+                LaunchSourceAmendmentError,
+            )
+
+            try:
+                launch_amendment = LaunchSourceAmendment.from_json(
+                    self.launch_source_amendment_json
+                )
+                if launch_amendment.board_namespace != self.board_namespace:
+                    raise LaunchSourceAmendmentError(
+                        "launch source board namespace differs"
+                    )
+                head = subprocess.run(
+                    ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                tree = subprocess.run(
+                    ["git", "rev-parse", "--verify", "HEAD^{tree}"],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if head.returncode != 0 or tree.returncode != 0:
+                    raise LaunchSourceAmendmentError(
+                        "launch Git generation is unavailable"
+                    )
+                from .implementation_daemon import _launch_amendment_covers_git
+
+                if not _launch_amendment_covers_git(
+                    launch_amendment,
+                    source_head=head.stdout.strip(),
+                    repository_tree_id=tree.stdout.strip(),
+                    repo_root=self.repo_root,
+                ):
+                    raise LaunchSourceAmendmentError(
+                        "launch Git generation differs from its source amendment"
+                    )
+            except (OSError, LaunchSourceAmendmentError) as exc:
+                raise SupervisorSchedulerConfigError(
+                    "launch-source amendment is invalid"
+                ) from exc
+            self.launch_source_amendment_json = launch_amendment.to_json()
+        if generic_bootstrap_requested:
+            program = self.database_program
+            if (
+                self.state_owner_bootstrap_fd < 3
+                or not self.state_owner_bootstrap_store_id
+                or not self.database_owner_session_id
+                or program is None
+                or program.task_source_kind != "duckdb"
+                or program.authority_mode != "quack"
+                or program.failover_policy != FAILOVER_FAIL_CLOSED
+                or program.explicit_legacy
+                or program.endpoint_secret_handle
+                != "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+                or self.state_owner_bootstrap_store_id != program.store_id
+            ):
+                raise SupervisorSchedulerConfigError(
+                    "generic configured-board state-owner bootstrap profile is incomplete"
+                )
+            from ..runtime.process_security import (
+                state_authority_credentials_present,
+            )
+            from ..task_sources.state_owner_bootstrap import (
+                StateOwnerBootstrapError,
+                validate_state_owner_bootstrap_listener,
+            )
+
+            if state_authority_credentials_present():
+                raise SupervisorSchedulerConfigError(
+                    "generic state-owner bootstrap supervisor received a raw credential"
+                )
+            try:
+                validate_state_owner_bootstrap_listener(
+                    int(self.state_owner_bootstrap_fd)
+                )
+            except StateOwnerBootstrapError as exc:
+                raise SupervisorSchedulerConfigError(
+                    "generic configured-board state-owner bootstrap listener is invalid"
+                ) from exc
         if self.configured_board_live_context is not None:
             live = self.configured_board_live_context
             try:
@@ -9364,6 +9500,11 @@ class PortalImplementationSupervisor:
         self._last_supervisor_maintenance_at: float = 0.0
         self._worktree_worker_phase = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
+        self._watchdog_attribution_deferral_key = ""
+        self._watchdog_attribution_deferral_started_monotonic: float | None = (
+            None
+        )
+        self._watchdog_attribution_exhausted_key = ""
         self._checkout_mutation_context = threading.local()
         self._state_owner_task_source: Any | None = None
         self._state_owner_task_source_binding: dict[str, Any] = {}
@@ -13733,6 +13874,72 @@ class PortalImplementationSupervisor:
         evidence = self._active_managed_database_pool_evidence(child)
         return None if evidence is None else dict(evidence[0])
 
+    def _database_watchdog_execution_evidence(
+        self,
+        child: Any,
+        nested_state: Mapping[str, Any],
+        *,
+        now_ts: float,
+    ) -> dict[str, Any]:
+        """Return fresh live execution evidence for one nested database task."""
+
+        limit_seconds = max(
+            0.0,
+            float(self._implementation_watchdog_timeout_seconds()),
+        )
+        phase_started_at = parse_timestamp(
+            nested_state.get("active_phase_started_at")
+        )
+        phase_age_seconds = (
+            None
+            if phase_started_at is None
+            else max(0.0, now_ts - phase_started_at.timestamp())
+        )
+        phase_fresh = bool(
+            limit_seconds > 0.0
+            and phase_age_seconds is not None
+            and phase_age_seconds < limit_seconds
+        )
+        raw_pid = getattr(child, "pid", 0)
+        child_pid = (
+            0
+            if isinstance(raw_pid, bool)
+            else int(raw_pid)
+            if isinstance(raw_pid, int)
+            else 0
+        )
+        provider_workers: list[dict[str, Any]] = []
+        if child_pid > 1 and phase_fresh:
+            try:
+                provider_workers = active_codex_exec_workers(
+                    child_pid,
+                    nested_state,
+                )
+            except (OSError, RuntimeError, TypeError, ValueError):
+                provider_workers = []
+        active_phase = str(nested_state.get("active_phase") or "")
+        validation_active = False
+        if phase_fresh and active_phase == "validating":
+            try:
+                validation_active = (
+                    self._active_validation_subprocess_exists(child_pid)
+                )
+            except (OSError, RuntimeError, TypeError, ValueError):
+                validation_active = False
+        return {
+            "phase_fresh": phase_fresh,
+            "phase_age_seconds": (
+                None
+                if phase_age_seconds is None
+                else round(phase_age_seconds, 3)
+            ),
+            "limit_seconds": limit_seconds,
+            "provider_active": bool(provider_workers),
+            "provider_worker_count": len(provider_workers),
+            "validation_active": validation_active,
+            "execution_active": bool(provider_workers or validation_active),
+        }
+
     def _database_worktree_status_projection(
         self,
         child: Any,
@@ -13848,7 +14055,181 @@ class PortalImplementationSupervisor:
             return SupervisorLoopDecision.keep_running()
 
         state = PortalTaskState.load(self.config.state_path)
-        stuck, reason = self.is_stuck(state, now_ts=time.time())
+        now_ts = time.time()
+        database_evidence = None
+        database_evidence_error = ""
+        try:
+            database_evidence = self._active_managed_database_pool_evidence(
+                _child
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            # Watchdog attribution is a fail-open liveness hint.  Filesystem
+            # or decoding failure must fall through to ordinary stale-attempt
+            # recovery rather than extending a callback lease.
+            database_evidence_error = f"{type(exc).__name__}: {exc}"
+        self._set_loop_status_fields(
+            _loop,
+            {
+                "watchdog_attribution_deferred": False,
+                "watchdog_attribution_deferred_reason": "",
+                "watchdog_projected_task_id": state.active_task_id,
+                "watchdog_database_activity_task_id": "",
+                "watchdog_attribution_deferral_age_seconds": None,
+                "watchdog_attribution_deferral_limit_seconds": (
+                    self._implementation_watchdog_timeout_seconds()
+                ),
+                "watchdog_database_execution_active": False,
+                "watchdog_database_provider_active": False,
+                "watchdog_database_validation_active": False,
+                "watchdog_database_evidence_error": database_evidence_error,
+            },
+        )
+        if database_evidence is None:
+            self._watchdog_attribution_deferral_key = ""
+            self._watchdog_attribution_deferral_started_monotonic = None
+            if not database_evidence_error:
+                self._watchdog_attribution_exhausted_key = ""
+        else:
+            database_activity, nested_state = database_evidence
+            projected_task_identity = (
+                state.active_task_id,
+                state.active_task_cid,
+            )
+            database_task_identity = (
+                str(database_activity.get("task_id") or ""),
+                str(database_activity.get("task_cid") or ""),
+            )
+            projected_attempt = (
+                str(state.active_attempt) if state.active_attempt > 0 else ""
+            )
+            database_attempt = str(
+                database_activity.get("attempt") or ""
+            )
+            database_identity = (
+                *database_task_identity,
+                database_attempt,
+            )
+            projected_identity = (
+                *projected_task_identity,
+                projected_attempt,
+            )
+            deferral_key = json.dumps(
+                {
+                    "database": database_identity,
+                    "projected": projected_identity,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            execution_evidence = self._database_watchdog_execution_evidence(
+                _child,
+                nested_state,
+                now_ts=now_ts,
+            )
+            cross_task_conflict = (
+                projected_task_identity != database_task_identity
+            )
+            if (
+                cross_task_conflict
+                and execution_evidence["phase_fresh"]
+                and execution_evidence["execution_active"]
+            ):
+                if (
+                    deferral_key
+                    != self._watchdog_attribution_exhausted_key
+                    and deferral_key
+                    != self._watchdog_attribution_deferral_key
+                ):
+                    self._watchdog_attribution_exhausted_key = ""
+                    self._watchdog_attribution_deferral_key = deferral_key
+                    self._watchdog_attribution_deferral_started_monotonic = (
+                        now_monotonic
+                    )
+                started_monotonic = (
+                    self._watchdog_attribution_deferral_started_monotonic
+                )
+                deferral_age_seconds = (
+                    0.0
+                    if started_monotonic is None
+                    else max(0.0, now_monotonic - started_monotonic)
+                )
+                deferral_limit_seconds = float(
+                    execution_evidence["limit_seconds"]
+                )
+                if (
+                    deferral_key
+                    != self._watchdog_attribution_exhausted_key
+                    and deferral_age_seconds < deferral_limit_seconds
+                ):
+                    # The lane-level Portal state can still name the previous
+                    # task while a newer fenced callback runs in its private
+                    # attempt state.  Require both exact nested custody and a
+                    # live provider/validation descendant before deferring.
+                    # The monotonic window cannot exceed the existing
+                    # implementation timeout, so SupervisorLoop retains the
+                    # hard liveness bound.
+                    self._set_loop_status_fields(
+                        _loop,
+                        {
+                            "watchdog_attribution_deferred": True,
+                            "watchdog_attribution_deferred_reason": (
+                                "outer_portal_task_identity_conflicts_with_"
+                                "fresh_live_nested_database_execution"
+                            ),
+                            "watchdog_projected_task_id": (
+                                state.active_task_id
+                            ),
+                            "watchdog_database_activity_task_id": (
+                                database_identity[0]
+                            ),
+                            "watchdog_attribution_deferral_age_seconds": (
+                                round(deferral_age_seconds, 3)
+                            ),
+                            "watchdog_attribution_deferral_limit_seconds": (
+                                deferral_limit_seconds
+                            ),
+                            "watchdog_database_execution_active": True,
+                            "watchdog_database_provider_active": bool(
+                                execution_evidence["provider_active"]
+                            ),
+                            "watchdog_database_validation_active": bool(
+                                execution_evidence["validation_active"]
+                            ),
+                        },
+                    )
+                    return SupervisorLoopDecision.keep_running()
+                if deferral_age_seconds >= deferral_limit_seconds:
+                    self._watchdog_attribution_exhausted_key = deferral_key
+            if deferral_key == self._watchdog_attribution_deferral_key:
+                self._watchdog_attribution_deferral_key = ""
+                self._watchdog_attribution_deferral_started_monotonic = None
+            if (
+                not cross_task_conflict
+                and deferral_key
+                != self._watchdog_attribution_exhausted_key
+            ):
+                # Same-task attempt drift is stale-attempt evidence, not a
+                # cross-task callback race.  Never start a deferral for it.
+                self._watchdog_attribution_exhausted_key = ""
+            self._set_loop_status_fields(
+                _loop,
+                {
+                    "watchdog_database_activity_task_id": (
+                        database_identity[0]
+                    ),
+                    "watchdog_database_execution_active": bool(
+                        execution_evidence["execution_active"]
+                    ),
+                    "watchdog_database_provider_active": bool(
+                        execution_evidence["provider_active"]
+                    ),
+                    "watchdog_database_validation_active": bool(
+                        execution_evidence["validation_active"]
+                    ),
+                },
+            )
+        stuck, reason = self.is_stuck(state, now_ts=now_ts)
         if state.active_task_id and not stuck:
             return SupervisorLoopDecision.keep_running()
         if (
@@ -14262,6 +14643,36 @@ class PortalImplementationSupervisor:
                     status_lines=dirty,
                     reason="stale_active_execution_auto_rescue",
                 )
+                mutation_admission = rescue_result.get(
+                    "mutation_admission"
+                )
+                if (
+                    isinstance(mutation_admission, Mapping)
+                    and mutation_admission.get("allowed") is not True
+                ):
+                    return {
+                        "repaired": False,
+                        "reason": str(
+                            rescue_result.get("reason")
+                            or "worktree_pool_mutation_denied"
+                        ),
+                        "active_task_id": state.active_task_id,
+                        "active_worktree_path": active_worktree,
+                        "active_branch": active_branch,
+                        "rescue_result": rescue_result,
+                    }
+                if rescue_result.get("preserved") is not True:
+                    return {
+                        "repaired": False,
+                        "reason": str(
+                            rescue_result.get("reason")
+                            or "dirty_worktree_rescue_failed"
+                        ),
+                        "active_task_id": state.active_task_id,
+                        "active_worktree_path": active_worktree,
+                        "active_branch": active_branch,
+                        "rescue_result": rescue_result,
+                    }
 
         repaired_at = utc_now()
         recovered_attempt = consume_stale_active_attempt(state)
@@ -16610,11 +17021,6 @@ class PortalImplementationSupervisor:
             if not path_text:
                 continue
             path = Path(path_text)
-            try:
-                path_resolved = path.resolve()
-                path_resolved.relative_to(root_resolved)
-            except (OSError, ValueError):
-                continue
             branch = str(record.get("branch") or "").removeprefix("refs/heads/")
             head = str(record.get("HEAD") or "")
             detail: dict[str, Any] = {
@@ -16624,11 +17030,17 @@ class PortalImplementationSupervisor:
                 "kind": "worktree",
             }
             active_skip = self._active_worktree_skip_detail(
-                path_resolved,
+                path,
                 active_worktree_owners,
+                expected_branch=branch,
             )
             if active_skip is not None:
                 skipped.append({**detail, **active_skip})
+                continue
+            try:
+                path_resolved = path.resolve()
+                path_resolved.relative_to(root_resolved)
+            except (OSError, ValueError):
                 continue
             if any(str(path_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
@@ -16856,21 +17268,25 @@ class PortalImplementationSupervisor:
             if not path_text:
                 continue
             path = Path(path_text)
+            branch = str(record.get("branch") or "").removeprefix("refs/heads/")
+            head = str(record.get("HEAD") or "")
+            detail: dict[str, Any] = {
+                "path": str(path),
+                "branch": branch,
+                "head": head,
+            }
+            active_skip = self._active_worktree_skip_detail(
+                path,
+                active_worktree_owners,
+                expected_branch=branch,
+            )
+            if active_skip is not None:
+                skipped.append({**detail, **active_skip})
+                continue
             try:
                 path_resolved = path.resolve()
                 path_resolved.relative_to(root_resolved)
             except (OSError, ValueError):
-                continue
-
-            branch = str(record.get("branch") or "").removeprefix("refs/heads/")
-            head = str(record.get("HEAD") or "")
-            detail: dict[str, Any] = {"path": str(path), "branch": branch, "head": head}
-            active_skip = self._active_worktree_skip_detail(
-                path_resolved,
-                active_worktree_owners,
-            )
-            if active_skip is not None:
-                skipped.append({**detail, **active_skip})
                 continue
             if any(str(path_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
@@ -17295,19 +17711,75 @@ class PortalImplementationSupervisor:
                         }
                     )
                     continue
-                recovery_result = (
-                    reconciliation_daemon.reconcile_validated_worktree_candidate(
-                        worktree_path=path,
-                        branch_name=branch,
-                        task=current_task,
-                        baseline_ref=baseline_ref,
-                        candidate_commit=head,
-                        recovery_key=recovery_key,
-                        preacquired_implementation_lock=(
-                            preacquired_implementation_lock
-                        ),
+                with self._pooled_worktree_mutation_guard(
+                    path,
+                    expected_branch=branch,
+                    operation="reconcile_validated_worktree_candidate",
+                ) as mutation_admission:
+                    if mutation_admission.get("allowed") is not True:
+                        processed.append(
+                            {
+                                **candidate,
+                                "merged": False,
+                                "preflight_result": preflight_result,
+                                "preflight_resolver_escalated": (
+                                    preflight_resolver_escalated
+                                ),
+                                "merge_result": {
+                                    "attempted": False,
+                                    "merged": False,
+                                    "reason": str(
+                                        mutation_admission.get("reason")
+                                        or "worktree_pool_mutation_denied"
+                                    ),
+                                },
+                                "mutation_admission": mutation_admission,
+                                "recovery_key": recovery_key,
+                            }
+                        )
+                        continue
+                    current_preimage = self._revalidate_worktree_mutation_preimage(
+                        path,
+                        expected_branch=branch,
+                        expected_head=head,
+                        expected_status=(),
                     )
-                )
+                    if current_preimage.get("valid") is not True:
+                        processed.append(
+                            {
+                                **candidate,
+                                "merged": False,
+                                "preflight_result": preflight_result,
+                                "preflight_resolver_escalated": (
+                                    preflight_resolver_escalated
+                                ),
+                                "merge_result": {
+                                    "attempted": False,
+                                    "merged": False,
+                                    "reason": str(
+                                        current_preimage.get("reason")
+                                        or "worktree_mutation_preimage_changed"
+                                    ),
+                                },
+                                "mutation_admission": mutation_admission,
+                                "mutation_preimage": current_preimage,
+                                "recovery_key": recovery_key,
+                            }
+                        )
+                        continue
+                    recovery_result = (
+                        reconciliation_daemon.reconcile_validated_worktree_candidate(
+                            worktree_path=path,
+                            branch_name=branch,
+                            task=current_task,
+                            baseline_ref=baseline_ref,
+                            candidate_commit=head,
+                            recovery_key=recovery_key,
+                            preacquired_implementation_lock=(
+                                preacquired_implementation_lock
+                            ),
+                        )
+                    )
                 lifecycle_reconciliation = recovery_result.get(
                     "worktree_lifecycle_reconciliation"
                 )
@@ -19978,18 +20450,67 @@ class PortalImplementationSupervisor:
                 )
                 return result
 
-            remove = subprocess.run(
-                [
-                    "git",
-                    "worktree",
-                    "remove",
-                    str(resolved_path),
-                ],
-                cwd=self.config.repo_root,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
+            with self._pooled_worktree_mutation_guard(
+                worktree_path,
+                expected_branch=normalized_branch,
+                operation="prune_completed_rescue_worktree",
+            ) as mutation_admission:
+                if mutation_admission.get("allowed") is not True:
+                    result = {
+                        "attempted": False,
+                        "removed": False,
+                        "preserved_nonblocking": True,
+                        "reason": str(
+                            mutation_admission.get("reason")
+                            or "worktree_pool_mutation_denied"
+                        ),
+                        "branch": normalized_branch,
+                        "head": actual_head,
+                        "branch_preserved": True,
+                        "mutation_admission": mutation_admission,
+                    }
+                    self._record_event(
+                        "completed_rescue_worktree_preserved",
+                        result,
+                    )
+                    return result
+                current_preimage = self._revalidate_worktree_mutation_preimage(
+                    resolved_path,
+                    expected_branch=normalized_branch,
+                    expected_head=actual_head,
+                    expected_status=(),
+                )
+                if current_preimage.get("valid") is not True:
+                    result = {
+                        "attempted": False,
+                        "removed": False,
+                        "preserved_nonblocking": True,
+                        "reason": str(
+                            current_preimage.get("reason")
+                            or "worktree_mutation_preimage_changed"
+                        ),
+                        "branch": normalized_branch,
+                        "head": actual_head,
+                        "branch_preserved": True,
+                        "mutation_preimage": current_preimage,
+                    }
+                    self._record_event(
+                        "completed_rescue_worktree_preserved",
+                        result,
+                    )
+                    return result
+                remove = subprocess.run(
+                    [
+                        "git",
+                        "worktree",
+                        "remove",
+                        str(resolved_path),
+                    ],
+                    cwd=self.config.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
             result = {
                 "attempted": True,
                 "removed": remove.returncode == 0,
@@ -20129,6 +20650,24 @@ class PortalImplementationSupervisor:
             if not payload or payload.get("schema") != WORKTREE_POOL_SCHEMA:
                 continue
             lease_state = str(payload.get("state") or "")
+            quarantine = inspect_worktree_pool_quarantine(
+                worktree_root=root_resolved,
+                workspace_path=str(payload.get("path") or ""),
+                expected_branch=str(payload.get("branch") or ""),
+            )
+            if quarantine.get("cleanup_fenced") is True:
+                register(
+                    payload.get("path"),
+                    source="worktree_pool_quarantine",
+                    pool_state_path=pool_state_path,
+                    lease_state=lease_state,
+                    lease_pid=payload.get("lease_pid"),
+                    branch=payload.get("branch"),
+                    quarantine_status=quarantine.get("status"),
+                    quarantine_reason=quarantine.get("reason"),
+                    quarantine_marker_path=quarantine.get("marker_path"),
+                )
+                continue
             try:
                 lease_pid = int(payload.get("lease_pid") or 0)
             except (TypeError, ValueError):
@@ -20162,11 +20701,214 @@ class PortalImplementationSupervisor:
 
         return owners
 
+    @contextmanager
+    def _pooled_worktree_mutation_guard(
+        self,
+        worktree_path: Path,
+        *,
+        expected_branch: str = "",
+        operation: str,
+    ) -> Iterator[dict[str, Any]]:
+        """Serialize a pooled mutation with exact quarantine publication.
+
+        Publication and mutation use the same per-entry update guard.  The
+        quarantine state is re-read only after that guard is held, immediately
+        before the caller may mutate the checkout.  Non-pooled worktrees keep
+        their existing behavior; pooled-looking but unguardable paths fail
+        closed.
+        """
+
+        worktree_root = self.config.worktree_root
+        if worktree_root is None:
+            yield {
+                "allowed": True,
+                "pooled": False,
+                "reason": "worktree_pool_not_configured",
+                "operation": operation,
+            }
+            return
+        with guarded_worktree_pool_mutation(
+            repo_root=self.config.repo_root,
+            worktree_root=worktree_root,
+            workspace_path=worktree_path,
+            expected_branch=expected_branch,
+            operation=operation,
+        ) as decision:
+            yield decision
+
+    def _revalidate_worktree_mutation_preimage(
+        self,
+        worktree_path: Path,
+        *,
+        expected_branch: str,
+        expected_head: str = "",
+        expected_status: Sequence[str] | None = None,
+        target_ref: str = "",
+        require_merged: bool = False,
+    ) -> dict[str, Any]:
+        """Rebind the exact Git/process preimage while the pool guard is held."""
+
+        normalized_branch = str(expected_branch or "").removeprefix(
+            "refs/heads/"
+        )
+        try:
+            resolved = worktree_path.resolve(strict=True)
+            resolved.relative_to(self.config.worktree_root.resolve(strict=True))
+        except (AttributeError, OSError, RuntimeError, ValueError):
+            return {"valid": False, "reason": "worktree_path_changed"}
+        records = []
+        for record in self._git_worktree_records(self.config.repo_root):
+            record_path = str(record.get("worktree") or "")
+            if not record_path:
+                continue
+            try:
+                if Path(record_path).resolve(strict=True) == resolved:
+                    records.append(record)
+            except (OSError, RuntimeError, ValueError):
+                continue
+        if len(records) != 1:
+            return {
+                "valid": False,
+                "reason": "worktree_registration_changed",
+                "registration_count": len(records),
+            }
+        record = records[0]
+        if "locked" in record:
+            return {
+                "valid": False,
+                "reason": "git_worktree_registration_locked",
+                "git_worktree_lock_reason": str(record.get("locked") or ""),
+            }
+        record_branch = str(record.get("branch") or "").removeprefix(
+            "refs/heads/"
+        )
+        record_head = str(record.get("HEAD") or "")
+        actual_branch = self._git_current_branch(resolved)
+        actual_head = self._git_ref_commit(resolved, "HEAD")
+        branch_head = self._git_ref_commit(
+            self.config.repo_root,
+            normalized_branch,
+        )
+        if (
+            not normalized_branch
+            or record_branch != normalized_branch
+            or actual_branch != normalized_branch
+            or not record_head
+            or record_head != actual_head
+            or branch_head != actual_head
+            or (bool(expected_head) and actual_head != expected_head)
+        ):
+            return {
+                "valid": False,
+                "reason": "worktree_identity_changed",
+                "expected_branch": normalized_branch,
+                "record_branch": record_branch,
+                "actual_branch": actual_branch,
+                "expected_head": expected_head,
+                "record_head": record_head,
+                "actual_head": actual_head,
+                "branch_head": branch_head,
+            }
+        process_snapshot = self._strict_process_commands_for_mutation()
+        if process_snapshot.get("available") is not True:
+            return {
+                "valid": False,
+                "reason": "worktree_process_query_unavailable",
+                "process_snapshot": process_snapshot,
+            }
+        if any(
+            str(resolved) in command
+            for command in process_snapshot.get("commands", ())
+        ):
+            return {"valid": False, "reason": "worktree_became_active"}
+        try:
+            current_status = self._git_status_short_strict(resolved)
+        except RuntimeError as exc:
+            return {
+                "valid": False,
+                "reason": "worktree_status_unavailable",
+                "error": str(exc)[-1000:],
+            }
+        if expected_status is not None and list(expected_status) != current_status:
+            return {
+                "valid": False,
+                "reason": "worktree_status_changed",
+                "expected_status": list(expected_status)[:20],
+                "current_status": current_status[:20],
+            }
+        if target_ref and not self._git_ref_commit(
+            self.config.repo_root,
+            target_ref,
+        ):
+            return {
+                "valid": False,
+                "reason": "worktree_target_ref_changed",
+                "target_ref": target_ref,
+            }
+        if require_merged:
+            descendant = str(target_ref or "").strip()
+            if not descendant or not (
+                self._git_ref_is_ancestor(
+                    self.config.repo_root,
+                    normalized_branch,
+                    descendant,
+                )
+                or self._git_ref_is_ancestor(
+                    self.config.repo_root,
+                    actual_head,
+                    descendant,
+                )
+            ):
+                return {
+                    "valid": False,
+                    "reason": "worktree_ancestry_changed",
+                    "target_ref": descendant,
+                    "branch": normalized_branch,
+                    "head": actual_head,
+                }
+        return {
+            "valid": True,
+            "reason": "worktree_mutation_preimage_current",
+            "path": str(resolved),
+            "branch": normalized_branch,
+            "head": actual_head,
+            "status_short": current_status,
+        }
+
     def _active_worktree_skip_detail(
         self,
         path: Path,
         owners: Mapping[Path, Mapping[str, str]],
+        *,
+        expected_branch: str = "",
     ) -> dict[str, str] | None:
+        worktree_root = self.config.worktree_root
+        if worktree_root is not None:
+            quarantine = inspect_worktree_pool_quarantine(
+                worktree_root=worktree_root,
+                workspace_path=path,
+                expected_branch=expected_branch,
+            )
+            if quarantine.get("cleanup_fenced") is True:
+                quarantine_status = str(quarantine.get("status") or "")
+                quarantine_reason = str(quarantine.get("reason") or "")
+                quarantine_marker_path = str(
+                    quarantine.get("marker_path") or ""
+                )
+                return {
+                    "reason": (
+                        "durable_worktree_pool_quarantine"
+                        if quarantine.get("valid") is True
+                        else "worktree_pool_quarantine_unverifiable"
+                    ),
+                    "owner_source": "worktree_pool_quarantine",
+                    "quarantine_status": quarantine_status,
+                    "quarantine_reason": quarantine_reason,
+                    "quarantine_marker_path": quarantine_marker_path,
+                    "owner_quarantine_status": quarantine_status,
+                    "owner_quarantine_reason": quarantine_reason,
+                    "owner_quarantine_marker_path": quarantine_marker_path,
+                }
         try:
             resolved = path.resolve()
         except OSError:
@@ -20191,7 +20933,12 @@ class PortalImplementationSupervisor:
         owner_lease_state = str(owner.get("lease_state") or "")
         return {
             "reason": (
-                (
+                "durable_worktree_pool_quarantine"
+                if owner_source == "worktree_pool_quarantine"
+                and owner.get("quarantine_status") == "valid"
+                else "worktree_pool_quarantine_unverifiable"
+                if owner_source == "worktree_pool_quarantine"
+                else (
                     "idle_worktree_pool_entry"
                     if owner_lease_state == "idle"
                     else "active_worktree_pool_lease"
@@ -20211,6 +20958,15 @@ class PortalImplementationSupervisor:
             "owner_branch": str(owner.get("branch") or ""),
             "owner_lease_state": owner_lease_state,
             "owner_lease_pid": str(owner.get("lease_pid") or ""),
+            "owner_quarantine_status": str(
+                owner.get("quarantine_status") or ""
+            ),
+            "owner_quarantine_reason": str(
+                owner.get("quarantine_reason") or ""
+            ),
+            "owner_quarantine_marker_path": str(
+                owner.get("quarantine_marker_path") or ""
+            ),
         }
 
     def _commit_dirty_submodules_for_rescue(
@@ -20348,6 +21104,72 @@ class PortalImplementationSupervisor:
         return fragment[:96] or "worktree"
 
     def _rescue_dirty_worktree(
+        self,
+        worktree_path: Path,
+        *,
+        branch: str,
+        head: str,
+        target_ref: str,
+        status_lines: list[str],
+        reason: str,
+    ) -> dict[str, Any]:
+        """Rescue a checkout only under its exact pool publication guard."""
+
+        with self._pooled_worktree_mutation_guard(
+            worktree_path,
+            expected_branch=branch,
+            operation="rescue_dirty_worktree",
+        ) as admission:
+            if admission.get("allowed") is not True:
+                return {
+                    "attempted": False,
+                    "preserved": False,
+                    "reason": str(
+                        admission.get("reason")
+                        or "worktree_pool_mutation_denied"
+                    ),
+                    "path": str(worktree_path),
+                    "branch": branch,
+                    "target_ref": target_ref,
+                    "status_short": status_lines[:20],
+                    "mutation_admission": admission,
+                    "started_at": utc_now(),
+                    "finished_at": utc_now(),
+                }
+            current_preimage = self._revalidate_worktree_mutation_preimage(
+                worktree_path,
+                expected_branch=branch,
+                expected_head=head,
+                expected_status=status_lines,
+                target_ref=target_ref,
+            )
+            if current_preimage.get("valid") is not True:
+                return {
+                    "attempted": False,
+                    "preserved": False,
+                    "reason": str(
+                        current_preimage.get("reason")
+                        or "worktree_mutation_preimage_changed"
+                    ),
+                    "path": str(worktree_path),
+                    "branch": branch,
+                    "target_ref": target_ref,
+                    "status_short": status_lines[:20],
+                    "mutation_admission": admission,
+                    "mutation_preimage": current_preimage,
+                    "started_at": utc_now(),
+                    "finished_at": utc_now(),
+                }
+            return self._rescue_dirty_worktree_guarded(
+                worktree_path,
+                branch=branch,
+                head=head,
+                target_ref=target_ref,
+                status_lines=status_lines,
+                reason=reason,
+            )
+
+    def _rescue_dirty_worktree_guarded(
         self,
         worktree_path: Path,
         *,
@@ -20765,6 +21587,16 @@ class PortalImplementationSupervisor:
             if not path_text:
                 continue
             path = Path(path_text)
+            branch = str(record.get("branch") or "").removeprefix("refs/heads/")
+            head = str(record.get("HEAD") or "")
+            active_skip = self._active_worktree_skip_detail(
+                path,
+                active_worktree_owners,
+                expected_branch=branch,
+            )
+            if active_skip is not None:
+                skipped.append({"path": str(path), **active_skip})
+                continue
             try:
                 path_resolved = path.resolve()
                 path_resolved.relative_to(root_resolved)
@@ -20778,19 +21610,9 @@ class PortalImplementationSupervisor:
                     }
                 )
                 continue
-            active_skip = self._active_worktree_skip_detail(
-                path_resolved,
-                active_worktree_owners,
-            )
-            if active_skip is not None:
-                skipped.append({"path": str(path), **active_skip})
-                continue
             if any(str(path_resolved) in line for line in process_lines):
                 skipped.append({"path": str(path), "reason": "active_process"})
                 continue
-
-            branch = str(record.get("branch") or "").removeprefix("refs/heads/")
-            head = str(record.get("HEAD") or "")
             cached_entry = self._worktree_scan_cache_entry(
                 scan_cache,
                 phase="cleanup",
@@ -20830,6 +21652,7 @@ class PortalImplementationSupervisor:
                 )
                 continue
             dirty = self._git_status_short(path) if path.exists() else []
+            observed_status = list(dirty)
             if not path.exists():
                 skipped.append(
                     {
@@ -20910,33 +21733,73 @@ class PortalImplementationSupervisor:
                     )
                     continue
 
-            remove = subprocess.run(
-                ["git", "worktree", "remove", "--force", str(path)],
-                cwd=repo_root,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            branch_delete: dict[str, Any] = {}
-            if (
-                remove.returncode == 0
-                and self._worktree_branch_can_delete_after_merge(branch)
-                and branch_merged
-            ):
-                delete = subprocess.run(
-                    ["git", "branch", "-D", branch],
+            with self._pooled_worktree_mutation_guard(
+                path,
+                expected_branch=branch,
+                operation="cleanup_merged_worktree",
+            ) as mutation_admission:
+                if mutation_admission.get("allowed") is not True:
+                    skipped.append(
+                        {
+                            "path": str(path),
+                            "branch": branch,
+                            "reason": str(
+                                mutation_admission.get("reason")
+                                or "worktree_pool_mutation_denied"
+                            ),
+                            "mutation_admission": mutation_admission,
+                        }
+                    )
+                    continue
+                current_preimage = self._revalidate_worktree_mutation_preimage(
+                    path,
+                    expected_branch=branch,
+                    expected_head=head,
+                    expected_status=observed_status,
+                    target_ref=target_ref,
+                    require_merged=True,
+                )
+                if current_preimage.get("valid") is not True:
+                    skipped.append(
+                        {
+                            "path": str(path),
+                            "branch": branch,
+                            "reason": str(
+                                current_preimage.get("reason")
+                                or "worktree_mutation_preimage_changed"
+                            ),
+                            "mutation_admission": mutation_admission,
+                            "mutation_preimage": current_preimage,
+                        }
+                    )
+                    continue
+                remove = subprocess.run(
+                    ["git", "worktree", "remove", "--force", str(path)],
                     cwd=repo_root,
                     text=True,
                     capture_output=True,
                     check=False,
                 )
-                branch_delete = {
-                    "attempted": True,
-                    "deleted": delete.returncode == 0,
-                    "returncode": delete.returncode,
-                    "stdout": delete.stdout[-4000:],
-                    "stderr": delete.stderr[-4000:],
-                }
+                branch_delete: dict[str, Any] = {}
+                if (
+                    remove.returncode == 0
+                    and self._worktree_branch_can_delete_after_merge(branch)
+                    and branch_merged
+                ):
+                    delete = subprocess.run(
+                        ["git", "branch", "-D", branch],
+                        cwd=repo_root,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    branch_delete = {
+                        "attempted": True,
+                        "deleted": delete.returncode == 0,
+                        "returncode": delete.returncode,
+                        "stdout": delete.stdout[-4000:],
+                        "stderr": delete.stderr[-4000:],
+                    }
             removed.append(
                 {
                     "path": str(path),
@@ -21030,7 +21893,9 @@ class PortalImplementationSupervisor:
                 or ".." in relative_path.parts
                 or not relative_path.parts
             ):
-                result["skipped"].append({**detail, "reason": "unsafe_relative_path"})
+                result["skipped"].append(
+                    {**detail, "reason": "unsafe_relative_path"}
+                )
                 continue
 
             candidate = repo_root.joinpath(*relative_path.parts)
@@ -21042,20 +21907,28 @@ class PortalImplementationSupervisor:
                     symlinked = True
                     break
             if symlinked:
-                result["skipped"].append({**detail, "reason": "symlinked_path"})
+                result["skipped"].append(
+                    {**detail, "reason": "symlinked_path"}
+                )
                 continue
 
             try:
                 candidate_resolved = candidate.resolve(strict=True)
                 candidate_resolved.relative_to(root_resolved)
             except FileNotFoundError:
-                result["skipped"].append({**detail, "reason": "submodule_not_initialized"})
+                result["skipped"].append(
+                    {**detail, "reason": "submodule_not_initialized"}
+                )
                 continue
             except (OSError, RuntimeError, ValueError):
-                result["skipped"].append({**detail, "reason": "path_outside_repo"})
+                result["skipped"].append(
+                    {**detail, "reason": "path_outside_repo"}
+                )
                 continue
             if not candidate_resolved.is_dir():
-                result["skipped"].append({**detail, "reason": "submodule_not_directory"})
+                result["skipped"].append(
+                    {**detail, "reason": "submodule_not_directory"}
+                )
                 continue
 
             try:
@@ -21078,7 +21951,9 @@ class PortalImplementationSupervisor:
                 ValueError,
                 subprocess.TimeoutExpired,
             ):
-                result["skipped"].append({**detail, "reason": "unmanaged_repository"})
+                result["skipped"].append(
+                    {**detail, "reason": "unmanaged_repository"}
+                )
                 continue
 
             try:
@@ -21393,6 +22268,52 @@ class PortalImplementationSupervisor:
     @staticmethod
     def _list_process_commands() -> list[str]:
         return [command for _pid, command in PortalImplementationSupervisor._list_process_details()]
+
+    @staticmethod
+    def _strict_process_commands_for_mutation() -> dict[str, Any]:
+        """Return one fail-closed process snapshot for a source mutation."""
+
+        try:
+            result = subprocess.run(
+                ["ps", "-eo", "pid=,args="],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "available": False,
+                "reason": "process_query_failed",
+                "error_type": type(exc).__name__,
+            }
+        if result.returncode != 0:
+            return {
+                "available": False,
+                "reason": "process_query_failed",
+                "returncode": result.returncode,
+                "stderr": result.stderr[-1000:],
+            }
+        commands: list[str] = []
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            pid_text, separator, command = stripped.partition(" ")
+            try:
+                int(pid_text)
+            except ValueError:
+                return {
+                    "available": False,
+                    "reason": "process_query_malformed",
+                }
+            command = command.strip() if separator else ""
+            if command:
+                commands.append(command)
+        return {
+            "available": True,
+            "reason": "process_query_current",
+            "commands": commands,
+        }
 
     @staticmethod
     def _list_process_details() -> list[tuple[int, str]]:
@@ -24607,11 +25528,19 @@ class PortalImplementationSupervisor:
             return []
         return active_codex_exec_workers(daemon_pid)
 
-    def _active_validation_subprocess_exists(self) -> bool:
+    def _active_validation_subprocess_exists(
+        self,
+        daemon_pid: int | None = None,
+    ) -> bool:
         """Return whether a managed agent is currently running a bounded test command."""
 
-        daemon_pid = self._read_managed_daemon_pid()
-        if not daemon_pid:
+        if daemon_pid is None:
+            daemon_pid = self._read_managed_daemon_pid()
+        if (
+            isinstance(daemon_pid, bool)
+            or not isinstance(daemon_pid, int)
+            or daemon_pid <= 1
+        ):
             return False
         markers = (
             "playwright",
@@ -24630,10 +25559,19 @@ class PortalImplementationSupervisor:
             "run_hammer_leanstral_hparam.sh",
             "uscode_modal_daemon_runner",
         )
-        return any(
-            any(marker in " ".join(item.get("cmdline") or ()).lower() for marker in markers)
-            for item in descendant_processes(daemon_pid)
-        )
+        for item in descendant_processes(daemon_pid):
+            raw_command = item.get("cmdline")
+            if isinstance(raw_command, str):
+                command = raw_command.lower()
+            elif isinstance(raw_command, (tuple, list)):
+                command = " ".join(
+                    str(token) for token in raw_command
+                ).lower()
+            else:
+                command = ""
+            if any(marker in command for marker in markers):
+                return True
+        return False
 
     def is_stuck(
         self,
@@ -24651,7 +25589,10 @@ class PortalImplementationSupervisor:
         if self._implementation_attempt_is_active(state, now_ts=now_ts):
             return False, ""
         heartbeat_age = self._age_seconds(state.heartbeat_at, now_ts)
-        progress_age = self._age_seconds(state.last_progress_at or state.heartbeat_at, now_ts)
+        progress_age = self._age_seconds(
+            state.last_progress_at or state.heartbeat_at,
+            now_ts,
+        )
         stale = self.config.stale_seconds
         if state.active_task_id and heartbeat_age > stale:
             return True, f"heartbeat stale for active task {state.active_task_id}"
@@ -25884,6 +26825,15 @@ class PortalImplementationSupervisor:
                             self.config.state_owner_bootstrap_store_id,
                         ]
                     )
+            if self.config.require_launch_source_amendment:
+                command.append("--require-launch-source-amendment")
+            if self.config.launch_source_amendment_json:
+                command.extend(
+                    [
+                        "--launch-source-amendment-json",
+                        self.config.launch_source_amendment_json,
+                    ]
+                )
             if self.config.validation_max_workers is not None:
                 command.extend(
                     [
@@ -27007,6 +27957,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--require-launch-source-amendment",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--launch-source-amendment-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--explicit-legacy-task-source",
         action="store_true",
         help="Acknowledge explicit legacy-Markdown authority.",
@@ -27803,7 +28763,9 @@ def supervisor_config_from_args(
     effective_repo_root = (repo_root or REPO_ROOT).resolve()
     reconciliation_only = bool(args.reconciliation_only)
     implement = bool(args.implement and not reconciliation_only)
-    llm_merge_resolver_command = args.llm_merge_resolver_command
+    llm_merge_resolver_command = normalize_llm_merge_resolver_command(
+        args.llm_merge_resolver_command
+    )
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
     database_program = database_program_from_cli_namespace(args)
@@ -27842,6 +28804,12 @@ def supervisor_config_from_args(
         ),
         state_owner_bootstrap_store_id=str(
             getattr(args, "state_owner_bootstrap_store_id", "") or ""
+        ),
+        require_launch_source_amendment=bool(
+            getattr(args, "require_launch_source_amendment", False)
+        ),
+        launch_source_amendment_json=str(
+            getattr(args, "launch_source_amendment_json", "") or ""
         ),
         reconciliation_only=reconciliation_only,
         implement=implement,

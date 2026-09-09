@@ -744,6 +744,82 @@ def test_authenticated_owner_mutation_pump_returns_cas_row(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
+def test_owner_command_hmac_accepts_live_birth_bound_grant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Idle repair CAS may HMAC with the lane grant, not the reusable attach token."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+        DuckDBConnectionPolicyError,
+        QuackOwnerCommandRemoteError,
+        submit_quack_owner_command,
+    )
+
+    server = _real_database_server(tmp_path)
+    identity = server.start()
+    grant_token, grant = server.issue_typed_client_grant_record(
+        client_id="database-implementation-daemon:grant-hmac",
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=(),
+        allowed_command_operations=(),
+        peer_pid=os.getpid(),
+        ttl_seconds=60.0,
+    )
+    program = DatabaseProgramConfig(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        endpoint_secret_handle=identity.secret_handle,
+        quack_endpoint=identity.listen_uri,
+        store_id=identity.store_id,
+        store_generation=str(identity.generation),
+        schema_revision=str(identity.schema_revision),
+        runtime_registry_path=server.runtime_registry_path.relative_to(
+            tmp_path
+        ).as_posix(),
+        failover_policy="fail_closed",
+    )
+    for name, value in program.environment(repository_root=tmp_path).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", grant_token)
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE", raising=False)
+    stop = threading.Event()
+
+    def pump() -> None:
+        while not stop.wait(0.005):
+            server.process_mutation_inbox()
+
+    thread = threading.Thread(target=pump, daemon=True)
+    thread.start()
+    try:
+        try:
+            result = submit_quack_owner_command(
+                QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+                {
+                    "task_cid": "task:grant-hmac",
+                    "evidence_kind": "validation",
+                    "digest": "sha256:" + ("a" * 64),
+                },
+                timeout_seconds=5,
+            )
+        except QuackOwnerCommandRemoteError:
+            # HMAC authenticated; an empty board may still reject the write.
+            result = {"authenticated": True}
+        except DuckDBConnectionPolicyError as exc:
+            raise AssertionError(
+                "birth-bound grant HMAC was rejected as a missing attach token"
+            ) from exc
+        assert result
+        assert grant.peer_pid == os.getpid()
+    finally:
+        stop.set()
+        thread.join(timeout=2.0)
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
 def test_concurrent_mutation_inbox_replacement_cannot_redirect_real_cas(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2523,6 +2599,151 @@ def test_live_query_retries_quack_could_not_connect_birth_race(
     assert attempts == 2
 
 
+def test_live_query_skips_birth_retry_when_periodic_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class IOException(Exception):
+        pass
+
+    attempts = 0
+
+    class Sidecar:
+        def execute(self, sql: str, _params: Any = None) -> _Result:
+            if "quack_query" in sql:
+                raise IOException(
+                    "IO Error: Could not connect to server error for HTTP POST"
+                )
+            return _Result()
+
+        def close(self) -> None:
+            return None
+
+    def connect(_database: str) -> Sidecar:
+        nonlocal attempts
+        attempts += 1
+        return Sidecar()
+
+    monkeypatch.setitem(sys.modules, "duckdb", SimpleNamespace(connect=connect))
+    identity = StateServerIdentity(
+        server_id="server:periodic-live-query",
+        store_id="store:periodic-live-query",
+        database_uuid=_UUID,
+        schema_revision=1,
+        schema_fingerprint=_DIGEST,
+        generation=1,
+        fence_epoch=1,
+        revision=0,
+        process_birth=_birth(),
+        listen_uri="quack:127.0.0.1:45691",
+        extension_fingerprint=_DIGEST,
+        credential_generation=1,
+        secret_handle="handle:periodic-live-query",
+    )
+    transport = InProcessQuackTransport()
+    transport.start(
+        FakeConnection(),
+        host="127.0.0.1",
+        port=45691,
+        token="isolated-periodic-token",
+        identity=identity,
+    )
+    owner = FakeConnection()
+    owner.executed = 0
+
+    def _execute(sql: str, params: Any = None) -> _Result:
+        del params
+        owner.executed += 1
+        if "quack_query" in str(sql):
+            raise AssertionError("periodic live query must not use the serve connection")
+        return _Result()
+
+    owner.execute = _execute  # type: ignore[method-assign]
+
+    with pytest.raises(QuackStateServerReadyError, match="IOException"):
+        transport.live_query(
+            owner,
+            identity=identity,
+            token="isolated-periodic-token",
+            retry_transient_birth=False,
+        )
+
+    assert attempts == 1
+    assert owner.executed == 0
+
+
+def test_live_query_does_not_execute_on_unusable_owner_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class IOException(Exception):
+        pass
+
+    class UnusableOwner:
+        def __init__(self) -> None:
+            self._poisoned = True
+            self._closed = False
+            self._connection = None
+            self.executed = 0
+
+        def execute(self, sql: str, _params: Any = None) -> _Result:
+            del sql
+            self.executed += 1
+            raise DuckDBConnectionPolicyError(
+                "DuckDB connection is unusable after an uncertain transaction"
+            )
+
+    class Sidecar:
+        def execute(self, sql: str, _params: Any = None) -> _Result:
+            if "quack_query" in sql:
+                raise IOException("Could not connect to server")
+            return _Result()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "duckdb",
+        SimpleNamespace(connect=lambda _database: Sidecar()),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server."
+        "QUACK_LIVE_QUERY_BIRTH_TIMEOUT_SECONDS",
+        0.0,
+    )
+    identity = StateServerIdentity(
+        server_id="server:unusable-fallback",
+        store_id="store:unusable-fallback",
+        database_uuid=_UUID,
+        schema_revision=1,
+        schema_fingerprint=_DIGEST,
+        generation=1,
+        fence_epoch=1,
+        revision=0,
+        process_birth=_birth(),
+        listen_uri="quack:127.0.0.1:45690",
+        extension_fingerprint=_DIGEST,
+        credential_generation=1,
+        secret_handle="handle:unusable-fallback",
+    )
+    transport = InProcessQuackTransport()
+    transport.start(
+        FakeConnection(),
+        host="127.0.0.1",
+        port=45690,
+        token="isolated-unusable-fallback-token",
+        identity=identity,
+    )
+    owner = UnusableOwner()
+
+    with pytest.raises(QuackStateServerReadyError, match="IOException"):
+        transport.live_query(
+            owner,
+            identity=identity,
+            token="isolated-unusable-fallback-token",
+        )
+    assert owner.executed == 0
+
+
 def test_transport_start_does_not_fall_back_after_bind_ioerror() -> None:
     class IOException(Exception):
         pass
@@ -2609,8 +2830,8 @@ def test_ready_requires_live_query(tmp_path: Path) -> None:
 
 def test_ready_requires_matching_identities(tmp_path: Path) -> None:
     class DriftTransport(FakeQuackTransport):
-        def live_query(self, connection, *, identity, token):  # type: ignore[no-untyped-def]
-            del connection, token
+        def live_query(self, connection, *, identity, token, retry_transient_birth=True):  # type: ignore[no-untyped-def]
+            del connection, token, retry_transient_birth
             return {
                 "live": True,
                 "server_id": identity.server_id,
@@ -2630,8 +2851,8 @@ def test_ready_requires_matching_identities(tmp_path: Path) -> None:
 
 def test_ready_requires_complete_live_identity_fields(tmp_path: Path) -> None:
     class IncompleteTransport(FakeQuackTransport):
-        def live_query(self, connection, *, identity, token):  # type: ignore[no-untyped-def]
-            del connection, token
+        def live_query(self, connection, *, identity, token, retry_transient_birth=True):  # type: ignore[no-untyped-def]
+            del connection, token, retry_transient_birth
             return {
                 "live": True,
                 "server_id": identity.server_id,

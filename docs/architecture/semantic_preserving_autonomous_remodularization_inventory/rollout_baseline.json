@@ -1,0 +1,47 @@
+{
+  "current_mode": "bootstrap",
+  "modes": {
+    "bootstrap": {
+      "gate_task": "SPAR-000",
+      "merge": false,
+      "source_mutation": false
+    },
+    "guarded": {
+      "gate_task": "SPAR-042",
+      "merge": "current authority gates",
+      "source_mutation": "Tier A and qualified Tier B"
+    },
+    "required": {
+      "gate_task": "SPAR-043",
+      "merge": "current authority gates",
+      "source_mutation": "receipt-bound by autonomy tier"
+    },
+    "shadow_apply": {
+      "gate_task": "SPAR-041",
+      "merge": false,
+      "source_mutation": "disposable_worktree_only"
+    },
+    "shadow_plan": {
+      "gate_task": "SPAR-040",
+      "merge": false,
+      "source_mutation": false
+    }
+  },
+  "receipt_floor": [
+    "pre_world_root_cid",
+    "program_graph_snapshot_cid",
+    "partition_candidate_cid",
+    "boundary_contract_set_cid",
+    "transformation_packet_cid",
+    "context_receipt_cid",
+    "route_decision_cid",
+    "validation_receipt_cids",
+    "refactor_transition_cid",
+    "post_world_root_cid",
+    "expected_root_generation",
+    "resulting_root_generation",
+    "rollout_mode"
+  ],
+  "schema": "spar/rollout-baseline@1",
+  "worker_may_change_mode": false
+}

@@ -1,0 +1,78 @@
+{
+  "interfaces": [
+    {
+      "concern": "semantic_state",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state"
+    },
+    {
+      "concern": "semantic_state_operational_adapter",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py"
+    },
+    {
+      "concern": "architecture_refactorer",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse_and_versioned_extension",
+      "path": "ipfs_accelerate_py/agent_supervisor/architecture_refactorer"
+    },
+    {
+      "concern": "program_graph",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse_query_adapter",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/program_graph.py"
+    },
+    {
+      "concern": "vector_retrieval",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse_advisory_only",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/code_symbol_vector_index.py"
+    },
+    {
+      "concern": "tactician_hammer",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse_lowering_adapter",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/tactician_hammer_coordinator.py"
+    },
+    {
+      "concern": "procedures",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse",
+      "path": "ipfs_accelerate_py/agent_supervisor/procedure_compiler"
+    },
+    {
+      "concern": "context",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse_ordering_adapter",
+      "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py"
+    },
+    {
+      "concern": "vfs_wal_cas",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse",
+      "path": "ipfs_kit_py/ipfs_kit_py/core/vfs"
+    },
+    {
+      "concern": "worktree_lifecycle",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py"
+    },
+    {
+      "concern": "duckdb_quack",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse_authority",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py"
+    },
+    {
+      "concern": "ducklake",
+      "current_tree_probe_required_by": "SPAR-001",
+      "disposition": "reuse_non_authoritative",
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py"
+    }
+  ],
+  "observed_tree": "fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051",
+  "schema": "spar/interface-inventory@1"
+}

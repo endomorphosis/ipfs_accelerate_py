@@ -12,6 +12,9 @@ from __future__ import annotations
 import inspect
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_disposition import (
     ImplementationDisposition,
     ImplementationForestRoots,
@@ -115,6 +118,57 @@ def test_residual_path_requires_packet(forest: ImplementationForestRoots) -> Non
     assert blocked.provider_hook_count == 0
     with pytest.raises(PermissionError):
         assert_provider_dispatch_allowed(blocked)
+
+
+def test_residual_path_forwards_exact_receipt_backed_views(
+    forest: ImplementationForestRoots,
+) -> None:
+    task_cid = _cid("receipt-backed-task")
+    receipts: dict[str, dict[str, str]] = {}
+    for kind in ("planner", "doctor", "obligation", "logic", "repair"):
+        payload = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/authority-receipt@1",
+            "receipt_kind": kind,
+            "task_cid": task_cid,
+            "repository_forest_cid": forest.repository_forest_cid,
+        }
+        receipts[kind] = {**payload, "content_id": content_identity(payload)}
+    receipt_cids = {
+        kind: receipt["content_id"] for kind, receipt in receipts.items()
+    }
+
+    decision = evaluate_provider_gate(
+        task_cid=task_cid,
+        forest_roots=forest,
+        residual_packet_cid=_cid("residual-packet"),
+        obligation_graph_cid=receipt_cids["obligation"],
+        plan_cid=receipt_cids["planner"],
+        doctor_cid=receipt_cids["doctor"],
+        authority_receipt_cids=receipt_cids,
+        authority_receipt_resolver=lambda cid: next(
+            (
+                receipt
+                for receipt in receipts.values()
+                if receipt["content_id"] == cid
+            ),
+            None,
+        ),
+        allow_legacy_residual=False,
+    )
+
+    assert decision.disposition is ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED
+    assert decision.provider_authorized is True
+    assert decision.skip_provider is False
+    assert decision.receipt.plan_cid == receipt_cids["planner"]
+    assert decision.receipt.doctor_cid == receipt_cids["doctor"]
+    assert (
+        decision.receipt.dual_view.obligation_graph_cid
+        == receipt_cids["obligation"]
+    )
+    assert set(receipt_cids.values()).issubset(
+        set(decision.receipt.evidence_cids)
+    )
+    assert_provider_dispatch_allowed(decision)
 
 
 def test_event_payload_includes_receipt_identity(

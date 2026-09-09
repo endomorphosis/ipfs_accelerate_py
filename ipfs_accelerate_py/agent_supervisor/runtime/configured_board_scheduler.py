@@ -183,6 +183,9 @@ CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
 CODEX_REASONING_EFFORT_ENV = (
     "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 )
+LLM_MERGE_RESOLVER_COMMAND_ENV = (
+    "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
+)
 EXTERNAL_PROVIDER_ISOLATION_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
 )
@@ -386,6 +389,7 @@ SCHEDULER_PROVIDER_ENV_NAMES = (
     ROUTE_SOURCE_HEAD_ENV,
     ROUTE_SOURCE_TREE_ENV,
     ROUTE_ID_ENV,
+    LLM_MERGE_RESOLVER_COMMAND_ENV,
 )
 ORDERED_PROVIDER_FIELDS = (
     "primary_provider_id",
@@ -396,6 +400,10 @@ ORDERED_PROVIDER_FIELDS = (
     "fallback_reasoning_effort",
 )
 ORDERED_PRIMARY_EXECUTABLE_FIELD = "primary_executable"
+MERGE_RESOLVER_MODE_FIELD = "merge_resolver_mode"
+MERGE_RESOLVER_DISABLED_UNTIL_RESIDUAL = (
+    "disabled_until_sealed_residual"
+)
 ORDERED_PROVIDER_DETECTION_FIELDS = (
     *ORDERED_PROVIDER_FIELDS,
     ORDERED_PRIMARY_EXECUTABLE_FIELD,
@@ -2873,6 +2881,16 @@ def load_configured_board(
             raise ConfiguredBoardError(
                 f"provider.external_isolation is unavailable: {exc}"
             ) from exc
+    merge_resolver_mode = str(
+        provider.get(MERGE_RESOLVER_MODE_FIELD) or ""
+    ).strip()
+    if merge_resolver_mode not in {
+        "",
+        MERGE_RESOLVER_DISABLED_UNTIL_RESIDUAL,
+    }:
+        raise ConfiguredBoardError(
+            "provider.merge_resolver_mode is unsupported"
+        )
     concurrency = _positive_int(
         provider.get("max_concurrency"),
         field="provider.max_concurrency",
@@ -4719,6 +4737,47 @@ def _control_file_is_tracked(
     return False
 
 
+def _launch_source_amendment_policy(
+    payload: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    policy = payload.get("launch_source_amendment_policy")
+    if policy is None:
+        return None
+    required_fields = {
+        "required",
+        "schema",
+        "authoritative_store",
+        "append_mode",
+        "task_history_policy",
+        "attempt_source_policy",
+        "completion_policy",
+        "cli_json_is_authority",
+        "filesystem_projection_is_authority",
+    }
+    if (
+        not isinstance(policy, Mapping)
+        or set(policy) != required_fields
+        or policy.get("required") is not True
+        or policy.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/launch-source-amendment@1"
+        or policy.get("authoritative_store")
+        != "DuckDB/PlanRevisionRepository@1 over Quack"
+        or policy.get("append_mode") != "exact_plan_revision_cas"
+        or policy.get("task_history_policy")
+        != "preserve_immutable_task_cids_and_receipts"
+        or policy.get("attempt_source_policy")
+        != "exact_launch_forest_and_worktree_preimage"
+        or policy.get("completion_policy")
+        != "current_tree_requalification_required"
+        or policy.get("cli_json_is_authority") is not False
+        or policy.get("filesystem_projection_is_authority") is not False
+    ):
+        raise ConfiguredBoardError(
+            "launch-source amendment policy is incomplete or unsafe"
+        )
+    return policy
+
+
 def preflight_configured_board(
     board: ConfiguredBoard,
     *,
@@ -4729,6 +4788,29 @@ def preflight_configured_board(
     checks: list[dict[str, Any]] = []
     errors: list[str] = []
     warnings: list[str] = []
+
+    try:
+        amendment_policy = _launch_source_amendment_policy(board.payload)
+    except ConfiguredBoardError as exc:
+        _append_check(
+            checks,
+            errors,
+            name="launch_source_amendment_policy",
+            passed=False,
+            detail=str(exc),
+        )
+    else:
+        _append_check(
+            checks,
+            errors,
+            name="launch_source_amendment_policy",
+            passed=True,
+            detail=(
+                "absent"
+                if amendment_policy is None
+                else "operator_materializer_required"
+            ),
+        )
 
     if _targets_fresh_recovery_generation(
         board.payload,
@@ -5193,6 +5275,9 @@ def configured_board_common_args(
         "--log-level",
         "INFO",
     ]
+    launch_source_policy = _launch_source_amendment_policy(payload)
+    if launch_source_policy is not None:
+        args.append("--require-launch-source-amendment")
     # Explicit database-program selections are supervisor inputs.  The
     # fallback legacy-Markdown program, however, is a daemon-only compatibility
     # projection: implementation_supervisor does not accept the database CLI
@@ -5654,6 +5739,14 @@ def configured_board_launch_plan(
             environment[EXTERNAL_PROVIDER_ISOLATION_ENV] = (
                 isolation_config.environment_json()
             )
+    if (
+        str(provider.get(MERGE_RESOLVER_MODE_FIELD) or "").strip()
+        == MERGE_RESOLVER_DISABLED_UNTIL_RESIDUAL
+    ):
+        # Merge repair is a distinct semantic residual.  Until that route has
+        # its own sealed packet and lease, retain deterministic/manual merge
+        # handling and make the legacy free-form LLM resolver unreachable.
+        environment[LLM_MERGE_RESOLVER_COMMAND_ENV] = "disabled"
     # Database authority is explicit and non-secret. The endpoint field is an
     # opaque secret handle; raw credentials are never copied into this plan.
     if board.database_program is not None:
@@ -8078,6 +8171,30 @@ def _run_parsed_command(
         return 0 if preflight["valid"] else 2
     if not preflight["valid"]:
         print(json.dumps(preflight, indent=2, sort_keys=True))
+        return 2
+
+    launch_source_policy = _launch_source_amendment_policy(board.payload)
+    if args.command == "launch" and launch_source_policy is not None:
+        materializer_path = str(board.payload.get("materializer_path") or "")
+        print(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "configured-board-operator-admission-required@1"
+                    ),
+                    "valid": False,
+                    "process_started": False,
+                    "reason_code": "launch_source_amendment_operator_required",
+                    "authoritative_store": launch_source_policy[
+                        "authoritative_store"
+                    ],
+                    "materializer_path": materializer_path,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
         return 2
 
     detach = not bool(args.foreground)

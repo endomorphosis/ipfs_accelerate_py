@@ -166,6 +166,7 @@ MAX_PLAN_PROJECTION_BYTES: Final[int] = 16_777_216
 MAX_COMPLETION_PROJECTION_BYTES: Final[int] = 16_777_216
 MAX_GOAL_AUTHORITY_PROJECTION_BYTES: Final[int] = 4_194_304
 DEFAULT_EVIDENCE_FRESHNESS_SECONDS: Final[int] = 3_600
+LANDED_MERGE_REPAIR_OPERATION: Final[str] = "database_landed_merge_repair"
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}$")
 _SAFE_PATH_PART = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._:@+-]{0,255}$")
@@ -1063,6 +1064,181 @@ def _prepare_database_virgin_transfer_receipt_on(
     prior_raw = prior_receipt.get("virgin_task_transfer")
     supplied = prepared.get("virgin_task_transfer")
     supplied_cursor = prepared.get("virgin_task_transfer_claim_cursor")
+    legacy_lineage_fields = {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+        "virgin_task_transfer",
+        "virgin_task_transfer_claim_cursor",
+    }
+    legacy_post_merge_head = bool(
+        previous_status == "retrying"
+        and prior_receipt.get("operation")
+        in {
+            "database_post_merge_declared_outputs_repair_recovery",
+            "database_post_merge_declared_outputs_requalification_recovery",
+            "database_post_merge_declared_outputs_callback_integration_recovery",
+        }
+        and not set(prior_receipt).intersection(legacy_lineage_fields)
+    )
+    if prior_raw is None and legacy_post_merge_head:
+        # One historical post-merge retry writer omitted both owner-stamped
+        # lineages.  Recover only its immediate blocked predecessor under the
+        # same transaction lock; arbitrary callers still cannot introduce a
+        # virgin-transfer assignment.
+        try:
+            from .database_task_source import (
+                TaskSourceIntegrityError,
+                _as_task_record,
+            )
+            from .typed_state_owner import (
+                validated_post_merge_retry_predecessor_lineage,
+            )
+
+            task_row = connection.execute(
+                """
+                SELECT task_cid, task_alias, goal_cid, plan_cid,
+                       objective_id, ordinal, status, revision, priority,
+                       body_json FROM tasks WHERE task_cid = ? LIMIT 2
+                """,
+                [task_cid],
+            ).fetchall()
+            if len(task_row) != 1:
+                raise IntentRepositoryTransitionError(
+                    "legacy post-merge transfer task authority is ambiguous"
+                )
+            row = task_row[0]
+            dependencies = [
+                str(item[0])
+                for item in connection.execute(
+                    "SELECT dependency_task_cid FROM task_dependencies "
+                    "WHERE task_cid = ? ORDER BY dependency_task_cid, kind",
+                    [task_cid],
+                ).fetchall()
+            ]
+            outputs = [
+                {
+                    "ordinal": int(item[0]),
+                    "path": str(item[1]),
+                    "effect": _decode_json(item[2], noun="output effect"),
+                }
+                for item in connection.execute(
+                    "SELECT ordinal, path, effect_json FROM task_outputs "
+                    "WHERE task_cid = ? ORDER BY ordinal",
+                    [task_cid],
+                ).fetchall()
+            ]
+            acceptance = [
+                {
+                    "ordinal": int(item[0]),
+                    "criterion": str(item[1]),
+                    "evidence_policy": _decode_json(
+                        item[2], noun="acceptance policy"
+                    ),
+                }
+                for item in connection.execute(
+                    "SELECT ordinal, criterion, evidence_policy_json "
+                    "FROM task_acceptance WHERE task_cid = ? ORDER BY ordinal",
+                    [task_cid],
+                ).fetchall()
+            ]
+            validations = [
+                {
+                    "ordinal": int(item[0]),
+                    "argv": _decode_json(item[1], noun="validation argv"),
+                    "policy": _decode_json(item[2], noun="validation policy"),
+                }
+                for item in connection.execute(
+                    "SELECT ordinal, argv_json, policy_json FROM task_validations "
+                    "WHERE task_cid = ? ORDER BY ordinal",
+                    [task_cid],
+                ).fetchall()
+            ]
+            current_task = _as_task_record(
+                {
+                    "task_cid": str(row[0]),
+                    "task_alias": str(row[1]),
+                    "goal_cid": str(row[2]),
+                    "plan_cid": str(row[3] or ""),
+                    "objective_id": str(row[4] or ""),
+                    "ordinal": int(row[5]),
+                    "status": str(row[6]),
+                    "revision": int(row[7]),
+                    "priority": str(row[8] or ""),
+                    "body": _decode_json(row[9], noun="task body"),
+                    "dependencies": dependencies,
+                    "outputs": outputs,
+                    "acceptance": acceptance,
+                    "validations": validations,
+                }
+            )
+            history_rows = connection.execute(
+                "SELECT revision, status, body_json FROM task_revisions "
+                "WHERE task_cid = ? ORDER BY revision",
+                [task_cid],
+            ).fetchall()
+            history_values = [
+                {
+                    "revision": int(item[0]),
+                    "status": str(item[1]),
+                    "body": _decode_json(
+                        item[2], noun="task revision body"
+                    ),
+                }
+                for item in history_rows
+            ]
+            predecessor_body = (
+                history_values[-2].get("body")
+                if len(history_values) >= 2
+                else None
+            )
+            predecessor_receipt = (
+                predecessor_body.get("completion_receipt")
+                if isinstance(predecessor_body, Mapping)
+                else None
+            )
+            predecessor_declares_lineage = bool(
+                isinstance(predecessor_receipt, Mapping)
+                and set(predecessor_receipt).intersection(
+                    legacy_lineage_fields
+                )
+            )
+            lineage = (
+                dict(
+                    validated_post_merge_retry_predecessor_lineage(
+                        current_task,
+                        history_values,
+                    )
+                )
+                if predecessor_declares_lineage
+                else {}
+            )
+        except (
+            TypeError,
+            ValueError,
+            IntentRepositoryError,
+            TaskSourceIntegrityError,
+        ) as exc:
+            raise IntentRepositoryTransitionError(
+                "legacy post-merge transfer proof is invalid"
+            ) from exc
+        if lineage and any(
+            prepared.get(name) != lineage.get(name)
+            for name in (
+                "execution_route_binding",
+                "execution_route_policy_id",
+                "execution_route_origin_revision",
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            )
+        ):
+            raise IntentRepositoryTransitionError(
+                "legacy post-merge transfer lineage is not exact"
+            )
+        if "virgin_task_transfer" in lineage:
+            assert isinstance(predecessor_receipt, Mapping)
+            prior_receipt = dict(predecessor_receipt)
+            prior_raw = lineage["virgin_task_transfer"]
     if supplied is not None and prior_raw is None:
         raise IntentRepositoryTransitionError(
             "virgin_task_transfer is owner-reserved"
@@ -1228,13 +1404,17 @@ def _prepare_database_virgin_transfer_receipt_on(
             raise IntentRepositoryConflictError(
                 "virgin-transfer target left the authoritative ready frontier"
             )
-        routes = database_virgin_transfer_routes(
-            tasks,
-            ready_cids,
-            shard_count=shard_count,
-            task_prefix=task_prefix,
+        expected_lane = (
+            int(prior_binding["recipient_shard_index"])
+            if prior_binding is not None
+            else database_virgin_transfer_routes(
+                tasks,
+                ready_cids,
+                shard_count=shard_count,
+                task_prefix=task_prefix,
+            ).get(task_cid)
         )
-        if routes.get(task_cid) != lane_index:
+        if expected_lane != lane_index:
             raise IntentRepositoryConflictError(
                 "virgin-transfer request disagrees with the authoritative route"
             )
@@ -7545,6 +7725,21 @@ class IntentRepository:
 
             completing = status_text in _COMPLETED_STATUSES
             if completing and not allow_completion_without_evidence:
+                # Idle landed-merge repair records validation through an
+                # idempotent typed command. After an interrupted merge the
+                # same digest is replayed for hours, so the freshness window
+                # drops it and SPAR-017-class quarantines never complete.
+                # Admit the repair digest in this CAS transaction.
+                if (
+                    receipt_map.get("operation") == LANDED_MERGE_REPAIR_OPERATION
+                    and evidence_digests
+                ):
+                    self._admit_landed_merge_repair_evidence_on(
+                        connection,
+                        resolved_cid,
+                        evidence_digests=evidence_digests,
+                        now=now,
+                    )
                 # Gate completion on current required evidence inside the same
                 # transaction that mutates status.
                 missing = self._missing_evidence_on(
@@ -7695,6 +7890,61 @@ class IntentRepository:
                 body=event_body,
             )
 
+    def _admit_landed_merge_repair_evidence_on(
+        self,
+        connection: Any,
+        task_cid: str,
+        *,
+        evidence_digests: Sequence[str],
+        now: str,
+    ) -> None:
+        """Refresh one repair evidence node inside the completion CAS.
+
+        SPAR-017 accumulated thousands of identical landed-merge digest rows.
+        Deleting every historical node by digest in this transaction
+        FatalException-poisoned the exclusive writer. Upsert the stable
+        repair evidence_id only; ``missing_current_evidence_on`` admits any
+        fresh digest match and ignores stale siblings.
+        """
+
+        for raw in evidence_digests:
+            digest = _identifier(raw, noun="evidence_digest")
+            evidence_id = content_identity(
+                {
+                    "task_cid": task_cid,
+                    "evidence_kind": "validation",
+                    "digest": digest,
+                    "operation": LANDED_MERGE_REPAIR_OPERATION,
+                }
+            )
+            connection.execute(
+                "DELETE FROM evidence_nodes WHERE evidence_id = ?",
+                [evidence_id],
+            )
+            connection.execute(
+                """
+                INSERT INTO evidence_nodes (
+                    evidence_id, parent_evidence_id, task_cid, evidence_kind,
+                    digest, created_at, body_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    evidence_id,
+                    "",
+                    task_cid,
+                    "validation",
+                    digest,
+                    now,
+                    _canonical(
+                        {
+                            "operation": LANDED_MERGE_REPAIR_OPERATION,
+                            "digest": digest,
+                        },
+                        noun="landed merge repair evidence",
+                    ),
+                ],
+            )
+
     def _missing_evidence_on(
         self,
         connection: Any,
@@ -7746,6 +7996,14 @@ class IntentRepository:
                     owner_session_id, fence_epoch, revision, extension_schema,
                     extension_json
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (task_cid) DO UPDATE SET
+                    attempt = leases.attempt + 1,
+                    retry_not_before_ms = excluded.retry_not_before_ms,
+                    release_reason = excluded.release_reason,
+                    state = 'released',
+                    extension_schema = excluded.extension_schema,
+                    extension_json = excluded.extension_json,
+                    revision = leases.revision + 1
                 """,
                 [
                     task_cid,
@@ -7981,17 +8239,32 @@ class IntentRepository:
             desired_retry_not_before_ms = (
                 now_ms + delay if exact_deadline is None else exact_deadline
             )
+            leftover_wait_recovery = (
+                receipt_map.get("operation")
+                == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+            )
+            # SPAR-040: leftover-wait recovery of a blocked capacity wait
+            # preserved an inactive leases row. Mutating that primary key
+            # aborted DuckDB (PRIMARY_leases_0) and killed the owner. Rearm
+            # control status and leave the existing cooldown row untouched.
             queue_reused = bool(
-                lease is not None
-                and existing_reason == reason_text
-                and (
-                    previous_status == status_text
-                    or int(lease[0] or 0) == desired_retry_not_before_ms
+                (leftover_wait_recovery and lease is not None)
+                or (
+                    lease is not None
+                    and existing_reason == reason_text
+                    and (
+                        previous_status == status_text
+                        or int(lease[0] or 0) == desired_retry_not_before_ms
+                    )
                 )
             )
             if queue_reused:
                 queue_receipt: IntentReceipt | None = None
-                retry_not_before_ms = int(lease[0] or 0)
+                retry_not_before_ms = (
+                    int(lease[0] or 0)
+                    if lease is not None
+                    else desired_retry_not_before_ms
+                )
             else:
                 queue_receipt = self._record_queue_backoff_on(
                     connection,
@@ -9239,6 +9512,14 @@ class IntentRepository:
                         owner_session_id, fence_epoch, revision, extension_schema,
                         extension_json
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (task_cid) DO UPDATE SET
+                        attempt = leases.attempt + 1,
+                        retry_not_before_ms = excluded.retry_not_before_ms,
+                        release_reason = excluded.release_reason,
+                        state = 'released',
+                        extension_schema = excluded.extension_schema,
+                        extension_json = excluded.extension_json,
+                        revision = leases.revision + 1
                     """,
                     [
                         tcid,
@@ -10225,6 +10506,7 @@ __all__ = (
     "GOAL_TERMINAL_REPORT_EVIDENCE_SCHEMA",
     "TASK_PROJECTION_SPEC_SCHEMA",
     "TASK_AUTHORITY_SPEC_SCHEMA",
+    "LANDED_MERGE_REPAIR_OPERATION",
     "TASK_REVISION_HISTORY_PROJECTION_SCHEMA",
     "MAX_PROJECTION_RECORDS",
     "MAX_TASK_PROJECTION_BYTES",

@@ -36,6 +36,8 @@ from .database_task_source import (
     TaskSourceConflictError,
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
+    _cas_result_from_dict,
+    _raise_typed_owner_error,
 )
 from .database_task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_MAX_QUERY_LIMIT,
@@ -50,6 +52,11 @@ from .intent_repository import (
     IntentReceipt,
     QueueEntry,
 )
+from .launch_source_amendment import (
+    LaunchSourceAmendment,
+    LaunchSourceAmendmentError,
+    task_contract_set_cid_from_route_entries,
+)
 from .quack_state_client import (
     ClientSession,
     QuackClientError,
@@ -58,26 +65,39 @@ from .quack_state_client import (
 )
 from .state_owner_bootstrap import StateOwnerBootstrapCredentials
 from .task_execution_route_policy import (
+    EXECUTION_ROUTE_RECEIPT_FIELDS,
+    VIRGIN_TASK_TRANSFER_RECEIPT_FIELDS,
     TaskExecutionRouteBinding,
     TaskExecutionRoutePolicy,
     task_execution_contract_cid,
 )
 from .typed_state_owner import (
+    DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION,
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
+    TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA,
+    TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+    TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS,
+    TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_RETRYING_RECEIPT_OPERATIONS,
     TYPED_TASK_STATUS_VOCABULARY,
     TypedStateOwnerConnection,
     TypedStateOwnerError,
-    _validated_legacy_unstall_claim_receipt,
+    _leftover_wait_intent_queue_prior,
+    _post_merge_retry_queue_receipt,
     _validated_database_strict_resume_rejection_receipt,
+    _validated_legacy_unstall_claim_receipt,
+    _validated_post_merge_retry_transition,
+    _validated_post_merge_terminal_control_receipt,
     _validated_stored_retry_cooldown,
+    validated_post_merge_completion_claim_verifier_replay_lineage,
+    validated_post_merge_retry_predecessor_lineage,
 )
 
 TYPED_DATABASE_TASK_SOURCE_INTERFACE: Final = "TypedDatabaseTaskSource@1"
@@ -127,6 +147,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "load_store_generation",
         "executor_task_projection_page",
         "executor_control_snapshot",
+        "executor_active_plan_revision_by_identity",
         "executor_task_projection_by_identity",
         "executor_task_revision_history_page",
         "executor_retry_cooldown_by_task",
@@ -163,10 +184,18 @@ _DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = (
         }
     )
 )
-_DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset(
+_DAEMON_LEGACY_UNSTALL_OWNER_COMMAND_OPERATIONS: Final[
+    frozenset[str]
+] = frozenset(
     {
         *_DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
         TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+    }
+)
+_DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        *_DAEMON_LEGACY_UNSTALL_OWNER_COMMAND_OPERATIONS,
+        TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
     }
 )
 _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES: Final[
@@ -174,6 +203,7 @@ _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES: Final[
 ] = frozenset(
     {
         _DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
+        _DAEMON_LEGACY_UNSTALL_OWNER_COMMAND_OPERATIONS,
         _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS,
     }
 )
@@ -213,13 +243,13 @@ def _mapping_json(value: Any, *, noun: str) -> dict[str, Any]:
     return parsed
 
 
-def _closed_history_mapping_json(value: Any) -> dict[str, Any]:
-    """Decode one bounded history body while rejecting duplicate JSON keys."""
+def _closed_mapping_json(value: Any, *, noun: str) -> dict[str, Any]:
+    """Decode one bounded object while rejecting duplicate JSON keys."""
 
     if not isinstance(value, str):
-        raise TaskSourceIntegrityError("task revision body is not encoded JSON")
+        raise TaskSourceIntegrityError(f"{noun} is not encoded JSON")
     if len(value.encode("utf-8")) > _MAX_JSON_BYTES:
-        raise TaskSourceBoundsError("task revision body exceeds its byte bound")
+        raise TaskSourceBoundsError(f"{noun} exceeds its byte bound")
 
     def closed_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -232,12 +262,16 @@ def _closed_history_mapping_json(value: Any) -> dict[str, Any]:
     try:
         parsed = json.loads(value, object_pairs_hook=closed_object)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise TaskSourceIntegrityError(
-            "task revision body is malformed or ambiguous"
-        ) from exc
+        raise TaskSourceIntegrityError(f"{noun} is malformed or ambiguous") from exc
     if not isinstance(parsed, dict):
-        raise TaskSourceIntegrityError("task revision body is not a JSON object")
+        raise TaskSourceIntegrityError(f"{noun} is not a JSON object")
     return parsed
+
+
+def _closed_history_mapping_json(value: Any) -> dict[str, Any]:
+    """Decode one bounded history body while rejecting duplicate JSON keys."""
+
+    return _closed_mapping_json(value, noun="task revision body")
 
 
 def _list_json(value: Any, *, noun: str) -> list[Any]:
@@ -380,6 +414,9 @@ class TypedDatabaseTaskSource:
         execution_route_policy: TaskExecutionRoutePolicy
         | Mapping[str, Any]
         | None = None,
+        launch_source_amendment: LaunchSourceAmendment
+        | Mapping[str, Any]
+        | None = None,
         owns_client: bool = True,
         clock_ms: Any | None = None,
     ) -> None:
@@ -408,8 +445,27 @@ class TypedDatabaseTaskSource:
             if execution_route_policy is not None
             else None
         )
+        try:
+            expected_launch_source_amendment = (
+                launch_source_amendment
+                if isinstance(launch_source_amendment, LaunchSourceAmendment)
+                else LaunchSourceAmendment.from_dict(launch_source_amendment)
+                if launch_source_amendment is not None
+                else None
+            )
+        except LaunchSourceAmendmentError as exc:
+            raise TaskSourceIntegrityError(
+                "asserted launch source amendment is invalid"
+            ) from exc
+        self._asserted_launch_source_amendment = expected_launch_source_amendment
         if self._execution_route_policy is not None:
             self._validate_execution_route_policy_population()
+        if expected_launch_source_amendment is not None:
+            authoritative = self.launch_source_amendment
+            if authoritative != expected_launch_source_amendment:
+                raise TaskSourceIntegrityError(
+                    "asserted launch source amendment differs from active plan authority"
+                )
 
     def close(self) -> None:
         if not self._closed:
@@ -630,6 +686,55 @@ class TypedDatabaseTaskSource:
                 return row, records, after.revision
         raise TaskSourceConflictError("typed control projection changed during bounded snapshot")
 
+    def _launch_source_amendment_material(
+        self,
+    ) -> tuple[
+        Mapping[str, Any],
+        tuple[tuple[TaskRecord, Mapping[str, Any]], ...],
+    ]:
+        """Read one active plan revision and its task population atomically by generation."""
+
+        self._require_open()
+        policy = self._execution_route_policy
+        if policy is None:
+            raise TaskSourceIntegrityError(
+                "typed executor has no launch execution route policy"
+            )
+        for _attempt in range(4):
+            before = self._client.load_generation()
+            control_rows = self._client.execute("executor_control_snapshot")
+            if len(control_rows) != 1:
+                raise TaskSourceIntegrityError(
+                    "typed control snapshot is absent or ambiguous"
+                )
+            control_row = control_rows[0]
+            try:
+                task_count = int(control_row.get("task_count") or 0)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise TaskSourceIntegrityError(
+                    "typed control snapshot task count is invalid"
+                ) from exc
+            records = self._all_records(expected_count=task_count)
+            plan_rows = self._client.execute(
+                "executor_active_plan_revision_by_identity",
+                {"plan_cid": policy.plan_root_cid},
+            )
+            after = self._client.load_generation()
+            if before.content_id != after.content_id:
+                continue
+            if task_count != len(records):
+                raise TaskSourceBoundsError(
+                    "typed task population exceeds its admitted projection bound"
+                )
+            if len(plan_rows) != 1:
+                raise TaskSourceIntegrityError(
+                    "active plan revision is absent or ambiguous"
+                )
+            return plan_rows[0], records
+        raise TaskSourceConflictError(
+            "launch source amendment changed during bounded read"
+        )
+
     @staticmethod
     def _validated_retry_cooldown_row(
         raw: Mapping[str, Any],
@@ -695,7 +800,19 @@ class TypedDatabaseTaskSource:
             )
         if not rows:
             return None
-        return self._validated_retry_cooldown_row(rows[0], task_cid=task)
+        try:
+            return self._validated_retry_cooldown_row(rows[0], task_cid=task)
+        except TaskSourceIntegrityError:
+            leftover = _leftover_wait_intent_queue_prior(
+                rows[0],
+                task_cid=task,
+            )
+            if leftover is not None:
+                # Leftover-wait recovery occupies leases with an
+                # IntentRepository queue row. Typed persist/ready must treat
+                # that residue as no cooldown instead of fail-closing SPAR-024.
+                return None
+            raise
 
     @staticmethod
     def _legacy_unstall_claim_candidate(
@@ -763,6 +880,9 @@ class TypedDatabaseTaskSource:
             or selected_now < 0
         ):
             raise TaskSourceIntegrityError("typed task-source clock is invalid")
+        owner_poisoned = False
+        leftover_skipped = False
+        accepted = False
         for record, receipt in candidates:
             try:
                 result = self._client.recover_legacy_unstalled_claim(
@@ -773,7 +893,11 @@ class TypedDatabaseTaskSource:
                     now_ms=selected_now,
                 )
             except (QuackClientError, TransactionError):
-                current = self.get_task(record.task_cid)
+                try:
+                    current = self.get_task(record.task_cid)
+                except (QuackClientError, TransactionError):
+                    owner_poisoned = True
+                    continue
                 current_receipt = (
                     current.body.get("completion_receipt")
                     if current is not None
@@ -791,12 +915,34 @@ class TypedDatabaseTaskSource:
                     == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
                 ):
                     return True
+                cooldown = cooldowns.get(record.task_cid)
+                if cooldown is None:
+                    self._raise_unrepaired_retrying_integrity_error(
+                        record,
+                        cooldowns,
+                    )
+                try:
+                    self._validate_retrying_cooldown_binding(
+                        record,
+                        cooldown,
+                    )
+                except TaskSourceIntegrityError:
+                    # Board-unstall leftover: retrying with a claim receipt
+                    # but no admitted cooldown. Skip rather than fail the
+                    # whole ready set (SPAR-018 blocked SPAR-036).
+                    leftover_skipped = True
+                    continue
                 self._raise_unrepaired_retrying_integrity_error(
                     record,
                     cooldowns,
                 )
             if not result.accepted:
                 return True
+            accepted = True
+        if accepted:
+            return True
+        if owner_poisoned or leftover_skipped:
+            return False
         return True
 
     def _stable_ready_material(
@@ -831,10 +977,16 @@ class TypedDatabaseTaskSource:
                         raise TaskSourceIntegrityError(
                             "retry cooldown page is malformed or duplicated"
                         )
-                    validated = self._validated_retry_cooldown_row(
-                        row,
-                        task_cid=task_cid,
-                    )
+                    try:
+                        validated = self._validated_retry_cooldown_row(
+                            row,
+                            task_cid=task_cid,
+                        )
+                    except TaskSourceIntegrityError:
+                        # Leftover-wait recovery writes an IntentRepository
+                        # queue row into the typed cooldown projection. One
+                        # foreign row must not fail-close ready selection.
+                        continue
                     cooldowns[task_cid] = validated
                 offset += len(rows)
                 if len(rows) < min(_TRANSPORT_PAGE_LIMIT, len(records) + 1):
@@ -862,6 +1014,19 @@ class TypedDatabaseTaskSource:
                 # ready snapshot.  Leftover retrying rows stay selectable so
                 # landed work can be claimed even when the owner refuses a
                 # same-attempt cooldown rebind.
+                for record, _identity in records:
+                    if record.status != "retrying":
+                        continue
+                    cooldown = cooldowns.get(record.task_cid)
+                    if cooldown is None:
+                        continue
+                    try:
+                        self._validate_retrying_cooldown_binding(
+                            record,
+                            cooldown,
+                        )
+                    except TaskSourceIntegrityError:
+                        continue
                 return snapshot_row, records, revision, MappingProxyType(cooldowns)
         raise TaskSourceConflictError(
             "typed task/cooldown projection changed during bounded snapshot"
@@ -892,6 +1057,16 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "retrying task receipt is not an admitted retry transition"
             )
+        if (
+            operation
+            == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+            and receipt_values.get("queue_reused") is True
+        ):
+            # SPAR-040 leftover-wait recovery leaves an existing leases row
+            # untouched so DuckDB does not abort on PRIMARY_leases_0. The
+            # preserved cooldown therefore predates this retrying revision
+            # and cannot bind expected_task_revision or attempt identity.
+            return
         expected_task_revision = extension_values.get(
             "expected_task_revision"
         )
@@ -912,12 +1087,56 @@ class TypedDatabaseTaskSource:
             "fencing_token": extension_values.get("fencing_token"),
             "fence_epoch": extension_values.get("fence_epoch"),
             "queue_reason": extension_values.get("reason"),
-            "backoff_ms": extension_values.get("delay_ms"),
-            "retry_not_before_ms": extension_values.get(
-                "retry_not_before_ms"
-            ),
             "control_expected_revision": task.revision - 1,
         }
+        # These operation names predate the atomic typed-owner command and
+        # therefore remain valid with the legacy retry receipt shape.  Only
+        # the closed post-merge transition body selects the stronger queue
+        # receipt binding.  This preserves accepted legacy rows while making
+        # deletion of the queue receipt from a new transition fail closed.
+        post_merge_shape = any(
+            name in receipt_values
+            for name in (
+                "execution_phase",
+                "execution_revision",
+                "execution_finished_at_ms",
+                "request_id",
+                "candidate_commit",
+                "source_binding_id",
+                "source_projection_immutable_digest",
+                "coordination",
+                "queue_receipt",
+            )
+        )
+        if (
+            operation in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
+            and post_merge_shape
+        ):
+            queue_receipt = receipt_values.get("queue_receipt")
+            expected_queue_receipt = _post_merge_retry_queue_receipt(
+                {
+                    **extension_values,
+                    "resolution_cid": cooldown.get("resolution_cid"),
+                }
+            )
+            if (
+                not isinstance(queue_receipt, Mapping)
+                or queue_receipt != expected_queue_receipt
+                or queue_receipt.get("schema")
+                != TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA
+            ):
+                raise TaskSourceIntegrityError(
+                    "post-merge retry receipt differs from its typed queue receipt"
+                )
+        else:
+            exact_bindings.update(
+                {
+                    "backoff_ms": extension_values.get("delay_ms"),
+                    "retry_not_before_ms": extension_values.get(
+                        "retry_not_before_ms"
+                    ),
+                }
+            )
         if any(
             type(receipt_values.get(name)) is not type(expected)
             or receipt_values.get(name) != expected
@@ -1077,6 +1296,156 @@ class TypedDatabaseTaskSource:
         return self._snapshot_from_material(row, records, revision)
 
     @property
+    def launch_source_amendment(self) -> LaunchSourceAmendment:
+        """Return the exact current-source amendment from active plan authority.
+
+        The immutable execution-route policy identifies the historical task
+        contract.  This independently read plan amendment identifies the
+        current source forest for a new attempt.  Neither identity rewrites the
+        other, and a missing or inconsistent amendment fails closed.
+        """
+
+        policy = self._execution_route_policy
+        if policy is None:
+            raise TaskSourceIntegrityError(
+                "typed executor has no launch execution route policy"
+            )
+        row, records = self._launch_source_amendment_material()
+        required = {
+            "plan_cid",
+            "goal_cid",
+            "plan_alias",
+            "plan_status",
+            "plan_revision",
+            "plan_head_body_json",
+            "revision_plan_cid",
+            "revision_number",
+            "plan_revision_body_json",
+            "revision_recorded_at",
+        }
+        if set(row) != required:
+            raise TaskSourceIntegrityError(
+                "active plan revision differs from its closed projection"
+            )
+        plan_cid = str(row.get("plan_cid") or "").strip()
+        revision_plan_cid = str(row.get("revision_plan_cid") or "").strip()
+        plan_alias = str(row.get("plan_alias") or "").strip()
+        goal_cid = str(row.get("goal_cid") or "").strip()
+        recorded_at = str(row.get("revision_recorded_at") or "").strip()
+        plan_revision_raw = row.get("plan_revision")
+        revision_number_raw = row.get("revision_number")
+        if (
+            plan_cid != policy.plan_root_cid
+            or revision_plan_cid != plan_cid
+            or not plan_alias
+            or not goal_cid
+            or row.get("plan_status") != "active"
+            or not recorded_at
+            or isinstance(plan_revision_raw, bool)
+            or not isinstance(plan_revision_raw, int)
+            or isinstance(revision_number_raw, bool)
+            or not isinstance(revision_number_raw, int)
+            or plan_revision_raw < 2
+            or revision_number_raw != plan_revision_raw
+        ):
+            raise TaskSourceIntegrityError(
+                "active plan head differs from its exact revision authority"
+            )
+
+        head_body_raw = row.get("plan_head_body_json")
+        revision_body_raw = row.get("plan_revision_body_json")
+        head_body = _closed_mapping_json(head_body_raw, noun="active plan body")
+        revision_body = _closed_mapping_json(
+            revision_body_raw,
+            noun="active plan revision body",
+        )
+        if head_body_raw != revision_body_raw or head_body != revision_body:
+            raise TaskSourceIntegrityError(
+                "active plan head body differs from its exact revision body"
+            )
+        raw_amendment = head_body.get("launch_source_amendment")
+        amendment_id = head_body.get("launch_source_amendment_id")
+        if not isinstance(raw_amendment, Mapping):
+            raise TaskSourceIntegrityError(
+                "active plan has no launch source amendment"
+            )
+        try:
+            amendment = LaunchSourceAmendment.from_dict(raw_amendment)
+        except LaunchSourceAmendmentError as exc:
+            raise TaskSourceIntegrityError(
+                "active plan launch source amendment is invalid"
+            ) from exc
+
+        tasks = tuple(record for record, _identity in records)
+        entries = policy.entries_by_cid
+        if (
+            amendment_id != amendment.amendment_id
+            or amendment.bootstrap_plan_root_cid != plan_cid
+            or amendment.plan_alias != plan_alias
+            or amendment.parent_plan_revision != plan_revision_raw - 1
+            or amendment.amended_plan_revision != plan_revision_raw
+            or head_body.get("plan_cid") != plan_cid
+            or head_body.get("repository_tree_id")
+            != amendment.bootstrap_repository_tree_id
+            or head_body.get("source_head") != amendment.bootstrap_source_head
+            or policy.repository_tree_id
+            != amendment.bootstrap_repository_tree_id
+            or len(tasks) != len(entries)
+            or {task.task_cid for task in tasks} != set(entries)
+            or any(task.plan_cid != plan_cid for task in tasks)
+        ):
+            raise TaskSourceIntegrityError(
+                "launch source amendment differs from its plan or task authority"
+            )
+        for task in tasks:
+            entry = entries[task.task_cid]
+            if task.task_alias != entry.task_alias:
+                raise TaskSourceIntegrityError(
+                    "launch task contract differs from its execution route"
+                )
+            if int(task.revision) < int(entry.task_revision):
+                raise TaskSourceIntegrityError(
+                    "launch task revision receded from its execution route"
+                )
+            if int(task.revision) == int(entry.task_revision) and (
+                task_execution_contract_cid(task) != entry.task_contract_cid
+            ):
+                raise TaskSourceIntegrityError(
+                    "launch task contract differs from its execution route"
+                )
+        try:
+            current_contract_set_cid = task_contract_set_cid_from_route_entries(
+                entries.values()
+            )
+        except LaunchSourceAmendmentError as exc:
+            raise TaskSourceIntegrityError(
+                "launch task contract set is invalid"
+            ) from exc
+        if current_contract_set_cid != amendment.task_contract_set_cid:
+            raise TaskSourceIntegrityError(
+                "launch task contract set differs from its source amendment"
+            )
+        return amendment
+
+    @property
+    def admitted_launch_source_amendment(self) -> LaunchSourceAmendment | None:
+        """Return an amendment only when this client explicitly asserted one.
+
+        This keeps predecessor boards source-compatible: merely gaining the
+        successor query does not opt them into SPAR launch authority.
+        """
+
+        asserted = self._asserted_launch_source_amendment
+        if asserted is None:
+            return None
+        authoritative = self.launch_source_amendment
+        if authoritative != asserted:
+            raise TaskSourceIntegrityError(
+                "active launch source amendment differs from its launch assertion"
+            )
+        return authoritative
+
+    @property
     def execution_route_policy(self) -> TaskExecutionRoutePolicy | None:
         """Return the immutable launch policy, never an ambient projection."""
 
@@ -1115,14 +1484,17 @@ class TypedDatabaseTaskSource:
             )
         for task in tasks:
             entry = entries[task.task_cid]
-            if (
-                task.task_alias != entry.task_alias
-                or task.revision < entry.task_revision
-                or task_execution_contract_cid(task) != entry.task_contract_cid
-            ):
+            if task.task_alias != entry.task_alias:
                 raise TaskSourceIntegrityError(
                     "typed task changed after launch execution-route admission"
                 )
+            if task.revision < entry.task_revision:
+                raise TaskSourceIntegrityError(
+                    "typed task revision receded after launch execution-route admission"
+                )
+            # Idle repair CAS (requeue, validation evidence) advances operational
+            # body without changing identity.  Contract CID includes those
+            # receipts and must not crash later lane attaches.
 
     def _require_execution_route_plan_root(self) -> TaskExecutionRoutePolicy:
         policy = self._execution_route_policy
@@ -1162,14 +1534,53 @@ class TypedDatabaseTaskSource:
             else None
         )
         if not isinstance(route, Mapping):
-            raise TaskSourceIntegrityError(
-                "advanced task revision has no carried execution-route binding"
-            )
+            if (
+                task.status != "retrying"
+                or not isinstance(receipt, Mapping)
+                or receipt.get("operation")
+                not in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
+                or EXECUTION_ROUTE_RECEIPT_FIELDS.intersection(receipt)
+                or VIRGIN_TASK_TRANSFER_RECEIPT_FIELDS.intersection(receipt)
+            ):
+                raise TaskSourceIntegrityError(
+                    "advanced task revision has no carried execution-route binding"
+                )
+            lineage = self.post_merge_retry_predecessor_lineage(task)
+            route = lineage["execution_route_binding"]
         return self.validate_execution_route_binding(
             route,
             task=task,
             allow_claim_revision=True,
         )
+
+    def post_merge_retry_predecessor_lineage(
+        self,
+        task: TaskRecord,
+    ) -> Mapping[str, Any]:
+        """Resolve the one legacy route/transfer omission from exact history."""
+
+        history = self.task_revision_history_projection(task.task_cid)
+        revisions = history.get("revisions")
+        if not isinstance(revisions, list):
+            raise TaskSourceIntegrityError(
+                "advanced task revision has no canonical predecessor history"
+            )
+        try:
+            lineage = validated_post_merge_retry_predecessor_lineage(
+                task,
+                revisions,
+            )
+        except TaskSourceIntegrityError as exc:
+            raise TaskSourceIntegrityError(
+                "advanced task revision has no carried execution-route binding"
+            ) from exc
+        cooldown = self._retry_cooldown_row(task.task_cid)
+        if cooldown is None:
+            raise TaskSourceIntegrityError(
+                "route-less post-merge retry has no typed cooldown authority"
+            )
+        self._validate_retrying_cooldown_binding(task, cooldown)
+        return lineage
 
     def validate_execution_route_binding(
         self,
@@ -1211,10 +1622,13 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "task execution route binding is not in the launch policy lineage"
             )
+        if task.task_cid != binding.task_cid or task.task_alias != binding.task_alias:
+            raise TaskSourceIntegrityError(
+                "attempt execution route differs from its authoritative task"
+            )
         if (
-            task.task_cid != binding.task_cid
-            or task.task_alias != binding.task_alias
-            or task_execution_contract_cid(task) != binding.task_contract_cid
+            task.revision == binding.task_revision
+            and task_execution_contract_cid(task) != binding.task_contract_cid
         ):
             raise TaskSourceIntegrityError(
                 "attempt execution route differs from its authoritative task"
@@ -1240,9 +1654,22 @@ class TypedDatabaseTaskSource:
             or receipt.get("execution_route_origin_revision")
             != binding.task_revision
         ):
-            raise TaskSourceIntegrityError(
-                "advanced task revision has no exact carried execution-route lineage"
-            )
+            if (
+                task.status != "retrying"
+                or not isinstance(receipt, Mapping)
+                or receipt.get("operation")
+                not in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
+                or EXECUTION_ROUTE_RECEIPT_FIELDS.intersection(receipt)
+                or VIRGIN_TASK_TRANSFER_RECEIPT_FIELDS.intersection(receipt)
+            ):
+                raise TaskSourceIntegrityError(
+                    "advanced task revision has no exact carried execution-route lineage"
+                )
+            lineage = self.post_merge_retry_predecessor_lineage(task)
+            if dict(lineage["execution_route_binding"]) != binding.to_dict():
+                raise TaskSourceIntegrityError(
+                    "advanced task revision has no exact carried execution-route lineage"
+                )
         return MappingProxyType(binding.to_dict())
 
     def get_task(self, task_cid_or_alias: Any) -> TaskRecord | None:
@@ -1496,6 +1923,14 @@ class TypedDatabaseTaskSource:
                 > now_ms
             ):
                 continue
+            if record.status == "retrying":
+                cooldown = cooldowns.get(record.task_cid)
+                try:
+                    if cooldown is None:
+                        continue
+                    self._validate_retrying_cooldown_binding(record, cooldown)
+                except TaskSourceIntegrityError:
+                    continue
             if all(
                 dependency in completed
                 or (
@@ -1842,6 +2277,405 @@ class TypedDatabaseTaskSource:
             details=details,
         )
 
+    def recover_post_merge_retry(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        status: str,
+        receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
+        _post_merge_recovery_admission: object | None = None,
+    ) -> Mapping[str, Any]:
+        """Run only the closed atomic typed-owner post-merge retry command."""
+
+        if _post_merge_recovery_admission is not None:
+            raise TaskSourceConflictError(
+                "process-local post-merge recovery admission cannot cross Quack"
+            )
+        prior = self.get(task_cid)
+        if prior is None:
+            raise KeyError(str(task_cid))
+        prior_receipt = prior.body.get("completion_receipt")
+        transition = dict(receipt)
+        normalized_status = str(status or "").strip().lower()
+        if (
+            isinstance(expected_revision, bool)
+            or not isinstance(expected_revision, int)
+            or expected_revision < 1
+            or not isinstance(expected_control_receipt, Mapping)
+        ):
+            raise TaskSourceConflictError(
+                "post-merge retry task revision or control receipt is stale"
+            )
+        if (
+            expected_control_receipt.get("operation")
+            == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+        ):
+            raise TaskSourceConflictError(
+                "typed-deferral post-merge prior requires its dedicated authority"
+            )
+        if (
+            normalized_status != "retrying"
+            or transition.get("operation")
+            not in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
+        ):
+            raise TaskSourceConflictError(
+                "typed queue/status adapter admits only post-merge retry recovery"
+            )
+        if prior.status == "retrying" and prior.revision == expected_revision + 1:
+            row = self._retry_cooldown_row(prior.task_cid)
+            current_receipt = prior.body.get("completion_receipt")
+            if row is None or not isinstance(current_receipt, Mapping):
+                raise TaskSourceIntegrityError(
+                    "post-merge retry replay has incomplete durable state"
+                )
+            self._validate_retrying_cooldown_binding(prior, row)
+            extension = dict(row["extension"])
+            queue_receipt = current_receipt.get("queue_receipt")
+            expected_attempt = {
+                name: transition.get(name)
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            }
+            try:
+                _validated_post_merge_retry_transition(
+                    transition,
+                    task_cid=prior.task_cid,
+                    expected_task_revision=expected_revision,
+                    queue_reason=str(reason or ""),
+                    attempt_identity=expected_attempt,
+                    recovery_seed_json=(
+                        canonical_json_bytes(
+                            dict(
+                                transition[
+                                    "post_merge_completion_recovery_seed"
+                                ]
+                            )
+                        ).decode("utf-8")
+                        if isinstance(
+                            transition.get(
+                                "post_merge_completion_recovery_seed"
+                            ),
+                            Mapping,
+                        )
+                        else ""
+                    ),
+                )
+                _validated_post_merge_terminal_control_receipt(
+                    expected_control_receipt,
+                    expected_task_revision=expected_revision,
+                    transition=transition,
+                )
+            except TypedStateOwnerError as exc:
+                raise TaskSourceConflictError(
+                    "post-merge retry replay authority is invalid"
+                ) from exc
+            if (
+                not isinstance(queue_receipt, Mapping)
+                or dict(current_receipt)
+                != {**transition, "queue_receipt": dict(queue_receipt)}
+                or extension.get("task_cid") != prior.task_cid
+                or extension.get("expected_task_revision")
+                != expected_revision
+                or extension.get("delay_ms") != delay_ms
+                or extension.get("selection_penalty") != selection_penalty
+                or extension.get("reason") != reason
+                or any(
+                    extension.get(name) != value
+                    for name, value in expected_attempt.items()
+                )
+                or (
+                    exact_retry_not_before_ms is not None
+                    and extension.get("retry_not_before_ms")
+                    != exact_retry_not_before_ms
+                )
+            ):
+                raise TaskSourceConflictError(
+                    "post-merge retry replay differs from durable queue authority"
+                )
+            history = self.task_revision_history_projection(prior.task_cid)
+            revisions = history.get("revisions")
+            if not isinstance(revisions, list):
+                raise TaskSourceIntegrityError(
+                    "post-merge retry replay history is malformed"
+                )
+            by_revision = {
+                item.get("revision"): item
+                for item in revisions
+                if isinstance(item, Mapping)
+            }
+            predecessor = by_revision.get(expected_revision)
+            successor = by_revision.get(expected_revision + 1)
+            expected_predecessor_body = {
+                **dict(prior.body),
+                "completion_receipt": dict(expected_control_receipt),
+            }
+            if (
+                transition.get("operation")
+                == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+            ):
+                validated_post_merge_completion_claim_verifier_replay_lineage(
+                    task_cid=prior.task_cid,
+                    task_alias=prior.task_alias,
+                    task_status="blocked",
+                    task_revision=expected_revision,
+                    task_body=expected_predecessor_body,
+                    revisions=[
+                        by_revision.get(revision)
+                        for revision in range(
+                            expected_revision - 4,
+                            expected_revision + 1,
+                        )
+                    ],
+                )
+            if (
+                len(by_revision) != len(revisions)
+                or not isinstance(predecessor, Mapping)
+                or predecessor.get("status") != "blocked"
+                or predecessor.get("body") != expected_predecessor_body
+                or not isinstance(successor, Mapping)
+                or successor.get("status") != "retrying"
+                or successor.get("body") != dict(prior.body)
+            ):
+                raise TaskSourceConflictError(
+                    "post-merge retry replay has no exact predecessor history"
+                )
+            cas_result = DatabaseCASResult(
+                task=prior,
+                previous_status="blocked",
+                revision=prior.revision,
+                event_cursor=self.snapshot().event_cursor,
+                changed=False,
+                receipt_cid=content_identity(dict(current_receipt)),
+            )
+            return MappingProxyType(
+                {
+                    "previous_status": "blocked",
+                    "queue_receipt": dict(queue_receipt),
+                    "queue_reused": (
+                        int(queue_receipt["expected_queue_revision"]) >= 0
+                    ),
+                    "retry_not_before_ms": int(
+                        row["retry_not_before_ms"]
+                    ),
+                    "transition_receipt": dict(current_receipt),
+                    "cas_result": cas_result,
+                }
+            )
+        if (
+            prior.status != "blocked"
+            or prior.revision != expected_revision
+            or not isinstance(prior_receipt, Mapping)
+            or canonical_json_bytes(dict(prior_receipt))
+            != canonical_json_bytes(dict(expected_control_receipt))
+        ):
+            raise TaskSourceConflictError(
+                "post-merge retry task revision or control receipt is stale"
+            )
+        predecessor_history = self.task_revision_history_projection(
+            prior.task_cid
+        ).get("revisions")
+        if (
+            not isinstance(predecessor_history, list)
+            or len(predecessor_history) < expected_revision
+            or predecessor_history[expected_revision - 1]
+            != {
+                "revision": expected_revision,
+                "status": "blocked",
+                "body": dict(prior.body),
+            }
+        ):
+            raise TaskSourceConflictError(
+                "post-merge retry blocked predecessor history is absent or stale"
+            )
+        selected_now = self._clock_ms()
+        result = self._client.recover_post_merge_retry(
+            task_cid=prior.task_cid,
+            expected_task_revision=expected_revision,
+            task_body=prior.body,
+            expected_control_receipt=dict(expected_control_receipt),
+            transition_receipt=transition,
+            delay_ms=delay_ms,
+            reason=reason,
+            selection_penalty=selection_penalty,
+            exact_retry_not_before_ms=exact_retry_not_before_ms,
+            now_ms=selected_now,
+        )
+        if not result.accepted:
+            raise TaskSourceConflictError(
+                str(
+                    result.result.get("error")
+                    or "post-merge retry recovery was not accepted"
+                )
+            )
+        updated = self.get(prior.task_cid)
+        row = self._retry_cooldown_row(prior.task_cid)
+        if updated is None or updated.status != "retrying" or row is None:
+            raise TaskSourceIntegrityError(
+                "post-merge retry recovery post-state is incomplete"
+            )
+        self._validate_retrying_cooldown_binding(updated, row)
+        details = dict(result.result)
+        transition_receipt = updated.body.get("completion_receipt")
+        queue_receipt = details.get("queue_receipt")
+        if (
+            details.get("schema")
+            != TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA
+            or details.get("operation")
+            != TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND
+            or details.get("previous_status") != "blocked"
+            or type(details.get("queue_reused")) is not bool
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(transition_receipt, Mapping)
+            or not isinstance(transition_receipt.get("queue_receipt"), Mapping)
+            or dict(queue_receipt)
+            != dict(transition_receipt["queue_receipt"])
+            or dict(transition_receipt)
+            != dict(details.get("transition_receipt") or {})
+            or int(details.get("retry_not_before_ms") or -1)
+            != int(row["retry_not_before_ms"])
+        ):
+            raise TaskSourceIntegrityError(
+                "post-merge retry recovery result differs from durable state"
+            )
+        cas_result = DatabaseCASResult(
+            task=updated,
+            previous_status="blocked",
+            revision=updated.revision,
+            event_cursor=self.snapshot().event_cursor,
+            changed=bool(result.changed),
+            receipt_cid=str(result.result_digest or ""),
+        )
+        return MappingProxyType(
+            {
+                "previous_status": "blocked",
+                "queue_receipt": dict(queue_receipt),
+                "queue_reused": bool(details["queue_reused"]),
+                "retry_not_before_ms": int(
+                    details["retry_not_before_ms"]
+                ),
+                "transition_receipt": dict(transition_receipt),
+                "cas_result": cas_result,
+            }
+        )
+
+    def recover_leftover_wait_deferral_budget(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        status: str,
+        receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
+        _post_merge_recovery_admission: object | None = None,
+    ) -> Mapping[str, Any]:
+        """Atomically reopen one leftover-wait exhausted block on the owner."""
+
+        if _post_merge_recovery_admission is not None:
+            raise TaskSourceConflictError(
+                "process-local post-merge recovery admission cannot cross Quack"
+            )
+        if (
+            str(status or "").strip().lower() != "retrying"
+            or receipt.get("operation")
+            != "database_portal_leftover_wait_deferral_budget_retry_recovery"
+        ):
+            raise TaskSourceConflictError(
+                "leftover-wait recovery requires leftover-wait retrying receipt"
+            )
+        from .duckdb_state import (
+            QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET,
+            QuackOwnerCommandRemoteError,
+            submit_quack_owner_command,
+        )
+
+        try:
+            result = submit_quack_owner_command(
+                QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET,
+                {
+                    "task_cid": task_cid,
+                    "expected_revision": expected_revision,
+                    "expected_control_receipt": dict(
+                        expected_control_receipt
+                    ),
+                    "status": status,
+                    "receipt": dict(receipt),
+                    "delay_ms": delay_ms,
+                    "reason": reason,
+                    "selection_penalty": selection_penalty,
+                    **(
+                        {
+                            "exact_retry_not_before_ms": (
+                                exact_retry_not_before_ms
+                            )
+                        }
+                        if exact_retry_not_before_ms is not None
+                        else {}
+                    ),
+                },
+            )
+        except QuackOwnerCommandRemoteError as exc:
+            _raise_typed_owner_error(exc)
+        if not isinstance(result, Mapping) or "cas_result" not in result:
+            raise TaskSourceIntegrityError(
+                "leftover-wait recovery owner response is malformed"
+            )
+        result_map = dict(result)
+        cas_payload = result_map.pop("cas_result")
+        if not isinstance(cas_payload, Mapping):
+            raise TaskSourceIntegrityError(
+                "leftover-wait recovery owner CAS response is malformed"
+            )
+        expected = {
+            "previous_status",
+            "queue_receipt",
+            "queue_reused",
+            "retry_not_before_ms",
+            "transition_receipt",
+        }
+        if set(result_map) != expected:
+            raise TaskSourceIntegrityError(
+                "leftover-wait recovery owner result fields are malformed"
+            )
+        queue_receipt = result_map.get("queue_receipt")
+        transition_receipt = result_map.get("transition_receipt")
+        if (
+            not isinstance(queue_receipt, Mapping)
+            or not isinstance(transition_receipt, Mapping)
+            or type(result_map.get("queue_reused")) is not bool
+            or type(result_map.get("retry_not_before_ms")) is not int
+            or int(result_map["retry_not_before_ms"]) < 0
+        ):
+            raise TaskSourceIntegrityError(
+                "leftover-wait recovery owner result values are malformed"
+            )
+        return MappingProxyType(
+            {
+                "previous_status": str(result_map["previous_status"]),
+                "queue_receipt": dict(queue_receipt),
+                "queue_reused": bool(result_map["queue_reused"]),
+                "retry_not_before_ms": int(result_map["retry_not_before_ms"]),
+                "transition_receipt": dict(transition_receipt),
+                "cas_result": _cas_result_from_dict(cas_payload),
+            }
+        )
+
     def record_task_retry_cooldown(
         self,
         *,
@@ -2185,6 +3019,15 @@ class TypedDatabaseTaskSource:
                     "retrying task has no typed cooldown receipt"
                 )
             self._validate_retrying_cooldown_binding(task, row)
+            task_body = task.body if isinstance(task.body, Mapping) else {}
+            leftover_receipt = task_body.get("completion_receipt")
+            if (
+                isinstance(leftover_receipt, Mapping)
+                and leftover_receipt.get("operation")
+                == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                and leftover_receipt.get("queue_reused") is True
+            ):
+                return self._queue_entry_from_cooldown_row(row)
             extension = dict(row.get("extension") or {})
             if expected_attempt_identity is not None:
                 required_identity = {

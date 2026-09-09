@@ -656,9 +656,16 @@ all = [
 ]
 
 [tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight]
-schema = "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@4"
-requires-python = ">=3.12"
+schema = "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@5"
+requires-python = ">=3.8"
 authority = { file = "requirements.txt", sha256 = "db63abfc0624140dfb23b96d8d024d48a83013626fc227a56c4c26ad6682cc01", extra = "testing", extra-requirements-sha256 = "77fa42b129c722ddf2b7146aaaf22aba08e3b0f4c134af42a5af9db3d4e093cc" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.board-policies]]
+board-namespace = "semantic-preserving-autonomous-remodularization-v1"
+taskboard-path = "docs/architecture/semantic_preserving_autonomous_remodularization.todo.md"
+taskboard-sha256 = "2edcbad663475f3d05632d5327963b0343fbd6c0d3f3e2ac8e555877086ee21f"
+task-prefix = "SPAR-"
+requirements = ["pytest>=8.0.0"]
 
 [[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
 target = "test/api/test_agent_supervisor_program_repair_egraph.py"

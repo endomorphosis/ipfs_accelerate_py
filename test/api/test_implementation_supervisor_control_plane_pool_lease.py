@@ -802,6 +802,498 @@ def test_control_plane_reload_defers_for_exact_nested_database_pool_lease(
     assert fixture["state_path"].read_bytes() == original_state
 
 
+def test_watchdog_defers_stale_outer_task_for_exact_nested_database_activity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    now = datetime.now(timezone.utc)
+    stale_outer = PortalTaskState(
+        heartbeat_at=now.isoformat(),
+        last_progress_at="2000-01-01T00:00:00+00:00",
+        active_task_id="VRIF-009",
+        active_task_cid="task:vrif-009",
+        active_attempt=7,
+        implementation_in_progress=True,
+        ready_count=1,
+    )
+    stale_outer.save(fixture["state_path"])
+    original_outer = fixture["state_path"].read_bytes()
+    original_nested = fixture["nested_state_path"].read_bytes()
+    monkeypatch.setattr(
+        worker_watchdog,
+        "descendant_processes",
+        lambda _pid: [
+            {
+                "pid": 4321,
+                "cmdline": "/usr/local/bin/grok --model grok-4.6",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: pytest.fail(
+            "stale outer projection entered watchdog maintenance"
+        ),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert loop.config.status_extra_fields["watchdog_attribution_deferred"] is True
+    assert (
+        loop.config.status_extra_fields["watchdog_attribution_deferred_reason"]
+        == "outer_portal_task_identity_conflicts_with_"
+        "fresh_live_nested_database_execution"
+    )
+    assert loop.config.status_extra_fields["watchdog_projected_task_id"] == "VRIF-009"
+    assert (
+        loop.config.status_extra_fields["watchdog_database_activity_task_id"]
+        == "VRIF-010"
+    )
+    assert fixture["state_path"].read_bytes() == original_outer
+    assert fixture["nested_state_path"].read_bytes() == original_nested
+
+
+def test_watchdog_defers_exact_child_validation_with_string_cmdline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    now = datetime.now(timezone.utc)
+    PortalTaskState(
+        heartbeat_at=now.isoformat(),
+        last_progress_at="2000-01-01T00:00:00+00:00",
+        active_task_id="VRIF-009",
+        active_task_cid="task:vrif-009",
+        active_attempt=7,
+        implementation_in_progress=True,
+        ready_count=1,
+    ).save(fixture["state_path"])
+    observed_pids: list[int] = []
+
+    def production_descendants(pid: int) -> list[dict[str, Any]]:
+        observed_pids.append(pid)
+        return [
+            {
+                "pid": 4321,
+                "cmdline": (
+                    "/usr/bin/python3 -m pytest -q "
+                    "ipfs_datasets_py/tests/unit/semantic_refactoring/"
+                    "test_identities.py"
+                ),
+            }
+        ]
+
+    monkeypatch.setattr(
+        worker_watchdog,
+        "descendant_processes",
+        production_descendants,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_supervisor.descendant_processes",
+        production_descendants,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_read_managed_daemon_pid",
+        lambda: pytest.fail("validation used the lane PID projection"),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: pytest.fail(
+            "live exact-child validation entered watchdog maintenance"
+        ),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert loop.config.status_extra_fields["watchdog_attribution_deferred"] is True
+    assert loop.config.status_extra_fields["watchdog_database_provider_active"] is False
+    assert loop.config.status_extra_fields["watchdog_database_validation_active"] is True
+    assert observed_pids
+    assert set(observed_pids) == {fixture["child"].pid}
+
+
+def test_watchdog_same_task_stale_attempt_falls_through_to_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    now = datetime.now(timezone.utc)
+    PortalTaskState(
+        heartbeat_at=now.isoformat(),
+        last_progress_at="2000-01-01T00:00:00+00:00",
+        active_task_id="VRIF-010",
+        active_task_cid="task:vrif-010",
+        active_attempt=17,
+        implementation_in_progress=True,
+        ready_count=1,
+    ).save(fixture["state_path"])
+    monkeypatch.setattr(
+        worker_watchdog,
+        "descendant_processes",
+        lambda _pid: [
+            {
+                "pid": 4321,
+                "cmdline": "/usr/local/bin/grok --model grok-4.6",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: {
+            "stuck": True,
+            "reason": "no progress on active task VRIF-010",
+            "active_task_id": "VRIF-010",
+            "main_checkout_repair": {"repaired": False},
+        },
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert decision.reason == "no progress on active task VRIF-010"
+    assert loop.config.status_extra_fields["watchdog_attribution_deferred"] is False
+    assert loop.config.status_extra_fields["watchdog_database_execution_active"] is True
+
+
+@pytest.mark.parametrize("case", ("stale_nested_phase", "no_live_descendant"))
+def test_watchdog_requires_fresh_live_nested_execution_before_deferring(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    now = datetime.now(timezone.utc)
+    PortalTaskState(
+        heartbeat_at=now.isoformat(),
+        last_progress_at="2000-01-01T00:00:00+00:00",
+        active_task_id="VRIF-009",
+        active_task_cid="task:vrif-009",
+        active_attempt=7,
+        implementation_in_progress=True,
+        ready_count=1,
+    ).save(fixture["state_path"])
+    if case == "stale_nested_phase":
+        nested = PortalTaskState.load(fixture["nested_state_path"])
+        nested.active_phase_started_at = "2000-01-01T00:00:00+00:00"
+        nested.save(fixture["nested_state_path"])
+        descendants = [
+            {
+                "pid": 4321,
+                "cmdline": "/usr/local/bin/grok --model grok-4.6",
+            }
+        ]
+    else:
+        descendants = []
+    monkeypatch.setattr(
+        worker_watchdog,
+        "descendant_processes",
+        lambda _pid: list(descendants),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: {
+            "stuck": True,
+            "reason": "no progress on active task VRIF-009",
+            "active_task_id": "VRIF-009",
+            "main_checkout_repair": {"repaired": False},
+        },
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert decision.reason == "no progress on active task VRIF-009"
+    assert loop.config.status_extra_fields["watchdog_attribution_deferred"] is False
+
+
+def test_watchdog_attribution_deferral_expires_at_hard_implementation_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    now = datetime.now(timezone.utc)
+    PortalTaskState(
+        heartbeat_at=now.isoformat(),
+        last_progress_at="2000-01-01T00:00:00+00:00",
+        active_task_id="VRIF-009",
+        active_task_cid="task:vrif-009",
+        active_attempt=7,
+        implementation_in_progress=True,
+        ready_count=1,
+    ).save(fixture["state_path"])
+    monkeypatch.setattr(
+        worker_watchdog,
+        "descendant_processes",
+        lambda _pid: [
+            {
+                "pid": 4321,
+                "cmdline": "/usr/local/bin/grok --model grok-4.6",
+            }
+        ],
+    )
+    clock = [1000.0]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_supervisor.time.monotonic",
+        lambda: clock[0],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: {
+            "stuck": True,
+            "reason": "no progress on active task VRIF-009",
+            "active_task_id": "VRIF-009",
+            "main_checkout_repair": {"repaired": False},
+        },
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    live = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+    limit = supervisor._implementation_watchdog_timeout_seconds()
+    clock[0] += limit
+    expired = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+    clock[0] += float(supervisor.config.check_interval) + 1.0
+    still_expired = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert live.action == "continue"
+    assert expired.action == "recycle"
+    assert expired.reason == "no progress on active task VRIF-009"
+    assert still_expired.action == "recycle"
+    assert still_expired.reason == "no progress on active task VRIF-009"
+    assert loop.config.status_extra_fields["watchdog_attribution_deferred"] is False
+    assert (
+        loop.config.status_extra_fields[
+            "watchdog_attribution_deferral_limit_seconds"
+        ]
+        == limit
+    )
+
+
+def test_watchdog_attribution_deferral_ends_when_activity_disappears(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    now = datetime.now(timezone.utc)
+    PortalTaskState(
+        heartbeat_at=now.isoformat(),
+        last_progress_at="2000-01-01T00:00:00+00:00",
+        active_task_id="VRIF-009",
+        active_task_cid="task:vrif-009",
+        active_attempt=7,
+        implementation_in_progress=True,
+        ready_count=1,
+    ).save(fixture["state_path"])
+    monkeypatch.setattr(
+        worker_watchdog,
+        "descendant_processes",
+        lambda _pid: [
+            {
+                "pid": 4321,
+                "cmdline": "/usr/local/bin/grok --model grok-4.6",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: {
+            "stuck": True,
+            "reason": "no progress on active task VRIF-009",
+            "active_task_id": "VRIF-009",
+            "main_checkout_repair": {"repaired": False},
+        },
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    live = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+    fixture["pool_path"].unlink()
+    fixture["lock_path"].unlink()
+    disappeared = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert live.action == "continue"
+    assert disappeared.action == "recycle"
+    assert disappeared.reason == "no progress on active task VRIF-009"
+    assert loop.config.status_extra_fields["watchdog_attribution_deferred"] is False
+    assert loop.config.status_extra_fields["watchdog_database_activity_task_id"] == ""
+    assert loop.config.status_extra_fields["watchdog_database_provider_active"] is False
+    assert loop.config.status_extra_fields["watchdog_database_validation_active"] is False
+
+
+def test_watchdog_attribution_helper_error_falls_through(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    now = datetime.now(timezone.utc)
+    PortalTaskState(
+        heartbeat_at=now.isoformat(),
+        last_progress_at="2000-01-01T00:00:00+00:00",
+        active_task_id="VRIF-009",
+        active_task_cid="task:vrif-009",
+        active_attempt=7,
+        implementation_in_progress=True,
+        ready_count=1,
+    ).save(fixture["state_path"])
+    monkeypatch.setattr(
+        supervisor,
+        "_active_managed_database_pool_evidence",
+        lambda _child: (_ for _ in ()).throw(OSError("custody unavailable")),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: {
+            "stuck": True,
+            "reason": "no progress on active task VRIF-009",
+            "active_task_id": "VRIF-009",
+            "main_checkout_repair": {"repaired": False},
+        },
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert decision.reason == "no progress on active task VRIF-009"
+    assert loop.config.status_extra_fields["watchdog_attribution_deferred"] is False
+    assert loop.config.status_extra_fields["watchdog_database_provider_active"] is False
+    assert loop.config.status_extra_fields["watchdog_database_validation_active"] is False
+    assert "OSError" in loop.config.status_extra_fields[
+        "watchdog_database_evidence_error"
+    ]
+
+
+@pytest.mark.parametrize(
+    "case",
+    ("tampered_binding", "mismatched_child_birth"),
+)
+def test_watchdog_does_not_defer_for_unproved_database_activity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    now = datetime.now(timezone.utc)
+    PortalTaskState(
+        heartbeat_at=now.isoformat(),
+        last_progress_at="2000-01-01T00:00:00+00:00",
+        active_task_id="VRIF-009",
+        active_task_cid="task:vrif-009",
+        active_attempt=7,
+        implementation_in_progress=True,
+        ready_count=1,
+    ).save(fixture["state_path"])
+    monkeypatch.setattr(
+        worker_watchdog,
+        "descendant_processes",
+        lambda _pid: [
+            {
+                "pid": 4321,
+                "cmdline": "/usr/local/bin/grok --model grok-4.6",
+            }
+        ],
+    )
+    if case == "tampered_binding":
+        binding = json.loads(
+            fixture["binding_path"].read_text(encoding="utf-8")
+        )
+        binding["binding_id"] = "sha256:" + "0" * 64
+        _write_json(fixture["binding_path"], binding)
+    else:
+        observed = fixture["child"].identity_process_birth
+        fixture["child"].identity_process_birth = ProcessBirthIdentity(
+            pid=observed.pid,
+            start_time_ticks=observed.start_time_ticks + 1,
+            boot_id=observed.boot_id,
+            parent_pid=observed.parent_pid,
+        )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: {
+            "stuck": True,
+            "reason": "no progress on active task VRIF-009",
+            "active_task_id": "VRIF-009",
+            "main_checkout_repair": {"repaired": False},
+        },
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert decision.reason == "no progress on active task VRIF-009"
+    assert loop.config.status_extra_fields["watchdog_attribution_deferred"] is False
+    assert loop.config.status_extra_fields["watchdog_database_activity_task_id"] == ""
+
+
 @pytest.mark.parametrize("lifecycle_state", ("preparing", "active", "settling"))
 def test_control_plane_reload_defers_for_exact_live_database_nonterminal_claim(
     tmp_path: Path,

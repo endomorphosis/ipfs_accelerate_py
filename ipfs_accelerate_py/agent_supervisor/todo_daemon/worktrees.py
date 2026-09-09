@@ -7,6 +7,8 @@ import json
 import os
 import re
 import shutil
+import stat as stat_module
+import threading
 import time
 import uuid
 from contextlib import contextmanager
@@ -15,13 +17,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Optional, Sequence
 
+from ..merge.worktree_lifecycle import (
+    OwnerLiveness,
+    ProcessBirthIdentity,
+    owner_liveness,
+)
 from .engine import CommandResult, run_command
 from .git_utils import (
     git_worktree_paths_from_porcelain as _shared_git_worktree_paths_from_porcelain,
+)
+from .git_utils import (
     paths_from_git_status_porcelain as _shared_paths_from_git_status_porcelain,
+)
+from .git_utils import (
     untracked_paths_from_git_status_porcelain as _shared_untracked_paths_from_git_status_porcelain,
 )
-
 
 CommandRunner = Callable[..., CommandResult]
 OwnerAlivePredicate = Callable[[int, Path, Path], bool]
@@ -32,6 +42,1306 @@ WorktreeReuseAuthorizer = Callable[[Path, str, str], tuple[bool, str]]
 
 
 WORKTREE_POOL_SCHEMA = "agent-supervisor-worktree-pool-v1"
+WORKTREE_POOL_QUARANTINE_SCHEMA = "agent-supervisor-worktree-pool-quarantine-v1"
+WORKTREE_POOL_MISSING_RELEASE_SCHEMA = (
+    "agent-supervisor-worktree-pool-missing-release-v1"
+)
+WORKTREE_POOL_MUTATION_GUARD_TIMEOUT_SECONDS = 5.0
+_WORKTREE_POOL_QUARANTINE_FIELDS = frozenset(
+    {
+        "schema",
+        "quarantine_id",
+        "entry_id",
+        "workspace_path",
+        "branch",
+        "repo_root",
+        "repo_common_dir",
+        "pool_state_cid",
+        "pool_lock_cid",
+        "pool_lease_pid",
+        "board_namespace",
+        "task_id",
+        "canonical_task_cid",
+        "attempt",
+        "merge_target",
+        "lifecycle_record_id",
+        "lifecycle_fence",
+        "lifecycle_lease_id",
+        "owner_process_birth",
+        "predecessor_state_dir",
+        "current_state_dir",
+        "git_preimage_cid",
+        "git_registered_head",
+        "git_worktree_lock_reason",
+        "reason",
+    }
+)
+_WORKTREE_POOL_MISSING_RELEASE_FIELDS = frozenset(
+    {
+        "schema",
+        "evidence_id",
+        "entry_id",
+        "workspace_path",
+        "branch",
+        "base_commit",
+        "repo_root",
+        "repo_common_dir",
+        "pool_state_cid",
+        "pool_state_sha256",
+        "pool_lock_cid",
+        "pool_lock_sha256",
+        "pool_lease_pid",
+        "retained_branch_head",
+        "branch_disposition",
+        "release_phase",
+        "implementation_started",
+        "provider_dispatched",
+        "lifecycle",
+    }
+)
+
+
+def _canonical_worktree_pool_json_bytes(payload: Mapping[str, Any]) -> bytes:
+    return json.dumps(
+        dict(payload),
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def _worktree_pool_payload_cid(payload: Mapping[str, Any]) -> str:
+    return "sha256:" + hashlib.sha256(
+        _canonical_worktree_pool_json_bytes(payload)
+    ).hexdigest()
+
+
+def worktree_pool_payload_cid(payload: Mapping[str, Any]) -> str:
+    """Return the exact canonical SHA-256 identity used by pool custody."""
+
+    return _worktree_pool_payload_cid(payload)
+
+
+def _git_worktree_registration(
+    repo_root: Path,
+    workspace_path: Path,
+) -> tuple[dict[str, str] | None, str]:
+    """Resolve one exact lexical worktree registration and its Git lock."""
+
+    try:
+        result = run_command(
+            ("git", "worktree", "list", "--porcelain", "-z"),
+            cwd=repo_root,
+            timeout_seconds=30,
+        )
+    except OSError:
+        return None, "git_worktree_registration_unavailable"
+    if not result.ok:
+        return None, "git_worktree_registration_unavailable"
+    records: list[dict[str, str]] = []
+    current: dict[str, str] = {}
+    for field in result.stdout.split("\0"):
+        if not field:
+            if current:
+                records.append(current)
+                current = {}
+            continue
+        key, separator, value = field.partition(" ")
+        current[key] = value if separator else ""
+    if current:
+        records.append(current)
+    expected = Path(os.path.abspath(workspace_path))
+    matches = [
+        record
+        for record in records
+        if record.get("worktree")
+        and Path(os.path.abspath(str(record["worktree"]))) == expected
+    ]
+    if not matches:
+        return None, "git_worktree_registration_absent"
+    if len(matches) != 1:
+        return None, "git_worktree_registration_ambiguous"
+    return matches[0], "git_worktree_registration_exact"
+
+
+def _strict_worktree_pool_json_object(path: Path) -> dict[str, Any] | None:
+    """Load one regular JSON object with duplicate-key rejection."""
+
+    if path.is_symlink() or not path.is_file():
+        return None
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON key: {key}")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"non-finite JSON number: {value}")
+
+    try:
+        payload = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=unique_object,
+            parse_constant=reject_constant,
+        )
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+    ):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _worktree_pool_entry_id_for_workspace(path: Path) -> str:
+    match = re.fullmatch(
+        r"workspace(?P<separator>[_-])([0-9a-f]{12})(?P=separator)([0-9a-f]{12})",
+        path.name,
+    )
+    return f"{match.group(2)}-{match.group(3)}" if match else ""
+
+
+def worktree_pool_entry_id_for_workspace(path: Path | str) -> str:
+    """Return the current or retained-legacy pool entry identity."""
+
+    return _worktree_pool_entry_id_for_workspace(Path(path))
+
+
+def worktree_pool_entry_guard_binding(
+    *,
+    worktree_root: Path | str,
+    workspace_path: Path | str,
+) -> dict[str, Any]:
+    """Bind one lexical pooled workspace to its existing update guard.
+
+    A pooled-looking direct child fails closed when its pool-state directory
+    is missing or unsafe. Non-pooled worktrees remain outside this authority.
+    """
+
+    base: dict[str, Any] = {
+        "pooled": False,
+        "guard_available": False,
+    }
+    raw_root = Path(worktree_root)
+    raw_workspace = Path(workspace_path)
+    try:
+        lexical_root = Path(os.path.abspath(raw_root))
+        lexical_workspace = Path(os.path.abspath(raw_workspace))
+    except (OSError, RuntimeError, ValueError):
+        return {**base, "reason": "worktree_pool_root_unavailable"}
+    entry_id = _worktree_pool_entry_id_for_workspace(lexical_workspace)
+    if not entry_id or lexical_workspace.parent != lexical_root:
+        return {**base, "reason": "not_a_pooled_workspace"}
+
+    # Classify the lexical direct child before resolving the root.  A missing,
+    # replaced, or otherwise uninspectable pool root must not turn a path that
+    # looks exactly like a managed pool entry into an unrestricted worktree.
+    lexical_pool_root = lexical_root / ".pool-state"
+    lexical_binding = {
+        **base,
+        "pooled": True,
+        "entry_id": entry_id,
+        "pool_root": str(lexical_pool_root),
+        "lock_path": str(lexical_pool_root / f"{entry_id}.lock"),
+    }
+    try:
+        root = raw_root.resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        return {**lexical_binding, "reason": "worktree_pool_root_unavailable"}
+
+    pool_root = root / ".pool-state"
+    binding = {
+        **base,
+        "pooled": True,
+        "entry_id": entry_id,
+        "pool_root": str(pool_root),
+        "lock_path": str(pool_root / f"{entry_id}.lock"),
+    }
+    try:
+        pool_stat = pool_root.lstat()
+    except FileNotFoundError:
+        return {**binding, "reason": "worktree_pool_state_root_missing"}
+    except OSError as exc:
+        return {
+            **binding,
+            "reason": "worktree_pool_state_root_uninspectable",
+            "error_type": type(exc).__name__,
+        }
+    if stat_module.S_ISLNK(pool_stat.st_mode) or not stat_module.S_ISDIR(
+        pool_stat.st_mode
+    ):
+        return {**binding, "reason": "worktree_pool_state_root_unsafe"}
+    custody_identities: dict[str, dict[str, int] | None] = {}
+    pool_repo_root = ""
+    for custody_path in (
+        pool_root / f"{entry_id}.json",
+        pool_root / f"{entry_id}.lock",
+    ):
+        try:
+            custody_stat = custody_path.lstat()
+        except FileNotFoundError:
+            custody_identities[custody_path.name] = None
+            continue
+        except OSError as exc:
+            return {
+                **binding,
+                "reason": "worktree_pool_entry_custody_uninspectable",
+                "error_type": type(exc).__name__,
+            }
+        if not stat_module.S_ISREG(custody_stat.st_mode):
+            return {**binding, "reason": "worktree_pool_entry_custody_unsafe"}
+        custody_identities[custody_path.name] = {
+            "device": int(custody_stat.st_dev),
+            "inode": int(custody_stat.st_ino),
+            "mode": int(stat_module.S_IFMT(custody_stat.st_mode)),
+        }
+        if custody_path.name == f"{entry_id}.json":
+            state_payload = _strict_worktree_pool_json_object(custody_path)
+            if state_payload is None:
+                return {
+                    **binding,
+                    "reason": "worktree_pool_entry_custody_invalid",
+                }
+            pool_repo_root = str(state_payload.get("repo_root") or "")
+    return {
+        **binding,
+        "guard_available": True,
+        "reason": "worktree_pool_entry_guard_bound",
+        "pool_root_identity": {
+            "device": int(pool_stat.st_dev),
+            "inode": int(pool_stat.st_ino),
+            "mode": int(stat_module.S_IFMT(pool_stat.st_mode)),
+        },
+        "custody_identities": custody_identities,
+        "pool_repo_root": pool_repo_root,
+    }
+
+
+def _valid_worktree_pool_quarantine_payload(
+    payload: Mapping[str, Any],
+    *,
+    worktree_root: Path,
+    workspace_path: Path,
+    entry_id: str,
+    expected_branch: str = "",
+) -> tuple[bool, str]:
+    if set(payload) != _WORKTREE_POOL_QUARANTINE_FIELDS:
+        return False, "quarantine_fields_invalid"
+    unsigned = dict(payload)
+    quarantine_id = unsigned.pop("quarantine_id", None)
+    git_worktree_lock_reason = unsigned.pop(
+        "git_worktree_lock_reason",
+        None,
+    )
+    owner = payload.get("owner_process_birth")
+    if (
+        payload.get("schema") != WORKTREE_POOL_QUARANTINE_SCHEMA
+        or payload.get("entry_id") != entry_id
+        or type(quarantine_id) is not str
+        or quarantine_id != _worktree_pool_payload_cid(unsigned)
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", quarantine_id)
+        or git_worktree_lock_reason
+        != f"agent-supervisor-quarantine-v1:{quarantine_id}"
+        or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(payload.get("pool_state_cid") or ""),
+        )
+        or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(payload.get("pool_lock_cid") or ""),
+        )
+        or type(payload.get("pool_lease_pid")) is not int
+        or int(payload.get("pool_lease_pid") or 0) <= 1
+        or type(payload.get("attempt")) is not int
+        or int(payload.get("attempt") or 0) < 1
+        or type(payload.get("lifecycle_fence")) is not int
+        or int(payload.get("lifecycle_fence") or 0) < 1
+        or not isinstance(owner, dict)
+        or set(owner)
+        != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+        or type(owner.get("pid")) is not int
+        or owner.get("pid") != payload.get("pool_lease_pid")
+        or type(owner.get("start_time_ticks")) is not int
+        or int(owner.get("start_time_ticks") or 0) <= 0
+        or type(owner.get("parent_pid")) is not int
+        or type(owner.get("boot_id")) is not str
+        or any(
+            type(payload.get(field)) is not str or not payload.get(field)
+            for field in (
+                "workspace_path",
+                "branch",
+                "repo_root",
+                "repo_common_dir",
+                "board_namespace",
+                "task_id",
+                "canonical_task_cid",
+                "merge_target",
+                "lifecycle_record_id",
+                "lifecycle_lease_id",
+                "predecessor_state_dir",
+                "current_state_dir",
+                "git_preimage_cid",
+                "git_registered_head",
+                "git_worktree_lock_reason",
+                "reason",
+            )
+        )
+        or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(payload.get("git_preimage_cid") or ""),
+        )
+        or not re.fullmatch(
+            r"[0-9a-f]{40}|[0-9a-f]{64}",
+            str(payload.get("git_registered_head") or ""),
+        )
+    ):
+        return False, "quarantine_identity_invalid"
+    try:
+        marker_workspace = Path(str(payload["workspace_path"]))
+        marker_workspace_resolved = marker_workspace.resolve(strict=True)
+        marker_workspace_resolved.relative_to(worktree_root)
+        marker_repo = Path(str(payload["repo_root"]))
+        marker_common = Path(str(payload["repo_common_dir"]))
+        predecessor_state = Path(str(payload["predecessor_state_dir"]))
+        current_state = Path(str(payload["current_state_dir"]))
+        pool_root = worktree_root / ".pool-state"
+        pool_state_path = pool_root / f"{entry_id}.json"
+        pool_lock_path = pool_root / f"{entry_id}.lock"
+        if any(
+            candidate.is_symlink()
+            for candidate in (
+                marker_workspace,
+                marker_repo,
+                marker_common,
+                predecessor_state,
+                current_state,
+                pool_root,
+                pool_state_path,
+                pool_lock_path,
+            )
+        ):
+            return False, "quarantine_path_symlink"
+        marker_repo_resolved = marker_repo.resolve(strict=True)
+        marker_common_resolved = marker_common.resolve(strict=True)
+        predecessor_state_resolved = predecessor_state.resolve(strict=True)
+        current_state_resolved = current_state.resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        return False, "quarantine_path_invalid"
+    if (
+        marker_workspace_resolved != workspace_path
+        or marker_workspace_resolved.parent != worktree_root
+        or not marker_workspace.is_dir()
+        or not marker_repo.is_dir()
+        or not marker_common.is_dir()
+        or not predecessor_state.is_dir()
+        or not current_state.is_dir()
+        or marker_repo_resolved != Path(str(payload["repo_root"]))
+        or marker_common_resolved != Path(str(payload["repo_common_dir"]))
+        or predecessor_state_resolved
+        != Path(str(payload["predecessor_state_dir"]))
+        or current_state_resolved != Path(str(payload["current_state_dir"]))
+        or (
+            bool(expected_branch)
+            and str(payload["branch"]).removeprefix("refs/heads/")
+            != str(expected_branch).removeprefix("refs/heads/")
+        )
+    ):
+        return False, "quarantine_workspace_binding_mismatch"
+
+    pool_state = _strict_worktree_pool_json_object(pool_state_path)
+    pool_lock = _strict_worktree_pool_json_object(pool_lock_path)
+    try:
+        pool_state_cid = (
+            _worktree_pool_payload_cid(pool_state)
+            if pool_state is not None
+            else ""
+        )
+        pool_lock_cid = (
+            _worktree_pool_payload_cid(pool_lock)
+            if pool_lock is not None
+            else ""
+        )
+    except (TypeError, ValueError):
+        return False, "quarantine_pool_binding_mismatch"
+    if (
+        pool_state is None
+        or pool_lock is None
+        or pool_state_cid != payload.get("pool_state_cid")
+        or pool_lock_cid != payload.get("pool_lock_cid")
+        or pool_state.get("schema") != WORKTREE_POOL_SCHEMA
+        or pool_state.get("lease_token") != entry_id
+        or pool_state.get("state") != "leased"
+        or pool_state.get("lease_pid") != payload.get("pool_lease_pid")
+        or str(pool_state.get("path") or "") != str(marker_workspace_resolved)
+        or str(pool_state.get("repo_root") or "") != str(marker_repo_resolved)
+        or str(pool_state.get("repo_common_dir") or "")
+        != str(marker_common_resolved)
+        or str(pool_state.get("branch") or "").removeprefix("refs/heads/")
+        != str(payload["branch"]).removeprefix("refs/heads/")
+        or set(pool_lock) != {"pid", "created_at_epoch"}
+        or pool_lock.get("pid") != payload.get("pool_lease_pid")
+    ):
+        return False, "quarantine_pool_binding_mismatch"
+    registration, registration_reason = _git_worktree_registration(
+        marker_repo_resolved,
+        marker_workspace,
+    )
+    if (
+        registration is None
+        or registration_reason != "git_worktree_registration_exact"
+        or str(registration.get("branch") or "").removeprefix(
+            "refs/heads/"
+        )
+        != str(payload["branch"]).removeprefix("refs/heads/")
+        or str(registration.get("HEAD") or "")
+        != str(payload["git_registered_head"])
+        or str(registration.get("locked") or "")
+        != str(payload["git_worktree_lock_reason"])
+    ):
+        return False, "quarantine_git_lock_binding_mismatch"
+    return True, "durable_worktree_pool_quarantine"
+
+
+def inspect_worktree_pool_quarantine(
+    *,
+    worktree_root: Path | str,
+    workspace_path: Path | str,
+    expected_branch: str = "",
+) -> dict[str, Any]:
+    """Return a typed exact quarantine result for one pooled workspace.
+
+    ``invalid`` is deliberately distinct from ``valid`` but remains a cleanup
+    fence.  A malformed or foreign marker can never authorize recovery, while
+    cleanup also cannot destroy the evidence an operator needs to repair it.
+    """
+
+    raw_root = Path(worktree_root)
+    raw_workspace = Path(workspace_path)
+    base: dict[str, Any] = {
+        "status": "absent",
+        "valid": False,
+        "cleanup_fenced": False,
+    }
+    try:
+        root = raw_root.resolve(strict=True)
+        lexical_root = Path(os.path.abspath(raw_root))
+        lexical_workspace = Path(os.path.abspath(raw_workspace))
+    except (OSError, RuntimeError, ValueError):
+        return {**base, "reason": "not_a_pooled_workspace"}
+    entry_id = _worktree_pool_entry_id_for_workspace(lexical_workspace)
+    if (
+        not entry_id
+        or lexical_workspace.parent not in {lexical_root, root}
+    ):
+        return {**base, "reason": "not_a_pooled_workspace"}
+    quarantine_root = root / ".pool-state" / "quarantine"
+    marker_path = quarantine_root / f"{entry_id}.json"
+    try:
+        quarantine_root_stat = quarantine_root.lstat()
+    except FileNotFoundError:
+        return {
+            **base,
+            "entry_id": entry_id,
+            "marker_path": str(marker_path),
+            "reason": "quarantine_absent",
+        }
+    except OSError as exc:
+        return {
+            **base,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "entry_id": entry_id,
+            "marker_path": str(marker_path),
+            "reason": "quarantine_directory_uninspectable",
+            "error_type": type(exc).__name__,
+        }
+    if stat_module.S_ISLNK(
+        quarantine_root_stat.st_mode
+    ) or not stat_module.S_ISDIR(quarantine_root_stat.st_mode):
+        return {
+            **base,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "entry_id": entry_id,
+            "marker_path": str(marker_path),
+            "reason": "quarantine_directory_unsafe",
+        }
+    try:
+        marker_stat = marker_path.lstat()
+    except FileNotFoundError:
+        return {
+            **base,
+            "entry_id": entry_id,
+            "marker_path": str(marker_path),
+            "reason": "quarantine_absent",
+        }
+    except OSError as exc:
+        return {
+            **base,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "entry_id": entry_id,
+            "marker_path": str(marker_path),
+            "reason": "quarantine_marker_uninspectable",
+            "error_type": type(exc).__name__,
+        }
+    try:
+        workspace = raw_workspace.resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        return {
+            **base,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "entry_id": entry_id,
+            "marker_path": str(marker_path),
+            "reason": "quarantine_workspace_uninspectable",
+        }
+    try:
+        workspace.relative_to(root)
+    except ValueError:
+        return {
+            **base,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "entry_id": entry_id,
+            "marker_path": str(marker_path),
+            "reason": "quarantine_workspace_binding_mismatch",
+        }
+    if (
+        stat_module.S_ISLNK(marker_stat.st_mode)
+        or not stat_module.S_ISREG(marker_stat.st_mode)
+    ):
+        return {
+            **base,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "entry_id": entry_id,
+            "marker_path": str(marker_path),
+            "reason": "quarantine_marker_unsafe",
+        }
+    payload = _strict_worktree_pool_json_object(marker_path)
+    if payload is None:
+        return {
+            **base,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "entry_id": entry_id,
+            "marker_path": str(marker_path),
+            "reason": "quarantine_marker_malformed",
+        }
+    valid, reason = _valid_worktree_pool_quarantine_payload(
+        payload,
+        worktree_root=root,
+        workspace_path=workspace,
+        entry_id=entry_id,
+        expected_branch=expected_branch,
+    )
+    return {
+        "status": "valid" if valid else "invalid",
+        "valid": valid,
+        "cleanup_fenced": True,
+        "entry_id": entry_id,
+        "marker_path": str(marker_path),
+        "reason": reason,
+        **({"marker": payload} if valid else {}),
+    }
+
+
+def inspect_worktree_pool_missing_release_terminal(
+    *,
+    repo_root: Path | str,
+    worktree_root: Path | str,
+    workspace_path: Path | str,
+    expected_branch: str = "",
+    expected_lifecycle: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate one deterministic pre-dispatch missing-workspace terminal.
+
+    The active ``<entry>.json`` state always dominates: a receipt published
+    while that file remains is proposal-only.  Terminal status requires the
+    exact original state bytes at the deterministic released-state path,
+    absence from both the filesystem and Git worktree registry, and a retained
+    branch still pointing at the acquired base commit.
+    """
+
+    base: dict[str, Any] = {
+        "status": "absent",
+        "valid": False,
+        "cleanup_fenced": False,
+    }
+    raw_root = Path(worktree_root)
+    raw_workspace = Path(workspace_path)
+    try:
+        root = raw_root.resolve(strict=True)
+        authoritative_repo = Path(repo_root).resolve(strict=True)
+        lexical_workspace = Path(os.path.abspath(raw_workspace))
+    except (OSError, RuntimeError, ValueError):
+        return {**base, "reason": "missing_release_identity_unresolvable"}
+    entry_id = _worktree_pool_entry_id_for_workspace(lexical_workspace)
+    if not entry_id or lexical_workspace.parent != root:
+        return {**base, "reason": "not_a_pooled_workspace"}
+    state_root = root / ".pool-state"
+    active_state_path = state_root / f"{entry_id}.json"
+    lock_path = state_root / f"{entry_id}.lock"
+    terminal_state_path = state_root / f".{entry_id}.released-state"
+    receipt_path = state_root / f".{entry_id}.released-receipt"
+    detail = {
+        "entry_id": entry_id,
+        "active_state_path": str(active_state_path),
+        "lock_path": str(lock_path),
+        "terminal_state_path": str(terminal_state_path),
+        "receipt_path": str(receipt_path),
+    }
+    try:
+        terminal_stat = terminal_state_path.lstat()
+    except FileNotFoundError:
+        terminal_stat = None
+    except OSError as exc:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_terminal_uninspectable",
+            "error_type": type(exc).__name__,
+        }
+    try:
+        receipt_stat = receipt_path.lstat()
+    except FileNotFoundError:
+        receipt_stat = None
+    except OSError as exc:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_receipt_uninspectable",
+            "error_type": type(exc).__name__,
+        }
+    terminal_exists = terminal_stat is not None
+    receipt_exists = receipt_stat is not None
+    if not terminal_exists and not receipt_exists:
+        return {**base, **detail, "reason": "missing_release_absent"}
+    try:
+        active_stat = active_state_path.lstat()
+    except FileNotFoundError:
+        active_stat = None
+    except OSError as exc:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_active_state_uninspectable",
+            "error_type": type(exc).__name__,
+        }
+    active_exists = active_stat is not None
+    if receipt_exists and active_exists and not terminal_exists:
+        evidence_state_path = active_state_path
+        evidence_state_stat = active_stat
+        proposal = True
+    elif receipt_exists and terminal_exists and not active_exists:
+        evidence_state_path = terminal_state_path
+        evidence_state_stat = terminal_stat
+        proposal = False
+    else:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": (
+                "missing_release_active_state_conflicts_with_terminal"
+                if active_exists and terminal_exists
+                else "missing_release_terminal_pair_incomplete"
+            ),
+        }
+    try:
+        evidence_state_bytes = evidence_state_path.read_bytes()
+    except OSError as exc:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_terminal_unreadable",
+            "error_type": type(exc).__name__,
+        }
+    if any(
+        stat_module.S_ISLNK(item.st_mode)
+        or not stat_module.S_ISREG(item.st_mode)
+        for item in (evidence_state_stat, receipt_stat)
+    ):
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_terminal_unsafe",
+        }
+    receipt = _strict_worktree_pool_json_object(receipt_path)
+    evidence_state = _strict_worktree_pool_json_object(evidence_state_path)
+    if receipt is None or evidence_state is None:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_terminal_malformed",
+        }
+    unsigned = dict(receipt)
+    evidence_id = unsigned.pop("evidence_id", None)
+    lifecycle = receipt.get("lifecycle")
+    owner = lifecycle.get("owner") if isinstance(lifecycle, Mapping) else None
+    expected_branch_name = str(expected_branch or "").removeprefix(
+        "refs/heads/"
+    )
+    evidence_state_cid = _worktree_pool_payload_cid(evidence_state)
+    evidence_state_sha256 = "sha256:" + hashlib.sha256(
+        evidence_state_bytes
+    ).hexdigest()
+    identity_valid = bool(
+        set(receipt) == _WORKTREE_POOL_MISSING_RELEASE_FIELDS
+        and receipt.get("schema") == WORKTREE_POOL_MISSING_RELEASE_SCHEMA
+        and isinstance(evidence_id, str)
+        and evidence_id == _worktree_pool_payload_cid(unsigned)
+        and receipt.get("entry_id") == entry_id
+        and receipt.get("workspace_path") == str(lexical_workspace)
+        and str(receipt.get("repo_root") or "")
+        == str(authoritative_repo)
+        and str(receipt.get("branch") or "").removeprefix("refs/heads/")
+        == expected_branch_name
+        and re.fullmatch(
+            r"[0-9a-f]{40}|[0-9a-f]{64}",
+            str(receipt.get("base_commit") or ""),
+        )
+        and receipt.get("retained_branch_head")
+        == receipt.get("base_commit")
+        and receipt.get("branch_disposition")
+        == "retained_exact_expected_head"
+        and receipt.get("release_phase")
+        == "failed_setup_before_provider"
+        and receipt.get("implementation_started") is False
+        and receipt.get("provider_dispatched") is False
+        and isinstance(lifecycle, Mapping)
+        and isinstance(owner, Mapping)
+        and receipt.get("pool_state_cid") == evidence_state_cid
+        and receipt.get("pool_state_sha256") == evidence_state_sha256
+        and evidence_state.get("schema") == WORKTREE_POOL_SCHEMA
+        and evidence_state.get("lease_token") == entry_id
+        and evidence_state.get("state") == "leased"
+        and evidence_state.get("lease_pid")
+        == receipt.get("pool_lease_pid")
+        and evidence_state.get("base_commit")
+        == receipt.get("base_commit")
+        and str(evidence_state.get("path") or "")
+        == str(lexical_workspace)
+        and str(evidence_state.get("repo_root") or "")
+        == str(authoritative_repo)
+        and evidence_state.get("repo_common_dir")
+        == receipt.get("repo_common_dir")
+        and str(evidence_state.get("branch") or "").removeprefix(
+            "refs/heads/"
+        )
+        == expected_branch_name
+        and lifecycle.get("workspace_path") == str(lexical_workspace)
+        and str(lifecycle.get("branch") or "").removeprefix("refs/heads/")
+        == expected_branch_name
+        and str(lifecycle.get("repo_root") or "")
+        == str(authoritative_repo)
+        and owner.get("pid") == receipt.get("pool_lease_pid")
+        and (
+            expected_lifecycle is None
+            or dict(lifecycle) == dict(expected_lifecycle)
+        )
+    )
+    if not identity_valid:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_terminal_identity_mismatch",
+        }
+    try:
+        raw_workspace.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_workspace_uninspectable",
+            "error_type": type(exc).__name__,
+        }
+    else:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_workspace_present",
+        }
+    registration, registration_reason = _git_worktree_registration(
+        authoritative_repo,
+        raw_workspace,
+    )
+    if registration is not None or registration_reason != (
+        "git_worktree_registration_absent"
+    ):
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_git_registration_present",
+            "git_registration_reason": registration_reason,
+        }
+    branch_ref = f"refs/heads/{expected_branch_name}"
+    try:
+        branch_probe = run_command(
+            (
+                "git",
+                "rev-parse",
+                "--verify",
+                "--end-of-options",
+                f"{branch_ref}^{{commit}}",
+            ),
+            cwd=authoritative_repo,
+            timeout_seconds=30,
+        )
+    except OSError as exc:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_retained_branch_uninspectable",
+            "error_type": type(exc).__name__,
+        }
+    if (
+        branch_probe.returncode != 0
+        or branch_probe.stdout.strip() != receipt.get("retained_branch_head")
+    ):
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_retained_branch_changed",
+        }
+    try:
+        lock_stat = lock_path.lstat()
+    except FileNotFoundError:
+        lock_present = False
+    except OSError as exc:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_lock_uninspectable",
+            "error_type": type(exc).__name__,
+        }
+    else:
+        lock_present = True
+        if stat_module.S_ISLNK(lock_stat.st_mode) or not stat_module.S_ISREG(
+            lock_stat.st_mode
+        ):
+            return {
+                **base,
+                **detail,
+                "status": "invalid",
+                "cleanup_fenced": True,
+                "reason": "missing_release_lock_unsafe",
+            }
+        lock_payload = _strict_worktree_pool_json_object(lock_path)
+        try:
+            lock_bytes = lock_path.read_bytes()
+        except OSError as exc:
+            return {
+                **base,
+                **detail,
+                "status": "invalid",
+                "cleanup_fenced": True,
+                "reason": "missing_release_lock_unreadable",
+                "error_type": type(exc).__name__,
+            }
+        if (
+            lock_payload is None
+            or receipt.get("pool_lock_cid")
+            != _worktree_pool_payload_cid(lock_payload)
+            or receipt.get("pool_lock_sha256")
+            != "sha256:" + hashlib.sha256(lock_bytes).hexdigest()
+        ):
+            return {
+                **base,
+                **detail,
+                "status": "invalid",
+                "cleanup_fenced": True,
+                "reason": "missing_release_lock_changed",
+            }
+    if proposal and not lock_present:
+        return {
+            **base,
+            **detail,
+            "status": "invalid",
+            "cleanup_fenced": True,
+            "reason": "missing_release_proposal_lock_absent",
+        }
+    return {
+        **base,
+        **detail,
+        "status": "pending" if proposal else "valid",
+        "valid": not proposal,
+        "proposal_valid": proposal,
+        "cleanup_fenced": True,
+        "reason": (
+            "missing_release_proposal_valid"
+            if proposal
+            else "missing_release_terminal_valid"
+        ),
+        "evidence": receipt,
+        "lock_present": lock_present,
+    }
+
+
+_WORKTREE_POOL_MUTATION_GUARD_STATE = threading.local()
+
+
+@contextmanager
+def guarded_worktree_pool_mutation(
+    *,
+    repo_root: Path | str,
+    worktree_root: Path | str,
+    workspace_path: Path | str,
+    expected_branch: str = "",
+    operation: str,
+    allow_quarantine_publication: bool = False,
+    allow_absent_registration_metadata_cleanup: bool = False,
+    expected_dead_owner_pid: int = 0,
+    expected_current_owner_pid: int = 0,
+    expected_branch_head: str = "",
+) -> Iterator[dict[str, Any]]:
+    """Serialize a workspace mutation with exact quarantine publication."""
+
+    binding = worktree_pool_entry_guard_binding(
+        worktree_root=worktree_root,
+        workspace_path=workspace_path,
+    )
+    if binding.get("pooled") is not True:
+        yield {
+            "allowed": True,
+            "pooled": False,
+            "reason": str(binding.get("reason") or "not_a_pooled_workspace"),
+            "operation": operation,
+        }
+        return
+    if binding.get("guard_available") is not True:
+        yield {
+            "allowed": False,
+            "pooled": True,
+            "reason": "worktree_pool_mutation_guard_unavailable",
+            "operation": operation,
+            "binding": binding,
+        }
+        return
+
+    from ..merge.checkout_lock import serialized_lock_update
+
+    lock_path = Path(str(binding["lock_path"]))
+    # The registry is thread-local and PID-bound.  A forked child can inherit
+    # Python memory but may never inherit logical custody after CLOEXEC closes
+    # the advisory-lock descriptor.  Same-thread nesting is required because a
+    # synchronous merge callback may invoke daemon cleanup while its supervisor
+    # already holds this exact entry guard.
+    process_id = os.getpid()
+    held = getattr(_WORKTREE_POOL_MUTATION_GUARD_STATE, "held", None)
+    if not isinstance(held, dict) or getattr(
+        _WORKTREE_POOL_MUTATION_GUARD_STATE,
+        "pid",
+        None,
+    ) != process_id:
+        held = {}
+        _WORKTREE_POOL_MUTATION_GUARD_STATE.held = held
+        _WORKTREE_POOL_MUTATION_GUARD_STATE.pid = process_id
+    guard_key = str(lock_path)
+    reentrant = int(held.get(guard_key, 0)) > 0
+    manager = (
+        None
+        if reentrant
+        else serialized_lock_update(
+            lock_path,
+            timeout_seconds=WORKTREE_POOL_MUTATION_GUARD_TIMEOUT_SECONDS,
+        )
+    )
+    try:
+        if manager is not None:
+            manager.__enter__()
+    except (OSError, RuntimeError, TimeoutError) as exc:
+        yield {
+            "allowed": False,
+            "pooled": True,
+            "reason": "worktree_pool_mutation_guard_unavailable",
+            "operation": operation,
+            "binding": binding,
+            "error_type": type(exc).__name__,
+            "error": str(exc)[-500:],
+        }
+        return
+    held[guard_key] = int(held.get(guard_key, 0)) + 1
+    try:
+        rebound = worktree_pool_entry_guard_binding(
+            worktree_root=worktree_root,
+            workspace_path=workspace_path,
+        )
+        binding_fields = (
+            "pooled",
+            "guard_available",
+            "entry_id",
+            "pool_root",
+            "lock_path",
+            "pool_root_identity",
+            "custody_identities",
+            "pool_repo_root",
+        )
+        if any(binding.get(field) != rebound.get(field) for field in binding_fields):
+            yield {
+                "allowed": False,
+                "pooled": True,
+                "reason": "worktree_pool_mutation_guard_binding_changed",
+                "operation": operation,
+                "binding": binding,
+                "current_binding": rebound,
+                "reentrant": reentrant,
+            }
+            return
+        try:
+            quarantine = inspect_worktree_pool_quarantine(
+                worktree_root=worktree_root,
+                workspace_path=workspace_path,
+                expected_branch=expected_branch,
+            )
+        except Exception as exc:
+            quarantine = {
+                "status": "invalid",
+                "valid": False,
+                "cleanup_fenced": True,
+                "reason": "quarantine_inspection_failed",
+                "error_type": type(exc).__name__,
+            }
+        if quarantine.get("cleanup_fenced") is True:
+            decision = {
+                "allowed": False,
+                "pooled": True,
+                "reason": (
+                    "durable_worktree_pool_quarantine"
+                    if quarantine.get("valid") is True
+                    else "worktree_pool_quarantine_unverifiable"
+                ),
+                "operation": operation,
+                "binding": binding,
+                "quarantine": quarantine,
+                "reentrant": reentrant,
+            }
+            if (
+                allow_quarantine_publication
+                and quarantine.get("valid") is True
+            ):
+                decision.update(
+                    {
+                        "allowed": True,
+                        "reason": "exact_quarantine_publication_retry",
+                    }
+                )
+            yield decision
+        else:
+            try:
+                authoritative_repo_root = Path(repo_root).resolve(strict=True)
+                recorded_repo_root = str(rebound.get("pool_repo_root") or "")
+                if recorded_repo_root and Path(recorded_repo_root).resolve(
+                    strict=True
+                ) != authoritative_repo_root:
+                    raise ValueError("pool repository authority changed")
+            except (OSError, RuntimeError, ValueError) as exc:
+                yield {
+                    "allowed": False,
+                    "pooled": True,
+                    "reason": "worktree_pool_repository_binding_unavailable",
+                    "operation": operation,
+                    "binding": binding,
+                    "current_binding": rebound,
+                    "error_type": type(exc).__name__,
+                    "reentrant": reentrant,
+                }
+                return
+            locked_registration, registration_reason = (
+                _git_worktree_registration(
+                    authoritative_repo_root,
+                    Path(workspace_path),
+                )
+            )
+            if locked_registration is None:
+                metadata_cleanup_admitted = False
+                metadata_branch_disposition = ""
+                metadata_branch_head = ""
+                dead_owner_admitted = bool(
+                    type(expected_dead_owner_pid) is int
+                    and expected_dead_owner_pid > 1
+                    and not pid_is_alive(expected_dead_owner_pid)
+                )
+                current_owner_admitted = bool(
+                    type(expected_current_owner_pid) is int
+                    and expected_current_owner_pid == os.getpid()
+                    and pid_is_alive(expected_current_owner_pid)
+                    and re.fullmatch(
+                        r"[0-9a-f]{40}|[0-9a-f]{64}",
+                        str(expected_branch_head or ""),
+                    )
+                )
+                if (
+                    allow_absent_registration_metadata_cleanup
+                    and registration_reason
+                    == "git_worktree_registration_absent"
+                    and (dead_owner_admitted or current_owner_admitted)
+                ):
+                    try:
+                        Path(workspace_path).lstat()
+                    except FileNotFoundError:
+                        branch_ref = str(expected_branch or "").removeprefix(
+                            "refs/heads/"
+                        )
+                        branch_probe = run_command(
+                            (
+                                "git",
+                                "show-ref",
+                                "--verify",
+                                "--quiet",
+                                "--",
+                                f"refs/heads/{branch_ref}",
+                            ),
+                            cwd=authoritative_repo_root,
+                            timeout_seconds=30,
+                        )
+                        if bool(branch_ref) and branch_probe.returncode == 1:
+                            metadata_cleanup_admitted = True
+                            metadata_branch_disposition = "absent"
+                        elif (
+                            current_owner_admitted or dead_owner_admitted
+                        ) and branch_probe.returncode == 0:
+                            branch_head_probe = run_command(
+                                (
+                                    "git",
+                                    "rev-parse",
+                                    "--verify",
+                                    "--end-of-options",
+                                    f"refs/heads/{branch_ref}^{{commit}}",
+                                ),
+                                cwd=authoritative_repo_root,
+                                timeout_seconds=30,
+                            )
+                            metadata_branch_head = (
+                                branch_head_probe.stdout.strip()
+                            )
+                            if (
+                                branch_head_probe.returncode == 0
+                                and metadata_branch_head
+                                == str(expected_branch_head)
+                            ):
+                                # An exact current lane, or an independently
+                                # verified dead owner, may repair missing
+                                # checkout sidecars while retaining the exact
+                                # untouched task branch.  No source or ref
+                                # bytes are mutated by this admission.
+                                metadata_cleanup_admitted = True
+                                metadata_branch_disposition = (
+                                    "retained_exact_expected_head"
+                                )
+                    except (OSError, ValueError):
+                        metadata_cleanup_admitted = False
+                if metadata_cleanup_admitted:
+                    yield {
+                        "allowed": True,
+                        "pooled": True,
+                        "metadata_only": True,
+                        "reason": "absent_worktree_metadata_cleanup_admitted",
+                        "operation": operation,
+                        "binding": binding,
+                        "quarantine": quarantine,
+                        "git_registration_reason": registration_reason,
+                        "expected_dead_owner_pid": expected_dead_owner_pid,
+                        "expected_current_owner_pid": (
+                            expected_current_owner_pid
+                        ),
+                        "branch_disposition": metadata_branch_disposition,
+                        "branch_head": metadata_branch_head,
+                        "reentrant": reentrant,
+                    }
+                    return
+                yield {
+                    "allowed": False,
+                    "pooled": True,
+                    "reason": "git_worktree_registration_unavailable",
+                    "operation": operation,
+                    "binding": binding,
+                    "quarantine": quarantine,
+                    "git_registration_reason": registration_reason,
+                    "reentrant": reentrant,
+                }
+                return
+            git_lock_reason = str(
+                locked_registration.get("locked") or ""
+            )
+            registration_locked = "locked" in locked_registration
+            exact_pending_lock = bool(
+                re.fullmatch(
+                    r"agent-supervisor-quarantine-v1:sha256:[0-9a-f]{64}",
+                    git_lock_reason,
+                )
+            )
+            if registration_locked and not (
+                allow_quarantine_publication and exact_pending_lock
+            ):
+                yield {
+                    "allowed": False,
+                    "pooled": True,
+                    "reason": (
+                        "pending_worktree_pool_quarantine"
+                        if exact_pending_lock
+                        else "foreign_git_worktree_lock"
+                    ),
+                    "operation": operation,
+                    "binding": binding,
+                    "quarantine": quarantine,
+                    "git_registration": locked_registration,
+                    "git_registration_reason": registration_reason,
+                    "reentrant": reentrant,
+                }
+                return
+            yield {
+                "allowed": True,
+                "pooled": True,
+                "reason": "worktree_pool_mutation_guard_acquired",
+                "operation": operation,
+                "binding": binding,
+                "quarantine": quarantine,
+                "reentrant": reentrant,
+            }
+    finally:
+        remaining = int(held.get(guard_key, 1)) - 1
+        if remaining > 0:
+            held[guard_key] = remaining
+        else:
+            held.pop(guard_key, None)
+        if manager is not None:
+            manager.__exit__(None, None, None)
 
 
 def python_identifier_worktree_basename(*segments: object) -> str:
@@ -480,12 +1790,21 @@ class WorktreeLease:
             "entry_id": self.entry_id,
         }
 
-    def release(self, *, reusable: bool = True) -> dict[str, Any]:
+    def release(
+        self,
+        *,
+        reusable: bool = True,
+        missing_release_context: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Return this checkout to the pool, or discard it when unsafe."""
 
         if self._released:
             return {"released": False, "reason": "already_released", **self.metadata}
-        result = self.pool.release(self, reusable=reusable)
+        result = self.pool.release(
+            self,
+            reusable=reusable,
+            missing_release_context=missing_release_context,
+        )
         if result.get("released") is True:
             self._released = True
         return result
@@ -574,6 +1893,403 @@ class WorktreePool:
             if state.get("state") == "idle" and not self._lock_path(state).exists()
         )
         return result
+
+    def publish_exact_quarantine(
+        self,
+        *,
+        workspace_path: Path | str,
+        expected_pool_state_cid: str,
+        expected_pool_lock_cid: str,
+        expected_git_preimage_cid: str,
+        board_namespace: str,
+        task_id: str,
+        canonical_task_cid: str,
+        attempt: int,
+        expected_branch: str,
+        merge_target: str,
+        lifecycle_record_id: str,
+        lifecycle_fence: int,
+        lifecycle_lease_id: str,
+        owner_process_birth: Mapping[str, Any],
+        predecessor_state_dir: Path | str,
+        current_state_dir: Path | str,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Durably reserve one exact dead lease outside the reusable pool.
+
+        The pool state and ownership lock deliberately remain unchanged and
+        non-idle.  The immutable marker is published with a no-replace link,
+        so a crash after publication but before lifecycle finalization is
+        safely retried by comparing the complete content-addressed payload.
+        """
+
+        base: dict[str, Any] = {
+            "published": False,
+            "valid": False,
+            "cleanup_fenced": False,
+        }
+        try:
+            worktree_root = self.worktree_root.resolve(strict=True)
+            workspace_raw = Path(workspace_path)
+            workspace = workspace_raw.resolve(strict=True)
+            workspace.relative_to(worktree_root)
+            entry_id = _worktree_pool_entry_id_for_workspace(workspace)
+            canonical_pool_root = worktree_root / ".pool-state"
+            predecessor_raw = Path(predecessor_state_dir)
+            current_raw = Path(current_state_dir)
+            predecessor_state = predecessor_raw.resolve(strict=True)
+            current_state = current_raw.resolve(strict=True)
+        except (OSError, RuntimeError, ValueError):
+            return {**base, "reason": "quarantine_identity_unresolvable"}
+        if (
+            not entry_id
+            or workspace.parent != worktree_root
+            or workspace_raw.is_symlink()
+            or not workspace_raw.is_dir()
+            or self.state_root != canonical_pool_root
+            or canonical_pool_root.is_symlink()
+            or not canonical_pool_root.is_dir()
+            or predecessor_raw.is_symlink()
+            or current_raw.is_symlink()
+            or not predecessor_raw.is_dir()
+            or not current_raw.is_dir()
+            or type(attempt) is not int
+            or attempt < 1
+            or type(lifecycle_fence) is not int
+            or lifecycle_fence < 1
+            or set(owner_process_birth)
+            != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+            or type(owner_process_birth.get("pid")) is not int
+            or int(owner_process_birth.get("pid") or 0) <= 1
+            or type(owner_process_birth.get("start_time_ticks")) is not int
+            or int(owner_process_birth.get("start_time_ticks") or 0) <= 0
+            or type(owner_process_birth.get("parent_pid")) is not int
+            or type(owner_process_birth.get("boot_id")) is not str
+            or any(
+                type(value) is not str or not value
+                for value in (
+                    expected_pool_state_cid,
+                    expected_pool_lock_cid,
+                    expected_git_preimage_cid,
+                    board_namespace,
+                    task_id,
+                    canonical_task_cid,
+                    expected_branch,
+                    merge_target,
+                    lifecycle_record_id,
+                    lifecycle_lease_id,
+                    reason,
+                )
+            )
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", expected_pool_state_cid
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", expected_pool_lock_cid
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", expected_git_preimage_cid
+            )
+            is None
+        ):
+            return {**base, "reason": "quarantine_identity_invalid"}
+
+        state_path = canonical_pool_root / f"{entry_id}.json"
+        lock_path = canonical_pool_root / f"{entry_id}.lock"
+        quarantine_root = canonical_pool_root / "quarantine"
+        marker_path = quarantine_root / f"{entry_id}.json"
+
+        try:
+            with guarded_worktree_pool_mutation(
+                repo_root=self.repo_root,
+                worktree_root=worktree_root,
+                workspace_path=workspace_raw,
+                expected_branch=expected_branch,
+                operation="publish_exact_worktree_pool_quarantine",
+                allow_quarantine_publication=True,
+            ) as publication_admission:
+                if publication_admission.get("allowed") is not True:
+                    return {
+                        **base,
+                        "cleanup_fenced": bool(
+                            publication_admission.get("pooled") is True
+                        ),
+                        "reason": str(
+                            publication_admission.get("reason")
+                            or "quarantine_publication_guard_unavailable"
+                        ),
+                        "publication_admission": publication_admission,
+                    }
+                pool_state = _strict_worktree_pool_json_object(state_path)
+                pool_lock = _strict_worktree_pool_json_object(lock_path)
+                if pool_state is None or pool_lock is None:
+                    return {
+                        **base,
+                        "reason": "quarantine_pool_evidence_unavailable",
+                    }
+                try:
+                    state_cid = _worktree_pool_payload_cid(pool_state)
+                    lock_cid = _worktree_pool_payload_cid(pool_lock)
+                except (TypeError, ValueError):
+                    return {
+                        **base,
+                        "reason": "quarantine_pool_evidence_invalid",
+                    }
+                owner_pid = int(owner_process_birth["pid"])
+                if (
+                    state_cid != expected_pool_state_cid
+                    or lock_cid != expected_pool_lock_cid
+                    or pool_state.get("schema") != WORKTREE_POOL_SCHEMA
+                    or pool_state.get("lease_token") != entry_id
+                    or pool_state.get("state") != "leased"
+                    or pool_state.get("lease_pid") != owner_pid
+                    or str(pool_state.get("path") or "") != str(workspace)
+                    or str(pool_state.get("repo_root") or "")
+                    != str(self.repo_root)
+                    or str(pool_state.get("repo_common_dir") or "")
+                    != str(self.repo_common_dir)
+                    or str(pool_state.get("branch") or "").removeprefix(
+                        "refs/heads/"
+                    )
+                    != str(expected_branch).removeprefix("refs/heads/")
+                    or set(pool_lock) != {"pid", "created_at_epoch"}
+                    or pool_lock.get("pid") != owner_pid
+                ):
+                    return {
+                        **base,
+                        "reason": "quarantine_pool_evidence_changed",
+                    }
+
+                # The branch is an implementation binding, independent of the
+                # merge target.  Validate it separately after extracting it
+                # from the exact leased state.
+                branch = str(pool_state.get("branch") or "").removeprefix(
+                    "refs/heads/"
+                )
+                if not branch:
+                    return {
+                        **base,
+                        "reason": "quarantine_pool_evidence_changed",
+                    }
+                registration, registration_reason = _git_worktree_registration(
+                    self.repo_root,
+                    workspace_raw,
+                )
+                registered_head = str(
+                    (registration or {}).get("HEAD") or ""
+                )
+                if (
+                    registration is None
+                    or registration_reason != "git_worktree_registration_exact"
+                    or str(registration.get("branch") or "").removeprefix(
+                        "refs/heads/"
+                    )
+                    != branch
+                    or re.fullmatch(
+                        r"[0-9a-f]{40}|[0-9a-f]{64}",
+                        registered_head,
+                    )
+                    is None
+                ):
+                    return {
+                        **base,
+                        "reason": "quarantine_git_registration_unavailable",
+                    }
+                unsigned: dict[str, Any] = {
+                    "schema": WORKTREE_POOL_QUARANTINE_SCHEMA,
+                    "entry_id": entry_id,
+                    "workspace_path": str(workspace),
+                    "branch": branch,
+                    "repo_root": str(self.repo_root),
+                    "repo_common_dir": str(self.repo_common_dir),
+                    "pool_state_cid": state_cid,
+                    "pool_lock_cid": lock_cid,
+                    "pool_lease_pid": owner_pid,
+                    "board_namespace": board_namespace,
+                    "task_id": task_id,
+                    "canonical_task_cid": canonical_task_cid,
+                    "attempt": attempt,
+                    "merge_target": str(merge_target).removeprefix(
+                        "refs/heads/"
+                    ),
+                    "lifecycle_record_id": lifecycle_record_id,
+                    "lifecycle_fence": lifecycle_fence,
+                    "lifecycle_lease_id": lifecycle_lease_id,
+                    "owner_process_birth": dict(owner_process_birth),
+                    "predecessor_state_dir": str(predecessor_state),
+                    "current_state_dir": str(current_state),
+                    "git_preimage_cid": expected_git_preimage_cid,
+                    "git_registered_head": registered_head,
+                    "reason": reason,
+                }
+                quarantine_id = _worktree_pool_payload_cid(unsigned)
+                lock_reason = (
+                    "agent-supervisor-quarantine-v1:" + quarantine_id
+                )
+                existing_lock_reason = str(registration.get("locked") or "")
+                if (
+                    "locked" in registration
+                    and existing_lock_reason != lock_reason
+                ):
+                    return {
+                        **base,
+                        "cleanup_fenced": True,
+                        "reason": "quarantine_git_worktree_foreign_lock",
+                    }
+                if "locked" not in registration:
+                    lock_result = self._run(
+                        (
+                            "git",
+                            "worktree",
+                            "lock",
+                            "--reason",
+                            lock_reason,
+                            str(workspace_raw),
+                        ),
+                        cwd=self.repo_root,
+                    )
+                    if not lock_result.ok:
+                        return {
+                            **base,
+                            "reason": "quarantine_git_worktree_lock_failed",
+                            "git_lock": lock_result.compact(limit=2000),
+                        }
+                locked_registration, locked_reason = (
+                    _git_worktree_registration(self.repo_root, workspace_raw)
+                )
+                if (
+                    locked_registration is None
+                    or locked_reason != "git_worktree_registration_exact"
+                    or str(locked_registration.get("locked") or "")
+                    != lock_reason
+                    or str(locked_registration.get("HEAD") or "")
+                    != registered_head
+                    or str(
+                        locked_registration.get("branch") or ""
+                    ).removeprefix("refs/heads/")
+                    != branch
+                ):
+                    return {
+                        **base,
+                        "cleanup_fenced": True,
+                        "reason": "quarantine_git_worktree_lock_unproven",
+                    }
+                marker = {
+                    **unsigned,
+                    "git_worktree_lock_reason": lock_reason,
+                    "quarantine_id": quarantine_id,
+                }
+
+                if quarantine_root.exists() or quarantine_root.is_symlink():
+                    if quarantine_root.is_symlink() or not quarantine_root.is_dir():
+                        return {
+                            **base,
+                            "cleanup_fenced": True,
+                            "reason": "quarantine_directory_unsafe",
+                        }
+                else:
+                    quarantine_root.mkdir(mode=0o700)
+                    # The marker directory itself is part of the durable
+                    # authority. Seal its new parent-directory entry before a
+                    # marker can be accepted; fsyncing only the child directory
+                    # would not survive every crash/power-loss ordering.
+                    parent_directory = os.open(
+                        canonical_pool_root,
+                        os.O_RDONLY
+                        | getattr(os, "O_DIRECTORY", 0)
+                        | getattr(os, "O_CLOEXEC", 0)
+                        | getattr(os, "O_NOFOLLOW", 0),
+                    )
+                    try:
+                        os.fsync(parent_directory)
+                    finally:
+                        os.close(parent_directory)
+
+                existing = inspect_worktree_pool_quarantine(
+                    worktree_root=worktree_root,
+                    workspace_path=workspace,
+                    expected_branch=branch,
+                )
+                if existing.get("status") != "absent":
+                    if (
+                        existing.get("valid") is True
+                        and existing.get("marker") == marker
+                    ):
+                        return {
+                            **existing,
+                            "published": True,
+                            "idempotent": True,
+                        }
+                    return {
+                        **base,
+                        "cleanup_fenced": True,
+                        "reason": "quarantine_marker_conflict",
+                        "existing": existing,
+                    }
+
+                encoded = _canonical_worktree_pool_json_bytes(marker) + b"\n"
+                temporary = quarantine_root / (
+                    f".{entry_id}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+                )
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                flags |= getattr(os, "O_CLOEXEC", 0)
+                flags |= getattr(os, "O_NOFOLLOW", 0)
+                descriptor = os.open(temporary, flags, 0o600)
+                try:
+                    view = memoryview(encoded)
+                    while view:
+                        written = os.write(descriptor, view)
+                        if written <= 0:
+                            raise OSError(
+                                "quarantine marker write made no progress"
+                            )
+                        view = view[written:]
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+                try:
+                    os.link(
+                        temporary,
+                        marker_path,
+                        follow_symlinks=False,
+                    )
+                    directory = os.open(
+                        quarantine_root,
+                        os.O_RDONLY
+                        | getattr(os, "O_DIRECTORY", 0)
+                        | getattr(os, "O_CLOEXEC", 0)
+                        | getattr(os, "O_NOFOLLOW", 0),
+                    )
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
+                except FileExistsError:
+                    pass
+                finally:
+                    temporary.unlink(missing_ok=True)
+
+                final = inspect_worktree_pool_quarantine(
+                    worktree_root=worktree_root,
+                    workspace_path=workspace,
+                    expected_branch=branch,
+                )
+                if final.get("valid") is not True or final.get("marker") != marker:
+                    return {
+                        **base,
+                        "cleanup_fenced": bool(final.get("cleanup_fenced")),
+                        "reason": "quarantine_marker_publication_unproven",
+                        "observed": final,
+                    }
+                return {**final, "published": True, "idempotent": False}
+        except (OSError, RuntimeError, ValueError) as exc:
+            return {
+                **base,
+                "reason": "quarantine_publication_failed",
+                "error_type": type(exc).__name__,
+            }
 
     def acquire(
         self,
@@ -821,7 +2537,13 @@ class WorktreePool:
         else:
             borrowed.release(reusable=True)
 
-    def release(self, lease: WorktreeLease, *, reusable: bool = True) -> dict[str, Any]:
+    def release(
+        self,
+        lease: WorktreeLease,
+        *,
+        reusable: bool = True,
+        missing_release_context: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Release an exclusive lease, retaining it only after safe scrubbing."""
 
         state = self._read_state(lease.entry_id)
@@ -846,6 +2568,26 @@ class WorktreePool:
                     **lease.metadata,
                 }
         if not reusable:
+            try:
+                lease.path.lstat()
+            except FileNotFoundError:
+                return self._discard_missing_current_lease_metadata(
+                    lease,
+                    observed_state=state,
+                    lock_path=lock_path,
+                    missing_release_context=missing_release_context,
+                )
+            except (OSError, ValueError):
+                # An uninspectable path is not evidence of absence.  Preserve
+                # its custody instead of falling through to destructive Git
+                # or filesystem cleanup.
+                return {
+                    "released": False,
+                    "deferred": True,
+                    "retryable": True,
+                    "reason": "missing_workspace_identity_unverifiable",
+                    **lease.metadata,
+                }
             discard = self._discard_state(state)
             self._remove_lock(lock_path)
             self._metrics["discarded_entries"] += 1
@@ -907,6 +2649,767 @@ class WorktreePool:
             "reason": "clean_prepared_workspace",
             **lease.metadata,
         }
+
+    def _discard_missing_current_lease_metadata(
+        self,
+        lease: WorktreeLease,
+        *,
+        observed_state: Mapping[str, Any],
+        lock_path: Path,
+        missing_release_context: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Release only exact current custody for an already-gone checkout.
+
+        This is deliberately narrower than normal worktree disposal.  It is
+        used when setup loses its checkout after acquisition but before a
+        provider can run.  The checkout must be absent both lexically and from
+        Git's administrative registry, the in-memory lease must still match
+        the exact pool state and lock owned by this PID, and the task branch
+        must either be absent or remain at the untouched acquisition commit.
+        The exact branch is retained; this path mutates pool metadata only.
+        """
+
+        context = (
+            dict(missing_release_context)
+            if isinstance(missing_release_context, Mapping)
+            else {}
+        )
+        observed_lock = _strict_worktree_pool_json_object(lock_path)
+        if (
+            observed_state.get("lease_pid") != os.getpid()
+            or not isinstance(observed_lock, Mapping)
+            or observed_lock.get("pid") != os.getpid()
+        ):
+            return {
+                "released": False,
+                "deferred": True,
+                "retryable": True,
+                "reason": "missing_workspace_pool_custody_changed",
+                **lease.metadata,
+            }
+        lifecycle = context.get("lifecycle")
+        lifecycle_fields = {
+            "schema",
+            "record_id",
+            "task_id",
+            "canonical_task_cid",
+            "attempt",
+            "lane_id",
+            "state",
+            "owner",
+            "lease_id",
+            "fence",
+            "workspace_path",
+            "branch",
+            "merge_target",
+            "created_at",
+            "updated_at",
+            "expires_at",
+            "repo_root",
+            "state_dir",
+            "terminal_reason",
+        }
+        owner = lifecycle.get("owner") if isinstance(lifecycle, Mapping) else None
+        context_valid = bool(
+            set(context) == {
+                "release_phase",
+                "implementation_started",
+                "provider_dispatched",
+                "lifecycle",
+            }
+            and context.get("release_phase")
+            == "failed_setup_before_provider"
+            and context.get("implementation_started") is False
+            and context.get("provider_dispatched") is False
+            and isinstance(lifecycle, Mapping)
+            and set(lifecycle) == lifecycle_fields
+            and lifecycle.get("state") in {"preparing", "active"}
+            and isinstance(owner, Mapping)
+            and set(owner)
+            == {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+            and owner.get("pid") == os.getpid()
+            and type(owner.get("start_time_ticks")) is int
+            and int(owner.get("start_time_ticks") or 0) > 0
+            and lifecycle.get("workspace_path") == str(lease.path)
+            and str(lifecycle.get("branch") or "").removeprefix(
+                "refs/heads/"
+            )
+            == str(lease.branch_name or "").removeprefix("refs/heads/")
+            and lifecycle.get("repo_root") == str(self.repo_root)
+            and type(lifecycle.get("attempt")) is int
+            and int(lifecycle.get("attempt") or 0) >= 1
+            and type(lifecycle.get("fence")) is int
+            and int(lifecycle.get("fence") or 0) >= 1
+            and all(
+                isinstance(lifecycle.get(field), str)
+                and bool(lifecycle.get(field))
+                for field in (
+                    "record_id",
+                    "task_id",
+                    "canonical_task_cid",
+                    "lease_id",
+                    "merge_target",
+                    "state_dir",
+                )
+            )
+        )
+        if not context_valid:
+            return {
+                "released": False,
+                "deferred": True,
+                "retryable": True,
+                "reason": "missing_workspace_lifecycle_context_unavailable",
+                **lease.metadata,
+            }
+
+        with guarded_worktree_pool_mutation(
+            repo_root=self.repo_root,
+            worktree_root=self.worktree_root,
+            workspace_path=lease.path,
+            expected_branch=lease.branch_name,
+            operation="worktree_pool_discard_missing_current_lease_metadata",
+            allow_absent_registration_metadata_cleanup=True,
+            expected_current_owner_pid=os.getpid(),
+            expected_branch_head=lease.base_commit,
+        ) as mutation_admission:
+            if (
+                mutation_admission.get("allowed") is not True
+                or mutation_admission.get("metadata_only") is not True
+            ):
+                return {
+                    "released": False,
+                    "deferred": True,
+                    "retryable": True,
+                    "reason": str(
+                        mutation_admission.get("reason")
+                        or "missing_workspace_metadata_cleanup_denied"
+                    ),
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+            if mutation_admission.get("branch_disposition") != (
+                "retained_exact_expected_head"
+            ):
+                return {
+                    "released": False,
+                    "deferred": True,
+                    "retryable": True,
+                    "reason": "missing_workspace_retained_branch_unproven",
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+
+            state_path = self._state_path(lease.entry_id)
+            current_state = self._read_state(lease.entry_id)
+            current_lock = _strict_worktree_pool_json_object(lock_path)
+            expected_branch = str(lease.branch_name or "").removeprefix(
+                "refs/heads/"
+            )
+            state_matches = bool(
+                current_state == dict(observed_state)
+                and current_state.get("schema") == WORKTREE_POOL_SCHEMA
+                and current_state.get("lease_token") == lease.entry_id
+                and current_state.get("state") == "leased"
+                and current_state.get("lease_pid") == os.getpid()
+                and str(current_state.get("path") or "") == str(lease.path)
+                and str(current_state.get("repo_root") or "")
+                == str(self.repo_root)
+                and str(current_state.get("repo_common_dir") or "")
+                == str(self.repo_common_dir)
+                and str(current_state.get("cache_key") or "")
+                == lease.cache_key
+                and str(current_state.get("base_commit") or "")
+                == lease.base_commit
+                and str(current_state.get("branch") or "").removeprefix(
+                    "refs/heads/"
+                )
+                == expected_branch
+                and tuple(
+                    str(item)
+                    for item in current_state.get("dependency_paths") or ()
+                )
+                == lease.dependency_paths
+            )
+            lock_matches = bool(
+                isinstance(current_lock, dict)
+                and set(current_lock) == {"pid", "created_at_epoch"}
+                and current_lock.get("pid") == os.getpid()
+            )
+            if not state_matches or not lock_matches:
+                return {
+                    "released": False,
+                    "deferred": True,
+                    "retryable": True,
+                    "reason": "missing_workspace_pool_custody_changed",
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+            try:
+                active_state_bytes = state_path.read_bytes()
+                active_lock_bytes = lock_path.read_bytes()
+            except OSError as exc:
+                return {
+                    "released": False,
+                    "deferred": True,
+                    "retryable": True,
+                    "reason": "missing_workspace_pool_custody_unreadable",
+                    "error_type": type(exc).__name__,
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+
+            try:
+                lease.path.lstat()
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError):
+                return {
+                    "released": False,
+                    "deferred": True,
+                    "retryable": True,
+                    "reason": "missing_workspace_identity_unverifiable",
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+            else:
+                return {
+                    "released": False,
+                    "deferred": True,
+                    "retryable": True,
+                    "reason": "missing_workspace_reappeared",
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+            registration, registration_reason = _git_worktree_registration(
+                self.repo_root,
+                lease.path,
+            )
+            if (
+                registration is not None
+                or registration_reason != "git_worktree_registration_absent"
+            ):
+                return {
+                    "released": False,
+                    "deferred": True,
+                    "retryable": True,
+                    "reason": "missing_workspace_registration_changed",
+                    "git_registration_reason": registration_reason,
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+
+            terminal_state_path = (
+                self.state_root / f".{lease.entry_id}.released-state"
+            )
+            receipt_path = (
+                self.state_root / f".{lease.entry_id}.released-receipt"
+            )
+
+            def fsync_state_root() -> None:
+                directory = os.open(
+                    self.state_root,
+                    os.O_RDONLY
+                    | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                )
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+
+            receipt_unsigned: dict[str, Any] = {
+                "schema": WORKTREE_POOL_MISSING_RELEASE_SCHEMA,
+                "entry_id": lease.entry_id,
+                "workspace_path": str(lease.path),
+                "branch": lease.branch_name,
+                "base_commit": lease.base_commit,
+                "repo_root": str(self.repo_root),
+                "repo_common_dir": str(self.repo_common_dir),
+                "pool_state_cid": _worktree_pool_payload_cid(current_state),
+                "pool_state_sha256": "sha256:"
+                + hashlib.sha256(active_state_bytes).hexdigest(),
+                "pool_lock_cid": _worktree_pool_payload_cid(current_lock),
+                "pool_lock_sha256": "sha256:"
+                + hashlib.sha256(active_lock_bytes).hexdigest(),
+                "pool_lease_pid": os.getpid(),
+                "retained_branch_head": lease.base_commit,
+                "branch_disposition": str(
+                    mutation_admission.get("branch_disposition") or ""
+                ),
+                "release_phase": "failed_setup_before_provider",
+                "implementation_started": False,
+                "provider_dispatched": False,
+                "lifecycle": dict(lifecycle),
+            }
+            receipt = {
+                **receipt_unsigned,
+                "evidence_id": _worktree_pool_payload_cid(
+                    receipt_unsigned
+                ),
+            }
+            existing_receipt = _strict_worktree_pool_json_object(receipt_path)
+            if receipt_path.exists() and existing_receipt != receipt:
+                return {
+                    "released": False,
+                    "deferred": False,
+                    "retryable": False,
+                    "cleanup_fenced": True,
+                    "reason": "missing_workspace_terminal_receipt_conflict",
+                    "receipt_path": str(receipt_path),
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+            if existing_receipt is None:
+                encoded_receipt = (
+                    _canonical_worktree_pool_json_bytes(receipt) + b"\n"
+                )
+                temporary_receipt = self.state_root / (
+                    f".{lease.entry_id}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+                )
+                descriptor: int | None = None
+                try:
+                    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                    flags |= getattr(os, "O_CLOEXEC", 0)
+                    flags |= getattr(os, "O_NOFOLLOW", 0)
+                    descriptor = os.open(temporary_receipt, flags, 0o600)
+                    view = memoryview(encoded_receipt)
+                    while view:
+                        written = os.write(descriptor, view)
+                        if written <= 0:
+                            raise OSError(
+                                "missing release receipt write made no progress"
+                            )
+                        view = view[written:]
+                    os.fsync(descriptor)
+                    os.close(descriptor)
+                    descriptor = None
+                    os.link(
+                        temporary_receipt,
+                        receipt_path,
+                        follow_symlinks=False,
+                    )
+                    fsync_state_root()
+                except FileExistsError:
+                    pass
+                except OSError as exc:
+                    return {
+                        "released": False,
+                        "deferred": True,
+                        "retryable": True,
+                        "reason": (
+                            "missing_workspace_terminal_receipt_publish_failed"
+                        ),
+                        "error_type": type(exc).__name__,
+                        "receipt_path": str(receipt_path),
+                        "mutation_admission": mutation_admission,
+                        **lease.metadata,
+                    }
+                finally:
+                    if descriptor is not None:
+                        os.close(descriptor)
+                    temporary_receipt.unlink(missing_ok=True)
+                if _strict_worktree_pool_json_object(receipt_path) != receipt:
+                    return {
+                        "released": False,
+                        "deferred": False,
+                        "retryable": False,
+                        "cleanup_fenced": True,
+                        "reason": (
+                            "missing_workspace_terminal_receipt_unproven"
+                        ),
+                        "receipt_path": str(receipt_path),
+                        "mutation_admission": mutation_admission,
+                        **lease.metadata,
+                    }
+
+            try:
+                terminal_state_path.lstat()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                return {
+                    "released": False,
+                    "deferred": False,
+                    "retryable": False,
+                    "cleanup_fenced": True,
+                    "reason": "missing_workspace_terminal_state_uninspectable",
+                    "error_type": type(exc).__name__,
+                    "terminal_state_path": str(terminal_state_path),
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+            else:
+                return {
+                    "released": False,
+                    "deferred": False,
+                    "retryable": False,
+                    "cleanup_fenced": True,
+                    "reason": "missing_workspace_terminal_state_conflict",
+                    "terminal_state_path": str(terminal_state_path),
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+
+            try:
+                state_path.rename(terminal_state_path)
+                fsync_state_root()
+            except OSError as exc:
+                rollback_error = ""
+                rollback_durable = False
+                try:
+                    if (
+                        terminal_state_path.is_file()
+                        and not state_path.exists()
+                    ):
+                        terminal_state_path.rename(state_path)
+                    fsync_state_root()
+                    rollback_durable = True
+                except OSError as rollback_exc:
+                    rollback_error = (
+                        f"{type(rollback_exc).__name__}: {rollback_exc}"
+                    )[-500:]
+                restored_state = _strict_worktree_pool_json_object(state_path)
+                restored_lock = _strict_worktree_pool_json_object(lock_path)
+                try:
+                    restored_state_bytes = state_path.read_bytes()
+                    restored_lock_bytes = lock_path.read_bytes()
+                except OSError:
+                    restored_state_bytes = b""
+                    restored_lock_bytes = b""
+                rollback_exact = bool(
+                    rollback_durable
+                    and restored_state == current_state
+                    and restored_lock == current_lock
+                    and restored_state_bytes == active_state_bytes
+                    and restored_lock_bytes == active_lock_bytes
+                    and not terminal_state_path.exists()
+                )
+                return {
+                    "released": False,
+                    "deferred": rollback_exact,
+                    "retryable": rollback_exact,
+                    "cleanup_fenced": not rollback_exact,
+                    "reason": (
+                        "missing_workspace_terminal_publish_rolled_back"
+                        if rollback_exact
+                        else "missing_workspace_terminal_publish_indeterminate"
+                    ),
+                    "error_type": type(exc).__name__,
+                    "rollback_error": rollback_error,
+                    "rollback_exact": rollback_exact,
+                    "terminal_state_path": str(terminal_state_path),
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+            try:
+                terminal_state_bytes = terminal_state_path.read_bytes()
+            except OSError as exc:
+                return {
+                    "released": False,
+                    "deferred": False,
+                    "retryable": False,
+                    "cleanup_fenced": True,
+                    "reason": "missing_workspace_terminal_evidence_unreadable",
+                    "error_type": type(exc).__name__,
+                    "terminal_state_path": str(terminal_state_path),
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+            if terminal_state_bytes != active_state_bytes:
+                return {
+                    "released": False,
+                    "deferred": False,
+                    "retryable": False,
+                    "cleanup_fenced": True,
+                    "reason": "missing_workspace_terminal_evidence_changed",
+                    "terminal_state_path": str(terminal_state_path),
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+            terminal_inspection = (
+                inspect_worktree_pool_missing_release_terminal(
+                    repo_root=self.repo_root,
+                    worktree_root=self.worktree_root,
+                    workspace_path=lease.path,
+                    expected_branch=lease.branch_name,
+                    expected_lifecycle=lifecycle,
+                )
+            )
+            if terminal_inspection.get("valid") is not True:
+                return {
+                    "released": False,
+                    "deferred": False,
+                    "retryable": False,
+                    "cleanup_fenced": True,
+                    "reason": "missing_workspace_terminal_evidence_unverifiable",
+                    "terminal_inspection": terminal_inspection,
+                    "terminal_state_path": str(terminal_state_path),
+                    "mutation_admission": mutation_admission,
+                    **lease.metadata,
+                }
+
+            # The authoritative lease state is now durably terminal.  Lock
+            # unlink and its directory fsync are cleanup only: failures may
+            # retain an orphan lock as evidence, but can never be reported as
+            # retryable active custody or trigger source/ref mutation.
+            lock_cleanup_error = ""
+            lock_cleanup_durable = False
+            try:
+                lock_path.unlink()
+                fsync_state_root()
+                lock_cleanup_durable = True
+            except OSError as exc:
+                lock_cleanup_error = f"{type(exc).__name__}: {exc}"[-500:]
+            try:
+                orphan_lock_retained = lock_path.exists()
+            except OSError:
+                orphan_lock_retained = True
+            self._metrics["discarded_entries"] += 1
+            return {
+                "released": True,
+                "pooled": False,
+                "reason": "reuse_disabled",
+                "metadata_only": True,
+                "branch_disposition": str(
+                    mutation_admission.get("branch_disposition") or ""
+                ),
+                "terminal_state_path": str(terminal_state_path),
+                "terminal_state_cid": _worktree_pool_payload_cid(
+                    current_state
+                ),
+                "terminal_state_sha256": "sha256:"
+                + hashlib.sha256(active_state_bytes).hexdigest(),
+                "terminal_state_durable": True,
+                "lock_cleanup_durable": lock_cleanup_durable,
+                "cleanup_degraded": not lock_cleanup_durable,
+                "lock_cleanup_error": lock_cleanup_error,
+                "orphan_lock_retained": orphan_lock_retained,
+                "discard": {
+                    "path": str(lease.path),
+                    "removed": True,
+                    "reason": "missing_workspace_metadata_discarded",
+                    "metadata_only": True,
+                },
+                **lease.metadata,
+            }
+
+    def finalize_missing_release_proposal(
+        self,
+        *,
+        workspace_path: Path | str,
+        expected_branch: str,
+        expected_lifecycle: Mapping[str, Any],
+        proc_root: Path = Path("/proc"),
+    ) -> dict[str, Any]:
+        """Promote one exact dead-owner proposal to durable terminal evidence.
+
+        This is the restart seam for a crash after receipt publication but
+        before the active pool state was renamed.  It never authorizes source
+        or ref mutation and never treats the proposal itself as terminal.
+        """
+
+        initial = inspect_worktree_pool_missing_release_terminal(
+            repo_root=self.repo_root,
+            worktree_root=self.worktree_root,
+            workspace_path=workspace_path,
+            expected_branch=expected_branch,
+            expected_lifecycle=expected_lifecycle,
+        )
+        if initial.get("proposal_valid") is not True:
+            return {
+                "finalized": False,
+                "cleanup_fenced": initial.get("cleanup_fenced") is True,
+                "reason": str(
+                    initial.get("reason")
+                    or "missing_release_proposal_unavailable"
+                ),
+                "inspection": initial,
+            }
+        evidence = initial.get("evidence")
+        lifecycle = (
+            evidence.get("lifecycle")
+            if isinstance(evidence, Mapping)
+            else None
+        )
+        owner_payload = (
+            lifecycle.get("owner")
+            if isinstance(lifecycle, Mapping)
+            else None
+        )
+        try:
+            owner = ProcessBirthIdentity.from_dict(
+                owner_payload if isinstance(owner_payload, Mapping) else None
+            )
+            liveness = owner_liveness(owner, proc_root=proc_root)
+        except (TypeError, ValueError):
+            liveness = OwnerLiveness.UNKNOWN
+            owner = ProcessBirthIdentity(pid=0, start_time_ticks=0)
+        if liveness is not OwnerLiveness.DEAD:
+            return {
+                "finalized": False,
+                "cleanup_fenced": True,
+                "reason": "missing_release_proposal_owner_not_dead",
+                "owner_liveness": liveness.value,
+                "inspection": initial,
+            }
+
+        base_commit = str(evidence.get("base_commit") or "")
+        with guarded_worktree_pool_mutation(
+            repo_root=self.repo_root,
+            worktree_root=self.worktree_root,
+            workspace_path=workspace_path,
+            expected_branch=expected_branch,
+            operation="worktree_pool_finalize_missing_release_proposal",
+            allow_absent_registration_metadata_cleanup=True,
+            expected_dead_owner_pid=owner.pid,
+            expected_branch_head=base_commit,
+        ) as admission:
+            if (
+                admission.get("allowed") is not True
+                or admission.get("metadata_only") is not True
+                or admission.get("branch_disposition")
+                != "retained_exact_expected_head"
+            ):
+                return {
+                    "finalized": False,
+                    "cleanup_fenced": True,
+                    "reason": str(
+                        admission.get("reason")
+                        or "missing_release_proposal_guard_denied"
+                    ),
+                    "mutation_admission": admission,
+                    "inspection": initial,
+                }
+            current = inspect_worktree_pool_missing_release_terminal(
+                repo_root=self.repo_root,
+                worktree_root=self.worktree_root,
+                workspace_path=workspace_path,
+                expected_branch=expected_branch,
+                expected_lifecycle=expected_lifecycle,
+            )
+            if (
+                current.get("proposal_valid") is not True
+                or current.get("evidence") != evidence
+            ):
+                return {
+                    "finalized": False,
+                    "cleanup_fenced": True,
+                    "reason": "missing_release_proposal_changed",
+                    "inspection": current,
+                    "mutation_admission": admission,
+                }
+            active_path = Path(str(current["active_state_path"]))
+            terminal_path = Path(str(current["terminal_state_path"]))
+            lock_path = Path(str(current["lock_path"]))
+            try:
+                active_bytes = active_path.read_bytes()
+            except OSError as exc:
+                return {
+                    "finalized": False,
+                    "cleanup_fenced": True,
+                    "reason": "missing_release_proposal_state_unreadable",
+                    "error_type": type(exc).__name__,
+                    "inspection": current,
+                }
+
+            def fsync_state_root() -> None:
+                descriptor = os.open(
+                    self.state_root,
+                    os.O_RDONLY
+                    | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                )
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+
+            try:
+                terminal_path.lstat()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                return {
+                    "finalized": False,
+                    "cleanup_fenced": True,
+                    "reason": "missing_release_proposal_terminal_uninspectable",
+                    "error_type": type(exc).__name__,
+                }
+            else:
+                return {
+                    "finalized": False,
+                    "cleanup_fenced": True,
+                    "reason": "missing_release_proposal_terminal_conflict",
+                }
+            try:
+                active_path.rename(terminal_path)
+                fsync_state_root()
+            except OSError as exc:
+                rollback_exact = False
+                try:
+                    if terminal_path.is_file() and not active_path.exists():
+                        terminal_path.rename(active_path)
+                    fsync_state_root()
+                    rollback_exact = bool(
+                        active_path.read_bytes() == active_bytes
+                        and not terminal_path.exists()
+                    )
+                except OSError:
+                    rollback_exact = False
+                return {
+                    "finalized": False,
+                    "deferred": rollback_exact,
+                    "retryable": rollback_exact,
+                    "cleanup_fenced": not rollback_exact,
+                    "reason": (
+                        "missing_release_proposal_promotion_rolled_back"
+                        if rollback_exact
+                        else "missing_release_proposal_promotion_indeterminate"
+                    ),
+                    "error_type": type(exc).__name__,
+                }
+            terminal = inspect_worktree_pool_missing_release_terminal(
+                repo_root=self.repo_root,
+                worktree_root=self.worktree_root,
+                workspace_path=workspace_path,
+                expected_branch=expected_branch,
+                expected_lifecycle=expected_lifecycle,
+            )
+            if terminal.get("valid") is not True:
+                return {
+                    "finalized": False,
+                    "cleanup_fenced": True,
+                    "reason": "missing_release_promoted_terminal_unverifiable",
+                    "inspection": terminal,
+                }
+            lock_cleanup_error = ""
+            try:
+                lock_path.unlink()
+                fsync_state_root()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                lock_cleanup_error = f"{type(exc).__name__}: {exc}"[-500:]
+            final = inspect_worktree_pool_missing_release_terminal(
+                repo_root=self.repo_root,
+                worktree_root=self.worktree_root,
+                workspace_path=workspace_path,
+                expected_branch=expected_branch,
+                expected_lifecycle=expected_lifecycle,
+            )
+            return {
+                "finalized": final.get("valid") is True,
+                "cleanup_fenced": True,
+                "reason": (
+                    "missing_release_proposal_promoted"
+                    if final.get("valid") is True
+                    else "missing_release_promoted_terminal_unverifiable"
+                ),
+                "lock_cleanup_error": lock_cleanup_error,
+                "inspection": final,
+            }
 
     def invalidate(self, *, cache_key: Optional[str] = None) -> dict[str, Any]:
         """Discard idle entries, optionally limited to one setup cache key."""
@@ -1075,7 +3578,10 @@ class WorktreePool:
                 skip(state, "branch_present")
                 continue
 
-            claimed_lock = self._try_claim(state)
+            claimed_lock = self._try_claim(
+                state,
+                allow_absent_registration_metadata_cleanup=True,
+            )
             if claimed_lock is None:
                 skip(state, "lease_or_claim_owner_active")
                 continue
@@ -1464,17 +3970,40 @@ class WorktreePool:
         state: Mapping[str, Any],
         *,
         require_idle: bool = False,
+        allow_absent_registration_metadata_cleanup: bool = False,
     ) -> Optional[Path]:
-        # Import locally so the lower-level worktree module does not eagerly
-        # load the merge/proof stack merely to construct a pool.
-        from ..merge.checkout_lock import serialized_lock_update
-
         lock_path = self._lock_path(state)
+        expected_dead_owner_pid = 0
+        if allow_absent_registration_metadata_cleanup:
+            try:
+                expected_dead_owner_pid = int(state.get("lease_pid") or 0)
+            except (TypeError, ValueError):
+                expected_dead_owner_pid = 0
         # The advisory guard covers the complete inspect/remove/recreate
         # transaction.  Without it, two dead-owner reclaimers can both inspect
         # the stale record before either removes it; the loser can then unlink
-        # the winner's newly-created live ownership record.
-        with serialized_lock_update(lock_path):
+        # the winner's newly-created live ownership record.  The same guard is
+        # also the durable-quarantine publication guard, so a stale claimant
+        # cannot replace exact custody after quarantine has been accepted.
+        with guarded_worktree_pool_mutation(
+            repo_root=self.repo_root,
+            worktree_root=self.worktree_root,
+            workspace_path=Path(str(state.get("path") or "")),
+            expected_branch=str(state.get("branch") or ""),
+            operation="worktree_pool_try_claim",
+            allow_absent_registration_metadata_cleanup=(
+                allow_absent_registration_metadata_cleanup
+            ),
+            expected_dead_owner_pid=expected_dead_owner_pid,
+        ) as mutation_admission:
+            if mutation_admission.get("allowed") is not True:
+                self._record_rejection(
+                    str(
+                        mutation_admission.get("reason")
+                        or "worktree_pool_mutation_denied"
+                    )
+                )
+                return None
             if require_idle:
                 current = self._read_state(
                     str(state.get("lease_token") or "")
@@ -1554,7 +4083,10 @@ class WorktreePool:
             ):
                 continue
 
-            lock_path = self._try_claim(observed)
+            lock_path = self._try_claim(
+                observed,
+                allow_absent_registration_metadata_cleanup=True,
+            )
             if lock_path is None:
                 continue
             try:

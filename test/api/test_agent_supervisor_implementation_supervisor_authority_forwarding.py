@@ -456,6 +456,131 @@ def test_direct_start_preserves_plan_bound_and_bootstrap_descriptors(
     assert captured["start_new_session"] is True
 
 
+def test_daemon_hardens_before_receiving_bootstrap_credential(
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """The first socket-delivered credential enters a non-dumpable process."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime import process_security
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        state_owner_bootstrap,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        TYPED_STATE_OWNER_TOKEN_ENV,
+    )
+
+    sentinel = "bootstrap-token-must-not-leak"
+    calls: list[str] = []
+    credentials = SimpleNamespace(token=sentinel)
+    monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
+    monkeypatch.delenv(TYPED_STATE_OWNER_SOCKET_ENV, raising=False)
+
+    def establish_boundary() -> bool:
+        assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
+        assert TYPED_STATE_OWNER_SOCKET_ENV not in os.environ
+        calls.append("process_boundary")
+        return True
+
+    def request_credential(
+        descriptor: int,
+        *,
+        client_id: str,
+        store_id: str,
+    ) -> object:
+        assert calls == ["process_boundary"]
+        assert descriptor == 17
+        assert client_id == "database-implementation-daemon:lane-1"
+        assert store_id == "state/control.duckdb"
+        assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
+        assert TYPED_STATE_OWNER_SOCKET_ENV not in os.environ
+        calls.append("credential_received")
+        return credentials
+
+    monkeypatch.setattr(
+        process_security,
+        "establish_state_authority_process_boundary",
+        establish_boundary,
+    )
+    monkeypatch.setattr(
+        state_owner_bootstrap,
+        "request_state_owner_bootstrap",
+        request_credential,
+    )
+
+    result = daemon_module._request_process_bound_state_owner_bootstrap(
+        17,
+        client_id="database-implementation-daemon:lane-1",
+        store_id="state/control.duckdb",
+    )
+
+    assert result is credentials
+    assert calls == ["process_boundary", "credential_received"]
+    assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
+    assert TYPED_STATE_OWNER_SOCKET_ENV not in os.environ
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert sentinel not in captured.out
+    assert sentinel not in captured.err
+
+
+def test_daemon_refuses_bootstrap_when_process_boundary_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A failed kernel boundary prevents the owner credential request."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime import process_security
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        state_owner_bootstrap,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        TYPED_STATE_OWNER_TOKEN_ENV,
+    )
+
+    sentinel = "boundary-failure-must-not-leak"
+    calls: list[str] = []
+    monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
+    monkeypatch.delenv(TYPED_STATE_OWNER_SOCKET_ENV, raising=False)
+
+    def fail_boundary() -> bool:
+        calls.append("process_boundary")
+        raise process_security.StateAuthorityProcessIsolationError(sentinel)
+
+    def request_credential(*_args: object, **_kwargs: object) -> object:
+        calls.append("credential_requested")
+        return SimpleNamespace(token=sentinel)
+
+    monkeypatch.setattr(
+        process_security,
+        "establish_state_authority_process_boundary",
+        fail_boundary,
+    )
+    monkeypatch.setattr(
+        state_owner_bootstrap,
+        "request_state_owner_bootstrap",
+        request_credential,
+    )
+
+    with pytest.raises(process_security.StateAuthorityProcessIsolationError):
+        daemon_module._request_process_bound_state_owner_bootstrap(
+            17,
+            client_id="database-implementation-daemon:lane-1",
+            store_id="state/control.duckdb",
+        )
+
+    assert calls == ["process_boundary"]
+    assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
+    assert TYPED_STATE_OWNER_SOCKET_ENV not in os.environ
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    assert "phase=process_security" in captured.err
+    assert sentinel not in captured.err
+
+
 def test_direct_supervisor_round_trips_embedded_one_writer_authority(
     tmp_path: Path,
 ) -> None:

@@ -3,6 +3,7 @@
 from datetime import UTC
 
 import pytest
+
 from test.api.test_agent_supervisor_database_implementation_daemon import _open_daemon, _population
 
 
@@ -58,6 +59,17 @@ def test_local_live_attempt_is_not_an_orphan(lanes):
     task = owner.task_source.get(attempt.task_cid)
     assert owner._requeue_unimplemented_control_task(task) is None
     assert owner.task_source.get(attempt.task_cid).revision == task.revision
+
+
+def test_legacy_global_orphan_scan_cannot_complete_foreign_work(lanes, monkeypatch):
+    owner, observer, attempt, _clock = lanes
+    before = owner.task_source.get(attempt.task_cid)
+    calls = []
+    monkeypatch.setattr(observer, "_task_outputs_landed_on_target", lambda task: True)
+    monkeypatch.setattr(observer, "_complete_landed_quarantined_task", lambda task: calls.append(task))
+    assert observer.reconcile_orphaned_in_progress_gates() == []
+    assert calls == []
+    assert owner.task_source.get(attempt.task_cid).revision == before.revision
 
 
 @pytest.mark.parametrize("operation", ["database_claim", "database_attempt_admitted"])

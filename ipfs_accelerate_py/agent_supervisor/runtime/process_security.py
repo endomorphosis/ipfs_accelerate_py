@@ -155,6 +155,13 @@ def capture_state_authority_credentials() -> bool:
     return True
 
 
+def clear_captured_state_authority_credentials() -> None:
+    """Drop in-memory credentials. Tests and process teardown only."""
+
+    with _CAPTURED_STATE_AUTHORITY_LOCK:
+        _CAPTURED_STATE_AUTHORITY_CREDENTIALS.clear()
+
+
 def harden_state_authority_process(
     environment: Mapping[str, str] | None = None,
 ) -> bool:
@@ -175,6 +182,7 @@ __all__ = (
     "STATE_AUTHORITY_CREDENTIAL_NAMES",
     "StateAuthorityProcessIsolationError",
     "capture_state_authority_credentials",
+    "clear_captured_state_authority_credentials",
     "establish_state_authority_process_boundary",
     "env_secret_handle_target",
     "forward_env_secret_handle_credentials",

@@ -2020,7 +2020,7 @@ def bind_database_portal_execution_from_args(
         )
 
     def portal_factory(paths: Any, task_alias: str) -> object:
-        return portal_daemon_class(
+        daemon = portal_daemon_class(
             todo_path=paths.task_projection,
             state_path=paths.state,
             strategy_path=paths.strategy,
@@ -2086,6 +2086,14 @@ def bind_database_portal_execution_from_args(
                 attempt_root / "dependency-preflight-artifacts"
             ),
         )
+        from ..semantic_refactoring.residual_authority import (
+            SPAR_BOARD_NAMESPACE,
+            bind_spar_residual_authority,
+        )
+
+        if str(getattr(parsed, "board_namespace", "") or "") == SPAR_BOARD_NAMESPACE:
+            bind_spar_residual_authority(daemon, repo_root=repo_root)
+        return daemon
 
     configured_worktree_root = getattr(parsed, "worktree_root", None)
     if configured_worktree_root is not None:
@@ -2243,6 +2251,7 @@ def bind_database_portal_execution_from_args(
             repo_root=repo_root,
             merge_target_branch=configured_merge_target_branch,
             portal_attempt_root=bridge.attempt_root,
+            worktree_submodule_paths=bridge.worktree_submodule_paths,
             pending_merge_consume_fn=consume_pending_merge,
         )
         recovery_binder = getattr(daemon, "bind_post_merge_recovery", None)
@@ -2252,6 +2261,13 @@ def bind_database_portal_execution_from_args(
             recovery_binder(
                 lambda: bridge.recover_post_merge_declared_outputs(daemon)
             )
+        consume_binder = getattr(daemon, "bind_pending_merge_consume", None)
+        if not callable(consume_binder):
+            raise RuntimeError(
+                "production database daemon does not expose pending merge "
+                "consume binding"
+            )
+        consume_binder(bridge.consume_pending_same_board_merge)
     return bridge
 
 

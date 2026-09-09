@@ -1,0 +1,41 @@
+{
+  "domains": [
+    "state",
+    "initialization",
+    "dynamics",
+    "registries",
+    "async",
+    "exceptions",
+    "resources",
+    "apis",
+    "seeded_defects"
+  ],
+  "kind": "synthetic_controlled_monolith",
+  "network": "deny",
+  "pad_statement": "    value = value + 1",
+  "profiles": {
+    "large": {
+      "kind": "synthetic_controlled_monolith",
+      "rights_basis": "synthetic_original",
+      "target_loc": 100000
+    },
+    "medium": {
+      "kind": "synthetic_controlled_monolith",
+      "rights_basis": "synthetic_original",
+      "target_loc": 20000
+    },
+    "small": {
+      "kind": "synthetic_controlled_monolith",
+      "rights_basis": "synthetic_original",
+      "target_loc": 5000
+    }
+  },
+  "rights_admitted": true,
+  "rights_basis": "synthetic_original",
+  "schema": "ipfs_accelerate_py/agent-supervisor/spar-benchmark-fixture-recipes@1",
+  "seed": "spar-045-controlled-monolith-v1",
+  "synthetic": true,
+  "task_id": "SPAR-045",
+  "third_party_source": false,
+  "whole_repository_dump": false
+}

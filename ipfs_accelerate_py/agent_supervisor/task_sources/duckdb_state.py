@@ -665,6 +665,10 @@ class DuckDBConnection:
         self._pooled = False
         self._quack_uri = ""
         self._raw_wrapper_key = 0
+        self._threads = int(threads)
+        self._memory_limit = str(memory_limit)
+        self._quack_owner = bool(quack_owner)
+        self._preload_quack_for_state_owner = bool(_preload_quack_for_state_owner)
         self._lock_context = exclusive_file_lock(
             self.path.with_name(f".{self.path.name}.lock"),
             timeout_seconds=timeout_seconds,
@@ -735,6 +739,10 @@ class DuckDBConnection:
         instance._pooled = False
         instance._quack_uri = ""
         instance._raw_wrapper_key = 0
+        instance._threads = 1
+        instance._memory_limit = DEFAULT_MEMORY_LIMIT
+        instance._quack_owner = False
+        instance._preload_quack_for_state_owner = False
         _register_duckdb_wrapper(instance, connection)
         return instance
 
@@ -881,6 +889,35 @@ class DuckDBConnection:
             self._execution_condition.notify_all()
         self._evict_poisoned_pool_entry(uri)
 
+    def _maybe_reconnect_exclusive_owner(self, exc: BaseException) -> bool:
+        """Reopen a poisoned exclusive file owner so SPAR/claim work continues.
+
+        An interrupted typed-client transaction marks the shared wrapper
+        unusable.  Read-only Quack sessions already reconnect; exclusive
+        owners previously stayed poisoned until an outer monitor SIGTERM'd
+        the whole supervise loop.
+        """
+
+        if (
+            self.path is None
+            or self._lock_context is None
+            or self._pooled
+            or self._quack_owner
+            or self._preload_quack_for_state_owner
+            or str(self._quack_uri or "").strip()
+            or self._transaction_active
+            or not isinstance(exc, DuckDBConnectionPolicyError)
+            or str(exc)
+            != "DuckDB connection is unusable after an uncertain transaction"
+            or not (self._poisoned or self._connection is None)
+        ):
+            return False
+        try:
+            self.reconnect_exclusive_owner()
+        except Exception:
+            return False
+        return True
+
     def execute(
         self,
         sql: str,
@@ -898,6 +935,8 @@ class DuckDBConnection:
         try:
             return self._execute_once(sql, parameters)
         except BaseException as exc:
+            if self._maybe_reconnect_exclusive_owner(exc):
+                return self._execute_once(sql, parameters)
             if not read_only_retry or not _is_quack_session_dead(exc):
                 raise
             uri = str(self._quack_uri or "").strip()
@@ -1211,6 +1250,57 @@ class DuckDBConnection:
                     self._closed = True
                     self._closing_owner = 0
                     self._execution_condition.notify_all()
+
+    def reconnect_exclusive_owner(self) -> None:
+        """Replace the native handle without dropping the exclusive file lock.
+
+        Same-process recovery cannot open a second ``DuckDBConnection`` onto
+        this path: ``exclusive_file_lock`` uses a thread RLock keyed by the
+        lock file.  A peer that still owns a transaction makes ``close()``
+        raise, so the 30s thread-lock wait fails.  Reconnecting the native
+        owner keeps the already-held lock.
+        """
+
+        if self.path is None or self._lock_context is None:
+            raise DuckDBConnectionPolicyError(
+                "exclusive owner reconnect requires a file-owning handle"
+            )
+        import duckdb
+
+        if self._preload_quack_for_state_owner:
+            connector = connect_duckdb_quack_owner_with_policy
+        elif self._quack_owner:
+            connector = connect_duckdb_with_quack_owner_policy
+        else:
+            connector = connect_duckdb_with_policy
+        with self._execution_condition:
+            self._poison_locked()
+            self._closed = False
+            self._poisoned = False
+            self._closing_owner = 0
+            self._execution_condition.notify_all()
+        native = connector(
+            duckdb,
+            self.path,
+            configuration={
+                "threads": self._threads,
+                "memory_limit": self._memory_limit,
+            },
+        )
+        with self._execution_condition:
+            if self._connection is not None:
+                try:
+                    native.close()
+                except Exception:
+                    pass
+                raise DuckDBConnectionPolicyError(
+                    "exclusive owner reconnected concurrently"
+                )
+            self._connection = native
+            self._closed = False
+            self._poisoned = False
+            _register_duckdb_wrapper(self, native)
+            self._execution_condition.notify_all()
 
     def _release_quack_attach_session(self) -> None:
         raise DuckDBConnectionPolicyError(
@@ -1820,6 +1910,14 @@ _QUACK_OWNER_MUTATION_SQL_TO_TEMPLATE = {
             owner_session_id, fence_epoch, revision, extension_schema,
             extension_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (task_cid) DO UPDATE SET
+            attempt = leases.attempt + 1,
+            retry_not_before_ms = excluded.retry_not_before_ms,
+            release_reason = excluded.release_reason,
+            state = 'released',
+            extension_schema = excluded.extension_schema,
+            extension_json = excluded.extension_json,
+            revision = leases.revision + 1
         """
     ): QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
     _normalize_quack_mutation_sql(
@@ -1917,7 +2015,7 @@ _QUACK_ATTACH_CONTENTION_MARKERS = (
     "broken pipe",
     "timeout",
     "busy",
-    "locked",
+    " is locked",
     "contention",
 )
 
@@ -1967,6 +2065,9 @@ QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK = "rearm_blocked_task"
 QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET = (
     "recover_typed_deferral_budget"
 )
+QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET = (
+    "recover_leftover_wait_deferral_budget"
+)
 QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF = "record_queue_backoff"
 QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS = (
     "record_queue_backoff_and_cas_status"
@@ -1980,6 +2081,7 @@ QUACK_OWNER_COMMANDS = frozenset(
         QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
         QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
         QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
@@ -2022,6 +2124,25 @@ _QUACK_OWNER_COMMAND_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = 
         frozenset({"reason", "selection_penalty"}),
     ),
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS: (
+        frozenset(
+            {
+                "task_cid",
+                "expected_revision",
+                "expected_control_receipt",
+                "status",
+                "receipt",
+                "delay_ms",
+                "reason",
+            }
+        ),
+        frozenset(
+            {
+                "selection_penalty",
+                "exact_retry_not_before_ms",
+            }
+        ),
+    ),
+    QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET: (
         frozenset(
             {
                 "task_cid",
@@ -3470,6 +3591,262 @@ def _restore_task_status_indexes(connection: Any, statements: Sequence[str]) -> 
         connection.execute(text)
 
 
+_ART_UNIQUE_INDEX_DELETE_MISS = "Failed to delete all rows from index"
+_ART_UNIQUE_INDEX_REBUILD_TABLES = ("tasks", "leases")
+_ART_UNIQUE_INDEX_NEW_SUFFIX = "__art_new"
+_SIMPLE_SQL_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_CREATE_TABLE_NAME_RE = re.compile(
+    r'(CREATE\s+TABLE\s+)(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))',
+    re.IGNORECASE,
+)
+
+
+def is_art_unique_index_corruption(exc: BaseException) -> bool:
+    """Return True when DuckDB ART unique-index maintenance is corrupt."""
+
+    text = f"{type(exc).__name__}: {exc}"
+    return (
+        _ART_UNIQUE_INDEX_DELETE_MISS in text
+        or "RemoveFromIndexes" in text
+        or "Only deleted 0 out of 1 rows" in text
+    )
+
+
+def _require_simple_sql_ident(name: str, *, noun: str) -> str:
+    ident = str(name or "").strip()
+    if not _SIMPLE_SQL_IDENT_RE.match(ident):
+        raise ValueError(f"invalid {noun} for ART unique-index repair: {name!r}")
+    return ident
+
+
+def _main_table_exists(connection: Any, name: str) -> bool:
+    try:
+        rows = connection.execute(
+            "SELECT 1 FROM duckdb_tables() "
+            "WHERE schema_name = 'main' AND table_name = ?",
+            [name],
+        ).fetchall()
+    except Exception:
+        return False
+    return bool(rows)
+
+
+def _main_table_create_sql(connection: Any, name: str) -> str:
+    try:
+        rows = connection.execute(
+            "SELECT sql FROM duckdb_tables() "
+            "WHERE schema_name = 'main' AND table_name = ?",
+            [name],
+        ).fetchall()
+    except Exception:
+        return ""
+    if not rows:
+        return ""
+    text = str(_row_tuple(rows[0])[0] or "").strip()
+    if not text.upper().startswith("CREATE TABLE"):
+        return ""
+    return text
+
+
+def _secondary_index_sql(connection: Any, name: str) -> list[str]:
+    try:
+        rows = connection.execute(
+            "SELECT sql FROM duckdb_indexes() "
+            "WHERE schema_name = 'main' AND table_name = ?",
+            [name],
+        ).fetchall()
+    except Exception:
+        return []
+    statements: list[str] = []
+    for row in rows:
+        text = str(_row_tuple(row)[0] or "").strip()
+        if text.upper().startswith("CREATE "):
+            statements.append(text)
+    return statements
+
+
+def _dependent_view_sql(
+    connection: Any, tables: Sequence[str]
+) -> list[tuple[str, str]]:
+    try:
+        rows = connection.execute(
+            "SELECT view_name, sql FROM duckdb_views() "
+            "WHERE schema_name = 'main' AND NOT internal"
+        ).fetchall()
+    except Exception:
+        return []
+    captured: list[tuple[str, str]] = []
+    for row in rows:
+        view_name, sql = _row_tuple(row)[:2]
+        text = str(sql or "").strip()
+        ident = str(view_name or "").strip()
+        if not ident or not text.upper().startswith("CREATE "):
+            continue
+        if not any(
+            re.search(rf"\b{re.escape(table)}\b", text, re.IGNORECASE)
+            for table in tables
+        ):
+            continue
+        captured.append((ident, text))
+    return captured
+
+
+def _relation_row_count(connection: Any, name: str) -> int:
+    row = connection.execute(
+        "SELECT COUNT(*) FROM " + _quote_duckdb_ident(name)
+    ).fetchone()
+    if row is None:
+        return 0
+    return int(_row_tuple(row)[0])
+
+
+def _rewrite_create_table_name(sql: str, old: str, new: str) -> str:
+    text = str(sql or "").strip()
+    match = _CREATE_TABLE_NAME_RE.match(text)
+    captured = "" if match is None else (match.group(2) or match.group(3) or "")
+    if match is None or captured != old:
+        raise DuckDBConnectionPolicyError(
+            f"could not retarget CREATE TABLE SQL for {old}"
+        )
+    return text[: match.start(1)] + "CREATE TABLE " + _quote_duckdb_ident(new) + text[match.end() :]
+
+
+def _recover_incomplete_art_unique_index_swap(
+    connection: Any, name: str
+) -> None:
+    """Finish a crash-window swap: live table missing, rebuilt table present."""
+
+    rebuilt = name + _ART_UNIQUE_INDEX_NEW_SUFFIX
+    if _main_table_exists(connection, name):
+        if _main_table_exists(connection, rebuilt):
+            connection.execute(
+                "DROP TABLE IF EXISTS " + _quote_duckdb_ident(rebuilt)
+            )
+        return
+    if not _main_table_exists(connection, rebuilt):
+        return
+    connection.execute(
+        "ALTER TABLE "
+        + _quote_duckdb_ident(rebuilt)
+        + " RENAME TO "
+        + _quote_duckdb_ident(name)
+    )
+
+
+def repair_art_unique_indexes(
+    connection: Any,
+    tables: Sequence[str] = _ART_UNIQUE_INDEX_REBUILD_TABLES,
+) -> dict[str, Any]:
+    """Rebuild DuckDB ART unique indexes from heap rows.
+
+    Unclean shutdown (reboot, killed exclusive writer) can leave PRIMARY KEY
+    / UNIQUE ART indexes unable to delete the old key on UPDATE, while heap
+    SELECT still works. Recreate each table from catalog SQL, copy the heap
+    rows, then restore secondary indexes and dependent views. The live table
+    is dropped only after the rebuilt table is fully populated.
+    """
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw in tables:
+        ident = _require_simple_sql_ident(raw, noun="table name")
+        if ident in seen:
+            continue
+        seen.add(ident)
+        names.append(ident)
+
+    skipped: list[dict[str, Any]] = []
+    rebuilt: list[dict[str, Any]] = []
+    create_sql: dict[str, str] = {}
+    index_sql: dict[str, list[str]] = {}
+    for name in names:
+        _recover_incomplete_art_unique_index_swap(connection, name)
+        sql = _main_table_create_sql(connection, name)
+        if not sql:
+            skipped.append({"table": name, "reason": "missing"})
+            continue
+        create_sql[name] = sql
+        index_sql[name] = _secondary_index_sql(connection, name)
+
+    if not create_sql:
+        return {
+            "rebuilt": rebuilt,
+            "skipped": skipped,
+            "views": [],
+            "indexes": [],
+        }
+
+    views = _dependent_view_sql(connection, tuple(create_sql))
+    pending_new: dict[str, str] = {}
+    restored_views: list[str] = []
+    restored_indexes: list[str] = []
+    try:
+        for name, sql in create_sql.items():
+            new_name = name + _ART_UNIQUE_INDEX_NEW_SUFFIX
+            _require_simple_sql_ident(new_name, noun="rebuild table name")
+            quoted_old = _quote_duckdb_ident(name)
+            quoted_new = _quote_duckdb_ident(new_name)
+            connection.execute("DROP TABLE IF EXISTS " + quoted_new)
+            before = _relation_row_count(connection, name)
+            connection.execute(_rewrite_create_table_name(sql, name, new_name))
+            connection.execute(
+                f"INSERT INTO {quoted_new} SELECT * FROM {quoted_old}"
+            )
+            after = _relation_row_count(connection, new_name)
+            if after != before:
+                raise DuckDBConnectionPolicyError(
+                    "ART unique-index repair of "
+                    f"{name} changed row count ({before} -> {after})"
+                )
+            pending_new[name] = new_name
+        for view_name, _view_sql in views:
+            connection.execute(
+                "DROP VIEW IF EXISTS " + _quote_duckdb_ident(view_name)
+            )
+        for name, new_name in pending_new.items():
+            quoted_old = _quote_duckdb_ident(name)
+            quoted_new = _quote_duckdb_ident(new_name)
+            connection.execute("DROP TABLE " + quoted_old)
+            connection.execute(
+                "ALTER TABLE " + quoted_new + " RENAME TO " + quoted_old
+            )
+            rebuilt.append(
+                {
+                    "table": name,
+                    "rows": _relation_row_count(connection, name),
+                }
+            )
+        pending_new.clear()
+        for name in create_sql:
+            for sql in index_sql.get(name, ()):
+                connection.execute(sql)
+                restored_indexes.append(sql)
+        for view_name, view_sql in views:
+            connection.execute(view_sql)
+            restored_views.append(view_name)
+        try:
+            connection.execute("CHECKPOINT")
+        except Exception:
+            pass
+    except Exception:
+        for name, new_name in list(pending_new.items()):
+            try:
+                _recover_incomplete_art_unique_index_swap(connection, name)
+            except Exception:
+                _LOGGER.exception(
+                    "ART unique-index repair left %s / %s inconsistent",
+                    name,
+                    new_name,
+                )
+        raise
+    return {
+        "rebuilt": rebuilt,
+        "skipped": skipped,
+        "views": restored_views,
+        "indexes": restored_indexes,
+    }
+
+
 def _drop_lease_state_indexes(connection: Any) -> list[str]:
     """Drop lease-state ART indexes that can fatal cooldown / retry CAS."""
 
@@ -4070,7 +4447,10 @@ def resolve_quack_attach_token(
             raise DuckDBConnectionPolicyError(
                 "quack attach token must be an opaque url-safe secret"
             )
-        if environment is None:
+        live_env = str(source.get(_QUACK_ATTACH_TOKEN_ENV, "") or "").strip()
+        # Persist only a live environ credential. Captured birth-bound grants
+        # are process-private and must not occupy the shared owner vault.
+        if environment is None and live_env:
             persist_quack_attach_token_vault(secret)
         return secret
     handle = str(source.get(_QUACK_SECRET_HANDLE_ENV, "") or "").strip()

@@ -1229,6 +1229,10 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             callbacks["merge_train_recovery"] = values
 
         @staticmethod
+        def bind_pending_merge_consume(callback: object) -> None:
+            callbacks["pending_merge_consume"] = callback
+
+        @staticmethod
         def _database_portal_evidence_digest(_value: object) -> str:
             return "sha256:" + ("0" * 64)
 
@@ -1266,6 +1270,10 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             str(tmp_path / "merge-queue"),
             "--merge-target-branch",
             "main",
+            "--worktree-submodule-path",
+            "external/ipfs_datasets",
+            "--worktree-submodule-path",
+            "external/ipfs_kit",
             "--implement",
             "--once",
         ]
@@ -1303,8 +1311,15 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
         "repo_root": repo,
         "merge_target_branch": "main",
         "portal_attempt_root": bridge.attempt_root,
+        "worktree_submodule_paths": (
+            "external/ipfs_datasets",
+            "external/ipfs_kit",
+        ),
         "pending_merge_consume_fn": pending_consume,
     }
+    assert callbacks["pending_merge_consume"] == (
+        bridge.consume_pending_same_board_merge
+    )
     portal = bridge.portal_factory(
         argparse.Namespace(
             task_projection=tmp_path / "attempt" / "task-projection.md",

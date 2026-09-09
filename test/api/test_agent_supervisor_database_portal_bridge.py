@@ -95,6 +95,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION,
+    DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA,
     EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS,
     SEMANTIC_TRUTH_AUTHORITY_ENV,
     SEMANTIC_WRITER_POLICY_ENV,
@@ -122,12 +123,16 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
 )
 
 
-def _attempt(*, attempt_number: int = 1) -> DatabaseTaskAttempt:
+def _attempt(
+    *,
+    attempt_number: int = 1,
+    task_alias: str = "LGSWF-004",
+) -> DatabaseTaskAttempt:
     return DatabaseTaskAttempt(
         attempt_id="attempt:001",
         claim_id="claim:001",
         task_cid="task:cid:004",
-        task_alias="LGSWF-004",
+        task_alias=task_alias,
         attempt_number=attempt_number,
         owner_session_id="session:bridge",
         fencing_token=7,
@@ -1782,6 +1787,44 @@ def _owned_record(owner: str) -> SimpleNamespace:
         **record.body,
         "owning_repository": owner,
         "markdown_metadata": {"owning_repository": owner},
+    }
+    return record
+
+
+def _sealed_spar_owned_record(owner: str = "ipfs_datasets_py") -> SimpleNamespace:
+    record = _owned_record(owner)
+    record.task_alias = "SPAR-002"
+    record.plan_cid = (
+        "baguqeerap2rmrhmwizmpkijsg5se5am7i6btb4wzyop3ezqpfa5p3kxnbryq"
+    )
+    record.outputs = (
+        {
+            "path": (
+                "ipfs_datasets_py/ipfs_datasets_py/"
+                "semantic_refactoring/capsules.py"
+            )
+        },
+        {
+            "path": (
+                "ipfs_datasets_py/tests/unit/semantic_refactoring/"
+                "test_capsules.py"
+            )
+        },
+    )
+    record.validations = (
+        {
+            "argv": [
+                "python3 -m pytest -q ipfs_datasets_py/tests/unit/"
+                "semantic_refactoring/test_capsules.py"
+            ]
+        },
+    )
+    record.body = {
+        **record.body,
+        "accepted_plan_root_cid": record.plan_cid,
+        "base_plan_revision": "SPAR-PLAN-R1",
+        "board_namespace": "semantic-preserving-autonomous-remodularization-v1",
+        "stable_task_id": record.task_alias,
     }
     return record
 
@@ -10974,13 +11017,27 @@ def _append_exact_callback_completion_chain(
     tamper: str = "",
     projected_source: bool = False,
     terminal_tamper: str = "",
+    nested_spar: bool = False,
+    baseline_commit: str = "",
+    implementation_commit: str = "",
+    integration_commit: str = "",
+    nested_repository_ref: str = "",
 ) -> None:
-    alias = "LGSWF-004"
-    task_cid = "task:cid:004"
-    task_key = "task/v1/exact-callback"
-    baseline = "b" * 40
-    implementation = "a" * 40
-    integration = "c" * 40
+    alias = "SPAR-005" if nested_spar else "LGSWF-004"
+    task_cid = (
+        "baguqeeraokwab3fdwzt7oy772phz2wconrmled44mybi27xgagwf6vzaonqa"
+        if nested_spar
+        else "task:cid:004"
+    )
+    task_key = task_cid if nested_spar else "task/v1/exact-callback"
+    board_namespace = (
+        "semantic-preserving-autonomous-remodularization-v1"
+        if nested_spar
+        else "task-projection.md"
+    )
+    baseline = baseline_commit or "b" * 40
+    implementation = implementation_commit or "a" * 40
+    integration = integration_commit or "c" * 40
     request_id = "request:exact-callback"
     completion_task_cids = {alias: task_cid}
     task_source_identity = {
@@ -10991,7 +11048,7 @@ def _append_exact_callback_completion_chain(
             "task_id": alias,
             "canonical_task_cid": task_cid,
             "canonical_task_key": task_key,
-            "board_namespace": "task-projection.md",
+            "board_namespace": board_namespace,
             "task_source_identity": task_source_identity,
             "attempt": 1,
             "returncode": 0,
@@ -11055,7 +11112,7 @@ def _append_exact_callback_completion_chain(
                 "task_id": alias,
                 "canonical_task_cid": task_cid,
                 "canonical_task_key": task_key,
-                "board_namespace": "task-projection.md",
+                "board_namespace": board_namespace,
                 "task_source_identity": task_source_identity,
                 "attempt": 1,
                 "request_id": request_id,
@@ -11108,7 +11165,7 @@ def _append_exact_callback_completion_chain(
     source = DatabasePortalExecutionBridge._verified_event_chain(paths)[-1]
     source_event_id = str(source["event_id"])
     member = {
-        "board_namespace": "task-projection.md",
+        "board_namespace": board_namespace,
         "canonical_task_cid": task_cid,
         "canonical_task_key": task_key,
         "schema": (
@@ -11144,11 +11201,32 @@ def _append_exact_callback_completion_chain(
             "completion_source_event_id": source_event_id,
         }
     )
+    nested_checks = (
+        [
+            {
+                "exists": True,
+                "path": (
+                    "ipfs_datasets_py/ipfs_datasets_py/"
+                    "semantic_refactoring/projections.py"
+                ),
+                "reason": "declared_output_tracked",
+                "repository": "ipfs_datasets_py",
+                "repository_ref": nested_repository_ref or "d" * 40,
+                "task_id": alias,
+                "tracked": True,
+                "tracked_path": (
+                    "ipfs_datasets_py/semantic_refactoring/projections.py"
+                ),
+            }
+        ]
+        if nested_spar
+        else []
+    )
     reconciliation = {
         "task_id": alias,
         "canonical_task_cid": task_cid,
         "canonical_task_key": task_key,
-        "board_namespace": "task-projection.md",
+        "board_namespace": board_namespace,
         "task_source_identity": task_source_identity,
         "attempt": 1,
         "branch": "candidate/exact-callback",
@@ -11181,7 +11259,7 @@ def _append_exact_callback_completion_chain(
             "target_branch": "main",
         },
         "post_merge_declared_output_invariant": {
-            "checks": [],
+            "checks": nested_checks,
             "missing_outputs": [],
             "mode": "repository_tree",
             "passed": True,
@@ -11240,6 +11318,20 @@ def _append_exact_callback_completion_chain(
         }
     elif tamper == "reconciliation-task-source-missing":
         reconciliation.pop("task_source_identity")
+    elif tamper == "nested-path-prefix":
+        nested_checks[0]["path"] = (
+            "ipfs_kit_py/ipfs_datasets_py/semantic_refactoring/projections.py"
+        )
+    elif tamper == "nested-tracked-path":
+        nested_checks[0]["tracked_path"] = (
+            "ipfs_datasets_py/semantic_refactoring/other.py"
+        )
+    elif tamper == "nested-reference-format":
+        nested_checks[0]["repository_ref"] = "not-a-git-object"
+    elif tamper == "nested-repository":
+        nested_checks[0]["repository"] = "unconfigured_repository"
+    elif tamper == "nested-traversal":
+        nested_checks[0]["tracked_path"] = "../projections.py"
     elif tamper == "reconciliation-key":
         reconciliation["canonical_task_key"] = "task/v1/foreign"
     append_jsonl_event(paths.events, "merge_reconciled", reconciliation)
@@ -11270,7 +11362,7 @@ def _append_exact_callback_completion_chain(
                 "task_id": alias,
                 "canonical_task_cid": task_cid,
                 "canonical_task_key": task_key,
-                "board_namespace": "task-projection.md",
+                "board_namespace": board_namespace,
                 "task_source_identity": task_source_identity,
                 "attempt": 1,
                 "returncode": 0,
@@ -11303,6 +11395,104 @@ def _append_exact_callback_completion_chain(
     elif tamper == "completion-key-missing":
         completion_payload.pop("canonical_task_key")
     append_jsonl_event(paths.events, "task_completed", completion_payload)
+
+
+def _nested_callback_repository(
+    tmp_path: Path,
+) -> tuple[Path, str, str, str, str]:
+    parent = tmp_path / "callback-parent"
+    nested = parent / "ipfs_datasets_py"
+    nested.mkdir(parents=True)
+    for repository in (parent, nested):
+        subprocess.run(
+            ["git", "init", "-q", "-b", "main"],
+            cwd=repository,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Nested Callback Test"],
+            cwd=repository,
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "config",
+                "user.email",
+                "nested-callback@example.invalid",
+            ],
+            cwd=repository,
+            check=True,
+        )
+    tracked_path = "ipfs_datasets_py/semantic_refactoring/projections.py"
+    output = nested / tracked_path
+    output.parent.mkdir(parents=True)
+    output.write_text("PROJECTION_KINDS = ('ast',)\n", encoding="utf-8")
+    subprocess.run(["git", "add", tracked_path], cwd=nested, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "nested output"],
+        cwd=nested,
+        check=True,
+    )
+    nested_ref = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "160000",
+            nested_ref,
+            "ipfs_datasets_py",
+        ],
+        cwd=parent,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", "baseline gitlink"],
+        cwd=parent,
+        check=True,
+    )
+    baseline = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    candidate_marker = parent / "candidate.txt"
+    candidate_marker.write_text("candidate\n", encoding="utf-8")
+    subprocess.run(["git", "add", "candidate.txt"], cwd=parent, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "candidate"], cwd=parent, check=True
+    )
+    candidate = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    integration_marker = parent / "integration.txt"
+    integration_marker.write_text("integration\n", encoding="utf-8")
+    subprocess.run(["git", "add", "integration.txt"], cwd=parent, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "integration"], cwd=parent, check=True
+    )
+    integration = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return parent, baseline, candidate, integration, nested_ref
 
 
 def test_bridge_completion_lineage_accepts_only_later_exact_queue_reconciliation(
@@ -11372,6 +11562,444 @@ def test_bridge_accepts_exact_synchronous_source_with_terminal_confirmation(
     )
     assert evidence["implementation_commit"] == "a" * 40
     assert evidence["baseline_commit"] == "b" * 40
+
+
+@pytest.mark.parametrize("projected_source", [False, True])
+def test_bridge_accepts_sealed_spar_nested_callback_frame(
+    tmp_path: Path,
+    projected_source: bool,
+) -> None:
+    parent, baseline, candidate, integration, nested_ref = (
+        _nested_callback_repository(tmp_path)
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "nested callback lineage reached provider dispatch"
+        ),
+        repository_root=parent,
+        merge_target_branch="main",
+        worktree_submodule_paths=("ipfs_datasets_py",),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    _append_exact_callback_completion_chain(
+        paths,
+        projected_source=projected_source,
+        nested_spar=True,
+        baseline_commit=baseline,
+        implementation_commit=candidate,
+        integration_commit=integration,
+        nested_repository_ref=nested_ref,
+    )
+
+    evidence = bridge._completion_event_evidence(
+        paths,
+        alias="SPAR-005",
+        task_cid=(
+            "baguqeeraokwab3fdwzt7oy772phz2wconrmled44mybi27xgagwf6vzaonqa"
+        ),
+        nested_callback_verifier=(
+            bridge._exact_nested_callback_entries_for_completion
+        ),
+    )
+
+    assert evidence is not None
+    assert evidence["implementation_commit"] == candidate
+    assert evidence["baseline_commit"] == baseline
+
+
+def test_bridge_rejects_unrehashable_spar_nested_callback_frame(
+    tmp_path: Path,
+) -> None:
+    parent, baseline, candidate, integration, _nested_ref = (
+        _nested_callback_repository(tmp_path)
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "unrehashable nested callback lineage reached provider dispatch"
+        ),
+        repository_root=parent,
+        merge_target_branch="main",
+        worktree_submodule_paths=("ipfs_datasets_py",),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    _append_exact_callback_completion_chain(
+        paths,
+        nested_spar=True,
+        baseline_commit=baseline,
+        implementation_commit=candidate,
+        integration_commit=integration,
+        nested_repository_ref="e" * 40,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="callback reconciliation binding is invalid",
+    ):
+        bridge._completion_event_evidence(
+            paths,
+            alias="SPAR-005",
+            task_cid=(
+                "baguqeeraokwab3fdwzt7oy772phz2wconrmled44mybi27xgagwf6vzaonqa"
+            ),
+            nested_callback_verifier=(
+                bridge._exact_nested_callback_entries_for_completion
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "nested-path-prefix",
+        "nested-tracked-path",
+        "nested-reference-format",
+        "nested-repository",
+        "nested-traversal",
+    ],
+)
+def test_bridge_rejects_tampered_sealed_spar_nested_callback_frame(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "tampered nested callback lineage reached provider dispatch"
+        ),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    _append_exact_callback_completion_chain(
+        paths,
+        nested_spar=True,
+        tamper=tamper,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="callback reconciliation binding is invalid",
+    ):
+        bridge._completion_event_evidence(
+            paths,
+            alias="SPAR-005",
+            task_cid=(
+                "baguqeeraokwab3fdwzt7oy772phz2wconrmled44mybi27xgagwf6vzaonqa"
+            ),
+            nested_callback_verifier=lambda *_args, **_kwargs: True,
+        )
+
+
+def test_spar_nested_callback_frame_rehashes_exact_parent_gitlink_and_blob(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "parent"
+    nested = parent / "ipfs_datasets_py"
+    nested.mkdir(parents=True)
+    for repository in (parent, nested):
+        subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Nested Callback Test"],
+            cwd=repository,
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "config",
+                "user.email",
+                "nested-callback@example.invalid",
+            ],
+            cwd=repository,
+            check=True,
+        )
+    tracked_path = "ipfs_datasets_py/semantic_refactoring/projections.py"
+    nested_output = nested / tracked_path
+    nested_output.parent.mkdir(parents=True)
+    nested_output.write_text("PROJECTION_KINDS = ('ast',)\n", encoding="utf-8")
+    subprocess.run(["git", "add", tracked_path], cwd=nested, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "nested output"],
+        cwd=nested,
+        check=True,
+    )
+    nested_ref = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "160000",
+            nested_ref,
+            "ipfs_datasets_py",
+        ],
+        cwd=parent,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", "record nested gitlink"],
+        cwd=parent,
+        check=True,
+    )
+    parent_ref = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    alias = "SPAR-005"
+    task_cid = "baguqeera" + "a" * 48
+    workspace_path = f"ipfs_datasets_py/{tracked_path}"
+    check = {
+        "exists": True,
+        "path": workspace_path,
+        "reason": "declared_output_tracked",
+        "repository": "ipfs_datasets_py",
+        "repository_ref": nested_ref,
+        "task_id": alias,
+        "tracked": True,
+        "tracked_path": tracked_path,
+    }
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.repository_root = parent
+    bridge.worktree_submodule_paths = ("ipfs_datasets_py",)
+
+    entries = bridge._exact_declared_output_entries_at_parent_commits(
+        outputs=[workspace_path],
+        checks=[check],
+        candidate_commit=parent_ref,
+        integration_commit=parent_ref,
+        current_commit=parent_ref,
+        board_namespace="semantic-preserving-autonomous-remodularization-v1",
+        task_alias=alias,
+        task_cid=task_cid,
+        canonical_task_key=task_cid,
+    )
+
+    assert entries is not None
+    assert entries[0]["path"] == workspace_path
+    wrong_ref = {**check, "repository_ref": "f" * 40}
+    assert (
+        bridge._exact_declared_output_entries_at_parent_commits(
+            outputs=[workspace_path],
+            checks=[wrong_ref],
+            candidate_commit=parent_ref,
+            integration_commit=parent_ref,
+            current_commit=parent_ref,
+            board_namespace=(
+                "semantic-preserving-autonomous-remodularization-v1"
+            ),
+            task_alias=alias,
+            task_cid=task_cid,
+            canonical_task_key=task_cid,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("initializer_fails", [False, True])
+def test_callback_requalification_initializes_nested_sources_offline(
+    tmp_path: Path,
+    initializer_fails: bool,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Nested Requalification Test"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "config",
+            "user.email",
+            "nested-requalification@example.invalid",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "root.txt").write_text("bound\n", encoding="utf-8")
+    subprocess.run(["git", "add", "root.txt"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "bound target"],
+        cwd=repo,
+        check=True,
+    )
+
+    def git_text(*arguments: str) -> str:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    head = git_text("rev-parse", "HEAD")
+    tree = git_text("rev-parse", "HEAD^{tree}")
+    queue = object()
+    task = SimpleNamespace(
+        task_id="SPAR-005",
+        canonical_task_cid="task:spar-005",
+        validation=("python3 -m pytest -q nested-projection-test.py",),
+    )
+    events: list[tuple[str, object]] = []
+
+    class Portal:
+        merge_queue = queue
+        repo_root = repo
+        resolved_merge_target_branch = "main"
+
+        @staticmethod
+        def _load_tasks() -> list[SimpleNamespace]:
+            return [task]
+
+        @staticmethod
+        def _initialize_worktree_submodules(
+            worktree: Path,
+            *,
+            offline_local_only: bool,
+            task: object,
+            submodule_paths: tuple[str, ...],
+        ) -> None:
+            events.append(
+                (
+                    "initialize",
+                    {
+                        "worktree": worktree,
+                        "offline_local_only": offline_local_only,
+                        "task": task,
+                        "submodule_paths": submodule_paths,
+                    },
+                )
+            )
+            if initializer_fails:
+                raise RuntimeError("offline nested source unavailable")
+
+        @staticmethod
+        def _run_validation_commands(
+            _worktree: Path,
+            received_task: object,
+            log_path: Path,
+            *,
+            force_uncached: bool,
+        ) -> dict[str, object]:
+            assert events and events[0][0] == "initialize"
+            assert received_task is task
+            assert force_uncached is True
+            events.append(("validate", received_task))
+            log_path.write_text("nested validation passed\n", encoding="utf-8")
+            return {
+                "passed": True,
+                "returncode": 0,
+                "results": [{"validation_result_digest": "7" * 64}],
+            }
+
+        @staticmethod
+        def _run_checkout_mutation_transaction(
+            *,
+            callback: object,
+            **_kwargs: object,
+        ) -> dict[str, object]:
+            assert callable(callback)
+            return callback()
+
+        @staticmethod
+        def _cleanup_main_merge_workspace(
+            worktree: Path,
+            *,
+            ephemeral: bool,
+        ) -> dict[str, object]:
+            assert ephemeral is True
+            events.append(("cleanup", worktree))
+            removed = subprocess.run(
+                ["git", "worktree", "remove", "--force", str(worktree)],
+                cwd=repo,
+                check=False,
+                capture_output=True,
+            )
+            return {"cleaned": removed.returncode == 0}
+
+        @staticmethod
+        def close() -> None:
+            events.append(("close", None))
+
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.repository_root = repo
+    bridge.merge_queue = queue
+    bridge.merge_target_branch = "main"
+    bridge.worktree_submodule_paths = ("ipfs_datasets_py",)
+    bridge.portal_factory = lambda _paths, _alias: Portal()
+    bridge._load_post_merge_callback_integration_receipt = (
+        lambda path, *, source: json.loads(path.read_text(encoding="utf-8"))
+    )
+    source = {
+        "task_ids": [task.task_id],
+        "task_cid": task.canonical_task_cid,
+        "train_receipt_id": "sha256:" + "1" * 64,
+        "current_target_commit": head,
+        "current_target_tree": tree,
+        "integration_commit": head,
+        "entries": [
+            {
+                "path": "ipfs_datasets_py/semantic_refactoring/projections.py",
+                "mode": "100644",
+                "object_type": "blob",
+                "object_id": "2" * 40,
+            }
+        ],
+        "settled_integration_source": {"source_shape": "test-settled-source"},
+    }
+    projection = SimpleNamespace(
+        paths=SimpleNamespace(
+            root=tmp_path / "state",
+            implementation_logs=tmp_path / "state/logs",
+        )
+    )
+
+    receipt = bridge._requalify_callback_integration(
+        source,
+        request=SimpleNamespace(
+            task_id=task.task_id,
+            canonical_task_id=task.canonical_task_cid,
+        ),
+        projection=projection,
+    )
+
+    assert events[0][0] == "initialize"
+    initialization = events[0][1]
+    assert initialization["offline_local_only"] is True
+    assert initialization["task"] is task
+    assert initialization["submodule_paths"] == ("ipfs_datasets_py",)
+    assert [event[0] for event in events].count("cleanup") == 1
+    assert events[-1][0] == "close"
+    if initializer_fails:
+        assert receipt is None
+        assert all(event[0] != "validate" for event in events)
+    else:
+        assert receipt is not None
+        assert [event[0] for event in events][:3] == [
+            "initialize",
+            "validate",
+            "cleanup",
+        ]
 
 
 def test_bridge_accepts_historical_terminal_confirmation_without_target_commit(
@@ -11737,6 +12365,7 @@ def test_merge_train_recovery_binds_canonical_portal_attempt_root_shapes(
     daemon._merge_repo_root = None
     daemon._merge_target_branch = ""
     daemon._merge_portal_attempt_root = None
+    daemon._merge_worktree_submodule_paths = ()
     attempt_root = tmp_path.joinpath(*parts)
 
     if not accepted:
@@ -11759,9 +12388,34 @@ def test_merge_train_recovery_binds_canonical_portal_attempt_root_shapes(
         repo_root=tmp_path,
         merge_target_branch="main",
         portal_attempt_root=attempt_root,
+        worktree_submodule_paths=("ipfs_datasets_py", "ipfs_kit_py"),
     )
     assert daemon._merge_queue is queue
     assert daemon._merge_portal_attempt_root == attempt_root
+    assert daemon._merge_worktree_submodule_paths == (
+        "ipfs_datasets_py",
+        "ipfs_kit_py",
+    )
+
+    duplicate = object.__new__(DatabaseImplementationDaemon)
+    duplicate.require_real_execution = True
+    duplicate._lock = threading.RLock()
+    duplicate._merge_queue = None
+    duplicate._merge_repo_root = None
+    duplicate._merge_target_branch = ""
+    duplicate._merge_portal_attempt_root = None
+    duplicate._merge_worktree_submodule_paths = ()
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="submodule scope is invalid",
+    ):
+        duplicate.bind_merge_train_recovery(
+            merge_queue=object(),
+            repo_root=tmp_path,
+            merge_target_branch="main",
+            portal_attempt_root=attempt_root,
+            worktree_submodule_paths=("ipfs_datasets_py", "ipfs_datasets_py"),
+        )
 
 
 def _callback_integration_authority_fixture(
@@ -12144,6 +12798,7 @@ def _callback_integration_authority_fixture(
     daemon._merge_repo_root = repo
     daemon._merge_target_branch = "main"
     daemon._merge_portal_attempt_root = projection_bridge.attempt_root
+    daemon._merge_worktree_submodule_paths = ()
     return daemon, qualification, evidence, train_path, repo
 
 
@@ -12162,6 +12817,42 @@ def test_callback_integration_authority_reloads_float_receipt_and_git(
     parsed = json.loads(str(verified["train_receipt"]))
     assert parsed["started_at"] == 1787658877.9862263
     assert parsed["finished_at"] == 1787658878.9458497
+
+
+def test_callback_integration_authority_propagates_nested_repository_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, qualification, evidence, _train_path, _repo = (
+        _callback_integration_authority_fixture(tmp_path)
+    )
+    daemon._merge_worktree_submodule_paths = ("ipfs_datasets_py",)
+    observed: list[tuple[str, ...]] = []
+    original = (
+        DatabasePortalExecutionBridge._callback_integration_source_evidence
+    )
+
+    def capture_scope(
+        verifier: DatabasePortalExecutionBridge,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        observed.append(verifier.worktree_submodule_paths)
+        return original(verifier, *args, **kwargs)
+
+    monkeypatch.setattr(
+        DatabasePortalExecutionBridge,
+        "_callback_integration_source_evidence",
+        capture_scope,
+    )
+
+    verified = daemon._verified_post_merge_callback_integration_receipt(
+        qualification,
+        recovery_evidence=evidence,
+    )
+
+    assert verified["receipt_id"] == qualification["receipt_id"]
+    assert observed == [("ipfs_datasets_py",)]
 
 
 @pytest.mark.parametrize(
@@ -12265,7 +12956,15 @@ def test_callback_integration_authority_rejects_rehashed_or_changed_sources(
         )
 
 
+@pytest.mark.parametrize(
+    "terminal_reason",
+    [
+        "Portal completion lacks one exact evaluated baseline",
+        "Portal callback reconciliation binding is invalid",
+    ],
+)
 def test_callback_integration_recovery_seed_is_closed_and_content_addressed(
+    terminal_reason: str,
 ) -> None:
     daemon = object.__new__(DatabaseImplementationDaemon)
     seed = {
@@ -12296,9 +12995,7 @@ def test_callback_integration_recovery_seed_is_closed_and_content_addressed(
         "queue_source_binding_id": "sha256:" + "1" * 64,
         "queue_source_projection_immutable_digest": "sha256:" + "2" * 64,
         "recovery_evidence_id": "sha256:" + "3" * 64,
-        "terminal_reason": (
-            "Portal completion lacks one exact evaluated baseline"
-        ),
+        "terminal_reason": terminal_reason,
     }
     seed["seed_id"] = daemon._database_portal_evidence_digest(seed)
 
@@ -12380,6 +13077,121 @@ def test_evaluated_baseline_terminal_is_callback_recovery_only(
         attempt,
         task,
     )
+
+
+def test_exact_callback_binding_terminal_is_typed_post_merge_recovery_only(
+) -> None:
+    reason = "Portal callback reconciliation binding is invalid"
+
+    assert (
+        DatabaseImplementationDaemon._canonical_portal_failure_reason(reason)
+        == reason
+    )
+    assert (
+        DatabaseImplementationDaemon._recoverable_post_merge_terminal_reason(
+            reason
+        )
+        == reason
+    )
+    assert (
+        DatabaseImplementationDaemon._recoverable_post_merge_terminal_reason(
+            f"prefix:{reason}:suffix"
+        )
+        == ""
+    )
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected"),
+    [
+        ("Portal callback reconciliation binding is invalid", True),
+        (
+            "prefix:Portal callback reconciliation binding is invalid:suffix",
+            False,
+        ),
+    ],
+)
+def test_callback_binding_terminal_recovery_discovery_is_exact(
+    monkeypatch: pytest.MonkeyPatch,
+    reason: str,
+    expected: bool,
+) -> None:
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    attempt = DatabaseTaskAttempt(
+        attempt_id="attempt:callback-discovery",
+        claim_id="claim:callback-discovery",
+        task_cid="task:callback-discovery",
+        task_alias="SPAR-005",
+        attempt_number=1,
+        owner_session_id="session:callback-discovery",
+        fencing_token=7,
+        fence_epoch=3,
+        lease_id="lease:callback-discovery",
+        committed_phase="failed",
+        status="failed",
+        started_at_ms=1,
+        finished_at_ms=2,
+        revision=3,
+        body={},
+    )
+    terminal_receipt = {
+        "operation": "database_portal_terminal_failure",
+        "attempt_id": attempt.attempt_id,
+        "attempt_number": attempt.attempt_number,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "owner_session_id": attempt.owner_session_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "execution_phase": "failed",
+        "execution_revision": attempt.revision,
+        "execution_finished_at_ms": attempt.finished_at_ms,
+        "reason": reason,
+        "retryable": False,
+        "coordination": {},
+        "control_expected_status": "in_progress",
+        "control_expected_revision": 11,
+    }
+    task = SimpleNamespace(
+        task_cid=attempt.task_cid,
+        task_alias=attempt.task_alias,
+        status="blocked",
+        revision=12,
+        body={"completion_receipt": terminal_receipt},
+    )
+
+    class TaskSource:
+        @staticmethod
+        def list_tasks(**_kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(tasks=[])
+
+        @staticmethod
+        def get(task_cid: str) -> object | None:
+            return task if task_cid == attempt.task_cid else None
+
+    daemon._task_source = TaskSource()
+    monkeypatch.setattr(daemon, "open", lambda: daemon)
+    monkeypatch.setattr(daemon, "_latest_failed_attempts", lambda: (attempt,))
+    monkeypatch.setattr(
+        daemon,
+        "_terminal_portal_failure_reason",
+        lambda _attempt: reason,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_is_post_merge_completion_target_generation_changed_terminal",
+        lambda *_args: False,
+    )
+    monkeypatch.setattr(daemon, "_automatic_claim_forbidden", lambda _task: False)
+    monkeypatch.setattr(
+        daemon,
+        "_post_merge_completion_recovery_was_consumed",
+        lambda _attempt: False,
+    )
+
+    observed = daemon.post_merge_completion_recovery_task_cids()
+
+    assert observed == ((attempt.task_cid,) if expected else ())
 
 
 def test_callback_integration_source_requires_exact_receipt_event_and_blobs(
@@ -14355,6 +15167,10 @@ def test_callback_v3_porcelain_rejects_non_worktree_content_changes(
             "blocked",
             "Portal completion lacks one exact evaluated baseline",
         ),
+        (
+            "blocked",
+            "Portal callback reconciliation binding is invalid",
+        ),
         ("quarantined", "provider_callback_outcome_unknown"),
     ],
 )
@@ -14453,6 +15269,7 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
         ) -> object:
             captured.update(kwargs)
             return SimpleNamespace(
+                changed=True,
                 to_dict=lambda: {
                     "status": "retrying",
                     "receipt": kwargs.get("receipt"),
@@ -14483,6 +15300,11 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     )
     monkeypatch.setattr(
         daemon,
+        "_post_merge_completion_claim_verifier_replay_context",
+        lambda _task: None,
+    )
+    monkeypatch.setattr(
+        daemon,
         "_latest_failed_attempts",
         lambda: (attempt,),
     )
@@ -14504,7 +15326,8 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     monkeypatch.setattr(
         daemon,
         "_is_portal_completion_evaluated_baseline_missing_terminal",
-        lambda *_args: True,
+        lambda *_args: terminal_reason
+        == "Portal completion lacks one exact evaluated baseline",
     )
     monkeypatch.setattr(
         daemon,
@@ -14607,6 +15430,62 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     assert replay["post_merge_completion_recovery_seed"] == seed
 
 
+def test_terminal_failure_receipt_optional_lineages_are_all_or_none() -> None:
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    base = {
+        "operation": "database_portal_terminal_failure",
+        "attempt_id": "attempt:1",
+        "attempt_number": 1,
+        "claim_id": "claim:1",
+        "lease_id": "lease:1",
+        "owner_session_id": "session:1",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "execution_phase": "failed",
+        "execution_revision": 3,
+        "execution_finished_at_ms": 4,
+        "reason": "terminal",
+        "retryable": False,
+        "coordination": {},
+        "control_expected_status": "in_progress",
+        "control_expected_revision": 5,
+    }
+    route = {"policy_id": "policy:1", "task_revision": 2}
+    routed = {
+        **base,
+        "execution_route_binding": route,
+        "execution_route_policy_id": "policy:1",
+        "execution_route_origin_revision": 2,
+    }
+    transfer = {"binding_id": "binding:1"}
+    transferred = {
+        **routed,
+        "virgin_task_transfer": transfer,
+        "virgin_task_transfer_claim_cursor": {"binding_id": "binding:1"},
+    }
+
+    assert daemon._database_portal_terminal_failure_receipt_schema_valid(
+        base,
+        task=None,
+    )
+    assert daemon._database_portal_terminal_failure_receipt_schema_valid(
+        routed,
+        task=None,
+    )
+    assert daemon._database_portal_terminal_failure_receipt_schema_valid(
+        transferred,
+        task=None,
+    )
+    assert not daemon._database_portal_terminal_failure_receipt_schema_valid(
+        {**base, "execution_route_binding": route},
+        task=None,
+    )
+    assert not daemon._database_portal_terminal_failure_receipt_schema_valid(
+        {**base, "virgin_task_transfer": transfer},
+        task=None,
+    )
+
+
 def test_post_merge_completion_recovery_seed_closes_without_portal_dispatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -14655,6 +15534,83 @@ def test_post_merge_completion_recovery_seed_closes_without_portal_dispatch(
         ]
     }
     assert events[0]["canonical_task_cid"] != record.task_cid
+
+
+def test_post_merge_completion_seed_accepts_only_exact_typed_admission() -> None:
+    pid = 123
+    start_time_ticks = 456
+    boot_id = "boot:test"
+    parent_pid = 7
+    birth_material = f"{pid}:{start_time_ticks}:{boot_id}:{parent_pid}"
+    receipt = {
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "typed-database-attempt-admission@1"
+        ),
+        "claimed_from_revision": 11,
+        "admitted_from_revision": 12,
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+        "claim_process_attestation": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "typed-database-claim-process@1"
+            ),
+            "grant_id": "grant:test",
+            "client_id": "client:test",
+            "process_birth_id": (
+                "birth:"
+                + hashlib.sha256(birth_material.encode("utf-8")).hexdigest()[:32]
+            ),
+            "pid": pid,
+            "uid": 1000,
+            "start_time_ticks": start_time_ticks,
+            "boot_id": boot_id,
+            "parent_pid": parent_pid,
+        },
+    }
+    matches = (
+        DatabasePortalExecutionBridge
+        ._post_merge_completion_recovery_claim_phase_matches
+    )
+
+    assert matches(
+        {"operation": "database_claim"},
+        record_revision=12,
+        recovery_control_revision=10,
+    )
+    assert matches(
+        receipt,
+        record_revision=13,
+        recovery_control_revision=10,
+    )
+
+    tampered = (
+        ("claim_phase_schema", "schema:foreign"),
+        ("claimed_from_revision", 10),
+        ("admitted_from_revision", 11),
+        ("attempt_execution_phase", "running"),
+        ("attempt_execution_revision", True),
+        (
+            "claim_process_attestation",
+            {
+                **receipt["claim_process_attestation"],
+                "process_birth_id": "birth:" + "0" * 32,
+            },
+        ),
+    )
+    for field, value in tampered:
+        assert not matches(
+            {**receipt, field: value},
+            record_revision=13,
+            recovery_control_revision=10,
+        )
+    assert not matches(
+        receipt,
+        record_revision=12,
+        recovery_control_revision=10,
+    )
 
 
 def test_post_merge_completion_recovery_never_repairs_bare_completion(
@@ -15778,6 +16734,120 @@ def test_bridge_scopes_validation_to_checked_nested_repository(
     assert "- Validation: 'python -m pytest" not in projection
 
 
+def test_bridge_preserves_sealed_spar_workspace_scoped_nested_paths(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "checkout"
+    nested_repository = repository_root / "ipfs_datasets_py"
+    nested_repository.mkdir(parents=True)
+    (nested_repository / ".git").write_text(
+        "gitdir: ../.git/modules/ipfs_datasets_py\n",
+        encoding="utf-8",
+    )
+    record = _sealed_spar_owned_record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+        repository_root=repository_root,
+        worktree_submodule_paths=("ipfs_datasets_py",),
+        task_header_prefix="## SPAR-",
+    )
+
+    paths, _binding = bridge._ensure_attempt_projection(
+        _attempt(task_alias="SPAR-002"),
+        record,
+    )
+    projection = paths.task_projection.read_text(encoding="utf-8")
+    parsed = parse_task_text(
+        projection,
+        path=paths.task_projection,
+        task_header_prefix="## SPAR-",
+    )
+
+    assert len(parsed) == 1
+    assert task_declared_output_paths(parsed[0]) == (
+        "ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/capsules.py",
+        "ipfs_datasets_py/tests/unit/semantic_refactoring/test_capsules.py",
+    )
+    assert parsed[0].validation == [
+        (
+            "python3 -m pytest -q ipfs_datasets_py/tests/unit/"
+            "semantic_refactoring/test_capsules.py"
+        )
+    ]
+    assert "ipfs_datasets_py/ipfs_datasets_py/ipfs_datasets_py" not in projection
+    assert "- Validation: cd ipfs_datasets_py &&" not in projection
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    (
+        "owner_relative_output",
+        "owner_relative_validation",
+        "validation_shell_suffix",
+        "validation_shell_metacharacter",
+        "wrong_plan_root",
+    ),
+)
+def test_bridge_rejects_malformed_sealed_spar_workspace_path_frame(
+    tmp_path: Path,
+    malformation: str,
+) -> None:
+    repository_root = tmp_path / "checkout"
+    nested_repository = repository_root / "ipfs_datasets_py"
+    nested_repository.mkdir(parents=True)
+    (nested_repository / ".git").write_text(
+        "gitdir: ../.git/modules/ipfs_datasets_py\n",
+        encoding="utf-8",
+    )
+    record = _sealed_spar_owned_record()
+    if malformation == "owner_relative_output":
+        record.outputs = ({"path": "tests/unit/test_capsules.py"},)
+    elif malformation == "owner_relative_validation":
+        record.validations = (
+            {"argv": ["python3 -m pytest -q tests/unit/test_capsules.py"]},
+        )
+    elif malformation == "validation_shell_suffix":
+        record.validations = (
+            {
+                "argv": [
+                    "python3 -m pytest -q ipfs_datasets_py/tests/unit/"
+                    "semantic_refactoring/test_capsules.py && echo unsafe"
+                ]
+            },
+        )
+    elif malformation == "validation_shell_metacharacter":
+        target = "ipfs_datasets_py/tests/unit/test_capsules.py;unsafe.py"
+        record.outputs = (
+            record.outputs[0],
+            {"path": target},
+        )
+        record.validations = (
+            {"argv": [f"python3 -m pytest -q {target}"]},
+        )
+    else:
+        record.body["accepted_plan_root_cid"] = "baguqeerawrong"
+    factory_calls: list[str] = []
+
+    def factory(paths: object, alias: str) -> _CompletingPortal:
+        factory_calls.append(alias)
+        return _CompletingPortal(paths, alias)
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        repository_root=repository_root,
+        worktree_submodule_paths=("ipfs_datasets_py",),
+        task_header_prefix="## SPAR-",
+    )
+
+    with pytest.raises(DatabasePortalBridgeError, match="sealed SPAR"):
+        bridge.run_provider(_attempt(task_alias="SPAR-002"))
+    assert factory_calls == []
+
+
 def test_bridge_projection_preserves_database_identity_through_scoped_preflight(
     tmp_path: Path,
 ) -> None:
@@ -16265,12 +17335,16 @@ def test_merge_train_recovery_is_inert_until_bound(tmp_path: Path) -> None:
     try:
         settlement = daemon._settle_invalid_metadata_portal_quarantines()
         recovery = daemon._run_post_merge_recovery()
+        consume = daemon._consume_pending_same_board_merges()
         assert settlement["attempted"] is False
         assert settlement["reason"] == "merge_train_recovery_not_configured"
         assert settlement["write_count"] == 0
         assert recovery["attempted"] is False
         assert recovery["reason"] == "post_merge_recovery_not_configured"
         assert recovery["write_count"] == 0
+        assert consume["attempted"] is False
+        assert consume["reason"] == "pending_merge_consume_not_configured"
+        assert consume["write_count"] == 0
         with pytest.raises(
             DatabaseImplementationAuthorityError,
             match="bound queue and target branch",
@@ -16340,6 +17414,342 @@ def test_merge_train_recovery_bind_is_one_shot(tmp_path: Path) -> None:
         settlement = daemon._settle_invalid_metadata_portal_quarantines()
         assert settlement["attempted"] is True
         assert settlement["settled"] == 0
+        consume = daemon._consume_pending_same_board_merges()
+        assert consume["attempted"] is False
+        assert consume["reason"] == "pending_merge_consume_not_configured"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_pending_merge_consume_bind_is_one_shot(tmp_path: Path) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:pending-merge-consume-bind",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        daemon.bind_pending_merge_consume(lambda: None)
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="already bound",
+        ):
+            daemon.bind_pending_merge_consume(lambda: None)
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_idle_database_pass_consumes_pending_same_board_merge(
+    tmp_path: Path,
+) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:pending-merge-consume-idle",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    calls: list[int] = []
+
+    def consume() -> dict[str, object]:
+        calls.append(1)
+        return {
+            "schema": DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA,
+            "attempted": True,
+            "consumed": True,
+            "request_id": "req-014",
+            "task_id": "SPAR-014",
+            "status": "merged",
+            "reason": "merged",
+            "write_count": 1,
+        }
+
+    try:
+        daemon.bind_pending_merge_consume(consume)
+        result = daemon._run_once_impl()
+        assert calls == [1]
+        assert result["pending_merge_consume"]["consumed"] is True
+        assert result["pending_merge_consume"]["task_id"] == "SPAR-014"
+        assert result["write_count"] >= 1
+        assert result["selection_idle_reason"] == "no_ready_tasks"
+    finally:
+        daemon.close()
+
+
+def test_pending_merge_consume_skips_false_positive_completion_reopen(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "consume@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Consume Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
+
+    class _Queue:
+        def __init__(self, rows: tuple[object, ...]) -> None:
+            self.target_repository_id = checkout_repository_id(repo)
+            self.target_branch = "main"
+            self.require_target_binding = True
+            self._rows = rows
+
+        def pending_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return self._rows
+
+        def completed_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def processing_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def quarantined_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def get(self, request_id: str) -> object | None:
+            del request_id
+            return None
+
+    constructed: list[str] = []
+
+    def factory(paths: object, alias: str) -> object:
+        del paths
+        constructed.append(alias)
+        raise AssertionError("false-positive reopen must not construct Portal")
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        repository_root=repo,
+        merge_queue=_Queue(
+            (
+                SimpleNamespace(
+                    request_id="req-false-positive",
+                    task_id="SPAR-014",
+                    canonical_task_id="cid:014",
+                    canonical_task_key="key:014",
+                    commit_sha="a" * 40,
+                    metadata={
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "merge-candidate@3"
+                        ),
+                        "false_positive_completion_reopen": {
+                            "schema": "x"
+                        },
+                    },
+                ),
+            )
+        ),
+        merge_target_branch="main",
+    )
+    assert bridge.consume_pending_same_board_merge() is None
+    assert constructed == []
+
+
+def test_pending_merge_consume_uses_owned_projection_portal(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "consume@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Consume Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
+    request = SimpleNamespace(
+        request_id="req-014",
+        task_id="SPAR-014",
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+        },
+    )
+
+    class _Queue:
+        def __init__(self) -> None:
+            self.target_repository_id = checkout_repository_id(repo)
+            self.target_branch = "main"
+            self.require_target_binding = True
+
+        def pending_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return (request,)
+
+        def completed_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def processing_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def quarantined_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def get(self, request_id: str) -> object | None:
+            return request if request_id == "req-014" else None
+
+    queue = _Queue()
+
+    class _Portal:
+        def __init__(self) -> None:
+            self.merge_queue = queue
+            self.repo_root = repo
+            self.resolved_merge_target_branch = "main"
+            self.closed = False
+
+        def _consume_one_merge_candidate(self) -> dict[str, object]:
+            return {
+                "status": "merged",
+                "merged": True,
+                "request_id": "req-014",
+                "reason": "merged",
+            }
+
+        def close(self) -> None:
+            self.closed = True
+
+    portal = _Portal()
+
+    def factory(paths: object, alias: str) -> object:
+        del paths
+        assert alias == "SPAR-014"
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        repository_root=repo,
+        merge_queue=queue,
+        merge_target_branch="main",
+    )
+    projection = SimpleNamespace(
+        paths=object(),
+        binding={},
+        task_status="retrying",
+    )
+    bridge._owned_post_merge_recovery_projection = (  # type: ignore[method-assign]
+        lambda *args, **kwargs: projection
+    )
+    result = bridge.consume_pending_same_board_merge()
+    assert result is not None
+    assert result["consumed"] is True
+    assert result["task_id"] == "SPAR-014"
+    assert result["request_id"] == "req-014"
+    assert result["write_count"] == 1
+    assert portal.closed is True
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_resume_completes_retrying_attempt_when_outputs_on_head(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "landed@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Landed Test"],
+        cwd=repo,
+        check=True,
+    )
+    output = repo / "inventory" / "result.json"
+    output.parent.mkdir()
+    output.write_text('{"ok": true}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "inventory/result.json"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "landed"], cwd=repo, check=True)
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise AssertionError(f"provider must not run for {attempt.task_cid}")
+
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:landed-retrying",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+        repo_root=repo,
+        merge_target_ref="HEAD",
+        provider_fn=provider,
+        effect_fn=lambda attempt, result: {"status": "applied"},
+        validation_fn=lambda attempt, result: {
+            "outcome": "passed",
+            "evidence_digest": "sha256:" + "f" * 64,
+            "argv": ["must-not-run"],
+        },
+    )
+    try:
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:landed-retrying",
+                "tasks": [
+                    {
+                        "task_cid": "task:cid:014",
+                        "task_id": "SPAR-014",
+                        "goal_cid": "goal:partition",
+                        "status": "retrying",
+                        "priority": "P0",
+                        "ordinal": 14,
+                        "title": "Partition policy",
+                        "outputs": [{"path": "inventory/result.json"}],
+                        "validations": [{"argv": ["true"]}],
+                        "acceptance": [{"criterion": "Outputs landed"}],
+                        "objective": "Land the partition policy",
+                        "completion": "auto",
+                        "track": "analysis",
+                        "read_scope": ["ipfs_accelerate_py/agent_supervisor"],
+                        "write_scope": ["inventory/result.json"],
+                        "completion_contract": "Outputs landed",
+                    }
+                ],
+            }
+        )
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        result = daemon._resume_attempt_without_process_crash(attempt)
+        assert result["landed_outputs_completed"] is True
+        assert result["provider_dispatched"] is False
+        refreshed = daemon.task_source.get("task:cid:014")
+        assert refreshed is not None
+        assert str(refreshed.status).lower() == "completed"
     finally:
         daemon.close()
 

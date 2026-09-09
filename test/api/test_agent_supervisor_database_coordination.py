@@ -390,6 +390,38 @@ def test_takeover_after_expiry_advances_epoch_monotonically(tmp_path: Path) -> N
         coordinator.close()
 
 
+def test_leftover_accepted_task_lease_expires_without_art_update(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:leftover-lease", task_id="SPAR-018")
+        claim = coordinator.claim_task(
+            task_cid="task:leftover-lease",
+            owner_session_id="session:dead",
+        )
+        assert coordinator.get_lease(claim.lease_id).state is LeaseState.ACCEPTED
+        clock.advance(10_001)
+        observed = coordinator.synchronize_authoritative_task(
+            task_cid="task:leftover-lease",
+            task_id="SPAR-018",
+            authoritative_status="todo",
+            authoritative_revision=2,
+            authoritative_ready=True,
+            authoritative_completed=False,
+        )
+        assert coordinator.get_lease(claim.lease_id).state is LeaseState.EXPIRED
+        assert observed["active_claim_preserved"] is False
+        replacement = coordinator.claim_task(
+            task_cid="task:leftover-lease",
+            owner_session_id="session:live",
+        )
+        assert replacement.lease_id != claim.lease_id
+        assert coordinator.get_lease(replacement.lease_id).state is LeaseState.ACCEPTED
+    finally:
+        coordinator.close()
+
+
 def test_stale_fencing_epoch_rejected_on_protected_writes(tmp_path: Path) -> None:
     coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
     try:

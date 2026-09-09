@@ -3337,6 +3337,156 @@ class DatabaseCoordinator:
         _validate_coordination_authority(connection)
 
     @staticmethod
+    def _set_fenced_lease_state_with_table_rebuild_unlocked(
+        connection: Any,
+        *,
+        lease_id: str,
+        from_state: str,
+        to_state: str,
+    ) -> None:
+        """Replace one lease row without mutating the persisted ART index.
+
+        DuckDB implements ``UPDATE`` as delete-plus-insert of the complete
+        row. A leftover accepted SPAR-018 lease then fataled shard-1 claim
+        with ``Only deleted 0 out of 1 rows`` on ``fenced_leases`` COMMIT.
+        Copy the exact table under a staging name, rewrite only that lease's
+        state/revision, and replace the old table as one transactional DDL
+        operation.
+        """
+
+        source_row = connection.execute(
+            "SELECT COUNT(*) AS row_count, "
+            "SUM(CASE WHEN lease_id = ? AND state = ? THEN 1 ELSE 0 END) "
+            "AS target_count "
+            "FROM fenced_leases",
+            [lease_id, from_state],
+        ).fetchone()
+        source_mapping = _row_mapping(source_row)
+        source_count = int(
+            _row_get(source_mapping, "row_count", "0", default=0)
+        )
+        target_count = int(
+            _row_get(source_mapping, "target_count", "1", default=0) or 0
+        )
+        if target_count != 1:
+            raise DatabaseCoordinationStaleFenceError(
+                "lease expiry rebuild lost its exact accepted row"
+            )
+
+        connection.execute(
+            """
+            CREATE TABLE fenced_leases_expire_staging (
+                lease_id VARCHAR PRIMARY KEY,
+                lease_kind VARCHAR NOT NULL,
+                scope_key VARCHAR NOT NULL,
+                scope VARCHAR NOT NULL,
+                mode VARCHAR NOT NULL,
+                owner_session_id VARCHAR NOT NULL,
+                fencing_token BIGINT NOT NULL,
+                fence_epoch BIGINT NOT NULL,
+                acquired_at_ms BIGINT NOT NULL,
+                expires_at_ms BIGINT NOT NULL,
+                state VARCHAR NOT NULL,
+                revision BIGINT NOT NULL,
+                task_cid VARCHAR NOT NULL DEFAULT '',
+                worktree_id VARCHAR NOT NULL DEFAULT '',
+                resource_kind VARCHAR NOT NULL DEFAULT '',
+                resource_id VARCHAR NOT NULL DEFAULT '',
+                repository_id VARCHAR NOT NULL DEFAULT '',
+                path VARCHAR NOT NULL DEFAULT '',
+                claim_id VARCHAR NOT NULL DEFAULT '',
+                attempt_id VARCHAR NOT NULL DEFAULT '',
+                attempt_number BIGINT NOT NULL DEFAULT 0,
+                idempotency_key VARCHAR NOT NULL DEFAULT '',
+                body_json VARCHAR NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO fenced_leases_expire_staging(
+                lease_id, lease_kind, scope_key, scope, mode,
+                owner_session_id, fencing_token, fence_epoch,
+                acquired_at_ms, expires_at_ms, state, revision,
+                task_cid, worktree_id, resource_kind, resource_id,
+                repository_id, path, claim_id, attempt_id,
+                attempt_number, idempotency_key, body_json
+            )
+            SELECT
+                lease_id, lease_kind, scope_key, scope, mode,
+                owner_session_id, fencing_token, fence_epoch,
+                acquired_at_ms, expires_at_ms,
+                CASE WHEN lease_id = ? AND state = ? THEN ? ELSE state END,
+                CASE WHEN lease_id = ? AND state = ?
+                     THEN revision + 1 ELSE revision END,
+                task_cid, worktree_id, resource_kind, resource_id,
+                repository_id, path, claim_id, attempt_id,
+                attempt_number, idempotency_key, body_json
+            FROM fenced_leases
+            """,
+            [lease_id, from_state, to_state, lease_id, from_state],
+        )
+        row = connection.execute(
+            """
+            SELECT COUNT(*) AS row_count,
+                   SUM(CASE WHEN lease_id = ? AND state = ? THEN 1 ELSE 0 END)
+                       AS target_count
+            FROM fenced_leases_expire_staging
+            """,
+            [lease_id, to_state],
+        ).fetchone()
+        staged_mapping = _row_mapping(row)
+        staged_count = int(
+            _row_get(staged_mapping, "row_count", "0", default=0)
+        )
+        staged_target_count = int(
+            _row_get(staged_mapping, "target_count", "1", default=0) or 0
+        )
+        if staged_count != source_count or staged_target_count != 1:
+            raise DatabaseCoordinationStaleFenceError(
+                "lease expiry rebuild did not preserve its exact rows"
+            )
+
+        connection.execute("DROP TABLE fenced_leases")
+        connection.execute(
+            "ALTER TABLE fenced_leases_expire_staging RENAME TO fenced_leases"
+        )
+        connection.execute(
+            """
+            CREATE INDEX fenced_leases_scope_state_idx
+                ON fenced_leases(scope_key, state, expires_at_ms)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX fenced_leases_owner_idx
+                ON fenced_leases(owner_session_id, state)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX fenced_leases_idempotency_idx
+                ON fenced_leases(idempotency_key)
+            """
+        )
+        landed = connection.execute(
+            "SELECT state FROM fenced_leases WHERE lease_id = ?",
+            [lease_id],
+        ).fetchone()
+        if landed is None:
+            raise DatabaseCoordinationStaleFenceError(
+                "lease expiry rebuild lost its exact accepted row"
+            )
+        landed_state = str(
+            _row_get(_row_mapping(landed), "state", "0", default="")
+        )
+        if landed_state != to_state:
+            raise DatabaseCoordinationStaleFenceError(
+                "lease expiry rebuild lost its exact accepted row"
+            )
+        _validate_coordination_authority(connection)
+
+    @staticmethod
     def _task_history_counts_unlocked(
         connection: Any,
         task_cid: str,
@@ -4612,12 +4762,11 @@ class DatabaseCoordinator:
             lease_id = str(_row_get(mapping, "lease_id", "0"))
             token = int(_row_get(mapping, "fencing_token", "1", default=0))
             epoch = int(_row_get(mapping, "fence_epoch", "2", default=0))
-            connection.execute(
-                """
-                UPDATE fenced_leases SET state = ?, revision = revision + 1
-                WHERE lease_id = ? AND state = ?
-                """,
-                [LeaseState.EXPIRED.value, lease_id, LeaseState.ACCEPTED.value],
+            self._set_fenced_lease_state_with_table_rebuild_unlocked(
+                connection,
+                lease_id=lease_id,
+                from_state=LeaseState.ACCEPTED.value,
+                to_state=LeaseState.EXPIRED.value,
             )
             connection.execute(
                 """

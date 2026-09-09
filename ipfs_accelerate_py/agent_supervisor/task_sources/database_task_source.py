@@ -42,6 +42,7 @@ from .duckdb_state import (
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
     QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+    QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET,
     QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
     STALE_IN_PROGRESS_UNSTALL_SECONDS,
     QuackOwnerCommandRemoteError,
@@ -161,6 +162,12 @@ _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS: Final[frozenset[str]] = frozenset(
         "provider_capacity_exhausted",
     }
 )
+_PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "provider_capacity_exhausted",
+        "provider_capacity_backoff",
+    }
+)
 
 
 def _leftover_wait_blocked_coordination_matches(
@@ -275,14 +282,25 @@ _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS = frozenset(
         "control_expected_revision",
     }
 )
-_LEFTOVER_WAIT_BLOCKED_RECEIPT_OPTIONAL_FIELDS: Final[frozenset[str]] = (
-    frozenset(
-        {
-            "execution_route_binding",
-            "execution_route_origin_revision",
-            "execution_route_policy_id",
-        }
-    )
+_TYPED_DEFERRAL_BLOCK_RECEIPT_OPTIONAL_FIELDS = frozenset(
+    {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+        "virgin_task_transfer_request",
+        "virgin_task_transfer",
+        "virgin_task_transfer_claim_cursor",
+    }
+)
+_TYPED_DEFERRAL_BLOCK_RECEIPT_ROUTE_FIELDS = frozenset(
+    {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+    }
+)
+_LEFTOVER_WAIT_BLOCKED_RECEIPT_OPTIONAL_FIELDS = (
+    _TYPED_DEFERRAL_BLOCK_RECEIPT_OPTIONAL_FIELDS
 )
 _TYPED_DEFERRAL_BUDGET_FIELDS = frozenset(
     {
@@ -849,7 +867,7 @@ def _validated_leftover_wait_budget(
             or attempt_id != attempt_id.strip()
             or attempt_id in seen_attempt_ids
             or type(reason) is not str
-            or reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+            or not reason
             or not isinstance(fingerprint, str)
             or _TYPED_DEFERRAL_SHA256_RE.fullmatch(fingerprint) is None
         ):
@@ -874,32 +892,55 @@ def _validated_leftover_wait_budget(
     current_fingerprint = budget.get("current_deferral_fingerprint")
     observation_id = budget.get("observation_id")
     matching_digest = budget.get("matching_attempts_digest")
-    if (
-        budget.get("schema") != _TYPED_DEFERRAL_BUDGET_SCHEMA
-        or budget.get("task_cid") != task_cid
-        or budget.get("task_generation") != task_cid
-        or any(type(value) is not int for value in count_values)
-        or any(value != len(matching) for value in count_values)
-        or type(max_task_attempts) is not int
-        or max_task_attempts <= 0
-        or len(matching) < max_task_attempts
-        or budget.get("typed_deferral_count_is_lower_bound") is not False
-        or budget.get("verified_count_complete") is not True
-        or budget.get("exhausted") is not True
-        or budget.get("attempt_consumed") is not False
-        or budget.get("typed_deferral_slot_consumed") is not True
-        or budget.get("matching_attempts_truncated") is not False
-        or type(omitted_count) is not int
-        or omitted_count != 0
-        or not isinstance(generation_fingerprint, str)
-        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(generation_fingerprint) is None
-        or not isinstance(current_fingerprint, str)
-        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(current_fingerprint) is None
-        or not isinstance(observation_id, str)
-        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(observation_id) is None
-        or not isinstance(matching_digest, str)
-        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(matching_digest) is None
-    ):
+    wait_only = all(
+        str(item["reason"]) in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+        for item in matching
+    )
+    capacity_only = all(
+        str(item["reason"]) in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+        for item in matching
+    )
+    foreign_only = all(
+        str(item["reason"]) not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+        for item in matching
+    )
+    closed_field_ok = (
+        budget.get("schema") == _TYPED_DEFERRAL_BUDGET_SCHEMA
+        and budget.get("task_cid") == task_cid
+        and budget.get("task_generation") == task_cid
+        and all(type(value) is int for value in count_values)
+        and count_values[1] == len(matching)
+        and type(max_task_attempts) is int
+        and max_task_attempts > 0
+        and budget.get("exhausted") is True
+        and budget.get("attempt_consumed") is False
+        and budget.get("typed_deferral_slot_consumed") is True
+        and type(omitted_count) is int
+        and omitted_count >= 0
+        and isinstance(generation_fingerprint, str)
+        and _TYPED_DEFERRAL_SHA256_RE.fullmatch(generation_fingerprint) is not None
+        and isinstance(current_fingerprint, str)
+        and _TYPED_DEFERRAL_SHA256_RE.fullmatch(current_fingerprint) is not None
+        and isinstance(observation_id, str)
+        and _TYPED_DEFERRAL_SHA256_RE.fullmatch(observation_id) is not None
+        and isinstance(matching_digest, str)
+        and _TYPED_DEFERRAL_SHA256_RE.fullmatch(matching_digest) is not None
+    )
+    if wait_only:
+        closed_field_ok = (
+            closed_field_ok
+            and all(value == len(matching) for value in count_values)
+            and len(matching) >= max_task_attempts
+            and budget.get("typed_deferral_count_is_lower_bound") is False
+            and budget.get("verified_count_complete") is True
+            and budget.get("matching_attempts_truncated") is False
+            and omitted_count == 0
+        )
+    if not wait_only and not foreign_only and not capacity_only:
+        raise TypedDeferralRecoveryError(
+            "leftover-wait matching attempt is foreign or malformed"
+        )
+    if not closed_field_ok:
         raise TypedDeferralRecoveryError(
             "leftover-wait exhausted budget failed closed-field verification"
         )
@@ -934,12 +975,45 @@ def _validated_leftover_wait_budget(
         if item["attempt_id"] == blocked_attempt_id
         and item["attempt_number"] == blocked_attempt_number
     ]
-    if (
-        len(current) != 1
-        or current[0]["deferral_fingerprint"] != current_fingerprint
-    ):
+    wait_only = all(
+        str(item["reason"]) in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+        for item in matching
+    )
+    capacity_only = all(
+        str(item["reason"]) in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+        for item in matching
+    )
+    foreign_only = all(
+        str(item["reason"]) not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+        for item in matching
+    )
+    if wait_only or (capacity_only and current):
+        if (
+            len(current) != 1
+            or current[0]["deferral_fingerprint"] != current_fingerprint
+        ):
+            raise TypedDeferralRecoveryError(
+                "leftover-wait exhausted budget is not bound to its current attempt"
+            )
+    elif foreign_only:
+        # SPAR-024: leftover-wait current exhausted against capacity matching.
+        # Current leftover-wait is omitted from matching, so identity is the
+        # blocked attempt plus a current fingerprint that matching does not
+        # carry.
+        if current:
+            raise TypedDeferralRecoveryError(
+                "leftover-wait current foreign matching includes the current attempt"
+            )
+        if any(
+            item["deferral_fingerprint"] == current_fingerprint
+            for item in matching
+        ):
+            raise TypedDeferralRecoveryError(
+                "leftover-wait current fingerprint appears in foreign matching"
+            )
+    else:
         raise TypedDeferralRecoveryError(
-            "leftover-wait exhausted budget is not bound to its current attempt"
+            "leftover-wait matching attempt is foreign or malformed"
         )
     reasons = sorted({str(item["reason"]) for item in matching})
     return budget, reasons
@@ -958,8 +1032,15 @@ def _validated_leftover_wait_blocked_context(
     )
     revision = _positive_integer(task_revision, noun="leftover-wait task revision")
     coordination = blocked_receipt.get("coordination")
+    extra_fields = set(blocked_receipt) - _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS
+    carried_route = (
+        set(blocked_receipt) & _TYPED_DEFERRAL_BLOCK_RECEIPT_ROUTE_FIELDS
+    )
     if (
-        not _leftover_wait_blocked_receipt_fields_match(blocked_receipt)
+        _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS - set(blocked_receipt)
+        or extra_fields - _TYPED_DEFERRAL_BLOCK_RECEIPT_OPTIONAL_FIELDS
+        or carried_route
+        not in (set(), _TYPED_DEFERRAL_BLOCK_RECEIPT_ROUTE_FIELDS)
         or blocked_receipt.get("operation")
         != TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
         or blocked_receipt.get("reason")
@@ -1043,7 +1124,14 @@ def admit_leftover_wait_deferral_budget_recovery(
         )
     )
     recovery = _mapping(request, noun="leftover-wait recovery control receipt")
-    if set(recovery) != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_FIELDS:
+    recovery_extra = set(recovery) - _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_FIELDS
+    recovery_route = set(recovery) & _TYPED_DEFERRAL_BLOCK_RECEIPT_ROUTE_FIELDS
+    if (
+        _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_FIELDS - set(recovery)
+        or recovery_extra - _TYPED_DEFERRAL_BLOCK_RECEIPT_OPTIONAL_FIELDS
+        or recovery_route
+        not in (set(), _TYPED_DEFERRAL_BLOCK_RECEIPT_ROUTE_FIELDS)
+    ):
         raise TypedDeferralRecoveryError(
             "leftover-wait recovery control receipt has unknown or missing fields"
         )
@@ -2124,6 +2212,37 @@ def execute_quack_owner_command(
             result = source.rearm_blocked_task(task.task_cid, receipt=request)
             return result.to_dict()
         if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS:
+            result = source.record_queue_backoff_and_cas_status(
+                task_cid=args["task_cid"],
+                expected_revision=args["expected_revision"],
+                expected_control_receipt=args["expected_control_receipt"],
+                status=args["status"],
+                receipt=args["receipt"],
+                delay_ms=args["delay_ms"],
+                reason=args["reason"],
+                selection_penalty=args.get("selection_penalty", 0),
+                exact_retry_not_before_ms=args.get(
+                    "exact_retry_not_before_ms"
+                ),
+            )
+            return {
+                **{
+                    key: value
+                    for key, value in result.items()
+                    if key != "cas_result"
+                },
+                "cas_result": result["cas_result"].to_dict(),
+            }
+        if command == QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET:
+            if (
+                str(args["status"] or "").strip().lower() != "retrying"
+                or args["receipt"].get("operation")
+                != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
+            ):
+                raise TaskSourceConflictError(
+                    "leftover-wait recovery command requires leftover-wait "
+                    "retrying receipt"
+                )
             result = source.record_queue_backoff_and_cas_status(
                 task_cid=args["task_cid"],
                 expected_revision=args["expected_revision"],
@@ -3925,6 +4044,89 @@ class DatabaseTaskSource:
                 changed=bool(status_receipt.changed),
                 receipt_cid=receipt_cid,
             ),
+        )
+
+    def recover_leftover_wait_deferral_budget(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        status: str,
+        receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
+        _post_merge_recovery_admission: object | None = None,
+    ) -> Mapping[str, Any]:
+        """Atomically reopen one leftover-wait exhausted block."""
+
+        if (
+            str(status or "").strip().lower() != "retrying"
+            or receipt.get("operation")
+            != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
+        ):
+            raise TaskSourceConflictError(
+                "leftover-wait recovery requires leftover-wait retrying receipt"
+            )
+        if self._intent.uses_quack_transport:
+            if _post_merge_recovery_admission is not None:
+                raise TaskSourceConflictError(
+                    "process-local post-merge recovery admission cannot cross Quack"
+                )
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET,
+                    {
+                        "task_cid": task_cid,
+                        "expected_revision": expected_revision,
+                        "expected_control_receipt": dict(
+                            expected_control_receipt
+                        ),
+                        "status": status,
+                        "receipt": dict(receipt),
+                        "delay_ms": delay_ms,
+                        "reason": reason,
+                        "selection_penalty": selection_penalty,
+                        **(
+                            {
+                                "exact_retry_not_before_ms": (
+                                    exact_retry_not_before_ms
+                                )
+                            }
+                            if exact_retry_not_before_ms is not None
+                            else {}
+                        ),
+                    },
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            if not isinstance(result, Mapping) or "cas_result" not in result:
+                raise TaskSourceIntegrityError(
+                    "leftover-wait recovery owner response is malformed"
+                )
+            result_map = dict(result)
+            cas_payload = result_map.pop("cas_result")
+            if not isinstance(cas_payload, Mapping):
+                raise TaskSourceIntegrityError(
+                    "leftover-wait recovery owner CAS response is malformed"
+                )
+            return self._guarded_queue_status_result(
+                result_map,
+                cas_result=_cas_result_from_dict(cas_payload),
+            )
+        return self.record_queue_backoff_and_cas_status(
+            task_cid=task_cid,
+            expected_revision=expected_revision,
+            expected_control_receipt=expected_control_receipt,
+            status=status,
+            receipt=receipt,
+            delay_ms=delay_ms,
+            reason=reason,
+            selection_penalty=selection_penalty,
+            exact_retry_not_before_ms=exact_retry_not_before_ms,
+            _post_merge_recovery_admission=_post_merge_recovery_admission,
         )
 
     def record_queue_retry(self, *, task_cid: str) -> IntentReceipt:

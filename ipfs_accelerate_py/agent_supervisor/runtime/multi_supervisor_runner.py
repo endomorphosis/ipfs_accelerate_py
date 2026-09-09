@@ -6424,7 +6424,14 @@ def _discard_reserved_pid_projection_locked(
 
 
 def _adopt_or_create_current_master_pid_projection(pid_path: Path) -> None:
-    """Adopt a detached parent's exact projection or create a foreground one."""
+    """Adopt this runner's projection, or recover a dead leftover after reboot.
+
+    SPAR supervise takes this path (no live-context, no plan-bound children).
+    A leftover ``configured-board-master.pid`` from SIGTERM or reboot used to
+    fail closed with "master PID projection is not owned by this runner".
+    Exact ESRCH quarantine matches the live-context recovery; live, unknown,
+    or malformed projections still fail closed.
+    """
 
     path = Path(pid_path)
     expected = f"{os.getpid()}\n".encode("ascii")
@@ -7945,6 +7952,65 @@ def _reap_uncaptured_owned_popen(
     return process.poll() is not None
 
 
+def _generic_state_owner_bootstrap_binding(
+    launch_args: Sequence[str],
+) -> int:
+    """Validate and return one generic configured-board bootstrap listener."""
+
+    bootstrap_descriptors = _profile_option_values(
+        launch_args,
+        "--state-owner-bootstrap-fd",
+    )
+    bootstrap_stores = _profile_option_values(
+        launch_args,
+        "--state-owner-bootstrap-store-id",
+    )
+    if not bootstrap_descriptors and not bootstrap_stores:
+        return -1
+    quack_endpoints = _profile_option_values(launch_args, "--quack-endpoint")
+    from ..task_sources.duckdb_state import is_quack_transport_target
+
+    if (
+        len(bootstrap_descriptors) != 1
+        or len(bootstrap_stores) != 1
+        or _profile_option_values(launch_args, "--database-owner-session-id")
+        or _profile_option_values(launch_args, "--task-source-kind")
+        != (TASK_SOURCE_DUCKDB,)
+        or _profile_option_values(launch_args, "--authority-mode")
+        != (AUTHORITY_MODE_QUACK,)
+        or _profile_option_values(launch_args, "--state-failover-policy")
+        != (FAILOVER_FAIL_CLOSED,)
+        or _profile_option_values(launch_args, "--endpoint-secret-handle")
+        != ("env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",)
+        or _profile_option_values(launch_args, "--state-store-id")
+        != (bootstrap_stores[0],)
+        or len(quack_endpoints) != 1
+        or not is_quack_transport_target(quack_endpoints[0])
+        or "--explicit-legacy-task-source" in launch_args
+    ):
+        raise ValueError(
+            "generic configured-board state-owner bootstrap is incomplete"
+        )
+    try:
+        descriptor = int(bootstrap_descriptors[0])
+    except ValueError as exc:
+        raise ValueError(
+            "generic configured-board state-owner bootstrap descriptor is invalid"
+        ) from exc
+    from ..task_sources.state_owner_bootstrap import (
+        StateOwnerBootstrapError,
+        validate_state_owner_bootstrap_listener,
+    )
+
+    try:
+        validate_state_owner_bootstrap_listener(descriptor)
+    except StateOwnerBootstrapError as exc:
+        raise ValueError(
+            "generic configured-board state-owner bootstrap listener is invalid"
+        ) from exc
+    return descriptor
+
+
 def start_track(
     track: SupervisorTrack,
     *,
@@ -8036,10 +8102,31 @@ def start_track(
         )
 
     resolved = track.resolve(repo_root)
+    generic_bootstrap_descriptor = -1
+    if not eaaef_live_dispatch and not lgcvf_live_dispatch:
+        generic_launch_args = (*common_args, *resolved.extra_args)
+        # Generic bootstrap injects --database-owner-session-id; skip it when
+        # the launch profile already binds an owner identity.
+        if not _profile_option_values(
+            generic_launch_args, "--database-owner-session-id"
+        ):
+            generic_bootstrap_descriptor = _generic_state_owner_bootstrap_binding(
+                generic_launch_args
+            )
+            if generic_bootstrap_descriptor >= 3 and (
+                resolved.module_name
+                or "--plan-bound-dispatch" in resolved.extra_args
+            ):
+                raise ValueError(
+                    "generic configured-board state-owner bootstrap requires an "
+                    "ordinary script-backed implementation track"
+                )
     plan_bound_dispatch = "--plan-bound-dispatch" in resolved.extra_args
     effective_common_args = tuple(str(item) for item in common_args)
     state_owner_bootstrap_fd: int | None = None
-    if not plan_bound_dispatch:
+    if generic_bootstrap_descriptor >= 3:
+        state_owner_bootstrap_fd = generic_bootstrap_descriptor
+    elif not plan_bound_dispatch:
         state_owner_bootstrap_fd = _validated_state_owner_bootstrap_fd(
             effective_common_args
         )
@@ -8058,6 +8145,10 @@ def start_track(
             *resolved.extra_args,
         ]
     )
+    if generic_bootstrap_descriptor >= 3:
+        child_command.extend(
+            ["--database-owner-session-id", resolved.name]
+        )
     if plan_bound_dispatch and lgcvf_live_dispatch:
         raise ValueError("plan-bound and LGCVF live dispatch cannot be combined")
     if eaaef_live_dispatch:
@@ -8720,24 +8811,39 @@ def start_track(
                 stdout=out_handle,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
-                pass_fds=(
-                    tuple(
-                        sorted(
-                            {
-                                gate_read_fd,
-                                *(
-                                    (lgcvf_bootstrap_descriptor,)
-                                    if lgcvf_live_dispatch
-                                    else ()
-                                ),
-                                *(
-                                    configured_board_live_context.pass_fds
-                                    if lgcvf_live_dispatch
-                                    and configured_board_live_context is not None
-                                    else (accepted_control_plane_descriptor,)
-                                ),
-                            }
-                        )
+                pass_fds=tuple(
+                    sorted(
+                        descriptor
+                        for descriptor in {
+                            *(
+                                (gate_read_fd,)
+                                if gate_read_fd is not None
+                                else ()
+                            ),
+                            *(
+                                (lgcvf_bootstrap_descriptor,)
+                                if lgcvf_bootstrap_descriptor >= 3
+                                else ()
+                            ),
+                            *(
+                                configured_board_live_context.pass_fds
+                                if lgcvf_live_dispatch
+                                and configured_board_live_context is not None
+                                else ()
+                            ),
+                            *(
+                                (accepted_control_plane_descriptor,)
+                                if plan_bound_dispatch
+                                and accepted_control_plane_descriptor >= 3
+                                else ()
+                            ),
+                            *(
+                                (generic_bootstrap_descriptor,)
+                                if generic_bootstrap_descriptor >= 3
+                                else ()
+                            ),
+                        }
+                        if descriptor >= 3
                     )
                     if (
                         (plan_bound_dispatch or lgcvf_live_dispatch)
@@ -8746,7 +8852,11 @@ def start_track(
                     else (
                         (state_owner_bootstrap_fd,)
                         if state_owner_bootstrap_fd is not None
-                        else ()
+                        else (
+                            (generic_bootstrap_descriptor,)
+                            if generic_bootstrap_descriptor >= 3
+                            else ()
+                        )
                     )
                 ),
             )
@@ -14259,10 +14369,39 @@ def run_supervisor_tracks(
                                 f"{supervisor_fields.get('supervisor_status_age_seconds')}"
                             ),
                         )
-                        fenced, _member_pids = _terminate_managed_process(
-                            process,
-                            grace_seconds=stop_grace_seconds,
-                        )
+                        try:
+                            fenced, _member_pids = _terminate_managed_process(
+                                process,
+                                grace_seconds=stop_grace_seconds,
+                            )
+                        except ProcessIdentityMismatch:
+                            # A stale wrapper birth that no longer matches the
+                            # marker tree must not fail-close SPAR. The original
+                            # process is gone or is not ours; reap the Popen we
+                            # still own and start a new generation.
+                            _emit(
+                                output,
+                                (
+                                    f"stale {track.name} process identity "
+                                    "mismatched during fence; recovering"
+                                ),
+                            )
+                            fenced = process.poll() is not None
+                            if not fenced:
+                                try:
+                                    process.terminate()
+                                except Exception:
+                                    pass
+                                try:
+                                    process.wait(
+                                        timeout=max(0.1, stop_grace_seconds)
+                                    )
+                                except Exception:
+                                    try:
+                                        process.kill()
+                                    except Exception:
+                                        pass
+                                fenced = process.poll() is not None
                         if not fenced:
                             raise SupervisorRunInterrupted(
                                 f"could not fence stale {track.name} process tree"

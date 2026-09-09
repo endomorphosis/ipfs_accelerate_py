@@ -87,6 +87,14 @@ OPEN_WORK_BUDGET_EXHAUSTION_MARKERS: Final[tuple[str, ...]] = (
     "codex_quota_exhausted",
 )
 
+# Portal treats an inexact protected-path preservation chain as a terminal
+# failure.  After SIGTERM/unstall the chain is often truncated even though
+# declared outputs never landed, which fences the blocked task and every
+# dependent "ready" successor.  Requeue that exact class.
+INTERRUPT_PRESERVATION_CHAIN_MARKER: Final[str] = (
+    "protected-path preservation event chain is not exact"
+)
+
 # Park review-pending landed work for an hour so lanes move to real backlog.
 DEFAULT_LANDED_REVIEW_DEFER_SECONDS: Final[int] = 3_600
 
@@ -262,6 +270,28 @@ def should_recover_stalled_task(
         "board_status": str(board_status or ""),
     }
 
+    interrupt_chain = _text_matches_markers(
+        combined_text, (INTERRUPT_PRESERVATION_CHAIN_MARKER,)
+    )
+    if (
+        interrupt_chain
+        and not presence.complete
+        and normalized_board in {"", "blocked", "todo", "ready", "retrying"}
+    ):
+        return ProgressRecoveryDecision(
+            task_id=str(task_id),
+            action="requeue_interrupt_preservation_chain",
+            reason="interrupt_preservation_chain_blocked_with_missing_outputs",
+            reset_attempt_budget=True,
+            clear_diagnostics=True,
+            reclaim_dead_lifecycle=True,
+            treat_as_landed_outputs=False,
+            defer_review_pending=False,
+            defer_seconds=DEFAULT_OPEN_WORK_RESET_COOLDOWN_SECONDS,
+            soft_complete_board=False,
+            details=details,
+        )
+
     if not presence.complete:
         # Products still missing: re-open a burned attempt budget so residual
         # ready board work is not permanently fenced. Require an explicit
@@ -380,6 +410,7 @@ __all__ = [
     "PROGRESS_RECOVERY_FAILURE_MARKERS",
     "DeclaredOutputPresence",
     "ProgressRecoveryDecision",
+    "INTERRUPT_PRESERVATION_CHAIN_MARKER",
     "declared_output_presence",
     "operator_landed_binding_payload",
     "should_recover_stalled_task",
