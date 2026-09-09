@@ -58,6 +58,23 @@ class DurableStateIntegrityError(DurableStateError):
     """Raised when stored bytes, CIDs, or root evidence fail closed."""
 
 
+@dataclass(frozen=True)
+class DurableRootCasReceipt:
+    """Binding to kit's immutable transition, not semantic acceptance authority.
+
+    The successor CID names the stored manifest and its source bindings. A
+    consumer must independently admit those bindings and semantic evidence;
+    persistence alone does not qualify a SPAR goal or final source forest.
+    """
+
+    repository_id: str
+    expected: RootRef | None
+    published: RootRef
+    operation_id: str
+    transition_cid: str
+    idempotent_replay: bool
+
+
 def _lazy_coordination_storage():
     """Import the sealed kit store only when a local adapter is opened."""
 
@@ -262,12 +279,27 @@ class IpfsKitDurableStateAdapter:
         expected: RootRef | None,
         new_root_cid: str,
     ) -> RootRef:
+        """Return the successor of an exactly verified kit CAS transition."""
+        return self.compare_and_swap_root_receipt(
+            repository_id, expected, new_root_cid
+        ).published
+
+    def compare_and_swap_root_receipt(
+        self,
+        repository_id: str,
+        expected: RootRef | None,
+        new_root_cid: str,
+    ) -> DurableRootCasReceipt:
         """Publish ``new_root_cid`` when ``expected`` still names the current root.
 
         ``None`` is the explicit empty-root token and may only advance to a
         bootstrap disposition manifest. Generation is part of the expected
         token, so an A-to-B-to-A content sequence cannot admit an ABA-stale
         writer holding an older generation.
+
+        Return only the exact immutable kit transition for this request. A
+        replay after another transition (including ABA) cannot rebind this
+        operation to the later generation. No new store or authority is opened.
         """
 
         namespace = _repository_namespace(repository_id)
@@ -327,7 +359,62 @@ class IpfsKitDurableStateAdapter:
             # Idempotent replay of a completed transition must still name the
             # sole durable successor for this operation, which is new_root_cid.
             raise DurableStateIntegrityError("CAS after root does not match request")
-        return RootRef(root_cid=after_cid, generation=after_revision)
+        if after_revision != expected_revision + 1:
+            raise DurableStateIntegrityError("CAS after generation does not match request")
+        if after.get("namespace") != namespace:
+            raise DurableStateIntegrityError("CAS after namespace does not match request")
+        transition_cid = after.get("transition_cid")
+        if not isinstance(transition_cid, str) or not transition_cid:
+            raise DurableStateIntegrityError("CAS result is missing its transition CID")
+        if status == "updated":
+            if result.get("transition_cid") != transition_cid:
+                raise DurableStateIntegrityError("CAS transition CID bindings disagree")
+            before = result.get("before") or {}
+            if (
+                before.get("namespace") != namespace
+                or type(before.get("revision")) is not int
+                or before["revision"] != expected_revision
+                or before.get("root_cid") != expected_root_cid
+            ):
+                raise DurableStateIntegrityError("CAS before does not match request")
+        elif (
+            result.get("reason_code") != "idempotent_replay"
+            or result.get("before") != after
+            or result.get("transition_cid") is not None
+        ):
+            raise DurableStateIntegrityError("CAS replay bindings disagree")
+
+        # get() resolves and checks the CID-addressed bytes through the existing
+        # kit authority. Never turn caller-supplied result fields into a receipt.
+        transition = self.get(transition_cid)
+        bound_fields = {
+            "schema": "mcp++/coordination/state-root-transition@1",
+            "namespace": namespace,
+            "operation_id": operation_id,
+            "expected_root_cid": expected_root_cid,
+            "expected_revision": expected_revision,
+            "new_root_cid": new_root_cid,
+            "new_revision": expected_revision + 1,
+        }
+        if (
+            set(transition) != set(bound_fields) | {"created_at_ms"}
+            or type(transition.get("created_at_ms")) is not int
+            or transition["created_at_ms"] < 0
+            or any(
+                type(transition.get(key)) is not type(value)
+                or transition.get(key) != value
+                for key, value in bound_fields.items()
+            )
+        ):
+            raise DurableStateIntegrityError("immutable CAS transition does not match request")
+        return DurableRootCasReceipt(
+            repository_id=namespace,
+            expected=expected,
+            published=RootRef(root_cid=after_cid, generation=after_revision),
+            operation_id=operation_id,
+            transition_cid=transition_cid,
+            idempotent_replay=status == "unchanged",
+        )
 
     def recover(self) -> Mapping[str, Any]:
         """Rebuild indexes from immutable blocks; corruption fails closed."""
@@ -479,6 +566,7 @@ def cid_for_root_manifest(manifest: SemanticStateRootManifest | Mapping[str, Any
 
 __all__ = [
     "ADAPTER_ID",
+    "DurableRootCasReceipt",
     "DurableSemanticStatePort",
     "DurableStateError",
     "DurableStateIntegrityError",
