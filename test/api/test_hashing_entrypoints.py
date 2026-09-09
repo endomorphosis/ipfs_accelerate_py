@@ -131,6 +131,21 @@ def test_hash_policy_survives_positive_supervisor_environment_projection() -> No
     assert "UNDECLARED_HASH_SETTING" not in projected
 
 
+def test_collaborative_umask_hardening_includes_root_hash_resource_module(tmp_path) -> None:
+    from test.api.test_agent_supervisor_configured_typed_grant_handoff import aseh_operator
+
+    module = tmp_path / "ipfs_accelerate_py" / "_hash_resources.py"
+    module.parent.mkdir()
+    module.write_text("# exact tracked resource helper\n", encoding="utf-8")
+    module.chmod(0o664)
+    unrelated = module.parent / "unrelated.py"
+    unrelated.write_text("# outside the hardening scope\n", encoding="utf-8")
+    unrelated.chmod(0o664)
+    aseh_operator._strip_control_plane_group_other_write(tmp_path)
+    assert module.stat().st_mode & 0o777 == 0o644
+    assert unrelated.stat().st_mode & 0o777 == 0o664
+
+
 def test_trusted_git_uses_shared_observation_but_strict_receipts_read_bytes(
     monkeypatch, tmp_path: Path,
 ) -> None:

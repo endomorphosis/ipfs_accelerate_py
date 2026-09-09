@@ -47,6 +47,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts im
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import hashing_lock  # noqa: E402
 from ipfs_accelerate_py.agent_supervisor.runtime.shared_hashing import hash_descriptor  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.runtime import shared_hashing as _shared_hashing  # noqa: E402
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (  # noqa: E402
     KNOWN_NON_WORKTREE_PHASES,
 )
@@ -57,6 +58,12 @@ DEFAULT_CONFIG: Final = Path(
 PROGRAM: Final = "agent-supervisor-efficiency-and-state-hardening-v1"
 TRUSTED_GIT: Final = Path("/usr/bin/git")
 _TRUSTED_GIT_IDENTITY: tuple[int, ...] | None = None
+# One process-local bootstrap observation, never executable authority by itself.
+# PID, lexical path, full stat witness, digest, and initial hash-start time.
+# Immutable replacement needs no mutex across hashing or resource admission.
+_TRUSTED_GIT_BOOTSTRAP_OBSERVATION: tuple[
+    int, str, tuple[int, ...], str, float
+] | None = None
 # Immutable validation receipts bind the lexical command that was executed.
 # The sealed interpreter deliberately resolves this symlink to
 # ``/usr/bin/python3.12`` for descriptor-backed exec, so process-local
@@ -23279,7 +23286,9 @@ def _trusted_git_executable(*, strict: bool = False) -> str:
     """Bind root-owned Git, checking live metadata on every observation.
 
     Routine calls trust local filesystem metadata and the authenticated owner's
-    bounded hash observations. ``strict=True`` (or cache TTL zero) rereads bytes.
+    bounded hash observations. Before the owner handoff exists, one PID-bound
+    bootstrap observation avoids repeated reads. ``strict=True`` (or cache TTL
+    zero) always rereads bytes.
     Root ownership, descriptor admission, path identity and process-local drift
     checks are still mandatory on both cache hits and misses.
     """
@@ -23288,8 +23297,49 @@ def _trusted_git_executable(*, strict: bool = False) -> str:
     return _trusted_git_executable_unlocked(strict=strict)
 
 
+def _trusted_git_bootstrap_cached_digest(
+    witness: tuple[int, ...], *, ttl: float, now: float,
+) -> str | None:
+    observation = _TRUSTED_GIT_BOOTSTRAP_OBSERVATION
+    if observation is None:
+        return None
+    if (
+        type(observation) is not tuple
+        or len(observation) != 5
+        or type(observation[0]) is not int
+        or observation[0] <= 0
+        or type(observation[1]) is not str
+        or not observation[1]
+        or type(observation[2]) is not tuple
+        or len(observation[2]) != len(witness)
+        or any(type(value) is not int for value in observation[2])
+        or type(observation[3]) is not str
+        or re.fullmatch(r"[0-9a-f]{64}", observation[3]) is None
+        or type(observation[4]) is not float
+        or not math.isfinite(observation[4])
+        or observation[4] < 0
+    ):
+        raise OperatorError("trusted Git bootstrap observation is malformed")
+    pid, path, observed_witness, digest, started = observation
+    if (
+        pid == os.getpid()
+        and path == str(TRUSTED_GIT)
+        and observed_witness == witness
+        and 0 <= now - started < ttl
+    ):
+        return digest
+    return None
+
+
 def _trusted_git_executable_unlocked(*, strict: bool = False) -> str:
-    global _TRUSTED_GIT_IDENTITY
+    global _TRUSTED_GIT_IDENTITY, _TRUSTED_GIT_BOOTSTRAP_OBSERVATION
+    fields = (
+        "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink", "st_size",
+        "st_mtime_ns", "st_ctime_ns",
+    )
+    ttl = _shared_hashing._ttl(None)
+    owner = None if strict or ttl == 0 else _shared_hashing.default_hash_connection()
+    fresh_bootstrap_observation = None
     try:
         lexical = os.lstat(TRUSTED_GIT)
         descriptor = os.open(
@@ -23304,17 +23354,38 @@ def _trusted_git_executable_unlocked(*, strict: bool = False) -> str:
                 expected_path=TRUSTED_GIT,
             )
             opened = os.fstat(descriptor)
-            digest = hash_descriptor(descriptor, strict=strict).sha256
+            witness = tuple(int(getattr(opened, field)) for field in fields)
+            if owner is not None:
+                # Once configured, the authenticated shared owner always wins;
+                # an unavailable owner is never a local-cache fallback.
+                digest = hash_descriptor(
+                    descriptor, connection=owner, ttl_seconds=ttl,
+                ).sha256
+            else:
+                started = time.monotonic()
+                if not math.isfinite(started) or started < 0:
+                    raise OperatorError("trusted Git monotonic observation clock is invalid")
+                digest = None if strict or ttl == 0 else _trusted_git_bootstrap_cached_digest(
+                    witness, ttl=ttl, now=started,
+                )
+                if digest is None:
+                    # Force fresh bytes here: a handoff appearing mid-call must
+                    # not turn an old owner hit into a renewed local TTL.
+                    digest = hash_descriptor(
+                        descriptor, strict=True, ttl_seconds=ttl,
+                    ).sha256
+                    if not strict and ttl > 0:
+                        fresh_bootstrap_observation = (
+                            os.getpid(), str(TRUSTED_GIT), witness, digest, started,
+                        )
             after = os.fstat(descriptor)
         finally:
             os.close(descriptor)
         current = os.lstat(TRUSTED_GIT)
     except OSError as exc:
         raise OperatorError("trusted Git executable is unavailable") from exc
-    fields = (
-        "st_dev", "st_ino", "st_mode", "st_uid", "st_nlink", "st_size",
-        "st_mtime_ns", "st_ctime_ns",
-    )
+    if type(digest) is not str or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        raise OperatorError("trusted Git digest observation is malformed")
     identity = tuple(int(getattr(opened, field)) for field in fields) + (
         int(digest, 16),
     )
@@ -23333,6 +23404,11 @@ def _trusted_git_executable_unlocked(*, strict: bool = False) -> str:
     ):
         raise OperatorError("trusted Git executable identity drifted")
     _TRUSTED_GIT_IDENTITY = identity
+    if fresh_bootstrap_observation is not None:
+        # Publish only after descriptor, path, ownership, and drift checks pass.
+        # Hits never move the timestamp. Concurrent misses may duplicate a read
+        # but cannot deadlock while waiting for the shared resource budget.
+        _TRUSTED_GIT_BOOTSTRAP_OBSERVATION = fresh_bootstrap_observation
     return str(TRUSTED_GIT)
 
 
@@ -88874,6 +88950,7 @@ def _strip_control_plane_group_other_write(root: Path) -> None:
     targets = [
         root / "ipfs_accelerate_py" / "llm_router.py",
         root / "ipfs_accelerate_py" / "agent_implementation_route.py",
+        root / "ipfs_accelerate_py" / "_hash_resources.py",
         root / "scripts" / "run_agent_supervisor_efficiency_state_hardening.py",
     ]
     supervisor_root = root / "ipfs_accelerate_py" / "agent_supervisor"
