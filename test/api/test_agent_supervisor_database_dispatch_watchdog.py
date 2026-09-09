@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import time
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -524,6 +525,67 @@ def test_prior_child_active_heartbeat_does_not_override_current_birth_grace(
     assert observed["stale"] is (child_age_seconds > 0)
 
 
+def test_database_watchdog_oom_preserves_prior_child_stale_claim(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "OutOfMemoryException",
+            "task_source_revision": 0,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {
+            "available": True,
+            "stale": True,
+            "reason": "heartbeat_belongs_to_prior_child",
+            "active_task_id": "SAWM-008",
+        },
+    )
+    requeue_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_requeue_stale_active_database_claims",
+        lambda: requeue_calls.append({"ok": True})
+        or {
+            "attempted": True,
+            "reason": "stale_active_claim_prior_child_heartbeat",
+            "expired_count": 1,
+            "expired_task_ids": ["sha256:task"],
+        },
+        raising=False,
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "continue"
+    assert requeue_calls == []
+    assert events == []
+    fields = loop.config.status_extra_fields
+    assert fields["operator_successor_required"] is False
+    assert fields["authoritative_readiness_error_type"] == "OutOfMemoryException"
+
+
 def test_database_watchdog_rearms_idle_blocked_portal_frontier(
     tmp_path,
     monkeypatch,
@@ -756,6 +818,44 @@ def test_typed_fail_closed_outer_recovery_backs_off(
 
 class OutOfMemoryException(Exception):
     """Stand-in for duckdb.OutOfMemoryException by class name."""
+
+
+def test_readiness_backoff_counts_only_fresh_authority_failures(
+    tmp_path, monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    supervisor.config = replace(supervisor.config, database_program=SimpleNamespace(
+        authority_mode="embedded", task_source_kind="duckdb", store_id="unused.duckdb",
+    ))
+    now = [100.0]
+    calls = []
+
+    def unavailable_source(*args, **kwargs):
+        calls.append(True)
+        raise OutOfMemoryException("readiness allocation failed")
+
+    monkeypatch.setattr(database_task_source_module, "DatabaseTaskSource", unavailable_source)
+    monkeypatch.setattr(implementation_supervisor_module.time, "monotonic", lambda: now[0])
+
+    fresh = supervisor._authoritative_runnable_work_status()
+    assert fresh["available"] is False
+    assert fresh.get("cached_retryable_backoff") is not True
+    observed = supervisor._database_authority_watchdog_observation(fresh, now_monotonic=now[0])
+    assert observed["unavailable_probe_count"] == 1
+
+    now[0] += 1.0
+    cached = supervisor._authoritative_runnable_work_status()
+    assert cached["cached_retryable_backoff"] is True
+    observed = supervisor._database_authority_watchdog_observation(cached, now_monotonic=now[0])
+    assert observed["unavailable_probe_count"] == 1
+    assert len(calls) == 1
+
+    now[0] = supervisor._readiness_probe_backoff_until + 1.0
+    retried = supervisor._authoritative_runnable_work_status()
+    assert retried.get("cached_retryable_backoff") is not True
+    observed = supervisor._database_authority_watchdog_observation(retried, now_monotonic=now[0])
+    assert observed["unavailable_probe_count"] == 2
+    assert len(calls) == 2
 
 
 def test_sealed_daemon_child_retries_oom_then_stays_alive() -> None:
@@ -1936,6 +2036,38 @@ def test_database_watchdog_suppresses_nonessential_lane_maintenance(
     assert maintenance_calls == []
 
 
+def test_readiness_reuses_a_bounded_read_client_for_actual_task_rows(
+    tmp_path, monkeypatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    store = supervisor.config.repo_root / "readiness.duckdb"
+    with database_task_source_module.DatabaseTaskSource(store) as source:
+        source.intent.upsert_goal(goal_cid="goal:test", goal_alias="TEST", title="Test")
+        for index in range(12):
+            source.intent.upsert_task(
+                task_cid=f"task:{index}", task_alias=f"SAWM-{index:03d}",
+                goal_cid="goal:test", status="ready",
+            )
+    supervisor.config = replace(supervisor.config, database_program=SimpleNamespace(
+        authority_mode="embedded", task_source_kind="duckdb", store_id=str(store),
+    ))
+    opened = []
+    real_open = intent_repository.open_duckdb_connection
+
+    def counted_open(*args, **kwargs):
+        connection = real_open(*args, **kwargs)
+        opened.append(connection)
+        return connection
+
+    monkeypatch.setattr(intent_repository, "open_duckdb_connection", counted_open)
+    result = supervisor._authoritative_runnable_work_status()
+    assert result["available"] is True
+    assert len(result["ready_task_ids"]) == 12
+    assert len(opened) == 1
+
+
 def test_authoritative_database_readiness_filters_manual_and_home_shard(
     tmp_path,
     monkeypatch,
@@ -1975,6 +2107,7 @@ def test_authoritative_database_readiness_filters_manual_and_home_shard(
         def __init__(self, target, **kwargs):
             observed["target"] = target
             observed.update(kwargs)
+            self.intent = SimpleNamespace(read_session=nullcontext)
 
         def __enter__(self):
             return self
@@ -2008,5 +2141,4 @@ def test_authoritative_database_readiness_filters_manual_and_home_shard(
     assert observed["install_schema"] is False
     assert observed["list_statuses"] == [
         ("claimed", "in_progress", "running"),
-        ("blocked",),
     ]

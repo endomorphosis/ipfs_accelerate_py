@@ -7457,7 +7457,7 @@ class PortalImplementationSupervisor:
             now_monotonic < float(self._readiness_probe_backoff_until or 0.0)
             and isinstance(self._readiness_probe_backoff_result, dict)
         ):
-            return dict(self._readiness_probe_backoff_result)
+            return {**self._readiness_probe_backoff_result, "cached_retryable_backoff": True}
 
         try:
             from ..task_sources.database_task_source import (
@@ -7501,7 +7501,7 @@ class PortalImplementationSupervisor:
                     f"{self.board_namespace}:{self.config.task_shard_index}"
                 ),
                 install_schema=False,
-            ) as source:
+            ) as source, source.intent.read_session():
                 ready_page = source.ready_tasks(limit=MAX_QUERY_LIMIT)
                 active_page = source.list_tasks(
                     status=("claimed", "in_progress", "running"),
@@ -7523,25 +7523,26 @@ class PortalImplementationSupervisor:
                 ]
                 blocked_recoverable: list[Any] = []
                 blocked_revision = 0
-                try:
-                    blocked_page = source.list_tasks(
-                        status=("blocked",),
-                        limit=MAX_QUERY_LIMIT,
-                    )
-                    if not blocked_page.next_cursor:
-                        blocked_recoverable = [
-                            task
-                            for task in blocked_page.tasks
-                            if self._database_task_in_scope(task)
-                            and self._blocked_task_is_recoverable_portal_frontier(
-                                task,
-                                source,
-                            )
-                        ]
-                        blocked_revision = int(blocked_page.revision)
-                except Exception:
-                    blocked_recoverable = []
-                    blocked_revision = 0
+                if self._is_board_maintenance_leader():
+                    try:
+                        blocked_page = source.list_tasks(
+                            status=("blocked",),
+                            limit=MAX_QUERY_LIMIT,
+                        )
+                        if not blocked_page.next_cursor:
+                            blocked_recoverable = [
+                                task
+                                for task in blocked_page.tasks
+                                if self._database_task_in_scope(task)
+                                and self._blocked_task_is_recoverable_portal_frontier(
+                                    task,
+                                    source,
+                                )
+                            ]
+                            blocked_revision = int(blocked_page.revision)
+                    except Exception:
+                        blocked_recoverable = []
+                        blocked_revision = 0
 
             def task_id(task: Any) -> str:
                 return str(
@@ -7602,6 +7603,7 @@ class PortalImplementationSupervisor:
                     15.0
                     * (2 ** max(0, self._readiness_retryable_failure_streak - 1)),
                 )
+                delay += max(0, int(self.config.task_shard_index)) * 15.0
                 self._readiness_probe_backoff_until = (
                     time.monotonic() + delay
                 )
@@ -7640,6 +7642,32 @@ class PortalImplementationSupervisor:
 
         threshold = self._database_authority_unavailable_after_seconds()
         available = readiness.get("available") is True
+        if (
+            not available
+            and readiness.get("cached_retryable_backoff") is True
+        ):
+            since = self._database_authority_unavailable_since_monotonic
+            count = int(self._database_authority_unavailable_probe_count or 0)
+            age = (
+                max(0.0, now_monotonic - since)
+                if since is not None
+                else 0.0
+            )
+            terminal = bool(
+                count >= DATABASE_AUTHORITY_UNAVAILABLE_MIN_PROBES
+                and age >= threshold
+            )
+            return {
+                "schema": DATABASE_AUTHORITY_WATCHDOG_SCHEMA,
+                "state": "terminal" if terminal else "suspect",
+                "unavailable_probe_count": int(count),
+                "unavailable_age_seconds": round(age, 3),
+                "unavailable_after_seconds": threshold,
+                "minimum_unavailable_probes": (
+                    DATABASE_AUTHORITY_UNAVAILABLE_MIN_PROBES
+                ),
+                "terminal": terminal,
+            }
         if available:
             previous_count = self._database_authority_unavailable_probe_count
             self._database_authority_unavailable_since_monotonic = None
