@@ -174,3 +174,38 @@ def test_native_start_honors_operator_hold_before_opening_authority(tmp_path, mo
 def test_native_start_without_operator_hold_is_admitted(tmp_path):
     m = _materializer()
     m._assert_start_not_held(SimpleNamespace(runtime_paths={"root": "runtime"}, path=lambda _: tmp_path))
+
+
+def test_native_closeout_honors_hold_without_reading_state(tmp_path, monkeypatch):
+    m = _materializer()
+    board = SimpleNamespace(runtime_paths={"root": "runtime"}, path=lambda _: tmp_path)
+    (tmp_path / "OPERATOR_STOP").write_text("operator")
+    monkeypatch.setattr(m, "authoritative_status", lambda _: pytest.fail("read while held"))
+    healthy = SimpleNamespace(failure="")
+    assert m._retain_closeout_owner(tmp_path / "config", board=board,
+                                   broker=healthy, monitor=healthy) == "stopped"
+
+
+def test_native_closeout_signal_stops_and_restores_handlers(tmp_path, monkeypatch):
+    import signal
+    m = _materializer()
+    board = SimpleNamespace(runtime_paths={"root": "runtime"}, path=lambda _: tmp_path)
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+    def observe(_):
+        signal.raise_signal(signal.SIGTERM)
+        return {"completion_authority": False, "task_count": 51}
+    monkeypatch.setattr(m, "authoritative_status", observe)
+    healthy = SimpleNamespace(failure="")
+    assert m._retain_closeout_owner(tmp_path / "config", board=board,
+                                   broker=healthy, monitor=healthy) == "stopped"
+    assert {sig: signal.getsignal(sig) for sig in previous} == previous
+
+
+def test_native_closeout_owner_fault_propagates(tmp_path, monkeypatch):
+    m = _materializer()
+    board = SimpleNamespace(runtime_paths={"root": "runtime"}, path=lambda _: tmp_path)
+    monkeypatch.setattr(m, "authoritative_status", lambda _: pytest.fail("read after fault"))
+    with pytest.raises(m.OperatorError, match="monitor failed during closeout"):
+        m._retain_closeout_owner(tmp_path / "config", board=board,
+                                broker=SimpleNamespace(failure="lost fence"),
+                                monitor=SimpleNamespace(failure=""))
