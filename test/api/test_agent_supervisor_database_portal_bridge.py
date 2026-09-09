@@ -20234,11 +20234,14 @@ def test_callback_requalification_replays_source_before_returning_evidence() -> 
     )
 
 
-def test_unknown_callback_ordinary_implementation_source_regression() -> None:
+@pytest.mark.parametrize("drift", [None, "revision", "receipt", "status", "queue"])
+def test_unknown_callback_ordinary_implementation_source_regression(
+    drift: str | None,
+) -> None:
     alias = "DOEP-012"
     request_id = "request:ordinary-callback"
     paths = SimpleNamespace(root=Path("/attempt/ordinary"))
-    binding = {"task_alias": alias}
+    binding = {"task_alias": alias, "task_cid": "task:ordinary"}
     request = SimpleNamespace(request_id=request_id, status="completed")
     projection = SimpleNamespace(paths=paths, binding=binding)
     attempt = SimpleNamespace(
@@ -20284,7 +20287,11 @@ def test_unknown_callback_ordinary_implementation_source_regression() -> None:
         **_kwargs: object,
     ) -> object | None:
         projection_calls.append(allowed_task_statuses)
-        return projection if current is request else None
+        return (
+            projection
+            if current is request and record.status in allowed_task_statuses
+            else None
+        )
 
     bridge._owned_post_merge_recovery_projection = owned_projection
     bridge._record_for_attempt = lambda *_args: record
@@ -20300,9 +20307,33 @@ def test_unknown_callback_ordinary_implementation_source_regression() -> None:
         assert current is request
         assert current_projection is projection
         assert callable(revalidate_authority) and revalidate_authority()
+        if drift == "revision":
+            record.revision += 1
+        elif drift == "receipt":
+            record.body["completion_receipt"] = {
+                **control_receipt,
+                "claim_id": "claim:other",
+            }
+        elif drift == "status":
+            record.status = "completed"
+        elif drift == "queue":
+            bridge.merge_queue.get = lambda _value: None
+        if drift:
+            assert revalidate_authority() is False
+            return None
         return {"ordinary": True}
 
     bridge._post_merge_callback_integration_evidence = evidence
+
+    if drift:
+        with pytest.raises(DatabasePortalPostCommitRecoveryRejected):
+            bridge._unknown_callback_landed_recovery_evidence(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+            )
+        assert set(projection_calls) == {frozenset({"quarantined"})}
+        return
 
     assert bridge._unknown_callback_landed_recovery_evidence(
         attempt=attempt,
@@ -20310,8 +20341,8 @@ def test_unknown_callback_ordinary_implementation_source_regression() -> None:
         binding=binding,
     ) == {"ordinary": True}
     assert projection_calls == [
-        frozenset({"completed"}),
-        frozenset({"completed"}),
+        frozenset({"quarantined"}),
+        frozenset({"quarantined"}),
     ]
 
 

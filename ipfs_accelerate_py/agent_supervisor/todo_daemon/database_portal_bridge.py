@@ -23747,13 +23747,12 @@ class DatabasePortalExecutionBridge:
                 request=request,
                 reason_code="queue_row_changed",
             )
-        projection_statuses = frozenset(
-            {"quarantined"}
-            if transport_mode
-            else {"completed"}
-            if str(getattr(request, "status", "") or "") == "completed"
-            else {"quarantined"}
-        )
+        # Queue settlement does not complete the canonical task.  This path
+        # exists specifically for a lost callback CAS and checks the exact
+        # quarantine receipt below, including again during requalification.
+        # Requiring a completed task here makes those checks unreachable for
+        # an ordinary implementation_finished source with a settled queue.
+        projection_statuses = frozenset({"quarantined"})
         admission_trace = _empty_owned_post_merge_admission_trace(
             phase="initial"
         )
