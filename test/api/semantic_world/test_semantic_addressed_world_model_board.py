@@ -2387,6 +2387,69 @@ def test_operator_does_not_kill_coordinator_for_isolated_dead_lane() -> None:
     )
 
 
+def test_operator_overlays_live_run_dir_without_dirtying_pin(tmp_path: Path) -> None:
+    """Pin cwd must keep relative store_id while Git status stays clean."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_isolated_lane_overlay_test",
+    )
+    pin = tmp_path / "pin"
+    live = tmp_path / "live"
+    run = live / "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+    pin.mkdir()
+    run.mkdir(parents=True)
+    (run / "control.duckdb").write_bytes(b"db")
+    subprocess.run(["git", "init"], cwd=pin, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(pin), "config", "user.email", "sawm@test"],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(pin), "config", "user.name", "sawm"],
+        check=True,
+        capture_output=True,
+    )
+    (pin / "README").write_text("pin\n", encoding="utf-8")
+    (pin / "data/agent_supervisor").mkdir(parents=True)
+    (pin / "data/agent_supervisor/.keep").write_text("keep\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(pin), "add", "README", "data/agent_supervisor/.keep"],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(pin), "commit", "-m", "pin"],
+        check=True,
+        capture_output=True,
+    )
+    dest = operator._overlay_live_run_dir_into_exact_source(
+        pin_root=pin,
+        repo_root=live,
+        run_dir=run,
+    )
+    assert dest.resolve() == run.resolve()
+    assert (
+        pin
+        / "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb"
+    ).read_bytes() == b"db"
+    status = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(pin),
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert status.stdout.strip() == ""
+
+
 def test_operator_admits_process_dead_generation_48_stale_ready_owner() -> None:
     """M70 must settle a process-dead gen-48 ready owner before reusing 48."""
 
