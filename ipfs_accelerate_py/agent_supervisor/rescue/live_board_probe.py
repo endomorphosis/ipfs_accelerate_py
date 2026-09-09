@@ -341,6 +341,26 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         if any(native.get(key) is False for key in ("ready", "healthy", "operational_ready")):
             reasons.append("native_operator_reports_unhealthy")
     authority = _object(native.get("receipt")) if board_id == "aseh" else _object(native.get("task_authority"))
+    if board_id == "aseh" and "samples" in authority:
+        # ASEH v2 puts task observations inside its admitted two-sample
+        # receipt, not on the health wrapper. Never extract a sample from an
+        # expired or owner-mismatched receipt rejected by the native reader.
+        samples = authority.get("samples")
+        admitted = bool(
+            native.get("broker_authenticated_receipt") is True
+            and authority.get("broker_authenticated") is True
+            and isinstance(samples, list) and len(samples) == 2
+            and all(
+                _object(_object(sample).get("authority")).get("available") is True
+                and _object(_object(sample).get("authority")).get("transport") == "quack"
+                and _object(_object(sample).get("authority")).get("credential_path") == "sealed_memfd_broker"
+                for sample in samples
+            )
+        )
+        authority = dict(samples[-1]["authority"]) if admitted else {}
+        task_count = _object(authority.get("snapshot")).get("task_count")
+        if type(task_count) is int and task_count >= 0:
+            authority["task_count"] = task_count
     source = "native_operator_status" if authority else "unavailable"
     authenticated = bool(authority and (authority.get("authenticated_query") is True
         or (board_id == "aseh" and native.get("broker_authenticated_receipt") is True)

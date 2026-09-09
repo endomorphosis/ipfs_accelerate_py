@@ -204,3 +204,57 @@ def test_native_status_uses_board_package_and_keeps_capability_environment(monke
     assert error == ""
     assert observed["PYTHONPATH"] == str(tmp_path) + probe.os.pathsep + str(external)
     assert observed["IPFS_HASH_MAX_WORKERS"] == "1"
+
+
+def _aseh_native_receipt(*, cursor=10, status="in_progress"):
+    authority = {"available": True, "transport": "quack",
+                 "credential_path": "sealed_memfd_broker",
+                 "snapshot": {"task_count": 2}, "event_cursor": cursor,
+                 "task_statuses": {"ASEH-001": "completed", "ASEH-061": status}}
+    return {"healthy": True, "broker_authenticated_receipt": True,
+            "receipt": {"broker_authenticated": True,
+                        "samples": [{"authority": dict(authority)},
+                                    {"authority": dict(authority)}]}}
+
+
+def test_aseh_extracts_progress_from_admitted_nested_samples(board, monkeypatch):
+    config, _, _ = board
+    config = {**config, "board_id": "aseh"}
+    native = _aseh_native_receipt()
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+    before = probe.observe_board(config, now=1000)
+    assert before["details"]["task_counts"] == {"completed": 1, "in_progress": 1}
+    assert before["details"]["task_count"] == 2
+    assert before["details"]["event_cursor"] == 10
+    assert before["details"]["authenticated_task_observation"] is True
+    native["receipt"]["observed_at"] = 1234
+    assert probe.observe_board(config, now=1000)["progress_token"] == before["progress_token"]
+    native = _aseh_native_receipt(cursor=11, status="completed")
+    after = probe.observe_board(config, now=1000)
+    assert after["progress_token"] != before["progress_token"]
+    assert after["completion_candidate"] is True
+    assert after["complete"] is False
+
+
+@pytest.mark.parametrize("case", ["rejected", "unbound", "missing", "unavailable", "wrong_transport"])
+def test_aseh_rejects_unadmitted_nested_samples(board, monkeypatch, case):
+    config, _, _ = board
+    config = {**config, "board_id": "aseh"}
+    native = _aseh_native_receipt(status="completed")
+    if case == "rejected":
+        native["broker_authenticated_receipt"] = False
+    elif case == "unbound":
+        native["receipt"]["broker_authenticated"] = False
+    elif case == "missing":
+        native["receipt"]["samples"] = []
+    elif case == "unavailable":
+        native["receipt"]["samples"][0]["authority"]["available"] = False
+    else:
+        native["receipt"]["samples"][-1]["authority"]["transport"] = "read_replica"
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["authenticated_task_observation"] is False
+    assert result["details"]["task_counts"] == {}
+    assert result["progress_token"] == ""
+    assert result["complete"] is False
+    assert result["completion_candidate"] is False
