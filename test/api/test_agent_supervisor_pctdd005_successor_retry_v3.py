@@ -1035,6 +1035,11 @@ def _lease_scoped_reconciliation_supervisor(
         run_provider = apply_effect = validate_effect = lambda *_a, **_k: {}
 
     class FakeDaemon:
+        # These tests exercise checkout-lease custody on the current lane;
+        # cross-lane authority binding has its own integration coverage.
+        def _task_home_shard_index(self, _task_id: str) -> int:
+            return 0
+
         def __init__(self, **kwargs: Any) -> None:
             self.task_source = kwargs["task_source"]
             self.initialization = dict(kwargs)
@@ -1189,6 +1194,11 @@ def _lease_scoped_reconciliation_supervisor(
         supervisor,
         "_supervisor_checkout_lock_metadata",
         lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_bind_retained_recovery_lane_attempt_authorities",
+        lambda **_kwargs: [],
     )
 
     lease = SimpleNamespace(lock_path=repo / "checkout.lock")
