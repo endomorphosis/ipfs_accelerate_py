@@ -3506,6 +3506,49 @@ def test_owner_recovery_quarantines_empty_pid_before_second_reservation(
         scheduler_module._discard_coordinator_pid_reservation(second)
 
 
+def test_owned_pid_reservation_quarantines_empty_projection_before_recreate(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(mode=0o700)
+    pid_path = state_dir / "configured-board-master.pid"
+    pid_path.write_bytes(b"")
+    os.chmod(pid_path, 0o600)
+    original_inode = os.lstat(pid_path).st_ino
+
+    descriptor, identity = multi_runner_module._reserve_owned_pid_projection(
+        pid_path,
+        artifact_label="detached coordinator PID projection",
+    )
+    try:
+        reserved = os.fstat(descriptor)
+        observed = os.lstat(pid_path)
+        assert (int(reserved.st_dev), int(reserved.st_ino)) == identity
+        assert (int(observed.st_dev), int(observed.st_ino)) == identity
+        assert int(observed.st_ino) != int(original_inode)
+        assert int(observed.st_size) == 0
+        assert stat.S_IMODE(observed.st_mode) == 0o600
+        quarantined = list(
+            (state_dir / "stale-pid-projections").glob(
+                "configured-board-master.pid.empty-*.pid"
+            )
+        )
+        assert len(quarantined) == 1
+        assert quarantined[0].read_bytes() == b""
+        receipt = json.loads(
+            quarantined[0].with_name(
+                quarantined[0].name + ".receipt.json"
+            ).read_text(encoding="utf-8")
+        )
+        assert receipt["recorded_pid"] is None
+        assert receipt["liveness"] == "empty"
+        assert receipt["reason"] == "recorded_projection_exactly_empty"
+        assert receipt["size"] == 0
+    finally:
+        os.close(descriptor)
+        pid_path.unlink(missing_ok=True)
+
+
 @pytest.mark.parametrize(
     ("gate_bytes", "error_type", "message", "rearm_expected"),
     (

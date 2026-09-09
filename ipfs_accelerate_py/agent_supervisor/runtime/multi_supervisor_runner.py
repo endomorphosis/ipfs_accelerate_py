@@ -4667,12 +4667,13 @@ def _write_stale_pid_projection_receipt(
     *,
     quarantine_path: Path,
     original_path: Path,
-    pid: int,
+    pid: int | None,
     evidence: Mapping[str, Any],
     artifact_label: str,
 ) -> Path:
     """Publish an owner-only self-identifying quarantine receipt."""
 
+    empty_projection = pid is None
     body: dict[str, Any] = {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
@@ -4681,9 +4682,15 @@ def _write_stale_pid_projection_receipt(
         "artifact_label": str(artifact_label),
         "original_path": str(original_path),
         "quarantine_path": str(quarantine_path),
-        "recorded_pid": int(pid),
-        "liveness": OwnerLiveness.DEAD.value,
-        "reason": "recorded_process_provably_dead",
+        "recorded_pid": None if empty_projection else int(pid),
+        "liveness": (
+            "empty" if empty_projection else OwnerLiveness.DEAD.value
+        ),
+        "reason": (
+            "recorded_projection_exactly_empty"
+            if empty_projection
+            else "recorded_process_provably_dead"
+        ),
         "content_sha256": str(evidence["content_sha256"]),
         "size": int(evidence["size"]),
         "device": int(evidence["device"]),
@@ -5099,19 +5106,32 @@ def _quarantine_stale_owned_pid_projection_locked(
         payload, evidence = _read_stable_regular_bytes(path, max_bytes=32)
     except _StableArtifactReadError as exc:
         raise ValueError(f"cannot stably read {artifact_label}") from exc
-    if payload is None or not re.fullmatch(rb"[1-9][0-9]*\n", payload):
-        raise ValueError(f"{artifact_label} does not contain one exact PID")
-    recorded_pid = int(payload[:-1].decode("ascii"))
-    liveness = _pid_projection_liveness(recorded_pid)
-    if liveness is OwnerLiveness.ALIVE:
-        raise ValueError(f"{artifact_label} names a live process")
-    if liveness is not OwnerLiveness.DEAD:
-        raise ValueError(f"{artifact_label} liveness is unknown")
+    empty_projection = (
+        payload == b""
+        and evidence.get("state") == "present"
+        and int(evidence.get("size", -1)) == 0
+    )
+    if empty_projection:
+        recorded_pid = None
+    else:
+        if payload is None or not re.fullmatch(rb"[1-9][0-9]*\n", payload):
+            raise ValueError(f"{artifact_label} does not contain one exact PID")
+        recorded_pid = int(payload[:-1].decode("ascii"))
+        liveness = _pid_projection_liveness(recorded_pid)
+        if liveness is OwnerLiveness.ALIVE:
+            raise ValueError(f"{artifact_label} names a live process")
+        if liveness is not OwnerLiveness.DEAD:
+            raise ValueError(f"{artifact_label} liveness is unknown")
 
     quarantine_dir = _pid_projection_quarantine_directory(path)
     digest = str(evidence["content_sha256"]).removeprefix("sha256:")[:16]
+    prefix = (
+        f"{path.name}.empty-{digest}."
+        if recorded_pid is None
+        else f"{path.name}.dead-{recorded_pid}-{digest}."
+    )
     descriptor, quarantine_name = tempfile.mkstemp(
-        prefix=f"{path.name}.dead-{recorded_pid}-{digest}.",
+        prefix=prefix,
         suffix=".pid",
         dir=str(quarantine_dir),
     )
