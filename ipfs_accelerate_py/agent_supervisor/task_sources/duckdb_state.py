@@ -4123,7 +4123,12 @@ def _probe_quack_connection(connection: Any) -> None:
 def _attach_quack_once(uri: str, secret: str) -> Any:
     import duckdb
 
-    connection = duckdb.connect(":memory:")
+    # Each lane creates its own native client. Machine-wide DuckDB defaults
+    # multiply worker threads and memory budgets across supervisors/daemons,
+    # including failed attachments. Apply limits before LOAD or ATTACH runs.
+    connection = duckdb.connect(
+        ":memory:", config={"threads": 1, "memory_limit": DEFAULT_MEMORY_LIMIT}
+    )
     try:
         connection.execute("LOAD quack")
         try:
