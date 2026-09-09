@@ -35,6 +35,19 @@ def pytest_item_ledger_dir(repo_root: Path, board: str, task_id: str) -> Path:
     return Path(repo_root) / "data" / board / "state" / "pytest-item-ledger" / task_id
 
 
+def git_worktree_root(path: Path) -> Path:
+    """Walk up from *path* to the Git worktree root (directory with ``.git``)."""
+
+    try:
+        current = Path(path).resolve()
+    except OSError:
+        return Path(path)
+    for candidate in (current, *current.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return current
+
+
 def infer_board_workspace(workspace: Path) -> tuple[Path, str] | None:
     """Return ``(repo_root, board)`` when *workspace* is ``data/<board>/worktrees/*``."""
 
