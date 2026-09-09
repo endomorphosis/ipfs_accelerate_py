@@ -120270,6 +120270,28 @@ class DatabaseImplementationDaemon:
                 outcomes.append(outcome)
         return outcomes
 
+    def _stale_control_claim_is_recoverable(self, task: Any) -> bool:
+        """Require this lane's exact failed and expired claim before recovery.
+
+        An empty lane-local execution store cannot prove a shared task is an
+        orphan. The current control receipt, local attempt, and coordination
+        claim/lease must agree; a successor or prepared completion blocks this
+        path. A concurrent shared claim advances the revision checked by CAS.
+        """
+        binding = self._shared_claim_binding_for_this_owner(task)
+        if binding is None:
+            return False
+        attempt = self.get_attempt(str(binding["attempt_id"]))
+        return bool(
+            attempt is not None
+            and attempt.status == "failed"
+            and attempt.task_cid == task.task_cid
+            and self._shared_claim_binding_matches_attempt(task, attempt)
+            and self._terminal_coordination_reproduces_read_only(
+                attempt, require_expired=True
+            )
+        )
+
     def _requeue_unimplemented_control_task(
         self,
         task: Any,
@@ -120293,6 +120315,10 @@ class DatabaseImplementationDaemon:
             "running",
             "quarantined",
         }:
+            return None
+        if status in {"in_progress", "claimed", "running", "retrying"} and not (
+            self._stale_control_claim_is_recoverable(current)
+        ):
             return None
         paths = self._task_declared_output_paths(current)
         if not paths or self._task_outputs_landed_on_target(current):
