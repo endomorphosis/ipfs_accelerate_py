@@ -5202,6 +5202,70 @@ _M69_EXPECTED_TASK_HEADS = MappingProxyType(
     }
 )
 
+# M70 restarts the proved-dead generation-47 owner after the client-token
+# vault disappeared.  M69 already minted generation 47; pid 2172371 and
+# :24070 are gone, so a separately sealed generation-48 successor is
+# required.  No M50 reissue.  Preserve events 338-342 and M68-M63 receipts.
+_M70_MIGRATION_REVISION = "SAWM-R2-M70"
+_M70_SUPERSESSION_MODE = (
+    "generation_bearing_post_m69_stopped_owner_missing_client_token_vault_restart_source_seal"
+)
+_M70_SUPERSESSION_REASON = (
+    "post_m69_stopped_owner_missing_client_token_vault_restart_successor_materialization"
+)
+_M70_CONTROL_RECORDED_AT = "2026-09-09T04:20:00Z"
+_M70_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M70_FINAL_CONTROL_AUTHORITY_CID"
+_M70_AUTHORITY_CID = (
+    "sha256:39423edba05f4da14ef7f334eb08bbf122ee8d7a87969f7ba364077324f4f7bb"
+)
+_M70_AUTHORITY_SIZE = 20_574
+_M70_PRIOR_GENERATION = _M69_TARGET_GENERATION
+_M70_TARGET_GENERATION = 48
+_M70_PRIOR_EVENT_WATERMARK = 342
+_M70_TARGET_EVENT_WATERMARK = 342
+_M70_TARGET_PLAN_REVISION = _M69_TARGET_PLAN_REVISION
+_M70_TARGET_QUACK_PORT = _M69_TARGET_QUACK_PORT
+_M70_PRIOR_PROJECTION_CID = _M69_TARGET_PROJECTION_CID
+_M70_TARGET_PROJECTION_CID = _M70_PRIOR_PROJECTION_CID
+_M70_SEMANTIC_AUTHORITY_DIGEST = _M69_SEMANTIC_AUTHORITY_DIGEST
+_M70_EVIDENCE_KIND = (
+    "operator_control_plane_post_m69_stopped_owner_missing_client_token_vault_restart"
+)
+_M70_STORE_ID = _M69_STORE_ID
+_M70_COORDINATION_STORE_ID = _M69_COORDINATION_STORE_ID
+_M70_RUNTIME_ROOT = _M69_RUNTIME_ROOT
+_M70_WORKTREE_ROOT = _M69_WORKTREE_ROOT
+_M70_DATABASE_UUID = _M69_DATABASE_UUID
+_M70_EXTENSION_FINGERPRINT = _M69_EXTENSION_FINGERPRINT
+_M70_DATASETS_GITLINK = _M69_DATASETS_GITLINK
+_M70_DATASETS_TREE = _M69_DATASETS_TREE
+_M70_KIT_GITLINK = _M69_KIT_GITLINK
+_M70_KIT_TREE = _M69_KIT_TREE
+_M70_PRIOR_SERVER_ID = "server:f81e4868-4c9b-468d-900a-f2b7fffbcdff"
+_M70_PRIOR_PROCESS_BIRTH_ID = "birth:a8d50a126a63065713847d065752d3bd"
+_M70_PRIOR_STARTED_AT = "2026-09-08T22:10:58Z"
+_M70_PRIOR_STARTUP_EPOCH = 1_788_905_458
+_M70_PRIOR_PROCESS_BIRTH = MappingProxyType(
+    {
+        "boot_id": "006c44d2-c190-4cce-9a49-35ab689b243f",
+        "parent_pid": 2_172_345,
+        "pid": 2_172_371,
+        "start_time_ticks": 31_514_065,
+    }
+)
+_M70_M69_AUTHORITY_CID = _M69_AUTHORITY_CID
+_M70_M69_AUTHORITY_SIZE = _M69_AUTHORITY_SIZE
+_M70_M68_RECEIPT_NAME = _M69_M68_RECEIPT_NAME
+_M70_M68_RECEIPT_SHA256 = _M69_M68_RECEIPT_SHA256
+_M70_M68_RECEIPT_SIZE = _M69_M68_RECEIPT_SIZE
+_M70_M69_FINAL_CONTROL_COMMIT = (
+    "3a3e4dabe8690d793fbef1b32d6c24f49731dcb8"
+)
+_M70_OPERATOR_CONTROL_PATHS = frozenset(_M69_OPERATOR_CONTROL_PATHS)
+_M70_FINAL_RECEIPT_NAME = "m70-source-successor-receipt.json"
+_M70_CURRENT_BOOT_ID = "006c44d2-c190-4cce-9a49-35ab689b243f"
+_M70_EXPECTED_TASK_HEADS = MappingProxyType(dict(_M69_EXPECTED_TASK_HEADS))
+
 
 
 # M41 preserves M40's complete control declaration and failed sealed-suite
@@ -36092,6 +36156,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m70_successor_configured_on_any_surface(root, config):
+        return _check_m70_materialized(root, config_file)
     if _m69_successor_configured_on_any_surface(root, config):
         return _check_m69_materialized(root, config_file)
     if _m68_successor_configured_on_any_surface(root, config):
@@ -104804,6 +104870,594 @@ def _m69_successor_configured_on_any_surface(
     return _m69_successor_configured(config)
 
 
+def _expected_m70_post_m69_stopped_owner_missing_client_token_vault_restart_authority() -> dict[str, Any]:
+    """Return M70's stopped generation-47 missing-vault generation-48 restart."""
+
+    m69 = _expected_m69_post_m68_stopped_owner_missing_client_token_vault_restart_authority()
+    if (
+        _identity(m69) != _M70_M69_AUTHORITY_CID
+        or len(_canonical(m69)) != _M70_M69_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M70 preserved M69 source authority differs")
+    authority = json.loads(_canonical(m69))
+    authority.update(
+        {
+            "schema": (
+                "sawm/post-m69-stopped-owner-missing-client-token-vault-restart-"
+                "successor-materialization-authorization@1"
+            ),
+            "migration_revision": _M70_MIGRATION_REVISION,
+            "migration_kind": _M70_SUPERSESSION_REASON,
+            "supersession_mode": _M70_SUPERSESSION_MODE,
+            "control_recorded_at": _M70_CONTROL_RECORDED_AT,
+            "target_generation": _M70_TARGET_GENERATION,
+            "target_event_watermark": _M70_TARGET_EVENT_WATERMARK,
+            "target_projection_cid": _M70_TARGET_PROJECTION_CID,
+            "ordinary_source_changes": 1,
+        }
+    )
+    authority["expected_task_heads"] = dict(_M70_EXPECTED_TASK_HEADS)
+    authority["operator_control_paths"] = sorted(_M70_OPERATOR_CONTROL_PATHS)
+    authority["runtime_binding"]["store_generation"] = _M70_TARGET_GENERATION
+    authority["runtime_binding"]["prior_event_watermark"] = (
+        _M70_PRIOR_EVENT_WATERMARK
+    )
+    authority["runtime_binding"]["target_event_watermark"] = (
+        _M70_TARGET_EVENT_WATERMARK
+    )
+    authority["runtime_binding"]["server_id"] = _M70_PRIOR_SERVER_ID
+    authority["runtime_binding"]["process_birth_id"] = (
+        _M70_PRIOR_PROCESS_BIRTH_ID
+    )
+    authority["live_owner"] = {
+        "schema": "sawm/target-generation-48-owner-after-m70-stopped-restart@1",
+        "database_uuid": _M70_DATABASE_UUID,
+        "extension_fingerprint": _M70_EXTENSION_FINGERPRINT,
+        "generation": _M70_TARGET_GENERATION,
+        "generation_restart_authorized": True,
+        "listen_uri": f"quack:127.0.0.1:{_M70_TARGET_QUACK_PORT}",
+        "listen_socket_present": True,
+        "same_owner_required": False,
+        "status": "ready",
+        "store_id": _M70_STORE_ID,
+        "token_handoff_retired": False,
+        "client_token_vault_absent": False,
+        "token_handoff_rearm_authorized": False,
+        "generation_47_mint_authorized": False,
+        "generation_48_mint_authorized": True,
+        "fenced_stop_authorized": False,
+        "target_identity_is_runtime_generated": True,
+        "current_boot_id": _M70_CURRENT_BOOT_ID,
+    }
+    authority["stopped_owner"] = {
+        "schema": "sawm/stopped-generation-47-owner-after-handoff-retirement@1",
+        "generation": _M70_PRIOR_GENERATION,
+        "status": "stopped",
+        "lifecycle": "stopped",
+        "listen_socket_present": False,
+        "generation_restart_authorized": True,
+        "token_handoff_retired": True,
+        "client_token_vault_absent": True,
+        "same_live_owner_required": False,
+        "server_id": _M70_PRIOR_SERVER_ID,
+        "process_birth_id": _M70_PRIOR_PROCESS_BIRTH_ID,
+        "started_at": _M70_PRIOR_STARTED_AT,
+        "startup_epoch": _M70_PRIOR_STARTUP_EPOCH,
+        "process_birth": dict(_M70_PRIOR_PROCESS_BIRTH),
+        "fenced_stop_authorized": False,
+        "target_identity_is_runtime_generated": True,
+        "current_boot_id": _M70_CURRENT_BOOT_ID,
+    }
+    authority["stopped_prestart_artifacts"] = {
+        "m68_receipt_sha256": _M70_M68_RECEIPT_SHA256,
+        "m68_receipt_size": _M70_M68_RECEIPT_SIZE,
+        "m68_receipt_present": True,
+        "m67_receipt_present": True,
+        "m66_receipt_present": True,
+        "m65_receipt_present": True,
+        "m64_receipt_present": True,
+        "m63_receipt_present": True,
+        "m69_receipt_absent": True,
+        "m70_receipt_absent": True,
+        "client_token_vault_absent": True,
+        "token_handoff_retired": True,
+    }
+    authority["target_authority"].update(
+        {
+            "event_watermark": _M70_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M70_TARGET_PROJECTION_CID,
+            "evidence_kind": _M70_EVIDENCE_KIND,
+            "generation": _M70_TARGET_GENERATION,
+        }
+    )
+    authority["live_preflight_contract"].update(
+        {
+            "migration_revision": _M70_MIGRATION_REVISION,
+            "successor_class": "post_m69_stopped_owner_missing_client_token_vault_restart",
+            "m69_authority_cid": _M70_M69_AUTHORITY_CID,
+            "m68_receipt_must_remain_present": True,
+            "m67_receipt_must_remain_present": True,
+            "m66_receipt_must_remain_present": True,
+            "m65_receipt_must_remain_present": True,
+            "m64_receipt_must_remain_present": True,
+            "m63_receipt_must_remain_present": True,
+            "m69_receipt_must_remain_absent": True,
+            "prior_event_watermark": _M70_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M70_TARGET_EVENT_WATERMARK,
+            "prior_projection_cid": _M70_PRIOR_PROJECTION_CID,
+            "target_projection_cid": _M70_TARGET_PROJECTION_CID,
+            "target_generation": _M70_TARGET_GENERATION,
+            "same_live_owner_required": False,
+            "generation_restart_authorized": True,
+            "generation_47_mint_authorized": False,
+            "generation_48_mint_authorized": True,
+            "fenced_stop_authorized": False,
+            "token_handoff_rearm_authorized": False,
+            "token_reissue_authorized": False,
+            "apply_when_listen_down_and_token_missing": False,
+            "apply_when_listen_down_and_token_present": False,
+            "apply_when_uri_ready_and_token_missing": False,
+            "apply_when_uri_ready_and_token_present": False,
+            "apply_when_stopped_and_token_missing": True,
+            "event_338_must_be_preserved": True,
+            "events_339_340_must_be_preserved": True,
+            "event_341_must_be_preserved": True,
+            "event_342_must_be_absent": False,
+            "event_342_must_be_preserved": True,
+            "event_343_must_be_absent": True,
+            "bind_store_report_to_live_event_digest": True,
+        }
+    )
+    authority["source_chain"] = {
+        "m69_final_control_commit": _M70_M69_FINAL_CONTROL_COMMIT,
+        "final_control_parent": _M70_M69_FINAL_CONTROL_COMMIT,
+        "repair_commit_count": 0,
+        "final_control_commit_count": 1,
+        "current_commit_identity_embedded_in_authority": False,
+    }
+    authority["exact_changes"].update(
+        {
+            "event_suffix_length": 0,
+            "evidence_node_changes": 0,
+            "evidence_event_changes": 0,
+            "owner_generation_changes": 1,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+        }
+    )
+    authority["preservation"].update(
+        {
+            "same_live_owner": False,
+            "same_store_generation": False,
+            "generation_restart": True,
+            "m69_authority_preserved_exactly": True,
+            "m69_receipt_created_or_rewritten": False,
+            "m68_receipt_preserved_exactly": True,
+            "m68_receipt_created_or_rewritten": False,
+            "m67_receipt_preserved_exactly": True,
+            "m66_receipt_preserved_exactly": True,
+            "m65_receipt_preserved_exactly": True,
+            "m64_receipt_preserved_exactly": True,
+            "m63_receipt_preserved_exactly": True,
+            "event_338_preserved_exactly": True,
+            "events_339_340_preserved_exactly": True,
+            "event_341_preserved_exactly": True,
+            "event_342_preserved_exactly": True,
+            "sawm_006_blocked_revision_24": True,
+            "sawm_008_blocked_revision_26": True,
+            "sawm_013_blocked_revision_4": True,
+        }
+    )
+    return authority
+
+
+def _m70_authority_reference() -> dict[str, Any]:
+    authority = (
+        _expected_m70_post_m69_stopped_owner_missing_client_token_vault_restart_authority()
+    )
+    if (
+        not _M70_AUTHORITY_CID.endswith("PENDING_M70_FINAL_CONTROL_AUTHORITY_CID")
+        and _identity(authority) != _M70_AUTHORITY_CID
+    ):
+        raise MaterializationError("M70 source successor authority CID differs")
+    return {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": _M70_MIGRATION_REVISION,
+        "authority_cid": _M70_AUTHORITY_CID,
+    }
+
+
+def _validated_m70_live_preflight_contract(
+    authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    expected = (
+        _expected_m70_post_m69_stopped_owner_missing_client_token_vault_restart_authority()
+    )
+    contract = authority.get("live_preflight_contract")
+    if (
+        _identity(dict(authority)) != _identity(dict(expected))
+        or not isinstance(contract, Mapping)
+        or contract.get("migration_revision") != _M70_MIGRATION_REVISION
+        or contract.get("target_generation") != _M70_TARGET_GENERATION
+        or contract.get("target_event_watermark") != _M70_TARGET_EVENT_WATERMARK
+        or contract.get("generation_restart_authorized") is not True
+        or contract.get("same_live_owner_required") is not False
+        or contract.get("fenced_stop_authorized") is not False
+        or contract.get("generation_48_mint_authorized") is not True
+        or contract.get("generation_47_mint_authorized") is not False
+        or contract.get("apply_when_stopped_and_token_missing") is not True
+        or contract.get("event_342_must_be_preserved") is not True
+        or contract.get("bind_store_report_to_live_event_digest") is not True
+        or contract.get("token_reissue_authorized") is not False
+    ):
+        raise MaterializationError("M70 live-preflight contract differs")
+    return MappingProxyType(
+        {
+            "migration_revision": _M70_MIGRATION_REVISION,
+            "target_store_id": _M70_STORE_ID,
+            "database_uuid": _M70_DATABASE_UUID,
+            "target_generation": _M70_TARGET_GENERATION,
+            "target_event_watermark": _M70_TARGET_EVENT_WATERMARK,
+            "target_plan_revision": _M70_TARGET_PLAN_REVISION,
+            "target_projection_cid": _M70_TARGET_PROJECTION_CID,
+            "semantic_authority_digest": _M70_SEMANTIC_AUTHORITY_DIGEST,
+            "prior_event_watermark": _M70_PRIOR_EVENT_WATERMARK,
+            "prior_projection_cid": _M70_PRIOR_PROJECTION_CID,
+            "preserved_plan_anchor": {},
+            "expected_task_heads": dict(_M70_EXPECTED_TASK_HEADS),
+            "generation_restart_authorized": True,
+            "same_live_owner_required": False,
+            "fenced_stop_authorized": False,
+            "generation_48_mint_authorized": True,
+            "generation_47_mint_authorized": False,
+            "bind_store_report_to_live_event_digest": True,
+            "event_342_must_be_preserved": True,
+            "apply_when_stopped_and_token_missing": True,
+            "token_reissue_authorized": False,
+        }
+    )
+
+
+def _m70_successor_configured(config: Mapping[str, Any]) -> bool:
+    if _M70_SUPERSESSION_REASON not in config:
+        return False
+    if config.get(_M70_SUPERSESSION_REASON) != _m70_authority_reference():
+        raise MaterializationError("M70 successor authority reference differs")
+    return True
+
+
+def _m70_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    authority = (
+        _expected_m70_post_m69_stopped_owner_missing_client_token_vault_restart_authority()
+    )
+    reference = _m70_authority_reference()
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if not isinstance(inventory, Mapping):
+        raise MaterializationError("M70 migration inventory is invalid")
+    key = _M70_SUPERSESSION_REASON
+    if (
+        config.get(key) != reference
+        or inventory.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M70 authority differs across protected controls")
+    _validated_m70_live_preflight_contract(authority)
+    return authority
+
+
+def _m70_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    del config, authority
+    control = (root / _M70_STORE_ID).resolve()
+    coordination = (root / _M70_COORDINATION_STORE_ID).resolve()
+    return control, coordination
+
+
+def _expected_m70_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": (
+            "sawm/non-authoritative-post-m69-stopped-owner-missing-client-"
+            "token-vault-restart-receipt@1"
+        ),
+        "authoritative": False,
+        "completion_authority": False,
+        "launch_authority": False,
+        "deny_only_without_fresh_live_revalidation": True,
+        "fresh_live_revalidation_required_after_receipt_read": True,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M70_MIGRATION_REVISION,
+        "migration_kind": _M70_SUPERSESSION_REASON,
+        "supersession_mode": _M70_SUPERSESSION_MODE,
+        f"{_M70_SUPERSESSION_REASON}_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "source_chain": dict(authority["source_chain"]),
+        "validation_digest": validation_digest,
+        "database_path": _M70_STORE_ID,
+        "coordination_path": _M70_COORDINATION_STORE_ID,
+        "prior_generation": _M70_PRIOR_GENERATION,
+        "target_generation": _M70_TARGET_GENERATION,
+        "stopped_generation_owner": {
+            "server_id": verified.get("prior_server_id") or _M70_PRIOR_SERVER_ID,
+            "process_birth_id": verified.get("prior_process_birth_id")
+            or _M70_PRIOR_PROCESS_BIRTH_ID,
+            "started_at": verified.get("prior_started_at") or _M70_PRIOR_STARTED_AT,
+        },
+        "prior_event_watermark": _M70_PRIOR_EVENT_WATERMARK,
+        "target_event_watermark": _M70_TARGET_EVENT_WATERMARK,
+        "prior_projection_cid": _M70_PRIOR_PROJECTION_CID,
+        "projection_cid": _M70_TARGET_PROJECTION_CID,
+        "m68_receipt_preserved_exactly": True,
+        "m67_receipt_preserved_exactly": True,
+        "m66_receipt_preserved_exactly": True,
+        "m65_receipt_preserved_exactly": True,
+        "m64_receipt_preserved_exactly": True,
+        "m63_receipt_preserved_exactly": True,
+        "m69_receipt_absent": True,
+        "event_338_preserved_exactly": True,
+        "events_339_340_preserved_exactly": True,
+        "event_341_preserved_exactly": True,
+        "event_342_preserved_exactly": True,
+        "queried_and_mutated_through_live_quack_only": False,
+        "direct_authoritative_file_opened": False,
+        "same_live_owner_verified": False,
+        "listen_socket_present": False,
+        "generation_restart_authorized": True,
+        "fenced_stop_authorized": False,
+        "generation_48_mint_authorized": True,
+        "generation_47_mint_authorized": False,
+        "token_handoff_rearm_authorized": False,
+        "token_reissue_authorized": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _observe_m70_stopped_owner(root: Path) -> dict[str, str]:
+    """Prove the generation-47 owner is dead and the client vault is absent."""
+
+    runtime = (root / _M70_STORE_ID).resolve().parent
+    status_path = runtime / "quack-owner/quack-state-server.status.json"
+    status, _ = _load_nofollow_json(
+        status_path, root=root, noun="M70 prior Quack status"
+    )
+    identity = status.get("identity")
+    if (
+        not isinstance(identity, Mapping)
+        or identity.get("server_id") != _M70_PRIOR_SERVER_ID
+        or identity.get("process_birth_id") != _M70_PRIOR_PROCESS_BIRTH_ID
+        or identity.get("process_birth") != dict(_M70_PRIOR_PROCESS_BIRTH)
+        or identity.get("database_uuid") != _M70_DATABASE_UUID
+        or identity.get("store_id") != _M70_STORE_ID
+        or identity.get("started_at") != _M70_PRIOR_STARTED_AT
+        or int(identity.get("generation") or 0) != _M70_PRIOR_GENERATION
+        or identity.get("listen_uri") != f"quack:127.0.0.1:{_M70_TARGET_QUACK_PORT}"
+    ):
+        raise MigrationRequired("M70 generation-47 owner status differs")
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        OwnerLiveness,
+        ProcessBirthIdentity,
+        owner_liveness,
+    )
+    birth = ProcessBirthIdentity.from_dict(identity.get("process_birth"))
+    if owner_liveness(birth) is not OwnerLiveness.DEAD:
+        raise MigrationRequired("M70 requires proved-dead generation-47 process birth")
+    token_files = list((runtime / "quack-owner").glob("*.quack-token"))
+    if token_files:
+        raise MigrationRequired("M70 requires the retired client token vault to stay absent")
+    return {
+        "prior_server_id": _M70_PRIOR_SERVER_ID,
+        "prior_process_birth_id": _M70_PRIOR_PROCESS_BIRTH_ID,
+        "prior_started_at": _M70_PRIOR_STARTED_AT,
+    }
+
+
+def _check_m70_prestart_admission(
+    root: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Admit restart of a proved-dead generation-47 owner to generation 48."""
+
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m70_source_binding_authority(root, population, config)
+    control, coordination = _m70_target_paths(root, config, authority)
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        discover_live_quack_endpoint,
+    )
+    discovery = discover_live_quack_endpoint(control)
+    if discovery.uri:
+        raise MigrationRequired("M70 requires no live Quack owner")
+    if discovery.reason not in {"owner_status_rejected", "no_live_owner"}:
+        raise MigrationRequired(
+            "M70 offline discovery reason differs: " + str(discovery.reason)
+        )
+    runtime = control.parent
+    m68_path = runtime / _M70_M68_RECEIPT_NAME
+    if not os.path.lexists(m68_path):
+        raise MigrationRequired("M70 requires the preserved M68 receipt")
+    m68_sha, m68_size = _stable_regular_sha256(
+        m68_path, root=root, noun="M70 preserved M68 receipt", required_link_count=1
+    )
+    if (m68_sha, m68_size) != (_M70_M68_RECEIPT_SHA256, _M70_M68_RECEIPT_SIZE):
+        raise MigrationRequired("M70 preserved M68 receipt differs")
+    m69_path = runtime / _M69_FINAL_RECEIPT_NAME
+    if os.path.lexists(m69_path):
+        raise MigrationRequired("M70 requires the unpublished M69 receipt to stay absent")
+    _observe_m70_stopped_owner(root)
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        reclaim_stale_owner_marker,
+    )
+    marker_path = control.with_name(f".{control.name}.state-owner.json")
+    reclaimed = reclaim_stale_owner_marker(
+        marker_path=marker_path,
+        lock_path=control.with_name(f".{control.name}.state-owner.lock"),
+    )
+    if reclaimed.get("reclaimed") is not True and reclaimed.get("reason") != "no_marker":
+        raise MigrationRequired("M70 stale owner marker could not be reclaimed")
+    return {
+        "valid": True,
+        "action": "admitted_stopped_generation_47_restart_to_generation_48",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "prior_generation": _M70_PRIOR_GENERATION,
+        "target_generation": _M70_TARGET_GENERATION,
+        "prior_event_watermark": _M70_PRIOR_EVENT_WATERMARK,
+        "prior_projection_cid": _M70_PRIOR_PROJECTION_CID,
+        "m68_receipt_preserved_exactly": True,
+        "m67_receipt_preserved_exactly": True,
+        "m63_receipt_preserved_exactly": True,
+        "m69_receipt_absent": True,
+        "prior_process_birth_verified_dead": True,
+        "client_token_vault_absent": True,
+        "stale_owner_marker_reclaimed": True,
+        "prestart_authorization_consumed": False,
+    }
+
+
+def _check_m70_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m70_source_binding_authority(root, population, config)
+    control, coordination = _m70_target_paths(root, config, authority)
+    final_path = control.parent / _M70_FINAL_RECEIPT_NAME
+    if not os.path.lexists(final_path):
+        raise MigrationRequired("M70 source successor receipt is missing")
+    observed, _ = _load_nofollow_json(
+        final_path, root=root, noun="M70 source successor receipt"
+    )
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        claimed != _identity(unhashed)
+        or observed.get("projection_cid") != _M70_TARGET_PROJECTION_CID
+        or observed.get("target_event_watermark") != _M70_TARGET_EVENT_WATERMARK
+        or observed.get("m68_receipt_preserved_exactly") is not True
+        or observed.get("generation_restart_authorized") is not True
+        or observed.get("generation_48_mint_authorized") is not True
+        or observed.get("event_342_preserved_exactly") is not True
+    ):
+        raise MigrationRequired("M70 source successor receipt chain differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_post_m69_stopped_owner_missing_client_token_vault_restart_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": observed.get("validation_digest"),
+        "prior_authority": authority,
+        "receipt": observed,
+        "m70_source_successor_receipt": observed,
+    }
+
+
+def _materialize_m70(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m70_source_binding_authority(root, population, config)
+    control, _coordination = _m70_target_paths(root, config, authority)
+    final_path = control.parent / _M70_FINAL_RECEIPT_NAME
+    m68_path = control.parent / _M70_M68_RECEIPT_NAME
+    if not os.path.lexists(m68_path):
+        raise MigrationRequired("M70 requires the preserved M68 receipt")
+    m68_before = _stable_regular_sha256(
+        m68_path, root=root, noun="M70 preserved M68 receipt", required_link_count=1
+    )
+    if m68_before != (_M70_M68_RECEIPT_SHA256, _M70_M68_RECEIPT_SIZE):
+        raise MigrationRequired("M70 preserved M68 receipt differs")
+    validation_digest = _m7_validation_digest(root, population)
+    verified = _observe_m70_stopped_owner(root)
+    if os.path.lexists(final_path):
+        checked = _check_m70_materialized(root, config_file)
+        return {
+            **checked,
+            "action": "checked_post_m69_stopped_owner_missing_client_token_vault_restart_successor",
+            "migration_required": False,
+            "receipt": checked.get("receipt"),
+            "m70_source_successor_receipt": checked.get("receipt"),
+        }
+    expected = _expected_m70_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    _m52_write_receipt_last(
+        root, final_path, expected, noun="M70 source successor receipt"
+    )
+    checked = _check_m70_materialized(root, config_file)
+    return {
+        **checked,
+        "action": "materialized_post_m69_stopped_owner_missing_client_token_vault_restart_successor",
+        "migration_required": False,
+        "receipt": checked.get("receipt"),
+        "m70_source_successor_receipt": checked.get("receipt"),
+    }
+
+
+def _m70_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M70_SUPERSESSION_REASON
+    migration = _load_json(
+        root
+        / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if any(presence) and not all(presence):
+        raise MaterializationError(
+            "M70 successor authority is only partially declared"
+        )
+    if not any(presence):
+        return False
+    reference = _m70_authority_reference()
+    if (
+        config.get(key) != reference
+        or migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError(
+            "M70 successor authority differs across controls"
+        )
+    return _m70_successor_configured(config)
+
+
 def _validated_m65_live_preflight_contract(
     authority: Mapping[str, Any],
 ) -> Mapping[str, Any]:
@@ -112546,6 +113200,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m70_successor_configured_on_any_surface(root, config):
+        return _materialize_m70(root, config_file, config)
     if _m69_successor_configured_on_any_surface(root, config):
         return _materialize_m69(root, config_file, config)
     if _m68_successor_configured_on_any_surface(root, config):

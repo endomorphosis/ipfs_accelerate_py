@@ -285,6 +285,15 @@ _M69_SUCCESSOR_KEY = (
 _M69_TARGET_PROJECTION_CID = (
     "baguqeerawmvrdltvpod4w47wgvmvsaietwl6lrch4gqtarptvaeknho2wnpa"
 )
+_M70_AUTHORITY_CID = (
+    "sha256:39423edba05f4da14ef7f334eb08bbf122ee8d7a87969f7ba364077324f4f7bb"
+)
+_M70_AUTHORITY_SIZE = 20_574
+_M70_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M70_FINAL_CONTROL_AUTHORITY_CID"
+_M70_SUCCESSOR_KEY = (
+    "post_m69_stopped_owner_missing_client_token_vault_restart_successor_materialization"
+)
+_M70_TARGET_PROJECTION_CID = _M69_TARGET_PROJECTION_CID
 _M50_M49_RECEIPT_CID = (
     "sha256:d5bfeb6dd987b05c2407d93f66d73c6a70bcd2b4f17e8381a93a2bb265acae47"
 )
@@ -813,6 +822,24 @@ def _m63_migration_errors(
         )
     except Exception as exc:
         return [f"M63 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m70_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Validate M70's stopped generation-47 missing-vault generation-48 restart."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m70_post_m69_stopped_owner_missing_client_token_vault_restart_errors(
+                scheduler, seal, migration, root=REPO_ROOT
+            )
+        )
+    except Exception as exc:
+        return [f"M70 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _m69_migration_errors(
@@ -1872,6 +1899,43 @@ def _active_successor_migration_errors(
     remains independently checked as immutable history.
     """
 
+    m70_key = _M70_SUCCESSOR_KEY
+    m70_presence = (
+        m70_key in scheduler,
+        m70_key in migration,
+        f"{m70_key}_cid" in seal,
+    )
+    if any(m70_presence):
+        errors = _m70_migration_errors(scheduler, seal, migration)
+        if not all(m70_presence):
+            errors.append("M70 successor authority is only partially declared")
+        if errors:
+            return errors
+        m69_key = _M69_SUCCESSOR_KEY
+        m69_presence = (
+            m69_key in scheduler,
+            m69_key in migration,
+            f"{m69_key}_cid" in seal,
+        )
+        if not all(m69_presence):
+            return [
+                "M70 successor does not preserve the immutable M69 controls"
+            ]
+        historical_scheduler = dict(scheduler)
+        historical_migration = dict(migration)
+        historical_seal = dict(seal)
+        historical_scheduler.pop(m70_key, None)
+        historical_migration.pop(m70_key, None)
+        historical_seal.pop(f"{m70_key}_cid", None)
+        errors.extend(
+            _active_successor_migration_errors(
+                historical_scheduler,
+                historical_seal,
+                historical_migration,
+                require_current_source=False,
+            )
+        )
+        return errors
     m69_key = _M69_SUCCESSOR_KEY
     m69_presence = (
         m69_key in scheduler,
@@ -5691,8 +5755,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m70_key = _M70_SUCCESSOR_KEY
+    m70_selected = any((
+        m70_key in config,
+        m70_key in migration,
+        f"{m70_key}_cid" in seal,
+    ))
     m69_key = _M69_SUCCESSOR_KEY
-    m69_selected = any((
+    m69_selected = m70_selected or any((
         m69_key in config,
         m69_key in migration,
         f"{m69_key}_cid" in seal,
@@ -6387,7 +6457,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "47"
+        "48"
+        if m70_selected
+        else "47"
         if m69_selected
         else "46"
         if m68_selected
@@ -6617,7 +6689,44 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m69_selected:
+    if m70_selected:
+        successor = config.get(m70_key)
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m70_post_m69_stopped_owner_missing_client_token_vault_restart_authority()
+            )
+            reference = dict(materializer._m70_authority_reference())
+            contract = materializer._validated_m70_live_preflight_contract(expected)
+            configured = materializer._m70_successor_configured_on_any_surface(
+                root, config
+            )
+            stopped = expected.get("stopped_owner")
+            if (
+                successor != reference
+                or seal.get(f"{m70_key}_cid") != _M70_AUTHORITY_CID
+                or materializer._identity(expected) != _M70_AUTHORITY_CID
+                or len(materializer._canonical(expected)) != _M70_AUTHORITY_SIZE
+                or _M70_AUTHORITY_CID == _M70_UNSEALED_AUTHORITY_CID
+                or configured is not True
+                or expected.get("target_generation") != 48
+                or not isinstance(stopped, Mapping)
+                or stopped.get("generation") != 47
+                or stopped.get("client_token_vault_absent") is not True
+                or contract.get("generation_restart_authorized") is not True
+                or contract.get("generation_48_mint_authorized") is not True
+                or contract.get("bind_store_report_to_live_event_digest") is not True
+            ):
+                config_errors.append(
+                    "M70 stopped-owner token-vault restart authority differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M70 stopped-owner token-vault restart authority unavailable: "
+                f"{type(exc).__name__}: {exc}"
+            )
+    elif m69_selected:
         successor = config.get(m69_key)
         try:
             module, materializer = _m26_validation_modules(root)
