@@ -32,6 +32,13 @@ context limit, locality, and current availability.  Vendor preference is
 rejected.  When the safely required model tier is unavailable, routing does
 **not** downgrade: it returns ``human_review_required``.
 
+Small/medium/frontier escalation is exposed as
+:func:`apply_escalation_policy` over :data:`MODEL_ESCALATION_LADDER`.  It
+extends this module rather than introducing a competing router.  Earlier
+deterministic-first rungs (receipt reuse, static analysis, selected tests,
+selected proofs) remain owned by sibling modules named in
+:data:`DETERMINISTIC_FIRST_ROUTE_LADDER`.
+
 Importing this module performs no I/O and never invokes a model provider.
 """
 
@@ -77,6 +84,24 @@ MODEL_ROUTE_POLICY_SCHEMA: Final[str] = (
 PRIOR_REPAIR_ATTEMPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/verification-prior-repair-attempt@1"
 )
+MODEL_ESCALATION_POLICY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/verification-model-escalation-policy@1"
+)
+MODEL_ESCALATION_POLICY_INTERFACE: Final[str] = "ModelEscalationPolicy@1"
+
+# G080 deterministic-first ladder tokens. Pre-model rungs (receipt/static/tests/
+# proof) are owned by sibling DOEP modules; this module owns small→medium→
+# frontier→human escalation and must not reimplement those earlier rungs.
+DETERMINISTIC_FIRST_ROUTE_LADDER: Final[tuple[str, ...]] = (
+    "receipt",
+    "static",
+    "tests",
+    "proof",
+    "small",
+    "medium",
+    "frontier",
+    "human",
+)
 
 # Capability tiers that require an inventory entry (deterministic does not).
 _MODEL_TIERS: Final[frozenset[ModelRoute]] = frozenset(
@@ -89,6 +114,15 @@ _MODEL_TIERS: Final[frozenset[ModelRoute]] = frozenset(
 
 _ALL_ROUTES: Final[tuple[ModelRoute, ...]] = (
     ModelRoute.DETERMINISTIC_ONLY,
+    ModelRoute.SMALL_LOCAL_MODEL,
+    ModelRoute.MEDIUM_MODEL,
+    ModelRoute.FRONTIER_MODEL,
+    ModelRoute.HUMAN_REVIEW_REQUIRED,
+)
+
+# Small/medium/frontier escalation subset (DOEP-074). Deterministic sits before
+# this ladder; human review is the terminal fail-closed rung.
+MODEL_ESCALATION_LADDER: Final[tuple[ModelRoute, ...]] = (
     ModelRoute.SMALL_LOCAL_MODEL,
     ModelRoute.MEDIUM_MODEL,
     ModelRoute.FRONTIER_MODEL,
@@ -954,8 +988,16 @@ def derive_model_route_facts(
 # ---------------------------------------------------------------------------
 
 
-def _failed_routes(prior_attempts: Sequence[PriorRepairAttempt]) -> frozenset[ModelRoute]:
+def failed_model_routes(
+    prior_attempts: Sequence[PriorRepairAttempt],
+) -> frozenset[ModelRoute]:
+    """Return the set of routes that already failed in ``prior_attempts``."""
+
     return frozenset(item.route for item in prior_attempts if item.failed)
+
+
+def _failed_routes(prior_attempts: Sequence[PriorRepairAttempt]) -> frozenset[ModelRoute]:
+    return failed_model_routes(prior_attempts)
 
 
 def _tier_available(
@@ -1315,6 +1357,77 @@ def apply_availability(
     )
 
 
+def escalate_failed_routes(
+    required_route: ModelRoute,
+    prior_attempts: Sequence[PriorRepairAttempt],
+) -> tuple[ModelRoute, tuple[str, ...]]:
+    """Monotonic safety net over the small/medium/frontier escalation ladder.
+
+    ``select_required_route`` remains the classifier.  This helper only
+    advances past model-tier rungs that already failed and never moves left
+    on :data:`MODEL_ESCALATION_LADDER`.  Deterministic and human-review gates
+    stay owned by the decision table.
+    """
+
+    route = _route_enum(required_route, field_name="required_route")
+    failed = failed_model_routes(prior_attempts)
+    if route not in failed:
+        return route, ()
+
+    if route is ModelRoute.DETERMINISTIC_ONLY:
+        # Deterministic failure enters the model ladder at the first unfailed
+        # rung; residual shape filtering remains select_required_route's job.
+        for candidate in MODEL_ESCALATION_LADDER:
+            if candidate not in failed:
+                return candidate, (REASON_SMALLER_ROUTE_FAILED,)
+        return ModelRoute.HUMAN_REVIEW_REQUIRED, (REASON_SMALLER_ROUTE_FAILED,)
+
+    if route not in MODEL_ESCALATION_LADDER:
+        return route, ()
+
+    start = MODEL_ESCALATION_LADDER.index(route)
+    for candidate in MODEL_ESCALATION_LADDER[start:]:
+        if candidate not in failed:
+            extra = (REASON_SMALLER_ROUTE_FAILED,) if candidate is not route else ()
+            return candidate, extra
+    return ModelRoute.HUMAN_REVIEW_REQUIRED, (REASON_SMALLER_ROUTE_FAILED,)
+
+
+def apply_escalation_policy(
+    facts: ModelRouteFacts | Mapping[str, Any],
+    *,
+    prior_attempts: Sequence[Any] = (),
+    available_models: Sequence[Any] = (),
+    policy: Any,
+) -> ModelRouteDecision:
+    """Apply the canonical small/medium/frontier escalation policy.
+
+    Composes :func:`select_required_route`, :func:`escalate_failed_routes`, and
+    :func:`apply_availability`.  Does not create a competing router and never
+    downgrades an unavailable required model tier.
+    """
+
+    normalized_facts = ModelRouteFacts.from_value(facts)
+    normalized_attempts = _normalize_prior_attempts(prior_attempts)
+    inventory = _normalize_inventory(available_models)
+    normalized_policy = ModelRoutePolicy.from_value(policy)
+    required, reasons = select_required_route(
+        normalized_facts, normalized_attempts, normalized_policy
+    )
+    escalated, extra_reasons = escalate_failed_routes(required, normalized_attempts)
+    if extra_reasons:
+        reasons = tuple(dict.fromkeys([*extra_reasons, *reasons]))
+    decision = apply_availability(
+        required_route=escalated,
+        reasons=reasons,
+        facts=normalized_facts,
+        inventory=inventory,
+        policy=normalized_policy,
+    )
+    _assert_provider_neutral_decision(decision)
+    return decision
+
+
 def decide_model_route(
     facts: ModelRouteFacts | Mapping[str, Any],
     *,
@@ -1324,22 +1437,12 @@ def decide_model_route(
 ) -> ModelRouteDecision:
     """Pure decision entrypoint over already-normalized (or mappable) facts."""
 
-    normalized_facts = ModelRouteFacts.from_value(facts)
-    normalized_attempts = _normalize_prior_attempts(prior_attempts)
-    inventory = _normalize_inventory(available_models)
-    normalized_policy = ModelRoutePolicy.from_value(policy)
-    required, reasons = select_required_route(
-        normalized_facts, normalized_attempts, normalized_policy
+    return apply_escalation_policy(
+        facts,
+        prior_attempts=prior_attempts,
+        available_models=available_models,
+        policy=policy,
     )
-    decision = apply_availability(
-        required_route=required,
-        reasons=reasons,
-        facts=normalized_facts,
-        inventory=inventory,
-        policy=normalized_policy,
-    )
-    _assert_provider_neutral_decision(decision)
-    return decision
 
 
 def _assert_provider_neutral_decision(decision: ModelRouteDecision) -> None:
@@ -1527,6 +1630,10 @@ __all__ = [
     "CAP_LOCAL_EXECUTION",
     "CAP_MECHANICAL_TRANSFORM",
     "CAP_MULTI_FILE_SYNTHESIS",
+    "DETERMINISTIC_FIRST_ROUTE_LADDER",
+    "MODEL_ESCALATION_LADDER",
+    "MODEL_ESCALATION_POLICY_INTERFACE",
+    "MODEL_ESCALATION_POLICY_SCHEMA",
     "MODEL_ROUTE_EVIDENCE",
     "MODEL_ROUTE_FACTS_SCHEMA",
     "MODEL_ROUTE_PLANNER_INTERFACE",
@@ -1565,10 +1672,13 @@ __all__ = [
     "PriorRepairAttempt",
     "RiskLevel",
     "apply_availability",
+    "apply_escalation_policy",
     "choose_model_route",
     "decide_model_route",
     "default_inventory",
     "derive_model_route_facts",
+    "escalate_failed_routes",
+    "failed_model_routes",
     "policy_cid_for",
     "select_required_route",
 ]
