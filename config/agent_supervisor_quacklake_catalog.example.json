@@ -1,0 +1,7 @@
+{
+  "schema": "ipfs_accelerate_py/quacklake-catalog-config@1",
+  "endpoint": "quack:catalog.example.invalid:443",
+  "data_path": "r2://example-bucket/catalogs/example-catalog/",
+  "jwt_file": "/absolute/private/quacklake-catalog.jwt",
+  "storage_credentials_file": "/absolute/private/quacklake-r2.json"
+}
