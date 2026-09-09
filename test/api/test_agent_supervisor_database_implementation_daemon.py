@@ -10982,10 +10982,10 @@ def test_consumed_reserved_callback_authority_incomplete_stays_blocked(
         daemon.close()
 
 
-def test_generic_rearm_receipt_with_stale_retained_records_is_not_exhausted(
+def test_generic_rearm_receipt_cannot_hide_malformed_retained_records(
     tmp_path: Path,
 ) -> None:
-    """Superseded one-shot records must not idle extra-gate as max-attempts."""
+    """A generic retry marker cannot make malformed retained evidence valid."""
 
     daemon = _open_daemon(
         tmp_path,
@@ -11018,9 +11018,9 @@ def test_generic_rearm_receipt_with_stale_retained_records_is_not_exhausted(
         updated = daemon.task_source.get(task.task_cid)
         assert updated is not None
         state = daemon._retry_budget_state(updated)
-        assert state["retry_exhausted"] is False
-        assert state["malformed"] is False
-        assert daemon._automatic_claim_forbidden_current(updated) is False
+        assert state["retry_exhausted"] is True
+        assert state["malformed"] is True
+        assert daemon._automatic_claim_forbidden_current(updated) is True
     finally:
         daemon.close()
 
@@ -11107,9 +11107,13 @@ def test_near_quiesced_release_remains_in_terminal_landed_quarantine(
 
         assert len(outcomes) == 1
         assert outcomes[0]["task_cid"] == task.task_cid
-        assert outcomes[0]["reason"] == (
-            "terminal_landed_candidate_recovery_blocked"
+        expected_reason = (
+            "terminal_landed_candidate_manual_authority_required"
+            if task_alias == "PCTDD-005"
+            else "terminal_landed_candidate_recovery_blocked"
         )
+        assert outcomes[0]["reason"] == expected_reason
+        assert outcomes[0]["blocked"] is True
         assert generic_calls == []
         assert cas_calls == []
     finally:

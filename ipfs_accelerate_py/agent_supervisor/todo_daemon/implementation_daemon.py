@@ -98491,15 +98491,12 @@ class DatabaseImplementationDaemon:
         )
 
         landed_recoveries = self.reconcile_blocked_terminal_landed_tasks()
+        # A failed terminal recovery is still quarantined. Diagnostic shape
+        # only controls reporting; it never grants generic retry authority.
         terminal_candidate_cids = {
             str(item.get("task_cid") or "")
             for item in landed_recoveries
             if str(item.get("task_cid") or "")
-            and (
-                item.get("recovered") is True
-                or item.get("rearmed") is True
-                or _read_only_terminal_candidate_quarantine(item)
-            )
         }
         shared_recoveries = self._reconcile_shared_no_provider_rearm_fences()
         if shared_recoveries:
