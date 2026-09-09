@@ -303,3 +303,74 @@ Detailed admission requirements are in
 `.worktrees/pctdd-resource-aware-sealing-prep/docs/operations/pctdd-resource-aware-sealing-preparation.md`.
 The clean PCTDD and SAWM ports are resource controls, not shared digest caching;
 the 24-hour authenticated observation service remains an ASEH integration.
+
+## Continuation after 05:07 UTC
+
+Fresh ASEH checks still found deployed source `7f9a2d...`, generation 116/schema
+4 and an active Grok attempt. The supervisor has an infinite configured runtime;
+the task timeout is four hours, so a prompt natural exit is not guaranteed.
+A bounded waiter was queued on the existing cron launch lock, without sending
+signals or changing the launcher, to catch a natural exit if one occurred.
+The initial candidate merge preview was conflict-free and matched the repair
+tree exactly. Source changes still require the established two-parent merge
+and genuine startup admission after all live work has stopped.
+
+An actual isolated capsule preflight exposed a fresh-checkout permission gap:
+the preparation helper hardened its handwritten list and supervisor package,
+but omitted required package-root utilities and `scripts/ops` entrypoints that
+had inherited group-write permission. The seal correctly rejected those files.
+The fix must use the capsule's authoritative source inventory and preserve its
+ownership/no-follow checks; this is not grounds to relax capsule validation.
+
+### Updated SAWM preparation, not a live successor
+
+The other writer committed M70 and further generation-48 repairs, then advanced
+the selected checkout again while this rollout was inspecting it. Its Quack
+owner is now running. Neither a transient clean status nor the user's request
+to continue was treated as evidence that the other writer had paused.
+
+The resource patch was refreshed separately onto immutable source
+`9e4804c5866f8b22aa77d095d13c7f78bab06490`, retaining the earlier preparation.
+The new branch is `codex/sawm-resource-hashing-m70`, commit
+`62ac6f52dc87cc5d29909f161bedbf6dcc5c0f33`, tree
+`2c8f8b945d6847d53720381c5356decf2e95541e`. All 49 focused tests passed again,
+including the sealed runner. Production capsule sealing and verification passed:
+
+- Capsule CID: `sha256:e5a414bc4e7ec9aaede3028b54ae3cb35c9e87b4e21081de9306eeb930a514ca`.
+- Archive SHA-256: `sha256:9bd44fa59ed98aa471d80694c6b55d3654e367e7c652b80f5ac2e2908ed919ca`.
+
+This is still a source preparation, not operator admission. M70 explicitly
+authorizes a restart/generation transition; it cannot serve as a zero-generation
+resource amendment. A stable reviewed source and a new narrowly scoped
+source-only authority/adapter remain necessary. No selected source, owner,
+configuration, database or service was changed by this continuation.
+
+### PCTDD admission clarified without mutations
+
+The real read-only prepared-source preflight returned
+`owner_management.owner_state_dir is outside the repository`, before creating
+state. Existing G9 `resume` can admit a clean descendant source through its
+current-tree checks and authenticated canonical task authority; it is not a hot
+reload and returns `already_running` for a healthy master. Thus no speculative
+G10 migration or new diagnostic CLI was added.
+
+The supported next step is to reconcile the scoped resource commit into canonical
+G9 source while preserving its unfinished overlay, bind the exact outer gitlink,
+pass current-source controls, and coordinate normal resumption. Retargeting the
+prepared configuration to borrow the live owner's path or replaying G8-to-G9
+would not supply that admission. At 05:18, the live owner/master remained present
+and lane 0 had started agentic maintenance after replacing a termination-blocked
+supervisor. This was not an idle state. Both preparation worktrees stayed clean.
+
+### Capsule permission correction
+
+The preparation helper now takes its Python members directly from the capsule
+source inventory and changes mode through anchored no-follow descriptors with
+inode/mode/owner/link checks. SQL checkout permissions and unrelated files are
+left alone; foreign-owned, hardlinked and nonregular files are not modified.
+The capsule's subsequent strict byte and ownership admission is unchanged.
+Thirteen new permission regressions and two existing cases passed; an independent
+combined run of permission, bootstrap-cache, hashing-entrypoint and temporary
+Quack-client tests passed all **60 cases**. The latter run emitted only the
+known fork deprecation warning and an unregistered timeout-marker warning from
+disabling optional pytest plugin autoload. No live source was edited.

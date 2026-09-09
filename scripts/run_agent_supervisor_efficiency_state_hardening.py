@@ -88947,16 +88947,25 @@ def _best_effort_publish_sealed_owner_terminal_observation(
 def _strip_control_plane_group_other_write(root: Path) -> None:
     """Drop umask-002 group/other write before the capsule immutability gate."""
 
-    targets = [
-        root / "ipfs_accelerate_py" / "llm_router.py",
-        root / "ipfs_accelerate_py" / "agent_implementation_route.py",
-        root / "ipfs_accelerate_py" / "_hash_resources.py",
-        root / "scripts" / "run_agent_supervisor_efficiency_state_hardening.py",
-    ]
-    supervisor_root = root / "ipfs_accelerate_py" / "agent_supervisor"
-    if supervisor_root.is_dir():
-        targets.extend(supervisor_root.rglob("*.py"))
+    from ipfs_accelerate_py.agent_implementation_route import (
+        _agent_control_plane_source_files,
+    )
+
+    # Share the capsule's closure, including its package roots and entrypoints.
+    # SQL payloads come from exact Git blobs, not loose checkout file reads, so
+    # they do not need their checkout permissions changed here.
+    try:
+        targets = _agent_control_plane_source_files(
+            root, verify_loaded_origins=False,
+        )
+    except (OSError, ValueError) as exc:
+        raise OperatorError("control-plane source closure is unavailable") from exc
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow:
+        raise OperatorError("control-plane source hardening requires O_NOFOLLOW")
     for path in targets:
+        if path.suffix != ".py":
+            continue
         try:
             metadata = os.lstat(path)
         except FileNotFoundError:
@@ -88969,10 +88978,30 @@ def _strip_control_plane_group_other_write(root: Path) -> None:
         if (
             not stat.S_ISREG(metadata.st_mode)
             or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
             or not (mode & 0o022)
         ):
             continue
-        os.chmod(path, mode & ~0o022)
+        try:
+            with _anchored_directory_descriptor(path.parent) as directory_fd:
+                descriptor = os.open(
+                    path.name,
+                    os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC | nofollow,
+                    dir_fd=directory_fd,
+                )
+                try:
+                    if not _same_namespace_identity(metadata, os.fstat(descriptor)):
+                        raise OperatorError("control-plane source file changed")
+                    os.fchmod(descriptor, mode & ~0o022)
+                    named = os.stat(
+                        path.name, dir_fd=directory_fd, follow_symlinks=False,
+                    )
+                    if not _same_namespace_identity(named, os.fstat(descriptor)):
+                        raise OperatorError("control-plane source file changed")
+                finally:
+                    os.close(descriptor)
+        except OSError as exc:
+            raise OperatorError("control-plane source hardening failed") from exc
 
 
 def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> int:
