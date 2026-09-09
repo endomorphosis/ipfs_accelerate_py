@@ -2302,6 +2302,11 @@ def test_operator_does_not_kill_coordinator_for_isolated_dead_lane() -> None:
     assert env["IPFS_ACCELERATE_LIFECYCLE_TARGET_ID"].endswith("v1-0")
     assert env["IPFS_ACCELERATE_LIFECYCLE_STATE_ROOT"].endswith("lane-0")
     assert dead_master["admitted"] is True
+    recycle_source = inspect.getsource(
+        operator._recycle_isolated_lane_from_live_peer
+    )
+    assert "lane_supervisor_already_live" in recycle_source
+    assert "_isolated_lane_live_supervisor_pid" in recycle_source
     assert operator._isolated_lane_relaunch_pass_fds(3, 4) == (3, 4)
     assert operator._isolated_lane_relaunch_pass_fds(7, 8) == (7, 8)
     assert 7 not in operator._isolated_lane_relaunch_pass_fds(3, 4)

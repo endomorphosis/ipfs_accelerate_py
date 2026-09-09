@@ -18379,6 +18379,42 @@ def _rewrite_isolated_lane_peer_env(
     return rewritten
 
 
+def _isolated_lane_supervisor_pid_path(run_dir: Path, lane_index: int) -> Path:
+    return (
+        Path(run_dir)
+        / "state"
+        / f"lane-{int(lane_index)}"
+        / f"sawm_lane_{int(lane_index)}_supervisor.pid"
+    )
+
+
+def _isolated_lane_live_supervisor_pid(run_dir: Path, lane_index: int) -> int:
+    """Return a live supervisor pid for this lane, else 0."""
+
+    path = _isolated_lane_supervisor_pid_path(run_dir, lane_index)
+    candidates: list[int] = []
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+        candidates.append(int(raw))
+    except (OSError, TypeError, ValueError):
+        pass
+    status_path = (
+        Path(run_dir)
+        / "state"
+        / f"lane-{int(lane_index)}"
+        / f"sawm_lane_{int(lane_index)}_supervisor_status.json"
+    )
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+        candidates.append(int(payload.get("supervisor_pid") or 0))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        pass
+    for pid in candidates:
+        if _pid_alive(pid):
+            return pid
+    return 0
+
+
 def _pid_alive(pid: int) -> bool:
     if pid <= 1:
         return False
@@ -18426,6 +18462,15 @@ def _recycle_isolated_lane_from_live_peer(
         }
     if not _pid_alive(int(peer_supervisor_pid)):
         return {"restarted": False, "reason": "peer_supervisor_dead"}
+    existing_pid = _isolated_lane_live_supervisor_pid(
+        run_dir, int(dead_lane_index)
+    )
+    if existing_pid:
+        return {
+            "restarted": False,
+            "reason": "lane_supervisor_already_live",
+            "existing_pid": existing_pid,
+        }
     peer_args = [
         part.decode("utf-8", "strict")
         for part in Path(f"/proc/{int(peer_supervisor_pid)}/cmdline")
@@ -18594,6 +18639,11 @@ def _recycle_isolated_lane_from_live_peer(
             "source_head": source_head,
             "admission": admission,
         }
+    pid_path = _isolated_lane_supervisor_pid_path(
+        run_dir, int(dead_lane_index)
+    )
+    pid_path.parent.mkdir(parents=True, exist_ok=True)
+    pid_path.write_text(f"{int(process.pid)}\n", encoding="utf-8")
     return {
         "restarted": True,
         "new_pid": int(process.pid),
