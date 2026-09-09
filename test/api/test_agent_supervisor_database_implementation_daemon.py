@@ -6280,6 +6280,55 @@ def test_exact_legacy_protected_preservation_block_recovers_once(
         daemon.close()
 
 
+def test_chain_inexact_protected_preservation_block_recovers_once(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError(
+            "protected-path preservation event chain is not exact"
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:protected-preservation-chain-inexact-recovery",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        source = daemon.get_attempt(failed_result["attempt_id"])
+        assert source is not None
+        blocked = daemon.task_source.get(source.task_cid)
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        seed = _protected_preservation_receipt(
+            daemon,
+            source,
+            source_task_revision=blocked.revision - 1,
+        )
+        daemon.bind_protected_preservation_recovery(
+            lambda _attempt: seed
+        )
+
+        recovered = daemon.reconcile_terminal_portal_failures()
+        assert len(recovered) == 1
+        assert recovered[0]["changed"] is True
+        assert recovered[0]["status"] == "retrying"
+        assert recovered[0]["protected_preservation_evidence"] == seed
+        retrying = daemon.task_source.get(source.task_cid)
+        assert retrying is not None
+        assert retrying.status == "retrying"
+        receipt = retrying.body["completion_receipt"]
+        assert receipt["operation"] == (
+            "database_portal_protected_preservation_retry_recovery"
+        )
+        assert receipt["protected_preservation_seed"] == seed
+        assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
 def test_protected_reconciliation_self_lock_rearms_original_seed_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

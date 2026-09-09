@@ -362,6 +362,23 @@ _PROTECTED_PATH_PRESERVATION_EVENT_CHAIN: Final[tuple[str, ...]] = (
     "implementation_finished",
     "daemon_pass",
 )
+# Diagnostics that live PCPR/board runs emit around task selection.
+# They are not later execution events.  Interposed and suffix execution
+# events still fail closed.
+_PROTECTED_PATH_PRESERVATION_DIAGNOSTIC_EVENT_TYPES: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "retry_budget_repair_runtime_revision_unavailable",
+            "nested_submodule_initialization_guarded",
+        }
+    )
+)
+DATABASE_PORTAL_PROTECTED_PRESERVATION_CHAIN_INEXACT_REASON = (
+    "protected-path preservation event chain is not exact"
+)
+DATABASE_PORTAL_PROTECTED_PRESERVATION_MALFORMED_SEED_REASON = (
+    "database claim carries a malformed protected-preservation seed"
+)
 _CONSUMED_ATTEMPT_TERMINAL_EVENT_CHAIN: Final[tuple[str, ...]] = (
     "task_selected",
     "implementation_protected_path_snapshot_recorded",
@@ -14996,11 +15013,17 @@ class DatabasePortalExecutionBridge:
         ):
             seed_event = events[0]
             terminal_events = events[1:]
+        terminal_events = [
+            event
+            for event in terminal_events
+            if str(event.get("type") or "")
+            not in _PROTECTED_PATH_PRESERVATION_DIAGNOSTIC_EVENT_TYPES
+        ]
         if tuple(
             str(event.get("type") or "") for event in terminal_events
         ) != _PROTECTED_PATH_PRESERVATION_EVENT_CHAIN:
             raise DatabasePortalBridgeError(
-                "protected-path preservation event chain is not exact"
+                DATABASE_PORTAL_PROTECTED_PRESERVATION_CHAIN_INEXACT_REASON
             )
         (
             selected_event,
@@ -16577,9 +16600,17 @@ class DatabasePortalExecutionBridge:
         seed = status_receipt.get("protected_preservation_seed")
         if seed is None:
             return None
+        # Live successor claims can drop the explicit lineage field while
+        # still carrying the source attempt identity on the seed.  Use that
+        # seed identity rather than one-shot terminalizing the claim.
         source_attempt_id = str(
             status_receipt.get(
                 "protected_preservation_source_attempt_id"
+            )
+            or (
+                seed.get("attempt_id")
+                if isinstance(seed, Mapping)
+                else ""
             )
             or ""
         )
@@ -16606,7 +16637,7 @@ class DatabasePortalExecutionBridge:
             != str(getattr(attempt, "task_alias", "") or "")
         ):
             raise DatabasePortalBridgeError(
-                "database claim carries a malformed protected-preservation seed"
+                DATABASE_PORTAL_PROTECTED_PRESERVATION_MALFORMED_SEED_REASON
             )
         try:
             verified = DatabasePortalProtectedPathPreserved(seed).retry_receipt
@@ -21695,6 +21726,8 @@ __all__ = (
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA",
+    "DATABASE_PORTAL_PROTECTED_PRESERVATION_CHAIN_INEXACT_REASON",
+    "DATABASE_PORTAL_PROTECTED_PRESERVATION_MALFORMED_SEED_REASON",
     "DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA",

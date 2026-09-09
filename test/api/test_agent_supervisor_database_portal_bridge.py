@@ -2817,6 +2817,7 @@ def _write_protected_path_preservation_terminal(
         "protected_path_interrupted_worktree_preserved"
     ),
     later_event_type: str = "",
+    prefix_event_types: tuple[str, ...] = (),
 ) -> tuple[
     dict[str, object],
     dict[str, object],
@@ -2849,6 +2850,12 @@ def _write_protected_path_preservation_terminal(
         "canonical_task_key": canonical_task_key,
         "board_namespace": board_namespace,
     }
+    for prefix_type in prefix_event_types:
+        append_jsonl_event(
+            paths.events,
+            prefix_type,
+            {**common_identity, "attempt": portal_attempt},
+        )
     append_jsonl_event(
         paths.events,
         "task_selected",
@@ -3068,6 +3075,7 @@ def _prepare_seeded_protected_preservation_replay(
         "protected_path_interrupted_worktree_preserved"
     ),
     later_event_type: str = "",
+    prefix_event_types: tuple[str, ...] = (),
 ) -> tuple[
     SimpleNamespace,
     DatabaseTaskAttempt,
@@ -3172,6 +3180,7 @@ def _prepare_seeded_protected_preservation_replay(
         interposed_event_type=interposed_event_type,
         preservation_event_type=preservation_event_type,
         later_event_type=later_event_type,
+        prefix_event_types=prefix_event_types,
     )
     return (
         record,
@@ -6956,6 +6965,47 @@ def test_bridge_rejects_near_protected_preservation_without_dispatch(
     assert factory_calls == []
 
 
+def test_bridge_accepts_protected_preservation_preselection_prefixes(
+    tmp_path: Path,
+) -> None:
+    (
+        record,
+        successor,
+        repo,
+        attempt_root,
+        _baseline,
+        _preserved_commit,
+        _rescue_branch,
+        _terminal,
+    ) = _prepare_seeded_protected_preservation_replay(
+        tmp_path,
+        prefix_event_types=(
+            "retry_budget_repair_runtime_revision_unavailable",
+            "nested_submodule_initialization_guarded",
+        ),
+        interposed_event_type="nested_submodule_initialization_guarded",
+    )
+    factory_calls: list[str] = []
+
+    def unexpected_factory(_paths: object, _alias: str) -> object:
+        factory_calls.append("called")
+        return SimpleNamespace(run_once=lambda: {})
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        repository_root=repo,
+        portal_factory=unexpected_factory,
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    recovered = bridge.recover_protected_path_preservation(successor)
+    with pytest.raises(DatabasePortalProtectedPathPreserved) as caught:
+        bridge.run_provider(successor)
+    assert caught.value.retry_receipt == recovered
+    assert factory_calls == []
+
+
 def _prepare_protected_preservation_successor_seed(
     tmp_path: Path,
 ) -> tuple[
@@ -7888,6 +7938,38 @@ def test_bridge_protected_reconciliation_self_lock_tamper_fails_closed(
 
     assert factory_calls == []
     assert provider_hooks == []
+
+
+def test_bridge_reconciles_protected_preservation_seed_without_lineage_field(
+    tmp_path: Path,
+) -> None:
+    (
+        record,
+        target,
+        repo,
+        target_root,
+        _baseline_commit,
+        _preserved_commit,
+        _rescue_branch,
+        seed,
+    ) = _prepare_protected_preservation_successor_seed(tmp_path)
+    del record.body["completion_receipt"]["protected_preservation_source_attempt_id"]
+    assert seed["attempt_id"] != target.attempt_id
+    bridge, _observed, _queue, provider_hooks, factory_calls = (
+        _protected_recovery_bridge(
+            record=record,
+            target=target,
+            repo=repo,
+            target_root=target_root,
+            mode="success_todo",
+        )
+    )
+
+    receipt = bridge.run_provider(target)
+    assert receipt["accepted"] is True
+    assert receipt["task_cid"] == target.task_cid
+    assert provider_hooks == []
+    assert factory_calls == [target.task_alias]
 
 
 def test_bridge_zero_provider_reconciles_protected_preservation_seed(
