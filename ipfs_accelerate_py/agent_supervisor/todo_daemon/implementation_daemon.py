@@ -117441,6 +117441,11 @@ class DatabaseImplementationDaemon:
                         )
                         self._reconcile_leftover_wait_coordination(attempt)
                         continue
+                    if self._operator_typed_deferral_recovery_is_admitted(attempt, task, budget):
+                        outcomes.append({"task_cid": attempt.task_cid, "attempt_id": attempt.attempt_id,
+                                         "status": "retrying", "changed": False,
+                                         "reason": "operator_fresh_validation_supersedes_deferral_budget"})
+                        continue
                     # A generic blocked->retrying CAS is not a recovery: the
                     # immutable failed attempts below will re-block it.  Only
                     # the closed task/attempt/observation/source/provider
@@ -119811,6 +119816,42 @@ class DatabaseImplementationDaemon:
                 "argv": ["database-landed-merge-repair"],
                 **proof,
             },
+        )
+
+    def _operator_typed_deferral_recovery_is_admitted(self, attempt: Any, task: Any, budget: Mapping[str, Any]) -> bool:
+        """Recognize one owner-admitted fresh retry without replaying its old budget."""
+        body = getattr(task, "body", None)
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        if not (
+            isinstance(receipt, Mapping)
+            and receipt.get("schema") == TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA
+            and receipt.get("operation") == TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION
+            and receipt.get("terminal_operation") == "database_portal_typed_deferral_budget_exhausted"
+            and receipt.get("attempt_id") == attempt.attempt_id
+            and receipt.get("claim_id") == attempt.claim_id
+            and receipt.get("attempt_number") == attempt.attempt_number
+            and receipt.get("fresh_attempt_number") == attempt.attempt_number + 1
+            and receipt.get("recovered_from_revision") == getattr(task, "revision", 0) - 1
+            and receipt.get("attempt_refunded") is False
+            and self._requires_fresh_portal_revalidation(task)
+        ):
+            return False
+        history = self._task_revision_history_for_recovery(attempt.task_cid)
+        prior = next((row for row in history if row["revision"] == receipt["recovered_from_revision"]), None)
+        if not isinstance(prior, Mapping) or prior.get("status") != "blocked":
+            return False
+        terminal = prior.get("body", {}).get("completion_receipt")
+        if not isinstance(terminal, Mapping):
+            return False
+        digest = "sha256:" + hashlib.sha256(json.dumps(dict(terminal), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        requirement = body.get(TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD, {})
+        return bool(
+            terminal.get("attempt_id") == attempt.attempt_id
+            and terminal.get("retry_budget") == dict(budget)
+            and receipt.get("source_completion_receipt_id") == digest
+            and requirement.get("source_completion_receipt_id") == digest
+            and requirement.get("operator_handoff_receipt_id") == receipt.get("operator_handoff_receipt_id")
+            and requirement.get("sidecar_evidence_id") == receipt.get("sidecar_evidence_id")
         )
 
     def _requires_fresh_portal_revalidation(self, task: Any) -> bool:
