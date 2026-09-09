@@ -54,6 +54,7 @@ sys.path[:] = [
     ],
 ]
 
+from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import hashing_lock
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_command_binding import (
     ensure_provider_command_bindings,
     recover_provider_command_name_error,
@@ -1726,7 +1727,14 @@ def _repository_head(workspace: Path) -> str:
 
 
 def _workspace_content_fingerprint(workspace: Path) -> str:
-    """Hash every workspace path, file byte, mode, and symlink target."""
+    """Fully verify mutable bytes under the shared background hashing budget."""
+
+    with hashing_lock(kind="workspace-fingerprint", exclusive=True):
+        return _workspace_content_fingerprint_unlocked(workspace)
+
+
+def _workspace_content_fingerprint_unlocked(workspace: Path) -> str:
+    """Preserve the existing path/mode/byte stream and its SHA-256 identity."""
 
     digest = hashlib.sha256()
     try:

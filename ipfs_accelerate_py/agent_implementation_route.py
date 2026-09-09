@@ -191,6 +191,7 @@ _LGCVF_LIVE_EXTENSION_ROLES = {
 # fall outside the pin.  Candidate worktrees are never roots.
 _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "ipfs_accelerate_py/__init__.py",
+    "ipfs_accelerate_py/_hash_resources.py",
     "ipfs_accelerate_py/llm_router.py",
     "ipfs_accelerate_py/agent_implementation_route.py",
     "ipfs_accelerate_py/router_deps.py",
@@ -7243,6 +7244,7 @@ def _agent_control_plane_source_files(
     observed_modules = tuple(sys.modules.items())
     exact_modules = {
         "ipfs_accelerate_py",
+        "ipfs_accelerate_py._hash_resources",
         "ipfs_accelerate_py.llm_router",
         "ipfs_accelerate_py.agent_implementation_route",
         "ipfs_accelerate_py.router_deps",
