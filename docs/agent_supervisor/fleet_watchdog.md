@@ -306,3 +306,23 @@ generation, complete native populations, and settled claims/effects/runtime
 records under the existing owner lock. Busy or unrecognized states defer repair;
 nonmatching bodies are reported without mutation. No offline store is opened and
 no semantic acceptance, task completion, or goal acceptance is issued.
+
+A board inventory can additionally set `source_integrity_paths` to a list of
+objects containing an absolute `repository` and relative `paths`. Scope these
+paths to executable control-plane code; unrelated task edits remain permitted.
+For example, an accelerator checkout can select
+`ipfs_accelerate_py/agent_supervisor` and `scripts/ops/agent_supervisor`.
+
+The standalone probe checks those Git paths before importing native status code
+and again after the read. Dirty, missing, invalid or timed-out scopes report
+`source_integrity_not_verified`, suppress automatic ensure and completion
+candidacy, and cannot verify a repair as healthy or published. The check has a
+five-second Git deadline, disables optional index writes and uses literal
+pathspecs. Hidden index flags, symlinks, nested gitlinks and truncated file
+lists are rejected; each nested repository needs its own explicit entry. It never restores files or signals existing providers.
+
+This is a conservative cleanliness constraint. It does not prove the bytes
+already loaded by running interpreters, qualify a new commit, or replace a
+native sealed runtime descriptor. An external writer that keeps changing live
+control-plane code must be reconciled with the recovery owner; repeated source
+restoration alone cannot establish lasting qualification.
