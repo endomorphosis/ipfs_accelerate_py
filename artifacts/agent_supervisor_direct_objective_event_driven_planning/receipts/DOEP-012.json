@@ -1,0 +1,117 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-012",
+  "task_cid": "sha256:0c1390dfe50331773e0280c83b9648d7b8d4c1a4ccdfc4a0f6387c7c5ca21dc6",
+  "title": "Implement canonical objective-submission service",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "base_repositories": {
+    "ipfs_accelerate_py": {
+      "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+      "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+    },
+    "ipfs_datasets_py": {
+      "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+      "tree": "456e09b51d6a07a3a5873436df24054768195320"
+    },
+    "ipfs_kit_py": {
+      "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+      "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+    },
+    "lift_coding": {
+      "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+      "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+    }
+  },
+  "changed_paths": [
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py",
+    "test/api/doep/test_doep_012_implement_canonical_objective_submission_service.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-012.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-012.json"
+  ],
+  "expected_outputs": [
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py",
+    "test/api/doep/test_doep_012_implement_canonical_objective_submission_service.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-012.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-012.json"
+  ],
+  "write_scope": [
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py",
+    "test/api/doep/test_doep_012_implement_canonical_objective_submission_service.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-012.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-012.json"
+  ],
+  "outputs_present": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py": true,
+    "test/api/doep/test_doep_012_implement_canonical_objective_submission_service.py": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-012.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-012.json": true
+  },
+  "path_digests": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py": "sha256:800f58833e809a3d09aa774678ec4c4975104d13b1eaa0a172e31bbc29c054fa",
+    "test/api/doep/test_doep_012_implement_canonical_objective_submission_service.py": "sha256:2ca80ee8edbfd2c269e8f9ae4f1fa1b86efc5be6c2dd1500d0b34a20257768f0",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-012.json": "sha256:d3370e34bc70f45dc7d8cdb8b604074eca7aed4ab15960fb0e29117443165350"
+  },
+  "required_evidence": {
+    "source_commit_tree_gitlinks": {
+      "ipfs_accelerate_py": {
+        "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+        "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+      },
+      "ipfs_datasets_py": {
+        "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+        "tree": "456e09b51d6a07a3a5873436df24054768195320"
+      },
+      "ipfs_kit_py": {
+        "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+        "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+      },
+      "lift_coding": {
+        "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+        "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+      }
+    },
+    "test_proof_results": {
+      "validation_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/doep/test_doep_012_implement_canonical_objective_submission_service.py",
+        "-q"
+      ],
+      "proof_selection": "verified_empty",
+      "proof_reason": "The objective-submission seam is checked through independent deterministic Python assertions; this task makes no proof claim."
+    },
+    "limitations": [
+      "Candidate receipt only; independent fenced supervisor admission is required for completion.",
+      "Worker or model assertion alone is insufficient.",
+      "The named objective-submission entrypoint is a thin adapter over datasets intent/receipt contracts and content_addressed_prompt_objective; it does not introduce an independent planner, objective store, DuckDB writer, or admission path."
+    ],
+    "verifier_admission": "pending_independent_fenced_supervisor"
+  },
+  "validation": {
+    "commands": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "test/api/doep/test_doep_012_implement_canonical_objective_submission_service.py",
+          "-q"
+        ],
+        "cwd": "external/ipfs_accelerate",
+        "status": "candidate_local"
+      }
+    ]
+  },
+  "supervisor_acceptance": {
+    "completion_authoritative": false,
+    "state": "pending_independent_fenced_supervisor"
+  }
+}
