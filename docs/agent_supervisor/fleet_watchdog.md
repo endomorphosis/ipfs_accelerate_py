@@ -226,3 +226,10 @@ not verify the referenced semantic evidence. The datasets-authoritative profile
 continues to prohibit an accelerator-local AST writer while permitting these
 explicitly unverified derived references. Git, ipfs_kit_py, and ipfs_datasets_py
 retain their existing source and semantic authority.
+
+The aggregate owner can separately call `bind_fleet_observation_reads()` and
+publish `fleet-observation-read.token` with mode 0600. An independent reader
+uses `TypedStateOwnerConnection(..., fleet_observation_read=True)`; its exact
+peer receives a 120-second capability for identity and fleet-observation queries
+only. It cannot append observations, mutate a board, or open the derived writer
+service with that credential. Admission modes and credentials remain distinct.

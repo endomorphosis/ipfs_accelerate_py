@@ -3856,6 +3856,7 @@ class TypedStateOwnerGateway:
         self._database_status_binding: dict[str, Any] = {}
         self._derived_coordination_service: Any | None = None
         self._derived_bootstrap_token_digest: bytes | None = None
+        self._fleet_read_bootstrap_token_digest: bytes | None = None
         self._event_wait_handler: Any | None = None
         self._event_wait_cancel_handler: Any | None = None
         self._event_wait_clear_handler: Any | None = None
@@ -3956,6 +3957,16 @@ class TypedStateOwnerGateway:
                 )
                 self._eaaef_plan_r2_owner_service = service
                 return service
+
+    def configure_fleet_observation_reads(self) -> str:
+        """Admit independent peer-bound readers without an observation writer grant."""
+        with self._transaction_lock:
+            self._require_live_server_binding()
+            if self._fleet_read_bootstrap_token_digest is not None:
+                raise TypedStateOwnerAuthorizationError("fleet read admission is already bound")
+            token = secrets.token_hex(32)
+            self._fleet_read_bootstrap_token_digest = hashlib.sha256(token.encode()).digest()
+            return token
 
     def bind_derived_coordination_service(self) -> str:
         """Install bounded derived evidence operations on this owner handle."""
@@ -4895,6 +4906,7 @@ class TypedStateOwnerGateway:
         grant: OwnerClientGrant | None = None
         status_session_grant_id = ""
         derived_session_grant_id = ""
+        fleet_read_session_grant_id = ""
         session_id = ""
         status_index_sql: list[str] = []
         try:
@@ -4928,7 +4940,20 @@ class TypedStateOwnerGateway:
                 or len(process_birth_id) > 256
             ):
                 raise TypedStateOwnerAuthorizationError("gateway authentication failed")
-            if action == "open_derived":
+            if action == "open_fleet":
+                expected = self._fleet_read_bootstrap_token_digest
+                supplied = hashlib.sha256(supplied_token.encode()).digest()
+                if (expected is None or not hmac.compare_digest(expected, supplied)
+                    or peer_identity[1] != os.getuid() or opened.get("derived_repository_id")):
+                    raise TypedStateOwnerAuthorizationError("gateway authentication failed")
+                _token, grant = self.issue_grant(
+                    client_id=client_id, process_birth_id=process_birth_id,
+                    peer_pid=peer_identity[0], ttl_seconds=120,
+                    allowed_operations=("whoami_metadata", "load_store_generation", "txn_load_generation",
+                                        "fleet_select_source_observation", "fleet_select_last_admitted_observation"),
+                )
+                fleet_read_session_grant_id = grant.grant_id
+            elif action == "open_derived":
                 repository_id = str(opened.get("derived_repository_id") or "").strip()
                 expected = self._derived_bootstrap_token_digest
                 supplied = hashlib.sha256(supplied_token.encode()).digest()
@@ -5690,6 +5715,8 @@ class TypedStateOwnerGateway:
                 channel.close()
             except OSError:
                 pass
+            if fleet_read_session_grant_id:
+                self._retire_status_session_grant(fleet_read_session_grant_id)
             if derived_session_grant_id:
                 self._retire_status_session_grant(derived_session_grant_id)
             if status_session_grant_id:
@@ -10464,9 +10491,12 @@ class TypedStateOwnerConnection:
         timeout_seconds: float = 30.0,
         status_bootstrap: bool = False,
         derived_repository_id: str = "",
+        fleet_observation_read: bool = False,
     ) -> None:
         if type(token) is not str or len(token) < 16:
             raise TypedStateOwnerAuthorizationError("typed owner token is unavailable")
+        if sum((bool(status_bootstrap), bool(derived_repository_id), bool(fleet_observation_read))) > 1:
+            raise TypedStateOwnerAuthorizationError("bootstrap admission modes are mutually exclusive")
         socket_identity = os.path.abspath(os.fspath(socket_path))
         self.bootstrap_socket_path = socket_identity
         self.bootstrap_token_digest = hashlib.sha256(
@@ -10483,7 +10513,9 @@ class TypedStateOwnerConnection:
         self._request_index = 0
         try:
             opened = self._request(
-                "open_derived" if derived_repository_id else ("open_status" if status_bootstrap else "open"),
+                "open_fleet" if fleet_observation_read else (
+                    "open_derived" if derived_repository_id else ("open_status" if status_bootstrap else "open")
+                ),
                 token=token,
                 client_id=client_id,
                 process_birth_id=process_birth_id,
