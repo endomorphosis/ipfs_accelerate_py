@@ -75,6 +75,15 @@ submodules with their respective GitHub origin/main. Commits, validated merges,
 and ordinary pushes needed for this task are authorized. Preserve the user's
 explicit prohibition on automatically starting llama-server.
 
+STORAGE DIRECTION: Production supervisors default to DuckDB + Quack. Aggregate
+independent instances through QuackLake using a DuckDB + Quack control plane;
+coordinate derived codebase AST/hash/state in a separate DuckDB + Quack instance.
+Reuse the existing federation, DuckLake projection and typed state-owner APIs.
+Preserve the existing semantic truth owner and exact cross-instance claims,
+leases, fences and receipt bindings. Do not silently fall back to independent
+mutable local files when a production Quack owner is unavailable. Explicit
+offline maintenance still requires the existing stopped-owner qualification.
+
 THIS JOB: board {board['id']}; board checkout {board['cwd']}; board config
 {board.get('config', '')}; watchdog configuration {config.get('_config_path', '')}.
 Shared supervisor development checkout: {config['repair_worker']['cwd']}.

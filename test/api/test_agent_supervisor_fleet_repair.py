@@ -83,6 +83,8 @@ def test_repair_prompt_preserves_authority_and_llama_stop(tmp_path):
     assert "UNTRUSTED DIAGNOSTIC DATA" in prompt
     assert "active claims zero" in prompt
     assert "never force push" in prompt
+    assert "Production supervisors default to DuckDB + Quack" in prompt
+    assert "AST/hash/state in a separate DuckDB + Quack instance" in prompt
 
 
 @pytest.mark.parametrize("health,busy,token,verified", [
