@@ -3971,6 +3971,7 @@ class QuackStateClient:
         reason: str,
         selection_penalty: int = 0,
         now_ms: int | None = None,
+        retained_callback_binding: Mapping[str, Any] | None = None,
     ) -> CASResult:
         """Record one task-revision and claim-bound retry cooldown.
 
@@ -4094,6 +4095,8 @@ class QuackStateClient:
                     "reason": normalized["reason"],
                     "delay_ms": int(delay_ms),
                 }
+                if prior_extension.get("retained_callback_binding") != retained_callback_binding:
+                    raise QuackClientError("retry cooldown retained binding replay differs")
                 if any(
                     prior_extension.get(name) != expected
                     for name, expected in replay_identity.items()
@@ -4144,6 +4147,8 @@ class QuackStateClient:
             "expected_queue_revision": expected_queue_revision,
             "expected_queue_attempt": expected_queue_attempt,
         }
+        if retained_callback_binding is not None:
+            extension["retained_callback_binding"] = dict(retained_callback_binding)
         extension_json = canonical_json_bytes(extension).decode("utf-8")
         resolution_cid = content_identity(
             {
@@ -4157,6 +4162,8 @@ class QuackStateClient:
             "expected_task_status": expected_status,
             "resolution_cid": resolution_cid,
         }
+        if retained_callback_binding is not None:
+            material["retained_callback_binding"] = canonical_json_bytes(dict(retained_callback_binding)).decode("utf-8")
         command_digest = hashlib.sha256(canonical_json_bytes(material)).hexdigest()
         session = self._require_session()
         live = self.load_generation()

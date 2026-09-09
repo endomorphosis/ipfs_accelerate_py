@@ -95824,13 +95824,13 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "typed retry attempt floor has no exact cooldown validator"
             )
-        validate(
+        queue_entry = validate(
             str(task.task_cid),
             expected_attempt_identity=identity,
             expected_reason=str(receipt.get("queue_reason") or ""),
             expected_delay_ms=receipt.get("backoff_ms"),
         )
-        return int(identity["attempt_number"])
+        return max(int(identity["attempt_number"]), int(queue_entry.attempt))
 
     def _callback_no_effect_retry_claim_is_within_budget(
         self,

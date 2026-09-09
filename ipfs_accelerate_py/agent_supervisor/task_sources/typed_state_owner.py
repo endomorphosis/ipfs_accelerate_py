@@ -4952,6 +4952,8 @@ def _validated_retry_cooldown_parameters(
         "extension_schema",
         "extension_json",
     }
+    if "retained_callback_binding" in parameters:
+        required.add("retained_callback_binding")
     if set(parameters) != required:
         raise TypedStateOwnerAuthorizationError(
             "retry cooldown command differs from its closed schema"
@@ -5064,6 +5066,19 @@ def _validated_retry_cooldown_parameters(
         "expected_queue_revision": parameters["expected_queue_revision"],
         "expected_queue_attempt": parameters["expected_queue_attempt"],
     }
+    if "retained_callback_binding" in parameters:
+        from .retained_callback_cooldown import payload_from_binding
+        binding, _ = _closed_canonical_json_object(parameters["retained_callback_binding"], noun="retained callback cooldown binding")
+        expected = payload_from_binding(binding)
+        expected.pop("now_ms")
+        expected.pop("expected_task_status")  # Stored-row replay uses in_progress.
+        if (any(not _strict_scalar_equal(parameters.get(k), v)
+                for k, v in expected.items() if k != "retained_callback_binding")
+                or parameters["started_at_ms"] != payload_from_binding(binding)["now_ms"]
+                or parameters["expected_queue_revision"] != binding["prior_queue"]["revision"]
+                or parameters["expected_queue_attempt"] != binding["prior_queue"]["attempt"]):
+            raise TypedStateOwnerAuthorizationError("retained cooldown parameters differ from binding")
+        expected_extension["retained_callback_binding"] = dict(binding)
     _, canonical_extension_json = _closed_canonical_json_object(
         parameters["extension_json"],
         noun="retry cooldown extension",
@@ -6446,6 +6461,8 @@ def _validated_stored_retry_cooldown(
     _validated_retry_cooldown_parameters(
         {
             **extension_values,
+            **({"retained_callback_binding": canonical_json_bytes(dict(extension_values["retained_callback_binding"])).decode("utf-8")}
+               if "retained_callback_binding" in extension_values else {}),
             "operation": "task.retry.cooldown.record",
             "expected_task_status": "in_progress",
             "resolution_cid": values["resolution_cid"],
@@ -11058,6 +11075,12 @@ class TypedStateOwnerGateway:
                         ) from exc
                     next_body = dict(next_body)
                     next_body["completion_receipt"] = dict(next_receipt)
+                if phase_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA:
+                    from .retained_callback_cooldown import require_claim_binding
+                    require_claim_binding(self._connection, task={
+                        "task_cid": task_cid, "task_alias": str(task_row[2]),
+                        "revision": int(task_row[1]), "status": str(task_row[0]), "body": prior_body,
+                    }, next_receipt=next_receipt)
                 next_identity = _validated_database_claim_identity(next_receipt)
                 next_attestation = _require_database_claim_process_attestation(
                     next_receipt,
@@ -11884,6 +11907,28 @@ class TypedStateOwnerGateway:
                 "fencing_token": parameters["fencing_token"],
                 "fence_epoch": parameters["fence_epoch"],
             }
+            retained_binding_json = parameters.get("retained_callback_binding")
+            retained_binding = json.loads(retained_binding_json) if retained_binding_json is not None else None
+            if retained_binding is not None:
+                from .retained_callback_cooldown import build_binding
+                history_rows = self._connection.execute(
+                    "SELECT revision, status, body_json FROM task_revisions WHERE task_cid = ? ORDER BY revision LIMIT 25",
+                    [parameters["task_cid"]],
+                ).fetchall()
+                history = {
+                    "schema": "ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1",
+                    "task_cid": parameters["task_cid"],
+                    "revisions": [{"revision": int(r[0]), "status": str(r[1]), "body": json.loads(r[2])} for r in history_rows],
+                }
+                history["projection_cid"] = content_identity(history)
+                expected_binding = build_binding(
+                    task={"task_cid": parameters["task_cid"], "task_alias": retained_binding["task_alias"],
+                          "revision": int(task_row[1]), "status": str(task_row[0]), "body": task_body},
+                    history=history, prior_queue=retained_binding["prior_queue"],
+                )
+                if parameters["expected_task_status"] != "retrying" or expected_binding != retained_binding:
+                    raise TypedStateOwnerAuthorizationError("retained cooldown live history changed")
+                receipt_values = {**receipt_values, **retained_binding["identity"]}
             receipt_operation = str(receipt_values.get("operation") or "")
             if parameters["expected_task_status"] == "in_progress":
                 reservation_matches = False
@@ -11985,6 +12030,10 @@ class TypedStateOwnerGateway:
                     "claim_id": validated_prior["claim_cid"],
                     "attempt_number": validated_prior["attempt"],
                 }
+            if retained_binding is not None:
+                expected_prior = retained_binding["prior_queue"]
+                if any(prior_queue.get(k) != v for k, v in expected_prior.items()):
+                    raise TypedStateOwnerAuthorizationError("retained cooldown live queue changed")
             expected_queue_revision = parameters["expected_queue_revision"]
             expected_queue_attempt = parameters["expected_queue_attempt"]
             if (
