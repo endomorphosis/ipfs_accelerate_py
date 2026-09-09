@@ -14,9 +14,12 @@ The fleet topology binds existing boards to two independent native state owners:
   content-hash and state-root reference coordination. Git remains source-byte
   authority and `ipfs_datasets_py` remains semantic truth authority.
 
-The user-facing term QuackLake describes this composition; this repository does
-not contain a separate QuackLake database implementation. History aggregation
-never completes tasks, steals leases or substitutes for native acceptance.
+This module implements native Quack federation and observation aggregation.
+[QuackLake](https://github.com/tobilg/quacklake) is a separate DuckLake catalog
+service; this local aggregation owner is not that product. Connecting a real
+QuackLake catalog requires a separate admitted endpoint and catalog connector.
+History aggregation never completes tasks, steals leases or substitutes for
+native acceptance.
 
 Compile the actual installed fleet and render native user services:
 
@@ -86,8 +89,8 @@ DuckLake archival publication is still a separate optional integration: source
 event ranges must be admitted before its existing range-projection API can
 publish history. This change implements the native Quack aggregation boundary
 and durable observational history in the control owner; it does not claim that
-an external QuackLake package is installed or that DuckLake archival export is
-already running. History availability is never a scheduling prerequisite.
+a QuackLake catalog is deployed or connected, or that DuckLake archival export
+is already running. History availability is never a scheduling prerequisite.
 
 Dedicated-owner health monitoring uses `runtime.quack_fleet_health`. Its native
 read-only probe must complete an authenticated typed generation query within
