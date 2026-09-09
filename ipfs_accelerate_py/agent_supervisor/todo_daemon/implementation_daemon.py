@@ -70198,19 +70198,12 @@ class DatabaseImplementationDaemon:
         ).fetchall()
         return bool(rows)
 
-    def _portal_claim_failure_is_live_owner_rearmable(
-        self,
+    @staticmethod
+    def portal_claim_failure_receipt_is_zero_provider_rearmable(
         receipt: Mapping[str, Any] | None,
     ) -> bool:
-        """Admit one live-owner rearm of a zero-provider portal claim failure.
+        """Return whether a control settlement is the zero-provider portal class."""
 
-        Embedded authority keeps the operator CAS gate.  A live Quack owner
-        may rearm a blocked frontier task whose settlement proves the provider
-        never ran, so a later healthy owner is not permanently fenced out.
-        """
-
-        if str(self.authority_mode or "").strip().lower() != "quack":
-            return False
         if not isinstance(receipt, Mapping):
             return False
         try:
@@ -70227,6 +70220,23 @@ class DatabaseImplementationDaemon:
             and provider_count == 0
             and effect_count == 0
             and str(receipt.get("settlement_id") or "").strip() != ""
+        )
+
+    def _portal_claim_failure_is_live_owner_rearmable(
+        self,
+        receipt: Mapping[str, Any] | None,
+    ) -> bool:
+        """Admit one live-owner rearm of a zero-provider portal claim failure.
+
+        Embedded authority keeps the operator CAS gate.  A live Quack owner
+        may rearm a blocked frontier task whose settlement proves the provider
+        never ran, so a later healthy owner is not permanently fenced out.
+        """
+
+        if str(self.authority_mode or "").strip().lower() != "quack":
+            return False
+        return self.portal_claim_failure_receipt_is_zero_provider_rearmable(
+            receipt
         )
 
     def reconcile_recoverable_portal_failure_rearms(self) -> list[dict[str, Any]]:

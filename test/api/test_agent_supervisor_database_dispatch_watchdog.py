@@ -30,6 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     DATABASE_AUTHORITY_UNAVAILABLE_REASON,
+    DATABASE_BLOCKED_PORTAL_FRONTIER_REASON,
     DATABASE_IDLE_DAEMON_STALL_REASON,
     SHARED_AUTHORITY_TERMINAL_STATUS,
     SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND,
@@ -435,6 +436,65 @@ def test_database_watchdog_recycles_stale_idle_child_for_same_shard_ready_work(
     assert decision.detail["attempt_budget_consumed"] is False
     assert decision.detail["provider_invocation_consumed"] is False
     assert maintenance_calls == []
+
+
+def test_database_watchdog_rearms_idle_blocked_portal_frontier(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": True,
+            "reason": "authoritative_readiness_observed",
+            "task_source_revision": 41,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+            "blocked_recoverable_task_ids": ["SAWM-006", "SAWM-008"],
+            "same_shard_blocked_recoverable_task_ids": ["SAWM-006"],
+        },
+    )
+    rearm_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_rearm_blocked_recoverable_portal_frontier",
+        lambda: rearm_calls.append({"ok": True})
+        or {
+            "attempted": True,
+            "reason": DATABASE_BLOCKED_PORTAL_FRONTIER_REASON,
+            "rearmed_task_ids": ["SAWM-006", "SAWM-008"],
+            "rearm_count": 2,
+        },
+    )
+    maintenance_calls: list[bool] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update: maintenance_calls.append(True),
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "continue"
+    assert rearm_calls == [{"ok": True}]
+    assert maintenance_calls == []
+    assert events[0][0] == "idle_blocked_recoverable_portal_frontier"
+    assert events[0][1]["blocked_recoverable_task_ids"] == [
+        "SAWM-006",
+        "SAWM-008",
+    ]
 
 
 def test_database_watchdog_preserves_child_when_readiness_is_unavailable(

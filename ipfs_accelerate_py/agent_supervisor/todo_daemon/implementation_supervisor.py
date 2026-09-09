@@ -199,6 +199,9 @@ DATABASE_READINESS_OBSERVATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-readiness-observation@1"
 )
 DATABASE_IDLE_DAEMON_STALL_REASON = "ready_work_idle_daemon_stall"
+DATABASE_BLOCKED_PORTAL_FRONTIER_REASON = (
+    "idle_blocked_recoverable_portal_frontier"
+)
 DATABASE_AUTHORITY_WATCHDOG_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-authority-watchdog@1"
 )
@@ -7275,6 +7278,101 @@ class PortalImplementationSupervisor:
             return False
         return not self._database_task_automatic_dispatch_forbidden(task)
 
+    def _blocked_task_is_recoverable_portal_frontier(
+        self,
+        task: Any,
+        source: Any,
+    ) -> bool:
+        """Return whether a blocked task is a deps-ready portal claim failure."""
+
+        from .implementation_daemon import DatabaseImplementationDaemon
+
+        body = getattr(task, "body", None)
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        if not DatabaseImplementationDaemon.portal_claim_failure_receipt_is_zero_provider_rearmable(
+            receipt
+        ):
+            return False
+        completed = {
+            "completed",
+            "complete",
+            "done",
+            "skipped",
+        }
+        for dep in getattr(task, "dependencies", ()) or ():
+            dep_cid = str(dep or "").strip()
+            if not dep_cid:
+                continue
+            try:
+                rec = source.get(dep_cid)
+            except Exception:
+                return False
+            status = str(getattr(rec, "status", "") or "").strip().lower()
+            if rec is None or status not in completed:
+                return False
+        return True
+
+    def _rearm_blocked_recoverable_portal_frontier(self) -> dict[str, Any]:
+        """CAS blocked zero-provider portal failures to retrying on the live owner."""
+
+        program = self.config.database_program
+        if program is None or str(getattr(program, "authority_mode", "") or "") != "quack":
+            return {"attempted": False, "reason": "quack_authority_required"}
+        endpoint = str(getattr(program, "quack_endpoint", "") or "").strip()
+        if not endpoint:
+            return {"attempted": False, "reason": "quack_endpoint_absent"}
+        from .implementation_daemon import DatabaseImplementationDaemon
+
+        store_id = str(getattr(program, "store_id", "") or "control.duckdb")
+        daemon = None
+        try:
+            daemon = DatabaseImplementationDaemon(
+                database_path=store_id,
+                state_dir=self.config.state_dir,
+                state_prefix=f"{self.config.state_prefix}_portal_frontier_rearm",
+                owner_session_id=(
+                    "supervisor-portal-frontier-rearm:"
+                    f"{self.board_namespace}:{self.config.task_shard_index}"
+                ),
+                authority_mode="quack",
+                task_source_kind="duckdb",
+                quack_uri=endpoint,
+                task_prefix=self.config.task_prefix,
+                task_shard_count=1,
+                task_shard_index=0,
+                strict_task_sharding=False,
+                markdown_path=None,
+                install_schema=False,
+            )
+            daemon.open()
+            rearmed = daemon.reconcile_recoverable_portal_failure_rearms()
+            return {
+                "attempted": True,
+                "reason": DATABASE_BLOCKED_PORTAL_FRONTIER_REASON,
+                "rearmed_task_ids": [
+                    str(item.get("task_alias") or item.get("task_cid") or "")
+                    for item in rearmed
+                ],
+                "rearm_count": len(rearmed),
+            }
+        except Exception as exc:
+            logger.warning(
+                "Blocked recoverable portal frontier rearm failed closed: %s",
+                type(exc).__name__,
+            )
+            return {
+                "attempted": True,
+                "reason": "blocked_recoverable_portal_frontier_rearm_failed",
+                "error_type": type(exc).__name__,
+                "rearm_count": 0,
+            }
+        finally:
+            if daemon is not None:
+                try:
+                    daemon.close()
+                except Exception:
+                    pass
+
     def _authoritative_runnable_work_status(self) -> dict[str, Any]:
         """Read canonical ready/active work through the configured DB authority.
 
@@ -7292,6 +7390,8 @@ class PortalImplementationSupervisor:
             "same_shard_ready_task_ids": [],
             "active_task_ids": [],
             "same_shard_active_task_ids": [],
+            "blocked_recoverable_task_ids": [],
+            "same_shard_blocked_recoverable_task_ids": [],
         }
         program = self.config.database_program
         if not self._database_authority_enabled() or program is None:
@@ -7345,19 +7445,37 @@ class PortalImplementationSupervisor:
                     status=("claimed", "in_progress", "running"),
                     limit=MAX_QUERY_LIMIT,
                 )
-            if ready_page.next_cursor or active_page.next_cursor:
-                raise RuntimeError("authoritative readiness projection is truncated")
-
-            ready = [
-                task
-                for task in ready_page.tasks
-                if self._database_task_in_scope(task)
-            ]
-            active = [
-                task
-                for task in active_page.tasks
-                if self._database_task_in_scope(task)
-            ]
+                blocked_page = source.list_tasks(
+                    status=("blocked",),
+                    limit=MAX_QUERY_LIMIT,
+                )
+                if (
+                    ready_page.next_cursor
+                    or active_page.next_cursor
+                    or blocked_page.next_cursor
+                ):
+                    raise RuntimeError(
+                        "authoritative readiness projection is truncated"
+                    )
+                ready = [
+                    task
+                    for task in ready_page.tasks
+                    if self._database_task_in_scope(task)
+                ]
+                active = [
+                    task
+                    for task in active_page.tasks
+                    if self._database_task_in_scope(task)
+                ]
+                blocked_recoverable = [
+                    task
+                    for task in blocked_page.tasks
+                    if self._database_task_in_scope(task)
+                    and self._blocked_task_is_recoverable_portal_frontier(
+                        task,
+                        source,
+                    )
+                ]
 
             def task_id(task: Any) -> str:
                 return str(
@@ -7368,6 +7486,7 @@ class PortalImplementationSupervisor:
 
             ready_ids = [task_id(task) for task in ready]
             active_ids = [task_id(task) for task in active]
+            blocked_ids = [task_id(task) for task in blocked_recoverable]
             return {
                 **base,
                 "available": True,
@@ -7375,6 +7494,7 @@ class PortalImplementationSupervisor:
                 "task_source_revision": max(
                     int(ready_page.revision),
                     int(active_page.revision),
+                    int(blocked_page.revision),
                 ),
                 "ready_task_ids": ready_ids,
                 "same_shard_ready_task_ids": [
@@ -7386,6 +7506,12 @@ class PortalImplementationSupervisor:
                 "same_shard_active_task_ids": [
                     task_id(task)
                     for task in active
+                    if self._database_task_belongs_to_current_shard(task)
+                ],
+                "blocked_recoverable_task_ids": blocked_ids,
+                "same_shard_blocked_recoverable_task_ids": [
+                    task_id(task)
+                    for task in blocked_recoverable
                     if self._database_task_belongs_to_current_shard(task)
                 ],
             }
@@ -10668,6 +10794,13 @@ class PortalImplementationSupervisor:
                 "authoritative_same_shard_active_task_ids": list(
                     readiness.get("same_shard_active_task_ids") or ()
                 )[:64],
+                "authoritative_blocked_recoverable_task_ids": list(
+                    readiness.get("blocked_recoverable_task_ids") or ()
+                )[:64],
+                "authoritative_same_shard_blocked_recoverable_task_ids": list(
+                    readiness.get("same_shard_blocked_recoverable_task_ids")
+                    or ()
+                )[:64],
             }
             self._set_loop_status_fields(_loop, readiness_fields)
             if readiness.get("available") is not True:
@@ -10805,6 +10938,31 @@ class PortalImplementationSupervisor:
                 # generated-board maintenance. Its home lane owns dispatch.
                 return SupervisorLoopDecision.keep_running()
             if readiness.get("active_task_ids"):
+                return SupervisorLoopDecision.keep_running()
+            blocked_recoverable_task_ids = list(
+                readiness.get("blocked_recoverable_task_ids") or ()
+            )
+            if blocked_recoverable_task_ids:
+                rearm: dict[str, Any] = {
+                    "attempted": False,
+                    "reason": "non_leader",
+                    "rearm_count": 0,
+                }
+                if self._is_board_maintenance_leader():
+                    self._last_supervisor_maintenance_at = now_monotonic
+                    rearm = self._rearm_blocked_recoverable_portal_frontier()
+                detail = {
+                    "blocked_recoverable_task_ids": blocked_recoverable_task_ids,
+                    "blocked_recoverable_portal_frontier_rearm": rearm,
+                    "task_source_revision": int(
+                        readiness.get("task_source_revision") or 0
+                    ),
+                }
+                self._set_loop_status_fields(_loop, detail)
+                self._record_event(
+                    "idle_blocked_recoverable_portal_frontier",
+                    detail,
+                )
                 return SupervisorLoopDecision.keep_running()
 
         if not database_authority and (
