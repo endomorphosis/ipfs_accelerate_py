@@ -23641,7 +23641,33 @@ class PortalImplementationSupervisor:
             return False
         started_at = parse_timestamp(state.last_implementation_started_at or state.active_phase_started_at)
         if started_at is None:
-            return False
+            # Compatibility projections can omit the attempt clock. A verified
+            # descendant birth supplies a bounded fallback, never an unlimited
+            # exemption for a quiet or hung provider. Use the oldest worker so
+            # spawning another descendant cannot renew the timeout.
+            workers = self._active_agent_worker_processes()
+            if not workers or state.last_implementation_finished_at:
+                return False
+            try:
+                uptime = time.clock_gettime(time.CLOCK_BOOTTIME)
+                ticks_per_second = os.sysconf("SC_CLK_TCK")
+                ages = []
+                for worker in workers:
+                    pid = worker.get("pid")
+                    ticks = worker.get("start_ticks")
+                    if type(pid) is not int or type(ticks) is not int or ticks <= 0:
+                        return False
+                    birth = read_process_birth(pid)
+                    if birth is None or birth.start_time_ticks != ticks:
+                        return False
+                    age = uptime - ticks / ticks_per_second
+                    if not math.isfinite(age) or age < 0:
+                        return False
+                    ages.append(age)
+            except (OSError, ValueError, AttributeError):
+                return False
+            grace = max(30.0, float(self.config.check_interval) * 2.0)
+            return max(ages) <= self._implementation_watchdog_timeout_seconds() + grace
         finished_at = parse_timestamp(state.last_implementation_finished_at)
         if finished_at is not None and finished_at >= started_at:
             return False
@@ -23751,7 +23777,10 @@ class PortalImplementationSupervisor:
         if self._implementation_attempt_is_active(state, now_ts=now_ts):
             return False, ""
         heartbeat_age = self._age_seconds(state.heartbeat_at, now_ts)
-        progress_age = self._age_seconds(state.last_progress_at, now_ts)
+        progress_age = self._age_seconds(
+            state.last_progress_at or state.heartbeat_at,
+            now_ts,
+        )
         stale = self.config.stale_seconds
         if state.active_task_id and heartbeat_age > stale:
             return True, f"heartbeat stale for active task {state.active_task_id}"
