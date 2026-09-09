@@ -45,6 +45,21 @@ from ipfs_accelerate_py.agent_supervisor.rescue.<module> import ...
 3. Update this README when you add or move modules.
 4. Add focused tests under `test/api/` (or the package’s established suite).
 
+## Retained candidates after a dead provider
+
+A native dead-admission quarantine remains a stop until recovery reproduces
+its exact canonical admission, process birth, claim tuple, and retained
+committed-candidate proof. The original lane must observe the historical
+provider process as dead. A second source and liveness check precedes the
+owner's receipt-bound retry CAS and cooldown write. The retry carries the
+same immutable candidate through the existing fresh validation and merge
+path; this transition grants no completion and invokes no provider.
+
+Changed or dirty candidate worktrees, unknown or live process identities,
+stale revision history, foreign lanes, and missing candidate evidence retain
+the quarantine. A clean-baseline/no-effect classification alone is not
+admitted by this recovery path.
+
 ## Program evidence (optional)
 
 Historical domain-layout and feature programs may cite this package in boards

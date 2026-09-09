@@ -126742,6 +126742,67 @@ class DatabaseImplementationDaemon:
                 )
         self._post_commit_recovery_diagnostic_signatures[key] = signature
 
+    def _dead_admitted_candidate_source_matches(
+        self,
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        """Bind a retained candidate to a native dead-admission quarantine.
+
+        A quarantine is not a retry receipt.  This predicate admits only its
+        exact canonical predecessor, claim tuple and same-lane dead birth;
+        the caller must still reproduce the complete committed-candidate
+        proof before the atomic retry transition.
+        """
+        from ..task_sources.typed_state_owner import (
+            _dead_admitted_provider_outcome_unknown_receipt,
+        )
+
+        body = getattr(task, "body", None)
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        if (
+            str(getattr(task, "status", "") or "").lower() != "quarantined"
+            or not isinstance(receipt, Mapping)
+            or receipt.get("operation")
+            != TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION
+            or not callable(
+                getattr(self.task_source, "claim_process_attestation", None)
+            )
+            or attempt.task_cid != str(getattr(task, "task_cid", "") or "")
+            or attempt.task_alias != str(getattr(task, "task_alias", "") or "")
+            or attempt.status not in {"failed", "blocked"}
+        ):
+            return False
+        try:
+            admission = self._legacy_orphan_admission_receipt(task)
+            expected = _dead_admitted_provider_outcome_unknown_receipt(
+                task_cid=attempt.task_cid,
+                task_alias=attempt.task_alias,
+                source_task_revision=int(task.revision) - 1,
+                admitted_control_receipt=admission,
+                recovery_process_attestation=receipt.get(
+                    "recovery_process_attestation"
+                ),
+            )
+            identity = {
+                **self._control_attempt_identity(attempt),
+                "attempt_number": int(attempt.attempt_number),
+            }
+            return bool(
+                _task_body_canonical_json_bytes(dict(receipt))
+                == _task_body_canonical_json_bytes(expected)
+                and all(receipt.get(key) == value for key, value in identity.items())
+                and self._typed_historic_claim_liveness(admission) is OwnerLiveness.DEAD
+            )
+        except (
+            DatabaseImplementationAuthorityError,
+            TaskSourceIntegrityError,
+            TypedStateOwnerAuthorizationError,
+            TypeError,
+            ValueError,
+            KeyError,
+        ):
+            return False
     def _reopen_unimplemented_unknown_callback_task(
         self,
         task: Any,
@@ -126785,7 +126846,13 @@ class DatabaseImplementationDaemon:
             and receipt.get("reason") == "not_attempted"
             and receipt.get("retryable") is False
         )
-        if not (neutral_source or projection_source or trusted_setup_source):
+        dead_admitted_source = bool(
+            task_status == "quarantined"
+            and receipt.get("operation")
+            == TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION
+        )
+        if not (neutral_source or projection_source or trusted_setup_source
+                or dead_admitted_source):
             return None
         recover = self._post_commit_candidate_recovery_fn
         if not callable(recover):
@@ -126801,7 +126868,10 @@ class DatabaseImplementationDaemon:
             and attempt.task_cid == str(getattr(task, "task_cid", "") or "")
             and attempt.status in {"blocked", "failed"}
         )
-        if source_matches and trusted_setup_source:
+        if source_matches and dead_admitted_source:
+            assert attempt is not None
+            source_matches = self._dead_admitted_candidate_source_matches(task, attempt)
+        elif source_matches and trusted_setup_source:
             try:
                 assert attempt is not None
                 trusted_source = self._trusted_setup_replay_recovery_source(
@@ -126852,9 +126922,15 @@ class DatabaseImplementationDaemon:
             )
             from .database_portal_bridge import (
                 DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA,
+                DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA,
                 DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA,
                 DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA,
             )
+            if (dead_admitted_source and recovered_schema
+                    != DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA):
+                raise DatabaseImplementationAuthorityError(
+                    "dead admitted recovery requires an exact committed candidate"
+                )
             if (
                 recovered_schema
                 == DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA
@@ -127052,6 +127128,8 @@ class DatabaseImplementationDaemon:
                     attempt,
                 )
                 if neutral_source
+                else self._dead_admitted_candidate_source_matches(current, attempt)
+                if dead_admitted_source
                 else (
                     self._trusted_setup_replay_recovery_source(
                         current,
