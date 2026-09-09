@@ -7128,6 +7128,577 @@ def build_code_proof_efficiency_report(
     return CodeProofEfficiencyReport(cases=tuple(cases))
 
 
+# ---------------------------------------------------------------------------
+# DOEP-076: observational unnecessary-escalation detection.
+# Extends this efficiency module over DOEP-074/075 route decisions and
+# explanations. Does not classify, escalate, or create a competing router.
+# ---------------------------------------------------------------------------
+
+UNNECESSARY_ESCALATION_OBSERVATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/unnecessary-escalation-observation@1"
+)
+UNNECESSARY_ESCALATION_REPORT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/unnecessary-escalation-report@1"
+)
+UNNECESSARY_ESCALATION_INTERFACE = "UnnecessaryEscalationDetection@1"
+UNNECESSARY_ESCALATION_EVIDENCE = "doep/unnecessary-escalation-detection@1"
+
+REASON_ROUTE_MATCHES_JUSTIFIED = "route_matches_justified"
+REASON_OBSERVED_ABOVE_JUSTIFIED_WITHOUT_FAILURE = (
+    "observed_above_justified_without_failure"
+)
+REASON_JUSTIFIED_FAILURE_ESCALATION = "justified_failure_escalation"
+REASON_LOWER_ROUTE_SUCCEEDED = "lower_route_succeeded"
+REASON_REQUIRED_TIER_UNAVAILABLE_EXCUSED = "required_tier_unavailable_excused"
+REASON_OBSERVED_BELOW_JUSTIFIED = "observed_below_justified"
+REASON_SKIPPED_DETERMINISTIC_ELIGIBILITY = "skipped_deterministic_eligibility"
+
+MAX_UNNECESSARY_ESCALATION_OBSERVATIONS = MAX_RECEIPTS_PER_REPORT
+
+_ROUTE_ESCALATION_RANK: dict[str, int] = {
+    "deterministic_only": 0,
+    "small_local_model": 1,
+    "medium_model": 2,
+    "frontier_model": 3,
+    "human_review_required": 4,
+}
+
+_ROUTE_LADDER_RUNG_BY_VALUE: dict[str, str] = {
+    "deterministic_only": "deterministic",
+    "small_local_model": "small",
+    "medium_model": "medium",
+    "frontier_model": "frontier",
+    "human_review_required": "human",
+}
+
+
+def _route_value(value: Any, *, field_name: str) -> str:
+    raw = getattr(value, "value", value)
+    token = _text(raw, field_name=field_name, required=True, max_bytes=64).lower()
+    if token not in _ROUTE_ESCALATION_RANK:
+        raise ContractValidationError(
+            f"{field_name} must be a known ModelRoute value"
+        )
+    return token
+
+
+def _route_rank(route_value: str) -> int:
+    return _ROUTE_ESCALATION_RANK[route_value]
+
+
+def _ladder_rung_for(route_value: str) -> str:
+    return _ROUTE_LADDER_RUNG_BY_VALUE[route_value]
+
+
+def _coerce_route_explanation(observed: Any) -> Any:
+    """Project observed input to a RouteExplanation without re-routing."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.decision_receipts import (
+        RouteExplanation,
+        RouteExplanationReceipt,
+        explain_model_route,
+    )
+    from ipfs_accelerate_py.agent_supervisor.verification.contracts import (
+        ModelRouteDecision,
+    )
+
+    if isinstance(observed, RouteExplanation):
+        return observed
+    if isinstance(observed, RouteExplanationReceipt):
+        return observed.explanation
+    if isinstance(observed, ModelRouteDecision):
+        return explain_model_route(observed)
+    if isinstance(observed, Mapping):
+        schema = observed.get("schema")
+        if schema in (
+            None,
+            "ipfs_accelerate_py/agent-supervisor/route-explanation@1",
+        ) and observed.get("route") is not None and observed.get("explanation"):
+            return RouteExplanation.from_dict(observed)
+        if schema in (
+            None,
+            "ipfs_accelerate_py/agent-supervisor/route-explanation-receipt@1",
+        ) and observed.get("route") is not None:
+            return RouteExplanationReceipt.from_dict(observed).explanation
+        nested = observed.get("route_explanation") or observed.get("route_receipt")
+        if isinstance(nested, Mapping):
+            return _coerce_route_explanation(nested)
+        if observed.get("schema") in (
+            None,
+            "ipfs_accelerate_py/agent-supervisor/model-route-decision@1",
+        ) and observed.get("route") is not None:
+            return explain_model_route(ModelRouteDecision.from_dict(dict(observed)))
+        decision = observed.get("decision") or observed.get("model_route_decision")
+        if decision is not None:
+            return _coerce_route_explanation(decision)
+    raise ContractValidationError(
+        "observed value must be a RouteExplanation, RouteExplanationReceipt, "
+        "ModelRouteDecision, or compatible mapping; competing routers are rejected"
+    )
+
+
+@dataclass(frozen=True)
+class UnnecessaryEscalationObservation(CanonicalContract):
+    """Observational verdict for one route decision relative to justified eligibility.
+
+    Never authoritative for completion or route selection. Selection remains on
+    ``verification.model_route``; explanations remain on ``runtime.decision_receipts``.
+    """
+
+    SCHEMA: ClassVar[str] = UNNECESSARY_ESCALATION_OBSERVATION_SCHEMA
+
+    decision_id: str
+    observed_route: str
+    justified_route: str
+    ladder_rung_observed: str
+    ladder_rung_justified: str
+    unnecessary: bool
+    escalated: bool
+    reason_codes: tuple[str, ...]
+    policy_cid: str
+    route_explanation_receipt_id: str = ""
+    decisive_reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "decision_id",
+            _text(
+                self.decision_id,
+                field_name="decision_id",
+                required=True,
+                max_bytes=MAX_REFERENCE_BYTES,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "observed_route",
+            _route_value(self.observed_route, field_name="observed_route"),
+        )
+        object.__setattr__(
+            self,
+            "justified_route",
+            _route_value(self.justified_route, field_name="justified_route"),
+        )
+        observed_rung = _text(
+            self.ladder_rung_observed,
+            field_name="ladder_rung_observed",
+            required=True,
+            max_bytes=32,
+        ).lower()
+        justified_rung = _text(
+            self.ladder_rung_justified,
+            field_name="ladder_rung_justified",
+            required=True,
+            max_bytes=32,
+        ).lower()
+        if observed_rung != _ladder_rung_for(self.observed_route):
+            raise ContractValidationError(
+                "ladder_rung_observed does not match observed_route"
+            )
+        if justified_rung != _ladder_rung_for(self.justified_route):
+            raise ContractValidationError(
+                "ladder_rung_justified does not match justified_route"
+            )
+        object.__setattr__(self, "ladder_rung_observed", observed_rung)
+        object.__setattr__(self, "ladder_rung_justified", justified_rung)
+        if not isinstance(self.unnecessary, bool):
+            raise ContractValidationError("unnecessary must be a boolean")
+        if not isinstance(self.escalated, bool):
+            raise ContractValidationError("escalated must be a boolean")
+        object.__setattr__(
+            self,
+            "reason_codes",
+            _strings(
+                self.reason_codes,
+                field_name="reason_codes",
+                maximum=MAX_REASON_CODES,
+                code=True,
+            ),
+        )
+        if not self.reason_codes:
+            raise ContractValidationError("reason_codes must be nonempty")
+        object.__setattr__(
+            self,
+            "policy_cid",
+            _text(
+                self.policy_cid,
+                field_name="policy_cid",
+                required=True,
+                max_bytes=MAX_REFERENCE_BYTES,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "route_explanation_receipt_id",
+            _text(
+                self.route_explanation_receipt_id,
+                field_name="route_explanation_receipt_id",
+                required=False,
+                max_bytes=MAX_REFERENCE_BYTES,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "decisive_reason_codes",
+            _strings(
+                self.decisive_reason_codes,
+                field_name="decisive_reason_codes",
+                maximum=MAX_REASON_CODES,
+                code=True,
+            ),
+        )
+        _record_size(
+            self,
+            maximum=MAX_SERIALIZED_RECEIPT_BYTES,
+            name="unnecessary escalation observation",
+        )
+
+    @property
+    def observation_id(self) -> str:
+        return self.content_id
+
+    @property
+    def rank_delta(self) -> int:
+        return _route_rank(self.observed_route) - _route_rank(self.justified_route)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "interface": UNNECESSARY_ESCALATION_INTERFACE,
+            "evidence": UNNECESSARY_ESCALATION_EVIDENCE,
+            "decision_id": self.decision_id,
+            "observed_route": self.observed_route,
+            "justified_route": self.justified_route,
+            "ladder_rung_observed": self.ladder_rung_observed,
+            "ladder_rung_justified": self.ladder_rung_justified,
+            "unnecessary": self.unnecessary,
+            "escalated": self.escalated,
+            "reason_codes": self.reason_codes,
+            "policy_cid": self.policy_cid,
+            "route_explanation_receipt_id": self.route_explanation_receipt_id,
+            "decisive_reason_codes": self.decisive_reason_codes,
+            "rank_delta": self.rank_delta,
+            "authoritative": False,
+            "completion_authoritative": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "UnnecessaryEscalationObservation":
+        _schema(payload, cls.SCHEMA, "unnecessary escalation observation")
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "interface",
+                "evidence",
+                "decision_id",
+                "observed_route",
+                "justified_route",
+                "ladder_rung_observed",
+                "ladder_rung_justified",
+                "unnecessary",
+                "escalated",
+                "reason_codes",
+                "policy_cid",
+                "route_explanation_receipt_id",
+                "decisive_reason_codes",
+                "rank_delta",
+                "authoritative",
+                "completion_authoritative",
+                "content_id",
+                "observation_id",
+            },
+            artifact_name="unnecessary escalation observation",
+        )
+        if payload.get("authoritative") is True:
+            raise ContractValidationError(
+                "unnecessary-escalation observations are never authoritative"
+            )
+        if payload.get("completion_authoritative") is True:
+            raise ContractValidationError(
+                "unnecessary-escalation observations never authorize completion"
+            )
+        if payload.get("interface") not in (None, UNNECESSARY_ESCALATION_INTERFACE):
+            raise ContractValidationError(
+                "unsupported unnecessary-escalation interface"
+            )
+        result = cls(
+            decision_id=payload.get("decision_id", ""),
+            observed_route=payload.get("observed_route", ""),
+            justified_route=payload.get("justified_route", ""),
+            ladder_rung_observed=payload.get("ladder_rung_observed", ""),
+            ladder_rung_justified=payload.get("ladder_rung_justified", ""),
+            unnecessary=bool(payload.get("unnecessary", False)),
+            escalated=bool(payload.get("escalated", False)),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+            policy_cid=payload.get("policy_cid", ""),
+            route_explanation_receipt_id=payload.get(
+                "route_explanation_receipt_id", ""
+            ),
+            decisive_reason_codes=tuple(payload.get("decisive_reason_codes") or ()),
+        )
+        if "rank_delta" in payload and payload["rank_delta"] != result.rank_delta:
+            raise ContractValidationError("rank_delta claim does not match routes")
+        _claim(payload, result.content_id, "content_id", "observation_id")
+        return result
+
+
+@dataclass(frozen=True)
+class UnnecessaryEscalationReport(CanonicalContract):
+    """Aggregate observational unnecessary-escalation quality metrics."""
+
+    SCHEMA: ClassVar[str] = UNNECESSARY_ESCALATION_REPORT_SCHEMA
+
+    observations: tuple[UnnecessaryEscalationObservation, ...]
+
+    def __post_init__(self) -> None:
+        records = _coerce_records(
+            self.observations,
+            UnnecessaryEscalationObservation,
+            UnnecessaryEscalationObservation.from_dict,
+            field_name="observations",
+            maximum=MAX_UNNECESSARY_ESCALATION_OBSERVATIONS,
+        )
+        ids = [item.content_id for item in records]
+        if len(ids) != len(set(ids)):
+            raise ContractValidationError(
+                "unnecessary-escalation observations must be unique by content identity"
+            )
+        object.__setattr__(self, "observations", records)
+        _record_size(
+            self,
+            maximum=MAX_SERIALIZED_REPORT_BYTES,
+            name="unnecessary escalation report",
+        )
+
+    @property
+    def report_id(self) -> str:
+        return self.content_id
+
+    @property
+    def observation_count(self) -> int:
+        return len(self.observations)
+
+    @property
+    def unnecessary_count(self) -> int:
+        return sum(1 for item in self.observations if item.unnecessary)
+
+    @property
+    def unnecessary_ratio(self) -> ExactRatio:
+        return ExactRatio(
+            numerator=self.unnecessary_count,
+            denominator=self.observation_count,
+            multiplier=BASIS_POINTS,
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "interface": UNNECESSARY_ESCALATION_INTERFACE,
+            "evidence": UNNECESSARY_ESCALATION_EVIDENCE,
+            "observations": self.observations,
+            "observation_count": self.observation_count,
+            "unnecessary_count": self.unnecessary_count,
+            "unnecessary_ratio": self.unnecessary_ratio,
+            "authoritative": False,
+            "completion_authoritative": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "UnnecessaryEscalationReport":
+        _schema(payload, cls.SCHEMA, "unnecessary escalation report")
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "interface",
+                "evidence",
+                "observations",
+                "observation_count",
+                "unnecessary_count",
+                "unnecessary_ratio",
+                "authoritative",
+                "completion_authoritative",
+                "content_id",
+                "report_id",
+            },
+            artifact_name="unnecessary escalation report",
+        )
+        if payload.get("authoritative") is True:
+            raise ContractValidationError(
+                "unnecessary-escalation reports are never authoritative"
+            )
+        if payload.get("completion_authoritative") is True:
+            raise ContractValidationError(
+                "unnecessary-escalation reports never authorize completion"
+            )
+        result = cls(
+            observations=tuple(payload.get("observations") or ()),
+        )
+        if payload.get("observation_count", result.observation_count) != (
+            result.observation_count
+        ):
+            raise ContractValidationError("observation_count claim mismatch")
+        if payload.get("unnecessary_count", result.unnecessary_count) != (
+            result.unnecessary_count
+        ):
+            raise ContractValidationError("unnecessary_count claim mismatch")
+        claimed_ratio = payload.get("unnecessary_ratio")
+        if isinstance(claimed_ratio, Mapping):
+            if ExactRatio.from_dict(claimed_ratio).content_id != (
+                result.unnecessary_ratio.content_id
+            ):
+                raise ContractValidationError("unnecessary_ratio claim mismatch")
+        _claim(payload, result.content_id, "content_id", "report_id")
+        return result
+
+
+def detect_unnecessary_escalation(
+    observed: Any,
+    *,
+    facts: Any = None,
+    justified_route: Any = None,
+    prior_attempts: Sequence[Any] = (),
+    available_models: Sequence[Any] | None = None,
+    policy: Any = None,
+    lower_route_succeeded: bool = False,
+    route_explanation_receipt_id: str = "",
+) -> UnnecessaryEscalationObservation:
+    """Detect unnecessary escalation relative to justified eligibility.
+
+    Observational only: never selects or escalates routes. When ``facts`` are
+    supplied, the justified baseline is the canonical empty-prior
+    ``decide_model_route`` result (eligibility without repair failures). A
+    climb above that baseline is necessary only when the observed explanation
+    carries a failure-escalation marker; otherwise it is unnecessary
+    over-routing. ``lower_route_succeeded`` marks wasted escalations.
+
+    ``prior_attempts`` is accepted for call-site clarity but does not change the
+    empty-prior eligibility baseline; failure justification is read from the
+    observed explanation's escalation markers.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.verification.model_route import (
+        REASON_REQUIRED_TIER_UNAVAILABLE,
+        REASON_SMALLER_ROUTE_FAILED,
+        decide_model_route,
+        default_inventory,
+        policy_cid_for,
+    )
+
+    if not isinstance(lower_route_succeeded, bool):
+        raise ContractValidationError("lower_route_succeeded must be a boolean")
+    if prior_attempts is None:
+        raise ContractValidationError("prior_attempts must be a sequence")
+
+    explanation = _coerce_route_explanation(observed)
+    observed_route = _route_value(explanation.route, field_name="observed_route")
+    observed_codes = tuple(
+        _code(item, field_name="decisive_reason_codes")
+        for item in explanation.decisive_reason_codes
+    )
+    escalated = bool(explanation.escalated) or (
+        REASON_SMALLER_ROUTE_FAILED in observed_codes
+    )
+
+    if justified_route is not None:
+        justified = _route_value(justified_route, field_name="justified_route")
+        policy_cid = _text(
+            getattr(explanation, "policy_cid", "") or policy_cid_for("doep-076"),
+            field_name="policy_cid",
+            required=True,
+            max_bytes=MAX_REFERENCE_BYTES,
+        )
+    elif facts is not None:
+        inventory = (
+            default_inventory() if available_models is None else available_models
+        )
+        bound_policy = policy if policy is not None else {
+            "policy_cid": getattr(explanation, "policy_cid", None)
+            or policy_cid_for("doep-076")
+        }
+        # Empty priors: eligibility justified by facts alone.
+        baseline = decide_model_route(
+            facts,
+            prior_attempts=(),
+            available_models=inventory,
+            policy=bound_policy,
+        )
+        justified = _route_value(baseline.route, field_name="justified_route")
+        policy_cid = _text(
+            baseline.policy_cid,
+            field_name="policy_cid",
+            required=True,
+            max_bytes=MAX_REFERENCE_BYTES,
+        )
+    else:
+        raise ContractValidationError(
+            "detect_unnecessary_escalation requires facts or justified_route"
+        )
+
+    reasons: list[str] = []
+    unnecessary = False
+    observed_rank = _route_rank(observed_route)
+    justified_rank = _route_rank(justified)
+
+    if REASON_REQUIRED_TIER_UNAVAILABLE in observed_codes and (
+        observed_route == "human_review_required"
+    ):
+        reasons.append(REASON_REQUIRED_TIER_UNAVAILABLE_EXCUSED)
+        unnecessary = False
+    elif observed_rank > justified_rank:
+        if escalated and not lower_route_succeeded:
+            reasons.append(REASON_JUSTIFIED_FAILURE_ESCALATION)
+            unnecessary = False
+        elif lower_route_succeeded:
+            reasons.append(REASON_LOWER_ROUTE_SUCCEEDED)
+            unnecessary = True
+        else:
+            reasons.append(REASON_OBSERVED_ABOVE_JUSTIFIED_WITHOUT_FAILURE)
+            unnecessary = True
+            if justified == "deterministic_only" and observed_route != (
+                "deterministic_only"
+            ):
+                reasons.append(REASON_SKIPPED_DETERMINISTIC_ELIGIBILITY)
+    elif observed_rank < justified_rank:
+        reasons.append(REASON_OBSERVED_BELOW_JUSTIFIED)
+        unnecessary = False
+    else:
+        reasons.append(REASON_ROUTE_MATCHES_JUSTIFIED)
+        if lower_route_succeeded and escalated:
+            reasons.append(REASON_LOWER_ROUTE_SUCCEEDED)
+            unnecessary = True
+        else:
+            unnecessary = False
+
+    return UnnecessaryEscalationObservation(
+        decision_id=str(explanation.decision_id),
+        observed_route=observed_route,
+        justified_route=justified,
+        ladder_rung_observed=_ladder_rung_for(observed_route),
+        ladder_rung_justified=_ladder_rung_for(justified),
+        unnecessary=unnecessary,
+        escalated=escalated,
+        reason_codes=tuple(dict.fromkeys(reasons)),
+        policy_cid=policy_cid,
+        route_explanation_receipt_id=route_explanation_receipt_id,
+        decisive_reason_codes=observed_codes,
+    )
+
+
+def aggregate_unnecessary_escalation_observations(
+    observations: Sequence[Any],
+) -> UnnecessaryEscalationReport:
+    """Aggregate unique unnecessary-escalation observations into a quality report."""
+
+    return UnnecessaryEscalationReport(observations=tuple(observations or ()))
+
+
 __all__ = [
     "ARTIFACT_REFERENCE_SCHEMA",
     "CACHE_OBSERVATION_SCHEMA",
@@ -7181,6 +7752,10 @@ __all__ = [
     "TOKEN_EFFICIENCY_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "TOKEN_EFFICIENCY_REQUIREMENT_IDS",
     "TOKEN_USAGE_SCHEMA",
+    "UNNECESSARY_ESCALATION_EVIDENCE",
+    "UNNECESSARY_ESCALATION_INTERFACE",
+    "UNNECESSARY_ESCALATION_OBSERVATION_SCHEMA",
+    "UNNECESSARY_ESCALATION_REPORT_SCHEMA",
     "WORK_COST_SCHEMA",
     "ArtifactReference",
     "CacheDisposition",
@@ -7209,10 +7784,13 @@ __all__ = [
     "TerminalAcceptedWorkEvidence",
     "TerminalOutcome",
     "TokenUsage",
+    "UnnecessaryEscalationObservation",
+    "UnnecessaryEscalationReport",
     "WorkCost",
     "WorkStatus",
     "aggregate_efficiency_receipts",
     "aggregate_receipts",
+    "aggregate_unnecessary_escalation_observations",
     "build_code_proof_efficiency_report",
     "build_code_proof_paired_receipts",
     "build_paired_efficiency_report",
@@ -7221,6 +7799,7 @@ __all__ = [
     "build_required_context_promotion_report",
     "build_delta_retry_promotion_report",
     "build_efficiency_baseline_fixtures",
+    "detect_unnecessary_escalation",
     "evaluate_token_efficiency_completion",
     "compare_paired_efficiency_receipts",
     "make_baseline_fixtures",
@@ -7228,4 +7807,11 @@ __all__ = [
     "PairedEfficiencyReport",
     "PairedSupervisorEfficiencyCase",
     "PairedSupervisorEfficiencyReport",
+    "REASON_JUSTIFIED_FAILURE_ESCALATION",
+    "REASON_LOWER_ROUTE_SUCCEEDED",
+    "REASON_OBSERVED_ABOVE_JUSTIFIED_WITHOUT_FAILURE",
+    "REASON_OBSERVED_BELOW_JUSTIFIED",
+    "REASON_REQUIRED_TIER_UNAVAILABLE_EXCUSED",
+    "REASON_ROUTE_MATCHES_JUSTIFIED",
+    "REASON_SKIPPED_DETERMINISTIC_ELIGIBILITY",
 ]
