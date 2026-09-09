@@ -1086,9 +1086,11 @@ def test_duckdb_reconciliation_guardrail_never_mutates_sealed_markdown_projectio
         "retry-budget",
     ),
 )
+@pytest.mark.parametrize("commit_outputs", (False, True))
 def test_duckdb_suppresses_every_markdown_guardrail_producer(
     tmp_path: Path,
     producer: str,
+    commit_outputs: bool,
 ) -> None:
     repo = _init_repo(tmp_path / f"repo-{producer}")
     sealed_board = "# Sealed database projection\n"
@@ -1099,16 +1101,30 @@ def test_duckdb_suppresses_every_markdown_guardrail_producer(
         database_program=_database_program(),
     )
     callback_calls: list[str] = []
+    _git(repo, "add", str(supervisor.config.todo_path))
+    _git(repo, "commit", "-m", "sealed board projection")
+    original_head = _git(repo, "rev-parse", "HEAD")
+
+    def mutate_projection() -> None:
+        callback_calls.append(producer)
+        supervisor.config.todo_path.write_text(
+            sealed_board + "\n## PCAR-001 Generated guardrail\n",
+            encoding="utf-8",
+        )
+        if commit_outputs:
+            _git(repo, "add", str(supervisor.config.todo_path))
+            _git(repo, "commit", "-m", "generated guardrail")
 
     result = supervisor._run_generated_board_producer(
         producer=producer,
-        commit_outputs=False,
-        callback=lambda: callback_calls.append(producer),
+        commit_outputs=commit_outputs,
+        callback=mutate_projection,
     )
 
     assert result == []
     assert callback_calls == []
     assert supervisor.config.todo_path.read_text(encoding="utf-8") == sealed_board
+    assert _git(repo, "rev-parse", "HEAD") == original_head
     event = json.loads(
         supervisor.config.events_path.read_text(encoding="utf-8").splitlines()[
             -1
