@@ -36,3 +36,9 @@ existing stopped-owner launch amendment. The native launcher then runs the
 producer automatically after sealed status admission. A missing or rejected
 producer remains visible as an unresolved component while the retained owner
 continues serving its read-only closeout status.
+
+The bounded source observation rechecks parent and nested revisions, trees, and
+working status after reading reports. Git assume-unchanged or skip-worktree hints
+make the observation unavailable, since they can hide tracked edits. This is a
+current Git source observation; it does not attest the loaded bytes of every
+process or prevent a future source edit.

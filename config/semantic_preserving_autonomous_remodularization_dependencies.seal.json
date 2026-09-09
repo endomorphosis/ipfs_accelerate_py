@@ -11,7 +11,7 @@
     "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py": "460b126356b0cb7d9e7b89f9957778b1e90937c80e5766557c732bd24647c68f",
     "ipfs_accelerate_py/agent_supervisor/task_sources/launch_source_amendment.py": "17d537f6e77ace1998162c50ea34e85ad08caf07c5932d6d6d64689839c7e6fb",
     "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py": "906b792ae520915666f8ec12aef25e353d21a038a2827f6934fe07e16e14841d",
-    "ipfs_accelerate_py/agent_supervisor/task_sources/spar_closeout_profile.py": "80cc169e16871a5bcd3a44e99f08b6deeef338630b7d781f70f2eff8db1968fd",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/spar_closeout_profile.py": "1b5ed5dc613d0398458a1181c827d8e5089d4ce2fbd38e6f7d855faf70586ad1",
     "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py": "8f4b3b6bd4e38bdcbcbf12c9b1fa38e6cf582a756aa816081f12c69f0c931639",
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": "92ae856681fe8e59c45a4ad1cd76aa8b757d405aefe045f4443c0a1064bd3662",
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "86904dbba42c40a0fb2748fdfb8b3680a73f1a67fd50fee6708fd0e9ec7b56bf",
@@ -499,7 +499,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:10dd3713c3144eb12cdaed5d9c0d53c8deb5e029e7a9b11351332fcee9395edb",
+  "seal_cid": "sha256:888452499d5df659ee6c78053f674ecde525f24ea470c56dd43505adb897ee54",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",
