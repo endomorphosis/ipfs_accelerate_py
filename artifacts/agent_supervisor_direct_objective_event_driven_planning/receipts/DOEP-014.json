@@ -1,0 +1,117 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-014",
+  "task_cid": "sha256:c7bc65d22f429107910d86e863dc8e8df261dc35c40e349cc52d24590e21e18e",
+  "title": "Add CLI client",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "base_repositories": {
+    "ipfs_accelerate_py": {
+      "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+      "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+    },
+    "ipfs_datasets_py": {
+      "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+      "tree": "456e09b51d6a07a3a5873436df24054768195320"
+    },
+    "ipfs_kit_py": {
+      "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+      "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+    },
+    "lift_coding": {
+      "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+      "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+    }
+  },
+  "changed_paths": [
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/cli.py",
+    "test/api/doep/test_doep_014_add_cli_client.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-014.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-014.json"
+  ],
+  "expected_outputs": [
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/cli.py",
+    "test/api/doep/test_doep_014_add_cli_client.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-014.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-014.json"
+  ],
+  "write_scope": [
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/cli.py",
+    "test/api/doep/test_doep_014_add_cli_client.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-014.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-014.json"
+  ],
+  "outputs_present": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/cli.py": true,
+    "test/api/doep/test_doep_014_add_cli_client.py": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-014.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-014.json": true
+  },
+  "path_digests": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/cli.py": "sha256:2553c05efded86649d67545d3baf8dc9ddf17919d2ae8b07d78ae442adabc46b",
+    "test/api/doep/test_doep_014_add_cli_client.py": "sha256:bada430ceec60416d9a4c02f1a3eecae5c127e6ac37d296cda3a6a7da7be01c4",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-014.json": "sha256:bf9f9610d0bb97a50d3d71d0031946403423c2dfb0411dfca8b8b7a8e8245dd2"
+  },
+  "required_evidence": {
+    "source_commit_tree_gitlinks": {
+      "ipfs_accelerate_py": {
+        "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+        "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+      },
+      "ipfs_datasets_py": {
+        "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+        "tree": "456e09b51d6a07a3a5873436df24054768195320"
+      },
+      "ipfs_kit_py": {
+        "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+        "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+      },
+      "lift_coding": {
+        "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+        "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+      }
+    },
+    "test_proof_results": {
+      "validation_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/doep/test_doep_014_add_cli_client.py",
+        "-q"
+      ],
+      "proof_selection": "verified_empty",
+      "proof_reason": "The CLI client seam is checked through independent deterministic Python assertions; this task makes no proof claim."
+    },
+    "limitations": [
+      "Candidate receipt only; independent fenced supervisor admission is required for completion.",
+      "Worker or model assertion alone is insufficient.",
+      "The named CLI client is a thin adapter over the existing ASE3-010 supervisor CLI and DOEP-012 submit_objective; it does not introduce an independent planner, objective store, DuckDB writer, or admission path."
+    ],
+    "verifier_admission": "pending_independent_fenced_supervisor"
+  },
+  "validation": {
+    "commands": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "test/api/doep/test_doep_014_add_cli_client.py",
+          "-q"
+        ],
+        "cwd": "external/ipfs_accelerate",
+        "status": "candidate_local"
+      }
+    ]
+  },
+  "supervisor_acceptance": {
+    "completion_authoritative": false,
+    "state": "pending_independent_fenced_supervisor"
+  }
+}
