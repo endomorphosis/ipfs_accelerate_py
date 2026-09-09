@@ -405,6 +405,18 @@ live-application = false
 live-client = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.promotion-or-non-promotion]
+schema = "ipfs_accelerate_py/assurance/promotion-or-non-promotion-receipt@1"
+interface = "AcceleratePromotionOrNonPromotionReceipt@1"
+task-id = "PCPR-094"
+goal-id = "PCPR-G900"
+objective-kind = "declared_objective_to_release_promotion_or_non_promotion"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
