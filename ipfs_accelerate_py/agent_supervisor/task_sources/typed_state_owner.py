@@ -345,6 +345,8 @@ _STATUS_SESSION_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
 )
 _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
+        "derived.coordination.read",
+        "derived.coordination.write",
         *_EVENT_WAIT_SERVICE_OPERATIONS,
         *_EAAEF_COMMAND_SERVICE_OPERATIONS,
         *_EAAEF_PLAN_R2_SERVICE_OPERATIONS,
@@ -3265,6 +3267,7 @@ _EVENT_MUTATIONS: Final[frozenset[str]] = frozenset(
 # The common transaction/idempotency operations are added separately below.
 _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
     {
+        "fleet.observation.record": frozenset({"fleet_insert_observation_artifact", "fleet_insert_observation_receipt"}),
         "federation.create": frozenset(
             {
                 "casf_insert_federation",
@@ -3479,6 +3482,7 @@ _EVENT_EMITTING_COMMANDS: Final[frozenset[str]] = frozenset(
 _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
     MappingProxyType(
         {
+            "fleet.observation.record": _COMMAND_MUTATION_CATALOG["fleet.observation.record"],
             "federation.create": _COMMAND_MUTATION_CATALOG["federation.create"],
             "budget.reserve": _COMMAND_MUTATION_CATALOG["budget.reserve"],
             "budget.release": _COMMAND_MUTATION_CATALOG["budget.release"],
@@ -3650,6 +3654,7 @@ def build_control_plane_operation_catalog() -> Mapping[str, OwnerOperation]:
     """
 
     from ..federation.registry import _casf_templates
+    from ..federation.fleet_observation import _fleet_templates
     from .control_plane_repository import _REPOSITORY_TEMPLATES
     from .quack_state_client import DEFAULT_STATEMENT_TEMPLATES, StatementKind
 
@@ -3658,6 +3663,7 @@ def build_control_plane_operation_catalog() -> Mapping[str, OwnerOperation]:
         *DEFAULT_STATEMENT_TEMPLATES.values(),
         *_REPOSITORY_TEMPLATES.values(),
         *_casf_templates(),
+        *_fleet_templates(),
     ]
     for template in templates:
         operation = OwnerOperation(
@@ -3847,6 +3853,8 @@ class TypedStateOwnerGateway:
         self._status_bootstrap_uid = -1
         self._status_bootstrap_scope: dict[str, str] = {}
         self._database_status_binding: dict[str, Any] = {}
+        self._derived_coordination_service: Any | None = None
+        self._derived_bootstrap_token_digest: bytes | None = None
         self._event_wait_handler: Any | None = None
         self._event_wait_cancel_handler: Any | None = None
         self._event_wait_clear_handler: Any | None = None
@@ -3947,6 +3955,23 @@ class TypedStateOwnerGateway:
                 )
                 self._eaaef_plan_r2_owner_service = service
                 return service
+
+    def bind_derived_coordination_service(self) -> str:
+        """Install bounded derived evidence operations on this owner handle."""
+        from ..analysis.derived_coordination import DerivedCoordinationService
+
+        with self._transaction_lock:
+            self._require_live_server_binding()
+            if self._derived_coordination_service is not None:
+                raise TypedStateOwnerAuthorizationError("derived service is already bound")
+            service = DerivedCoordinationService(
+                self._connection, transaction_lock=self._transaction_lock,
+                owner_identity=self.identity,
+            )
+            token = secrets.token_hex(32)
+            self._derived_coordination_service = service
+            self._derived_bootstrap_token_digest = hashlib.sha256(token.encode()).digest()
+            return token
 
     def configure_status_bootstrap(self) -> str:
         """Create the owner-local credential for peer-bound status sessions.
@@ -4868,6 +4893,7 @@ class TypedStateOwnerGateway:
         client_id = ""
         grant: OwnerClientGrant | None = None
         status_session_grant_id = ""
+        derived_session_grant_id = ""
         session_id = ""
         status_index_sql: list[str] = []
         try:
@@ -4885,6 +4911,7 @@ class TypedStateOwnerGateway:
                     "client_id",
                     "process_birth_id",
                     "store_id",
+                    "derived_repository_id",
                 },
                 "open request",
             )
@@ -4900,7 +4927,23 @@ class TypedStateOwnerGateway:
                 or len(process_birth_id) > 256
             ):
                 raise TypedStateOwnerAuthorizationError("gateway authentication failed")
-            if action == "open_status":
+            if action == "open_derived":
+                repository_id = str(opened.get("derived_repository_id") or "").strip()
+                expected = self._derived_bootstrap_token_digest
+                supplied = hashlib.sha256(supplied_token.encode()).digest()
+                if (expected is None or not hmac.compare_digest(expected, supplied)
+                    or peer_identity[1] != os.getuid() or not repository_id
+                    or len(repository_id) > 256 or self._derived_coordination_service is None):
+                    raise TypedStateOwnerAuthorizationError("gateway authentication failed")
+                token, grant = self.issue_grant(
+                    client_id=client_id, process_birth_id=process_birth_id,
+                    peer_pid=peer_identity[0], entity_scopes={"repository_id": repository_id},
+                    allowed_operations=("derived.coordination.read", "derived.coordination.write",
+                                        "whoami_metadata", "load_store_generation", "txn_load_generation"),
+                    ttl_seconds=120,
+                )
+                derived_session_grant_id = grant.grant_id
+            elif action == "open_status":
                 supplied_digest = hashlib.sha256(
                     supplied_token.encode("utf-8")
                 ).digest()
@@ -5185,6 +5228,29 @@ class TypedStateOwnerGateway:
                                     self._resolve_database_status_scope()
                                 result = self._execute(operation, parameters)
                         response = result
+                    elif action == "derived.coordination":
+                        self._reject_unknown(request, {"schema", "action", "request_id", "payload"},
+                                             "derived coordination request")
+                        if transaction_active or self._derived_coordination_service is None:
+                            raise TypedStateOwnerAuthorizationError("derived service is unavailable")
+                        payload = request.get("payload")
+                        if not isinstance(payload, dict):
+                            raise TypedStateOwnerProtocolError("derived request must be an object")
+                        operation = "derived.coordination." + (
+                            "write" if payload.get("operation") in {"ingest_snapshot", "record_reference"} else "read"
+                        )
+                        if operation not in grant.allowed_operations:
+                            raise TypedStateOwnerAuthorizationError("derived operation is outside the client grant")
+                        if payload.get("repository_id") != dict(grant.entity_scopes).get("repository_id"):
+                            raise TypedStateOwnerAuthorizationError("derived repository differs from client scope")
+                        if not self._transaction_lock.acquire(timeout=5):
+                            raise TypedStateOwnerProtocolError("derived coordination owner is busy")
+                        try:
+                            grant = self._require_active_grant(grant, peer_identity=peer_identity)
+                            result = self._derived_coordination_service.execute(payload)
+                        finally:
+                            self._transaction_lock.release()
+                        response = {"ok": True, "result": result}
                     elif action in {COMPLETION_PROGRESS_SNAPSHOT_OPERATION, "completion.closeout.snapshot"}:
                         self._reject_unknown(
                             request,
@@ -5623,6 +5689,8 @@ class TypedStateOwnerGateway:
                 channel.close()
             except OSError:
                 pass
+            if derived_session_grant_id:
+                self._retire_status_session_grant(derived_session_grant_id)
             if status_session_grant_id:
                 self._retire_status_session_grant(status_session_grant_id)
             with self._clients_lock:
@@ -9100,6 +9168,9 @@ class TypedStateOwnerGateway:
             self._validate_supervisor_runtime_identity(command, manifest)
         if command_operation == "event.outbox.disposition":
             self._validate_outbox_disposition_identity(command, manifest)
+        if command_operation == "fleet.observation.record":
+            from ..federation.fleet_observation import validate_owner_manifest
+            validate_owner_manifest(command, manifest)
         if semantic_authority:
             self._validate_semantic_manifest(
                 command,
@@ -10391,6 +10462,7 @@ class TypedStateOwnerConnection:
         store_id: str,
         timeout_seconds: float = 30.0,
         status_bootstrap: bool = False,
+        derived_repository_id: str = "",
     ) -> None:
         if type(token) is not str or len(token) < 16:
             raise TypedStateOwnerAuthorizationError("typed owner token is unavailable")
@@ -10410,11 +10482,12 @@ class TypedStateOwnerConnection:
         self._request_index = 0
         try:
             opened = self._request(
-                "open_status" if status_bootstrap else "open",
+                "open_derived" if derived_repository_id else ("open_status" if status_bootstrap else "open"),
                 token=token,
                 client_id=client_id,
                 process_birth_id=process_birth_id,
                 store_id=store_id,
+                **({"derived_repository_id": derived_repository_id} if derived_repository_id else {}),
             )
         except BaseException:
             # No constructed client reaches the caller on failed admission.
@@ -10429,6 +10502,17 @@ class TypedStateOwnerConnection:
             raise TypedStateOwnerProtocolError(
                 "typed owner handshake returned no admitted session"
             )
+
+    def derived_coordination(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Perform a bounded operation on a separately admitted derived owner."""
+        if self._active:
+            raise TypedStateOwnerAuthorizationError("derived operation cannot join a task transaction")
+        result = self._request("derived.coordination", payload=dict(payload)).get("result")
+        if not isinstance(result, dict) or result.get("owner_identity") != dict(self.identity):
+            raise TypedStateOwnerProtocolError("derived result owner differs from the admitted session")
+        if result.get("authority") != "derived_evidence" or result.get("completion_authority") is not False:
+            raise TypedStateOwnerProtocolError("derived result claims incompatible authority")
+        return MappingProxyType(result)
 
     @property
     def supports_event_wait(self) -> bool:

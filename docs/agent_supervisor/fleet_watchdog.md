@@ -207,3 +207,22 @@ tasks, goals, dependencies, unreleased claims, unsettled merges, task blocks, an
 local proof obligations. Missing relations and populations over 512 rows remain
 explicit unknown/truncated observations. This endpoint does not evaluate sealed
 goal contracts, verify external semantic obligations, or authorize completion.
+
+### Separate derived coordination owner
+
+A dedicated native Quack owner can enable `--derived-coordination`. Its private
+`derived-coordination.token` admits short-lived, kernel-peer-bound sessions through
+`TypedStateOwnerConnection(..., derived_repository_id=repository_id)`. The token
+is separate from board status admission; these sessions cannot mutate tasks or
+author completion. `DerivedCoordinationClient` exposes closed operations for AST
+snapshots, parse-cache lookup, and content-hash/AST-CID/state-root references.
+Each request is bound to one repository; parsing admits at most eight files and
+32 KiB of source, with bounded request/result sizes and owner-lock admission.
+
+The service uses the existing exclusive owner's DuckDB handle. Clients do not
+open database files. AST evidence and content hashes deduplicate across trees;
+conflicting hashes under the same snapshot identity fail. Reference records do
+not verify the referenced semantic evidence. The datasets-authoritative profile
+continues to prohibit an accelerator-local AST writer while permitting these
+explicitly unverified derived references. Git, ipfs_kit_py, and ipfs_datasets_py
+retain their existing source and semantic authority.

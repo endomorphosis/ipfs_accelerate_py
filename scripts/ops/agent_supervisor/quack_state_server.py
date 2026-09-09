@@ -168,6 +168,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit machine-readable JSON on stdout",
     )
 
+    parser.add_argument("--derived-coordination", action="store_true",
+                        help="Enable bounded derived AST/hash/state owner operations")
     sub = parser.add_subparsers(dest="command", required=True)
     for name in _SUBCOMMANDS:
         sub.add_parser(name, help=f"{name} the Quack state-owner")
@@ -402,6 +404,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         server = _build_server(args)
         if args.command == "start":
             identity = server.start()
+            if args.derived_coordination:
+                server.bind_derived_coordination_service()
             # Emit identity once, then stay alive as the exclusive owner.
             _emit(identity.to_dict(), as_json=True)
             sys.stdout.flush()

@@ -1162,6 +1162,7 @@ class DuckDBASTIndex:
         self._connection: Any | None = None
         self._lock = threading.RLock()
         self._closed = True
+        self._owns_connection = True
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -1208,12 +1209,42 @@ class DuckDBASTIndex:
             self._closed = False
             return self
 
+    @classmethod
+    def from_owner_connection(
+        cls, connection: Any, *, database_path: Path, transaction_lock: Any
+    ) -> "DuckDBASTIndex":
+        """Bind derived evidence to the existing exclusive owner handle.
+
+        The owner retains lifecycle and transaction authority. This never opens
+        another file handle, and retains the datasets semantic writer guard.
+        """
+        index = cls(database_path)
+        with transaction_lock:
+            for statement in _split_sql_statements(_BOOKKEEPING_SQL):
+                connection.execute(statement)
+            for key, value in (
+                ("interface", DUCKDB_AST_INDEX_INTERFACE),
+                ("schema", DUCKDB_AST_INDEX_SCHEMA),
+                ("parser_id", index.parser_id),
+                ("scanner_version", index.scanner_version),
+                ("authority", AUTHORITY_CLASS),
+            ):
+                connection.execute(
+                    "INSERT OR REPLACE INTO ast_index_metadata(key, value) VALUES (?, ?)",
+                    [key, value],
+                )
+        index._connection = connection
+        index._lock = transaction_lock
+        index._owns_connection = False
+        index._closed = False
+        return index
+
     def close(self) -> None:
         with self._lock:
             connection = self._connection
             self._connection = None
             self._closed = True
-            if connection is not None:
+            if connection is not None and self._owns_connection:
                 try:
                     connection.close()
                 except Exception:

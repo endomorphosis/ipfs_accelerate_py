@@ -3586,6 +3586,16 @@ class QuackStateServer:
                 ),
             )
 
+    def bind_derived_coordination_service(self) -> Path:
+        """Expose bounded AST/hash/state references through this separate owner."""
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY or self._command_gateway is None:
+                raise QuackStateServerNotRunningError("derived coordination requires a ready owner")
+            token = self._command_gateway.bind_derived_coordination_service()
+            path = self.config.state_dir / "derived-coordination.token"
+            _atomic_write_text(path, token, mode=0o600)
+            return path
+
     def bind_database_status_scope(self, **binding: Any) -> None:
         """Bind a non-federated sealed board to peer-bound read-only status."""
         with self._lock:
