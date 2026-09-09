@@ -148,6 +148,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--deny-legacy-board-unstall",
+        action="store_true",
+        help="Disable legacy taskboard mutations for dedicated fleet owners",
+    )
+    parser.add_argument(
         "--allow-experimental",
         action="store_true",
         help="Admit experimental Quack capability reports",
@@ -239,6 +244,7 @@ def _build_server(args: argparse.Namespace) -> Any:
         remote_bind_policy=policy,
         secret_handle=str(args.secret_handle or ""),
         isolation_receipt_path=args.isolation_receipt_json,
+        allow_legacy_board_unstall=not getattr(args, "deny_legacy_board_unstall", False),
     )
 
 

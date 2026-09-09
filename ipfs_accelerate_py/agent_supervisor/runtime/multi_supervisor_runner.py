@@ -1766,8 +1766,8 @@ class DatabaseProgramConfig:
     INTERFACE: ClassVar[str] = DATABASE_PROGRAM_CONFIG_INTERFACE
     SCHEMA: ClassVar[str] = DATABASE_PROGRAM_CONFIG_SCHEMA
 
-    authority_mode: str
-    task_source_kind: str
+    authority_mode: str = AUTHORITY_MODE_QUACK
+    task_source_kind: str = TASK_SOURCE_DUCKDB
     endpoint_secret_handle: str = ""
     quack_endpoint: str = ""
     store_id: str = ""
@@ -2136,8 +2136,8 @@ class DatabaseProgramConfig:
         ):
             raise DatabaseProgramConfigError("claim_policy must be an object")
         return cls(
-            authority_mode=str(payload.get("authority_mode") or ""),
-            task_source_kind=str(payload.get("task_source_kind") or ""),
+            authority_mode=str(payload.get("authority_mode", AUTHORITY_MODE_QUACK) or ""),
+            task_source_kind=str(payload.get("task_source_kind", TASK_SOURCE_DUCKDB) or ""),
             endpoint_secret_handle=str(
                 payload.get("endpoint_secret_handle") or ""
             ),
