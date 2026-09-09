@@ -981,7 +981,7 @@ class DatabaseMergeQueue:
             if self.is_open:
                 return self
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            connection = open_duckdb_connection(self._path)
+            connection = open_duckdb_connection(self._path, prefer_quack=False)
             try:
                 for statement in _split_sql_statements(_BOOKKEEPING_SQL):
                     connection.execute(statement)

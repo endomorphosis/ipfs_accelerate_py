@@ -225,7 +225,15 @@ def _install_fake_grok_docker_primary(
     FakeLease.lease_root = lease_root
 
     def fake_create_run(command, **kwargs):
-        create_calls.append((list(command), dict(kwargs)))
+        argv = list(command)
+        if "inspect" in argv:
+            return subprocess.CompletedProcess(
+                argv,
+                0 if create_returncode == 0 else 1,
+                stdout=(container_id + "\n").encode("ascii"),
+                stderr=b"",
+            )
+        create_calls.append((argv, dict(kwargs)))
         if create_returncode == 0:
             FakeLease.cidfile.write_text(container_id + "\n", encoding="ascii")
         return subprocess.CompletedProcess(
@@ -1995,6 +2003,11 @@ def test_grok_docker_create_binds_exact_id_to_attached_start(
         )
 
     monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_require_startable_docker_container",
+        lambda **_kwargs: None,
+    )
 
     start_command = (
         grok_cli_runner._create_grok_container_and_build_start_command(
@@ -2057,6 +2070,47 @@ def test_grok_docker_create_rejects_untrusted_container_identity(
             docker_environment={},
             docker_lease=FakeLease(),
         )
+
+
+def test_grok_docker_start_fails_closed_when_created_container_is_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    container_id = "d" * 64
+    inspect_commands: list[list[str]] = []
+
+    class FakeLease:
+        docker_bin = "/usr/bin/docker"
+        docker_config = tmp_path / "docker-config"
+
+    def fake_run(command, **kwargs):
+        argv = list(command)
+        if "inspect" in argv:
+            inspect_commands.append(argv)
+            return subprocess.CompletedProcess(
+                argv,
+                1,
+                stdout=b"",
+                stderr=b"Error: No such object\n",
+            )
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout=(container_id + "\n").encode("ascii"),
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
+
+    with pytest.raises(ValueError, match="container is not startable"):
+        grok_cli_runner._create_grok_container_and_build_start_command(
+            ["/usr/bin/docker", "create", "sealed-grok"],
+            workspace=tmp_path,
+            docker_environment={},
+            docker_lease=FakeLease(),
+        )
+    assert inspect_commands
+    assert inspect_commands[0][-1] == container_id
 
 
 @pytest.mark.parametrize("typed_route", (False, True))

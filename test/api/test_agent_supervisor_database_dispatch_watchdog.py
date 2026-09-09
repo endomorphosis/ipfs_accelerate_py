@@ -560,6 +560,69 @@ def test_database_watchdog_oom_still_recycles_prior_child_stale_claim(
     assert fields["authoritative_readiness_error_type"] == "OutOfMemoryException"
 
 
+def test_database_watchdog_does_not_recycle_prior_child_heartbeat_with_live_worker(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "OutOfMemoryException",
+            "task_source_revision": 0,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {
+            "available": True,
+            "stale": True,
+            "reason": "heartbeat_belongs_to_prior_child",
+            "active_task_id": "SAWM-008",
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_active_agent_worker_processes",
+        lambda: [{"pid": 4132019, "cmdline": "grok_cli_runner"}],
+    )
+    requeue_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_requeue_stale_active_database_claims",
+        lambda: requeue_calls.append({"ok": True})
+        or {
+            "attempted": True,
+            "reason": DATABASE_STALE_ACTIVE_CLAIM_REASON,
+            "expired_count": 1,
+            "expired_task_ids": ["sha256:task"],
+        },
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "continue"
+    assert requeue_calls == [{"ok": True}]
+    assert events[0][0] == "stale_active_claim_prior_child_detected"
+    assert events[0][1]["live_implementation_worker_count"] == 1
+
+
 def test_database_watchdog_rearms_idle_blocked_portal_frontier(
     tmp_path,
     monkeypatch,
@@ -641,7 +704,11 @@ def test_database_watchdog_preserves_child_when_readiness_is_unavailable(
     monkeypatch.setattr(
         supervisor,
         "_database_pass_heartbeat_status",
-        lambda *_args, **_kwargs: pytest.fail("heartbeat must not grant readiness"),
+        lambda *_args, **_kwargs: {
+            "available": False,
+            "stale": False,
+            "reason": "heartbeat_missing",
+        },
     )
     maintenance_calls: list[bool] = []
     monkeypatch.setattr(

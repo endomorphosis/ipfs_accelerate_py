@@ -2664,6 +2664,57 @@ def _docker_grok_command(
     return command
 
 
+def _require_startable_docker_container(
+    *,
+    docker_bin: str,
+    docker_config: Path,
+    container_id: str,
+) -> None:
+    """Fail closed before ``docker start --attach`` if the created ID is gone.
+
+    ``docker start --attach`` on a missing container ID can block instead of
+    exiting, which pins the in-progress claim until the implementation
+    timeout.  Inspect with the same host/config as create and refuse to attach
+    unless that exact container still exists.
+    """
+
+    if re.fullmatch(r"[0-9a-f]{64}", container_id) is None:
+        raise ValueError("Grok container identity is invalid")
+    inspect_command = [
+        str(docker_bin),
+        f"--host={_DOCKER_LOCAL_HOST}",
+        "--config",
+        str(docker_config),
+        "container",
+        "inspect",
+        "--format",
+        "{{.Id}}",
+        container_id,
+    ]
+    try:
+        completed = subprocess.run(
+            inspect_command,
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("Grok container is not startable") from exc
+    if (
+        completed.returncode != 0
+        or len(completed.stdout) > _DOCKER_INSPECTION_MAX_BYTES
+        or len(completed.stderr) > _DOCKER_INSPECTION_MAX_BYTES
+    ):
+        raise ValueError("Grok container is not startable")
+    observed = completed.stdout.decode("ascii", errors="replace").strip().lower()
+    observed = observed.removeprefix("sha256:")
+    if observed != container_id:
+        raise ValueError("Grok container is not startable")
+
+
 def _create_grok_container_and_build_start_command(
     create_command: Sequence[str],
     *,
@@ -2698,6 +2749,11 @@ def _create_grok_container_and_build_start_command(
         or re.fullmatch(r"[0-9a-f]{64}", created_fields[0]) is None
     ):
         raise ValueError("Grok container identity is invalid")
+    _require_startable_docker_container(
+        docker_bin=docker_lease.docker_bin,
+        docker_config=docker_lease.docker_config,
+        container_id=created_fields[0],
+    )
     return [
         docker_lease.docker_bin,
         f"--host={_DOCKER_LOCAL_HOST}",
@@ -2758,6 +2814,11 @@ def _run_created_grok_container_with_typed_failure_capture(
         or recorded_container_id != created_fields[0]
     ):
         raise ValueError("Grok container identity is invalid")
+    _require_startable_docker_container(
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        container_id=created_fields[0],
+    )
     start_command = [
         docker_bin,
         f"--host={_DOCKER_LOCAL_HOST}",

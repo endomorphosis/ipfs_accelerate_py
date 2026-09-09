@@ -15,6 +15,9 @@ import hashlib
 from pathlib import Path
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.merge import (
+    database_coordination as database_coordination_module,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     COORDINATION_REGISTRY_PROJECTION_SCHEMA,
     DATABASE_COORDINATOR_INTERFACE,
@@ -2066,5 +2069,29 @@ def test_same_owner_reacquire_is_idempotent_without_idempotency_key(
         )
         assert second.lease_id == first.lease_id
         assert second.fencing_token == first.fencing_token
+    finally:
+        coordinator.close()
+
+
+def test_database_coordinator_opens_local_file_without_quack_prefer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[bool | None] = []
+    real_open = database_coordination_module.open_duckdb_connection
+
+    def wrapped(path, *args, **kwargs):
+        captured.append(kwargs.get("prefer_quack"))
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        database_coordination_module,
+        "open_duckdb_connection",
+        wrapped,
+    )
+    coordinator = open_database_coordinator(tmp_path / "coordination.duckdb")
+    try:
+        assert captured == [False]
+        assert coordinator.is_open
     finally:
         coordinator.close()

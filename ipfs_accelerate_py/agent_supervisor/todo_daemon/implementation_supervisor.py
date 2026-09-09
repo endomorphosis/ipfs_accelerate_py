@@ -11002,6 +11002,7 @@ class PortalImplementationSupervisor:
         )
         if not (prior_child or stale_active):
             return None
+        live_workers = self._active_agent_worker_processes()
         requeue = self._requeue_stale_active_database_claims()
         detail = {
             "same_shard_active_task_ids": list(
@@ -11010,12 +11011,18 @@ class PortalImplementationSupervisor:
             "database_daemon_pass_heartbeat": dict(heartbeat),
             "stale_active_claim_requeue": requeue,
             "task_source_revision": int(task_source_revision or 0),
+            "live_implementation_worker_count": len(live_workers),
         }
         self._set_loop_status_fields(loop, detail)
         self._record_event(
             "stale_active_claim_prior_child_detected",
             detail,
         )
+        if live_workers:
+            # Pass heartbeat is written only after run_once completes. A
+            # live grok/codex child is the current attempt, not a hung
+            # prior-child pin; expire stale leases but do not recycle it.
+            return None
         return SupervisorLoopDecision.recycle(
             DATABASE_STALE_ACTIVE_CLAIM_REASON,
             detail=detail,
