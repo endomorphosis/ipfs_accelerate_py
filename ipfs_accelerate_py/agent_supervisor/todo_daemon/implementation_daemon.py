@@ -91164,38 +91164,240 @@ class DatabaseImplementationDaemon:
             "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
         }
 
+    def _shared_claim_binding_for_this_owner(
+        self,
+        task: Any,
+    ) -> Mapping[str, Any] | None:
+        """Return the exact shared claim tuple authorizing lane-local retry.
+
+        Attempt numbers are included in the exact shared binding.  A lane-local
+        counter alone cannot establish ownership, but omitting the shared
+        attempt number would let an older sidecar masquerade as the current
+        claim after a restart.
+        """
+
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return None
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return None
+        operation = str(receipt.get("operation") or "")
+        phase_schema = str(receipt.get("claim_phase_schema") or "")
+        if operation not in {"database_claim", "database_attempt_admitted"}:
+            return None
+        # This legacy runtime has no typed claim-admission transport. Unknown
+        # typed receipts must remain held for a qualified runtime migration.
+        if phase_schema:
+            return None
+        owner = str(receipt.get("owner_session_id") or "")
+        if owner != self.owner_session_id:
+            return None
+        text_fields = {
+            name: str(receipt.get(name) or "").strip()
+            for name in ("claim_id", "attempt_id", "lease_id")
+        }
+        if not all(text_fields.values()):
+            return None
+        fencing_token = receipt.get("fencing_token")
+        fence_epoch = receipt.get("fence_epoch")
+        attempt_number = receipt.get("attempt_number")
+        if (
+            isinstance(fencing_token, bool)
+            or not isinstance(fencing_token, int)
+            or fencing_token < 1
+            or isinstance(fence_epoch, bool)
+            or not isinstance(fence_epoch, int)
+            or fence_epoch < 1
+            or isinstance(attempt_number, bool)
+            or not isinstance(attempt_number, int)
+            or attempt_number < 1
+        ):
+            return None
+        return MappingProxyType(
+            {
+                **text_fields,
+                "owner_session_id": owner,
+                "fencing_token": fencing_token,
+                "fence_epoch": fence_epoch,
+                "attempt_number": attempt_number,
+                "operation": operation,
+                "claim_phase_schema": phase_schema,
+            }
+        )
+
+    def _shared_claim_binding_matches_attempt(
+        self,
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        """Bind shared-board ownership to one exact durable attempt."""
+
+        binding = self._shared_claim_binding_for_this_owner(task)
+        if binding is None:
+            return False
+        expected = {
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        return all(
+            type(binding.get(name)) is type(value)
+            and binding.get(name) == value
+            for name, value in expected.items()
+        )
+
+    def _terminal_coordination_reproduces_read_only(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        require_expired: bool = False,
+    ) -> bool:
+        """Reproduce the current claim/attempt/lease triple without mutation."""
+
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        if claim is None:
+            return False
+        coordination_attempt = self.coordinator.get_task_attempt(
+            attempt.attempt_id
+        )
+        get_lease = getattr(self.coordinator, "get_lease", None)
+        if coordination_attempt is None or not callable(get_lease):
+            return False
+        lease = get_lease(attempt.lease_id)
+        projections: list[Any] = [claim, coordination_attempt, lease]
+        projection_dicts: list[Mapping[str, Any]] = []
+        for projection in projections:
+            to_dict = getattr(projection, "to_dict", None)
+            value = to_dict() if callable(to_dict) else None
+            if not isinstance(value, Mapping):
+                return False
+            projection_dicts.append(value)
+        claim_identity, attempt_identity, lease_identity = projection_dicts
+        common_identity = {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if (
+            claim_identity.get("claim_id") != attempt.claim_id
+            or claim_identity.get("lease_id") != attempt.lease_id
+            or any(
+                claim_identity.get(field) != expected
+                for field, expected in common_identity.items()
+            )
+            or any(
+                attempt_identity.get(field) != expected
+                for field, expected in common_identity.items()
+            )
+            or lease_identity.get("lease_id") != attempt.lease_id
+            or lease_identity.get("lease_kind") != "task"
+            or lease_identity.get("scope_key") != f"task:{attempt.task_cid}"
+            or lease_identity.get("scope") != attempt.task_cid
+            or lease_identity.get("mode") != "exclusive"
+            or lease_identity.get("claim_id") != attempt.claim_id
+            or any(
+                lease_identity.get(field) != expected
+                for field, expected in common_identity.items()
+            )
+        ):
+            return False
+        claim_state = str(claim_identity.get("state") or "")
+        attempt_status = str(attempt_identity.get("status") or "")
+        lease_state = str(lease_identity.get("state") or "")
+        expires_at_ms = claim_identity.get("expires_at_ms")
+        current_revisions = {
+            "claim_revision": claim_identity.get("revision"),
+            "coordination_attempt_revision": attempt_identity.get("revision"),
+        }
+        if (
+            isinstance(expires_at_ms, bool)
+            or not isinstance(expires_at_ms, int)
+            or expires_at_ms < 0
+            or lease_identity.get("expires_at_ms") != expires_at_ms
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+                for value in current_revisions.values()
+            )
+            or self.coordinator.get_prepared_task_completion(attempt.task_cid)
+            is not None
+        ):
+            return False
+        now = self._now_ms()
+        if claim_state == "accepted":
+            if (
+                require_expired
+                or lease_state != "accepted"
+                or attempt_status != "running"
+                or expires_at_ms <= now
+            ):
+                return False
+        elif claim_state == "expired":
+            if (
+                lease_state != "expired"
+                or attempt_status != "expired"
+                or expires_at_ms > now
+            ):
+                return False
+        else:
+            return False
+        get_successor = getattr(
+            self.coordinator,
+            "get_task_claim_successor_projection",
+            None,
+        )
+        if not callable(get_successor):
+            return False
+        return get_successor(
+            task_cid=attempt.task_cid,
+            after_fencing_token=int(attempt.fencing_token),
+            after_fence_epoch=int(attempt.fence_epoch),
+        ) is None
+
+    def _stale_control_claim_is_recoverable(self, task: Any) -> bool:
+        """Require this lane's exact failed and expired claim before recovery.
+
+        An empty lane-local execution store cannot prove a shared task is an
+        orphan. The current control receipt, local attempt, and coordination
+        claim/lease must agree; a successor or prepared completion blocks this
+        path. A concurrent shared claim advances the revision checked by CAS.
+        """
+        binding = self._shared_claim_binding_for_this_owner(task)
+        if binding is None:
+            return False
+        attempt = self.get_attempt(str(binding["attempt_id"]))
+        return bool(
+            attempt is not None
+            and attempt.status == "failed"
+            and attempt.task_cid == task.task_cid
+            and self._shared_claim_binding_matches_attempt(task, attempt)
+            and self._terminal_coordination_reproduces_read_only(
+                attempt, require_expired=True
+            )
+        )
+
     def _extra_gate_stale_in_progress_opens_generic_rearm(
         self,
         task: Any,
         *,
         running_cids: set[str],
     ) -> bool:
-        """Rearm extra-gate in_progress when this daemon has no running attempt.
-
-        Owner recycle and same-session claim-without-grok both leave
-        PCTDD-006 in_progress. Skipping same-session receipts left home
-        daemons on no_ready_tasks. A live local running row still skips.
-        Official unstick is rearm, never CAS. Extra-gate aliases still
-        cannot bypass ``safe_to_restart=False``.
-        """
-
-        if not self._task_alias_is_extra_gate(task):
-            return False
-        if str(getattr(task, "status", "") or "").strip().lower() != "in_progress":
-            return False
-        task_cid = str(getattr(task, "task_cid", "") or "")
-        if not task_cid or task_cid in running_cids:
-            return False
-        body = getattr(task, "body", None)
-        receipt = (
-            dict(body.get("completion_receipt") or {})
-            if isinstance(body, Mapping)
-            else {}
+        """Require exact local failed/expired authority, never peer absence."""
+        return bool(
+            self._task_alias_is_extra_gate(task)
+            and str(getattr(task, "status", "")) == "in_progress"
+            and str(getattr(task, "task_cid", "")) not in running_cids
+            and self._stale_control_claim_is_recoverable(task)
         )
-        blocking_process = str(receipt.get("process_instance_id") or "")
-        if blocking_process and blocking_process == self.process_instance_id:
-            return False
-        return True
 
     def _extra_gate_running_attempt_is_live_local(
         self,
@@ -91353,6 +91555,9 @@ class DatabaseImplementationDaemon:
         receipts keep historical compact pairs for audit.  Those pairs must
         not fence a fresh claim.
         """
+
+        if not DatabaseImplementationDaemon._task_alias_is_extra_gate(task):
+            return False
 
         observed = dict(
             receipt
@@ -91808,15 +92013,13 @@ class DatabaseImplementationDaemon:
             "policy_mismatch": policy_mismatch,
             "malformed": malformed,
             "retry_exhausted": bool(
-                not rearmed
-                and (
-                    malformed
-                    or policy_mismatch
-                    or (
-                        effective_max_task_attempts > 0
-                        and attempts_used >= effective_max_task_attempts
-                        and not fenced_provider_retry_credit
-                    )
+                malformed
+                or policy_mismatch
+                or (
+                    not rearmed
+                    and effective_max_task_attempts > 0
+                    and attempts_used >= effective_max_task_attempts
+                    and not fenced_provider_retry_credit
                 )
             ),
         }
@@ -98340,7 +98543,11 @@ class DatabaseImplementationDaemon:
         for task in getattr(inflight, "tasks", ()):
             # Owner recycle leaves extra-gate in_progress with no local
             # running attempt. Home daemons then idle on no_ready_tasks.
-            if self._task_alias_is_extra_gate(task):
+            if (
+                self._task_alias_is_extra_gate(task)
+                and str(getattr(task, "status", "")) == "in_progress"
+                and all(str(item.task_cid) != str(task.task_cid) for item in scan_tasks)
+            ):
                 scan_tasks.append(task)
         outcomes: list[dict[str, Any]] = list(landed_recoveries)
         for task in scan_tasks:
@@ -98428,6 +98635,7 @@ class DatabaseImplementationDaemon:
                     "elapsed_claim_after_durable_callback_blocked",
                     "claim_authority_lost_after_durable_callback_blocked",
                     "completed_claim_without_promoted_completion_blocked",
+                    "callback_authority_incomplete_blocked",
                 }
                 or stale_dispatch_migration_candidate
             ):
@@ -98437,11 +98645,7 @@ class DatabaseImplementationDaemon:
                 # not permission to apply that callback again; only explicit
                 # operator repair may resolve this typed interrupted-after-
                 # effect terminal.
-                #
-                # callback_authority_incomplete_blocked is the opposite: the
-                # provider dispatch outcome is unknown and has no exact
-                # durable terminal evidence. Generic rearm continues when
-                # nested evidence is None (never CAS-complete).
+                # An unknown callback is not proof that no effect occurred.
                 continue
             unknown_block = receipt.get("forced_block") is True and (
                 operation == "database_unknown_outcome_blocked"
@@ -98550,7 +98754,6 @@ class DatabaseImplementationDaemon:
                     if (
                         claim_state == "accepted"
                         and expires_at_ms > self._now_ms()
-                        and not later_epoch_generic_rearm
                     ):
                         continue
                     terminal_claim = claim

@@ -6495,15 +6495,10 @@ def test_extra_gate_pre_dispatch_provider_error_defers_without_force_block(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
-def test_successor_session_rearms_stale_extra_gate_in_progress(
+def test_successor_session_preserves_unbound_extra_gate_in_progress(
     tmp_path: Path,
 ) -> None:
-    """Owner recycle must rearm extra-gate in_progress without a local worker.
-
-    Home daemons were idling on no_ready_tasks while DuckDB left PCTDD-006
-    in_progress after the claiming session died. Official unstick is rearm,
-    never CAS. Extra-gate aliases still cannot bypass safe_to_restart=False.
-    """
+    """A different process/session without exact claim evidence stays held."""
 
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor,
@@ -6545,11 +6540,9 @@ def test_successor_session_rearms_stale_extra_gate_in_progress(
     )
     try:
         rearms = successor.reconcile_blocked_unknown_outcome_tasks()
-        assert len(rearms) == 1
-        assert rearms[0]["rearmed"] is True
-        assert rearms[0]["task_alias"] == "PCTDD-006"
+        assert rearms == []
         recovered = successor.task_source.get("task:cid:001")
-        assert recovered is not None and recovered.status == "retrying"
+        assert recovered is not None and recovered.status == "in_progress"
         assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
             {
                 "safe_to_restart": False,
@@ -6564,16 +6557,10 @@ def test_successor_session_rearms_stale_extra_gate_in_progress(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
-def test_same_session_rearms_extra_gate_in_progress_without_running_attempt(
+def test_same_session_preserves_unbound_extra_gate_in_progress(
     tmp_path: Path,
 ) -> None:
-    """Same-session extra-gate in_progress without a running attempt must rearm.
-
-    Lane-2 claimed PCTDD-006 then idled on no_ready_tasks because the
-    predecessor-only skip refused same-session receipts. Official unstick
-    is rearm, never CAS. Extra-gate aliases still cannot bypass
-    safe_to_restart=False.
-    """
+    """A different process/session without exact claim evidence stays held."""
 
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor,
@@ -6607,10 +6594,9 @@ def test_same_session_rearms_extra_gate_in_progress_without_running_attempt(
         stuck = daemon.task_source.get("task:cid:001")
         assert stuck is not None and stuck.status == "in_progress"
         rearms = daemon.reconcile_blocked_unknown_outcome_tasks()
-        assert len(rearms) == 1
-        assert rearms[0]["rearmed"] is True
+        assert rearms == []
         recovered = daemon.task_source.get("task:cid:001")
-        assert recovered is not None and recovered.status == "retrying"
+        assert recovered is not None and recovered.status == "in_progress"
         assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
             {
                 "safe_to_restart": False,
@@ -10835,11 +10821,11 @@ def test_exact_quiesced_stale_release_bypasses_terminal_landed_selector(
         daemon.close()
 
 
-def test_callback_authority_incomplete_without_evidence_generic_rearms(
+def test_callback_authority_incomplete_without_evidence_stays_blocked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Unknown callback authority with no nested proof rearms to retrying."""
+    """Unknown callback effects require exact recovery evidence before retry."""
 
     seed = _open_daemon(
         tmp_path,
@@ -10905,22 +10891,19 @@ def test_callback_authority_incomplete_without_evidence_generic_rearms(
 
         outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
 
-        assert len(outcomes) == 1
-        assert outcomes[0]["rearmed"] is True
-        assert outcomes[0]["operation"] == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
-        rearmed = daemon.task_source.get(task_cid)
-        assert rearmed is not None and rearmed.status == "retrying"
-        assert "completed" not in cas_statuses
-        assert "retrying" in cas_statuses
+        assert outcomes == []
+        held = daemon.task_source.get(task_cid)
+        assert held is not None and held.status == "blocked"
+        assert cas_statuses == []
     finally:
         daemon.close()
 
 
-def test_consumed_reserved_callback_authority_incomplete_generic_rearms(
+def test_consumed_reserved_callback_authority_incomplete_stays_blocked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Consumed extra-gate one-shot still rearms unknown callback authority."""
+    """Unknown callback effects require exact recovery evidence before retry."""
 
     seed = _open_daemon(
         tmp_path,
@@ -10991,11 +10974,10 @@ def test_consumed_reserved_callback_authority_incomplete_generic_rearms(
 
         outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
 
-        assert len(outcomes) == 1
-        assert outcomes[0]["rearmed"] is True
-        rearmed = daemon.task_source.get(task_cid)
-        assert rearmed is not None and rearmed.status == "retrying"
-        assert cas_statuses == ["retrying"]
+        assert outcomes == []
+        held = daemon.task_source.get(task_cid)
+        assert held is not None and held.status == "blocked"
+        assert cas_statuses == []
     finally:
         daemon.close()
 
