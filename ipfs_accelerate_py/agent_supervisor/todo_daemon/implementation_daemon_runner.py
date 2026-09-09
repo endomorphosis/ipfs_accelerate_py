@@ -2167,6 +2167,16 @@ def bind_database_portal_execution_from_args(
             "database Portal bridge does not expose protected reconciliation "
             "self-lock recovery"
         )
+    claim_verification_recovery = getattr(
+        bridge,
+        "recover_post_merge_completion_claim_verification",
+        None,
+    )
+    if not callable(claim_verification_recovery):
+        raise RuntimeError(
+            "database Portal bridge does not expose post-merge completion "
+            "claim-verification recovery"
+        )
     binder(
         provider_fn=bridge.run_provider,
         effect_fn=bridge.apply_effect,
@@ -2183,6 +2193,9 @@ def bind_database_portal_execution_from_args(
         landed_completion_recovery_fn=bridge.recover_landed_completion,
         validation_retry_successor_recovery_fn=(
             bridge.verify_validation_retry_successor_recovery
+        ),
+        post_merge_completion_claim_verification_recovery_fn=(
+            claim_verification_recovery
         ),
         post_commit_candidate_recovery_fn=(
             bridge.recover_post_commit_candidate

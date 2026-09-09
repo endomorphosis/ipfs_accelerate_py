@@ -643,6 +643,14 @@ def test_daemon_resolves_relative_worktree_root_for_runner_workspace(tmp_path: P
     def unexpected_secret_store_access(*_args, **_kwargs):
         pytest.fail("forced Codex command inspected an unrelated Meta secret")
 
+    for route_field in (
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT",
+    ):
+        monkeypatch.delenv(route_field, raising=False)
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
         "codex",
@@ -1302,6 +1310,9 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
     assert callbacks["post_commit_candidate_recovery_fn"] == (
         bridge.recover_post_commit_candidate
     )
+    assert callbacks[
+        "post_merge_completion_claim_verification_recovery_fn"
+    ] == bridge.recover_post_merge_completion_claim_verification
     assert callbacks["merge_train_recovery"] == {
         "merge_queue": bridge.merge_queue,
         "repo_root": repo,

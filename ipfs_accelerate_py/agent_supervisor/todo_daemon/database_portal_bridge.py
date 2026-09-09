@@ -349,6 +349,13 @@ DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-completion-recovery-seed@2"
 )
+DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-completion-claim-verification-recovery@1"
+)
+DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON: Final[str] = (
+    "post-merge completion recovery seed failed claim verification"
+)
 DATABASE_POST_MERGE_COMPLETION_LINEAGE_FAILURE_REASON: Final[str] = (
     "Portal completion lacks one exact implementation commit"
 )
@@ -1308,6 +1315,80 @@ _POST_MERGE_COMPLETION_RECOVERY_SEED_V2_FIELDS: Final[frozenset[str]] = (
     frozenset(
         {*_POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS, "recovery_control_revision"}
     )
+)
+_POST_MERGE_COMPLETION_CLAIM_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "operation",
+        "claim_id",
+        "attempt_id",
+        "attempt_number",
+        "owner_session_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "claimed_from_revision",
+        "task_shard_count",
+        "task_shard_index",
+        "strict_task_sharding",
+        "idle_lane_work_stealing",
+        "task_prefix",
+        "claim_phase_schema",
+        "claim_process_attestation",
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+        "post_merge_completion_recovery_source_attempt_id",
+        "post_merge_completion_recovery_seed",
+    }
+)
+_POST_MERGE_COMPLETION_CLAIM_TRANSFER_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "virgin_task_transfer",
+        "virgin_task_transfer_claim_cursor",
+    }
+)
+_POST_MERGE_COMPLETION_CLAIM_OWNER_FIELDS: Final[frozenset[str]] = frozenset(
+    {"unknown_callback_reopen_count"}
+)
+_POST_MERGE_COMPLETION_TRANSFER_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "mode",
+        "cohort_id",
+        "claim_policy_id",
+        "store_generation",
+        "task_cid",
+        "task_alias",
+        "task_prefix",
+        "task_shard_count",
+        "home_shard_index",
+        "recipient_shard_index",
+        "source_task_revision",
+        "claim_id",
+        "attempt_id",
+        "owner_session_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "preclaim_projection_id",
+        "donor_active",
+        "donor_ready_count",
+        "binding_id",
+    }
+)
+_POST_MERGE_COMPLETION_TRANSFER_CURSOR_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "binding_id",
+        "claim_id",
+        "attempt_id",
+        "owner_session_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "claimed_from_revision",
+        "cursor_id",
+    }
 )
 _DATABASE_POST_MERGE_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -2967,6 +3048,293 @@ def _canonical_json(value: Any) -> bytes:
 
 def _sha256_bytes(value: bytes) -> str:
     return f"sha256:{hashlib.sha256(value).hexdigest()}"
+
+
+def _validated_post_merge_completion_claim_receipt(
+    receipt: Any,
+    *,
+    task_cid: str,
+    task_alias: str,
+    receipt_body: Mapping[str, Any],
+    predecessor_receipt: Mapping[str, Any] | None = None,
+    expected_claim_policy: Mapping[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Validate the closed owner reservation used by completion recovery.
+
+    A typed admission is a mechanical overlay on this reservation.  Closing
+    the reservation first prevents a forged field from becoming authoritative
+    merely because it was copied into both revisions.
+    """
+
+    if not isinstance(receipt, Mapping):
+        return None
+    value = dict(receipt)
+    transfer_carried = set(value) & _POST_MERGE_COMPLETION_CLAIM_TRANSFER_FIELDS
+    owner_carried = set(value) & _POST_MERGE_COMPLETION_CLAIM_OWNER_FIELDS
+    if (
+        transfer_carried
+        not in (set(), set(_POST_MERGE_COMPLETION_CLAIM_TRANSFER_FIELDS))
+        or owner_carried
+        not in (set(), set(_POST_MERGE_COMPLETION_CLAIM_OWNER_FIELDS))
+        or set(value)
+        != (
+            set(_POST_MERGE_COMPLETION_CLAIM_FIELDS)
+            | transfer_carried
+            | owner_carried
+        )
+    ):
+        return None
+
+    from ..task_sources.intent_repository import (
+        DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+        _database_virgin_transfer_claim_cursor,
+        database_virgin_transfer_binding_for_task,
+    )
+    from ..task_sources.task_execution_route_policy import (
+        TaskExecutionRouteBinding,
+    )
+    from ..task_sources.typed_state_owner import (
+        TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+        TypedStateOwnerAuthorizationError,
+        _validated_database_claim_process_attestation,
+    )
+
+    positive_integer_fields = (
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "claimed_from_revision",
+        "task_shard_count",
+        "execution_route_origin_revision",
+    )
+    nonempty_string_fields = (
+        "claim_id",
+        "attempt_id",
+        "owner_session_id",
+        "lease_id",
+        "execution_route_policy_id",
+        "post_merge_completion_recovery_source_attempt_id",
+    )
+    shard_count = value.get("task_shard_count")
+    shard_index = value.get("task_shard_index")
+    stealing = value.get("idle_lane_work_stealing")
+    prefix = value.get("task_prefix")
+    if (
+        value.get("operation") != "database_claim"
+        or value.get("claim_phase_schema")
+        != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        or any(
+            type(value.get(field)) is not int or value[field] < 1
+            for field in positive_integer_fields
+        )
+        or type(shard_index) is not int
+        or not (0 <= shard_index < shard_count)
+        or type(value.get("strict_task_sharding")) is not bool
+        or type(stealing) is not str
+        or stealing not in {"", DATABASE_VIRGIN_TASK_TRANSFER_MODE}
+        or type(prefix) is not str
+        or any(
+            type(value.get(field)) is not str or not value[field]
+            for field in nonempty_string_fields
+        )
+        or not isinstance(value.get("execution_route_binding"), Mapping)
+        or not isinstance(
+            value.get("post_merge_completion_recovery_seed"), Mapping
+        )
+        or (
+            stealing == DATABASE_VIRGIN_TASK_TRANSFER_MODE
+            and (
+                value.get("strict_task_sharding") is not True
+                or shard_count <= 1
+                or not prefix
+            )
+        )
+        or (prefix and not task_alias.startswith(prefix))
+    ):
+        return None
+    try:
+        normalized_route = TaskExecutionRouteBinding.from_dict(
+            value["execution_route_binding"]
+        ).to_dict()
+    except Exception:
+        return None
+    if (
+        dict(value["execution_route_binding"]) != normalized_route
+        or normalized_route.get("task_cid") != task_cid
+        or normalized_route.get("task_alias") != task_alias
+        or value.get("execution_route_policy_id")
+        != normalized_route.get("policy_id")
+        or value.get("execution_route_origin_revision")
+        != normalized_route.get("task_revision")
+    ):
+        return None
+    if expected_claim_policy is not None:
+        policy_fields = {
+            "task_prefix",
+            "task_shard_count",
+            "task_shard_index",
+            "strict_task_sharding",
+            "idle_lane_work_stealing",
+        }
+        if set(expected_claim_policy) != policy_fields or any(
+            type(value.get(field)) is not type(expected_claim_policy[field])
+            or value.get(field) != expected_claim_policy[field]
+            for field in policy_fields
+        ):
+            return None
+    try:
+        _validated_database_claim_process_attestation(value)
+    except (TypedStateOwnerAuthorizationError, TypeError, ValueError):
+        return None
+
+    if owner_carried:
+        reopen_count = value.get("unknown_callback_reopen_count")
+        if type(reopen_count) is not int or reopen_count < 0:
+            return None
+    if predecessor_receipt is not None:
+        owner_field = "unknown_callback_reopen_count"
+        predecessor_transfer = (
+            set(predecessor_receipt)
+            & _POST_MERGE_COMPLETION_CLAIM_TRANSFER_FIELDS
+        )
+        if (
+            predecessor_transfer
+            not in (
+                set(),
+                set(_POST_MERGE_COMPLETION_CLAIM_TRANSFER_FIELDS),
+            )
+            or predecessor_transfer != transfer_carried
+            or (
+                predecessor_transfer
+                and (
+                    not isinstance(
+                        predecessor_receipt.get("virgin_task_transfer"),
+                        Mapping,
+                    )
+                    or not isinstance(
+                        predecessor_receipt.get(
+                            "virgin_task_transfer_claim_cursor"
+                        ),
+                        Mapping,
+                    )
+                    or _canonical_json(
+                        predecessor_receipt["virgin_task_transfer"]
+                    )
+                    != _canonical_json(value["virgin_task_transfer"])
+                )
+            )
+            or (owner_field in value) != (owner_field in predecessor_receipt)
+            or (
+                owner_field in value
+                and (
+                    type(predecessor_receipt.get(owner_field)) is not int
+                    or predecessor_receipt.get(owner_field) != value[owner_field]
+                )
+            )
+        ):
+            return None
+
+    if transfer_carried:
+        if stealing != DATABASE_VIRGIN_TASK_TRANSFER_MODE:
+            return None
+        raw_binding = value.get("virgin_task_transfer")
+        raw_cursor = value.get("virgin_task_transfer_claim_cursor")
+        if (
+            not isinstance(raw_binding, Mapping)
+            or set(raw_binding) != _POST_MERGE_COMPLETION_TRANSFER_BINDING_FIELDS
+            or not isinstance(raw_cursor, Mapping)
+            or set(raw_cursor) != _POST_MERGE_COMPLETION_TRANSFER_CURSOR_FIELDS
+        ):
+            return None
+        historical_task = {
+            "task_cid": task_cid,
+            "task_alias": task_alias,
+            "status": "in_progress",
+            "revision": value["claimed_from_revision"] + 1,
+            "body": dict(receipt_body),
+        }
+        try:
+            binding = database_virgin_transfer_binding_for_task(
+                historical_task,
+                shard_count=shard_count,
+            )
+        except Exception:
+            return None
+        if (
+            binding is None
+            or dict(binding) != dict(value["virgin_task_transfer"])
+            or binding.get("recipient_shard_index") != shard_index
+        ):
+            return None
+        cursor = _database_virgin_transfer_claim_cursor(
+            receipt=value,
+            binding=binding,
+        )
+        claim_cursor_fields = (
+            "claim_id",
+            "attempt_id",
+            "owner_session_id",
+            "lease_id",
+            "fencing_token",
+            "fence_epoch",
+            "claimed_from_revision",
+        )
+        if any(
+            cursor.get(field) != value.get(field)
+            for field in claim_cursor_fields
+        ):
+            return None
+        if predecessor_receipt is not None:
+            predecessor_binding_raw = predecessor_receipt.get(
+                "virgin_task_transfer"
+            )
+            predecessor_cursor_raw = predecessor_receipt.get(
+                "virgin_task_transfer_claim_cursor"
+            )
+            if (
+                not isinstance(predecessor_binding_raw, Mapping)
+                or set(predecessor_binding_raw)
+                != _POST_MERGE_COMPLETION_TRANSFER_BINDING_FIELDS
+                or not isinstance(predecessor_cursor_raw, Mapping)
+                or set(predecessor_cursor_raw)
+                != _POST_MERGE_COMPLETION_TRANSFER_CURSOR_FIELDS
+            ):
+                return None
+            predecessor_task = {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "status": "retrying",
+                "revision": value["claimed_from_revision"],
+                "body": {
+                    "completion_receipt": dict(predecessor_receipt),
+                },
+            }
+            try:
+                predecessor_binding = database_virgin_transfer_binding_for_task(
+                    predecessor_task,
+                    shard_count=shard_count,
+                )
+                predecessor_cursor = _database_virgin_transfer_claim_cursor(
+                    receipt=predecessor_receipt,
+                    binding=predecessor_binding,
+                )
+            except Exception:
+                return None
+            if (
+                predecessor_binding is None
+                or dict(predecessor_binding) != dict(binding)
+                or cursor["claimed_from_revision"]
+                <= predecessor_cursor["claimed_from_revision"]
+                or any(
+                    cursor[field] == predecessor_cursor[field]
+                    for field in ("claim_id", "attempt_id", "lease_id")
+                )
+                or cursor["fencing_token"]
+                <= predecessor_cursor["fencing_token"]
+                or cursor["fence_epoch"] < predecessor_cursor["fence_epoch"]
+            ):
+                return None
+    return value
 
 
 def database_portal_task_contract_digest(record: Any) -> str:
@@ -11350,6 +11718,362 @@ class DatabasePortalExecutionBridge:
                         "validated no-change declared output is absent"
                     )
         return baseline_tree
+
+    def recover_post_merge_completion_claim_verification(
+        self,
+        attempt: Any,
+        history_context: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Reprove the exact r19-r24 candidate without dispatching a provider.
+
+        The callback is evidence-only with respect to supervisor state.  It
+        reads the canonical task/history and merge queue, reuses the ordinary
+        post-merge qualification verifier, and returns a content-addressed
+        proposal.  Only the implementation daemon may turn that proposal into
+        the blocked-to-retrying owner CAS.
+        """
+
+        from ..proof.formal_verification_contracts import content_identity
+
+        branch = str(self.merge_target_branch or "")
+        try:
+            repository_root = (
+                self.repository_root.resolve(strict=True)
+                if self.repository_root is not None
+                else None
+            )
+        except (OSError, RuntimeError):
+            repository_root = None
+        if (
+            repository_root is None
+            or not repository_root.is_dir()
+            or not branch
+            or len(branch.encode("utf-8")) > 255
+            or branch.startswith(("-", ".", "/"))
+            or branch.endswith((".", "/"))
+            or ".." in branch
+            or "@{" in branch
+            or "\\" in branch
+            or not re.fullmatch(r"[A-Za-z0-9._/-]+", branch)
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge claim-verification repository target is unsafe"
+            )
+
+        context_fields = {
+            "schema",
+            "task_cid",
+            "task_alias",
+            "source_task_revision",
+            "recovery_task_revision",
+            "route_recovery_task_revision",
+            "claim_task_revision",
+            "admission_task_revision",
+            "blocked_task_revision",
+            "unknown_callback_reopen_count",
+            "history_projection_cid",
+            "semantic_body_id",
+            "source_seed",
+            "rebased_seed",
+            "execution_route_binding",
+            "execution_route_binding_id",
+            "blocked_attempt",
+            "blocked_receipt_id",
+            "context_id",
+        }
+        if not isinstance(history_context, Mapping):
+            raise DatabasePortalBridgeError(
+                "post-merge claim-verification context is malformed"
+            )
+        context = dict(history_context)
+        context_body = dict(context)
+        context_id = context_body.pop("context_id", None)
+        source_seed = context.get("source_seed")
+        rebased_seed = context.get("rebased_seed")
+        route = context.get("execution_route_binding")
+        blocked_attempt = context.get("blocked_attempt")
+        blocked_attempt_fields = {
+            "schema",
+            "attempt_id",
+            "claim_id",
+            "task_cid",
+            "task_alias",
+            "attempt_number",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "lease_id",
+            "committed_phase",
+            "status",
+            "finished_at_ms",
+            "revision",
+            "post_merge_completion_recovery_source_attempt_id",
+            "post_merge_completion_recovery_seed",
+            "execution_route_binding",
+        }
+        expected_blocked_attempt = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-post-merge-completion-claim-verification-attempt@1"
+            ),
+            "attempt_id": getattr(attempt, "attempt_id", None),
+            "claim_id": getattr(attempt, "claim_id", None),
+            "task_cid": getattr(attempt, "task_cid", None),
+            "task_alias": getattr(attempt, "task_alias", None),
+            "attempt_number": getattr(attempt, "attempt_number", None),
+            "owner_session_id": getattr(attempt, "owner_session_id", None),
+            "fencing_token": getattr(attempt, "fencing_token", None),
+            "fence_epoch": getattr(attempt, "fence_epoch", None),
+            "lease_id": getattr(attempt, "lease_id", None),
+            "committed_phase": getattr(attempt, "committed_phase", None),
+            "status": getattr(attempt, "status", None),
+            "finished_at_ms": getattr(attempt, "finished_at_ms", None),
+            "revision": getattr(attempt, "revision", None),
+            "post_merge_completion_recovery_source_attempt_id": (
+                source_seed.get("attempt_id")
+                if isinstance(source_seed, Mapping)
+                else None
+            ),
+            "post_merge_completion_recovery_seed": (
+                dict(source_seed) if isinstance(source_seed, Mapping) else None
+            ),
+            "execution_route_binding": (
+                dict(route) if isinstance(route, Mapping) else None
+            ),
+        }
+        if (
+            set(context) != context_fields
+            or context.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-post-merge-completion-claim-verification-context@2"
+            )
+            or context_id != content_identity(context_body)
+            or not isinstance(source_seed, Mapping)
+            or not isinstance(rebased_seed, Mapping)
+            or not isinstance(route, Mapping)
+            or not route
+            or not isinstance(blocked_attempt, Mapping)
+            or set(blocked_attempt) != blocked_attempt_fields
+            or _canonical_json(dict(blocked_attempt))
+            != _canonical_json(expected_blocked_attempt)
+            or type(context.get("unknown_callback_reopen_count")) is not int
+            or context["unknown_callback_reopen_count"] < 0
+            or context.get("source_task_revision") != 19
+            or context.get("recovery_task_revision") != 20
+            or context.get("route_recovery_task_revision") != 21
+            or context.get("claim_task_revision") != 22
+            or context.get("admission_task_revision") != 23
+            or context.get("blocked_task_revision") != 24
+            or context.get("task_cid")
+            != str(getattr(attempt, "task_cid", "") or "")
+            or context.get("task_alias")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or context.get("execution_route_binding_id")
+            != content_identity({"task_execution_route_binding": dict(route)})
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge claim-verification context failed identity checks"
+            )
+
+        source = dict(source_seed)
+        source_id = source.pop("seed_id", None)
+        rebased = dict(rebased_seed)
+        rebased_id = rebased.pop("seed_id", None)
+        source_semantics = dict(source)
+        rebased_semantics = dict(rebased)
+        source_semantics.pop("schema", None)
+        rebased_semantics.pop("schema", None)
+        rebased_semantics.pop("recovery_control_revision", None)
+        if (
+            set(source_seed) != _POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS
+            or set(rebased_seed)
+            != _POST_MERGE_COMPLETION_RECOVERY_SEED_V2_FIELDS
+            or source.get("schema")
+            != DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+            or rebased.get("schema")
+            != DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+            or source_id != _sha256_bytes(_canonical_json(source))
+            or rebased_id != _sha256_bytes(_canonical_json(rebased))
+            or source_semantics != rebased_semantics
+            or source.get("source_task_revision") != 19
+            or rebased.get("recovery_control_revision") != 24
+            or source.get("qualification_kind") != "callback_integration"
+            or source.get("terminal_reason")
+            != DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+            or source.get("task_cid") != context["task_cid"]
+            or source.get("task_alias") != context["task_alias"]
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge claim-verification seed rebase is invalid"
+            )
+
+        record = self._record_for_attempt(self.task_source, attempt)
+        record_body = getattr(record, "body", None)
+        terminal = (
+            record_body.get("completion_receipt")
+            if isinstance(record_body, Mapping)
+            else None
+        )
+        history_reader = getattr(
+            self.task_source,
+            "task_revision_history_projection",
+            None,
+        )
+        history = history_reader(str(attempt.task_cid)) if callable(history_reader) else None
+        if (
+            str(getattr(attempt, "status", "") or "").lower() != "failed"
+            or str(getattr(attempt, "committed_phase", "") or "") != "failed"
+            or str(getattr(record, "status", "") or "").lower() != "blocked"
+            or getattr(record, "revision", None) != 24
+            or not isinstance(terminal, Mapping)
+            or terminal.get("operation") != "database_portal_terminal_failure"
+            or terminal.get("reason")
+            != DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON
+            or terminal.get("retryable") is not False
+            or terminal.get("control_expected_status") != "in_progress"
+            or terminal.get("control_expected_revision") != 23
+            or any(
+                terminal.get(field) != getattr(attempt, field)
+                for field in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                    "attempt_number",
+                )
+            )
+            or context.get("blocked_receipt_id")
+            != content_identity(
+                {"post_merge_claim_verification_terminal": dict(terminal)}
+            )
+            or not isinstance(history, Mapping)
+            or history.get("projection_cid")
+            != context.get("history_projection_cid")
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge claim-verification terminal state changed"
+            )
+
+        if self.merge_queue is None:
+            raise DatabasePortalBridgeError(
+                "post-merge claim-verification recovery has no merge queue"
+            )
+        request_id = str(source["request_id"])
+        request = self.merge_queue.get(request_id)
+
+        def project(current: Any) -> _DatabasePortalRecoveryProjection | None:
+            return (
+                self._owned_post_merge_recovery_projection(
+                    current,
+                    allowed_task_statuses=frozenset({"blocked"}),
+                    allow_shared_lane_source=True,
+                    allow_callback_reconciliation_transport_lineage=True,
+                )
+                if current is not None
+                else None
+            )
+
+        projection = project(request)
+        if projection is None:
+            raise DatabasePortalBridgeError(
+                "post-merge claim-verification recovery lost its queue source"
+            )
+
+        def authority_is_current() -> bool:
+            current = self.merge_queue.get(request_id)
+            return current == request and project(current) == projection
+
+        evidence = self._post_merge_recovery_evidence(
+            request,
+            projection,
+            evidence_digest=lambda value: _sha256_bytes(_canonical_json(value)),
+            revalidate_authority=authority_is_current,
+        )
+        if (
+            isinstance(evidence, _PostMergeRecoveryDisposition)
+            or not isinstance(evidence, Mapping)
+            or not authority_is_current()
+            or evidence.get("schema")
+            != _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA
+            or evidence.get("evidence_id") != source["recovery_evidence_id"]
+            or evidence.get("request_id") != request_id
+            or evidence.get("task_cid") != source["task_cid"]
+            or evidence.get("task_alias") != source["task_alias"]
+            or evidence.get("candidate_commit") != source["candidate_commit"]
+            or evidence.get("qualified_target_commit")
+            != source["qualified_target_commit"]
+            or evidence.get("callback_requalification_receipt_id")
+            != source["qualification_receipt_id"]
+            or evidence.get("source_binding_id")
+            != source["queue_source_binding_id"]
+            or evidence.get("source_projection_immutable_digest")
+            != source["queue_source_projection_immutable_digest"]
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge claim-verification evidence changed"
+            )
+        target = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                f"refs/heads/{branch}^{{commit}}",
+            ],
+            cwd=repository_root,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=10,
+        )
+        if (
+            target.returncode != 0
+            or target.stdout.strip() != source["qualified_target_commit"]
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge claim-verification target generation changed"
+            )
+
+        receipt: dict[str, Any] = {
+            "schema": DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA,
+            "disposition": "retry_exact_post_merge_completion_seed",
+            "reason": DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON,
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(attempt.task_alias),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(attempt.lease_id),
+            "owner_session_id": str(attempt.owner_session_id),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "blocked_task_revision": 24,
+            "history_context_id": str(context_id),
+            "history_projection_cid": str(context["history_projection_cid"]),
+            "source_seed_id": str(source_id),
+            "rebased_seed_id": str(rebased_id),
+            "request_id": request_id,
+            "candidate_commit": str(source["candidate_commit"]),
+            "qualified_target_commit": str(source["qualified_target_commit"]),
+            "qualification_kind": "callback_integration",
+            "qualification_receipt_id": str(source["qualification_receipt_id"]),
+            "recovery_evidence_id": str(source["recovery_evidence_id"]),
+            "queue_source_binding_id": str(source["queue_source_binding_id"]),
+            "queue_source_projection_immutable_digest": str(
+                source["queue_source_projection_immutable_digest"]
+            ),
+            "execution_route_binding_id": str(
+                context["execution_route_binding_id"]
+            ),
+            "candidate_preserved": True,
+            "target_generation_unchanged": True,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        return receipt
 
     def recover_landed_completion(self, attempt: Any) -> Mapping[str, Any] | None:
         """Propose a landed candidate for a newer, freshly validated claim.
@@ -27104,6 +27828,732 @@ class DatabasePortalExecutionBridge:
             )
         return dict(validated)
 
+    def _post_merge_completion_claim_receipt(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+        status_receipt: Mapping[str, Any],
+        seed: Mapping[str, Any],
+        recovery_control_revision: int,
+    ) -> dict[str, Any] | None:
+        """Return the exact claim beneath an optional typed admission.
+
+        The ordinary legacy handoff ends directly in a claim two revisions
+        after the terminal generation.  A typed owner can additionally insert
+        one route-lineage repair before that claim and then promote the claim
+        through one exact admission revision.  Neither transition spends a
+        provider attempt.  Reproduce the content-addressed five-revision
+        history, including the owner's exact claim-to-admission transform,
+        instead of weakening the legacy revision check to a loose ``+4``.
+        """
+
+        if not isinstance(status_receipt, Mapping):
+            return None
+        record_revision = getattr(record, "revision", None)
+        if (
+            isinstance(record_revision, bool)
+            or not isinstance(record_revision, int)
+            or isinstance(recovery_control_revision, bool)
+            or not isinstance(recovery_control_revision, int)
+        ):
+            return None
+        from ..proof.formal_verification_contracts import content_identity
+        from ..task_sources.intent_repository import (
+            TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+        )
+        from ..task_sources.task_execution_route_policy import (
+            TaskExecutionRouteBinding,
+        )
+        from ..task_sources.typed_state_owner import (
+            TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+            TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+            TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
+            TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
+            TypedStateOwnerAuthorizationError,
+            _validated_database_claim_process_attestation,
+        )
+
+        claim_receipt = dict(status_receipt)
+        claim_revision = record_revision
+        history: Mapping[str, Any] | None = None
+        revisions: list[Any] | None = None
+        if status_receipt.get("operation") == "database_attempt_admitted":
+            history_projection = getattr(
+                self.task_source,
+                "task_revision_history_projection",
+                None,
+            )
+            if not callable(history_projection):
+                return None
+            try:
+                raw_history = history_projection(str(attempt.task_cid))
+            except Exception:
+                return None
+            history = raw_history if isinstance(raw_history, Mapping) else None
+            revisions = (
+                history.get("revisions")
+                if isinstance(history, Mapping)
+                else None
+            )
+            history_body = dict(history) if isinstance(history, Mapping) else {}
+            history_cid = history_body.pop("projection_cid", None)
+            if (
+                not isinstance(history, Mapping)
+                or set(history)
+                != {"schema", "task_cid", "revisions", "projection_cid"}
+                or history.get("schema")
+                != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+                or history.get("task_cid") != str(attempt.task_cid)
+                or not isinstance(revisions, list)
+                or history_cid != content_identity(history_body)
+            ):
+                return None
+            claim_revision = record_revision - 1
+            adjacent = [
+                (index, entry)
+                for index, entry in enumerate(revisions)
+                if isinstance(entry, Mapping)
+                and entry.get("revision") in {claim_revision, record_revision}
+            ]
+            if (
+                len(adjacent) != 2
+                or [index for index, _entry in adjacent]
+                != [adjacent[0][0], adjacent[0][0] + 1]
+                or [entry.get("revision") for _index, entry in adjacent]
+                != [claim_revision, record_revision]
+                or any(
+                    set(entry) != {"revision", "status", "body"}
+                    for _index, entry in adjacent
+                )
+                or [
+                    str(entry.get("status") or "").strip().lower()
+                    for _index, entry in adjacent
+                ]
+                != ["in_progress", "in_progress"]
+                or str(getattr(record, "status", "") or "").strip().lower()
+                != "in_progress"
+            ):
+                return None
+            claim_body = adjacent[0][1].get("body")
+            admission_body = adjacent[1][1].get("body")
+            record_body = getattr(record, "body", None)
+            if (
+                not isinstance(claim_body, Mapping)
+                or not isinstance(admission_body, Mapping)
+                or not isinstance(record_body, Mapping)
+                or _canonical_json(dict(admission_body))
+                != _canonical_json(dict(record_body))
+            ):
+                return None
+            claim_value = dict(claim_body)
+            admission_value = dict(admission_body)
+            claim_raw = claim_value.pop("completion_receipt", None)
+            admission_raw = admission_value.pop("completion_receipt", None)
+            predecessor_matches = [
+                (index, entry)
+                for index, entry in enumerate(revisions)
+                if isinstance(entry, Mapping)
+                and entry.get("revision") == claim_revision - 1
+            ]
+            predecessor_body = (
+                predecessor_matches[0][1].get("body")
+                if len(predecessor_matches) == 1
+                and predecessor_matches[0][0] == adjacent[0][0] - 1
+                else None
+            )
+            predecessor_receipt = (
+                predecessor_body.get("completion_receipt")
+                if isinstance(predecessor_body, Mapping)
+                else None
+            )
+            if (
+                not isinstance(claim_raw, Mapping)
+                or not isinstance(admission_raw, Mapping)
+                or not isinstance(predecessor_receipt, Mapping)
+                or _canonical_json(claim_value) != _canonical_json(admission_value)
+            ):
+                return None
+            claim_raw = _validated_post_merge_completion_claim_receipt(
+                claim_raw,
+                task_cid=str(attempt.task_cid),
+                task_alias=str(attempt.task_alias),
+                receipt_body=claim_body,
+                predecessor_receipt=predecessor_receipt,
+            )
+            if claim_raw is None:
+                return None
+            try:
+                admission_attestation = (
+                    _validated_database_claim_process_attestation(admission_raw)
+                )
+            except (TypedStateOwnerAuthorizationError, TypeError, ValueError):
+                return None
+            if admission_attestation != claim_raw["claim_process_attestation"]:
+                return None
+            if seed.get("schema") == (
+                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+            ):
+                recovery_evidence = predecessor_receipt.get(
+                    "post_merge_completion_claim_verification_recovery"
+                )
+                evidence_body = (
+                    dict(recovery_evidence)
+                    if isinstance(recovery_evidence, Mapping)
+                    else {}
+                )
+                evidence_id = evidence_body.pop("receipt_id", None)
+                route = claim_raw["execution_route_binding"]
+                predecessor_identity_fields = (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+                predecessor_base_fields = {
+                    "operation",
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                    "attempt_number",
+                    "execution_phase",
+                    "execution_revision",
+                    "execution_finished_at_ms",
+                    "reason",
+                    "backoff_seconds",
+                    "backoff_ms",
+                    "retry_not_before_ms",
+                    "evidence_source",
+                    "queue_reason",
+                    "queue_reused",
+                    "queue_receipt",
+                    "coordination",
+                    "post_merge_completion_recovery_seed",
+                    "post_merge_completion_claim_verification_recovery",
+                    "recovery_process_attestation",
+                    "control_expected_status",
+                    "control_expected_revision",
+                }
+                predecessor_optional_fields = {
+                    field
+                    for field in (
+                        "execution_route_binding",
+                        "execution_route_policy_id",
+                        "execution_route_origin_revision",
+                        "virgin_task_transfer",
+                        "virgin_task_transfer_claim_cursor",
+                        "unknown_callback_reopen_count",
+                    )
+                    if field in predecessor_receipt
+                }
+                try:
+                    recovery_process_attestation = (
+                        _validated_database_claim_process_attestation(
+                            {
+                                "claim_process_attestation": (
+                                    predecessor_receipt.get(
+                                        "recovery_process_attestation"
+                                    )
+                                )
+                            }
+                        )
+                    )
+                except (
+                    TypedStateOwnerAuthorizationError,
+                    TypeError,
+                    ValueError,
+                ):
+                    return None
+                recovery_evidence_fields = {
+                    "schema",
+                    "disposition",
+                    "reason",
+                    "task_cid",
+                    "task_alias",
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                    "blocked_task_revision",
+                    "history_context_id",
+                    "history_projection_cid",
+                    "source_seed_id",
+                    "rebased_seed_id",
+                    "request_id",
+                    "candidate_commit",
+                    "qualified_target_commit",
+                    "qualification_kind",
+                    "qualification_receipt_id",
+                    "recovery_evidence_id",
+                    "queue_source_binding_id",
+                    "queue_source_projection_immutable_digest",
+                    "execution_route_binding_id",
+                    "candidate_preserved",
+                    "target_generation_unchanged",
+                    "provider_dispatched",
+                    "attempt_consumed",
+                    "receipt_id",
+                }
+                source_seed_body = dict(seed)
+                source_seed_body.pop("seed_id", None)
+                source_seed_body.pop("recovery_control_revision", None)
+                source_seed_body["schema"] = (
+                    DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+                )
+                source_seed_id = _sha256_bytes(_canonical_json(source_seed_body))
+                if (
+                    recovery_control_revision
+                    != seed.get("recovery_control_revision")
+                    or set(predecessor_receipt)
+                    != predecessor_base_fields | predecessor_optional_fields
+                    or predecessor_receipt.get("operation")
+                    != "database_portal_post_merge_declared_output_recovery"
+                    or predecessor_receipt.get("reason")
+                    != DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON
+                    or predecessor_receipt.get("control_expected_status")
+                    != "blocked"
+                    or predecessor_receipt.get("control_expected_revision")
+                    != recovery_control_revision
+                    or predecessor_receipt.get("backoff_seconds") != 0
+                    or predecessor_receipt.get("backoff_ms") != 0
+                    or _canonical_json(
+                        predecessor_receipt.get(
+                            "post_merge_completion_recovery_seed"
+                        )
+                    )
+                    != _canonical_json(dict(seed))
+                    or not isinstance(recovery_evidence, Mapping)
+                    or set(recovery_evidence) != recovery_evidence_fields
+                    or any(
+                        predecessor_receipt.get(field)
+                        != recovery_evidence.get(field)
+                        for field in predecessor_identity_fields
+                    )
+                    or any(
+                        predecessor_receipt.get(field)
+                        != claim_raw.get(field)
+                        for field in (
+                            "execution_route_binding",
+                            "execution_route_policy_id",
+                            "execution_route_origin_revision",
+                        )
+                    )
+                    or recovery_evidence.get("schema")
+                    != DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA
+                    or recovery_evidence.get("disposition")
+                    != "retry_exact_post_merge_completion_seed"
+                    or recovery_evidence.get("reason")
+                    != DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON
+                    or recovery_evidence.get("task_cid") != str(attempt.task_cid)
+                    or recovery_evidence.get("task_alias")
+                    != str(attempt.task_alias)
+                    or recovery_evidence.get("blocked_task_revision")
+                    != recovery_control_revision
+                    or recovery_evidence.get("rebased_seed_id")
+                    != seed.get("seed_id")
+                    or recovery_evidence.get("source_seed_id") != source_seed_id
+                    or recovery_evidence.get("request_id")
+                    != seed.get("request_id")
+                    or recovery_evidence.get("candidate_commit")
+                    != seed.get("candidate_commit")
+                    or recovery_evidence.get("qualified_target_commit")
+                    != seed.get("qualified_target_commit")
+                    or recovery_evidence.get("qualification_kind")
+                    != seed.get("qualification_kind")
+                    or recovery_evidence.get("qualification_receipt_id")
+                    != seed.get("qualification_receipt_id")
+                    or recovery_evidence.get("recovery_evidence_id")
+                    != seed.get("recovery_evidence_id")
+                    or recovery_evidence.get("queue_source_binding_id")
+                    != seed.get("queue_source_binding_id")
+                    or recovery_evidence.get(
+                        "queue_source_projection_immutable_digest"
+                    )
+                    != seed.get("queue_source_projection_immutable_digest")
+                    or recovery_evidence.get("execution_route_binding_id")
+                    != content_identity(
+                        {"task_execution_route_binding": dict(route)}
+                    )
+                    or recovery_evidence.get("candidate_preserved") is not True
+                    or recovery_evidence.get("target_generation_unchanged")
+                    is not True
+                    or recovery_evidence.get("provider_dispatched") is not False
+                    or recovery_evidence.get("attempt_consumed") is not False
+                    or not str(
+                        recovery_process_attestation.get("client_id") or ""
+                    ).startswith("database-implementation-daemon:")
+                    or evidence_id != _sha256_bytes(_canonical_json(evidence_body))
+                ):
+                    return None
+            expected_admission = {
+                **dict(claim_raw),
+                "operation": "database_attempt_admitted",
+                "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                "admitted_from_revision": claim_revision,
+                "attempt_execution_phase": "claimed",
+                "attempt_execution_revision": 1,
+            }
+            if (
+                claim_raw.get("claimed_from_revision") != claim_revision - 1
+                or _canonical_json(admission_raw)
+                != _canonical_json(expected_admission)
+                or _canonical_json(status_receipt)
+                != _canonical_json(admission_raw)
+            ):
+                return None
+            claim_receipt = dict(claim_raw)
+
+        # Typed admission is only a closed overlay on the underlying claim.
+        # Once removed, the ordinary recovery edge remains the original +2.
+        if (
+            recovery_control_revision + 2 == claim_revision
+            and claim_receipt.get("operation") == "database_claim"
+        ):
+            if seed.get("schema") == (
+                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+            ):
+                return claim_receipt
+            if (
+                seed.get("schema")
+                == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+                and status_receipt.get("operation")
+                == "database_attempt_admitted"
+                and record_revision == claim_revision + 1
+            ):
+                return claim_receipt
+            return None
+        if (
+            recovery_control_revision + 3 != claim_revision
+            or record_revision != claim_revision + 1
+            or status_receipt.get("operation") != "database_attempt_admitted"
+            or seed.get("schema")
+            != DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+            or seed.get("qualification_kind") != "callback_integration"
+            or seed.get("terminal_reason")
+            != DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+        ):
+            return None
+
+        if (
+            not isinstance(history, Mapping)
+            or set(history)
+            != {"schema", "task_cid", "revisions", "projection_cid"}
+            or history.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+            or history.get("task_cid") != str(attempt.task_cid)
+            or not isinstance(revisions, list)
+            or history_cid != content_identity(history_body)
+        ):
+            return None
+        expected_revisions = tuple(
+            range(recovery_control_revision, record_revision + 1)
+        )
+        entries: list[Mapping[str, Any]] = []
+        indices: list[int] = []
+        for revision in expected_revisions:
+            matches = [
+                (index, entry)
+                for index, entry in enumerate(revisions)
+                if isinstance(entry, Mapping)
+                and entry.get("revision") == revision
+            ]
+            if len(matches) != 1:
+                return None
+            index, entry = matches[0]
+            indices.append(index)
+            entries.append(entry)
+        record_body = getattr(record, "body", None)
+        if (
+            len(entries) != 5
+            or indices != list(range(indices[0], indices[0] + 5))
+            or any(set(entry) != {"revision", "status", "body"} for entry in entries)
+            or [str(entry.get("status") or "").strip().lower() for entry in entries]
+            != [
+                "quarantined",
+                "retrying",
+                "retrying",
+                "in_progress",
+                "in_progress",
+            ]
+            or str(getattr(record, "status", "") or "").strip().lower()
+            != "in_progress"
+            or not isinstance(record_body, Mapping)
+            or not isinstance(entries[-1].get("body"), Mapping)
+            or _canonical_json(dict(entries[-1]["body"]))
+            != _canonical_json(dict(record_body))
+        ):
+            return None
+        bodies = [entry.get("body") for entry in entries]
+        if any(not isinstance(body, Mapping) for body in bodies):
+            return None
+        semantic_bodies: list[dict[str, Any]] = []
+        receipts: list[Mapping[str, Any]] = []
+        for body in bodies:
+            assert isinstance(body, Mapping)
+            semantic = dict(body)
+            receipt = semantic.pop("completion_receipt", None)
+            if not isinstance(receipt, Mapping):
+                return None
+            semantic_bodies.append(semantic)
+            receipts.append(receipt)
+        if any(
+            _canonical_json(body) != _canonical_json(semantic_bodies[0])
+            for body in semantic_bodies[1:]
+        ):
+            return None
+        (
+            prior_receipt,
+            missing_receipt,
+            recovered_receipt,
+            claim_receipt,
+            admission_receipt,
+        ) = receipts
+        route = recovered_receipt.get("execution_route_binding")
+        witness = recovered_receipt.get("execution_route_lineage_recovery")
+        try:
+            normalized_route = TaskExecutionRouteBinding.from_dict(route).to_dict()
+        except Exception:
+            return None
+        validate_route = getattr(
+            self.task_source,
+            "validate_execution_route_binding",
+            None,
+        )
+        if not callable(validate_route):
+            return None
+        try:
+            current_route = dict(
+                validate_route(
+                    normalized_route,
+                    task=record,
+                    allow_claim_revision=True,
+                )
+            )
+        except Exception:
+            return None
+        if (
+            _canonical_json(route) != _canonical_json(normalized_route)
+            or _canonical_json(current_route) != _canonical_json(normalized_route)
+            or normalized_route.get("task_cid") != str(attempt.task_cid)
+            or normalized_route.get("task_alias") != str(attempt.task_alias)
+        ):
+            return None
+        route = normalized_route
+        route_fields = {
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        }
+        witness_fields = {
+            "schema",
+            "operation",
+            "task_cid",
+            "task_alias",
+            "source_task_revision",
+            "missing_route_task_revision",
+            "recovered_task_revision",
+            "prior_receipt_cid",
+            "current_receipt_cid",
+            "route_binding_cid",
+            "route_policy_id",
+            "current_policy_id",
+            "current_policy_source_revision",
+            "plan_root_cid",
+            "repository_tree_id",
+            "post_commit_candidate_receipt_id",
+            "queue_revision_before",
+            "queue_revision_after",
+            "receipt_id",
+        }
+        expected_admission_receipt = {
+            **dict(claim_receipt),
+            "operation": "database_attempt_admitted",
+            "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+            "admitted_from_revision": recovery_control_revision + 3,
+            "attempt_execution_phase": "claimed",
+            "attempt_execution_revision": 1,
+        }
+        expected_recovered_receipt = {
+            **dict(missing_receipt),
+            "schema": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
+            "operation": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
+            "source_control_operation": missing_receipt.get("operation"),
+            "control_expected_status": "retrying",
+            "control_expected_revision": recovery_control_revision + 1,
+            "execution_route_binding": route,
+            "execution_route_policy_id": route.get("policy_id"),
+            "execution_route_origin_revision": route.get("task_revision"),
+            "execution_route_lineage_recovery": witness,
+        }
+        source_identity_fields = (
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+        )
+        if (
+            prior_receipt.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-neutral-quarantine@1"
+            )
+            or prior_receipt.get("operation")
+            != "database_portal_neutral_failure_quarantine"
+            or prior_receipt.get("failure_kind")
+            != DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+            or prior_receipt.get("retry_suppressed") is not True
+            or set(prior_receipt) & route_fields != route_fields
+            or _canonical_json(prior_receipt.get("execution_route_binding"))
+            != _canonical_json(route)
+            or prior_receipt.get("execution_route_policy_id")
+            != route.get("policy_id")
+            or prior_receipt.get("execution_route_origin_revision")
+            != route.get("task_revision")
+            or any(
+                type(prior_receipt.get(field))
+                is not type(missing_receipt.get(field))
+                or prior_receipt.get(field) != missing_receipt.get(field)
+                for field in source_identity_fields
+            )
+            or (
+                "attempt_number" in prior_receipt
+                and (
+                    type(prior_receipt.get("attempt_number"))
+                    is not type(missing_receipt.get("attempt_number"))
+                    or prior_receipt.get("attempt_number")
+                    != missing_receipt.get("attempt_number")
+                )
+            )
+            or any(
+                type(missing_receipt.get(field)) is not type(seed.get(field))
+                or missing_receipt.get(field) != seed.get(field)
+                for field in (*source_identity_fields, "attempt_number")
+            )
+            or missing_receipt.get("operation")
+            != (
+                "database_post_merge_declared_outputs_"
+                "callback_integration_recovery"
+            )
+            or missing_receipt.get("control_expected_status") != "quarantined"
+            or missing_receipt.get("control_expected_revision")
+            != recovery_control_revision
+            or missing_receipt.get("post_merge_completion_recovery_seed")
+            is None
+            or _canonical_json(
+                missing_receipt.get("post_merge_completion_recovery_seed")
+            )
+            != _canonical_json(dict(seed))
+            or bool(set(missing_receipt) & route_fields)
+            or recovered_receipt.get("schema")
+            != TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA
+            or recovered_receipt.get("operation")
+            != TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
+            or recovered_receipt.get("source_control_operation")
+            != missing_receipt.get("operation")
+            or recovered_receipt.get("control_expected_status") != "retrying"
+            or recovered_receipt.get("control_expected_revision")
+            != recovery_control_revision + 1
+            or recovered_receipt.get("post_merge_completion_recovery_seed")
+            is None
+            or _canonical_json(
+                recovered_receipt.get("post_merge_completion_recovery_seed")
+            )
+            != _canonical_json(dict(seed))
+            or not isinstance(route, Mapping)
+            or not isinstance(witness, Mapping)
+            or set(witness) != witness_fields
+            or _canonical_json(recovered_receipt)
+            != _canonical_json(expected_recovered_receipt)
+            or claim_receipt.get("operation") != "database_claim"
+            or claim_receipt.get("claim_phase_schema")
+            != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            or not isinstance(
+                claim_receipt.get("claim_process_attestation"),
+                Mapping,
+            )
+            or claim_receipt.get("claimed_from_revision")
+            != recovery_control_revision + 2
+            or set(claim_receipt) & route_fields != route_fields
+            or _canonical_json(claim_receipt.get("execution_route_binding"))
+            != _canonical_json(route)
+            or claim_receipt.get("execution_route_policy_id")
+            != route.get("policy_id")
+            or claim_receipt.get("execution_route_origin_revision")
+            != route.get("task_revision")
+            or claim_receipt.get("post_merge_completion_recovery_seed")
+            is None
+            or _canonical_json(
+                claim_receipt.get("post_merge_completion_recovery_seed")
+            )
+            != _canonical_json(dict(seed))
+            or claim_receipt.get(
+                "post_merge_completion_recovery_source_attempt_id"
+            )
+            != seed.get("attempt_id")
+            or _canonical_json(admission_receipt)
+            != _canonical_json(expected_admission_receipt)
+            or _canonical_json(status_receipt)
+            != _canonical_json(admission_receipt)
+        ):
+            return None
+        witness_value = dict(witness)
+        witness_id = witness_value.pop("receipt_id", None)
+        if not (
+            witness.get("schema")
+            == TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA
+            and witness.get("operation")
+            == TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
+            and witness.get("task_cid") == str(attempt.task_cid)
+            and witness.get("task_alias") == str(attempt.task_alias)
+            and witness.get("source_task_revision")
+            == recovery_control_revision
+            and witness.get("missing_route_task_revision")
+            == recovery_control_revision + 1
+            and witness.get("recovered_task_revision")
+            == recovery_control_revision + 2
+            and witness.get("prior_receipt_cid")
+            == content_identity(
+                {"post_commit_route_predecessor_receipt": dict(prior_receipt)}
+            )
+            and witness.get("current_receipt_cid")
+            == content_identity(
+                {"post_commit_route_missing_receipt": dict(missing_receipt)}
+            )
+            and witness.get("route_binding_cid")
+            == content_identity(
+                {"task_execution_route_binding": dict(route)}
+            )
+            and witness.get("route_policy_id") == route.get("policy_id")
+            and witness.get("plan_root_cid") == route.get("plan_root_cid")
+            and witness.get("repository_tree_id")
+            == route.get("repository_tree_id")
+            and recovered_receipt.get("execution_route_policy_id")
+            == route.get("policy_id")
+            and recovered_receipt.get("execution_route_origin_revision")
+            == route.get("task_revision")
+            and witness.get("post_commit_candidate_receipt_id")
+            == seed.get("seed_id")
+            and type(witness.get("queue_revision_before")) is int
+            and witness.get("queue_revision_before")
+            == witness.get("queue_revision_after")
+            and witness_id
+            == content_identity(
+                {"typed_post_commit_route_recovery": witness_value}
+            )
+        ):
+            return None
+        return dict(claim_receipt)
+
     def _post_merge_completion_recovery_seed_from_record(
         self,
         *,
@@ -27164,7 +28614,6 @@ class DatabasePortalExecutionBridge:
             "recovery_evidence_id",
             "terminal_reason",
         )
-        record_revision = getattr(record, "revision", None)
         schema = value.get("schema")
         expected_fields = (
             _POST_MERGE_COMPLETION_RECOVERY_SEED_V2_FIELDS
@@ -27178,6 +28627,13 @@ class DatabasePortalExecutionBridge:
         )
         if schema == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2:
             integer_fields = (*integer_fields, "recovery_control_revision")
+        claim_receipt = self._post_merge_completion_claim_receipt(
+            attempt=attempt,
+            record=record,
+            status_receipt=status_receipt,
+            seed=seed,
+            recovery_control_revision=recovery_control_revision,
+        )
         if (
             set(seed) != expected_fields
             or schema
@@ -27215,30 +28671,28 @@ class DatabasePortalExecutionBridge:
                 )
             )
             or not seed_id
-            or not isinstance(status_receipt, Mapping)
-            or status_receipt.get("operation") != "database_claim"
-            or status_receipt.get("post_merge_completion_recovery_source_attempt_id")
+            or not isinstance(claim_receipt, Mapping)
+            or claim_receipt.get("operation") != "database_claim"
+            or claim_receipt.get("post_merge_completion_recovery_source_attempt_id")
             != value.get("attempt_id")
-            or status_receipt.get("post_merge_completion_recovery_seed")
+            or claim_receipt.get("post_merge_completion_recovery_seed")
             != dict(seed)
-            or status_receipt.get("attempt_id") != str(attempt.attempt_id)
-            or status_receipt.get("claim_id") != str(attempt.claim_id)
-            or status_receipt.get("lease_id") != str(attempt.lease_id)
-            or status_receipt.get("owner_session_id")
+            or claim_receipt.get("attempt_id") != str(attempt.attempt_id)
+            or claim_receipt.get("claim_id") != str(attempt.claim_id)
+            or claim_receipt.get("lease_id") != str(attempt.lease_id)
+            or claim_receipt.get("owner_session_id")
             != str(attempt.owner_session_id)
-            or status_receipt.get("fencing_token")
+            or type(claim_receipt.get("attempt_number")) is not int
+            or claim_receipt.get("attempt_number")
+            != int(attempt.attempt_number)
+            or claim_receipt.get("fencing_token")
             != int(attempt.fencing_token)
-            or status_receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or claim_receipt.get("fence_epoch") != int(attempt.fence_epoch)
             or value.get("task_cid") != str(attempt.task_cid)
             or value.get("task_alias") != str(attempt.task_alias)
             or value.get("attempt_id") == str(attempt.attempt_id)
             or value.get("claim_id") == str(attempt.claim_id)
             or value.get("lease_id") == str(attempt.lease_id)
-            or isinstance(record_revision, bool)
-            or not isinstance(record_revision, int)
-            or isinstance(recovery_control_revision, bool)
-            or not isinstance(recovery_control_revision, int)
-            or int(recovery_control_revision) + 2 != record_revision
             or (
                 schema
                 == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2

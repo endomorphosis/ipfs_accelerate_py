@@ -75,6 +75,7 @@ from .control_plane_transactions import (
 from .database_task_source import TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
 from .duckdb_state import open_duckdb_connection
 from .typed_state_owner import (
+    _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_OPERATION,
     COMPLETION_PROGRESS_SNAPSHOT_OPERATION,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
@@ -101,6 +102,7 @@ from .typed_state_owner import (
     _legacy_unstall_recovery_receipt,
     _post_commit_route_recovery_command_digest,
     _post_commit_route_recovery_material,
+    _post_merge_claim_verification_successor_cooldown_material,
     _process_birth_content_id,
     _process_runtime_facts,
     _protected_qualification_completion_command_digest,
@@ -2362,6 +2364,47 @@ class QuackStateClient:
                 if isinstance(next_body, Mapping)
                 else None
             )
+            atomic_recovery_cooldown: dict[str, Any] = {}
+            if (
+                isinstance(control_receipt, Mapping)
+                and control_receipt.get("operation")
+                == _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_OPERATION
+            ):
+                if session.transport_mode is not TransportMode.QUACK:
+                    raise QuackClientError(
+                        "post-merge claim-verification recovery requires the "
+                        "exclusive remote typed owner"
+                    )
+                observed_result = txn.execute_named_operation(
+                    "executor_retry_cooldown_by_task",
+                    (str(parameters["task_cid"]),),
+                )
+                observed_rows = _fetch_all(observed_result)
+                if len(observed_rows) != 1:
+                    raise OptimisticConflictError(
+                        "post-merge claim-verification source cooldown is "
+                        "absent or ambiguous"
+                    )
+                observed = _row_mapping(
+                    _result_columns(observed_result), observed_rows[0]
+                )
+                try:
+                    prior_queue = _validated_stored_retry_cooldown(
+                        observed,
+                        task_cid=str(parameters["task_cid"]),
+                    )
+                    atomic_recovery_cooldown = (
+                        _post_merge_claim_verification_successor_cooldown_material(
+                            task_cid=str(parameters["task_cid"]),
+                            current_revision=expected,
+                            next_receipt=control_receipt,
+                            prior_queue=prior_queue,
+                        )
+                    )
+                except TypedStateOwnerError as exc:
+                    raise QuackClientError(
+                        "post-merge claim-verification cooldown is invalid"
+                    ) from exc
             # The remote typed owner performs this semantic check at its
             # transaction boundary.  Embedded mode has no separate owner, so
             # enforce the same closed reopen policy inside this transaction.
@@ -2570,6 +2613,44 @@ class QuackStateClient:
                         "expected_task_revision": expected,
                     },
                 )
+            atomic_queue_revision = 0
+            if atomic_recovery_cooldown:
+                values = atomic_recovery_cooldown
+                atomic_queue_revision = int(values["expected_queue_revision"]) + 1
+                common_values = (
+                    values["claim_id"],
+                    values["resolution_cid"],
+                    values["owner_session_id"],
+                    values["fence_epoch"],
+                    values["fencing_token"],
+                    0,
+                    values["attempt_number"],
+                    "released",
+                    values["started_at_ms"],
+                    values["reason"],
+                    values["retry_not_before_ms"],
+                    values["owner_session_id"],
+                    values["fence_epoch"],
+                    atomic_queue_revision,
+                    values["extension_schema"],
+                    values["extension_json"],
+                )
+                queue_result = txn.execute_named_operation(
+                    "executor_update_retry_cooldown",
+                    (
+                        *common_values,
+                        values["task_cid"],
+                        values["expected_queue_revision"],
+                        values["expected_queue_attempt"],
+                        values["attempt_number"],
+                        TYPED_RETRY_COOLDOWN_SCHEMA,
+                    ),
+                )
+                queue_row = _fetch_one(queue_result)
+                if queue_row is None:
+                    raise OptimisticConflictError(
+                        "post-merge claim-verification cooldown CAS failed"
+                    )
             completion_receipt_cid = ""
             completion_evidence_digest = ""
             if completing_status:
@@ -2640,6 +2721,32 @@ class QuackStateClient:
                 "receipt_persisted": True,
                 "completion_receipt_cid": completion_receipt_cid,
                 "completion_evidence_digest": completion_evidence_digest,
+                **(
+                    {
+                        "task_updated_at": recorded_at,
+                        "retry_cooldown_persisted": True,
+                        "retry_attempt_id": str(
+                            atomic_recovery_cooldown["attempt_id"]
+                        ),
+                        "retry_claim_id": str(
+                            atomic_recovery_cooldown["claim_id"]
+                        ),
+                        "retry_attempt_number": int(
+                            atomic_recovery_cooldown["attempt_number"]
+                        ),
+                        "retry_queue_revision": atomic_queue_revision,
+                        "retry_not_before_ms": int(
+                            atomic_recovery_cooldown[
+                                "retry_not_before_ms"
+                            ]
+                        ),
+                        "retry_reason": str(
+                            atomic_recovery_cooldown["reason"]
+                        ),
+                    }
+                    if atomic_recovery_cooldown
+                    else {}
+                ),
             }
 
         return self.submit_command(command, apply=apply_receipt)
