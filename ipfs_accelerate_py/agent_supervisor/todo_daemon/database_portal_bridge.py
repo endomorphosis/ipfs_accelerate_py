@@ -14941,13 +14941,23 @@ class DatabasePortalExecutionBridge:
         if not marker_present:
             return None
 
+        # These diagnostics are emitted by normal task selection and nested
+        # dependency setup. Keep them in the verified hash chain, but exclude
+        # them from the execution sequence checked below. Every other event,
+        # including a later provider dispatch, still fails the exact match.
+        terminal_events = [
+            event for event in events
+            if str(event.get("type") or "") not in {
+                "retry_budget_repair_runtime_revision_unavailable",
+                "nested_submodule_initialization_guarded",
+            }
+        ]
         seed_event: Mapping[str, Any] | None = None
-        terminal_events = events
-        if events and str(events[0].get("type") or "") in (
+        if terminal_events and str(terminal_events[0].get("type") or "") in (
             _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS
         ):
-            seed_event = events[0]
-            terminal_events = events[1:]
+            seed_event = terminal_events[0]
+            terminal_events = terminal_events[1:]
         if tuple(
             str(event.get("type") or "") for event in terminal_events
         ) != _PROTECTED_PATH_PRESERVATION_EVENT_CHAIN:

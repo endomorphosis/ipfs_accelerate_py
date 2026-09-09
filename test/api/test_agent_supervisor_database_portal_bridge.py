@@ -6727,8 +6727,14 @@ def test_bridge_recovers_consumed_attempt_and_seeds_lane_local_successor(
     assert replayed.value.retry_receipt["remaining_task_attempts"] == 2
 
 
+@pytest.mark.parametrize("diagnostic", [
+    "",
+    "retry_budget_repair_runtime_revision_unavailable",
+    "nested_submodule_initialization_guarded",
+])
 def test_bridge_replays_exact_protected_preservation_before_seed_reinit(
     tmp_path: Path,
+    diagnostic: str,
 ) -> None:
     (
         record,
@@ -6739,7 +6745,9 @@ def test_bridge_replays_exact_protected_preservation_before_seed_reinit(
         preserved_commit,
         rescue_branch,
         terminal,
-    ) = _prepare_seeded_protected_preservation_replay(tmp_path)
+    ) = _prepare_seeded_protected_preservation_replay(
+        tmp_path, interposed_event_type=diagnostic,
+    )
     started, mutation, preserved, finished = terminal
     factory_calls: list[str] = []
 
