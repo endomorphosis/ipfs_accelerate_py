@@ -211,6 +211,8 @@ def _seeded_dispatch_fixture():
             "control_expected_status": "blocked",
             "post_merge_completion_recovery_seed": seed,
             "queue_receipt": {},
+            "backoff_ms": 0,
+            "retry_not_before_ms": 1,
             "queue_reason": "database_post_merge_declared_outputs_callback_integration:"
             + seed["request_id"]
             + ":"
@@ -446,6 +448,8 @@ def test_retained_suffix_uses_current_real_claim_for_atomic_cas(tmp_path, monkey
         receipt = after.body["completion_receipt"]
         assert after.status == "retrying" and after.revision == before.revision + 1
         assert receipt["attempt_id"] == source.attempt_id
+        assert receipt["backoff_ms"] == 0
+        assert receipt["retry_not_before_ms"] >= 0
         assert receipt["control_expected_revision"] == before.revision
         assert (
             receipt["post_merge_completion_recovery_seed"]["source_task_revision"]

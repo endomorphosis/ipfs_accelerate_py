@@ -5329,7 +5329,7 @@ def test_typed_owner_stamps_post_commit_retry_placeholders_before_cas(
 
 @pytest.mark.parametrize(
     "route_mutation",
-    ("exact", "omitted", "partial", "rotated", "omitted_nondaemon"),
+    ("exact", "omitted", "partial", "rotated", "omitted_nondaemon", "missing_backoff", "missing_deadline"),
 )
 def test_typed_owner_stamps_callback_recovery_cooldown_before_cas(
     tmp_path: Path,
@@ -5448,6 +5448,10 @@ def test_typed_owner_stamps_callback_recovery_cooldown_before_cas(
                 "policy_id": "policy:rotated",
             }
             transition_receipt["execution_route_policy_id"] = "policy:rotated"
+        elif route_mutation == "missing_backoff":
+            transition_receipt.pop("backoff_ms")
+        elif route_mutation == "missing_deadline":
+            transition_receipt.pop("retry_not_before_ms")
         else:
             assert route_mutation == "exact"
 

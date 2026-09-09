@@ -320,7 +320,13 @@ def verified_seed_predecessor(
         or seed.get("qualification_kind") != "callback_integration"
         or any(seed.get(k) != source[k] for k in IDENTITY)
         or set(predecessor)
-        != _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_RECEIPT_FIELDS | ROUTE
+        != _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_RECEIPT_FIELDS
+        | ROUTE
+        | {"backoff_ms", "retry_not_before_ms"}
+        or type(predecessor.get("backoff_ms")) is not int
+        or predecessor["backoff_ms"] != 0
+        or type(predecessor.get("retry_not_before_ms")) is not int
+        or predecessor["retry_not_before_ms"] < 0
         or predecessor.get("operation")
         != "database_post_merge_declared_outputs_callback_integration_recovery"
         or predecessor.get("control_expected_revision") != revision

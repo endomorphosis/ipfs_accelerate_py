@@ -92614,7 +92614,12 @@ class DatabaseImplementationDaemon:
                 "callback_integration_recovery"
             )
         )
-        if callback_unknown_completion:
+        retained_suffix_completion = bool(
+            isinstance(completion_seed, Mapping)
+            and completion_seed.get("schema") == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+            and completion_seed.get("terminal_reason") == DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON
+        )
+        if callback_unknown_completion or retained_suffix_completion:
             expected_fields = expected_fields | {
                 "backoff_ms",
                 "retry_not_before_ms",
@@ -117829,6 +117834,8 @@ class DatabaseImplementationDaemon:
             **(
                 {"backoff_ms": 0, "retry_not_before_ms": 0}
                 if unknown_callback_source_admitted
+                or (crash_source_admitted and crash_context is not None
+                    and crash_context.get("receiver_suffix") is True)
                 else {}
             ),
             "queue_receipt": {},
