@@ -3198,6 +3198,14 @@ def configured_board_launch_plan(
         environment[CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV] = (
             live_admission.extension_set_pin.to_json()
         )
+    owner_status_path = ""
+    owner = board.payload.get("quack_owner")
+    if isinstance(owner, dict):
+        state_dir = str(owner.get("state_dir") or "")
+        if state_dir:
+            owner_status_path = str(
+                board.path(state_dir) / "quack-state-server.status.json"
+            )
     return {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
@@ -3253,6 +3261,10 @@ def configured_board_launch_plan(
         "master_pid_path": str(runner_master_pid_path),
         "master_log": str(
             log_dir / f"configured-board-{run_stamp}.log"
+        ),
+        "owner_status_path": owner_status_path,
+        "quack_owner": (
+            dict(owner) if isinstance(owner, dict) else {}
         ),
     }
 

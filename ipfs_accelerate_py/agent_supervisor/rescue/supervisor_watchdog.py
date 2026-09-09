@@ -1326,6 +1326,12 @@ def published_owner_process_dead(
 
     raw = manifest.get("owner_status_path") or ""
     if not raw:
+        owner = manifest.get("quack_owner")
+        if isinstance(owner, Mapping):
+            state_dir = str(owner.get("state_dir") or "")
+            if state_dir:
+                raw = str(Path(state_dir) / "quack-state-server.status.json")
+    if not raw:
         return False
     path = Path(str(raw))
     if not path.is_absolute():
