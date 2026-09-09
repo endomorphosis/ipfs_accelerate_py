@@ -30,3 +30,18 @@ minimal task body. Tests cover foreign identity and route changes, gaps, unknown
 fields, active attempts/fences, prepared completions, phase drift, and the actual
 `run_provider` routing boundary. Existing real DuckDB CAS and Portal candidate
 qualification tests remain separate. No history fixture grants live authority.
+
+The retained producer has a separate closed terminal shape: it confirms an
+existing candidate without consuming a provider attempt, carries the exact
+native train receipt, and records `protected_recovery_merge_completed`.
+Missing auxiliary task keys are interpreted only in derived comparison views
+when the verified chain binds the exact validation start, launch, worktree,
+enqueue, candidate, request and fully keyed final result. The original events
+and their content identities remain untouched. The ordinary strict callback
+reconciliation verifier still checks the nested receipts and output proofs.
+
+A retained submodule candidate may be merged into a newer integration commit.
+Recovery then requires candidate-to-integration-to-current submodule ancestry
+and identical declared-output blobs at all three versions. A changed output or
+foreign ancestry still prevents settlement. Fresh current-target validation
+and native claim/CAS admission are required after these read-only checks.

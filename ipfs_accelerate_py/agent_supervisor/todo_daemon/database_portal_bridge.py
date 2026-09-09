@@ -8823,11 +8823,9 @@ class DatabasePortalExecutionBridge:
     ) -> dict[str, Any] | None:
         """Verify one exact callback integration that missed database settlement.
 
-        This is intentionally closed over three schema-v3 shapes: a
-        bare completion that missed reconciliation, or a zero-provider callback
-        confirmation whose terminal event omitted only the redundant target
-        commit, or an exact provider callback whose integration and
-        reconciliation both completed.  A completed row with a successful
+        This is intentionally closed over known schema-v3 producers, including
+        an exact retained-candidate confirmation without provider dispatch.
+        A completed row with a successful
         receipt is not enough: the queue row, full train receipt, exact Portal
         lineage, Git ancestry, and every declared output blob must all agree.
         """
@@ -9219,10 +9217,10 @@ class DatabasePortalExecutionBridge:
             and event_merge.get("implementation_commit") == candidate
             and event_merge.get("completion_task_cids")
             == {task_alias: portal_task_cid}
-            and isinstance(event_board, Mapping)
         )
         common_source_valid = bool(
             common_source_base_valid
+            and isinstance(event_board, Mapping)
             and len(completions) == 1
             and completions[0].get("reason") == "task_became_completed"
             and completions[0].get("completion_receipt_repair") is False
@@ -9431,8 +9429,38 @@ class DatabasePortalExecutionBridge:
             )
             in _TERMINAL_STATUSES
         )
+        from .retained_completion_events import retained_callback_confirmation_is_exact
+
+        retained_candidate_confirmation = bool(
+            common_source_base_valid
+            and len(completions) == 1
+            and event_merge.get("target_repository_id")
+            == str(getattr(self.merge_queue, "target_repository_id", "") or "")
+            and event_merge.get("target_branch") == self.merge_target_branch
+            and retained_callback_confirmation_is_exact(
+                events,
+                source=source_event,
+                completion=completions[0],
+                exact_completion=exact_completion,
+                receipt=receipt,
+                worktree_path=str(metadata.get("worktree_path") or ""),
+                alias=task_alias,
+                task_cid=portal_task_cid,
+                task_key=portal_task_key,
+                verify_reconciliation=lambda reconciliation, queued: (
+                    self._exact_callback_reconciliation_for_completion_source(
+                        reconciliation, queued,
+                        alias=task_alias,
+                        task_cid=portal_task_cid,
+                        task_key=portal_task_key,
+                        repository_root=self.repository_root,
+                    )
+                ),
+            )
+        )
         if not (
-            legacy_bare_completion
+            retained_candidate_confirmation
+            or legacy_bare_completion
             or historical_zero_provider_confirmation
             or fully_integrated_provider_callback
             or landed_before_completion_event
@@ -9512,9 +9540,23 @@ class DatabasePortalExecutionBridge:
                         f"160000 commit {repository_ref}"
                         f"\t{safe_repository}\0"
                     ).encode("utf-8")
-                    if any(
-                        item.stdout != expected_source_gitlink
-                        for item in gitlinks[:2]
+                    if gitlinks[1].stdout != expected_source_gitlink:
+                        return None
+                    candidate_gitlink_match = re.fullmatch(
+                        rb"160000 commit "
+                        rb"([0-9a-f]{40}(?:[0-9a-f]{24})?)\t"
+                        + re.escape(safe_repository.encode("utf-8"))
+                        + rb"\0",
+                        bytes(gitlinks[0].stdout or b""),
+                    )
+                    if candidate_gitlink_match is None:
+                        return None
+                    candidate_repository_ref = candidate_gitlink_match.group(1).decode(
+                        "ascii"
+                    )
+                    if (
+                        candidate_repository_ref != repository_ref
+                        and not retained_candidate_confirmation
                     ):
                         return None
                     current_gitlink_match = re.fullmatch(
@@ -9540,6 +9582,16 @@ class DatabasePortalExecutionBridge:
                     resolved_nested_root.relative_to(
                         self.repository_root.resolve(strict=True)
                     )
+                    candidate_nested_ancestor = subprocess.run(
+                        ["git", "merge-base", "--is-ancestor",
+                         candidate_repository_ref, repository_ref],
+                        cwd=resolved_nested_root,
+                        capture_output=True,
+                        check=False,
+                        timeout=10,
+                    )
+                    if candidate_nested_ancestor.returncode != 0:
+                        return None
                     nested_ancestor = subprocess.run(
                         [
                             "git",
@@ -9569,7 +9621,7 @@ class DatabasePortalExecutionBridge:
                             timeout=10,
                         )
                         for commit in (
-                            repository_ref,
+                            candidate_repository_ref,
                             repository_ref,
                             current_repository_ref,
                         )
