@@ -93,6 +93,14 @@ _LARGE_STATE_COMMAND_TEXT_FIELDS: Final[TypingMapping[str, frozenset[str]]] = (
             ),
             "task.claim.reservation.recover": frozenset({"body_json"}),
             "task.blocked.retry.recover": frozenset({"body_json"}),
+            "task.execution_route.post_commit.recover": frozenset(
+                {
+                    "body_json",
+                    "route_binding_json",
+                    "expected_queue_extension_json",
+                    "new_queue_extension_json",
+                }
+            ),
             "task.validation.record.passed": frozenset(
                 {
                     "run_body_json",
