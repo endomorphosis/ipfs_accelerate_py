@@ -2440,7 +2440,7 @@ W21  SAWM-044
 
 ## SAWM-045 Resolve dirty main checkout blocking 3 worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
