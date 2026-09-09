@@ -19567,6 +19567,7 @@ def _callback_integration_recovery_evidence(
 def _real_released_unknown_callback_quarantine(
     tmp_path: Path,
     *,
+    expired: bool = False,
     task_source_configurator: (
         Callable[[DatabaseImplementationDaemon, object], None] | None
     ) = None,
@@ -19576,6 +19577,7 @@ def _real_released_unknown_callback_quarantine(
     class SimulatedProcessCrash(BaseException):
         pass
 
+    now = {"ms": 1000}
     control_path = tmp_path / "control.duckdb"
     lane_path = tmp_path / "lane"
     provider_calls: list[str] = []
@@ -19592,6 +19594,7 @@ def _real_released_unknown_callback_quarantine(
         session="session:callback-integration-recovery",
         provider_fn=crash_after_callback_started,
         strict_task_sharding=True,
+        **({"lease_ms": 5000, "clock_ms": lambda: now["ms"]} if expired else {}),
     )
     try:
         first.materialize_population(_population(1))
@@ -19609,17 +19612,20 @@ def _real_released_unknown_callback_quarantine(
     finally:
         first.close()
 
+    now["ms"] = 7000
     restarted = _open_daemon(
         lane_path,
         control_path=control_path,
         session="session:callback-integration-recovery",
         provider_fn=crash_after_callback_started,
         strict_task_sharding=True,
+        **({"lease_ms": 5000, "clock_ms": lambda: now["ms"]} if expired else {}),
     )
     replay = restarted.run_once()
-    assert replay["implementation_result"]["reason"] == (
-        "portal_neutral_failure"
-    )
+    if expired:
+        assert replay["expired_attempt_reconciliations"][0]["reason"] == "portal_neutral_failure"
+    else:
+        assert replay["implementation_result"]["reason"] == "portal_neutral_failure"
     blocked = restarted.get_attempt(source.attempt_id)
     task = restarted.task_source.get(source.task_cid)
     claim = restarted.coordinator.get_task_claim(source.claim_id)
@@ -19628,18 +19634,18 @@ def _real_released_unknown_callback_quarantine(
     )
     lease = restarted.coordinator.get_lease(source.lease_id)
     assert blocked is not None
-    assert blocked.status == "blocked"
-    assert blocked.committed_phase == ATTEMPT_PHASE_BLOCKED
+    assert blocked.status == ("failed" if expired else "blocked")
+    assert blocked.committed_phase == (ATTEMPT_PHASE_FAILED if expired else ATTEMPT_PHASE_BLOCKED)
     assert task is not None and task.status == "quarantined"
     assert task.body["completion_receipt"]["operation"] == (
         "database_portal_neutral_failure_quarantine"
     )
-    assert claim is not None and claim.state.value == "released"
+    assert claim is not None and claim.state.value == ("expired" if expired else "released")
     assert (
         coordination_attempt is not None
-        and coordination_attempt.status.value == "released"
+        and coordination_attempt.status.value == ("expired" if expired else "released")
     )
-    assert lease is not None and lease.state.value == "released"
+    assert lease is not None and lease.state.value == ("expired" if expired else "released")
     assert restarted.list_running_attempts() == []
     assert provider_calls == [source.attempt_id]
     return restarted, blocked, provider_calls
@@ -20095,12 +20101,14 @@ def test_claim_verification_reconciliation_never_dispatches_provider(
         daemon.close()
 
 
+@pytest.mark.parametrize("expired", [False, True])
 def test_callback_integration_recovery_rearms_real_neutral_quarantine_once(
     tmp_path: Path,
+    expired: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     daemon, source, provider_calls = (
-        _real_released_unknown_callback_quarantine(tmp_path)
+        _real_released_unknown_callback_quarantine(tmp_path, expired=expired)
     )
     try:
         evidence = _callback_integration_recovery_evidence(daemon, source)
@@ -20180,9 +20188,9 @@ def test_callback_integration_recovery_rearms_real_neutral_quarantine_once(
         retired_source = daemon.get_attempt(source.attempt_id)
         assert retired_source is not None
         assert retired_source.status == "failed"
-        assert retired_source.committed_phase == ATTEMPT_PHASE_BLOCKED
+        assert retired_source.committed_phase == (ATTEMPT_PHASE_FAILED if expired else ATTEMPT_PHASE_BLOCKED)
         claim = daemon.coordinator.get_task_claim(source.claim_id)
-        assert claim is not None and claim.state.value == "released"
+        assert claim is not None and claim.state.value == ("expired" if expired else "released")
 
         repeated = daemon.recover_blocked_post_merge_declared_outputs(
             evidence
@@ -20420,12 +20428,14 @@ def test_callback_integration_recovery_replays_lost_cas_response(
         daemon.close()
 
 
+@pytest.mark.parametrize("expired", [False, True])
 def test_callback_integration_recovery_hands_off_to_fresh_foreign_lane(
     tmp_path: Path,
+    expired: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     daemon, source, provider_calls = (
-        _real_released_unknown_callback_quarantine(tmp_path)
+        _real_released_unknown_callback_quarantine(tmp_path, expired=expired)
     )
     evidence = _callback_integration_recovery_evidence(
         daemon,
@@ -20519,8 +20529,8 @@ def test_callback_integration_recovery_hands_off_to_fresh_foreign_lane(
         assert int(current.revision) > terminal_revision + 1
         old_cursor = daemon.get_attempt(source.attempt_id)
         assert old_cursor is not None
-        assert old_cursor.status == "blocked"
-        assert old_cursor.committed_phase == ATTEMPT_PHASE_BLOCKED
+        assert old_cursor.status == ("failed" if expired else "blocked")
+        assert old_cursor.committed_phase == (ATTEMPT_PHASE_FAILED if expired else ATTEMPT_PHASE_BLOCKED)
         assert daemon.list_running_attempts() == []
         assert [item.attempt_id for item in consumer.list_running_attempts()] == [
             successor.attempt_id
@@ -20534,7 +20544,7 @@ def test_callback_integration_recovery_hands_off_to_fresh_foreign_lane(
         assert replay["successor"]["attempt_id"] == successor.attempt_id
         assert len(cas_calls) == 1
         old_cursor = daemon.get_attempt(source.attempt_id)
-        assert old_cursor is not None and old_cursor.status == "blocked"
+        assert old_cursor is not None and old_cursor.status == ("failed" if expired else "blocked")
 
         completion_digest = "sha256:" + "9" * 64
         completed = consumer.complete_attempt(
@@ -20609,12 +20619,15 @@ def test_callback_integration_recovery_hands_off_to_fresh_foreign_lane(
                 daemon.recover_blocked_post_merge_declared_outputs(evidence)
 
         reconciled = daemon.reconcile_expired_running_attempts()
-        assert any(
-            item.get("attempt_id") == source.attempt_id
-            and item.get("reason") == "control_task_left_quarantine"
-            and item.get("disposition") == "retired"
-            for item in reconciled
-        )
+        if expired:
+            assert not any(item.get("attempt_id") == source.attempt_id for item in reconciled)
+        else:
+            assert any(
+                item.get("attempt_id") == source.attempt_id
+                and item.get("reason") == "control_task_left_quarantine"
+                and item.get("disposition") == "retired"
+                for item in reconciled
+            )
         retired_cursor = daemon.get_attempt(source.attempt_id)
         assert retired_cursor is not None and retired_cursor.status == "failed"
         repeated_terminal = (

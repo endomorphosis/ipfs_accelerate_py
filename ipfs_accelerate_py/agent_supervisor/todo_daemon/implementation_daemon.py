@@ -92650,10 +92650,10 @@ class DatabaseImplementationDaemon:
             else None
         )
         expected_execution_phase = (
-            ATTEMPT_PHASE_BLOCKED
-            if callback_unknown_completion
-            else ATTEMPT_PHASE_FAILED
+            attempt.committed_phase if callback_unknown_completion else ATTEMPT_PHASE_FAILED
         )
+        if expected_execution_phase not in {ATTEMPT_PHASE_BLOCKED, ATTEMPT_PHASE_FAILED}:
+            raise DatabaseImplementationAuthorityError("callback recovery has no terminal execution phase")
         historical_terminal_reason = (
             historical_terminal_receipt.get("failure_kind")
             if callback_unknown_completion
@@ -100872,9 +100872,13 @@ class DatabaseImplementationDaemon:
         attempt = self.get_attempt(str(raw.get("source_attempt_id") or ""))
         if attempt is None:
             return None
+        from .callback_terminal import is_expired_callback_quarantine_phase
+
+        phases = self.phase_history(attempt.attempt_id)
+        expired_callback = is_expired_callback_quarantine_phase(attempt, phases)
         blocked_phases = [
             item
-            for item in self.phase_history(attempt.attempt_id)
+            for item in phases
             if item.get("phase") == ATTEMPT_PHASE_BLOCKED
         ]
         blocked_body = (
@@ -100892,25 +100896,23 @@ class DatabaseImplementationDaemon:
             or attempt.task_alias != str(
                 getattr(task, "task_alias", "") or ""
             )
-            or attempt.status != "blocked"
-            or attempt.committed_phase != ATTEMPT_PHASE_BLOCKED
             or not self._post_merge_source_matches_latest(raw, attempt)
             or not self._local_attempt_is_exact_latest(attempt)
-            or not isinstance(blocked_body, Mapping)
-            or blocked_body.get("reason") != "portal_neutral_failure"
-            or blocked_body.get("portal_retryable_failure") is not False
-            or blocked_body.get("portal_replay_suppressed") is not True
-            or blocked_body.get("task_quarantined") is not True
-            or not isinstance(failure_evidence, Mapping)
-            or not self._blocked_neutral_portal_phase_matches(
-                attempt,
-                failure_evidence,
-            )
-            or not self._strict_resume_rejection_receipt_matches(
-                task,
-                attempt,
-                expected_failure_evidence=failure_evidence,
-            )
+            or not self._strict_resume_rejection_receipt_matches(task, attempt)
+            or not (expired_callback or (
+                attempt.status == "blocked"
+                and attempt.committed_phase == ATTEMPT_PHASE_BLOCKED
+                and isinstance(blocked_body, Mapping)
+                and blocked_body.get("reason") == "portal_neutral_failure"
+                and blocked_body.get("portal_retryable_failure") is False
+                and blocked_body.get("portal_replay_suppressed") is True
+                and blocked_body.get("task_quarantined") is True
+                and isinstance(failure_evidence, Mapping)
+                and self._blocked_neutral_portal_phase_matches(attempt, failure_evidence)
+                and self._strict_resume_rejection_receipt_matches(
+                    task, attempt, expected_failure_evidence=failure_evidence,
+                )
+            ))
             or not self._unknown_callback_post_merge_source_admitted(
                 raw,
                 attempt,
@@ -100918,8 +100920,10 @@ class DatabaseImplementationDaemon:
             )
         ):
             return None
-        coordination = self._released_blocked_neutral_callback_coordination(
-            attempt
+        coordination = (
+            self._reconcile_failed_attempt_coordination(attempt)
+            if expired_callback
+            else self._released_blocked_neutral_callback_coordination(attempt)
         )
         return attempt, coordination
 
@@ -100941,7 +100945,12 @@ class DatabaseImplementationDaemon:
             None,
         )
         allowed_statuses = {"blocked", "failed"} if callback_unknown else {"failed"}
+        from .callback_terminal import is_expired_callback_quarantine_phase
+
+        expired_callback = bool(attempt is not None and callback_unknown and
+            is_expired_callback_quarantine_phase(attempt, self.phase_history(attempt.attempt_id)))
         expected_phase = (
+            ATTEMPT_PHASE_FAILED if expired_callback else
             ATTEMPT_PHASE_BLOCKED
             if callback_unknown
             else ATTEMPT_PHASE_FAILED
@@ -101409,6 +101418,11 @@ class DatabaseImplementationDaemon:
         if superseded is not None:
             return superseded
         physical = self.get_attempt(source.attempt_id)
+        from .callback_terminal import is_expired_callback_quarantine_phase
+
+        expired_callback = is_expired_callback_quarantine_phase(
+            source, self.phase_history(source.attempt_id),
+        )
         expected_identity = {
             "attempt_id": source.attempt_id,
             "claim_id": source.claim_id,
@@ -101419,7 +101433,7 @@ class DatabaseImplementationDaemon:
             "fencing_token": int(source.fencing_token),
             "fence_epoch": int(source.fence_epoch),
             "lease_id": source.lease_id,
-            "committed_phase": ATTEMPT_PHASE_BLOCKED,
+            "committed_phase": ATTEMPT_PHASE_FAILED if expired_callback else ATTEMPT_PHASE_BLOCKED,
         }
         if physical is None or any(
             getattr(physical, name) != expected
@@ -101432,7 +101446,7 @@ class DatabaseImplementationDaemon:
                 "callback-integration recovery source cursor disappeared or changed"
             )
         if physical.status == "failed":
-            if int(physical.revision) != int(source.revision) + 1:
+            if int(physical.revision) != int(source.revision) + (0 if expired_callback else 1):
                 raise DatabaseImplementationConflictError(
                     "callback-integration recovery cursor retirement revision differs"
                 )
@@ -102669,7 +102683,7 @@ class DatabaseImplementationDaemon:
             fence_epoch=int(verified["fence_epoch"]),
             lease_id=str(verified["lease_id"]),
             committed_phase=(
-                ATTEMPT_PHASE_BLOCKED
+                str(source_execution.get("execution_phase") or "")
                 if callback_unknown
                 else ATTEMPT_PHASE_FAILED
             ),
