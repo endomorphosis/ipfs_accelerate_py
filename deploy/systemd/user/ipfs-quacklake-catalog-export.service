@@ -1,0 +1,17 @@
+[Unit]
+Description=Project native fleet observations into the configured QuackLake catalog
+ConditionPathExists=%h/.config/ipfs-taskboard-watchdog/quacklake-catalog.json
+ConditionPathExists=!%h/.local/state/ipfs-quack-fleet/HOLD
+ConditionPathExists=!%h/.local/state/ipfs-quack-fleet/OPERATOR_STOP
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flock -n %h/.local/state/ipfs-quack-fleet/quacklake-export.lock /usr/bin/python3 -P %h/.local/lib/ipfs-quack-fleet/quacklake-export-current/scripts/ops/agent_supervisor/quacklake_catalog_export.py --config %h/.config/ipfs-taskboard-watchdog/quacklake-catalog.json --deployment %h/.local/state/ipfs-quack-fleet/deployment.json --inventory %h/.config/ipfs-taskboard-watchdog/inventory.json
+TimeoutStartSec=90
+TimeoutStopSec=10
+KillMode=control-group
+MemoryMax=512M
+TasksMax=32
+Nice=10
+UMask=0077
+NoNewPrivileges=true

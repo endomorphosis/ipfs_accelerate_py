@@ -21,6 +21,10 @@ QuackLake catalog requires a separate admitted endpoint and catalog connector.
 History aggregation never completes tasks, steals leases or substitutes for
 native acceptance.
 
+The optional [QuackLake catalog connector](quacklake_catalog.md) exports admitted
+fleet observations to an existing catalog. It runs separately from both native
+owners, so an unavailable catalog cannot block board scheduling or state reads.
+
 Compile the actual installed fleet and render native user services:
 
 ```sh
