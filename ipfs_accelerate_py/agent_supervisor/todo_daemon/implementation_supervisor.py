@@ -20,7 +20,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from ...agent_implementation_route import (
     AgentSupervisorNativeDependencyLaunch,
@@ -1955,6 +1955,41 @@ def _projection_is_quiescent_for_heartbeat_fallback(
 # --- accepted-control-plane daemon children ---
 
 
+def _run_daemon_main_with_retryable_memory_backoff(
+    main: Callable[..., Any],
+    argv: Sequence[str],
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+    backoff_seconds: Sequence[float] = TYPED_FAIL_CLOSED_OUTER_RECOVERY_BACKOFF_SECONDS,
+) -> int:
+    """Keep a sealed daemon child alive across retryable memory pressure.
+
+    DuckDB ``OutOfMemoryException`` and ``MemoryError`` escaping ``main()``
+    are mapped to exit 78 by the sealed bootstrap. That parks the parent as
+    ``typed_child_blocker`` and respawns a new child, which repeats the same
+    query storm. Retry in-process with the outer typed-78 backoff so the
+    child pid stays live and Quack is not hammered. Non-retryable failures
+    and ``SystemExit`` still fail closed.
+    """
+
+    attempt = 0
+    delays = tuple(float(item) for item in backoff_seconds) or (30.0,)
+    while True:
+        try:
+            return int(main(list(argv)) or 0)
+        except Exception as exc:
+            if type(exc).__name__ not in RETRYABLE_READINESS_ERROR_TYPES:
+                raise
+            delay = delays[min(attempt, len(delays) - 1)]
+            attempt += 1
+            logger.warning(
+                "Sealed daemon child retryable memory pressure (%s); retry in %.1fs",
+                type(exc).__name__,
+                delay,
+            )
+            sleep(delay)
+
+
 def _run_sealed_daemon_child(argv: Sequence[str]) -> int:
     """Run the ordinary daemon from the inherited immutable source capsule."""
 
@@ -2038,7 +2073,10 @@ def _run_sealed_daemon_child(argv: Sequence[str]) -> int:
         verified_live_admission
     )
     try:
-        return int(daemon_module.main(daemon_argv) or 0)
+        return _run_daemon_main_with_retryable_memory_backoff(
+            daemon_module.main,
+            daemon_argv,
+        )
     finally:
         daemon_module._IMPORTED_CONTROL_PLANE_CAPSULE = original_capsule
         daemon_module._IMPORTED_CONTROL_PLANE_LAUNCH = original_launch

@@ -37,6 +37,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA,
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
+    _run_daemon_main_with_retryable_memory_backoff,
 )
 
 
@@ -666,6 +667,79 @@ def test_typed_fail_closed_outer_recovery_backs_off(
     assert supervisor._supervisor_loop_recovery_delay_seconds() == 600.0
     supervisor._typed_fail_closed_recovery_count = 0
     assert supervisor._supervisor_loop_recovery_delay_seconds() == 5.0
+
+
+class OutOfMemoryException(Exception):
+    """Stand-in for duckdb.OutOfMemoryException by class name."""
+
+
+def test_sealed_daemon_child_retries_oom_then_stays_alive() -> None:
+    calls = {"count": 0}
+    sleeps: list[float] = []
+
+    def main(_argv: list[str]) -> int:
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise OutOfMemoryException("duckdb buffer")
+        return 0
+
+    result = _run_daemon_main_with_retryable_memory_backoff(
+        main,
+        ["--once"],
+        sleep=sleeps.append,
+        backoff_seconds=(30.0, 60.0, 120.0),
+    )
+    assert result == 0
+    assert calls["count"] == 3
+    assert sleeps == [30.0, 60.0]
+
+
+def test_sealed_daemon_child_retries_memory_error() -> None:
+    calls = {"count": 0}
+
+    def main(_argv: list[str]) -> int:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise MemoryError("allocator")
+        return 0
+
+    result = _run_daemon_main_with_retryable_memory_backoff(
+        main,
+        [],
+        sleep=lambda _delay: None,
+        backoff_seconds=(30.0,),
+    )
+    assert result == 0
+    assert calls["count"] == 2
+
+
+def test_sealed_daemon_child_non_retryable_error_fail_closes() -> None:
+    def main(_argv: list[str]) -> int:
+        raise RuntimeError("pin invalid")
+
+    with pytest.raises(RuntimeError, match="pin invalid"):
+        _run_daemon_main_with_retryable_memory_backoff(
+            main,
+            [],
+            sleep=lambda _delay: None,
+        )
+
+
+def test_sealed_daemon_child_systemexit_78_is_not_retried() -> None:
+    calls = {"count": 0}
+
+    def main(_argv: list[str]) -> int:
+        calls["count"] += 1
+        raise SystemExit(78)
+
+    with pytest.raises(SystemExit) as raised:
+        _run_daemon_main_with_retryable_memory_backoff(
+            main,
+            [],
+            sleep=lambda _delay: None,
+        )
+    assert raised.value.code == 78
+    assert calls["count"] == 1
 
 
 def test_database_watchdog_authority_circuit_resets_after_live_query(
