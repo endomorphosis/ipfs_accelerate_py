@@ -32,6 +32,8 @@ Two user services run continuously:
   one board at a time. Each job runs in its own systemd cgroup for at most 40
   minutes. Unresolved work is retained and retried with a 30-minute to six-hour
   backoff. A new probe verifies recovery; a model's successful exit does not.
+  The worker status distinguishes an empty queue from held jobs and jobs
+  awaiting their next retry, and records the active board before dispatch.
 
 For a known stopped-owner condition, the watchdog invokes only the board's
 configured native ensure command. Otherwise it enqueues a repair. The coding
@@ -48,7 +50,9 @@ No local model service is started; the existing llama-server mask is retained.
 
 `OPERATOR_STOP`, `HOLD`, `watchdog.hold`, and `watchdog.disabled` files configured
 for a board prevent both ensure and coding-repair dispatch. Existing live
-workers are never killed merely because such a hold exists. To pause the whole
+workers are never killed merely because such a hold exists. Read-only probes
+continue during holds: `health` reports `operator_hold`, while `observed_health`
+and the observation contain the current underlying condition. To pause the whole
 fleet, stop both services; a currently running repair job has its own unit:
 
 ```sh
@@ -132,6 +136,13 @@ imports and sealed-checkout module shadowing. It writes:
 * Per-board evidence: `~/.local/state/ipfs-taskboard-watchdog/<board>/`
 * Repair queue, prompts, reports and logs:
   `~/.local/state/ipfs-taskboard-watchdog/repairs/<board>/`
+
+When upgrading from inside a repair job, add `--defer-repair-restart` to the
+installation command. Monitoring adopts the new immutable release immediately;
+the dispatcher finishes its current job, reloads configuration, then exits so
+systemd starts it from the new release. A running job therefore does not wait
+on a restart of its own dispatcher. Preserve externally owned board launchers
+in the inventory; an empty `ensure_argv` leaves their native unit untouched.
 
 User lingering must be enabled for operation without an interactive login.
 Check the live units and recent observations with:

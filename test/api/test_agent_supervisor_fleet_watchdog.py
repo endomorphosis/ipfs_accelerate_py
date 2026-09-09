@@ -148,15 +148,22 @@ def test_another_board_lock_prevents_even_probe(tmp_path):
     assert runner.calls == []
 
 
-def test_operator_hold_prevents_probe_and_repair(tmp_path):
+def test_operator_hold_keeps_observation_fresh_without_recovery(tmp_path):
     hold = tmp_path / "pause"
     hold.touch()
     board = _board(tmp_path, hold_files=[str(hold)])
     runner = Runner(_observation(health="stopped", recovery_action="ensure"))
-    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner)
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
     assert state["health"] == "operator_hold"
+    assert state["observed_health"] == "stopped"
+    runner.observation = _observation(progress_token="task-2")
+    fresh = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=200)
+    assert fresh["health"] == "operator_hold"
+    assert fresh["observed_health"] == "healthy"
+    assert fresh["last_progress_at"] == 200
+    assert fresh["planned_action"] == ""
     assert hold.exists()
-    assert runner.calls == []
+    assert [call["argv"] for call in runner.calls] == [["probe"], ["probe"]]
 
 
 @pytest.mark.parametrize("token", ["unchanged", None])

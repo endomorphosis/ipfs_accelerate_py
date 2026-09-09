@@ -75,7 +75,8 @@ def validate_inventory(inventory: dict, repair_cwd: Path) -> None:
                 raise ValueError(f"{identifier}: {field} must be a string list")
 
 
-def install(source: Path, inventory_path: Path, repair_cwd: Path, *, enable: bool) -> dict:
+def install(source: Path, inventory_path: Path, repair_cwd: Path, *, enable: bool,
+            defer_repair_restart: bool = False) -> dict:
     home = Path.home()
     config_dir = home / ".config/ipfs-taskboard-watchdog"
     state_dir = home / ".local/state/ipfs-taskboard-watchdog"
@@ -178,7 +179,7 @@ Environment=OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
                                    "timeout_seconds": 15}
         boards.append(board)
     config = {"schema": "agent-supervisor/fleet-watchdog-config@1", "poll_seconds": 60,
-              "state_dir": str(state_dir), "boards": boards,
+              "state_dir": str(state_dir), "boards": boards, "runtime_release": str(release),
               "repair_worker": {"timeout_seconds": 2400,
                                 "retry_seconds": 1800, "max_backoff_seconds": 21600,
                                 **previous_policy, "cwd": str(repair_cwd), "argv": repair_argv}}
@@ -229,7 +230,11 @@ WantedBy=default.target
     if enable:
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
         subprocess.run(["systemctl", "--user", "enable", *installed_units], check=True)
-        subprocess.run(["systemctl", "--user", "restart", *installed_units], check=True)
+        if defer_repair_restart:
+            subprocess.run(["systemctl", "--user", "restart", installed_units[0]], check=True)
+            subprocess.run(["systemctl", "--user", "start", installed_units[1]], check=True)
+        else:
+            subprocess.run(["systemctl", "--user", "restart", *installed_units], check=True)
     return {"config": str(config_path), "state": str(state_dir), "release": str(release),
             "services": installed_units, "ensure_services": ensure_units, "enabled": enable}
 
@@ -239,9 +244,12 @@ def main() -> int:
     parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--repair-cwd", type=Path, required=True)
     parser.add_argument("--enable", action="store_true")
+    parser.add_argument("--defer-repair-restart", action="store_true",
+                        help="Let a running repair finish before its dispatcher adopts this release")
     args = parser.parse_args()
     source = Path(__file__).resolve().parents[3]
-    print(json.dumps(install(source, args.inventory.resolve(), args.repair_cwd.resolve(), enable=args.enable), indent=2))
+    print(json.dumps(install(source, args.inventory.resolve(), args.repair_cwd.resolve(),
+                            enable=args.enable, defer_repair_restart=args.defer_repair_restart), indent=2))
     return 0
 
 
