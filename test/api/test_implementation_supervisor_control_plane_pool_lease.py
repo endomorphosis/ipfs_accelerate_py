@@ -478,3 +478,45 @@ def test_database_pool_lease_rejects_malformed_current_binding_fields(
     assert fixture["supervisor"]._active_managed_database_pool_lease(
         fixture["child"]
     ) is None
+
+
+@pytest.mark.parametrize("invalid", [False, True])
+def test_database_phase_census_uses_only_custody_proved_nested_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid: bool,
+) -> None:
+    from datetime import datetime, timezone
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_loop
+
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    state = PortalTaskState.load(fixture["nested_state_path"])
+    state.active_phase = "implementing"
+    state.active_phase_started_at = datetime.now(timezone.utc).isoformat()
+    state.active_phase_detail = "provider_launch_birth"
+    state.save(fixture["nested_state_path"])
+    nested_before = fixture["nested_state_path"].read_bytes()
+    fixture["state_path"].unlink()
+    monkeypatch.setattr(supervisor, "_build_daemon_command",
+                        lambda: ["python", "-m", "managed-daemon"])
+    monkeypatch.setattr(supervisor_loop, "procfs_descendant_processes",
+                        lambda _pid: [{"pid": 4321,
+                            "cmdline": "/usr/local/bin/grok --model grok-4.6"}])
+    if invalid:
+        binding = json.loads(fixture["binding_path"].read_text())
+        binding["binding_id"] = "sha256:" + "0" * 64
+        _write_json(fixture["binding_path"], binding)
+    loop = supervisor_loop.SupervisorLoop(supervisor.build_supervisor_loop_config())
+    observed = loop._observe_worker_status(fixture["child"], {
+        "active_phase": "implementing",
+        "active_phase_started_at": "2020-01-01T00:00:00+00:00",
+        "worktree_no_child_stall_seconds": 1,
+    })
+    assert observed["phase"] == ("" if invalid else "implementing")
+    assert observed["required"] is (not invalid)
+    assert observed["worker_metrics_available"] is True
+    assert observed["active_worker_count"] == 1
+    assert observed["stalled_without_active_worker"] is not True
+    if not invalid:
+        assert observed["threshold_seconds"] == loop.config.status_static_fields[
+            "worktree_no_child_stall_seconds"]
+    assert fixture["nested_state_path"].read_bytes() == nested_before

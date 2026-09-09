@@ -8801,6 +8801,10 @@ class PortalImplementationSupervisor:
             watchdog_log_heartbeat_fallback=True,
             watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
             watchdog_accept_fresh_child_log=True,
+            worktree_status_projection=(
+                self._database_worktree_status_projection
+                if self.config.database_program is not None else None
+            ),
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
             status_static_fields={
@@ -8866,10 +8870,10 @@ class PortalImplementationSupervisor:
             identity.boot_id,
         )
 
-    def _active_managed_database_pool_lease(
+    def _active_managed_database_pool_evidence(
         self,
         child: Any,
-    ) -> dict[str, str] | None:
+    ) -> tuple[dict[str, str], dict[str, Any]] | None:
         """Prove nested database work from exact pool and lifecycle records.
 
         The outer database daemon deliberately has no Portal active-task
@@ -9121,8 +9125,27 @@ class PortalImplementationSupervisor:
                 "worktree_path": str(resolved_workspace),
                 "branch": record.branch,
                 "lease_pid": str(child_pid),
-            }
+            }, dict(nested_state_payload)
         return None
+
+    def _active_managed_database_pool_lease(self, child: Any) -> dict[str, str] | None:
+        evidence = self._active_managed_database_pool_evidence(child)
+        return None if evidence is None else dict(evidence[0])
+
+    def _database_worktree_status_projection(
+        self, child: Any, _current_status: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Project the nested phase only after exact pool and lifecycle custody."""
+        evidence = self._active_managed_database_pool_evidence(child)
+        if evidence is None:
+            return None
+        _activity, state = evidence
+        started = state.get("active_phase_started_at")
+        if (type(started) is not str or not started
+                or parse_timestamp(started) is None
+                or type(state.get("active_phase_detail")) is not str):
+            return None
+        return state
 
     def _supervisor_loop_watchdog_decision(
         self,

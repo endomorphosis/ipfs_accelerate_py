@@ -57,6 +57,7 @@ class SupervisorLoopDecision:
 
 
 WatchdogQuiescentStatusPredicate = Callable[[Mapping[str, Any]], bool]
+WorktreeStatusProjection = Callable[[Any, Mapping[str, Any]], Optional[Mapping[str, Any]]]
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,7 @@ class SupervisorLoopConfig:
     watchdog_quiescent_status_predicate: Optional[
         WatchdogQuiescentStatusPredicate
     ] = None
+    worktree_status_projection: Optional[WorktreeStatusProjection] = None
 
 
 @dataclass(frozen=True)
@@ -577,11 +579,23 @@ class SupervisorLoop:
             )
             return self._record_worker_observation(child, observed)
 
-        threshold = self._worker_stall_threshold(current_status)
+        projection = self.config.worktree_status_projection
+        worktree_status: Mapping[str, Any] = current_status if projection is None else {}
+        if projection is not None:
+            try:
+                projected = projection(child, current_status)
+            except Exception:
+                projected = None
+            if isinstance(projected, Mapping):
+                worktree_status = projected
+        # Outer Portal state is not authority for a nested database attempt.
+        threshold = self._worker_stall_threshold(
+            current_status if projection is None else {}
+        )
         try:
             descendants = procfs_descendant_processes(child.pid)
             measured = worktree_phase_worker_status(
-                current_status,
+                worktree_status,
                 child.pid,
                 threshold,
                 descendants=descendants,
