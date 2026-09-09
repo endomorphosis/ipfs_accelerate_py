@@ -6,9 +6,15 @@ and derive exact maximum effects.  Prompt text, repository prose, usernames,
 environment claims, and mere credential presence never create a caller or
 authority.  Lower-precedence sources may only narrow allowlists and ceilings.
 
-This module is provider-free: import and pure resolution perform no I/O,
-repository scans, network calls, or process starts.  Callers inject verified
-evidence; the resolver records decisions as entrypoint contracts.
+DOEP-016 extends the same carrier with ``admit_authority``: typed admission
+errors, MCP++ raw-chain delegation binding via the existing validator, and
+exact-digest idempotency for adapter retries.  It does not create a second
+auth subsystem, DuckDB writer, or UCAN implementation.
+
+This module is provider-free for ASE-008 resolution: import and pure resolution
+perform no I/O, repository scans, network calls, or process starts.  Callers
+inject verified evidence; the resolver records decisions as entrypoint
+contracts.  Delegation validation is a lazy import of the existing MCP++ helper.
 """
 
 from __future__ import annotations
@@ -40,6 +46,17 @@ AUTHORITY_RESOLUTION_REQUIREMENT_ID: Final[str] = (
 AUTHORITY_RESOLUTION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/entrypoints/authority-resolution@1"
 )
+
+CANONICAL_AUTHORITY_ADMISSION_INTERFACE: Final[str] = "AuthorityAdmission@1"
+CANONICAL_AUTHORITY_ADMISSION_ENTRYPOINT: Final[str] = "admit_authority"
+AUTHORITY_IDEMPOTENCY_SCHEMA: Final[str] = (
+    f"{AUTHORITY_RESOLUTION_SCHEMA}/idempotency@1"
+)
+DELEGATION_EVIDENCE_SCHEMA: Final[str] = (
+    f"{AUTHORITY_RESOLUTION_SCHEMA}/delegation-evidence@1"
+)
+DEFAULT_DELEGATION_RESOURCE: Final[str] = "supervisor/objective"
+DEFAULT_DELEGATION_ABILITY: Final[str] = "agent-supervisor/invoke"
 
 LOCAL_WORKTREE_PROFILE_NAME: Final[str] = "local-worktree"
 LOCAL_WORKTREE_AUTHORITY_SOURCE: Final[str] = (
@@ -105,6 +122,44 @@ ALL_EXPECTED_EFFECTS: Final[frozenset[ExpectedEffect]] = frozenset(
 
 class AuthorityResolverError(ValueError):
     """Malformed, untrusted, or inconsistent authority-resolution input."""
+
+    reason_code: str = "authority_resolver_error"
+
+
+class AuthorityAdmissionError(RuntimeError):
+    """Base typed failure for objective-service authority admission."""
+
+    reason_code: str = "authority_admission_error"
+
+
+class AuthorityAuthenticationError(AuthorityAdmissionError):
+    """Trusted principal evidence is missing or fails admission."""
+
+    reason_code: str = "authentication_failed"
+
+
+class AuthorityDelegationError(AuthorityAdmissionError):
+    """Delegation chain is missing, malformed, escalating, or unverified."""
+
+    reason_code: str = "delegation_failed"
+
+
+class AuthorityIdempotencyError(AuthorityAdmissionError):
+    """Idempotency key is required or was replayed with a divergent digest."""
+
+    reason_code: str = "idempotency_conflict"
+
+
+class AuthorityAdmissionContractError(AuthorityAdmissionError):
+    """Admission request fields violate the carrier contract."""
+
+    reason_code: str = "authority_admission_contract_error"
+
+
+class AuthorityAdmissionUnavailableError(AuthorityAdmissionError):
+    """A required admission dependency (for example MCP++ delegation) is unavailable."""
+
+    reason_code: str = "authority_admission_unavailable"
 
 
 class PrincipalSourceKind(str, Enum):
@@ -1605,6 +1660,656 @@ def resolve_authority(
     )
 
 
+def _load_mcpplusplus_delegation() -> tuple[Any, Any]:
+    try:
+        from ipfs_accelerate_py.mcp_server.mcplusplus.delegation import (
+            parse_delegation_chain,
+            validate_raw_delegation_chain,
+        )
+    except Exception as exc:  # pragma: no cover - dependency/capability gap
+        raise AuthorityAdmissionUnavailableError(
+            "MCP++ delegation validator is unavailable"
+        ) from exc
+    return parse_delegation_chain, validate_raw_delegation_chain
+
+
+def _structural_chain_hops(
+    raw_chain: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, Any], ...]:
+    hops: list[dict[str, Any]] = []
+    for item in raw_chain:
+        if not isinstance(item, Mapping):
+            raise AuthorityAdmissionContractError(
+                "delegation raw_chain entries must be mappings"
+            )
+        hops.append(
+            {
+                "issuer": str(item.get("issuer") or "").strip(),
+                "audience": str(item.get("audience") or "").strip(),
+                "capabilities": item.get("capabilities") or [],
+                "expiry": item.get("expiry"),
+                "revoked": bool(item.get("revoked", False)),
+                "proof_cid": str(item.get("proof_cid") or "").strip(),
+            }
+        )
+    return tuple(hops)
+
+
+@dataclass(frozen=True)
+class DelegationEvidence:
+    """Injected raw UCAN chain for MCP++ attenuation; bearer tokens stay out of dicts.
+
+    Callers supply the raw chain; this module re-validates through the existing
+    MCP++ ``validate_raw_delegation_chain`` helper and never treats a caller
+    boolean as proof.
+    """
+
+    raw_chain: tuple[Mapping[str, Any], ...]
+    resource: str = DEFAULT_DELEGATION_RESOURCE
+    ability: str = DEFAULT_DELEGATION_ABILITY
+    actor: str = ""
+    issuer_public_keys: Mapping[str, str] = field(default_factory=dict)
+    revoked_proof_cids: tuple[str, ...] = ()
+    require_signatures: bool = False
+    attenuated_effects: tuple[ExpectedEffect, ...] | None = None
+    evidence_cid: str = ""
+
+    def __post_init__(self) -> None:
+        if isinstance(self.raw_chain, (str, bytes)) or not isinstance(
+            self.raw_chain, Sequence
+        ):
+            raise AuthorityAdmissionContractError(
+                "delegation raw_chain must be a sequence of mappings"
+            )
+        chain = tuple(
+            dict(item) if isinstance(item, Mapping) else item for item in self.raw_chain
+        )
+        object.__setattr__(self, "raw_chain", chain)
+        object.__setattr__(
+            self, "resource", _require_text(self.resource, "delegation.resource")
+        )
+        object.__setattr__(
+            self, "ability", _require_text(self.ability, "delegation.ability")
+        )
+        object.__setattr__(
+            self, "actor", _require_text(self.actor, "delegation.actor", required=False)
+        )
+        keys = {
+            _require_text(str(key), "issuer_public_keys.key"): _require_text(
+                str(value), "issuer_public_keys.value", required=False
+            )
+            for key, value in dict(self.issuer_public_keys or {}).items()
+        }
+        object.__setattr__(self, "issuer_public_keys", keys)
+        object.__setattr__(
+            self,
+            "revoked_proof_cids",
+            tuple(
+                _require_text(item, "revoked_proof_cids[]", required=False)
+                for item in self.revoked_proof_cids
+                if str(item or "").strip()
+            ),
+        )
+        object.__setattr__(
+            self,
+            "require_signatures",
+            _require_bool(self.require_signatures, "require_signatures"),
+        )
+        if self.attenuated_effects is not None:
+            object.__setattr__(
+                self,
+                "attenuated_effects",
+                _effects(self.attenuated_effects, "attenuated_effects"),
+            )
+        cid = self.evidence_cid
+        if cid:
+            object.__setattr__(
+                self, "evidence_cid", _require_cid(cid, "delegation.evidence_cid")
+            )
+        else:
+            object.__setattr__(self, "evidence_cid", delegation_evidence_cid(self))
+
+
+def delegation_evidence_cid(evidence: DelegationEvidence) -> str:
+    """Content-address structural delegation fields without bearer material."""
+
+    payload = {
+        "schema": DELEGATION_EVIDENCE_SCHEMA,
+        "resource": evidence.resource,
+        "ability": evidence.ability,
+        "actor": evidence.actor,
+        "hops": list(_structural_chain_hops(evidence.raw_chain)),
+        "require_signatures": evidence.require_signatures,
+        "revoked_proof_cids": list(evidence.revoked_proof_cids),
+        "attenuated_effects": (
+            None
+            if evidence.attenuated_effects is None
+            else [item.value for item in evidence.attenuated_effects]
+        ),
+    }
+    return cid_for_dag_json(payload)
+
+
+@dataclass(frozen=True)
+class DelegationBinding:
+    """Verified leaf-audience binding produced from MCP++ chain validation."""
+
+    disposition: ResolutionDisposition
+    principal_ref: str
+    proof_lineage_cid: str
+    ability: str
+    resource: str
+    hop_count: int
+    reason_codes: tuple[str, ...] = ()
+    evidence_cid: str = ""
+
+    @property
+    def bound(self) -> bool:
+        return self.disposition in {
+            ResolutionDisposition.UNIQUE,
+            ResolutionDisposition.DEFAULTED,
+        } and bool(self.principal_ref)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "disposition": self.disposition.value,
+            "principal_ref": self.principal_ref,
+            "proof_lineage_cid": self.proof_lineage_cid,
+            "ability": self.ability,
+            "resource": self.resource,
+            "hop_count": self.hop_count,
+            "reason_codes": list(self.reason_codes),
+            "evidence_cid": self.evidence_cid,
+            "bound": self.bound,
+        }
+
+
+def bind_delegation(evidence: DelegationEvidence) -> DelegationBinding:
+    """Validate a raw MCP++ delegation chain and bind the leaf audience."""
+
+    parse_delegation_chain, validate_raw_delegation_chain = _load_mcpplusplus_delegation()
+    if not evidence.raw_chain:
+        raise AuthorityDelegationError("delegation raw_chain is required")
+
+    raw_dicts = [dict(item) for item in evidence.raw_chain]
+    try:
+        parsed = parse_delegation_chain(raw_dicts)
+    except Exception as exc:
+        raise AuthorityDelegationError(
+            f"malformed_delegation: {exc}"
+        ) from exc
+    if not parsed:
+        raise AuthorityDelegationError("malformed_delegation: empty parsed chain")
+
+    result = validate_raw_delegation_chain(
+        raw_chain=raw_dicts,
+        resource=evidence.resource,
+        ability=evidence.ability,
+        actor=evidence.actor,
+        require_signatures=evidence.require_signatures,
+        issuer_public_keys=dict(evidence.issuer_public_keys),
+        revoked_proof_cids=list(evidence.revoked_proof_cids),
+    )
+    lineage_cid = cid_for_dag_json(
+        {
+            "schema": f"{DELEGATION_EVIDENCE_SCHEMA}/proof-lineage@1",
+            "proof_lineage": list(result.proof_lineage),
+            "chain_length": result.chain_length,
+        }
+    )
+    if not result.allowed:
+        return DelegationBinding(
+            disposition=ResolutionDisposition.DENIED,
+            principal_ref="",
+            proof_lineage_cid=lineage_cid,
+            ability=evidence.ability,
+            resource=evidence.resource,
+            hop_count=result.chain_length,
+            reason_codes=(f"delegation_{result.reason}",),
+            evidence_cid=evidence.evidence_cid,
+        )
+
+    leaf_audience = str(parsed[-1].audience or "").strip()
+    if evidence.actor and leaf_audience != evidence.actor:
+        raise AuthorityDelegationError("delegation actor_mismatch")
+    return DelegationBinding(
+        disposition=ResolutionDisposition.UNIQUE,
+        principal_ref=leaf_audience,
+        proof_lineage_cid=lineage_cid,
+        ability=evidence.ability,
+        resource=evidence.resource,
+        hop_count=result.chain_length,
+        reason_codes=("delegation_bound", "mcpplusplus_validate_raw_delegation_chain"),
+        evidence_cid=evidence.evidence_cid,
+    )
+
+
+@dataclass(frozen=True)
+class AuthorityIdempotencyRecord:
+    """Exact-digest idempotency outcome for one authority admission key."""
+
+    idempotency_key: str
+    request_digest: str
+    decision_reference_cid: str
+    authorized: bool
+    replayed: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": AUTHORITY_IDEMPOTENCY_SCHEMA,
+            "idempotency_key": self.idempotency_key,
+            "request_digest": self.request_digest,
+            "decision_reference_cid": self.decision_reference_cid,
+            "authorized": self.authorized,
+            "replayed": self.replayed,
+        }
+
+
+@dataclass
+class AuthorityIdempotencyStore:
+    """In-process exact-digest replay store for authority admission."""
+
+    _records: dict[str, tuple[AuthorityIdempotencyRecord, "AuthorityAdmission"]] = field(
+        default_factory=dict, init=False, repr=False
+    )
+
+    def lookup(self, idempotency_key: str) -> AuthorityIdempotencyRecord | None:
+        item = self._records.get(idempotency_key)
+        return None if item is None else item[0]
+
+    def remember(
+        self,
+        *,
+        idempotency_key: str,
+        request_digest: str,
+        admission: "AuthorityAdmission",
+    ) -> AuthorityIdempotencyRecord:
+        key = _require_text(idempotency_key, "idempotency_key")
+        digest = _require_cid(request_digest, "request_digest")
+        previous = self._records.get(key)
+        if previous is not None:
+            prior_record, prior_admission = previous
+            if prior_record.request_digest != digest:
+                raise AuthorityIdempotencyError(
+                    "idempotency key was replayed with a different admission request"
+                )
+            replayed = AuthorityIdempotencyRecord(
+                idempotency_key=key,
+                request_digest=prior_record.request_digest,
+                decision_reference_cid=prior_record.decision_reference_cid,
+                authorized=prior_record.authorized,
+                replayed=True,
+            )
+            replayed_admission = AuthorityAdmission(
+                resolution=prior_admission.resolution,
+                delegation=prior_admission.delegation,
+                idempotency=replayed,
+                interface=prior_admission.interface,
+            )
+            self._records[key] = (replayed, replayed_admission)
+            return replayed
+        record = AuthorityIdempotencyRecord(
+            idempotency_key=key,
+            request_digest=digest,
+            decision_reference_cid=admission.resolution.decision_reference_cid,
+            authorized=admission.resolution.authorized,
+            replayed=False,
+        )
+        stored = AuthorityAdmission(
+            resolution=admission.resolution,
+            delegation=admission.delegation,
+            idempotency=record,
+            interface=admission.interface,
+        )
+        self._records[key] = (record, stored)
+        return record
+
+    def get_admission(self, idempotency_key: str) -> "AuthorityAdmission | None":
+        item = self._records.get(idempotency_key)
+        return None if item is None else item[1]
+
+
+@dataclass(frozen=True)
+class AuthorityAdmissionRequest:
+    """Composed admission input over ASE-008 resolution plus security extensions."""
+
+    resolution: AuthorityResolutionRequest
+    idempotency_key: str = ""
+    require_idempotency_key: bool = False
+    delegation: DelegationEvidence | None = None
+    require_authenticated_principal: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.resolution, AuthorityResolutionRequest):
+            raise AuthorityAdmissionContractError(
+                "admission resolution must be an AuthorityResolutionRequest"
+            )
+        object.__setattr__(
+            self,
+            "idempotency_key",
+            _require_text(self.idempotency_key, "idempotency_key", required=False),
+        )
+        object.__setattr__(
+            self,
+            "require_idempotency_key",
+            _require_bool(self.require_idempotency_key, "require_idempotency_key"),
+        )
+        object.__setattr__(
+            self,
+            "require_authenticated_principal",
+            _require_bool(
+                self.require_authenticated_principal,
+                "require_authenticated_principal",
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class AuthorityAdmission:
+    """Authenticated, optionally delegated, idempotent authority admission result."""
+
+    resolution: AuthorityResolution
+    delegation: DelegationBinding | None = None
+    idempotency: AuthorityIdempotencyRecord | None = None
+    interface: str = CANONICAL_AUTHORITY_ADMISSION_INTERFACE
+
+    @property
+    def authorized(self) -> bool:
+        return self.resolution.authorized
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": f"{AUTHORITY_RESOLUTION_SCHEMA}/admission@1",
+            "interface": self.interface,
+            "authorized": self.authorized,
+            "resolution": self.resolution.to_dict(),
+            "delegation": (
+                None if self.delegation is None else self.delegation.to_dict()
+            ),
+            "idempotency": (
+                None if self.idempotency is None else self.idempotency.to_dict()
+            ),
+        }
+
+
+def authority_admission_request_digest(request: AuthorityAdmissionRequest) -> str:
+    """Content-address admission-affecting request fields for exact-digest replay."""
+
+    resolution = request.resolution
+    principal = resolution.authenticated_principal
+    profile = resolution.signed_profile
+    existing = resolution.existing_run
+    local = resolution.local_worktree_authority
+    constraint = resolution.repository_policy_constraint
+    delegation = request.delegation
+    payload = {
+        "schema": AUTHORITY_IDEMPOTENCY_SCHEMA,
+        "mode": resolution.mode.value,
+        "authenticated_principal": None
+        if principal is None
+        else {
+            "principal_ref": principal.principal_ref,
+            "source": principal.source.value,
+            "evidence_cid": principal.evidence_cid,
+            "kind": principal.kind.value,
+            "transport": principal.transport,
+            "audience": principal.audience,
+            "signature_verified": principal.signature_verified,
+            "ucan_verified": principal.ucan_verified,
+        },
+        "signed_profile": None
+        if profile is None
+        else {
+            "profile_cid": profile.profile_cid,
+            "policy_cid": profile.policy_cid,
+            "principal_ref": profile.principal_ref,
+            "evidence_cid": profile.evidence_cid,
+            "allowed_effects": [item.value for item in profile.allowed_effects],
+        },
+        "existing_run": None
+        if existing is None
+        else {
+            "run_id": existing.run_id,
+            "principal_ref": existing.principal_ref,
+            "policy_cid": existing.policy_cid,
+            "evidence_cid": existing.evidence_cid,
+            "allowed_effects": [item.value for item in existing.allowed_effects],
+        },
+        "local_worktree": None
+        if local is None
+        else {
+            "principal_ref": local.principal_ref,
+            "installation_receipt_cid": local.installation_receipt_cid,
+            "policy_cid": local.policy_cid,
+            "allowed_effects": [item.value for item in local.allowed_effects],
+        },
+        "repository_policy_constraint": None
+        if constraint is None
+        else {
+            "policy_cid": constraint.policy_cid,
+            "evidence_cid": constraint.evidence_cid,
+            "allowed_effects": (
+                None
+                if constraint.allowed_effects is None
+                else [item.value for item in constraint.allowed_effects]
+            ),
+            "denied_effects": [item.value for item in constraint.denied_effects],
+        },
+        "requested_effect_narrowing": (
+            None
+            if resolution.requested_effect_narrowing is None
+            else [item.value for item in resolution.requested_effect_narrowing]
+        ),
+        "delegation": None
+        if delegation is None
+        else {
+            "evidence_cid": delegation.evidence_cid,
+            "resource": delegation.resource,
+            "ability": delegation.ability,
+            "actor": delegation.actor,
+            "require_signatures": delegation.require_signatures,
+            "attenuated_effects": (
+                None
+                if delegation.attenuated_effects is None
+                else [item.value for item in delegation.attenuated_effects]
+            ),
+        },
+        "idempotency_key": request.idempotency_key,
+        "require_idempotency_key": request.require_idempotency_key,
+        "require_authenticated_principal": request.require_authenticated_principal,
+    }
+    return cid_for_dag_json(payload)
+
+
+def _with_ucan_verified_principal(
+    principal: AuthenticatedPrincipalEvidence,
+) -> AuthenticatedPrincipalEvidence:
+    if principal.ucan_verified:
+        return principal
+    return AuthenticatedPrincipalEvidence(
+        principal_ref=principal.principal_ref,
+        source=principal.source,
+        evidence_cid=principal.evidence_cid,
+        kind=principal.kind,
+        transport=principal.transport,
+        audience=principal.audience,
+        signature_verified=principal.signature_verified,
+        ucan_verified=True,
+    )
+
+
+def _narrow_resolution_request(
+    request: AuthorityResolutionRequest,
+    *,
+    authenticated_principal: AuthenticatedPrincipalEvidence | None = None,
+    effect_narrowing: Sequence[ExpectedEffect] | None = None,
+) -> AuthorityResolutionRequest:
+    narrowing = request.requested_effect_narrowing
+    if effect_narrowing is not None:
+        if narrowing is None:
+            narrowing = _effects(effect_narrowing, "attenuated_effects")
+        else:
+            narrowing = _intersect_effects(narrowing, effect_narrowing)
+    return AuthorityResolutionRequest(
+        mode=request.mode,
+        authenticated_principal=(
+            request.authenticated_principal
+            if authenticated_principal is None
+            else authenticated_principal
+        ),
+        signed_profile=request.signed_profile,
+        existing_run=request.existing_run,
+        local_worktree_authority=request.local_worktree_authority,
+        repository_policy_constraint=request.repository_policy_constraint,
+        requested_effect_narrowing=narrowing,
+        prompt_claimed_principal=request.prompt_claimed_principal,
+        prompt_claimed_effects=request.prompt_claimed_effects,
+        prompt_claimed_policy=request.prompt_claimed_policy,
+        username_claim=request.username_claim,
+        environment_principal_claim=request.environment_principal_claim,
+        credentials_present=request.credentials_present,
+        repository_claimed_authority=request.repository_claimed_authority,
+        fresh_until_ms=request.fresh_until_ms,
+    )
+
+
+def admit_authority(
+    request: AuthorityAdmissionRequest | AuthorityResolutionRequest | None = None,
+    *,
+    store: AuthorityIdempotencyStore | None = None,
+    **values: Any,
+) -> AuthorityAdmission:
+    """Admit authenticated, optionally delegated authority with exact-digest idempotency.
+
+    This extends ASE-008 ``resolve_authority`` without creating a second auth
+    subsystem.  MCP++ chain verification is delegated to
+    ``validate_raw_delegation_chain``; idempotency matches exact request digests.
+    """
+
+    if request is None:
+        if "resolution" in values:
+            try:
+                request = AuthorityAdmissionRequest(**values)
+            except TypeError as exc:
+                raise AuthorityAdmissionContractError(str(exc)) from exc
+        else:
+            try:
+                resolution = AuthorityResolutionRequest(**values)
+            except TypeError as exc:
+                raise AuthorityAdmissionContractError(str(exc)) from exc
+            except AuthorityResolverError as exc:
+                raise AuthorityAdmissionContractError(str(exc)) from exc
+            request = AuthorityAdmissionRequest(resolution=resolution)
+    elif isinstance(request, AuthorityResolutionRequest):
+        if values:
+            raise AuthorityAdmissionContractError(
+                "pass either an AuthorityAdmissionRequest or keyword fields"
+            )
+        request = AuthorityAdmissionRequest(resolution=request)
+    elif not isinstance(request, AuthorityAdmissionRequest):
+        raise AuthorityAdmissionContractError(
+            "admit_authority requires AuthorityAdmissionRequest or AuthorityResolutionRequest"
+        )
+    elif values:
+        raise AuthorityAdmissionContractError(
+            "pass either an AuthorityAdmissionRequest or keyword fields"
+        )
+
+    if request.require_idempotency_key and not request.idempotency_key:
+        raise AuthorityIdempotencyError("idempotency_key is required")
+
+    digest = authority_admission_request_digest(request)
+    active_store = store
+    if request.idempotency_key:
+        if active_store is None:
+            raise AuthorityIdempotencyError(
+                "idempotency_key requires an AuthorityIdempotencyStore"
+            )
+        prior = active_store.get_admission(request.idempotency_key)
+        if prior is not None:
+            prior_record = prior.idempotency
+            if prior_record is None or prior_record.request_digest != digest:
+                raise AuthorityIdempotencyError(
+                    "idempotency key was replayed with a different admission request"
+                )
+            return AuthorityAdmission(
+                resolution=prior.resolution,
+                delegation=prior.delegation,
+                idempotency=AuthorityIdempotencyRecord(
+                    idempotency_key=prior_record.idempotency_key,
+                    request_digest=prior_record.request_digest,
+                    decision_reference_cid=prior_record.decision_reference_cid,
+                    authorized=prior_record.authorized,
+                    replayed=True,
+                ),
+                interface=prior.interface,
+            )
+
+    resolution_request = request.resolution
+    delegation_binding: DelegationBinding | None = None
+    principal = resolution_request.authenticated_principal
+
+    requires_delegation = request.delegation is not None or (
+        principal is not None and principal.kind is PrincipalSourceKind.MCP_PLUS_UCAN
+    )
+    if requires_delegation and request.delegation is None:
+        raise AuthorityDelegationError(
+            "MCP++ admission requires DelegationEvidence raw chain"
+        )
+
+    if request.delegation is not None:
+        delegation_binding = bind_delegation(request.delegation)
+        if not delegation_binding.bound:
+            raise AuthorityDelegationError(
+                "delegation chain denied: "
+                + ", ".join(delegation_binding.reason_codes)
+            )
+        if principal is None:
+            raise AuthorityAuthenticationError(
+                "delegated admission requires authenticated principal evidence"
+            )
+        if principal.principal_ref != delegation_binding.principal_ref:
+            raise AuthorityDelegationError(
+                "delegation leaf audience does not match authenticated principal"
+            )
+        resolution_request = _narrow_resolution_request(
+            resolution_request,
+            authenticated_principal=_with_ucan_verified_principal(principal),
+            effect_narrowing=request.delegation.attenuated_effects,
+        )
+
+    try:
+        resolution = resolve_authority(resolution_request)
+    except AuthorityResolverError as exc:
+        raise AuthorityAdmissionContractError(str(exc)) from exc
+
+    if request.require_authenticated_principal and not resolution.authorized:
+        raise AuthorityAuthenticationError(
+            "authority admission requires a trusted authenticated principal: "
+            + ", ".join(resolution.reason_codes)
+        )
+
+    admission = AuthorityAdmission(
+        resolution=resolution,
+        delegation=delegation_binding,
+        idempotency=None,
+        interface=CANONICAL_AUTHORITY_ADMISSION_INTERFACE,
+    )
+    if request.idempotency_key and active_store is not None:
+        record = active_store.remember(
+            idempotency_key=request.idempotency_key,
+            request_digest=digest,
+            admission=admission,
+        )
+        admission = AuthorityAdmission(
+            resolution=resolution,
+            delegation=delegation_binding,
+            idempotency=record,
+            interface=CANONICAL_AUTHORITY_ADMISSION_INTERFACE,
+        )
+    return admission
+
+
 class AuthorityResolver:
     """Stateful facade that reuses an installed local worktree authority."""
 
@@ -1612,12 +2317,18 @@ class AuthorityResolver:
         self,
         *,
         local_worktree_authority: LocalWorktreeAuthority | None = None,
+        idempotency_store: AuthorityIdempotencyStore | None = None,
     ) -> None:
         self._local_worktree_authority = local_worktree_authority
+        self._idempotency_store = idempotency_store or AuthorityIdempotencyStore()
 
     @property
     def local_worktree_authority(self) -> LocalWorktreeAuthority | None:
         return self._local_worktree_authority
+
+    @property
+    def idempotency_store(self) -> AuthorityIdempotencyStore:
+        return self._idempotency_store
 
     def install_local_worktree(
         self,
@@ -1666,10 +2377,62 @@ class AuthorityResolver:
             )
         return resolve_authority(request)
 
+    def admit(
+        self,
+        request: AuthorityAdmissionRequest | AuthorityResolutionRequest | None = None,
+        **values: Any,
+    ) -> AuthorityAdmission:
+        if request is None:
+            if "resolution" in values:
+                request = AuthorityAdmissionRequest(**values)
+            else:
+                request = AuthorityAdmissionRequest(
+                    resolution=AuthorityResolutionRequest(**values)
+                )
+        elif isinstance(request, AuthorityResolutionRequest):
+            request = AuthorityAdmissionRequest(resolution=request)
+        if (
+            request.resolution.local_worktree_authority is None
+            and self._local_worktree_authority is not None
+        ):
+            resolution = request.resolution
+            request = AuthorityAdmissionRequest(
+                resolution=AuthorityResolutionRequest(
+                    mode=resolution.mode,
+                    authenticated_principal=resolution.authenticated_principal,
+                    signed_profile=resolution.signed_profile,
+                    existing_run=resolution.existing_run,
+                    local_worktree_authority=self._local_worktree_authority,
+                    repository_policy_constraint=(
+                        resolution.repository_policy_constraint
+                    ),
+                    requested_effect_narrowing=resolution.requested_effect_narrowing,
+                    prompt_claimed_principal=resolution.prompt_claimed_principal,
+                    prompt_claimed_effects=resolution.prompt_claimed_effects,
+                    prompt_claimed_policy=resolution.prompt_claimed_policy,
+                    username_claim=resolution.username_claim,
+                    environment_principal_claim=resolution.environment_principal_claim,
+                    credentials_present=resolution.credentials_present,
+                    repository_claimed_authority=resolution.repository_claimed_authority,
+                    fresh_until_ms=resolution.fresh_until_ms,
+                ),
+                idempotency_key=request.idempotency_key,
+                require_idempotency_key=request.require_idempotency_key,
+                delegation=request.delegation,
+                require_authenticated_principal=request.require_authenticated_principal,
+            )
+        return admit_authority(request, store=self._idempotency_store)
+
 
 __all__ = (
+    "AUTHORITY_IDEMPOTENCY_SCHEMA",
     "AUTHORITY_RESOLUTION_REQUIREMENT_ID",
     "AUTHORITY_RESOLUTION_SCHEMA",
+    "CANONICAL_AUTHORITY_ADMISSION_ENTRYPOINT",
+    "CANONICAL_AUTHORITY_ADMISSION_INTERFACE",
+    "DEFAULT_DELEGATION_ABILITY",
+    "DEFAULT_DELEGATION_RESOURCE",
+    "DELEGATION_EVIDENCE_SCHEMA",
     "EXISTING_RUN_AUTHORITY_SOURCE",
     "FORBIDDEN_LOCAL_OPERATIONS",
     "LOCAL_WORKTREE_ALLOWED_EFFECTS",
@@ -1683,10 +2446,22 @@ __all__ = (
     "SIGNED_PROFILE_AUTHORITY_SOURCE",
     "SOURCE_PRECEDENCE",
     "AuthenticatedPrincipalEvidence",
+    "AuthorityAdmission",
+    "AuthorityAdmissionContractError",
+    "AuthorityAdmissionError",
+    "AuthorityAdmissionRequest",
+    "AuthorityAdmissionUnavailableError",
+    "AuthorityAuthenticationError",
+    "AuthorityDelegationError",
+    "AuthorityIdempotencyError",
+    "AuthorityIdempotencyRecord",
+    "AuthorityIdempotencyStore",
     "AuthorityResolution",
     "AuthorityResolutionRequest",
     "AuthorityResolver",
     "AuthorityResolverError",
+    "DelegationBinding",
+    "DelegationEvidence",
     "EffectCeiling",
     "ExistingRunAuthorityEvidence",
     "LocalWorktreeAuthority",
@@ -1695,6 +2470,10 @@ __all__ = (
     "PrincipalSourceKind",
     "RepositoryPolicyConstraint",
     "SignedProfileEvidence",
+    "admit_authority",
+    "authority_admission_request_digest",
+    "bind_delegation",
+    "delegation_evidence_cid",
     "effect_ceiling_cid",
     "install_local_worktree_authority",
     "mode_default_effects",

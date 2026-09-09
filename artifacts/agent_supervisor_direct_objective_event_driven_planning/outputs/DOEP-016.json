@@ -1,0 +1,62 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-output@1",
+  "task_id": "DOEP-016",
+  "task_cid": "sha256:0d12d5694ddf55e6a0c86085aa7a2989eb89ed17b628011b82629bb6c027faec",
+  "title": "Add authentication, delegation, idempotency, and typed errors",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "owning_repository": "ipfs_accelerate_py",
+  "base_repositories": {
+    "ipfs_accelerate_py": {
+      "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+      "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+    },
+    "ipfs_datasets_py": {
+      "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+      "tree": "456e09b51d6a07a3a5873436df24054768195320"
+    },
+    "ipfs_kit_py": {
+      "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+      "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+    },
+    "lift_coding": {
+      "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+      "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+    }
+  },
+  "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/authority_resolver.py",
+  "declared_outputs": [
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/authority_resolver.py",
+    "test/api/doep/test_doep_016_add_authentication_delegation_idempotency_and_typed_.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-016.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-016.json"
+  ],
+  "canonical_extension": {
+    "identifier": "AuthorityAdmission@1",
+    "module": "ipfs_accelerate_py.agent_supervisor.entrypoints.authority_resolver",
+    "entrypoint": "admit_authority",
+    "carrier": "AuthorityResolver",
+    "resolution_delegate": "resolve_authority",
+    "delegation_delegate": "ipfs_accelerate_py.mcp_server.mcplusplus.delegation.validate_raw_delegation_chain",
+    "idempotency_semantics": "exact_request_digest_replay",
+    "typed_errors": [
+      "AuthorityAdmissionError",
+      "AuthorityAuthenticationError",
+      "AuthorityDelegationError",
+      "AuthorityIdempotencyError",
+      "AuthorityAdmissionContractError",
+      "AuthorityAdmissionUnavailableError"
+    ],
+    "ase008_preserved": true,
+    "callers_supply_authoritative_policy": false,
+    "completion_authority": false,
+    "competing_subsystem_created": false,
+    "delegation": "admit_authority reuses ASE-008 resolve_authority, binds MCP++ raw UCAN chains through validate_raw_delegation_chain without storing bearer tokens, and applies in-process exact-digest idempotency for adapter retries."
+  },
+  "no_competing_subsystem_created": true,
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-016@1"
+}
