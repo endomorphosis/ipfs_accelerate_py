@@ -10,6 +10,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.pytest_item_ledger import (
     LEDGER_SCHEMA,
     command_fingerprint,
     file_sha256,
+    git_worktree_root,
     infer_board_workspace,
     ledger_context,
     load_records,
@@ -40,6 +41,14 @@ def _seed_worktree(root: Path, *, branch: str) -> Path:
     _git(repo, "branch", branch)
     _git(repo, "worktree", "add", str(workspace), branch)
     return workspace
+
+
+def test_git_worktree_root_walks_up_from_test_subdir(tmp_path: Path) -> None:
+    branch = "implementation/aseh-061-deadbeef-attempt-1-1"
+    workspace = _seed_worktree(tmp_path, branch=branch)
+    nested = workspace / "test" / "api"
+    nested.mkdir(parents=True)
+    assert git_worktree_root(nested) == workspace.resolve()
 
 
 def test_ledger_context_none_outside_board_worktree(tmp_path: Path) -> None:

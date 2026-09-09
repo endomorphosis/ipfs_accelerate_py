@@ -16,6 +16,7 @@ from .pytest_item_ledger import (
     SKIP_REASON,
     command_fingerprint,
     file_sha256,
+    git_worktree_root,
     infer_board_workspace,
     ledger_context,
     load_records,
@@ -29,8 +30,8 @@ _STATE: dict[str, Any] = {}
 def _workspace(config: Any) -> Path:
     invocation = getattr(config, "invocation_dir", None)
     if invocation:
-        return Path(str(invocation)).resolve()
-    return Path.cwd().resolve()
+        return git_worktree_root(Path(str(invocation)))
+    return git_worktree_root(Path.cwd())
 
 
 def _relative_test_file(workspace: Path, item: Any) -> str:
