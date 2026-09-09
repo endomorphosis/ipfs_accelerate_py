@@ -23336,13 +23336,29 @@ def _trusted_git_executable_unlocked(*, strict: bool = False) -> str:
     return str(TRUSTED_GIT)
 
 
+ASEH_GIT_COMMAND_TIMEOUT_SECONDS: Final = 60.0
+ASEH_GIT_TREE_SCAN_TIMEOUT_SECONDS: Final = 300.0
+
+
+def _git_command_timeout_seconds(*args: str) -> float:
+    if args and args[0] in {"status", "ls-files"}:
+        return ASEH_GIT_TREE_SCAN_TIMEOUT_SECONDS
+    return ASEH_GIT_COMMAND_TIMEOUT_SECONDS
+
+
 def _git(*args: str, cwd: Path | None = None) -> str:
     repository = ROOT if cwd is None else cwd
     git = _trusted_git_executable()
-    completed = subprocess.run(
-        (git, *args), cwd=repository, env=_trusted_git_environment(),
-        text=True, capture_output=True, check=False, timeout=60,
-    )
+    timeout = _git_command_timeout_seconds(*args)
+    try:
+        completed = subprocess.run(
+            (git, *args), cwd=repository, env=_trusted_git_environment(),
+            text=True, capture_output=True, check=False, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OperatorError(
+            f"git {' '.join(args)} timed out after {timeout:.0f} seconds"
+        ) from exc
     if completed.returncode != 0:
         raise OperatorError(
             f"git {' '.join(args)} failed: {completed.stderr[-1000:]}"
@@ -23353,10 +23369,16 @@ def _git(*args: str, cwd: Path | None = None) -> str:
 def _git_bytes(*args: str, cwd: Path | None = None) -> bytes:
     repository = ROOT if cwd is None else cwd
     git = _trusted_git_executable()
-    completed = subprocess.run(
-        (git, *args), cwd=repository, env=_trusted_git_environment(),
-        capture_output=True, check=False, timeout=60,
-    )
+    timeout = _git_command_timeout_seconds(*args)
+    try:
+        completed = subprocess.run(
+            (git, *args), cwd=repository, env=_trusted_git_environment(),
+            capture_output=True, check=False, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OperatorError(
+            f"git {' '.join(args)} timed out after {timeout:.0f} seconds"
+        ) from exc
     if completed.returncode != 0:
         stderr = completed.stderr.decode("utf-8", errors="replace")
         raise OperatorError(f"git {' '.join(args)} failed: {stderr[-1000:]}")
@@ -25188,6 +25210,8 @@ def _assert_candidate_authorization_witness(
     boundary: str,
 ) -> None:
     guard = _ASEH_CANDIDATE_GIT_GUARD
+    recorded = dict(witness)
+    empty_status = _identity(b"")
     if guard is not None:
         if (
             guard.candidate_head != expected_head
@@ -25200,18 +25224,29 @@ def _assert_candidate_authorization_witness(
             guard,
             boundary=f"before {boundary}",
         )
+        # Git-guard holds index.lock via `git update-index --stdin`.  Re-running
+        # `git status --untracked-files=all` contends on that lock and times out
+        # on large worktrees.  The guard itself is the frozen epoch.
+        if (
+            recorded.get("head") != expected_head
+            or recorded.get("tree") != expected_tree
+            or recorded.get("status_digest") != empty_status
+        ):
+            raise OperatorError(
+                f"R11 candidate changed across authorization boundary: {boundary}"
+            )
+        _validate_candidate_git_guard_health(
+            guard,
+            boundary=f"after {boundary}",
+        )
+        return
     observed = _candidate_authorization_witness(
         expected_head=expected_head,
         expected_tree=expected_tree,
     )
-    if observed != dict(witness):
+    if observed != recorded:
         raise OperatorError(
             f"R11 candidate changed across authorization boundary: {boundary}"
-        )
-    if guard is not None:
-        _validate_candidate_git_guard_health(
-            guard,
-            boundary=f"after {boundary}",
         )
 
 
@@ -86583,6 +86618,43 @@ def _r21_owner_start_endpoint_observation(
     return residual_paths_absent, listener_samples
 
 
+def _r21_reclaim_stale_owner_start_marker(
+    *,
+    marker_path: Path,
+    lock_path: Path,
+) -> None:
+    """Drop a dead previous owner's marker before residual-path observation.
+
+    ``server.start()`` already reclaims a dead marker under the exclusive
+    lease, but R21 baseline requires the marker absent *before* start.  A
+    failed start that left ``.control.duckdb.state-owner.json`` therefore
+    fail-closed every later generation with residual authority present.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        reclaim_stale_owner_marker,
+    )
+
+    try:
+        result = reclaim_stale_owner_marker(
+            marker_path=marker_path,
+            lock_path=lock_path,
+        )
+    except Exception as exc:
+        raise OperatorError(
+            "R21 owner-start stale marker reclaim failed"
+        ) from exc
+    if not isinstance(result, Mapping):
+        raise OperatorError("R21 owner-start stale marker reclaim is malformed")
+    if result.get("reclaimed") is True:
+        return
+    reason = str(result.get("reason") or "")
+    if reason in {"no_marker", "lock_held"}:
+        return
+    # Live, unknown, invalid, or raced markers stay in place so the residual
+    # path check can fail closed.
+
+
 def _r21_owner_start_contention_observation(
     *,
     paths: Mapping[str, Path],
@@ -86606,6 +86678,10 @@ def _r21_owner_start_contention_observation(
         raise OperatorError("R21 owner-start marker scope is unknown") from exc
     if marker_parent != database_parent:
         raise OperatorError("R21 owner-start marker scope differs")
+    _r21_reclaim_stale_owner_start_marker(
+        marker_path=owner_marker_path,
+        lock_path=owner_lock_path,
+    )
     lifecycle = str(getattr(server.lifecycle, "value", "") or "")
     if lifecycle != expected_lifecycle or server.identity is not None:
         raise OperatorError("R21 owner-start lifecycle cleanup is incomplete")

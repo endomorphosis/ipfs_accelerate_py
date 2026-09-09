@@ -27774,6 +27774,68 @@ def test_aseh_r30_git_guard_reclaims_empty_unheld_index_lock_after_reboot(
     assert aseh_operator._ASEH_CANDIDATE_GIT_GUARD is None
 
 
+def test_aseh_r30_assert_witness_skips_status_rescan_while_git_guard_held(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    git("init", "--quiet", "--initial-branch=aseh")
+    git("config", "user.name", "ASEH Test")
+    git("config", "user.email", "aseh@example.invalid")
+    tracked = repository / "tracked.txt"
+    tracked.write_text("sealed\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "--quiet", "-m", "sealed candidate")
+    candidate_head = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+    witness = aseh_operator._candidate_authorization_witness(
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+    )
+    real_git = aseh_operator._git
+    status_calls: list[tuple[str, ...]] = []
+    block_status = False
+
+    def wrapped_git(*arguments: str, **kwargs: object) -> str:
+        if block_status and arguments and arguments[0] == "status":
+            status_calls.append(arguments)
+            raise subprocess.TimeoutExpired(("git",) + arguments, 60)
+        return real_git(*arguments, **kwargs)
+
+    monkeypatch.setattr(aseh_operator, "_git", wrapped_git)
+    with aseh_operator._prepared_candidate_git_guard(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    ):
+        block_status = True
+        try:
+            aseh_operator._assert_candidate_authorization_witness(
+                witness,
+                expected_head=candidate_head,
+                expected_tree=candidate_tree,
+                boundary="R30 guarded status rescan",
+            )
+        finally:
+            block_status = False
+    assert status_calls == []
+    assert aseh_operator._ASEH_CANDIDATE_GIT_GUARD is None
+
+
 @pytest.mark.parametrize("entry_kind", ["regular", "dangling_symlink", "fifo"])
 def test_aseh_r30_preexisting_attempt_denies_revision_retry(
     entry_kind: str,
