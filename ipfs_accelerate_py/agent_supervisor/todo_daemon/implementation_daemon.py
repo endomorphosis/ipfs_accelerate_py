@@ -26481,26 +26481,48 @@ class PortalImplementationDaemon:
             elif not integration_base_commit:
                 reasons.append("integration_base_commit_unavailable")
             if integration_commit:
-                topology = subprocess.run(
-                    [
-                        "git",
-                        "--no-replace-objects",
-                        "rev-list",
-                        "--parents",
-                        "-n",
-                        "1",
-                        integration_commit,
-                    ],
-                    cwd=self.repo_root,
-                    text=True,
-                    capture_output=True,
-                    check=False,
+                from .database_portal_bridge import (
+                    DatabasePortalBridgeError,
+                    resolve_accepted_source_merge_topology,
                 )
-                if topology.returncode == 0:
-                    exact_parents = topology.stdout.strip().split()
+
+                def load_parents(commit: str) -> list[str]:
+                    topology = subprocess.run(
+                        [
+                            "git",
+                            "--no-replace-objects",
+                            "rev-list",
+                            "--parents",
+                            "-n",
+                            "1",
+                            commit,
+                        ],
+                        cwd=self.repo_root,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    if topology.returncode != 0:
+                        return []
+                    return topology.stdout.strip().split()
+
+                try:
+                    exact_merge, exact_base = (
+                        resolve_accepted_source_merge_topology(
+                            integration_commit,
+                            implementation_commit,
+                            load_parents=load_parents,
+                        )
+                    )
+                    exact_parents = [
+                        exact_merge,
+                        exact_base,
+                        implementation_commit,
+                    ]
+                except DatabasePortalBridgeError:
+                    exact_parents = load_parents(integration_commit)
                 if (
                     len(exact_parents) != 3
-                    or exact_parents[0] != integration_commit
                     or exact_parents[1] != integration_base_commit
                     or exact_parents[2] != implementation_commit
                 ):
@@ -47603,6 +47625,7 @@ class PortalImplementationDaemon:
             shared_worktree_path_scrub: dict[str, Any] = {}
             merge_returncode = merge.returncode
             merged_gitlink_recording: dict[str, Any] = {}
+            exact_two_parent_merge_commit = ""
             if merge_returncode != 0:
                 deterministic_conflict_repair = [
                     *self._resolve_generated_markdown_conflicts(merge_workspace),
@@ -47682,6 +47705,7 @@ class PortalImplementationDaemon:
                     target_parent_ref=pre_merge_commit,
                     target_scope=target_branch,
                 )
+                exact_two_parent_merge_commit = merge_commit
                 merged_gitlink_recording = self._record_merged_submodule_gitlinks(
                     merge_workspace,
                     submodule_merge_results,
@@ -47757,6 +47781,14 @@ class PortalImplementationDaemon:
                     "submodule_failure_rollback": submodule_failure_rollback,
                     "submodule_merge_results": submodule_merge_results,
             }
+            if (
+                exact_two_parent_merge_commit
+                and merge_commit
+                and exact_two_parent_merge_commit != merge_commit
+            ):
+                result["exact_two_parent_merge_commit"] = (
+                    exact_two_parent_merge_commit
+                )
             if (
                 effective_merged
                 and baseline_ref
@@ -67898,6 +67930,12 @@ DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA = (
 DATABASE_PORTAL_FAILURE_QUARANTINE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/portal-failure-quarantine@1"
 )
+_RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON = (
+    "Portal accepted-source transition is not the exact Git merge"
+)
+_AUTOMATIC_PORTAL_FAILURE_REARM_EVENT = (
+    "automatic_recoverable_portal_failure_rearmed"
+)
 DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1 = (
     "ipfs_accelerate_py/agent-supervisor/database-control-claim-binding@1"
 )
@@ -70095,6 +70133,147 @@ class DatabaseImplementationDaemon:
         raise DatabaseImplementationAuthorityError(
             "failed coordination barrier has no exact local Portal receipt"
         )
+
+    def _portal_failure_matches_recoverable_reason(
+        self,
+        receipt: Mapping[str, Any],
+        attempt: DatabaseTaskAttempt,
+        reason: str,
+    ) -> bool:
+        """Match a closed settlement digest to one recoverable failure string."""
+
+        binding = self._control_binding_for_attempt(attempt)
+        expected = "sha256:" + hashlib.sha256(
+            canonical_json(
+                {
+                    "failure_code": "database_portal_bridge_error",
+                    "failure_reason_sha256": "sha256:"
+                    + hashlib.sha256(reason.encode("utf-8")).hexdigest(),
+                    "control_task_projection_cid": str(
+                        binding["control_task_projection_cid"]
+                    ),
+                }
+            ).encode("utf-8")
+        ).hexdigest()
+        return str(receipt.get("failure_payload_digest") or "") == expected
+
+    def _automatic_portal_failure_rearm_recorded(
+        self,
+        *,
+        task_cid: str,
+    ) -> bool:
+        rows = self._require_connection().execute(
+            "SELECT 1 FROM daemon_execution_events "
+            "WHERE event_type = ? AND task_cid = ? LIMIT 1",
+            [_AUTOMATIC_PORTAL_FAILURE_REARM_EVENT, str(task_cid)],
+        ).fetchall()
+        return bool(rows)
+
+    def reconcile_recoverable_portal_failure_rearms(self) -> list[dict[str, Any]]:
+        """Unblock the accepted-source gitlink-follow-up portal failure class.
+
+        ``terminal_portal_bridge_error`` settlements keep
+        ``automatic_retry_admitted=false``.  The operator rearm path only
+        fires after a blocked→retrying CAS.  For the exact-Git-merge mismatch
+        that parked SAWM-006 after merge-train had already accepted a
+        gitlink-recording follow-up, perform that CAS once per task so the
+        next claim can verify the follow-up topology.
+        """
+
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        page = list_tasks(
+            status=("blocked",),
+            limit=TASK_SOURCE_QUERY_LIMIT,
+        )
+        rearmed: list[dict[str, Any]] = []
+        for task in page.tasks:
+            task_cid = str(task.task_cid)
+            if self._automatic_portal_failure_rearm_recorded(task_cid=task_cid):
+                continue
+            rows = self._require_connection().execute(
+                "SELECT attempt_id FROM database_task_attempts "
+                "WHERE task_cid = ? AND status = 'failed' "
+                "ORDER BY started_at_ms DESC, attempt_id DESC",
+                [task_cid],
+            ).fetchall()
+            matched: tuple[DatabaseTaskAttempt, dict[str, Any]] | None = None
+            for row in rows:
+                attempt = self.get_attempt(str(row[0]))
+                if attempt is None:
+                    continue
+                try:
+                    receipt = self._portal_failure_phase_receipt(attempt)
+                except Exception:
+                    continue
+                if receipt is None:
+                    continue
+                try:
+                    recoverable = self._portal_failure_matches_recoverable_reason(
+                        receipt,
+                        attempt,
+                        _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON,
+                    )
+                except Exception:
+                    continue
+                if recoverable:
+                    matched = (attempt, receipt)
+                    break
+            if matched is None:
+                continue
+            attempt, receipt = matched
+            cas_receipt = {
+                "operation": "operator_control_plane_repair",
+                "settlement_id": str(receipt["settlement_id"]),
+            }
+            try:
+                cas_result = self._cas_task_status_database(
+                    task_cid,
+                    expected_revision=int(task.revision),
+                    new_status="retrying",
+                    receipt=cas_receipt,
+                )
+                updated = getattr(cas_result, "task", None)
+            except Exception:
+                updated = self.task_source.get(task_cid)
+                updated_body = getattr(updated, "body", None)
+                observed_receipt = (
+                    updated_body.get("completion_receipt")
+                    if isinstance(updated_body, Mapping)
+                    else None
+                )
+                if (
+                    updated is None
+                    or str(updated.status or "").strip().lower() != "retrying"
+                    or not isinstance(observed_receipt, Mapping)
+                    or dict(observed_receipt) != cas_receipt
+                ):
+                    continue
+            if (
+                updated is None
+                or str(updated.status or "").strip().lower() != "retrying"
+            ):
+                continue
+            record = {
+                "task_cid": task_cid,
+                "task_alias": str(getattr(updated, "task_alias", "") or ""),
+                "attempt_id": attempt.attempt_id,
+                "settlement_id": str(receipt["settlement_id"]),
+                "from_status": "blocked",
+                "to_status": "retrying",
+                "from_revision": int(task.revision),
+                "to_revision": int(updated.revision),
+                "reason": _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON,
+            }
+            self._record_event(
+                _AUTOMATIC_PORTAL_FAILURE_REARM_EVENT,
+                attempt_id=attempt.attempt_id,
+                task_cid=task_cid,
+                body=record,
+            )
+            rearmed.append(record)
+        return rearmed
 
     @staticmethod
     def _automatic_claim_forbidden(task: Any) -> bool:
@@ -73167,10 +73346,12 @@ class DatabaseImplementationDaemon:
             self.reconcile_terminal_portal_failures()
         )
         expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
+        portal_failure_rearms = self.reconcile_recoverable_portal_failure_rearms()
         reconciliation_write_count = (
             len(completion_reconciliations)
             + len(portal_failure_reconciliations)
             + len(expired_attempt_reconciliations)
+            + len(portal_failure_rearms)
         )
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
@@ -73193,6 +73374,7 @@ class DatabaseImplementationDaemon:
                 "expired_attempt_reconciliations": (
                     expired_attempt_reconciliations
                 ),
+                "portal_failure_rearms": portal_failure_rearms,
             }
 
         attempt = self.claim_next()
@@ -73242,6 +73424,7 @@ class DatabaseImplementationDaemon:
                 "expired_attempt_reconciliations": (
                     expired_attempt_reconciliations
                 ),
+                "portal_failure_rearms": portal_failure_rearms,
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -73262,6 +73445,7 @@ class DatabaseImplementationDaemon:
             "completion_reconciliations": completion_reconciliations,
             "portal_failure_reconciliations": portal_failure_reconciliations,
             "expired_attempt_reconciliations": expired_attempt_reconciliations,
+            "portal_failure_rearms": portal_failure_rearms,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,

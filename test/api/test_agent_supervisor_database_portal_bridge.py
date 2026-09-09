@@ -53,6 +53,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
+    resolve_accepted_source_merge_topology,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION,
@@ -674,6 +675,287 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
                 request if request_id == request["request_id"] else None
             ),
         )
+
+
+def test_resolve_accepted_source_merge_topology_accepts_gitlink_followup() -> None:
+    merge = "aa" * 20
+    implementation = "bb" * 20
+    base = "cc" * 20
+    followup = "dd" * 20
+    parents = {
+        followup: [followup, merge],
+        merge: [merge, base, implementation],
+        implementation: [implementation, base],
+    }
+
+    exact, integration_base = resolve_accepted_source_merge_topology(
+        followup,
+        implementation,
+        load_parents=lambda commit: parents[commit],
+    )
+    assert exact == merge
+    assert integration_base == base
+
+    direct_exact, direct_base = resolve_accepted_source_merge_topology(
+        merge,
+        implementation,
+        load_parents=lambda commit: parents[commit],
+    )
+    assert direct_exact == merge
+    assert direct_base == base
+
+    with pytest.raises(DatabasePortalBridgeError, match="exact Git merge"):
+        resolve_accepted_source_merge_topology(
+            followup,
+            implementation,
+            load_parents=lambda commit: [commit, "ee" * 20],
+        )
+
+
+def test_source_transition_accepts_gitlink_recording_followup_of_exact_merge(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("branch", "-M", "main")
+    (repository / "seed.py").write_text("SEED = True\n", encoding="utf-8")
+    git("add", "seed.py")
+    git(
+        "-c",
+        "user.name=Portal Test",
+        "-c",
+        "user.email=portal@example.invalid",
+        "commit",
+        "-q",
+        "-m",
+        "seed",
+    )
+    baseline = git("rev-parse", "HEAD")
+    git("checkout", "-q", "-b", "implementation/test")
+    (repository / "accepted.py").write_text("ACCEPTED = True\n", encoding="utf-8")
+    git("add", "accepted.py")
+    git(
+        "-c",
+        "user.name=Portal Test",
+        "-c",
+        "user.email=portal@example.invalid",
+        "commit",
+        "-q",
+        "-m",
+        "implementation",
+    )
+    implementation = git("rev-parse", "HEAD")
+    git("checkout", "-q", "main")
+    git(
+        "-c",
+        "user.name=Portal Test",
+        "-c",
+        "user.email=portal@example.invalid",
+        "merge",
+        "--no-ff",
+        "-q",
+        "-m",
+        "accept",
+        implementation,
+    )
+    two_parent_merge = git("rev-parse", "HEAD")
+    (repository / "ipfs_datasets_py.gitlink").write_text(
+        "b07a73862d320ba33b239d0a475f64273d31127f\n",
+        encoding="utf-8",
+    )
+    git("add", "ipfs_datasets_py.gitlink")
+    git(
+        "-c",
+        "user.name=Portal Test",
+        "-c",
+        "user.email=portal@example.invalid",
+        "commit",
+        "-q",
+        "-m",
+        "LGSWF-004: record target-isolated submodule revisions",
+    )
+    merge_commit = git("rev-parse", "HEAD")
+    assert git("rev-list", "--parents", "-n", "1", merge_commit).split() == [
+        merge_commit,
+        two_parent_merge,
+    ]
+    proof = {
+        "passed": True,
+        "implementation_commit": implementation,
+        "integration_commit": merge_commit,
+        "integration_ref": merge_commit,
+        "target_branch": "main",
+    }
+    invariant = {"passed": True, "repository_ref": merge_commit}
+    identity_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "identity-attempt",
+        portal_factory=lambda _paths, _alias: object(),
+        board_namespace="test-board-v1",
+        task_header_prefix="## LGSWF-",
+    )
+    identity_projection = identity_bridge._render_projection(
+        _attempt(), _record()
+    )
+    identity_task = parse_task_text(
+        identity_projection,
+        path=tmp_path / "identity-task.md",
+        task_header_prefix="## LGSWF-",
+    )[0]
+    identity = canonical_task_identity(
+        {
+            "task_id": identity_task.task_id,
+            "title": identity_task.title,
+            "outputs": task_declared_output_paths(identity_task),
+            "acceptance": identity_task.acceptance,
+            "metadata": dict(identity_task.metadata),
+        },
+        board_namespace="test-board-v1",
+        source_path=tmp_path / "identity-task.md",
+    )
+    canonical_task_cid = identity.canonical_task_cid
+    canonical_task_key = identity.canonical_task_key
+    event = {
+        "type": "implementation_finished",
+        "returncode": 0,
+        "task_id": "LGSWF-004",
+        "attempt": 1,
+        "board_namespace": "test-board-v1",
+        "board_completion": {
+            "complete": True,
+            "pending_merge": False,
+            "reason": "merged_into_target",
+        },
+        "baseline_ref": baseline,
+        "implementation_commit": implementation,
+        "canonical_task_cid": canonical_task_cid,
+        "canonical_task_key": canonical_task_key,
+        "merge_result": {
+            "merged": True,
+            "returncode": 0,
+            "request_id": "request:test:1",
+            "baseline_ref": baseline,
+            "implementation_commit": implementation,
+            "merge_commit": merge_commit,
+            "exact_two_parent_merge_commit": two_parent_merge,
+            "target_branch": "main",
+            "target_repository_id": checkout_repository_id(repository),
+            "canonical_task_cid": canonical_task_cid,
+            "canonical_task_key": canonical_task_key,
+            "integration_commit_proof": proof,
+            "post_merge_declared_output_invariant": invariant,
+        },
+    }
+    attempt_root = tmp_path / "attempt"
+    attempt_root.mkdir()
+    events = attempt_root / "events.jsonl"
+    events.write_text(
+        json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    paths = DatabasePortalAttemptPaths(
+        root=attempt_root,
+        task_projection=attempt_root / "task.md",
+        binding=attempt_root / "binding.json",
+        state=attempt_root / "state.json",
+        strategy=attempt_root / "strategy.json",
+        events=events,
+        implementation_logs=attempt_root / "logs",
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: object(),
+        repo_root=repository,
+        board_namespace="test-board-v1",
+        configured_board_admission_cid="baguqeera" + "b" * 48,
+        merge_target_branch="main",
+        task_header_prefix="## LGSWF-",
+    )
+    projection_seed = bridge._render_projection(_attempt(), _record())
+    binding = bridge._binding(_attempt(), _record(), projection_seed)
+    paths.binding.write_text(
+        json.dumps(binding, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    paths.task_projection.write_text(
+        projection_seed.replace("- Status: ready", "- Status: completed"),
+        encoding="utf-8",
+    )
+    request = {
+        "request_id": "request:test:1",
+        "branch_name": "implementation/test",
+        "task_id": "LGSWF-004",
+        "priority": "P0",
+        "lane_id": "lane:test",
+        "enqueued_at": 1.0,
+        "attempt": 1,
+        "metadata": {
+            "baseline_ref": baseline,
+            "implementation_commit": implementation,
+            "target_binding_schema": (
+                "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+            ),
+            "target_repository_id": checkout_repository_id(repository),
+            "target_branch": "main",
+            "repo_root": str(repository),
+            "completion_task_cids": {
+                "LGSWF-004": canonical_task_cid,
+            },
+            "task": {
+                "task_id": "LGSWF-004",
+                "board_namespace": "test-board-v1",
+                "canonical_task_cid": canonical_task_cid,
+                "canonical_task_key": canonical_task_key,
+                "metadata": {
+                    "database attempt id": _attempt().attempt_id,
+                    "database claim id": _attempt().claim_id,
+                    "database task cid": _attempt().task_cid,
+                },
+            },
+        },
+        "commit_sha": implementation,
+        "canonical_task_id": canonical_task_cid,
+        "canonical_task_key": canonical_task_key,
+        "status": "completed",
+        "claimed_at": 1.0,
+        "consumer_id": "consumer:test",
+        "failure_count": 0,
+        "failure_reason": "",
+        "claim_token": "claim:test",
+        "claim_generation": 1,
+        "retry_not_before": 0.0,
+        "dedupe_key": "d" * 64,
+    }
+
+    transition = bridge._accepted_source_transition(
+        attempt=_attempt(),
+        paths=paths,
+        binding=binding,
+        task_alias="LGSWF-004",
+        task_cid="task:cid:004",
+        merge_request_loader=lambda request_id: (
+            request if request_id == request["request_id"] else None
+        ),
+    )
+
+    assert transition is not None
+    assert transition["schema"] == DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA
+    assert transition["implementation_commit"] == implementation
+    assert transition["merge_commit"] == merge_commit
+    assert transition["baseline_ref"] == baseline
+    assert transition["task_completion_authority"] is False
 
 
 def test_finished_event_projection_emits_nested_merge_repository_binding() -> None:

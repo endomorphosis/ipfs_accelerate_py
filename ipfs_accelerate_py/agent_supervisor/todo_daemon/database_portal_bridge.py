@@ -625,6 +625,52 @@ def _sha256_file(path: Path) -> str:
         ) from exc
 
 
+def resolve_accepted_source_merge_topology(
+    merge_commit: str,
+    implementation: str,
+    *,
+    load_parents: Callable[[str], Sequence[str]],
+) -> tuple[str, str]:
+    """Return ``(exact_two_parent_merge, integration_base_commit)``.
+
+    Merge-train records target-isolated submodule gitlinks as a single-parent
+    follow-up of ``git merge --no-ff``.  Portal previously required the
+    published ``merge_commit`` itself to be that two-parent merge, which
+    parked SAWM-006 after the follow-up had already landed.
+    """
+
+    if not merge_commit or not implementation:
+        raise DatabasePortalBridgeError(
+            "Portal accepted-source transition is not the exact Git merge"
+        )
+    parent_fields = [str(item) for item in load_parents(merge_commit)]
+    exact_merge = merge_commit
+    if (
+        len(parent_fields) == 2
+        and parent_fields[0] == merge_commit
+        and parent_fields[1]
+        and parent_fields[1] != implementation
+    ):
+        predecessor = parent_fields[1]
+        predecessor_fields = [str(item) for item in load_parents(predecessor)]
+        if (
+            len(predecessor_fields) == 3
+            and predecessor_fields[0] == predecessor
+            and predecessor_fields[2] == implementation
+        ):
+            exact_merge = predecessor
+            parent_fields = predecessor_fields
+    if (
+        len(parent_fields) != 3
+        or parent_fields[0] != exact_merge
+        or parent_fields[2] != implementation
+    ):
+        raise DatabasePortalBridgeError(
+            "Portal accepted-source transition is not the exact Git merge"
+        )
+    return exact_merge, parent_fields[1]
+
+
 def _accepted_source_events(
     path: Path,
 ) -> tuple[tuple[Mapping[str, Any], ...], str]:
@@ -10252,17 +10298,17 @@ class DatabasePortalExecutionBridge:
                 )
             return completed.stdout
 
-        parents = git("rev-list", "--parents", "-n", "1", merge_commit)
-        parent_fields = parents.decode("ascii").strip().split()
-        if (
-            len(parent_fields) != 3
-            or parent_fields[0] != merge_commit
-            or parent_fields[2] != implementation
-        ):
-            raise DatabasePortalBridgeError(
-                "Portal accepted-source transition is not the exact Git merge"
+        def load_parents(commit: str) -> list[str]:
+            parents = git("rev-list", "--parents", "-n", "1", commit)
+            return parents.decode("ascii").strip().split()
+
+        _exact_merge, integration_base_commit = (
+            resolve_accepted_source_merge_topology(
+                merge_commit,
+                implementation,
+                load_parents=load_parents,
             )
-        integration_base_commit = parent_fields[1]
+        )
         target_advanced = integration_base_commit != baseline
         transition_proof = dict(proof)
         if target_advanced:

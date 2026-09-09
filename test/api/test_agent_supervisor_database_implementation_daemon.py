@@ -2227,7 +2227,9 @@ def test_terminal_portal_failure_blocks_and_releases_exact_claim_for_operator_re
         )
         assert old_coordination_attempt is not None
         assert old_coordination_attempt.status.value == "failed"
-        assert daemon.run_once()["selection_idle_reason"] == "no_ready_tasks"
+        idle = daemon.run_once()
+        assert idle["selection_idle_reason"] == "no_ready_tasks"
+        assert idle.get("portal_failure_rearms") == []
 
         # A distinct trusted recovery receipt is required to requeue.  The
         # terminal failure path never retries itself.
@@ -2252,6 +2254,63 @@ def test_terminal_portal_failure_blocks_and_releases_exact_claim_for_operator_re
             second_attempt.attempt_id,
         ]
         assert effect_calls == [first_attempt.task_cid]
+    finally:
+        daemon.close()
+
+
+def test_recoverable_accepted_source_portal_failure_auto_rearms_blocked_task(
+    tmp_path: Path,
+) -> None:
+    fail = {"enabled": True}
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        if fail["enabled"]:
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source transition is not the exact Git merge"
+            )
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-gitlink-rearm",
+        provider_fn=provider,
+        effect_calls=effect_calls,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        first_result = first["implementation_result"]
+        assert first_result["portal_terminal_failure"] is True
+        assert first_result["status"] == "blocked"
+        first_attempt = daemon.get_attempt(first["attempt_id"])
+        assert first_attempt is not None
+        task = daemon.task_source.get(first_attempt.task_cid)
+        assert task is not None
+        assert task.status == "blocked"
+        assert task.body["completion_receipt"]["automatic_retry_admitted"] is False
+
+        fail["enabled"] = False
+        second = daemon.run_once()
+        rearms = second.get("portal_failure_rearms") or []
+        assert len(rearms) == 1
+        assert rearms[0]["from_status"] == "blocked"
+        assert rearms[0]["to_status"] == "retrying"
+        assert rearms[0]["attempt_id"] == first_attempt.attempt_id
+        assert second["implementation_result"]["status"] == "succeeded"
+        second_attempt = daemon.get_attempt(second["attempt_id"])
+        assert second_attempt is not None
+        assert second_attempt.attempt_number == first_attempt.attempt_number + 1
+        assert provider_calls == [
+            first_attempt.attempt_id,
+            second_attempt.attempt_id,
+        ]
+        assert effect_calls == [first_attempt.task_cid]
+        third = daemon.run_once()
+        assert third["selection_idle_reason"] == "no_ready_tasks"
+        assert third.get("portal_failure_rearms") == []
     finally:
         daemon.close()
 
