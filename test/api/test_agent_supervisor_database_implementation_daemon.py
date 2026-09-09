@@ -11720,6 +11720,12 @@ def _count_zero_deferred_provider_rearm_task(
     try:
         population = _population(1)
         population["tasks"][0]["task_id"] = task_alias
+        if task_alias == DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN["task_alias"]:
+            # A reserved alias must retain its canonical CID even when this
+            # fixture models the earlier, ordinary pre-migration epoch.
+            population["tasks"][0]["task_cid"] = (
+                DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN["task_cid"]
+            )
         daemon.materialize_population(population)
         attempt = daemon.claim_next()
         assert attempt is not None and attempt.attempt_number == 1

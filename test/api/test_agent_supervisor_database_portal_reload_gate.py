@@ -2038,7 +2038,7 @@ def test_retained_startup_allows_launch_when_peer_writer_is_busy() -> None:
     )
 
 
-def test_extra_gate_shard_retries_mutation_fence_timeout_instead_of_fail_close(
+def test_extra_gate_shard_defers_mutation_fence_timeout_until_next_pass(
     tmp_path,
     monkeypatch,
 ):
@@ -2071,6 +2071,17 @@ def test_extra_gate_shard_retries_mutation_fence_timeout_instead_of_fail_close(
         lambda *_args, **_kwargs: tmp_path / "write-transaction.lock",
     )
 
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        _DatabasePortalOwnerMutationFenceDeferred,
+    )
+
+    with pytest.raises(_DatabasePortalOwnerMutationFenceDeferred) as deferred:
+        with supervisor._database_portal_reload_mutation_fence():
+            pytest.fail("a timed-out mutation fence must not enter its body")
+    assert isinstance(deferred.value.__cause__, TimeoutError)
+    assert lock_attempts["count"] == 1
+
+    # A later supervisor pass may retry; one pass never waits in a loop.
     with supervisor._database_portal_reload_mutation_fence() as program:
         assert program is supervisor.config.database_program
 

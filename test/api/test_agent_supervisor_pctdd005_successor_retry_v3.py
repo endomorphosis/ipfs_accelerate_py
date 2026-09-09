@@ -640,21 +640,11 @@ def test_historical_population_admits_successive_controller_generations(
             )
 
     daemon._task_source = _Source()
-    monkeypatch.setattr(
-        daemon_module,
-        "_database_fenced_provider_historical_recovery_authority",
-        lambda _value: {
-            "admission_schema": DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA,
-            "manifest_builder": lambda: {"ok": True},
-            "manifest_validator": lambda _manifest: True,
-            "pins": (pin,),
-        },
-    )
-    monkeypatch.setattr(
-        daemon_module,
-        "database_fenced_provider_historical_retained_admission_valid",
-        lambda _value: True,
-    )
+    # This unit fixture supplies its canonical source directly. Avoid opening
+    # an uninitialized daemon; retain the actual admission validators below.
+    daemon.open = lambda: None
+    assert database_pctdd005_historical_successor_admission_valid(first)
+    assert database_pctdd005_historical_successor_admission_valid(second)
     assert daemon._retained_recovery_historical_population_durable_current(first) is True
     assert daemon._retained_recovery_historical_population_durable_current(second) is True
 

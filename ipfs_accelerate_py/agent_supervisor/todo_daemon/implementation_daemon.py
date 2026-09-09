@@ -108765,6 +108765,9 @@ class DatabaseImplementationDaemon:
             # row must remain a persistent gate on every later pass.  Falling
             # back to the filtered resume/expiry queries would make the old
             # attempt invisible and permit unrelated/new work to dispatch.
+            # Process absence (including a closed daemon record) is not
+            # terminal attempt authority. The native expiry/completion passes
+            # above must remove the running row before this barrier can clear.
             owner_running = self.list_running_attempts(apply_selection=False)
             selected_attempt_ids = {
                 attempt.attempt_id for attempt in self.list_running_attempts()
