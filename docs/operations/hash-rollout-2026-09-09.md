@@ -263,3 +263,43 @@ At 04:47 UTC, the earlier ASEH process snapshot was no longer current: generatio
 unhealthy with an `authoritative_board_stuck` failure and cannot establish the
 new owner's readiness or task liveness. No current health claim should be inferred
 from the earlier successful 04:37 observation.
+
+At approximately 04:49, generation 116 had reached owner readiness and new lane
+wrappers were starting. Fresh zero-claim/zero-worker admission was unavailable;
+the bootstrap optimization and temporary-client caps remain on the repair
+branch (through `10966d27d`), not on the running source. No restart was performed
+by this continuation.
+
+### PCTDD clean source preparation
+
+Preparation root: `.worktrees/pctdd-resource-aware-sealing-prep`, with its own
+clean `external/ipfs_accelerate` checkout. The selected immutable baselines are
+outer `3a6d685f6355d68b9adc897f1c93412fe87a7045` and accelerator
+`0fccbf887b8ba25dff4adae7893e774a25895823`. Accelerator commit
+`4d38f10188b8837acc2a1b61197d0c1d8e53e1a4` contains only the resource backport,
+verification-slot integration, two temporary DuckDB client caps and their tests.
+The unrelated unfinished G9 changes were not imported or committed. SHA/HMAC
+verification and the workspace fingerprint encoding are preserved; verification
+callbacks remain outside shared worker slots.
+
+Outer preparation commit `c661f7851b444ee9bdbebe042b38a1fabf9e3575` records only
+the new accelerator gitlink and explicit no-start/admission notes. Both clean
+preparation worktrees passed final status checks. Focused tests: **107 passed**
+(19 rollout, 17 worker-slot, 10 temporary-client, 9 proof-verification and 52
+DuckDB-policy cases). An additional broad run had 93 passed and 20 failed; one
+representative provider-route fixture failure reproduced on exact pre-patch
+code, and a disposable Docker probe failed cleanup verification. Both exact
+test containers were subsequently confirmed absent. The broad run is not
+claimed as a passing deployment gate.
+
+The existing copied configuration still names the active G9 runtime path and
+endpoint. Its dependency validator requires exact sealed source/tree/gitlink
+and clean-source witnesses; the old G8-to-G9 successor tool is not a generic
+live-G9 upgrade procedure. Consequently this preparation must not be launched,
+resumed or resealed as if those old references authorize the new checkout.
+No live PCTDD route, owner, database or source was replaced.
+
+Detailed admission requirements are in
+`.worktrees/pctdd-resource-aware-sealing-prep/docs/operations/pctdd-resource-aware-sealing-preparation.md`.
+The clean PCTDD and SAWM ports are resource controls, not shared digest caching;
+the 24-hour authenticated observation service remains an ASEH integration.
