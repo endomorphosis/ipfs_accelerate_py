@@ -542,3 +542,26 @@ def test_database_native_status_rejects_stale_or_foreign_population(board, monke
     assert result['details']['authenticated_task_observation'] is False
     assert 'native_database_status_not_admitted' in result['reason_codes']
     assert result['complete'] is False
+
+
+@pytest.mark.parametrize("claimed_authenticated", [False, True])
+def test_spar_legacy_cached_projection_is_only_diagnostic(board, monkeypatch, claimed_authenticated):
+    config, _, lane = board
+    config = {**config, "board_id": "spar"}
+    (lane / "spar_lane_0_supervisor_status.json").write_text(
+        (lane / "pcpr_lane_0_supervisor_status.json").read_text()
+    )
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({
+        "task_authority": {
+            "available": True, "status_counts": {"completed": 51}, "task_count": 51,
+            "transport": "exclusive_owner_authenticated_quack_projection",
+            "authenticated_query": claimed_authenticated,
+            "quack_authenticated_live_query": True,
+        }}, ""))
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["task_counts"] == {"completed": 51}
+    assert result["details"]["authenticated_task_observation"] is False
+    assert result["details"]["progress_source"] == "native_cached_projection_non_authoritative"
+    assert result["health"] == "healthy"
+    assert result["complete"] is False
+    assert result["completion_candidate"] is True  # requests a separate native closeout review

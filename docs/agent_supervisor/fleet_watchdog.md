@@ -194,3 +194,8 @@ including native launches that omit the corresponding CLI options. A timed-out
 pass records its existing timeout/cooldown evidence and yields to scheduling.
 Explicit per-pass timeout settings remain supported; zero explicitly disables
 the in-process limit. Provider execution budgets are separate from refill limits.
+
+Legacy owner projections that can reuse a cached task snapshot are diagnostic,
+even when their transport label says authenticated Quack. They may request a
+completion review, but publication still requires an independent admitted live
+snapshot and the board's actual acceptance gate.

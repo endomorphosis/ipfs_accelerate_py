@@ -513,6 +513,14 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         or (board_id == "aseh" and native.get("broker_authenticated_receipt") is True)
         or (board_id == "doep" and native.get("status_age_seconds", float("inf")) <= 30)
         or authority.get("transport") == "exclusive_owner_authenticated_quack_projection"))
+    if (board_id == "spar" and not database_authority
+            and authority.get("transport") == "exclusive_owner_authenticated_quack_projection"):
+        # The legacy publisher can reuse its cached task snapshot after a
+        # failed native read while retaining this transport label. Keep the
+        # observation visible, but require a separate admitted native snapshot
+        # for any claim of current authenticated state or completion authority.
+        authenticated = False
+        source = "native_cached_projection_non_authoritative"
     if fresh_projections and (not authority or (board_id == "pcpr" and not authenticated)):
         # PCPR's checkpoint replica can lag by dozens of completions. Fresh
         # daemon projections are preferable for observing activity, never gates.
