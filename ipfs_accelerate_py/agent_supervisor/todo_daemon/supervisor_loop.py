@@ -169,6 +169,38 @@ class SupervisorLoop:
         self._worker_tracking_generation = ""
         self._last_worker_seen_monotonic: Optional[float] = None
 
+    def _persist_supervisor_pid_file(self) -> None:
+        """Keep the supervisor pid file bound to this live process.
+
+        Isolated relaunch children must remain discoverable after a later
+        wave supervisor overwrites then deletes the same pid path.
+        """
+
+        path = self.config.spec.resolve(self.config.spec.supervisor_pid_path)
+        if path is None:
+            return
+        pid = os.getpid()
+        try:
+            existing = int(path.read_text(encoding="utf-8").strip().split()[0])
+        except (OSError, IndexError, TypeError, ValueError):
+            existing = 0
+        if existing == pid:
+            return
+        if existing > 1 and existing != pid and pid_alive(existing):
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(
+            f".{path.name}.{pid}.{time.monotonic_ns()}.tmp"
+        )
+        try:
+            temporary.write_text(f"{pid}\n", encoding="utf-8")
+            os.replace(temporary, path)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
     def _child_spec(self, run_id: str) -> SupervisedChildSpec:
         log_path = supervised_log_path(
             self.config.spec.daemon_dir,
@@ -242,6 +274,7 @@ class SupervisorLoop:
             last_exit_code=last_exit_code,
             extra=payload_extra,
         )
+        self._persist_supervisor_pid_file()
 
     def _safe_write_status(
         self,

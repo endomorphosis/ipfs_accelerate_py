@@ -9194,6 +9194,32 @@ class PortalImplementationSupervisor:
         else:
             fields.pop("autonomous_unstall", None)
 
+    def _persist_own_supervisor_pid(self) -> None:
+        """Rewrite this lane's supervisor pid file while this process is live."""
+
+        path = self.config.state_dir / f"{self.config.state_prefix}_supervisor.pid"
+        pid = os.getpid()
+        try:
+            existing = int(path.read_text(encoding="utf-8").strip().split()[0])
+        except (OSError, IndexError, TypeError, ValueError):
+            existing = 0
+        if existing == pid:
+            return
+        if existing > 1 and existing != pid and process_is_running(existing):
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(
+            f".{path.name}.{pid}.{time.monotonic_ns()}.tmp"
+        )
+        try:
+            temporary.write_text(f"{pid}\n", encoding="utf-8")
+            os.replace(temporary, path)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
     def _write_supervisor_maintenance_status(
         self,
         phase: str,
@@ -9295,6 +9321,7 @@ class PortalImplementationSupervisor:
                 last_error = exc
         if last_error is not None:
             raise last_error
+        self._persist_own_supervisor_pid()
         self._write_supervisor_maintenance_receipt(
             phase,
             status=status,

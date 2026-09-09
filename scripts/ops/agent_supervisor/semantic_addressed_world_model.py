@@ -17995,6 +17995,7 @@ def _admit_isolated_lane_supervisor_recycle(
     master_alive: bool,
     dead_lane_count: int,
     master_capsule_fds_live: bool = False,
+    peer_capsule_fds_live: bool = False,
 ) -> dict[str, object]:
     """Isolated dead lanes require in-wave capsule relaunch, never coordinator kill.
 
@@ -18002,6 +18003,8 @@ def _admit_isolated_lane_supervisor_recycle(
     Killing that coordinator would interrupt healthy peer lanes.  When the
     master still holds its sealed capsule FDs, one isolated lane may be
     respawned from a live peer argv without replacing the coordinator.
+    When the master is gone, inherit those FDs from a still-live peer instead
+    of opening ``/proc/<dead-master>/fd``.
     """
 
     if not owner_ready or not owner_alive:
@@ -18031,10 +18034,52 @@ def _admit_isolated_lane_supervisor_recycle(
             "in_wave_relaunch_required": True,
             "reason": "healthy_coordinator_owns_in_wave_relaunch",
         }
+    if peer_capsule_fds_live:
+        return {
+            "admitted": True,
+            "kill_coordinator": False,
+            "action": "peer_capsule_relaunch",
+            "reason": "master_down_isolated_lane_recycle",
+        }
     return {
         "admitted": True,
         "kill_coordinator": False,
         "reason": "master_down_isolated_lane_recycle",
+    }
+
+
+def _admit_master_down_coordinator_recycle(
+    *,
+    owner_ready: bool,
+    owner_alive: bool,
+    master_alive: bool,
+    live_lane_count: int = 0,
+) -> dict[str, object]:
+    """Dead master with a live ready owner requires coordinator relaunch.
+
+    Isolated lane recycle cannot restore the configured-board master marker.
+    Leftover isolated-relaunch children are orphans, not a healthy coordinator.
+    """
+
+    if not owner_ready or not owner_alive:
+        return {
+            "admitted": False,
+            "kill_coordinator": False,
+            "reason": "owner_not_ready",
+        }
+    if master_alive:
+        return {
+            "admitted": False,
+            "kill_coordinator": False,
+            "reason": "healthy_coordinator_owns_in_wave_relaunch",
+        }
+    return {
+        "admitted": True,
+        "kill_coordinator": False,
+        "action": "coordinator_relaunch",
+        "reason": "master_down_coordinator_recycle",
+        "fence_orphan_supervisors": True,
+        "live_lane_count": int(live_lane_count),
     }
 
 
@@ -18388,8 +18433,8 @@ def _isolated_lane_supervisor_pid_path(run_dir: Path, lane_index: int) -> Path:
     )
 
 
-def _isolated_lane_live_supervisor_pid(run_dir: Path, lane_index: int) -> int:
-    """Return a live supervisor pid for this lane, else 0."""
+def _isolated_lane_recorded_supervisor_pids(run_dir: Path, lane_index: int) -> list[int]:
+    """Return pid-file and status-file candidates for this lane."""
 
     path = _isolated_lane_supervisor_pid_path(run_dir, lane_index)
     candidates: list[int] = []
@@ -18409,10 +18454,144 @@ def _isolated_lane_live_supervisor_pid(run_dir: Path, lane_index: int) -> int:
         candidates.append(int(payload.get("supervisor_pid") or 0))
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         pass
-    for pid in candidates:
-        if _pid_alive(pid):
+    return candidates
+
+
+def _lane_supervisor_cmdline_matches(
+    parts: Sequence[bytes],
+    *,
+    state_dir: Path,
+    state_prefix: str,
+) -> bool:
+    """True when argv is this lane's implementation supervisor, not its daemon."""
+
+    text_parts = [part.decode("utf-8", "replace") for part in parts if part]
+    module = (
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
+    )
+    if module not in text_parts:
+        return False
+    state_dir_text = str(state_dir)
+    prefix_text = str(state_prefix)
+    state_ok = False
+    prefix_ok = False
+    for index, value in enumerate(text_parts[:-1]):
+        if value == "--state-dir" and text_parts[index + 1] == state_dir_text:
+            state_ok = True
+        if value == "--state-prefix" and text_parts[index + 1] == prefix_text:
+            prefix_ok = True
+    return state_ok and prefix_ok
+
+
+def _discover_live_lane_supervisor_pid(run_dir: Path, lane_index: int) -> int:
+    """Find a live supervisor even when the pid/status files were overwritten."""
+
+    recorded = _isolated_lane_live_supervisor_pid(run_dir, lane_index, scan_proc=False)
+    if recorded:
+        return recorded
+    state_dir = Path(run_dir) / "state" / f"lane-{int(lane_index)}"
+    prefix = f"sawm_lane_{int(lane_index)}"
+    try:
+        entries = Path("/proc").iterdir()
+    except OSError:
+        return 0
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        try:
+            command = (entry / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        if _lane_supervisor_cmdline_matches(
+            command,
+            state_dir=state_dir,
+            state_prefix=prefix,
+        ) and _pid_alive(pid):
             return pid
     return 0
+
+
+def _isolated_lane_live_supervisor_pid(
+    run_dir: Path,
+    lane_index: int,
+    *,
+    scan_proc: bool = True,
+) -> int:
+    """Return a live supervisor pid for this lane, else 0."""
+
+    for pid in _isolated_lane_recorded_supervisor_pids(run_dir, lane_index):
+        if _pid_alive(pid):
+            return pid
+    if scan_proc:
+        return _discover_live_lane_supervisor_pid(run_dir, lane_index)
+    return 0
+
+
+def _fence_orphan_lane_supervisor(pid: int, *, grace_seconds: float = 2.0) -> bool:
+    """Fence one leftover isolated supervisor. Never used on a live coordinator."""
+
+    if not _pid_alive(int(pid)):
+        return True
+    try:
+        os.kill(int(pid), signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    deadline = time.monotonic() + max(0.05, float(grace_seconds))
+    while time.monotonic() < deadline:
+        if not _pid_alive(int(pid)):
+            return True
+        time.sleep(0.05)
+    try:
+        os.kill(int(pid), signal.SIGKILL)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    return not _pid_alive(int(pid))
+
+
+def _prepare_master_down_coordinator_recycle(
+    *,
+    repo_root: Path,
+    run_dir: Path,
+    owner_ready: bool,
+    owner_alive: bool,
+    master_pid: int,
+    lane_count: int = 4,
+) -> dict[str, object]:
+    """Admit coordinator relaunch and fence leftover isolated-lane orphans."""
+
+    del repo_root
+    live_pids: list[dict[str, object]] = []
+    for index in range(int(lane_count)):
+        pid = _discover_live_lane_supervisor_pid(run_dir, index)
+        if pid:
+            live_pids.append({"lane": index, "pid": pid})
+    admission = _admit_master_down_coordinator_recycle(
+        owner_ready=owner_ready,
+        owner_alive=owner_alive,
+        master_alive=_pid_alive(int(master_pid) if master_pid else 0),
+        live_lane_count=len(live_pids),
+    )
+    if not admission.get("admitted") or admission.get("kill_coordinator"):
+        return {
+            "prepared": False,
+            "reason": str(admission.get("reason") or "not_admitted"),
+            "admission": admission,
+            "orphans": live_pids,
+        }
+    fenced: list[dict[str, object]] = []
+    for item in live_pids:
+        ok = _fence_orphan_lane_supervisor(int(item["pid"]))
+        fenced.append({**item, "fenced": ok})
+    return {
+        "prepared": all(bool(item.get("fenced")) for item in fenced) if fenced else True,
+        "admission": admission,
+        "orphans": fenced,
+    }
 
 
 def _pid_alive(pid: int) -> bool:
@@ -18444,15 +18623,29 @@ def _recycle_isolated_lane_from_live_peer(
 
     repo_root = Path(repo_root)
     run_dir = Path(run_dir)
+    master_alive = _pid_alive(int(master_pid)) if int(master_pid) > 1 else False
+    peer_alive = _pid_alive(int(peer_supervisor_pid))
+    master_capsule_fds_live = bool(
+        master_alive
+        and all(
+            Path(f"/proc/{int(master_pid)}/fd/{int(fd)}").exists()
+            for fd in (native_fd, capsule_fd)
+        )
+    )
+    peer_capsule_fds_live = bool(
+        peer_alive
+        and all(
+            Path(f"/proc/{int(peer_supervisor_pid)}/fd/{int(fd)}").exists()
+            for fd in (native_fd, capsule_fd)
+        )
+    )
     admission = _admit_isolated_lane_supervisor_recycle(
         owner_ready=True,
         owner_alive=True,
-        master_alive=_pid_alive(int(master_pid)),
+        master_alive=master_alive,
         dead_lane_count=1,
-        master_capsule_fds_live=all(
-            Path(f"/proc/{int(master_pid)}/fd/{int(fd)}").exists()
-            for fd in (native_fd, capsule_fd)
-        ),
+        master_capsule_fds_live=master_capsule_fds_live,
+        peer_capsule_fds_live=peer_capsule_fds_live,
     )
     if not admission.get("admitted") or admission.get("kill_coordinator"):
         return {
@@ -18460,7 +18653,7 @@ def _recycle_isolated_lane_from_live_peer(
             "reason": str(admission.get("reason") or "not_admitted"),
             "admission": admission,
         }
-    if not _pid_alive(int(peer_supervisor_pid)):
+    if not peer_alive:
         return {"restarted": False, "reason": "peer_supervisor_dead"}
     existing_pid = _isolated_lane_live_supervisor_pid(
         run_dir, int(dead_lane_index)
@@ -18531,12 +18724,23 @@ def _recycle_isolated_lane_from_live_peer(
     log_path = log_dir / (
         f"sawm_lane_{int(dead_lane_index)}_8h_run_{stamp}.log"
     )
+    action = str(admission.get("action") or "")
+    if action == "lane_only_sealed_relaunch":
+        fd_source_pid = int(master_pid)
+    elif action == "peer_capsule_relaunch":
+        fd_source_pid = int(peer_supervisor_pid)
+    else:
+        return {
+            "restarted": False,
+            "reason": "capsule_fds_unavailable",
+            "admission": admission,
+        }
     native_src = os.open(
-        f"/proc/{int(master_pid)}/fd/{int(native_fd)}",
+        f"/proc/{int(fd_source_pid)}/fd/{int(native_fd)}",
         os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
     )
     capsule_src = os.open(
-        f"/proc/{int(master_pid)}/fd/{int(capsule_fd)}",
+        f"/proc/{int(fd_source_pid)}/fd/{int(capsule_fd)}",
         os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
     )
     _rewind_isolated_lane_relaunch_fds((native_src, capsule_src))

@@ -1361,27 +1361,60 @@ def published_owner_process_dead(
     return not pid_alive(pid)
 
 
+def _manifest_master_alive(
+    manifest: Mapping[str, Any],
+    *,
+    repo_root: Path,
+) -> bool:
+    """True when no master marker is bound, or the bound master PID is live.
+
+    Manifests without ``master_pid_path`` keep per-lane unstall. A bound dead
+    master must not spawn isolated lanes; the operator relaunches the
+    coordinator instead.
+    """
+
+    raw = manifest.get("master_pid_path") or ""
+    if not raw:
+        return True
+    path = Path(str(raw))
+    if not path.is_absolute():
+        path = Path(repo_root) / path
+    try:
+        pid = int(path.read_text(encoding="utf-8").strip().split()[0])
+    except (OSError, IndexError, TypeError, ValueError):
+        return False
+    return pid_alive(pid)
+
+
 def check_lane_pid(state_dir: Path, state_prefix: str) -> dict[str, Any]:
     """Check if a lane's supervisor process is alive by its PID file."""
-    pid_path = state_dir / f"{state_prefix}_bundle_supervisor.pid"
-    result: dict[str, Any] = {"pid_path": str(pid_path), "alive": False}
+    candidates = (
+        state_dir / f"{state_prefix}_bundle_supervisor.pid",
+        state_dir / f"{state_prefix}_supervisor.pid",
+    )
+    result: dict[str, Any] = {
+        "pid_path": str(candidates[0]),
+        "alive": False,
+        "reason": "no_pid_file",
+    }
 
-    if not pid_path.exists():
-        result["reason"] = "no_pid_file"
-        return result
-
-    try:
-        pid = int(pid_path.read_text().strip())
-        result["pid"] = pid
-        if pid <= 0:
-            result["reason"] = "invalid_pid"
-        elif pid_alive(pid):
-            result["alive"] = True
-        else:
+    for pid_path in candidates:
+        if not pid_path.exists():
+            continue
+        result["pid_path"] = str(pid_path)
+        try:
+            pid = int(pid_path.read_text().strip())
+            result["pid"] = pid
+            if pid <= 0:
+                result["reason"] = "invalid_pid"
+                continue
+            if pid_alive(pid):
+                result["alive"] = True
+                result.pop("reason", None)
+                return result
             result["reason"] = "process_dead"
-    except (ValueError, OSError) as exc:
-        result["reason"] = f"pid_read_error: {exc}"
-
+        except (ValueError, OSError) as exc:
+            result["reason"] = f"pid_read_error: {exc}"
     return result
 
 
@@ -1659,6 +1692,7 @@ class SupervisorWatchdog:
         self._recent_restarts: dict[str, tuple[int, float]] = {}
         self._generation = 0
         self._running = True
+        self._master_unstall_committed = False
 
     @staticmethod
     def _manifest_unstall_policy(
@@ -1695,7 +1729,10 @@ class SupervisorWatchdog:
         restart_info = dict(lane_started or lane)
         restart_info.setdefault("pid_path", str(pid_check.get("pid_path") or ""))
         if not bool(pid_check.get("alive")):
-            restart_info["unstall_class"] = "lane_supervisor_dead"
+            if _manifest_master_alive(manifest, repo_root=self.repo_root):
+                restart_info["unstall_class"] = "lane_supervisor_dead"
+            else:
+                restart_info["unstall_class"] = "master_down_coordinator_recycle"
             restart_info["exact_source_worktree"] = True
 
         def current_health() -> Mapping[str, Any]:
@@ -1824,7 +1861,13 @@ class SupervisorWatchdog:
                     "lane_id": bundle_key,
                     "healthy": False,
                     "reason": (
-                        "lane_supervisor_dead"
+                        (
+                            "master_down_coordinator_recycle"
+                            if not _manifest_master_alive(
+                                manifest, repo_root=self.repo_root
+                            )
+                            else "lane_supervisor_dead"
+                        )
                         if not bool(pid_check.get("alive"))
                         else (
                             heartbeat_check.get("state_reason")
@@ -1927,6 +1970,7 @@ class SupervisorWatchdog:
 
         restarts = 0
         reports: list[dict[str, Any]] = []
+        self._master_unstall_committed = False
 
         for i, lane in enumerate(lanes):
             bundle_key = lane.get("bundle_key", f"lane_{i}")
@@ -2059,6 +2103,15 @@ class SupervisorWatchdog:
                 reports.append(report)
                 continue
 
+            if needs_restart and not _manifest_master_alive(
+                manifest, repo_root=self.repo_root
+            ):
+                if self._master_unstall_committed:
+                    report["action"] = "master_down_recycle_in_progress"
+                    report["reason"] = "master_down_coordinator_recycle"
+                    reports.append(report)
+                    continue
+
             if needs_restart:
                 unstall_result = self._watchdog_unstall(
                     manifest=manifest,
@@ -2071,6 +2124,10 @@ class SupervisorWatchdog:
                     heartbeat_check=heartbeat_check,
                 )
                 if unstall_result is not None:
+                    if not _manifest_master_alive(
+                        manifest, repo_root=self.repo_root
+                    ):
+                        self._master_unstall_committed = True
                     report["autonomous_unstall"] = unstall_result
                     if unstall_result.get("recovered"):
                         report["action"] = "autonomous_unstall_recovered"

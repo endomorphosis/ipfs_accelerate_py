@@ -2302,11 +2302,24 @@ def test_operator_does_not_kill_coordinator_for_isolated_dead_lane() -> None:
     assert env["IPFS_ACCELERATE_LIFECYCLE_TARGET_ID"].endswith("v1-0")
     assert env["IPFS_ACCELERATE_LIFECYCLE_STATE_ROOT"].endswith("lane-0")
     assert dead_master["admitted"] is True
+    peer_fds = operator._admit_isolated_lane_supervisor_recycle(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=False,
+        dead_lane_count=1,
+        peer_capsule_fds_live=True,
+    )
+    assert peer_fds["admitted"] is True
+    assert peer_fds["kill_coordinator"] is False
+    assert peer_fds["action"] == "peer_capsule_relaunch"
+    assert peer_fds["reason"] == "master_down_isolated_lane_recycle"
     recycle_source = inspect.getsource(
         operator._recycle_isolated_lane_from_live_peer
     )
     assert "lane_supervisor_already_live" in recycle_source
     assert "_isolated_lane_live_supervisor_pid" in recycle_source
+    assert "peer_capsule_relaunch" in recycle_source
+    assert "fd_source_pid" in recycle_source
     assert operator._isolated_lane_relaunch_pass_fds(3, 4) == (3, 4)
     assert operator._isolated_lane_relaunch_pass_fds(7, 8) == (7, 8)
     assert 7 not in operator._isolated_lane_relaunch_pass_fds(3, 4)
@@ -2390,6 +2403,77 @@ def test_operator_does_not_kill_coordinator_for_isolated_dead_lane() -> None:
     assert not operator._isolated_exact_source_escapes_lane_worktree_root(
         run_dir, run_dir / "worktrees" / f"exact-source-{pin['source_head']}"
     )
+
+
+def test_operator_admits_master_down_coordinator_recycle() -> None:
+    """A dead master with a live ready owner must relaunch the coordinator."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_master_down_coordinator_recycle_test",
+    )
+    live_master = operator._admit_master_down_coordinator_recycle(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=True,
+        live_lane_count=0,
+    )
+    owner_down = operator._admit_master_down_coordinator_recycle(
+        owner_ready=False,
+        owner_alive=False,
+        master_alive=False,
+        live_lane_count=0,
+    )
+    dead_master = operator._admit_master_down_coordinator_recycle(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=False,
+        live_lane_count=1,
+    )
+    assert live_master["admitted"] is False
+    assert live_master["kill_coordinator"] is False
+    assert live_master["reason"] == "healthy_coordinator_owns_in_wave_relaunch"
+    assert owner_down["admitted"] is False
+    assert owner_down["reason"] == "owner_not_ready"
+    assert dead_master["admitted"] is True
+    assert dead_master["kill_coordinator"] is False
+    assert dead_master["action"] == "coordinator_relaunch"
+    assert dead_master["reason"] == "master_down_coordinator_recycle"
+    assert dead_master["fence_orphan_supervisors"] is True
+    assert dead_master["live_lane_count"] == 1
+    module = (
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
+    )
+    assert operator._lane_supervisor_cmdline_matches(
+        [
+            b"/usr/bin/python3.12",
+            module.encode(),
+            b"--state-dir",
+            b"/run/state/lane-0",
+            b"--state-prefix",
+            b"sawm_lane_0",
+        ],
+        state_dir=Path("/run/state/lane-0"),
+        state_prefix="sawm_lane_0",
+    )
+    assert not operator._lane_supervisor_cmdline_matches(
+        [
+            b"/usr/bin/python3.12",
+            b"ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+            b"--state-dir",
+            b"/run/state/lane-0",
+            b"--state-prefix",
+            b"sawm_lane_0",
+        ],
+        state_dir=Path("/run/state/lane-0"),
+        state_prefix="sawm_lane_0",
+    )
+    prepare_source = inspect.getsource(
+        operator._prepare_master_down_coordinator_recycle
+    )
+    assert "_fence_orphan_lane_supervisor" in prepare_source
+    assert "_discover_live_lane_supervisor_pid" in prepare_source
+    assert "kill_coordinator" in prepare_source
 
 
 def test_operator_overlays_live_run_dir_without_dirtying_pin(tmp_path: Path) -> None:

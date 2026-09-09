@@ -1142,6 +1142,146 @@ def test_watchdog_reads_owner_status_from_quack_owner_state_dir(
     assert lane_report["reason"] == "published_ready_owner_pid_dead"
 
 
+def test_watchdog_recycles_coordinator_once_when_master_down(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead master must unstall once as coordinator recycle, not four lanes."""
+
+    owner_status = tmp_path / "quack-state-server.status.json"
+    owner_status.write_text(
+        json.dumps(
+            {
+                "lifecycle": "ready",
+                "identity": {
+                    "generation": 48,
+                    "status": "ready",
+                    "process_birth": {"pid": 1_440_304},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    master_pid_path = tmp_path / "configured-board-master.pid"
+    master_pid_path.write_text("1499218\n", encoding="utf-8")
+    lanes = []
+    for index in range(4):
+        state_dir = tmp_path / f"lane-{index}"
+        state_dir.mkdir()
+        (state_dir / f"lane_{index}_supervisor.pid").write_text(
+            f"{1_500_000 + index}\n",
+            encoding="utf-8",
+        )
+        (state_dir / f"lane_{index}_status.json").write_text(
+            json.dumps(
+                {
+                    "state": "running",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        lanes.append(
+            {
+                "bundle_key": f"lane-{index}",
+                "state_dir": str(state_dir),
+                "state_prefix": f"lane_{index}",
+            }
+        )
+    manifest_path = tmp_path / "lanes.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "tree_id": "tree-1",
+                "owner_status_path": str(owner_status),
+                "master_pid_path": str(master_pid_path),
+                "autonomous_unstall_policy": {
+                    "enabled": True,
+                    "cooldown_ms": 0,
+                },
+                "lanes": lanes,
+                "started": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    restart_calls: list[dict[str, Any]] = []
+
+    def restart(lane: dict[str, Any]) -> dict[str, Any]:
+        restart_calls.append(dict(lane))
+        assert lane.get("unstall_class") == "master_down_coordinator_recycle"
+        assert lane.get("exact_source_worktree") is True
+        state_dir = Path(str(lane.get("state_dir") or tmp_path / "lane-0"))
+        prefix = str(lane.get("state_prefix") or "lane_0")
+        (state_dir / f"{prefix}_supervisor.pid").write_text(
+            "123\n",
+            encoding="utf-8",
+        )
+        (state_dir / f"{prefix}_status.json").write_text(
+            json.dumps({"state": "running"}),
+            encoding="utf-8",
+        )
+        return {
+            "restarted": True,
+            "new_pid": 123,
+            "receipt_id": "master-down-coordinator-recycle",
+        }
+
+    monkeypatch.setattr(
+        watchdog_module,
+        "pid_alive",
+        lambda pid: pid in {123, 1_440_304},
+    )
+    report = SupervisorWatchdog(
+        manifest_path=manifest_path,
+        repo_root=tmp_path,
+        lifecycle_restart=restart,
+    )._check_cycle()
+
+    assert len(restart_calls) == 1
+    actions = [item["action"] for item in report["reports"]]
+    assert actions[0] == "autonomous_unstall_recovered"
+    assert actions[1:] == ["master_down_recycle_in_progress"] * 3
+    assert report["reports"][0]["autonomous_unstall"]["recovered"]
+
+
+def test_supervisor_loop_rewrites_missing_supervisor_pid_file(
+    tmp_path: Path,
+) -> None:
+    """A live supervisor must restore its pid file after a wave overwrite."""
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    spec = ManagedDaemonSpec(
+        name="pid-rewrite-daemon",
+        schema="test.daemon",
+        repo_root=tmp_path,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon.json",
+        supervisor_status_path=state_dir / "supervisor.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure.json",
+        ensure_check_path=state_dir / "check.json",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+        ),
+        sleep=lambda _seconds: None,
+    )
+    loop._write_status("running")
+    pid_path = state_dir / "supervisor.pid"
+    assert pid_path.read_text(encoding="utf-8").strip() == str(os.getpid())
+    pid_path.unlink()
+    loop._write_status("running")
+    assert pid_path.read_text(encoding="utf-8").strip() == str(os.getpid())
+
+
 def test_supervisor_loop_keeps_running_when_owner_process_dead(
     tmp_path: Path,
 ) -> None:
