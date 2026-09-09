@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import time
 from contextlib import contextmanager, nullcontext
@@ -32,6 +33,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA,
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+    SupervisedChildIdentity,
+)
+from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+    ProcessBirthIdentity as SupervisedProcessBirthIdentity,
 )
 
 
@@ -3361,6 +3368,217 @@ def test_watchdog_maintenance_preserves_live_grok_without_active_task_id(
             "reason": "database_portal_retained_reconciliation_blocked",
         }
     )
+
+
+def _write_leftover_managed_daemon_identity(
+    supervisor: PortalImplementationSupervisor,
+    *,
+    pid: int,
+) -> None:
+    identity = SupervisedChildIdentity(
+        process_birth=SupervisedProcessBirthIdentity(
+            pid=pid,
+            start_time_ticks=39360547,
+            boot_id="boot-test",
+            parent_pid=17,
+        ),
+        command=(
+            "/usr/bin/python3.12",
+            "-P",
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+        ),
+        owner_scope=supervisor._managed_daemon_owner_scope(),
+        created_at="2026-09-09T20:00:00+00:00",
+    )
+    path = supervisor._managed_daemon_identity_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(identity.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _extra_gate_cannot_bypass_safe_to_restart() -> None:
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_recorded_managed_daemon_pid_falls_back_to_identity(tmp_path) -> None:
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    _write_leftover_managed_daemon_identity(supervisor, pid=2892700)
+    assert supervisor._read_managed_daemon_pid() is None
+    assert supervisor._recorded_managed_daemon_pid() == 2892700
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_live_in_progress_preserves_identity_grok_when_lane_state_missing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Restart run_once must see leftover extra-gate grok via identity.
+
+    Lane task-state.json was missing and the pid file was already unlinked
+    after the supervisor exited, so preserve missed grok 2932295 under
+    leftover daemon 2892700. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    config = _config(tmp_path)
+    supervisor = PortalImplementationSupervisor(config)
+    _write_leftover_managed_daemon_identity(supervisor, pid=2892700)
+    assert not config.state_path.exists()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda pid, status=None: (
+            [
+                {
+                    "pid": 2932295,
+                    "cmdline": (
+                        "python3.12 -m "
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+                    ),
+                }
+            ]
+            if int(pid) == 2892700
+            else []
+        ),
+    )
+    assert supervisor._live_in_progress_worker_must_preserve() is True
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_public_run_once_does_not_terminate_identity_extra_gate_grok(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config = _config(tmp_path)
+    supervisor = PortalImplementationSupervisor(config)
+    _write_leftover_managed_daemon_identity(supervisor, pid=2892700)
+    events: list[str] = []
+    finished: list[tuple[str, str]] = []
+
+    @contextmanager
+    def portal_fence():
+        events.append("portal_fence_enter")
+        try:
+            yield supervisor.config.database_program
+        finally:
+            events.append("portal_fence_exit")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection_fenced",
+        lambda _program: (
+            events.append("projection")
+            or _authenticated_watchdog_projection(active=False)
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda phase: events.append(phase),
+            lambda status="completed", error="": finished.append(
+                (status, error)
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda pid, status=None: (
+            [
+                {
+                    "pid": 2932295,
+                    "cmdline": (
+                        "python3.12 -m "
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+                    ),
+                }
+            ]
+            if int(pid) == 2892700
+            else []
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_terminate_managed_daemon_tree",
+        lambda **_kwargs: pytest.fail(
+            "leftover extra-gate grok must not be terminated on supervisor restart"
+        ),
+    )
+
+    def maintenance(_update, **kwargs):
+        assert kwargs["database_portal_quiesced_idle"] is False
+        events.append("maintenance")
+        return {"stuck": False}
+
+    monkeypatch.setattr(supervisor, "_run_once_with_maintenance", maintenance)
+
+    result = supervisor.run_once(include_refill=False)
+
+    assert events == [
+        "portal_fence_enter",
+        "projection",
+        "portal_fence_exit",
+        "maintenance",
+    ]
+    assert result == {"stuck": False}
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_terminate_managed_daemon_tree_refuses_identity_extra_gate_grok(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    _write_leftover_managed_daemon_identity(supervisor, pid=2892700)
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda pid, status=None: (
+            [
+                {
+                    "pid": 2932295,
+                    "cmdline": (
+                        "python3.12 -m "
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+                    ),
+                }
+            ]
+            if int(pid) == 2892700
+            else []
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_fence_recorded_managed_daemon",
+        lambda **_kwargs: pytest.fail(
+            "identity-named extra-gate grok must not be fenced"
+        ),
+    )
+
+    result = supervisor._terminate_managed_daemon_tree()
+
+    assert result["terminated"] is False
+    assert result["quiesced"] is False
+    assert result["reason"] == "extra_gate_in_progress_preserve_worker"
+    assert result["daemon_fence"]["reason"] == (
+        "extra_gate_in_progress_preserve_worker"
+    )
+    assert supervisor._managed_daemon_identity_path().exists()
+    _extra_gate_cannot_bypass_safe_to_restart()
 
 
 def test_failed_landed_recovery_is_not_a_read_only_diagnostic() -> None:

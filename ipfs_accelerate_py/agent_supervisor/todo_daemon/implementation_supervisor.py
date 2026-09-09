@@ -16512,6 +16512,11 @@ class PortalImplementationSupervisor:
             return True
         pid = int(child_pid or 0)
         if pid <= 0:
+            try:
+                pid = int(self._recorded_managed_daemon_pid() or 0)
+            except Exception:
+                pid = 0
+        if pid <= 0:
             return False
         try:
             return bool(active_codex_exec_workers(pid, mapping))
@@ -23259,7 +23264,7 @@ class PortalImplementationSupervisor:
         self,
         state: PortalTaskState | None = None,
     ) -> list[dict[str, Any]]:
-        daemon_pid = self._read_managed_daemon_pid()
+        daemon_pid = self._recorded_managed_daemon_pid()
         if not daemon_pid:
             return []
         current_state = state or PortalTaskState.load(self.config.state_path)
@@ -25186,11 +25191,44 @@ class PortalImplementationSupervisor:
         pid_path = self._managed_daemon_pid_path()
         identity_path = self._managed_daemon_identity_path()
         initial_identity = load_supervised_child_identity(identity_path)
-        pid = self._read_managed_daemon_pid()
-        if pid is None:
-            identity = load_supervised_child_identity(identity_path)
-            if identity is not None:
-                pid = int(identity.process_birth.pid)
+        pid = self._recorded_managed_daemon_pid()
+        if self._live_in_progress_worker_must_preserve(
+            active_state,
+            child_pid=int(pid or 0) or None,
+        ):
+            # Restart run_once used the pid file only and SIGTERM-killed
+            # leftover extra-gate grok named by identity. Extra-gate aliases
+            # still cannot bypass ``safe_to_restart=False``.
+            return {
+                "pid": pid,
+                "managed_daemon_identity_record_id": (
+                    str(initial_identity.record_id or "")
+                    if initial_identity is not None
+                    else ""
+                ),
+                "managed_daemon_process_birth": (
+                    initial_identity.process_birth.to_dict()
+                    if initial_identity is not None
+                    else None
+                ),
+                "terminated": False,
+                "quiesced": False,
+                "remaining_pid": pid,
+                "pid_path": str(pid_path),
+                "identity_path": str(identity_path),
+                "daemon_fence": {
+                    "fenced": False,
+                    "safe_to_restart": False,
+                    "reason": "extra_gate_in_progress_preserve_worker",
+                },
+                "markers_removed": False,
+                "provider_runner_fence": {
+                    "fenced": False,
+                    "safe_to_restart": False,
+                    "reason": "extra_gate_in_progress_preserve_worker",
+                },
+                "reason": "extra_gate_in_progress_preserve_worker",
+            }
 
         if pid is None:
             marker_present = bool(
@@ -25281,6 +25319,36 @@ class PortalImplementationSupervisor:
             return int(raw_pid)
         except (OSError, ValueError):
             return None
+
+    def _recorded_managed_daemon_pid(self) -> int | None:
+        """Pid-file first, then leftover identity.
+
+        Restart ``run_once`` missed extra-gate grok because the exited
+        supervisor had already unlinked the pid file while identity still
+        named the live daemon. Extra-gate aliases still cannot bypass
+        ``safe_to_restart=False``.
+        """
+
+        pid = self._read_managed_daemon_pid()
+        if pid is not None:
+            try:
+                recorded = int(pid)
+            except (TypeError, ValueError):
+                recorded = 0
+            if recorded > 1:
+                return recorded
+        identity = load_supervised_child_identity(
+            self._managed_daemon_identity_path()
+        )
+        if identity is None:
+            return None
+        try:
+            recorded = int(identity.process_birth.pid)
+        except (TypeError, ValueError, AttributeError):
+            return None
+        if recorded <= 1:
+            return None
+        return recorded
 
     def _find_matching_managed_daemon_pid(self, *, exclude_pids: set[int] | None = None) -> int | None:
         excluded = set(exclude_pids or set())
