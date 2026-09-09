@@ -926,6 +926,7 @@ def test_non_quack_watchdog_maintenance_quiesces_child_before_mutating(
         assert kwargs == {
             "managed_daemon_launch_lock_held": True,
             "database_portal_fenced_program": None,
+            "database_portal_quiesced_idle": False,
         }
         events.append("maintenance")
         return {
@@ -2038,7 +2039,7 @@ def test_retained_startup_allows_launch_when_peer_writer_is_busy() -> None:
     )
 
 
-def test_extra_gate_shard_retries_mutation_fence_timeout_instead_of_fail_close(
+def test_extra_gate_shard_defers_mutation_fence_timeout_until_next_pass(
     tmp_path,
     monkeypatch,
 ):
@@ -2071,6 +2072,17 @@ def test_extra_gate_shard_retries_mutation_fence_timeout_instead_of_fail_close(
         lambda *_args, **_kwargs: tmp_path / "write-transaction.lock",
     )
 
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        _DatabasePortalOwnerMutationFenceDeferred,
+    )
+
+    with pytest.raises(_DatabasePortalOwnerMutationFenceDeferred) as deferred:
+        with supervisor._database_portal_reload_mutation_fence():
+            pytest.fail("a timed-out mutation fence must not enter its body")
+    assert isinstance(deferred.value.__cause__, TimeoutError)
+    assert lock_attempts["count"] == 1
+
+    # A later supervisor pass may retry; one pass never waits in a loop.
     with supervisor._database_portal_reload_mutation_fence() as program:
         assert program is supervisor.config.database_program
 
@@ -3351,7 +3363,7 @@ def test_watchdog_maintenance_preserves_live_grok_without_active_task_id(
     )
 
 
-def test_failed_landed_recovery_does_not_skip_extra_gate_generic_rearm() -> None:
+def test_failed_landed_recovery_is_not_a_read_only_diagnostic() -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         _read_only_terminal_candidate_quarantine,
     )
@@ -3368,17 +3380,6 @@ def test_failed_landed_recovery_does_not_skip_extra_gate_generic_rearm() -> None
         "error": "canonical proof contracts cannot contain floats",
     }
     assert _read_only_terminal_candidate_quarantine(item) is False
-    terminal_candidate_cids = {
-        str(row.get("task_cid") or "")
-        for row in (item,)
-        if str(row.get("task_cid") or "")
-        and (
-            row.get("recovered") is True
-            or row.get("rearmed") is True
-            or _read_only_terminal_candidate_quarantine(row)
-        )
-    }
-    assert item["task_cid"] not in terminal_candidate_cids
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,

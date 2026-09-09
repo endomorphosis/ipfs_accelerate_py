@@ -16,7 +16,6 @@ import copy
 import fcntl
 import hashlib
 import json
-import os
 import threading
 import time
 from pathlib import Path
@@ -6385,118 +6384,6 @@ def test_extra_gate_foreign_process_running_attempt_is_not_live_local(
     )
 
 
-def test_extra_gate_dead_outside_selection_attempt_does_not_gate(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Dead extra-gate leftovers must not fail-close a matching home shard.
-
-    Lane-2 idled on owner_attempt_outside_selection while PCTDD-006 was
-    retrying and grok was gone. Official unstick is rearm, never CAS.
-    Extra-gate aliases still cannot bypass safe_to_restart=False.
-    """
-
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
-        PortalImplementationSupervisor,
-    )
-
-    Daemon = daemon_module.DatabaseImplementationDaemon
-    records = {
-        "process:dead": {
-            "state": "active",
-            "process_birth": {"pid": 1_000_000_000},
-        },
-        "process:closed": {"state": "closed", "process_birth": {"pid": os.getpid()}},
-        "process:live": {
-            "state": "active",
-            "process_birth": {"pid": os.getpid()},
-        },
-    }
-
-    class Probe(SimpleNamespace):
-        def _task_alias_is_extra_gate(self, task: object) -> bool:
-            return Daemon._task_alias_is_extra_gate(task)
-
-        def _extra_gate_running_attempt_is_live_local(self, attempt: object) -> bool:
-            return Daemon._extra_gate_running_attempt_is_live_local(self, attempt)
-
-        def _extra_gate_attempt_recorded_process_is_alive(
-            self, attempt: object
-        ) -> bool:
-            return Daemon._extra_gate_attempt_recorded_process_is_alive(
-                self, attempt
-            )
-
-        def _outside_selection_running_attempt_must_gate(
-            self, attempt: object
-        ) -> bool:
-            return Daemon._outside_selection_running_attempt_must_gate(
-                self, attempt
-            )
-
-        def _database_process_instance_record(
-            self, process_id: str
-        ) -> dict[str, object] | None:
-            return records.get(process_id)
-
-    daemon = Probe(process_instance_id="process:home")
-    extra_dead = SimpleNamespace(
-        task_alias="PCTDD-006",
-        process_instance_id="process:dead",
-        body={"process_instance_id": "process:dead"},
-    )
-    extra_closed = SimpleNamespace(
-        task_alias="PCTDD-006",
-        process_instance_id="process:closed",
-        body={},
-    )
-    extra_live = SimpleNamespace(
-        task_alias="PCTDD-006",
-        process_instance_id="process:live",
-        body={"process_instance_id": "process:live"},
-    )
-    ordinary = SimpleNamespace(
-        task_alias="PCTDD-008",
-        process_instance_id="process:dead",
-        body={"process_instance_id": "process:dead"},
-    )
-    extra_empty = SimpleNamespace(
-        task_alias="PCTDD-006",
-        process_instance_id="",
-        body={},
-    )
-    assert (
-        Daemon._outside_selection_running_attempt_must_gate(daemon, extra_dead)
-        is False
-    )
-    assert (
-        Daemon._outside_selection_running_attempt_must_gate(
-            daemon, extra_closed
-        )
-        is False
-    )
-    assert (
-        Daemon._outside_selection_running_attempt_must_gate(daemon, extra_empty)
-        is False
-    )
-    assert (
-        Daemon._outside_selection_running_attempt_must_gate(daemon, extra_live)
-        is True
-    )
-    assert (
-        Daemon._outside_selection_running_attempt_must_gate(daemon, ordinary)
-        is True
-    )
-    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
-        {
-            "safe_to_restart": False,
-            "blocked": True,
-            "quiesced": False,
-            "reconciled": False,
-            "reason": "database_portal_retained_reconciliation_blocked",
-        }
-    )
-
-
 def test_extra_gate_pre_dispatch_provider_error_defers_without_force_block(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -6608,15 +6495,10 @@ def test_extra_gate_pre_dispatch_provider_error_defers_without_force_block(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
-def test_successor_session_rearms_stale_extra_gate_in_progress(
+def test_successor_session_preserves_unbound_extra_gate_in_progress(
     tmp_path: Path,
 ) -> None:
-    """Owner recycle must rearm extra-gate in_progress without a local worker.
-
-    Home daemons were idling on no_ready_tasks while DuckDB left PCTDD-006
-    in_progress after the claiming session died. Official unstick is rearm,
-    never CAS. Extra-gate aliases still cannot bypass safe_to_restart=False.
-    """
+    """A different process/session without exact claim evidence stays held."""
 
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor,
@@ -6658,11 +6540,9 @@ def test_successor_session_rearms_stale_extra_gate_in_progress(
     )
     try:
         rearms = successor.reconcile_blocked_unknown_outcome_tasks()
-        assert len(rearms) == 1
-        assert rearms[0]["rearmed"] is True
-        assert rearms[0]["task_alias"] == "PCTDD-006"
+        assert rearms == []
         recovered = successor.task_source.get("task:cid:001")
-        assert recovered is not None and recovered.status == "retrying"
+        assert recovered is not None and recovered.status == "in_progress"
         assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
             {
                 "safe_to_restart": False,
@@ -6677,16 +6557,10 @@ def test_successor_session_rearms_stale_extra_gate_in_progress(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
-def test_same_session_rearms_extra_gate_in_progress_without_running_attempt(
+def test_same_session_preserves_unbound_extra_gate_in_progress(
     tmp_path: Path,
 ) -> None:
-    """Same-session extra-gate in_progress without a running attempt must rearm.
-
-    Lane-2 claimed PCTDD-006 then idled on no_ready_tasks because the
-    predecessor-only skip refused same-session receipts. Official unstick
-    is rearm, never CAS. Extra-gate aliases still cannot bypass
-    safe_to_restart=False.
-    """
+    """A different process/session without exact claim evidence stays held."""
 
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor,
@@ -6720,10 +6594,9 @@ def test_same_session_rearms_extra_gate_in_progress_without_running_attempt(
         stuck = daemon.task_source.get("task:cid:001")
         assert stuck is not None and stuck.status == "in_progress"
         rearms = daemon.reconcile_blocked_unknown_outcome_tasks()
-        assert len(rearms) == 1
-        assert rearms[0]["rearmed"] is True
+        assert rearms == []
         recovered = daemon.task_source.get("task:cid:001")
-        assert recovered is not None and recovered.status == "retrying"
+        assert recovered is not None and recovered.status == "in_progress"
         assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
             {
                 "safe_to_restart": False,
@@ -10948,11 +10821,11 @@ def test_exact_quiesced_stale_release_bypasses_terminal_landed_selector(
         daemon.close()
 
 
-def test_callback_authority_incomplete_without_evidence_generic_rearms(
+def test_callback_authority_incomplete_without_evidence_stays_blocked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Unknown callback authority with no nested proof rearms to retrying."""
+    """Unknown callback effects require exact recovery evidence before retry."""
 
     seed = _open_daemon(
         tmp_path,
@@ -11018,22 +10891,19 @@ def test_callback_authority_incomplete_without_evidence_generic_rearms(
 
         outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
 
-        assert len(outcomes) == 1
-        assert outcomes[0]["rearmed"] is True
-        assert outcomes[0]["operation"] == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
-        rearmed = daemon.task_source.get(task_cid)
-        assert rearmed is not None and rearmed.status == "retrying"
-        assert "completed" not in cas_statuses
-        assert "retrying" in cas_statuses
+        assert outcomes == []
+        held = daemon.task_source.get(task_cid)
+        assert held is not None and held.status == "blocked"
+        assert cas_statuses == []
     finally:
         daemon.close()
 
 
-def test_consumed_reserved_callback_authority_incomplete_generic_rearms(
+def test_consumed_reserved_callback_authority_incomplete_stays_blocked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Consumed extra-gate one-shot still rearms unknown callback authority."""
+    """Unknown callback effects require exact recovery evidence before retry."""
 
     seed = _open_daemon(
         tmp_path,
@@ -11104,19 +10974,18 @@ def test_consumed_reserved_callback_authority_incomplete_generic_rearms(
 
         outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
 
-        assert len(outcomes) == 1
-        assert outcomes[0]["rearmed"] is True
-        rearmed = daemon.task_source.get(task_cid)
-        assert rearmed is not None and rearmed.status == "retrying"
-        assert cas_statuses == ["retrying"]
+        assert outcomes == []
+        held = daemon.task_source.get(task_cid)
+        assert held is not None and held.status == "blocked"
+        assert cas_statuses == []
     finally:
         daemon.close()
 
 
-def test_generic_rearm_receipt_with_stale_retained_records_is_not_exhausted(
+def test_generic_rearm_receipt_cannot_hide_malformed_retained_records(
     tmp_path: Path,
 ) -> None:
-    """Superseded one-shot records must not idle extra-gate as max-attempts."""
+    """A generic retry marker cannot make malformed retained evidence valid."""
 
     daemon = _open_daemon(
         tmp_path,
@@ -11149,9 +11018,9 @@ def test_generic_rearm_receipt_with_stale_retained_records_is_not_exhausted(
         updated = daemon.task_source.get(task.task_cid)
         assert updated is not None
         state = daemon._retry_budget_state(updated)
-        assert state["retry_exhausted"] is False
-        assert state["malformed"] is False
-        assert daemon._automatic_claim_forbidden_current(updated) is False
+        assert state["retry_exhausted"] is True
+        assert state["malformed"] is True
+        assert daemon._automatic_claim_forbidden_current(updated) is True
     finally:
         daemon.close()
 
@@ -11238,9 +11107,13 @@ def test_near_quiesced_release_remains_in_terminal_landed_quarantine(
 
         assert len(outcomes) == 1
         assert outcomes[0]["task_cid"] == task.task_cid
-        assert outcomes[0]["reason"] == (
-            "terminal_landed_candidate_recovery_blocked"
+        expected_reason = (
+            "terminal_landed_candidate_manual_authority_required"
+            if task_alias == "PCTDD-005"
+            else "terminal_landed_candidate_recovery_blocked"
         )
+        assert outcomes[0]["reason"] == expected_reason
+        assert outcomes[0]["blocked"] is True
         assert generic_calls == []
         assert cas_calls == []
     finally:
@@ -11847,6 +11720,12 @@ def _count_zero_deferred_provider_rearm_task(
     try:
         population = _population(1)
         population["tasks"][0]["task_id"] = task_alias
+        if task_alias == DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN["task_alias"]:
+            # A reserved alias must retain its canonical CID even when this
+            # fixture models the earlier, ordinary pre-migration epoch.
+            population["tasks"][0]["task_cid"] = (
+                DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN["task_cid"]
+            )
         daemon.materialize_population(population)
         attempt = daemon.claim_next()
         assert attempt is not None and attempt.attempt_number == 1

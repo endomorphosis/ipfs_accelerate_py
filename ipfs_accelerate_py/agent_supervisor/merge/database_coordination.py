@@ -8307,6 +8307,137 @@ class DatabaseCoordinator:
                 return None
             return self._task_claim_from_row(row)
 
+    def get_task_claim_successor_projection(
+        self,
+        *,
+        task_cid: str,
+        after_fencing_token: int,
+        after_fence_epoch: int,
+    ) -> dict[str, Any] | None:
+        """Return one exact later same-task claim triple without mutation.
+
+        Historical reconciliation cannot use an expired claim as current
+        mutation authority.  It may, however, need to prove that a later
+        coordination fence superseded that history.  This snapshot returns
+        the earliest strictly later claim together with its atomically bound
+        attempt and lease, or ``None``.  Missing, cross-bound, or incoherent
+        rows fail closed instead of becoming a supersession signal.
+        """
+
+        cid = _text(task_cid, "task_cid")
+        token = _positive_int(int(after_fencing_token), "after_fencing_token")
+        epoch = _positive_int(int(after_fence_epoch), "after_fence_epoch")
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.TASK,
+            scope=cid,
+            task_cid=cid,
+        )
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                claim_row = connection.execute(
+                    """
+                    SELECT * FROM task_claims
+                    WHERE task_cid = ?
+                      AND fencing_token > ? AND fence_epoch > ?
+                    ORDER BY fencing_token, fence_epoch, claim_id
+                    LIMIT 1
+                    """,
+                    [cid, token, epoch],
+                ).fetchone()
+                if claim_row is None:
+                    self._commit_if_idle(connection)
+                    return None
+                claim = self._task_claim_from_row(claim_row)
+                # These readers reuse this connection and transaction under
+                # the coordinator's re-entrant lock, so the triple is one
+                # snapshot rather than three independently timed reads.
+                lease = self.get_lease(claim.lease_id)
+                attempt = self.get_task_attempt(claim.attempt_id)
+                token_row = connection.execute(
+                    """
+                    SELECT 1 FROM token_history
+                    WHERE scope_key = ? AND fencing_token = ?
+                      AND fence_epoch = ?
+                    """,
+                    [scope_key, claim.fencing_token, claim.fence_epoch],
+                ).fetchone()
+                if lease is None or attempt is None or token_row is None:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "later task claim authority is incomplete"
+                    )
+                exact = {
+                    "lease.lease_kind": lease.lease_kind is LeaseKind.TASK,
+                    "lease.scope_key": lease.scope_key == scope_key,
+                    "lease.scope": lease.scope == cid,
+                    "lease.mode": lease.mode is LeaseMode.EXCLUSIVE,
+                    "lease.task_cid": lease.task_cid == cid,
+                    "lease.claim_id": lease.claim_id == claim.claim_id,
+                    "lease.attempt_id": lease.attempt_id == claim.attempt_id,
+                    "lease.attempt_number": (
+                        lease.attempt_number == claim.attempt_number
+                    ),
+                    "lease.owner_session_id": (
+                        lease.owner_session_id == claim.owner_session_id
+                    ),
+                    "lease.fencing_token": (
+                        lease.fencing_token == claim.fencing_token
+                    ),
+                    "lease.fence_epoch": (
+                        lease.fence_epoch == claim.fence_epoch
+                    ),
+                    "lease.expires_at_ms": (
+                        lease.expires_at_ms == claim.expires_at_ms
+                    ),
+                    "lease.state": lease.state is claim.state,
+                    "attempt.task_cid": attempt.task_cid == cid,
+                    "attempt.attempt_id": attempt.attempt_id == claim.attempt_id,
+                    "attempt.attempt_number": (
+                        attempt.attempt_number == claim.attempt_number
+                    ),
+                    "attempt.owner_session_id": (
+                        attempt.owner_session_id == claim.owner_session_id
+                    ),
+                    "attempt.fencing_token": (
+                        attempt.fencing_token == claim.fencing_token
+                    ),
+                    "attempt.fence_epoch": (
+                        attempt.fence_epoch == claim.fence_epoch
+                    ),
+                }
+                mismatches = [name for name, matches in exact.items() if not matches]
+                allowed_attempt_states = {
+                    LeaseState.ACCEPTED: {AttemptStatus.RUNNING},
+                    LeaseState.EXPIRED: {AttemptStatus.EXPIRED},
+                    LeaseState.RELEASED: {
+                        AttemptStatus.RELEASED,
+                        AttemptStatus.SUCCEEDED,
+                    },
+                    LeaseState.COMPLETED: {AttemptStatus.SUCCEEDED},
+                }
+                if mismatches or attempt.status not in allowed_attempt_states.get(
+                    claim.state,
+                    set(),
+                ):
+                    raise DatabaseCoordinationStaleFenceError(
+                        "later task claim authority does not reproduce"
+                        + (": " + ", ".join(mismatches) if mismatches else "")
+                    )
+                result = {
+                    "task_cid": cid,
+                    "after_fencing_token": token,
+                    "after_fence_epoch": epoch,
+                    "claim": claim.to_dict(),
+                    "attempt": attempt.to_dict(),
+                    "lease": lease.to_dict(),
+                }
+                self._commit_if_idle(connection)
+                return result
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+
     def get_task_attempt(self, attempt_id: str) -> TaskAttempt | None:
         aid = _text(attempt_id, "attempt_id")
         with self._lock:
