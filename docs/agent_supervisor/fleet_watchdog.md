@@ -326,3 +326,7 @@ already loaded by running interpreters, qualify a new commit, or replace a
 native sealed runtime descriptor. An external writer that keeps changing live
 control-plane code must be reconciled with the recovery owner; repeated source
 restoration alone cannot establish lasting qualification.
+
+The semantic-preserving remodularization owner can persist and re-read its
+[kit source-forest CAS component](kit_source_forest.md) through the existing
+native authority. This component does not settle semantic acceptance or goals.

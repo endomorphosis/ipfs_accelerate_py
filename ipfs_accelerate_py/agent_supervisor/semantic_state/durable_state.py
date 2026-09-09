@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Protocol, runtime_checkable
+from typing import Any, Callable, Mapping, Protocol, runtime_checkable
 
 from ipfs_accelerate_py.agent_supervisor.semantic_state.contracts import (
     HARNESS_ROOT_MANIFEST_SCHEMA,
@@ -341,79 +341,8 @@ class IpfsKitDurableStateAdapter:
         except ValueError as exc:
             raise DurableStateError(str(exc)) from exc
 
-        status = result.get("status")
-        if status == "conflict":
-            raise RootConflict(
-                f"root CAS conflict for {namespace!r}: {result.get('reason_code')}"
-            )
-        if status not in {"updated", "unchanged"}:
-            raise DurableStateError(f"unexpected root CAS status: {status!r}")
-
-        after = result.get("after") or {}
-        after_cid = after.get("root_cid")
-        after_revision = after.get("revision")
-        if after_cid is None or type(after_revision) is not int or after_revision <= 0:
-            raise DurableStateIntegrityError("CAS result did not publish a root")
-        after_cid = validate_opaque_cid(after_cid, "after.root_cid")
-        if after_cid != new_root_cid:
-            # Idempotent replay of a completed transition must still name the
-            # sole durable successor for this operation, which is new_root_cid.
-            raise DurableStateIntegrityError("CAS after root does not match request")
-        if after_revision != expected_revision + 1:
-            raise DurableStateIntegrityError("CAS after generation does not match request")
-        if after.get("namespace") != namespace:
-            raise DurableStateIntegrityError("CAS after namespace does not match request")
-        transition_cid = after.get("transition_cid")
-        if not isinstance(transition_cid, str) or not transition_cid:
-            raise DurableStateIntegrityError("CAS result is missing its transition CID")
-        if status == "updated":
-            if result.get("transition_cid") != transition_cid:
-                raise DurableStateIntegrityError("CAS transition CID bindings disagree")
-            before = result.get("before") or {}
-            if (
-                before.get("namespace") != namespace
-                or type(before.get("revision")) is not int
-                or before["revision"] != expected_revision
-                or before.get("root_cid") != expected_root_cid
-            ):
-                raise DurableStateIntegrityError("CAS before does not match request")
-        elif (
-            result.get("reason_code") != "idempotent_replay"
-            or result.get("before") != after
-            or result.get("transition_cid") is not None
-        ):
-            raise DurableStateIntegrityError("CAS replay bindings disagree")
-
-        # get() resolves and checks the CID-addressed bytes through the existing
-        # kit authority. Never turn caller-supplied result fields into a receipt.
-        transition = self.get(transition_cid)
-        bound_fields = {
-            "schema": "mcp++/coordination/state-root-transition@1",
-            "namespace": namespace,
-            "operation_id": operation_id,
-            "expected_root_cid": expected_root_cid,
-            "expected_revision": expected_revision,
-            "new_root_cid": new_root_cid,
-            "new_revision": expected_revision + 1,
-        }
-        if (
-            set(transition) != set(bound_fields) | {"created_at_ms"}
-            or type(transition.get("created_at_ms")) is not int
-            or transition["created_at_ms"] < 0
-            or any(
-                type(transition.get(key)) is not type(value)
-                or transition.get(key) != value
-                for key, value in bound_fields.items()
-            )
-        ):
-            raise DurableStateIntegrityError("immutable CAS transition does not match request")
-        return DurableRootCasReceipt(
-            repository_id=namespace,
-            expected=expected,
-            published=RootRef(root_cid=after_cid, generation=after_revision),
-            operation_id=operation_id,
-            transition_cid=transition_cid,
-            idempotent_replay=status == "unchanged",
+        return verify_durable_root_cas_result(
+            namespace, expected, new_root_cid, result, read_artifact=self.get
         )
 
     def recover(self) -> Mapping[str, Any]:
@@ -507,6 +436,108 @@ class IpfsKitDurableStateAdapter:
         return manifest
 
 
+def verify_durable_root_cas_result(
+    repository_id: str,
+    expected: RootRef | None,
+    new_root_cid: str,
+    result: Mapping[str, Any],
+    *,
+    read_artifact: Callable[[str], Mapping[str, Any]],
+) -> DurableRootCasReceipt:
+    """Verify exact kit transition bytes for semantic or source-forest roots.
+
+    ``read_artifact`` must be the existing kit authority's CID-verifying reader.
+    This shared validator admits persistence only; each manifest consumer must
+    independently verify its source/semantic contract before accepting a root.
+    """
+    namespace = _repository_namespace(repository_id)
+    new_root_cid = validate_opaque_cid(new_root_cid, "new_root_cid")
+    if expected is not None and (
+        not isinstance(expected, RootRef) or type(expected.generation) is not int
+        or expected.generation <= 0
+    ):
+        raise DurableStateError("expected must be a positive generation-bearing RootRef or None")
+    expected_revision = 0 if expected is None else expected.generation
+    expected_root_cid = None if expected is None else validate_opaque_cid(expected.root_cid, "expected.root_cid")
+    operation_id = _operation_id(expected_revision, new_root_cid)
+    if not isinstance(result, Mapping):
+        raise DurableStateIntegrityError("CAS result is not an object")
+    status = result.get("status")
+    if status == "conflict":
+        raise RootConflict(
+            f"root CAS conflict for {namespace!r}: {result.get('reason_code')}"
+        )
+    if status not in {"updated", "unchanged"}:
+        raise DurableStateError(f"unexpected root CAS status: {status!r}")
+
+    after = result.get("after") or {}
+    after_cid = after.get("root_cid")
+    after_revision = after.get("revision")
+    if after_cid is None or type(after_revision) is not int or after_revision <= 0:
+        raise DurableStateIntegrityError("CAS result did not publish a root")
+    after_cid = validate_opaque_cid(after_cid, "after.root_cid")
+    if after_cid != new_root_cid:
+        # Idempotent replay of a completed transition must still name the
+        # sole durable successor for this operation, which is new_root_cid.
+        raise DurableStateIntegrityError("CAS after root does not match request")
+    if after_revision != expected_revision + 1:
+        raise DurableStateIntegrityError("CAS after generation does not match request")
+    if after.get("namespace") != namespace:
+        raise DurableStateIntegrityError("CAS after namespace does not match request")
+    transition_cid = after.get("transition_cid")
+    if not isinstance(transition_cid, str) or not transition_cid:
+        raise DurableStateIntegrityError("CAS result is missing its transition CID")
+    if status == "updated":
+        if result.get("transition_cid") != transition_cid:
+            raise DurableStateIntegrityError("CAS transition CID bindings disagree")
+        before = result.get("before") or {}
+        if (
+            before.get("namespace") != namespace
+            or type(before.get("revision")) is not int
+            or before["revision"] != expected_revision
+            or before.get("root_cid") != expected_root_cid
+        ):
+            raise DurableStateIntegrityError("CAS before does not match request")
+    elif (
+        result.get("reason_code") != "idempotent_replay"
+        or result.get("before") != after
+        or result.get("transition_cid") is not None
+    ):
+        raise DurableStateIntegrityError("CAS replay bindings disagree")
+
+    # get() resolves and checks the CID-addressed bytes through the existing
+    # kit authority. Never turn caller-supplied result fields into a receipt.
+    transition = read_artifact(transition_cid)
+    bound_fields = {
+        "schema": "mcp++/coordination/state-root-transition@1",
+        "namespace": namespace,
+        "operation_id": operation_id,
+        "expected_root_cid": expected_root_cid,
+        "expected_revision": expected_revision,
+        "new_root_cid": new_root_cid,
+        "new_revision": expected_revision + 1,
+    }
+    if (
+        set(transition) != set(bound_fields) | {"created_at_ms"}
+        or type(transition.get("created_at_ms")) is not int
+        or transition["created_at_ms"] < 0
+        or any(
+            type(transition.get(key)) is not type(value)
+            or transition.get(key) != value
+            for key, value in bound_fields.items()
+        )
+    ):
+        raise DurableStateIntegrityError("immutable CAS transition does not match request")
+    return DurableRootCasReceipt(
+        repository_id=namespace,
+        expected=expected,
+        published=RootRef(root_cid=after_cid, generation=after_revision),
+        operation_id=operation_id,
+        transition_cid=transition_cid,
+        idempotent_replay=status == "unchanged",
+    )
+
+
 def open_local_durable_state(
     storage_dir: str | Path,
     *,
@@ -576,4 +607,5 @@ __all__ = [
     "cid_for_root_manifest",
     "open_local_durable_state",
     "root_manifest_artifact",
+    "verify_durable_root_cas_result",
 ]

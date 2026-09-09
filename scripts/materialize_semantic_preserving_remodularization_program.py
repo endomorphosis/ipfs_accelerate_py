@@ -2053,6 +2053,11 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
                 print("native completion projection recovery: " + json.dumps(repairs), flush=True)
         except IntentRepositoryIntegrityError as exc:
             print("native completion projection recovery deferred: " + str(exc), flush=True)
+        # The existing exclusive owner persists the kit component. This does
+        # not settle goals or replace datasets acceptance; status reads remain
+        # read-only and re-admit its current source binding on every snapshot.
+        kit_receipt = server.publish_spar_source_forest()
+        print("native kit source forest persistence: " + json.dumps(kit_receipt), flush=True)
 
     except BaseException:
         server.stop()
