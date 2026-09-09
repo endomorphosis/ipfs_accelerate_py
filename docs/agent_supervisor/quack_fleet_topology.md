@@ -34,7 +34,11 @@ python3 -m ipfs_accelerate_py.agent_supervisor.runtime.quack_fleet_topology \
 
 The output retains exact sealed board selections. A missing native database or
 configuration registers an unavailable source and does not recreate it from JSON.
-Each new owner uses its own endpoint, database and owner-state directory. Source
+Each new owner uses its own endpoint, database and owner-state directory.
+The default dedicated ports are 27841 and 27842, below the usual Linux client
+ephemeral range. Check the host range when overriding them: an outgoing client
+can otherwise borrow a stopped owner's port and delay restart until TIME_WAIT
+expires. The native owner retains its normal bind checks and restart backoff. Source
 endpoint collisions, overlaps and path escapes are refused. Add more inventory
 entries to expand the source population; up to 4096 sources are admitted per
 compiled topology, independently of a board's lane count.
