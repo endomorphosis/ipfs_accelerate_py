@@ -133,6 +133,20 @@ def snapshot_implementation_workspace(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    try:
+        from .pytest_item_ledger import (
+            WORKSPACE_LEDGER_NAME,
+            pytest_item_ledger_dir,
+            workspace_records_path,
+        )
+
+        local_ledger = workspace_records_path(workspace)
+        if local_ledger.is_file():
+            _copy_file(local_ledger, dest_root / WORKSPACE_LEDGER_NAME)
+            durable = pytest_item_ledger_dir(root, "aseh", task_id)
+            _copy_file(local_ledger, durable / "items.jsonl")
+    except Exception:
+        pass
     return payload
 
 
@@ -184,6 +198,22 @@ def restore_interrupted_validation(
             continue
         if _copy_file(files_root / text, workspace / text):
             restored += 1
+    try:
+        from .pytest_item_ledger import (
+            WORKSPACE_LEDGER_NAME,
+            pytest_item_ledger_dir,
+            workspace_records_path,
+        )
+
+        local_ledger = workspace_records_path(workspace)
+        checkpoint_ledger = dest_root / WORKSPACE_LEDGER_NAME
+        durable_ledger = pytest_item_ledger_dir(root, "aseh", task_id) / "items.jsonl"
+        if checkpoint_ledger.is_file():
+            _copy_file(checkpoint_ledger, local_ledger)
+        elif durable_ledger.is_file():
+            _copy_file(durable_ledger, local_ledger)
+    except Exception:
+        pass
     return restored > 0
 
 

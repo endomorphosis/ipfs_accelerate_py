@@ -103,7 +103,7 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             if digest is not None:
                 hashes[relative] = digest
         reusable = reusable_nodeids(
-            load_records(context["dest"]),
+            load_records(context["dest"], workspace=workspace),
             command_sha256=command_sha256,
             workspace_fingerprint_value=str(context["workspace_fingerprint"]),
             test_file_hashes=hashes,
@@ -152,6 +152,7 @@ def pytest_runtest_logreport(report: Any) -> None:
             workspace_fingerprint_value=str(context["workspace_fingerprint"]),
             command_sha256=str(_STATE["command_sha256"]),
             task_id=str(context["task_id"]),
+            workspace=workspace,
         )
     except Exception:
         return

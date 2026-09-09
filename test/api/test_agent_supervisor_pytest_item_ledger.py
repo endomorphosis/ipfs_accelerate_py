@@ -132,6 +132,32 @@ def test_failed_outcome_never_reusable(tmp_path: Path) -> None:
     ) == frozenset()
 
 
+def test_record_writes_workspace_local_when_durable_unwritable(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    blocked = tmp_path / "blocked-file"
+    blocked.write_text("not-a-dir\n", encoding="utf-8")
+    record_item(
+        blocked / "ledger",
+        nodeid="test_sample.py::test_ok",
+        outcome="passed",
+        test_file="test_sample.py",
+        test_file_sha256="abc",
+        workspace_fingerprint_value="fp",
+        command_sha256="cmd",
+        task_id="ASEH-061",
+        workspace=workspace,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.pytest_item_ledger import (
+        WORKSPACE_LEDGER_NAME,
+        load_records,
+    )
+
+    assert (workspace / WORKSPACE_LEDGER_NAME).is_file()
+    records = load_records(blocked / "ledger", workspace=workspace)
+    assert records["test_sample.py::test_ok"]["outcome"] == "passed"
+
+
 def test_jsonl_survives_without_sessionfinish(tmp_path: Path) -> None:
     dest = pytest_item_ledger_dir(tmp_path, "aseh", "ASEH-061")
     record_item(
