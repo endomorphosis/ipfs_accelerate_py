@@ -67942,17 +67942,6 @@ _LIVE_OWNER_PORTAL_CLAIM_FAILURE_REARM_REASON = (
 _AUTOMATIC_PORTAL_FAILURE_REARM_EVENT = (
     "automatic_recoverable_portal_failure_rearmed"
 )
-_INFLIGHT_PORTAL_DEFER_REASONS = frozenset(
-    {
-        "Portal task projection is not complete",
-        "external_protected_checkout_recovery_required",
-        "inflight_process",
-        "inflight_process_missing",
-        "worktree_lifecycle_claim_exists",
-        "provider_capacity_exhausted",
-        "cross-attempt worktree Git observation is unavailable",
-    }
-)
 DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1 = (
     "ipfs_accelerate_py/agent-supervisor/database-control-claim-binding@1"
 )
@@ -70257,11 +70246,12 @@ class DatabaseImplementationDaemon:
         """Unblock recoverable ``terminal_portal_bridge_error`` settlements.
 
         Settlements keep ``automatic_retry_admitted=false``.  The operator
-        rearm path only fires after a blocked→retrying CAS.  Two closed
+        rearm path only fires after a blocked→retrying CAS.  Three closed
         classes may perform that CAS once per task:
 
         * the exact-Git-merge mismatch that parked a gitlink-recording
           follow-up after merge-train acceptance;
+        * a protected-path failure with no recorded provider or effect;
         * a live Quack owner seeing a zero-provider claim failure whose
           settlement lives on the control task (no lane-local sidecar).
         """
@@ -70309,6 +70299,13 @@ class DatabaseImplementationDaemon:
                                 receipt,
                                 attempt,
                                 candidate,
+                            )
+                            and (
+                                candidate
+                                != _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON
+                                or self.portal_claim_failure_receipt_is_zero_provider_rearmable(
+                                    receipt
+                                )
                             )
                         ),
                         "",
@@ -73342,13 +73339,7 @@ class DatabaseImplementationDaemon:
 
             if isinstance(exc, DatabasePortalBridgeDeferred):
                 reason = str(exc)
-                inflight = (
-                    reason in _INFLIGHT_PORTAL_DEFER_REASONS
-                    or "capacity" in reason
-                    or "backoff" in reason
-                    or reason.startswith("Portal task projection")
-                )
-                if inflight:
+                if reason != _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON:
                     # Grok/Codex is still in flight. Keep the exact running
                     # attempt so the next pass can accept the same projection
                     # instead of failing it and racing a replacement claim.
@@ -73375,9 +73366,9 @@ class DatabaseImplementationDaemon:
                         ),
                         "status": "running",
                     }
-                # Protected-path and other non-inflight deferrals must not
-                # pin the claim after this process dies. Settle them like a
-                # terminal Portal miss so the next pass can rearm/retry.
+                # Only this exact terminal class may enter the native failure
+                # settlement. Other deferrals can prove active workers or
+                # unresolved effects; an unknown reason is not retry authority.
                 exc = DatabasePortalBridgeError(reason)
             if not isinstance(exc, DatabasePortalBridgeError):
                 raise

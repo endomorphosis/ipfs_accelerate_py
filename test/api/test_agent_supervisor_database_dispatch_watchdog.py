@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import time
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,7 +33,6 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     DATABASE_AUTHORITY_UNAVAILABLE_REASON,
     DATABASE_BLOCKED_PORTAL_FRONTIER_REASON,
     DATABASE_IDLE_DAEMON_STALL_REASON,
-    DATABASE_STALE_ACTIVE_CLAIM_REASON,
     SHARED_AUTHORITY_TERMINAL_STATUS,
     SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND,
     SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA,
@@ -440,63 +440,88 @@ def test_database_watchdog_recycles_stale_idle_child_for_same_shard_ready_work(
     assert maintenance_calls == []
 
 
-def test_database_watchdog_recycles_stale_active_claim_from_prior_child(
-    tmp_path,
-    monkeypatch,
+@pytest.mark.parametrize(
+    ("reason", "stale", "active_task_id"),
+    [
+        ("heartbeat_belongs_to_prior_child", False, "SAWM-013"),
+        ("heartbeat_belongs_to_prior_child", True, "SAWM-013"),
+        ("heartbeat_belongs_to_prior_child", True, ""),
+        ("heartbeat_stale", True, "SAWM-013"),
+    ],
+)
+def test_database_watchdog_preserves_native_active_work_despite_old_heartbeat(
+    tmp_path, monkeypatch, reason, stale, active_task_id,
 ) -> None:
     supervisor = _supervisor(tmp_path, lane_index=1)
     monkeypatch.setattr(
-        supervisor,
-        "_authoritative_runnable_work_status",
+        supervisor, "_authoritative_runnable_work_status",
         lambda: {
             "available": True,
-            "reason": "authoritative_readiness_observed",
             "task_source_revision": 41,
             "ready_task_ids": [],
             "same_shard_ready_task_ids": [],
             "active_task_ids": ["SAWM-013"],
             "same_shard_active_task_ids": ["SAWM-013"],
-            "blocked_recoverable_task_ids": [],
-            "same_shard_blocked_recoverable_task_ids": [],
         },
     )
     monkeypatch.setattr(
-        supervisor,
-        "_database_pass_heartbeat_status",
+        supervisor, "_database_pass_heartbeat_status",
         lambda _child, now_ts: {
-            "available": True,
-            "stale": True,
-            "reason": "heartbeat_belongs_to_prior_child",
-            "active_task_id": "SAWM-013",
+            "available": True, "stale": stale, "reason": reason,
+            "active_task_id": active_task_id,
         },
     )
-    requeue_calls: list[dict[str, object]] = []
+    # The current child's provider can exist before its local JSON projection
+    # catches up. Native active work must still outrank an old pass heartbeat.
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [12345])
+    requeue_calls = []
     monkeypatch.setattr(
-        supervisor,
-        "_requeue_stale_active_database_claims",
-        lambda: requeue_calls.append({"ok": True})
-        or {
-            "attempted": True,
-            "reason": DATABASE_STALE_ACTIVE_CLAIM_REASON,
-            "expired_count": 1,
-            "expired_task_ids": ["sha256:task"],
+        supervisor, "_requeue_stale_active_database_claims",
+        lambda: requeue_calls.append(True) or {
+            "attempted": True, "expired_count": 0,
         },
-    )
-    events: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr(
-        supervisor,
-        "_record_event",
-        lambda kind, detail: events.append((kind, dict(detail))),
+        raising=False,
     )
     loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
     child = SimpleNamespace(pid=os.getpid())
 
     decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
 
-    assert decision.action == "recycle"
-    assert decision.reason == DATABASE_STALE_ACTIVE_CLAIM_REASON
-    assert requeue_calls == [{"ok": True}]
-    assert events[0][0] == "stale_active_claim_prior_child_detected"
+    assert decision.action == "continue"
+    assert requeue_calls == []
+
+
+@pytest.mark.parametrize("child_age_seconds", [0, 10000])
+def test_prior_child_active_heartbeat_does_not_override_current_birth_grace(
+    tmp_path, child_age_seconds,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    publish_database_daemon_pass_heartbeat(
+        state_dir=supervisor.config.state_dir,
+        state_prefix=supervisor.config.state_prefix,
+        sequence=1,
+        result={"active_task_id": "SAWM-013"},
+        process_instance_id="process:prior",
+        owner_session_id="session:prior",
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        task_shard_count=4,
+        task_shard_index=1,
+        strict_task_sharding=True,
+    )
+    birth = current_process_birth()
+    child = SimpleNamespace(
+        pid=os.getpid(),
+        identity_process_birth=replace(birth, start_time_ticks=birth.start_time_ticks + 1),
+        started_at=(datetime.now(UTC) - timedelta(seconds=child_age_seconds)).isoformat(),
+    )
+
+    observed = supervisor._database_pass_heartbeat_status(child, now_ts=time.time())
+
+    assert observed["reason"] == "heartbeat_belongs_to_prior_child"
+    assert observed["available"] is False
+    assert observed["current_process"] is False
+    assert observed["stale"] is (child_age_seconds > 0)
 
 
 def test_database_watchdog_rearms_idle_blocked_portal_frontier(
