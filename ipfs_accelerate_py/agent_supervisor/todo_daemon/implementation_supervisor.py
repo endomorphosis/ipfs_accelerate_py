@@ -8925,31 +8925,22 @@ class PortalImplementationSupervisor:
             state_root
             / f"{self.config.state_prefix}_database_portal_attempts"
         )
-        owners = self._shared_active_worktree_owners(root)
+        pool_state_root = root / ".pool-state"
+        try:
+            observed = pool_state_root.lstat()
+            if (not stat.S_ISDIR(observed.st_mode)
+                    or stat.S_ISLNK(observed.st_mode)
+                    or pool_state_root.resolve(strict=True) != pool_state_root):
+                return None
+            pool_paths = sorted(pool_state_root.glob("*.json"))
+        except (OSError, RuntimeError):
+            return None
         try:
             lifecycle_store = WorktreeLifecycleStore(repo_root)
         except (OSError, RuntimeError, ValueError):
             return None
 
-        for workspace, owner in sorted(owners.items(), key=lambda item: str(item[0])):
-            if (
-                owner.get("source") != "worktree_pool_lease"
-                or owner.get("lease_state") != "leased"
-                or owner.get("lease_pid") != str(child_pid)
-            ):
-                continue
-            try:
-                resolved_workspace = workspace.resolve(strict=True)
-                resolved_workspace.relative_to(root)
-            except (OSError, RuntimeError, ValueError):
-                continue
-            if resolved_workspace != workspace:
-                continue
-
-            raw_pool_path = str(owner.get("pool_state_path") or "")
-            if not raw_pool_path:
-                continue
-            pool_path = Path(raw_pool_path)
+        for pool_path in pool_paths:
             try:
                 if (
                     pool_path.resolve(strict=True).parent != root / ".pool-state"
@@ -8982,14 +8973,16 @@ class PortalImplementationSupervisor:
             ):
                 continue
             try:
+                workspace = Path(str(pool["path"]))
+                resolved_workspace = workspace.resolve(strict=True)
+                resolved_workspace.relative_to(root)
                 if (
-                    Path(str(pool["path"])).resolve(strict=True)
-                    != resolved_workspace
+                    workspace != resolved_workspace
                     or Path(str(pool["repo_root"])).resolve(strict=True)
                     != repo_root
                 ):
                     continue
-            except (OSError, RuntimeError):
+            except (OSError, RuntimeError, ValueError):
                 continue
 
             record = lifecycle_store.load_workspace(resolved_workspace)

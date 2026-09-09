@@ -505,6 +505,8 @@ def test_database_phase_census_uses_only_custody_proved_nested_state(
         binding = json.loads(fixture["binding_path"].read_text())
         binding["binding_id"] = "sha256:" + "0" * 64
         _write_json(fixture["binding_path"], binding)
+    monkeypatch.setattr(supervisor, "_shared_active_worktree_owners",
+                        lambda _root: pytest.fail("projection scanned sibling state"))
     loop = supervisor_loop.SupervisorLoop(supervisor.build_supervisor_loop_config())
     observed = loop._observe_worker_status(fixture["child"], {
         "active_phase": "implementing",
