@@ -4,6 +4,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     TodoImplementationDaemon,
 )
@@ -21,8 +23,9 @@ def _git(cwd: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
+@pytest.mark.parametrize("disappears_during_status", [False, True])
 def test_cleanup_skips_locked_registered_worktree_missing_after_reboot(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, disappears_during_status: bool,
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -39,7 +42,17 @@ def test_cleanup_skips_locked_registered_worktree_missing_after_reboot(
     worktree_path = worktree_root / "accel-002-attempt-1-interrupted"
     _git(repo, "worktree", "add", "-b", branch_name, str(worktree_path), "HEAD")
     _git(repo, "worktree", "lock", "--reason", "initializing", str(worktree_path))
-    shutil.rmtree(worktree_path)
+    if disappears_during_status:
+        original_run = subprocess.run
+
+        def run_with_disappearing_checkout(args, **kwargs):
+            if args[:2] == ["git", "status"] and kwargs.get("cwd") == worktree_path:
+                shutil.rmtree(worktree_path)
+            return original_run(args, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", run_with_disappearing_checkout)
+    else:
+        shutil.rmtree(worktree_path)
 
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
@@ -63,3 +76,5 @@ def test_cleanup_skips_locked_registered_worktree_missing_after_reboot(
         }
     ]
     assert str(worktree_path) in _git(repo, "worktree", "list", "--porcelain")
+
+    assert _git(repo, "rev-parse", branch_name) == _git(repo, "rev-parse", "HEAD")
