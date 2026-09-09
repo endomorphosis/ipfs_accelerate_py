@@ -32,6 +32,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
@@ -1967,11 +1968,19 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
     try:
         identity = server.start()
         ready = server.ready()
-        # The generic SPAR controller issues exact birth-bound grants through
-        # its inherited bootstrap listener. The server's reusable status
-        # bootstrap credential is therefore unnecessary and must not remain
-        # at rest.
-        server.typed_command_token_path().unlink(missing_ok=True)
+        # Execution grants stay on the inherited private channel. The separate
+        # status credential admits only exact-peer, read-only snapshot sessions.
+        board, _ = _load_config(config_path)
+        bootstrap = _json_object(paths["bootstrap_receipt"])
+        body = {key: value for key, value in bootstrap.items() if key != "bootstrap_receipt_id"}
+        if bootstrap.get("bootstrap_receipt_id") != _identity(body):
+            raise OperatorError("native status bootstrap seal is invalid")
+        server.bind_database_status_scope(
+            board_namespace=board.board_namespace,
+            plan_root_cid=bootstrap["plan_root_cid"],
+            repository_tree_id=bootstrap["repository_tree_id"],
+            task_cids=bootstrap["database_task_source_receipt"]["task_cids"],
+        )
     except BaseException:
         server.stop()
         raise
@@ -3619,6 +3628,7 @@ def supervise(
                         "source_forest_root"
                     ],
                     "credential_transport": "private_inherited_socket",
+                    "status_credential_transport": "peer_bound_readonly_bootstrap_file",
                     "credential_in_environment_argv_or_file": False,
                 },
                 sort_keys=True,
@@ -3810,6 +3820,53 @@ def _read_live_projection(
     return dict(task_projection)
 
 
+def authoritative_status(config_path: Path) -> dict[str, Any]:
+    """Read closeout facts from one independently admitted native snapshot."""
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        STATUS_BOOTSTRAP_CLIENT_ID, TYPED_STATE_OWNER_SOCKET_FILENAME,
+        TYPED_STATE_OWNER_TOKEN_FILENAME, TypedStateOwnerConnection,
+        compact_default_owner_socket_path,
+    )
+    board, config = _load_config(config_path)
+    paths = _runtime_paths(board)
+    owner = _json_object(paths["owner"] / "quack-state-server.status.json")
+    if owner.get("lifecycle") != "ready" or _owner_liveness(owner) != "alive":
+        raise OperatorError("native closeout status requires a live owner")
+    bootstrap = _json_object(paths["bootstrap_receipt"])
+    client = TypedStateOwnerConnection(
+        socket_path=compact_default_owner_socket_path(
+            paths["owner"] / TYPED_STATE_OWNER_SOCKET_FILENAME, identity=paths["database"]),
+        token=(paths["owner"] / TYPED_STATE_OWNER_TOKEN_FILENAME).read_text().strip(),
+        client_id=STATUS_BOOTSTRAP_CLIENT_ID,
+        process_birth_id=f"spar-status:{os.getpid()}:{time.time_ns()}",
+        store_id=board.resolved_database_program().store_id,
+        status_bootstrap=True,
+    )
+    try:
+        for key in ("server_id", "process_birth_id", "store_id", "database_uuid", "generation", "fence_epoch"):
+            if client.identity.get(key) != owner["identity"].get(key):
+                raise OperatorError("native status differs from current published owner")
+        snapshot = client.completion_closeout_snapshot(
+            bootstrap["database_task_source_receipt"]["task_cids"])
+        facts = snapshot["closeout_facts"]
+        relations = facts["relations"]
+        if facts["truncated"] or not relations["tasks"]["available"] or not relations["goals"]["available"]:
+            raise OperatorError("native closeout population is unavailable or truncated")
+        tasks = relations["tasks"]["rows"]
+        goals = relations["goals"]["rows"]
+        control = {"task_count": len(tasks), "goal_count": len(goals),
+                   "tasks_json": json.dumps(tasks), "goals_json": json.dumps(goals)}
+        return {"schema": "ipfs_accelerate_py/agent-supervisor/database-board-status@1",
+                "board_namespace": board.board_namespace, "authoritative_task_observation": True,
+                "observed_at": datetime.now(UTC).isoformat(), "owner_identity": dict(client.identity),
+                "control": control, "tasks": tasks, "leases": relations["leases"]["rows"],
+                "completion_snapshot": snapshot["completion_snapshot"], "closeout_snapshot": dict(snapshot),
+                "required_goal_count": config["initial_projection"]["goal_count"],
+                "completion_authority": False, "completion_gate": "sealed_goal_and_terminal_receipt_review_required"}
+    finally:
+        client.close()
+
+
 def status(config_path: Path) -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         open_duckdb_connection,
@@ -3931,6 +3988,7 @@ def _parser() -> argparse.ArgumentParser:
         default=float("inf"),
         help="bounded supervisor lifetime; defaults to the board terminal",
     )
+    commands.add_parser("authoritative-status", help="read native tasks/goals/claims and closeout obligations")
     status_parser = commands.add_parser(
         "status",
         help="report owner liveness and durable task readiness without exposing tokens",
@@ -3962,6 +4020,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 dry_run=bool(arguments.dry_run),
                 duration_seconds=float(arguments.duration_seconds),
             )
+        if arguments.command == "authoritative-status":
+            print(json.dumps(authoritative_status(config_path), indent=2, sort_keys=True))
+            return 0
         if arguments.command == "status":
             result = status(config_path)
             print(json.dumps(result, indent=2, sort_keys=True))
