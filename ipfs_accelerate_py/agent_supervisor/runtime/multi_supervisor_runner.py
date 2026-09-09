@@ -11933,9 +11933,12 @@ def run_supervisor_tracks(
                 resolved_master_pid
             )
     processes: dict[str, subprocess.Popen[bytes]] = {}
+    sigterm_checkpoint_pending = False
 
     def _handle_signal(signum: int, _frame: object) -> None:
+        nonlocal sigterm_checkpoint_pending
         if survive_external_sigterm and signum == signal.SIGTERM:
+            sigterm_checkpoint_pending = True
             _emit(
                 output,
                 "ignored external SIGTERM after exclusive-owner identity",
@@ -12104,6 +12107,43 @@ def run_supervisor_tracks(
                 max(0.0, deadline - time.monotonic()),
             )
             time.sleep(sleep_for)
+            if sigterm_checkpoint_pending:
+                sigterm_checkpoint_pending = False
+                try:
+                    from .interrupted_validation_checkpoint import (
+                        snapshot_dirty_worktrees,
+                    )
+
+                    worktree_values = _profile_option_values(
+                        tuple(common_args),
+                        "--worktree-root",
+                    )
+                    worktree_root = (
+                        Path(worktree_values[0])
+                        if worktree_values
+                        else resolved_repo_root / "data" / "aseh" / "worktrees"
+                    )
+                    if not worktree_root.is_absolute():
+                        worktree_root = resolved_repo_root / worktree_root
+                    checkpointed = snapshot_dirty_worktrees(
+                        resolved_repo_root,
+                        worktree_root,
+                    )
+                    _emit(
+                        output,
+                        (
+                            "checkpointed interrupted validation "
+                            f"worktrees={checkpointed}"
+                        ),
+                    )
+                except Exception as exc:  # noqa: BLE001 - never crash the owner
+                    _emit(
+                        output,
+                        (
+                            "interrupted validation checkpoint failed: "
+                            f"{type(exc).__name__}"
+                        ),
+                    )
             for track in tuple(managed_tracks):
                 if track.name in bounded_finished_tracks:
                     continue

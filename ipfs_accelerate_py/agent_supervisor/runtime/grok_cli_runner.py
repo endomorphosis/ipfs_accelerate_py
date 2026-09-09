@@ -15105,9 +15105,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Delegate to the full isolation/fallback implementation. Terra is
     # dispatched only after typed preflight auth/quota evidence or terminal
     # quota correlation plus independent verification.
+    from .interrupted_validation_checkpoint import (
+        restore_interrupted_validation,
+        snapshot_implementation_workspace,
+    )
+
+    workspace = Path(args.workspace).expanduser().resolve()
+    if restore_interrupted_validation(workspace):
+        print(
+            "resumed interrupted validation; skipping grok provider",
+            flush=True,
+        )
+        return 0
     try:
         try:
-            return _run(args, receipt_fd)
+            result = _run(args, receipt_fd)
         except NameError as exc:
             # Infer and bind missing provider-command symbols, then retry once.
             healed = recover_provider_command_name_error(exc, globals())
@@ -15119,7 +15131,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 namespace_name=__name__,
                 strict=False,
             )
-            return _run(args, receipt_fd)
+            result = _run(args, receipt_fd)
+        if result == 0:
+            snapshot_implementation_workspace(workspace)
+        return result
     finally:
         if receipt_fd >= 3:
             try:
