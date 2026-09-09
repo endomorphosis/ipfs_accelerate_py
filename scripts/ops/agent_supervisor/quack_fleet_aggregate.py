@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--deployment', type=Path, required=True)
     parser.add_argument('--inventory', type=Path, required=True)
     parser.add_argument('--poll-seconds', type=float, default=30)
+    parser.add_argument('--query', action='store_true', help='Query the live aggregate owner through its read-only typed grant')
     args = parser.parse_args()
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_fleet_observer import (
         FleetObserver,
@@ -30,6 +31,30 @@ def main():
     deployment = json.loads(args.deployment.read_text())
     if deployment.get('schema') != SCHEMA:
         raise ValueError('compiled fleet topology required')
+    if args.query:
+        import os
+
+        from ipfs_accelerate_py.agent_supervisor.federation.fleet_observation import (
+            FleetObservationStore,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.quack_fleet_topology import (
+            attach_typed_instance,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+            TYPED_STATE_OWNER_SOCKET_FILENAME,
+            compact_default_owner_socket_path,
+        )
+        instance = deployment['instances']['aggregate_control']
+        state = Path(instance['state_dir'])
+        socket = compact_default_owner_socket_path(state / TYPED_STATE_OWNER_SOCKET_FILENAME, identity=instance['database_path'])
+        client = attach_typed_instance(deployment, 'aggregate_control', socket_path=socket,
+                    token=(state / 'fleet-observation-read.token').read_text().strip(), client_id='fleet:aggregate-reader',
+                    process_birth_id=f'birth:fleet-reader:{os.getpid()}:{time.time_ns()}', fleet_observation_read=True)
+        try:
+            print(json.dumps(FleetObservationStore(client).view(deployment['aggregation']['sources']), indent=2, sort_keys=True))
+        finally:
+            client.close()
+        return
     owner = deployment['instances']['aggregate_control']
     program = owner['database_program']
     if program['authority_mode'] != 'quack' or program['task_source_kind'] != 'duckdb' or program['failover_policy'] != 'fail_closed':
@@ -50,6 +75,7 @@ def main():
     observer = None
     try:
         identity = server.start()
+        server.bind_fleet_observation_reads()
         print(json.dumps(identity.to_dict()), flush=True)
         observer = FleetObserver(server, args.inventory, args.deployment.parent / 'aggregate-view.json', poll_seconds=args.poll_seconds)
         observer.start()

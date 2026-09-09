@@ -54,3 +54,48 @@ reports `runtime_qualified: false` until the existing federation registration,
 source-read grants, projection receipt commands and derived-reference consumers
 have been admitted. In particular, an empty running owner alone is not a working
 history aggregator or semantic index.
+
+The implemented observation service is
+`scripts/ops/agent_supervisor/quack_fleet_aggregate.py`. It owns the aggregate
+Quack instance, polls each board through its existing admitted native operator
+adapter, and writes a content-addressed artifact plus history receipt through a
+scoped native typed command. The records use the existing `artifacts` and
+`federation_receipts` tables. No new database implementation or alternate task
+store is introduced.
+
+A missing, stopped, denied or expired source becomes typed unavailable. Its last
+admitted observation remains available as history. The current view checks age
+again when queried; DOEP monitor receipts retain their shorter native deadline.
+Blocked native boards can still provide valid observations. Unauthenticated
+watchdog, daemon and Markdown projections never become admitted source samples.
+
+The owner publishes a separate mode-0600 read credential. Independent processes
+receive short-lived grants bound to their kernel peer and may query the two
+closed observation reads; they cannot write observations or task state:
+
+```sh
+python3 /absolute/immutable/release/scripts/ops/agent_supervisor/quack_fleet_aggregate.py \
+  --deployment "$HOME/.local/state/ipfs-quack-fleet/deployment.json" \
+  --inventory "$HOME/.config/ipfs-taskboard-watchdog/inventory.json" --query
+```
+
+The JSON written to `aggregate-view.json` is an export of that typed query, not
+source or completion authority. The CLI above queries the live control owner.
+
+DuckLake archival publication is still a separate optional integration: source
+event ranges must be admitted before its existing range-projection API can
+publish history. This change implements the native Quack aggregation boundary
+and durable observational history in the control owner; it does not claim that
+an external QuackLake package is installed or that DuckLake archival export is
+already running. History availability is never a scheduling prerequisite.
+
+Dedicated-owner health monitoring uses `runtime.quack_fleet_health`. Its native
+read-only probe must complete an authenticated typed generation query within
+five seconds and match the still-live published process birth and database
+identity. A status file saying `ready` alone cannot pass. Two consecutive failures
+request restart of only the two closed dedicated-owner service names, with a
+five-minute cooldown and at most three requests per hour. `HOLD` or
+`OPERATOR_STOP` beside `deployment.json` disables these automatic requests.
+The aggregate worker also has an independent 600-second progress deadline;
+source query failures are retained as unavailable observations, while a stopped
+or hung worker makes the owner process exit for systemd recovery.

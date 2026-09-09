@@ -183,7 +183,7 @@ def systemd_unit(owner_argv: Sequence[str], *, role: str) -> str:
 
 def attach_typed_instance(
     deployment: Mapping[str, Any], instance_id: str, *, socket_path: Path,
-    token: str, client_id: str, process_birth_id: str, derived_repository_id: str = "",
+    token: str, client_id: str, process_birth_id: str, derived_repository_id: str = "", fleet_observation_read: bool = False, timeout_seconds: float = 30,
 ) -> Any:
     """Attach the existing typed Quack client using an owner-issued grant.
 
@@ -214,7 +214,8 @@ def attach_typed_instance(
     def connect(_endpoint: Any) -> Any:
         return TypedStateOwnerConnection(socket_path=socket_path, token=token, client_id=client_id,
                                          process_birth_id=process_birth_id, store_id=program.store_id,
-                                         derived_repository_id=derived_repository_id)
+                                         derived_repository_id=derived_repository_id, fleet_observation_read=fleet_observation_read,
+                                         timeout_seconds=timeout_seconds)
 
     client = QuackStateClient(owner_id=client_id, store_id=program.store_id,
                               process_birth_id=process_birth_id, connection_factory=connect)
