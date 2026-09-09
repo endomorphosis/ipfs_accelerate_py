@@ -2474,6 +2474,54 @@ def test_operator_admits_master_down_coordinator_recycle() -> None:
     assert "_fence_orphan_lane_supervisor" in prepare_source
     assert "_discover_live_lane_supervisor_pid" in prepare_source
     assert "kill_coordinator" in prepare_source
+    assert "_coordinator_pid_alive" in prepare_source
+
+
+def test_operator_wave_pid_blocks_master_down_recycle(tmp_path: Path) -> None:
+    """A live plan-bound wave.pid is the coordinator even if master.pid is gone."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_wave_pid_master_down_test",
+    )
+    run_dir = tmp_path / "run-r2-m27"
+    state = run_dir / "state"
+    state.mkdir(parents=True)
+    wave = state / "configured-board-wave.pid"
+    wave.write_text(f"{os.getpid()}\n", encoding="utf-8")
+    assert operator._authoritative_coordinator_pid_path(run_dir) == wave
+    assert operator._coordinator_pid_alive(run_dir) is True
+    prepared = operator._prepare_master_down_coordinator_recycle(
+        repo_root=tmp_path,
+        run_dir=run_dir,
+        owner_ready=True,
+        owner_alive=True,
+        master_pid=0,
+        lane_count=4,
+    )
+    assert prepared["prepared"] is False
+    assert prepared["admission"]["admitted"] is False
+    assert prepared["admission"]["reason"] == "healthy_coordinator_owns_in_wave_relaunch"
+    wave.unlink()
+    (state / "configured-board-wave.pid.terminal.json").write_text(
+        "{}",
+        encoding="utf-8",
+    )
+    assert operator._authoritative_coordinator_pid_path(run_dir) == (
+        state / "configured-board-wave.pid"
+    )
+    assert operator._coordinator_pid_alive(run_dir) is False
+    dead = operator._prepare_master_down_coordinator_recycle(
+        repo_root=tmp_path,
+        run_dir=run_dir,
+        owner_ready=True,
+        owner_alive=True,
+        master_pid=0,
+        lane_count=4,
+    )
+    assert dead["prepared"] is True
+    assert dead["admission"]["admitted"] is True
+    assert dead["admission"]["reason"] == "master_down_coordinator_recycle"
 
 
 def test_operator_overlays_live_run_dir_without_dirtying_pin(tmp_path: Path) -> None:
@@ -3343,7 +3391,7 @@ def test_m58_live_owner_loop_throttles_repeated_normal_rearm_noop(
     assert "next_token_rearm_probe = now + 1.0" in source
     assert "rearm_token_handoff_if_coordinator_absent(" in source
     assert "Path(server.config.state_dir).parent" in source
-    assert '"state/configured-board-master.pid"' in source
+    assert "_authoritative_coordinator_pid_path(" in source
 
 
 @pytest.mark.parametrize(

@@ -1361,16 +1361,29 @@ def published_owner_process_dead(
     return not pid_alive(pid)
 
 
+def _manifest_master_pid_paths(path: Path) -> tuple[Path, ...]:
+    """Plan-bound runs publish wave.pid; missing master.pid is not master-down."""
+
+    name = path.name
+    if name == "configured-board-master.pid":
+        return (path, path.with_name("configured-board-wave.pid"))
+    if name == "configured-board-wave.pid":
+        return (path, path.with_name("configured-board-master.pid"))
+    return (path,)
+
+
 def _manifest_master_alive(
     manifest: Mapping[str, Any],
     *,
     repo_root: Path,
 ) -> bool:
-    """True when no master marker is bound, or the bound master PID is live.
+    """True when no master marker is bound, or a bound master/wave PID is live.
 
     Manifests without ``master_pid_path`` keep per-lane unstall. A bound dead
     master must not spawn isolated lanes; the operator relaunches the
-    coordinator instead.
+    coordinator instead. Plan-bound coordinators publish
+    ``configured-board-wave.pid``; a missing sibling ``configured-board-master.pid``
+    is not coordinator death.
     """
 
     raw = manifest.get("master_pid_path") or ""
@@ -1379,11 +1392,14 @@ def _manifest_master_alive(
     path = Path(str(raw))
     if not path.is_absolute():
         path = Path(repo_root) / path
-    try:
-        pid = int(path.read_text(encoding="utf-8").strip().split()[0])
-    except (OSError, IndexError, TypeError, ValueError):
-        return False
-    return pid_alive(pid)
+    for candidate in _manifest_master_pid_paths(path):
+        try:
+            pid = int(candidate.read_text(encoding="utf-8").strip().split()[0])
+        except (OSError, IndexError, TypeError, ValueError):
+            continue
+        if pid_alive(pid):
+            return True
+    return False
 
 
 def check_lane_pid(state_dir: Path, state_prefix: str) -> dict[str, Any]:

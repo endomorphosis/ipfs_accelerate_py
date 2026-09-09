@@ -18605,6 +18605,47 @@ def _fence_orphan_lane_supervisor(pid: int, *, grace_seconds: float = 2.0) -> bo
     return not _pid_alive(int(pid))
 
 
+def _coordinator_pid_paths(run_dir: Path) -> tuple[Path, Path]:
+    """Plan-bound wave.pid is authoritative; master.pid is the non-plan fallback."""
+
+    state = Path(run_dir) / "state"
+    return (
+        state / "configured-board-wave.pid",
+        state / "configured-board-master.pid",
+    )
+
+
+def _read_pid_file(path: Path) -> int:
+    try:
+        return int(path.read_text(encoding="utf-8").strip().split()[0])
+    except (OSError, IndexError, TypeError, ValueError):
+        return 0
+
+
+def _coordinator_pid_alive(run_dir: Path) -> bool:
+    """True when wave.pid or master.pid names a live coordinator."""
+
+    for path in _coordinator_pid_paths(run_dir):
+        pid = _read_pid_file(path)
+        if pid > 1 and _pid_alive(pid):
+            return True
+    return False
+
+
+def _authoritative_coordinator_pid_path(run_dir: Path) -> Path:
+    """Token rearm and recycle must observe the live plan-bound wave marker."""
+
+    wave, master = _coordinator_pid_paths(run_dir)
+    for path in (wave, master):
+        pid = _read_pid_file(path)
+        if pid > 1 and _pid_alive(pid):
+            return path
+    terminal = wave.with_name(f"{wave.name}.terminal.json")
+    if wave.exists() or terminal.exists():
+        return wave
+    return master
+
+
 def _prepare_master_down_coordinator_recycle(
     *,
     repo_root: Path,
@@ -18625,7 +18666,10 @@ def _prepare_master_down_coordinator_recycle(
     admission = _admit_master_down_coordinator_recycle(
         owner_ready=owner_ready,
         owner_alive=owner_alive,
-        master_alive=_pid_alive(int(master_pid) if master_pid else 0),
+        master_alive=(
+            _coordinator_pid_alive(run_dir)
+            or _pid_alive(int(master_pid) if master_pid else 0)
+        ),
         live_lane_count=len(live_pids),
     )
     if not admission.get("admitted") or admission.get("kill_coordinator"):
@@ -20307,9 +20351,8 @@ def _serve_sawm_owner(server: Any) -> dict[str, Any]:
                     state_dir=state_dir,
                     secret_handle=secret_handle,
                     expected_token=token,
-                    coordinator_pid_path=(
+                    coordinator_pid_path=_authoritative_coordinator_pid_path(
                         Path(server.config.state_dir).parent
-                        / "state/configured-board-master.pid"
                     ),
                 )
                 _validate_sawm_token_rearm_probe_receipt(
