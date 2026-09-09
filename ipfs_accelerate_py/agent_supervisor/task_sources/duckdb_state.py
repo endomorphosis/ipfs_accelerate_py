@@ -1088,6 +1088,10 @@ def open_quack_transport_connection(
         "autoinstall_known_extensions": "false",
         "autoload_known_extensions": "false",
         "allow_unsigned_extensions": "false",
+        # Each lane owns a separate native client. Bound its budget before
+        # extension loading and attachment, including failed attempts.
+        "threads": 1,
+        "memory_limit": DEFAULT_MEMORY_LIMIT,
     }
     if raw_extension_directory:
         extension_path = Path(raw_extension_directory)
