@@ -1,6 +1,7 @@
 """Durable repair scheduling must not duplicate jobs or starve another board."""
 import time
 import json
+from pathlib import Path
 
 import pytest
 
@@ -169,3 +170,53 @@ def test_prior_report_continuation_is_bounded_and_confined(tmp_path):
     link = directory / "linked.json"
     link.symlink_to(foreign)
     assert "content" not in repair._prior_report_context(str(link), directory)
+
+
+def test_queue_reports_future_and_held_work_instead_of_idle(tmp_path):
+    cfg = config(tmp_path)
+    hold = tmp_path / "HOLD"
+    hold.touch()
+    cfg["boards"][1]["hold_files"] = [str(hold)]
+    for identifier, due in (("spar", 900), ("sawm", 50)):
+        write_json(tmp_path / f"repairs/{identifier}/job.json", {
+            "status": "queued", "next_attempt_at": due})
+    assert next_job(cfg, 100) is None
+    result = repair.queue_status(cfg, 100)
+    assert result["status"] == "waiting"
+    assert result["next_attempt_at"] == 900
+    assert result["waiting"] == [{"board_id": "spar", "next_attempt_at": 900}]
+    assert result["held"] == [{"board_id": "sawm", "next_attempt_at": 50}]
+
+
+def test_dispatcher_finishes_job_before_adopting_staged_release(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    for board in cfg["boards"]:
+        board["probe"] = {"argv": ["probe"]}
+    cfg["runtime_release"] = str(Path(repair.__file__).resolve().parents[3])
+    assert not repair.runtime_update_pending(cfg)
+    assert not repair.runtime_update_pending({})
+    config_path = tmp_path / "config.json"
+    write_json(config_path, cfg)
+    write_json(tmp_path / "repairs/spar/job.json", {"status": "queued"})
+    calls = []
+    def run_job(current, board, path):
+        calls.append(board["id"])
+        assert read_json(tmp_path / "repair-worker.json")["status"] == "running"
+        changed = dict(cfg, runtime_release=str(tmp_path / "new-release"))
+        write_json(config_path, changed)
+        # Updating the on-disk config cannot interrupt the active job.
+        assert not repair.runtime_update_pending(current)
+        return {"status": "verified_healthy"}
+    class Event:
+        def is_set(self):
+            return False
+        def wait(self, seconds):
+            pass
+        def set(self):
+            pass
+    monkeypatch.setattr(repair, "run_job", run_job)
+    monkeypatch.setattr(repair.threading, "Event", Event)
+    monkeypatch.setattr(repair.signal, "signal", lambda *args: None)
+    assert repair.main(["run", "--config", str(config_path)]) == 0
+    assert calls == ["spar"]
+    assert read_json(tmp_path / "repair-worker.json")["status"] == "runtime_update_ready"

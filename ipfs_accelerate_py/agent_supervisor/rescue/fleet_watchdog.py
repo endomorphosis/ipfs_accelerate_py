@@ -201,12 +201,6 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             return {"board_id": board_id, "health": "owned_by_another_watchdog"}
         path = directory / "state.json"
         previous = read_json(path)
-        holds = [str(p) for p in board.get("hold_files", []) if Path(p).exists()]
-        if holds:
-            state = dict(previous, board_id=board_id, observed_at=now,
-                         health="operator_hold", holds=holds)
-            write_json(path, state)
-            return state
         try:
             result = runner(board["probe"], cwd=board["cwd"], timeout=60)
         except Exception as exc:
@@ -214,6 +208,15 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                       "stderr": f"{type(exc).__name__}: {exc}"}
         observation = normalize_probe(board_id, result)
         state = assess(observation, previous, board, now)
+        # Holds fence mutations, not observation. A board assigned to another
+        # owner still needs fresh health and progress evidence during a hold.
+        state["observed_health"] = state["health"]
+        holds = [str(p) for p in board.get("hold_files", []) if Path(p).exists()]
+        if holds:
+            state.update(health="operator_hold", holds=holds, planned_action="")
+            write_json(path, state)
+            return state
+        state.pop("holds", None)
         action = select_action(state, board, now)
         state["planned_action"] = action
         write_json(path, state)

@@ -141,3 +141,31 @@ def test_existing_service_ensure_stays_direct(inputs):
     config = json.loads(Path(result["config"]).read_text())
     assert config["boards"][0]["ensure"]["argv"] == argv
     assert result["ensure_services"] == []
+
+
+def test_job_can_stage_upgrade_without_restarting_its_dispatcher(inputs, monkeypatch):
+    source, inventory, board_root, _home = inputs
+    calls = []
+    monkeypatch.setattr(installer.subprocess, "run", lambda argv, **kwargs: calls.append(argv))
+    result = installer.install(source, inventory, board_root, enable=True, defer_repair_restart=True)
+    config = json.loads(Path(result["config"]).read_text())
+    assert config["runtime_release"] == result["release"]
+    assert calls == [
+        ["systemctl", "--user", "daemon-reload"],
+        ["systemctl", "--user", "enable", *result["services"]],
+        ["systemctl", "--user", "restart", "ipfs-taskboard-watchdog.service"],
+        ["systemctl", "--user", "start", "ipfs-taskboard-repair.service"],
+    ]
+
+
+def test_external_owner_inventory_does_not_rewrite_native_unit(inputs):
+    source, inventory, board_root, home = inputs
+    result = installer.install(source, inventory, board_root, enable=False)
+    unit = home / ".config/systemd/user/ipfs-taskboard-spar-ensure.service"
+    unit.write_text("external owner unit\n")
+    data = json.loads(inventory.read_text())
+    data["boards"][0]["ensure_argv"] = []
+    inventory.write_text(json.dumps(data))
+    installer.install(source, inventory, board_root, enable=False)
+    assert unit.read_text() == "external owner unit\n"
+    assert "ensure" not in json.loads(Path(result["config"]).read_text())["boards"][0]

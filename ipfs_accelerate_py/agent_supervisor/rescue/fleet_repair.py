@@ -89,7 +89,12 @@ the smallest reusable fix with a regression test in an isolated branch or
 worktree of ipfs_accelerate_py. Validate the affected code. Preserve all dirty
 user work. Integrate reusable tested fixes with the respective GitHub main
 using normal non-forced pushes, then deploy through the board's existing
-sealed recovery/requalification controls. Do not just add another one-off
+sealed recovery/requalification controls. Source/configuration changes,
+controlled owner restarts, and reviewed recovery transitions needed for this
+task are authorized. If the existing transition cannot admit a necessary fix,
+implement and test the missing transition while preserving its real acceptance
+and ownership invariants. A missing helper is implementation work, not missing
+user permission. Do not just add another one-off
 operator workaround. If an existing safe native recovery is enough, run it
 and verify real task progress; correct its regression coverage if missing.
 
@@ -111,8 +116,16 @@ reset quarantined work blindly, mark tasks complete to hide problems, change
 acceptance criteria, fabricate receipts, or kill live workers based on a PID
 alone. Honor OPERATOR_STOP/HOLD/watchdog.hold markers. Never start llama-server,
 ollama, or a new local model service. Do not send email or chat messages. Do not
-edit the watchdog service or runtime while it is active; patch source with
-tests and leave a deployable result. Keep reading scoped to this incident,
+overwrite an executing runtime's files in place. Deploy tested watchdog fixes
+as a new immutable release with the installer --enable --defer-repair-restart;
+it restarts monitoring and lets this repair dispatcher adopt the new release
+after the job ends. Use the existing configured inventory and repair checkout.
+Preserve board-specific external ownership and service overrides. Updating
+the watchdog configuration and staging a validated runtime release are within
+the user's authorization. Do not repeatedly publish diagnostic-only changes
+while leaving the same runtime blocker untouched. Continue the prior job's
+specific pending deployment or recovery work and verify actual task progress.
+Keep reading scoped to this incident,
 avoid recursive searches through massive worktree archives. Retain evidence
 of root cause, recovery, regression tests, commits, deployments and remaining
 blocks. You have a bounded job window; preserve useful changes if unfinished.
@@ -169,6 +182,24 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
         return None
     _, _, board, path = min(candidates, key=lambda row: row[:2])
     return board, path
+
+
+def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
+    """Distinguish an empty queue from held or scheduled recovery work."""
+    waiting, held = [], []
+    for board in config["boards"]:
+        job = read_json(Path(config["state_dir"]) / "repairs" / board["id"] / "job.json")
+        if job.get("status") not in {"queued", "running"}:
+            continue
+        row = {"board_id": board["id"], "next_attempt_at": job.get("next_attempt_at", now)}
+        (held if any(Path(p).exists() for p in board.get("hold_files", [])) else waiting).append(row)
+    return {"status": "waiting" if waiting or held else "idle", "waiting": waiting,
+            "held": held, "next_attempt_at": min((r["next_attempt_at"] for r in waiting), default=None)}
+
+
+def runtime_update_pending(config: dict[str, Any]) -> bool:
+    desired = config.get("runtime_release")
+    return bool(desired and Path(desired).resolve() != Path(__file__).resolve().parents[3])
 
 
 def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[str, Any]:
@@ -278,7 +309,12 @@ def main(argv: list[str] | None = None) -> int:
         while not stop.is_set():
             try:
                 selected = next_job(config, time.time())
-                result = run_job(config, *selected) if selected else {"status": "idle"}
+                if selected:
+                    write_json(root / "repair-worker.json", {"status": "running",
+                        "board_id": selected[0]["id"], "observed_at": time.time()})
+                    result = run_job(config, *selected)
+                else:
+                    result = queue_status(config, time.time())
                 write_json(root / "repair-worker.json", dict(result, observed_at=time.time()))
                 print(json.dumps(result), flush=True)
             except Exception as exc:
@@ -289,6 +325,12 @@ def main(argv: list[str] | None = None) -> int:
             stop.wait(30)
             config = load_config(args.config)
             config["_config_path"] = str(args.config.resolve())
+            if runtime_update_pending(config):
+                write_json(root / "repair-worker.json", {"status": "runtime_update_ready",
+                           "observed_at": time.time(), "runtime_release": config["runtime_release"]})
+                # Restart=always reads the already reloaded service definition.
+                # This happens only between jobs, never during board recovery.
+                return 0
     return 0
 
 
