@@ -926,6 +926,7 @@ def test_non_quack_watchdog_maintenance_quiesces_child_before_mutating(
         assert kwargs == {
             "managed_daemon_launch_lock_held": True,
             "database_portal_fenced_program": None,
+            "database_portal_quiesced_idle": False,
         }
         events.append("maintenance")
         return {
