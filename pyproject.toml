@@ -357,6 +357,18 @@ live-application = false
 live-client = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.threat-model]
+schema = "ipfs_accelerate_py/assurance/threat-model@1"
+interface = "AccelerateThreatModel@1"
+task-id = "PCPR-090"
+goal-id = "PCPR-G900"
+objective-kind = "declared_objective_to_release_threat_model"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
