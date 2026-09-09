@@ -1,0 +1,191 @@
+{
+  "analyzer_id": "ipfs_accelerate_py.agent_supervisor.semantic_refactoring.end_to_end_acceptance@1",
+  "can_authorize_completion": false,
+  "can_authorize_transition": false,
+  "can_create_authority": false,
+  "corpus_manifest_path": "benchmarks/agent_supervisor/semantic_refactoring/corpus_manifest.json",
+  "goal_id": "SPAR-G081",
+  "interface": "SparEndToEndAcceptanceMatrix@1",
+  "model_output_is_proposal_only": true,
+  "network": "deny",
+  "nomination_only": true,
+  "predecessor_task_ids": [
+    "SPAR-044",
+    "SPAR-045"
+  ],
+  "preregistration_path": "benchmarks/agent_supervisor/semantic_refactoring/preregistration.json",
+  "program": "semantic-preserving-autonomous-remodularization-v1",
+  "projection_is_authority": false,
+  "required_stages": [
+    "inventory",
+    "extraction",
+    "facade",
+    "validation",
+    "transition",
+    "restart",
+    "reuse",
+    "replan",
+    "rollback",
+    "corruption",
+    "staleness",
+    "unsafe_splits",
+    "failed_proofs",
+    "root_conflicts"
+  ],
+  "scenarios": [
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "promotes": false,
+      "safety_floor": null,
+      "scenario_id": "inventory.small_corpus",
+      "stage": "inventory",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "promotes": false,
+      "safety_floor": null,
+      "scenario_id": "extraction.dry_run_wave",
+      "stage": "extraction",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "promotes": false,
+      "safety_floor": null,
+      "scenario_id": "facade.preserve_import",
+      "stage": "facade",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "promotes": false,
+      "safety_floor": null,
+      "scenario_id": "validation.translation_pass",
+      "stage": "validation",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "promotes": false,
+      "safety_floor": null,
+      "scenario_id": "transition.nominate_memory",
+      "stage": "transition",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "promotes": false,
+      "safety_floor": null,
+      "scenario_id": "restart.fixed_point_continue",
+      "stage": "restart",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "promotes": false,
+      "safety_floor": null,
+      "scenario_id": "reuse.exact_accepted",
+      "stage": "reuse",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "rejected",
+      "expected_terminal": "stale_tree",
+      "promotes": false,
+      "safety_floor": "stale_authoritative_reuse",
+      "scenario_id": "reuse.stale_tree",
+      "stage": "reuse",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "promotes": false,
+      "safety_floor": null,
+      "scenario_id": "replan.new_evidence_repair",
+      "stage": "replan",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "promotes": false,
+      "safety_floor": null,
+      "scenario_id": "rollback.restore_preimages",
+      "stage": "rollback",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "nominated",
+      "expected_terminal": null,
+      "promotes": false,
+      "safety_floor": "rollback_failure",
+      "scenario_id": "corruption.crash_recovery",
+      "stage": "corruption",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "rejected",
+      "expected_terminal": "stale_before_hashes",
+      "promotes": false,
+      "safety_floor": "stale_authoritative_reuse",
+      "scenario_id": "staleness.stale_before_hashes",
+      "stage": "staleness",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "rejected",
+      "expected_terminal": "unsafe_intra_domain_split",
+      "promotes": false,
+      "safety_floor": "unauthorized_mutations",
+      "scenario_id": "unsafe_splits.intra_domain",
+      "stage": "unsafe_splits",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "rejected",
+      "expected_terminal": "proof_candidate_cannot_admit",
+      "promotes": false,
+      "safety_floor": "test_or_proof_weakening",
+      "scenario_id": "failed_proofs.candidate_cannot_admit",
+      "stage": "failed_proofs",
+      "writes_repository": false
+    },
+    {
+      "expected_status": "rejected",
+      "expected_terminal": "rejected_root_conflict",
+      "promotes": false,
+      "safety_floor": "root_conflict_overwrite",
+      "scenario_id": "root_conflicts.no_overwrite",
+      "stage": "root_conflicts",
+      "writes_repository": false
+    }
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/spar-acceptance-matrix@1",
+  "task_id": "SPAR-046",
+  "test_pass_is_not_completion": true,
+  "tree_id": "fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051",
+  "worker_self_approval": false,
+  "writes_repository": false,
+  "zero_safety_floors": {
+    "critical_seeded_defect_escape": 0,
+    "false_task_completions": 0,
+    "rollback_failure": 0,
+    "root_conflict_overwrite": 0,
+    "silent_state_duplication": 0,
+    "similarity_only_authoritative_reuse": 0,
+    "simulated_as_live_admission": 0,
+    "stale_authoritative_reuse": 0,
+    "test_or_proof_weakening": 0,
+    "unaccepted_public_api_break": 0,
+    "unauthorized_mutations": 0
+  }
+}
