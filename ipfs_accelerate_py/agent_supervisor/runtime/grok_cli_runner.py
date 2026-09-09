@@ -15105,13 +15105,38 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Delegate to the full isolation/fallback implementation. Terra is
     # dispatched only after typed preflight auth/quota evidence or terminal
     # quota correlation plus independent verification.
-    from .interrupted_validation_checkpoint import (
-        restore_interrupted_validation,
-        snapshot_implementation_workspace,
-    )
+    # Absolute import: this file is sometimes loaded as
+    # ``ipfs_accelerate_py.agent_supervisor.grok_cli_runner`` (capsule
+    # runner_path), so a relative import looks for
+    # ``agent_supervisor.interrupted_validation_checkpoint`` and crashes.
+    restore_interrupted_validation = None
+    snapshot_implementation_workspace = None
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.interrupted_validation_checkpoint import (
+            restore_interrupted_validation as _restore_interrupted_validation,
+            snapshot_implementation_workspace as _snapshot_implementation_workspace,
+        )
+        restore_interrupted_validation = _restore_interrupted_validation
+        snapshot_implementation_workspace = _snapshot_implementation_workspace
+    except ImportError:
+        try:
+            from .interrupted_validation_checkpoint import (
+                restore_interrupted_validation as _restore_interrupted_validation,
+                snapshot_implementation_workspace as _snapshot_implementation_workspace,
+            )
+            restore_interrupted_validation = _restore_interrupted_validation
+            snapshot_implementation_workspace = _snapshot_implementation_workspace
+        except ImportError:
+            pass
 
     workspace = Path(args.workspace).expanduser().resolve()
-    if restore_interrupted_validation(workspace):
+    resumed = False
+    if restore_interrupted_validation is not None:
+        try:
+            resumed = bool(restore_interrupted_validation(workspace))
+        except Exception:
+            resumed = False
+    if resumed:
         print(
             "resumed interrupted validation; skipping grok provider",
             flush=True,
@@ -15132,8 +15157,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 strict=False,
             )
             result = _run(args, receipt_fd)
-        if result == 0:
-            snapshot_implementation_workspace(workspace)
+        if result == 0 and snapshot_implementation_workspace is not None:
+            try:
+                snapshot_implementation_workspace(workspace)
+            except Exception:
+                pass
         return result
     finally:
         if receipt_fd >= 3:
