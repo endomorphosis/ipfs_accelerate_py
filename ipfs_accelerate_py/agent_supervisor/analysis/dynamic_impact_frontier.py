@@ -21,6 +21,14 @@ observations (graph frontier refs, resolver dynamic dispositions, capability
 timeouts, manifests, runtime witnesses) into a deterministic frontier receipt
 that impact-closure consumers can attach without redefining
 :class:`ImpactClosureReceipt`.
+
+Incremental plan-impact analysis (DOEP-050) extends the same adapter: given an
+authoritative event and an explicit plan dependency surface, it computes the
+minimal reverse-transitive impacted suffix, preserves unaffected receipts and
+tasks, and emits model-free PlanDelta seeds plus an ordinary refill decision.
+Plan edges come only from supplied ``depends_on``; dynamic sites still come
+only from observations/graph/resolver as above.  This module never owns
+PlanDelta materialization or refill CAS append.
 """
 
 from __future__ import annotations
@@ -1188,6 +1196,38 @@ class DynamicImpactFrontierAnalyzer:
             timeout=report_timeout,
         )
 
+    def analyze_plan_impact(
+        self,
+        event: "AuthoritativeImpactEvent | Mapping[str, Any]",
+        nodes: Sequence["PlanImpactNode | Mapping[str, Any]"],
+        *,
+        bounds: "PlanImpactBounds | Mapping[str, Any] | None" = None,
+        observations: Sequence[
+            FrontierObservation | Mapping[str, Any] | ImpactFrontierEntry
+        ] = (),
+        closure_attempts: Sequence[ClosureAttempt | Mapping[str, Any]] = (),
+        impact_closure: ImpactClosureReceipt | None = None,
+        graph: ProgramGraphFrontierSource | None = None,
+        resolver: ProgramCallResolverFrontierSource | None = None,
+        capability_report: Any = None,
+        timeout: bool = False,
+    ) -> "IncrementalPlanImpactAnalysis":
+        """Compute incremental plan impact through this analyzer instance."""
+
+        return analyze_incremental_plan_impact(
+            event,
+            nodes,
+            bounds=bounds,
+            observations=observations,
+            closure_attempts=closure_attempts,
+            impact_closure=impact_closure,
+            graph=graph,
+            resolver=resolver,
+            capability_report=capability_report,
+            timeout=timeout,
+            analyzer=self,
+        )
+
     def _normalize_attempts(
         self, attempts: Sequence[ClosureAttempt | Mapping[str, Any]]
     ) -> tuple[ClosureAttempt, ...]:
@@ -1381,7 +1421,1192 @@ def required_kind_coverage(entries: Sequence[ImpactFrontierEntry]) -> frozenset[
     return frozenset(item.kind for item in entries)
 
 
+# ---------------------------------------------------------------------------
+# Incremental plan-impact analysis (DOEP-050)
+# ---------------------------------------------------------------------------
+
+INCREMENTAL_PLAN_IMPACT_VERSION: Final[int] = 1
+INCREMENTAL_PLAN_IMPACT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/incremental-plan-impact@1"
+)
+PLAN_IMPACT_NODE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/plan-impact-node@1"
+)
+PLAN_IMPACT_REFILL_DECISION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/plan-impact-refill-decision@1"
+)
+PLAN_DELTA_SEED_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/plan-delta-seed@1"
+)
+INCREMENTAL_PLAN_IMPACT_PRODUCER_ID: Final[str] = "incremental-plan-impact@1"
+
+MAX_PLAN_NODES: Final[int] = 1_024
+MAX_SEED_IDS: Final[int] = 256
+MAX_DELTA_SEEDS: Final[int] = 256
+
+_UNSTARTED_LIFECYCLES: Final[frozenset[str]] = frozenset(
+    {
+        "proposed",
+        "admitted",
+        "ready",
+        "unstarted",
+        "blocked",
+    }
+)
+_IMMUTABLE_HISTORY_LIFECYCLES: Final[frozenset[str]] = frozenset(
+    {
+        "claimed",
+        "running",
+        "settling",
+        "completed",
+        "accepted",
+    }
+)
+_HISTORY_SAFE_SEED_OPS: Final[frozenset[str]] = frozenset(
+    {
+        "attach_evidence",
+        "record_uncertainty",
+        "request_lifecycle_action",
+        "add_task",
+        "add_goal",
+        "block_unstarted_task",
+        "unblock_task",
+    }
+)
+
+
+class PlanImpactNodeKind(str, Enum):
+    """Closed vocabulary for plan-impact graph nodes."""
+
+    TASK = "task"
+    GOAL = "goal"
+    RECEIPT = "receipt"
+    OBLIGATION = "obligation"
+
+    @classmethod
+    def coerce(cls, value: Any) -> "PlanImpactNodeKind":
+        if isinstance(value, cls):
+            return value
+        raw = str(getattr(value, "value", value) or "").strip().casefold()
+        aliases = {
+            "task": cls.TASK,
+            "goal": cls.GOAL,
+            "receipt": cls.RECEIPT,
+            "obligation": cls.OBLIGATION,
+        }
+        try:
+            return aliases[raw]
+        except KeyError as exc:
+            raise DynamicImpactFrontierError(
+                f"unsupported plan impact node kind: {value!r}"
+            ) from exc
+
+
+class PlanImpactDisposition(str, Enum):
+    """Closed outcome for one plan node under incremental impact analysis."""
+
+    AFFECTED = "affected"
+    UNAFFECTED_PRESERVED = "unaffected_preserved"
+    FRONTIER_UNKNOWN = "frontier_unknown"
+    ABSTAINED = "abstained"
+
+
+class OrdinaryRefillDisposition(str, Enum):
+    """Model-free ordinary frontier refill decisions."""
+
+    NO_REFILL = "no_refill"
+    REFILL_AFFECTED_SUFFIX = "refill_affected_suffix"
+    BLOCKED_OPEN_FRONTIER = "blocked_open_frontier"
+    ABSTAIN_UNKNOWN = "abstain_unknown"
+    BOUND_EXCEEDED = "bound_exceeded"
+
+
+class PlanDeltaSeedOperation(str, Enum):
+    """Advisory PlanDelta seed ops aligned with PlanDeltaOperation names.
+
+    This is not PlanDelta@1; DOEP-052 owns the authoritative contract.
+    """
+
+    AMEND_UNSTARTED_TASK = "amend_unstarted_task"
+    SUPERSEDE_UNSTARTED_TASK = "supersede_unstarted_task"
+    BLOCK_UNSTARTED_TASK = "block_unstarted_task"
+    REWIRE_UNSTARTED_DEPENDENCY = "rewire_unstarted_dependency"
+    ATTACH_EVIDENCE = "attach_evidence"
+    RECORD_UNCERTAINTY = "record_uncertainty"
+    REQUEST_LIFECYCLE_ACTION = "request_lifecycle_action"
+    ADD_TASK = "add_task"
+
+    @classmethod
+    def coerce(cls, value: Any) -> "PlanDeltaSeedOperation":
+        if isinstance(value, cls):
+            return value
+        raw = str(getattr(value, "value", value) or "").strip().casefold()
+        try:
+            return cls(raw)
+        except ValueError as exc:
+            raise DynamicImpactFrontierError(
+                f"unsupported plan delta seed operation: {value!r}"
+            ) from exc
+
+
+class PlanDeltaSeedEffectClass(str, Enum):
+    """Effect class for advisory PlanDelta seeds."""
+
+    MATERIALIZABLE_NOW = "materializable_now"
+    DEFERRED = "deferred"
+    LIFECYCLE_REQUEST = "lifecycle_request"
+    EVIDENCE_ONLY = "evidence_only"
+
+
+@dataclass(frozen=True)
+class PlanImpactBounds:
+    """Deterministic compactness bounds for incremental plan-impact analysis."""
+
+    max_affected_tasks: int = 256
+    max_affected_goals: int = 64
+    max_frontier_entries: int = MAX_ENTRIES
+    max_delta_seeds: int = MAX_DELTA_SEEDS
+    max_plan_nodes: int = MAX_PLAN_NODES
+
+    def __post_init__(self) -> None:
+        for name in (
+            "max_affected_tasks",
+            "max_affected_goals",
+            "max_frontier_entries",
+            "max_delta_seeds",
+            "max_plan_nodes",
+        ):
+            value = int(getattr(self, name))
+            if value < 1:
+                raise DynamicImpactFrontierBoundsError(f"{name} must be >= 1")
+            object.__setattr__(self, name, value)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "max_affected_tasks": self.max_affected_tasks,
+            "max_affected_goals": self.max_affected_goals,
+            "max_frontier_entries": self.max_frontier_entries,
+            "max_delta_seeds": self.max_delta_seeds,
+            "max_plan_nodes": self.max_plan_nodes,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any] | None) -> "PlanImpactBounds":
+        if payload is None:
+            return cls()
+        if not isinstance(payload, Mapping):
+            raise DynamicImpactFrontierError("plan impact bounds must be a mapping")
+        return cls(
+            max_affected_tasks=int(
+                payload.get("max_affected_tasks", 256) or 256
+            ),
+            max_affected_goals=int(payload.get("max_affected_goals", 64) or 64),
+            max_frontier_entries=int(
+                payload.get("max_frontier_entries", MAX_ENTRIES) or MAX_ENTRIES
+            ),
+            max_delta_seeds=int(
+                payload.get("max_delta_seeds", MAX_DELTA_SEEDS) or MAX_DELTA_SEEDS
+            ),
+            max_plan_nodes=int(
+                payload.get("max_plan_nodes", MAX_PLAN_NODES) or MAX_PLAN_NODES
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class PlanImpactNode:
+    """One explicit plan/receipt/obligation node supplied to impact analysis."""
+
+    node_id: str
+    kind: PlanImpactNodeKind = PlanImpactNodeKind.TASK
+    depends_on: tuple[str, ...] = ()
+    lifecycle: str = "unstarted"
+    receipt_refs: tuple[str, ...] = ()
+    goal_id: str = ""
+    required: bool = True
+    schema: str = PLAN_IMPACT_NODE_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "node_id", _identifier(self.node_id, "node_id"))
+        object.__setattr__(self, "kind", PlanImpactNodeKind.coerce(self.kind))
+        object.__setattr__(
+            self,
+            "depends_on",
+            _ids(self.depends_on, "depends_on", limit=MAX_REFERENCE_COUNT),
+        )
+        lifecycle = str(self.lifecycle or "unstarted").strip().casefold()
+        if not lifecycle:
+            raise DynamicImpactFrontierError("lifecycle is required")
+        if len(lifecycle.encode("utf-8")) > MAX_TEXT_BYTES:
+            raise DynamicImpactFrontierBoundsError("lifecycle exceeds its byte bound")
+        object.__setattr__(self, "lifecycle", lifecycle)
+        object.__setattr__(
+            self,
+            "receipt_refs",
+            _ids(self.receipt_refs, "receipt_refs", limit=MAX_REFERENCE_COUNT),
+        )
+        object.__setattr__(
+            self, "goal_id", _text(self.goal_id, "goal_id", required=False)
+        )
+        object.__setattr__(self, "required", _bool(self.required, "required"))
+        object.__setattr__(
+            self,
+            "schema",
+            _text(self.schema or PLAN_IMPACT_NODE_SCHEMA, "schema"),
+        )
+        if self.schema != PLAN_IMPACT_NODE_SCHEMA:
+            raise DynamicImpactFrontierError(
+                f"unsupported plan impact node schema: {self.schema}"
+            )
+
+    @property
+    def is_unstarted(self) -> bool:
+        return self.lifecycle in _UNSTARTED_LIFECYCLES
+
+    @property
+    def is_immutable_history(self) -> bool:
+        return self.lifecycle in _IMMUTABLE_HISTORY_LIFECYCLES
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "node_id": self.node_id,
+            "kind": self.kind.value,
+            "depends_on": list(self.depends_on),
+            "lifecycle": self.lifecycle,
+            "receipt_refs": list(self.receipt_refs),
+            "goal_id": self.goal_id,
+            "required": self.required,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PlanImpactNode":
+        if not isinstance(payload, Mapping):
+            raise DynamicImpactFrontierError("plan impact node must be a mapping")
+        schema = payload.get("schema", PLAN_IMPACT_NODE_SCHEMA)
+        if schema != PLAN_IMPACT_NODE_SCHEMA:
+            raise DynamicImpactFrontierError(
+                f"unsupported plan impact node schema: {schema}"
+            )
+        return cls(
+            node_id=str(payload.get("node_id") or ""),
+            kind=payload.get("kind", PlanImpactNodeKind.TASK),
+            depends_on=tuple(payload.get("depends_on") or ()),
+            lifecycle=str(payload.get("lifecycle") or "unstarted"),
+            receipt_refs=tuple(payload.get("receipt_refs") or ()),
+            goal_id=str(payload.get("goal_id") or ""),
+            required=bool(payload.get("required", True)),
+        )
+
+
+@dataclass(frozen=True)
+class AuthoritativeImpactEvent:
+    """Authoritative event that seeds incremental plan-impact analysis."""
+
+    event_id: str
+    plan_epoch: int
+    plan_root: str
+    seed_node_ids: tuple[str, ...]
+    evidence_refs: tuple[str, ...] = ()
+    roots: PropagationAuthorityRoots | None = None
+    delta_id: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "event_id", _identifier(self.event_id, "event_id"))
+        epoch = int(self.plan_epoch)
+        if epoch < 1:
+            raise DynamicImpactFrontierError("plan_epoch must be >= 1")
+        object.__setattr__(self, "plan_epoch", epoch)
+        object.__setattr__(self, "plan_root", _identifier(self.plan_root, "plan_root"))
+        seeds = _ids(self.seed_node_ids, "seed_node_ids", limit=MAX_SEED_IDS)
+        if not seeds:
+            raise DynamicImpactFrontierError("seed_node_ids must be non-empty")
+        object.__setattr__(self, "seed_node_ids", seeds)
+        object.__setattr__(
+            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
+        )
+        if self.roots is not None:
+            object.__setattr__(self, "roots", _roots(self.roots))
+        object.__setattr__(
+            self, "delta_id", _text(self.delta_id, "delta_id", required=False)
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "event_id": self.event_id,
+            "plan_epoch": self.plan_epoch,
+            "plan_root": self.plan_root,
+            "seed_node_ids": list(self.seed_node_ids),
+            "evidence_refs": list(self.evidence_refs),
+            "delta_id": self.delta_id,
+        }
+        if self.roots is not None:
+            payload["roots"] = self.roots.to_dict()
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AuthoritativeImpactEvent":
+        if not isinstance(payload, Mapping):
+            raise DynamicImpactFrontierError(
+                "authoritative impact event must be a mapping"
+            )
+        roots_payload = payload.get("roots")
+        return cls(
+            event_id=str(payload.get("event_id") or ""),
+            plan_epoch=int(payload.get("plan_epoch") or 0),
+            plan_root=str(payload.get("plan_root") or ""),
+            seed_node_ids=tuple(payload.get("seed_node_ids") or ()),
+            evidence_refs=tuple(payload.get("evidence_refs") or ()),
+            roots=_roots(roots_payload) if roots_payload is not None else None,
+            delta_id=str(payload.get("delta_id") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class PlanImpactCone:
+    """Minimal reverse-transitive impact cone over an explicit plan graph."""
+
+    anchor_ids: tuple[str, ...]
+    affected_ids: tuple[str, ...]
+    unaffected_preserved_ids: tuple[str, ...]
+    preserved_receipt_refs: tuple[str, ...]
+    frontier_unknown_ids: tuple[str, ...] = ()
+    depth_by_id: Mapping[str, int] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "anchor_ids", _ids(self.anchor_ids, "anchor_ids", limit=MAX_SEED_IDS)
+        )
+        object.__setattr__(
+            self,
+            "affected_ids",
+            _ids(self.affected_ids, "affected_ids", limit=MAX_PLAN_NODES),
+        )
+        object.__setattr__(
+            self,
+            "unaffected_preserved_ids",
+            _ids(
+                self.unaffected_preserved_ids,
+                "unaffected_preserved_ids",
+                limit=MAX_PLAN_NODES,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "preserved_receipt_refs",
+            _ids(self.preserved_receipt_refs, "preserved_receipt_refs"),
+        )
+        object.__setattr__(
+            self,
+            "frontier_unknown_ids",
+            _ids(self.frontier_unknown_ids, "frontier_unknown_ids"),
+        )
+        depth_raw = self.depth_by_id or {}
+        if not isinstance(depth_raw, Mapping):
+            raise DynamicImpactFrontierError("depth_by_id must be a mapping")
+        depth: dict[str, int] = {}
+        for key, value in depth_raw.items():
+            depth[_identifier(key, "depth_by_id.key")] = int(value)
+        object.__setattr__(self, "depth_by_id", MappingProxyType(dict(sorted(depth.items()))))
+        affected = set(self.affected_ids)
+        unaffected = set(self.unaffected_preserved_ids)
+        if affected & unaffected:
+            raise DynamicImpactFrontierAuthorityError(
+                "affected and unaffected plan nodes must be disjoint"
+            )
+        if not set(self.anchor_ids).issubset(affected):
+            raise DynamicImpactFrontierAuthorityError(
+                "impact anchors must be included in the affected suffix"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "anchor_ids": list(self.anchor_ids),
+            "affected_ids": list(self.affected_ids),
+            "unaffected_preserved_ids": list(self.unaffected_preserved_ids),
+            "preserved_receipt_refs": list(self.preserved_receipt_refs),
+            "frontier_unknown_ids": list(self.frontier_unknown_ids),
+            "depth_by_id": dict(self.depth_by_id),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PlanImpactCone":
+        if not isinstance(payload, Mapping):
+            raise DynamicImpactFrontierError("plan impact cone must be a mapping")
+        return cls(
+            anchor_ids=tuple(payload.get("anchor_ids") or ()),
+            affected_ids=tuple(payload.get("affected_ids") or ()),
+            unaffected_preserved_ids=tuple(
+                payload.get("unaffected_preserved_ids") or ()
+            ),
+            preserved_receipt_refs=tuple(payload.get("preserved_receipt_refs") or ()),
+            frontier_unknown_ids=tuple(payload.get("frontier_unknown_ids") or ()),
+            depth_by_id=dict(payload.get("depth_by_id") or {}),
+        )
+
+
+@dataclass(frozen=True)
+class PlanDeltaSeed:
+    """Advisory PlanDelta seed for DOEP-052; never completion-authoritative."""
+
+    operation: PlanDeltaSeedOperation
+    target_id: str
+    rationale: str
+    affected_task_ids: tuple[str, ...] = ()
+    affected_goal_ids: tuple[str, ...] = ()
+    dependency_impact: tuple[str, ...] = ()
+    effect_class: PlanDeltaSeedEffectClass = PlanDeltaSeedEffectClass.DEFERRED
+    completion_authoritative: bool = False
+    schema: str = PLAN_DELTA_SEED_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "operation", PlanDeltaSeedOperation.coerce(self.operation)
+        )
+        object.__setattr__(self, "target_id", _identifier(self.target_id, "target_id"))
+        object.__setattr__(
+            self, "rationale", _text(self.rationale, "rationale", limit=MAX_TEXT_BYTES)
+        )
+        object.__setattr__(
+            self,
+            "affected_task_ids",
+            _ids(self.affected_task_ids, "affected_task_ids", limit=MAX_SEED_IDS),
+        )
+        object.__setattr__(
+            self,
+            "affected_goal_ids",
+            _ids(self.affected_goal_ids, "affected_goal_ids", limit=MAX_SEED_IDS),
+        )
+        object.__setattr__(
+            self,
+            "dependency_impact",
+            _ids(self.dependency_impact, "dependency_impact", limit=MAX_REFERENCE_COUNT),
+        )
+        effect = self.effect_class
+        if not isinstance(effect, PlanDeltaSeedEffectClass):
+            effect = PlanDeltaSeedEffectClass(
+                str(getattr(effect, "value", effect)).strip().casefold()
+            )
+        object.__setattr__(self, "effect_class", effect)
+        if bool(self.completion_authoritative):
+            raise DynamicImpactFrontierAuthorityError(
+                "plan delta seeds cannot claim completion_authoritative"
+            )
+        object.__setattr__(self, "completion_authoritative", False)
+        object.__setattr__(
+            self,
+            "schema",
+            _text(self.schema or PLAN_DELTA_SEED_SCHEMA, "schema"),
+        )
+        if self.schema != PLAN_DELTA_SEED_SCHEMA:
+            raise DynamicImpactFrontierError(
+                f"unsupported plan delta seed schema: {self.schema}"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "operation": self.operation.value,
+            "target_id": self.target_id,
+            "rationale": self.rationale,
+            "affected_task_ids": list(self.affected_task_ids),
+            "affected_goal_ids": list(self.affected_goal_ids),
+            "dependency_impact": list(self.dependency_impact),
+            "effect_class": self.effect_class.value,
+            "completion_authoritative": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PlanDeltaSeed":
+        if not isinstance(payload, Mapping):
+            raise DynamicImpactFrontierError("plan delta seed must be a mapping")
+        schema = payload.get("schema", PLAN_DELTA_SEED_SCHEMA)
+        if schema != PLAN_DELTA_SEED_SCHEMA:
+            raise DynamicImpactFrontierError(
+                f"unsupported plan delta seed schema: {schema}"
+            )
+        return cls(
+            operation=payload.get("operation", PlanDeltaSeedOperation.ATTACH_EVIDENCE),
+            target_id=str(payload.get("target_id") or ""),
+            rationale=str(payload.get("rationale") or ""),
+            affected_task_ids=tuple(payload.get("affected_task_ids") or ()),
+            affected_goal_ids=tuple(payload.get("affected_goal_ids") or ()),
+            dependency_impact=tuple(payload.get("dependency_impact") or ()),
+            effect_class=payload.get(
+                "effect_class", PlanDeltaSeedEffectClass.DEFERRED
+            ),
+            completion_authoritative=bool(
+                payload.get("completion_authoritative", False)
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class PlanImpactRefillDecision:
+    """Model-free ordinary refill decision derived from the impact cone."""
+
+    disposition: OrdinaryRefillDisposition
+    model_free: bool = True
+    candidate_task_ids: tuple[str, ...] = ()
+    reason_codes: tuple[str, ...] = ()
+    schema: str = PLAN_IMPACT_REFILL_DECISION_SCHEMA
+
+    def __post_init__(self) -> None:
+        disposition = self.disposition
+        if not isinstance(disposition, OrdinaryRefillDisposition):
+            disposition = OrdinaryRefillDisposition(
+                str(getattr(disposition, "value", disposition)).strip().casefold()
+            )
+        object.__setattr__(self, "disposition", disposition)
+        if self.model_free is not True:
+            raise DynamicImpactFrontierAuthorityError(
+                "ordinary plan-impact refill decisions must be model_free"
+            )
+        object.__setattr__(self, "model_free", True)
+        object.__setattr__(
+            self,
+            "candidate_task_ids",
+            _ids(self.candidate_task_ids, "candidate_task_ids", limit=MAX_SEED_IDS),
+        )
+        object.__setattr__(
+            self,
+            "reason_codes",
+            _ids(self.reason_codes, "reason_codes", limit=MAX_REASON_CODES),
+        )
+        object.__setattr__(
+            self,
+            "schema",
+            _text(self.schema or PLAN_IMPACT_REFILL_DECISION_SCHEMA, "schema"),
+        )
+        if self.schema != PLAN_IMPACT_REFILL_DECISION_SCHEMA:
+            raise DynamicImpactFrontierError(
+                f"unsupported plan impact refill schema: {self.schema}"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "disposition": self.disposition.value,
+            "model_free": True,
+            "candidate_task_ids": list(self.candidate_task_ids),
+            "reason_codes": list(self.reason_codes),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PlanImpactRefillDecision":
+        if not isinstance(payload, Mapping):
+            raise DynamicImpactFrontierError(
+                "plan impact refill decision must be a mapping"
+            )
+        schema = payload.get("schema", PLAN_IMPACT_REFILL_DECISION_SCHEMA)
+        if schema != PLAN_IMPACT_REFILL_DECISION_SCHEMA:
+            raise DynamicImpactFrontierError(
+                f"unsupported plan impact refill schema: {schema}"
+            )
+        return cls(
+            disposition=payload.get(
+                "disposition", OrdinaryRefillDisposition.NO_REFILL
+            ),
+            model_free=bool(payload.get("model_free", True)),
+            candidate_task_ids=tuple(payload.get("candidate_task_ids") or ()),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+        )
+
+
+@dataclass(frozen=True)
+class IncrementalPlanImpactAnalysis:
+    """Primary carrier for incremental plan-impact analysis (DOEP-050)."""
+
+    event_id: str
+    plan_epoch: int
+    plan_root: str
+    cone: PlanImpactCone
+    nodes: tuple[PlanImpactNode, ...]
+    completeness: ImpactCompleteness
+    refill_decision: PlanImpactRefillDecision
+    delta_seeds: tuple[PlanDeltaSeed, ...] = ()
+    dynamic_frontier: DynamicImpactFrontier | None = None
+    impact_closure: ImpactClosureReceipt | None = None
+    reason_codes: tuple[str, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    producer_id: str = INCREMENTAL_PLAN_IMPACT_PRODUCER_ID
+    schema: str = INCREMENTAL_PLAN_IMPACT_SCHEMA
+    contract_version: int = INCREMENTAL_PLAN_IMPACT_VERSION
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "event_id", _identifier(self.event_id, "event_id"))
+        epoch = int(self.plan_epoch)
+        if epoch < 1:
+            raise DynamicImpactFrontierError("plan_epoch must be >= 1")
+        object.__setattr__(self, "plan_epoch", epoch)
+        object.__setattr__(self, "plan_root", _identifier(self.plan_root, "plan_root"))
+        if not isinstance(self.cone, PlanImpactCone):
+            raise DynamicImpactFrontierError("cone must be PlanImpactCone")
+        if isinstance(self.nodes, (str, bytes, bytearray)) or not isinstance(
+            self.nodes, Sequence
+        ):
+            raise DynamicImpactFrontierError("nodes must be a sequence")
+        if len(self.nodes) > MAX_PLAN_NODES:
+            raise DynamicImpactFrontierBoundsError("nodes exceeds its item bound")
+        nodes = tuple(self.nodes)
+        if not all(isinstance(item, PlanImpactNode) for item in nodes):
+            raise DynamicImpactFrontierError("nodes must contain PlanImpactNode values")
+        node_ids = [item.node_id for item in nodes]
+        if len(node_ids) != len(set(node_ids)):
+            raise DynamicImpactFrontierError("plan impact node_ids must be unique")
+        ordered_nodes = tuple(sorted(nodes, key=lambda item: item.node_id))
+        object.__setattr__(self, "nodes", ordered_nodes)
+        object.__setattr__(
+            self,
+            "completeness",
+            _enum(self.completeness, ImpactCompleteness, "completeness"),
+        )
+        if not isinstance(self.refill_decision, PlanImpactRefillDecision):
+            raise DynamicImpactFrontierError(
+                "refill_decision must be PlanImpactRefillDecision"
+            )
+        if self.refill_decision.model_free is not True:
+            raise DynamicImpactFrontierAuthorityError(
+                "ordinary refill decisions must remain model_free"
+            )
+        seeds = tuple(self.delta_seeds)
+        if len(seeds) > MAX_DELTA_SEEDS:
+            raise DynamicImpactFrontierBoundsError("delta_seeds exceeds its item bound")
+        if not all(isinstance(item, PlanDeltaSeed) for item in seeds):
+            raise DynamicImpactFrontierError(
+                "delta_seeds must contain PlanDeltaSeed values"
+            )
+        object.__setattr__(self, "delta_seeds", seeds)
+        if self.dynamic_frontier is not None and not isinstance(
+            self.dynamic_frontier, DynamicImpactFrontier
+        ):
+            raise DynamicImpactFrontierError(
+                "dynamic_frontier must be DynamicImpactFrontier when provided"
+            )
+        if self.impact_closure is not None and not isinstance(
+            self.impact_closure, ImpactClosureReceipt
+        ):
+            raise DynamicImpactFrontierError(
+                "impact_closure must be ImpactClosureReceipt when provided"
+            )
+        object.__setattr__(
+            self, "reason_codes", _ids(self.reason_codes, "reason_codes", limit=MAX_REASON_CODES)
+        )
+        object.__setattr__(
+            self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs")
+        )
+        object.__setattr__(
+            self, "producer_id", _identifier(self.producer_id, "producer_id")
+        )
+        object.__setattr__(
+            self,
+            "schema",
+            _text(self.schema or INCREMENTAL_PLAN_IMPACT_SCHEMA, "schema"),
+        )
+        if self.schema != INCREMENTAL_PLAN_IMPACT_SCHEMA:
+            raise DynamicImpactFrontierError(
+                f"unsupported incremental plan impact schema: {self.schema}"
+            )
+        object.__setattr__(self, "contract_version", int(self.contract_version))
+        if self.dynamic_frontier is not None and self.dynamic_frontier.open_required_entry_ids:
+            if self.completeness is ImpactCompleteness.COMPLETE:
+                raise DynamicImpactFrontierAuthorityError(
+                    "complete plan impact is impossible while a required frontier is open"
+                )
+
+    @property
+    def impact_completeness_possible(self) -> bool:
+        if self.dynamic_frontier is not None:
+            return self.dynamic_frontier.impact_completeness_possible
+        return self.completeness is ImpactCompleteness.COMPLETE
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema": self.schema,
+            "contract_version": self.contract_version,
+            "producer_id": self.producer_id,
+            "event_id": self.event_id,
+            "plan_epoch": self.plan_epoch,
+            "plan_root": self.plan_root,
+            "cone": self.cone.to_dict(),
+            "nodes": [item.to_dict() for item in self.nodes],
+            "completeness": self.completeness.value,
+            "refill_decision": self.refill_decision.to_dict(),
+            "delta_seeds": [item.to_dict() for item in self.delta_seeds],
+            "reason_codes": list(self.reason_codes),
+            "evidence_refs": list(self.evidence_refs),
+            "impact_completeness_possible": self.impact_completeness_possible,
+        }
+        if self.dynamic_frontier is not None:
+            payload["dynamic_frontier"] = self.dynamic_frontier.to_dict()
+        if self.impact_closure is not None:
+            payload["impact_closure"] = self.impact_closure.to_dict()
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "IncrementalPlanImpactAnalysis":
+        if not isinstance(payload, Mapping):
+            raise DynamicImpactFrontierError(
+                "incremental plan impact payload must be a mapping"
+            )
+        schema = payload.get("schema", INCREMENTAL_PLAN_IMPACT_SCHEMA)
+        if schema != INCREMENTAL_PLAN_IMPACT_SCHEMA:
+            raise DynamicImpactFrontierError(
+                f"unsupported incremental plan impact schema: {schema}"
+            )
+        frontier_payload = payload.get("dynamic_frontier")
+        closure_payload = payload.get("impact_closure")
+        return cls(
+            event_id=str(payload.get("event_id") or ""),
+            plan_epoch=int(payload.get("plan_epoch") or 0),
+            plan_root=str(payload.get("plan_root") or ""),
+            cone=PlanImpactCone.from_dict(payload.get("cone") or {}),
+            nodes=tuple(
+                PlanImpactNode.from_dict(item)
+                if isinstance(item, Mapping)
+                else item
+                for item in (payload.get("nodes") or ())
+            ),
+            completeness=payload.get(
+                "completeness", ImpactCompleteness.PARTIAL_WITH_FRONTIER
+            ),
+            refill_decision=PlanImpactRefillDecision.from_dict(
+                payload.get("refill_decision") or {}
+            ),
+            delta_seeds=tuple(
+                PlanDeltaSeed.from_dict(item)
+                if isinstance(item, Mapping)
+                else item
+                for item in (payload.get("delta_seeds") or ())
+            ),
+            dynamic_frontier=(
+                DynamicImpactFrontier.from_dict(frontier_payload)
+                if isinstance(frontier_payload, Mapping)
+                else frontier_payload
+            ),
+            impact_closure=(
+                ImpactClosureReceipt.from_dict(closure_payload)
+                if isinstance(closure_payload, Mapping)
+                else closure_payload
+            ),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+            evidence_refs=tuple(payload.get("evidence_refs") or ()),
+            producer_id=str(
+                payload.get("producer_id") or INCREMENTAL_PLAN_IMPACT_PRODUCER_ID
+            ),
+            contract_version=int(
+                payload.get("contract_version", INCREMENTAL_PLAN_IMPACT_VERSION)
+                or INCREMENTAL_PLAN_IMPACT_VERSION
+            ),
+        )
+
+
+def _coerce_plan_impact_node(value: PlanImpactNode | Mapping[str, Any]) -> PlanImpactNode:
+    if isinstance(value, PlanImpactNode):
+        return value
+    if isinstance(value, Mapping):
+        return PlanImpactNode.from_dict(value)
+    raise DynamicImpactFrontierError("plan nodes must be PlanImpactNode or mappings")
+
+
+def _coerce_impact_event(
+    value: AuthoritativeImpactEvent | Mapping[str, Any],
+) -> AuthoritativeImpactEvent:
+    if isinstance(value, AuthoritativeImpactEvent):
+        return value
+    if isinstance(value, Mapping):
+        return AuthoritativeImpactEvent.from_dict(value)
+    raise DynamicImpactFrontierError(
+        "event must be AuthoritativeImpactEvent or a mapping"
+    )
+
+
+def _coerce_plan_impact_bounds(
+    value: PlanImpactBounds | Mapping[str, Any] | None,
+) -> PlanImpactBounds:
+    if value is None:
+        return PlanImpactBounds()
+    if isinstance(value, PlanImpactBounds):
+        return value
+    if isinstance(value, Mapping):
+        return PlanImpactBounds.from_dict(value)
+    raise DynamicImpactFrontierError("bounds must be PlanImpactBounds or a mapping")
+
+
+def compute_minimal_plan_impact_cone(
+    nodes: Sequence[PlanImpactNode | Mapping[str, Any]],
+    seed_ids: Sequence[str],
+    *,
+    bounds: PlanImpactBounds | Mapping[str, Any] | None = None,
+) -> PlanImpactCone:
+    """Compute the minimal reverse-transitive impacted suffix for *seed_ids*.
+
+    Mirrors FormalDeltaReplanner._dependent_suffix: dependents of an impacted
+    node are impacted; upstream dependencies alone are not.
+    """
+
+    limits = _coerce_plan_impact_bounds(bounds)
+    normalized = tuple(_coerce_plan_impact_node(item) for item in nodes)
+    if len(normalized) > limits.max_plan_nodes:
+        raise DynamicImpactFrontierBoundsError("plan nodes exceed max_plan_nodes")
+    by_id = {item.node_id: item for item in normalized}
+    if len(by_id) != len(normalized):
+        raise DynamicImpactFrontierError("plan impact node_ids must be unique")
+
+    anchors = _ids(seed_ids, "seed_ids", limit=MAX_SEED_IDS)
+    if not anchors:
+        raise DynamicImpactFrontierError("seed_ids must be non-empty")
+    unknown = [item for item in anchors if item not in by_id]
+    if unknown:
+        raise DynamicImpactFrontierError(
+            f"unknown seed_node_ids: {', '.join(unknown)}"
+        )
+
+    reverse: dict[str, set[str]] = {node_id: set() for node_id in by_id}
+    for item in normalized:
+        for dependency_id in item.depends_on:
+            if dependency_id not in by_id:
+                # Unknown upstream refs stay explicit frontier unknowns rather
+                # than inventing nodes.
+                continue
+            reverse[dependency_id].add(item.node_id)
+
+    affected: set[str] = set(anchors)
+    depth: dict[str, int] = {anchor: 0 for anchor in anchors}
+    frontier = list(sorted(anchors))
+    while frontier:
+        current = frontier.pop()
+        for dependent in sorted(reverse.get(current, ())):
+            if dependent not in affected:
+                affected.add(dependent)
+                depth[dependent] = depth[current] + 1
+                frontier.append(dependent)
+
+    if len(affected) > limits.max_affected_tasks + limits.max_affected_goals:
+        raise DynamicImpactFrontierBoundsError(
+            "affected plan suffix exceeds configured impact bounds"
+        )
+
+    affected_tasks = sum(
+        1
+        for node_id in affected
+        if by_id[node_id].kind is PlanImpactNodeKind.TASK
+    )
+    affected_goals = sum(
+        1
+        for node_id in affected
+        if by_id[node_id].kind is PlanImpactNodeKind.GOAL
+    )
+    if affected_tasks > limits.max_affected_tasks:
+        raise DynamicImpactFrontierBoundsError(
+            "affected tasks exceed max_affected_tasks"
+        )
+    if affected_goals > limits.max_affected_goals:
+        raise DynamicImpactFrontierBoundsError(
+            "affected goals exceed max_affected_goals"
+        )
+
+    unaffected = tuple(sorted(node_id for node_id in by_id if node_id not in affected))
+    preserved_receipts: list[str] = []
+    for node_id in unaffected:
+        preserved_receipts.extend(by_id[node_id].receipt_refs)
+    frontier_unknown = tuple(
+        sorted(
+            {
+                dependency_id
+                for item in normalized
+                for dependency_id in item.depends_on
+                if dependency_id not in by_id
+            }
+        )
+    )
+    return PlanImpactCone(
+        anchor_ids=tuple(sorted(anchors)),
+        affected_ids=tuple(sorted(affected)),
+        unaffected_preserved_ids=unaffected,
+        preserved_receipt_refs=tuple(sorted(set(preserved_receipts))),
+        frontier_unknown_ids=frontier_unknown,
+        depth_by_id=depth,
+    )
+
+
+def propose_plan_delta_seeds(
+    cone: PlanImpactCone,
+    nodes: Sequence[PlanImpactNode | Mapping[str, Any]],
+    event: AuthoritativeImpactEvent | Mapping[str, Any],
+    *,
+    bounds: PlanImpactBounds | Mapping[str, Any] | None = None,
+) -> tuple[PlanDeltaSeed, ...]:
+    """Emit history-safe, model-free PlanDelta seeds for the impacted suffix."""
+
+    limits = _coerce_plan_impact_bounds(bounds)
+    impact_event = _coerce_impact_event(event)
+    if not isinstance(cone, PlanImpactCone):
+        raise DynamicImpactFrontierError("cone must be PlanImpactCone")
+    by_id = {
+        item.node_id: item
+        for item in (_coerce_plan_impact_node(node) for node in nodes)
+    }
+    seeds: list[PlanDeltaSeed] = []
+    for node_id in cone.affected_ids:
+        node = by_id.get(node_id)
+        if node is None or node.kind is not PlanImpactNodeKind.TASK:
+            continue
+        if node.is_immutable_history:
+            seeds.append(
+                PlanDeltaSeed(
+                    operation=PlanDeltaSeedOperation.ATTACH_EVIDENCE,
+                    target_id=node.node_id,
+                    rationale=(
+                        f"history-safe evidence attach for impacted {node.lifecycle} "
+                        f"task under event {impact_event.event_id}"
+                    ),
+                    affected_task_ids=(node.node_id,),
+                    affected_goal_ids=(node.goal_id,) if node.goal_id else (),
+                    effect_class=PlanDeltaSeedEffectClass.EVIDENCE_ONLY,
+                )
+            )
+            seeds.append(
+                PlanDeltaSeed(
+                    operation=PlanDeltaSeedOperation.RECORD_UNCERTAINTY,
+                    target_id=node.node_id,
+                    rationale=(
+                        "record uncertainty for immutable impacted history; "
+                        "no in-place mutation"
+                    ),
+                    affected_task_ids=(node.node_id,),
+                    effect_class=PlanDeltaSeedEffectClass.EVIDENCE_ONLY,
+                )
+            )
+            continue
+        if node.is_unstarted:
+            missing_deps = tuple(
+                sorted(dep for dep in node.depends_on if dep in cone.affected_ids)
+            )
+            if missing_deps:
+                seeds.append(
+                    PlanDeltaSeed(
+                        operation=PlanDeltaSeedOperation.REWIRE_UNSTARTED_DEPENDENCY,
+                        target_id=node.node_id,
+                        rationale="rewire unstarted dependencies inside the impacted suffix",
+                        affected_task_ids=(node.node_id,),
+                        affected_goal_ids=(node.goal_id,) if node.goal_id else (),
+                        dependency_impact=missing_deps,
+                        effect_class=PlanDeltaSeedEffectClass.MATERIALIZABLE_NOW,
+                    )
+                )
+            seeds.append(
+                PlanDeltaSeed(
+                    operation=PlanDeltaSeedOperation.AMEND_UNSTARTED_TASK,
+                    target_id=node.node_id,
+                    rationale=(
+                        f"amend unstarted impacted task under event {impact_event.event_id}"
+                    ),
+                    affected_task_ids=(node.node_id,),
+                    affected_goal_ids=(node.goal_id,) if node.goal_id else (),
+                    effect_class=PlanDeltaSeedEffectClass.MATERIALIZABLE_NOW,
+                )
+            )
+            continue
+        seeds.append(
+            PlanDeltaSeed(
+                operation=PlanDeltaSeedOperation.REQUEST_LIFECYCLE_ACTION,
+                target_id=node.node_id,
+                rationale=(
+                    f"request lifecycle reassessment for impacted {node.lifecycle} task"
+                ),
+                affected_task_ids=(node.node_id,),
+                effect_class=PlanDeltaSeedEffectClass.LIFECYCLE_REQUEST,
+            )
+        )
+    if len(seeds) > limits.max_delta_seeds:
+        raise DynamicImpactFrontierBoundsError("delta seeds exceed max_delta_seeds")
+    for seed in seeds:
+        if (
+            by_id.get(seed.target_id)
+            and by_id[seed.target_id].is_immutable_history
+            and seed.operation.value not in _HISTORY_SAFE_SEED_OPS
+        ):
+            raise DynamicImpactFrontierAuthorityError(
+                "history-mutating plan delta seed targeting immutable lifecycle"
+            )
+    return tuple(seeds)
+
+
+def decide_ordinary_refill(
+    cone: PlanImpactCone,
+    nodes: Sequence[PlanImpactNode | Mapping[str, Any]],
+    *,
+    bounds: PlanImpactBounds | Mapping[str, Any] | None = None,
+    open_required_frontier: bool = False,
+    unknown_frontier: bool = False,
+) -> PlanImpactRefillDecision:
+    """Decide model-free ordinary refill from the impacted suffix alone."""
+
+    limits = _coerce_plan_impact_bounds(bounds)
+    if not isinstance(cone, PlanImpactCone):
+        raise DynamicImpactFrontierError("cone must be PlanImpactCone")
+    by_id = {
+        item.node_id: item
+        for item in (_coerce_plan_impact_node(node) for node in nodes)
+    }
+    if open_required_frontier:
+        return PlanImpactRefillDecision(
+            disposition=OrdinaryRefillDisposition.BLOCKED_OPEN_FRONTIER,
+            candidate_task_ids=(),
+            reason_codes=("required_frontier_open", "model_free_ordinary_refill"),
+        )
+    if unknown_frontier and not cone.affected_ids:
+        return PlanImpactRefillDecision(
+            disposition=OrdinaryRefillDisposition.ABSTAIN_UNKNOWN,
+            candidate_task_ids=(),
+            reason_codes=("frontier_unknown", "model_free_ordinary_refill"),
+        )
+    if not cone.affected_ids:
+        return PlanImpactRefillDecision(
+            disposition=OrdinaryRefillDisposition.NO_REFILL,
+            candidate_task_ids=(),
+            reason_codes=("empty_impact_cone", "model_free_ordinary_refill"),
+        )
+    candidates = tuple(
+        sorted(
+            node_id
+            for node_id in cone.affected_ids
+            if (node := by_id.get(node_id)) is not None
+            and node.kind is PlanImpactNodeKind.TASK
+            and node.is_unstarted
+        )
+    )
+    if len(candidates) > limits.max_affected_tasks:
+        return PlanImpactRefillDecision(
+            disposition=OrdinaryRefillDisposition.BOUND_EXCEEDED,
+            candidate_task_ids=(),
+            reason_codes=("max_affected_tasks", "model_free_ordinary_refill"),
+        )
+    if not candidates:
+        return PlanImpactRefillDecision(
+            disposition=OrdinaryRefillDisposition.NO_REFILL,
+            candidate_task_ids=(),
+            reason_codes=(
+                "no_unstarted_affected_tasks",
+                "model_free_ordinary_refill",
+            ),
+        )
+    return PlanImpactRefillDecision(
+        disposition=OrdinaryRefillDisposition.REFILL_AFFECTED_SUFFIX,
+        candidate_task_ids=candidates,
+        reason_codes=("refill_affected_suffix", "model_free_ordinary_refill"),
+    )
+
+
+def analyze_incremental_plan_impact(
+    event: AuthoritativeImpactEvent | Mapping[str, Any],
+    nodes: Sequence[PlanImpactNode | Mapping[str, Any]],
+    *,
+    bounds: PlanImpactBounds | Mapping[str, Any] | None = None,
+    observations: Sequence[
+        FrontierObservation | Mapping[str, Any] | ImpactFrontierEntry
+    ] = (),
+    closure_attempts: Sequence[ClosureAttempt | Mapping[str, Any]] = (),
+    impact_closure: ImpactClosureReceipt | None = None,
+    graph: ProgramGraphFrontierSource | None = None,
+    resolver: ProgramCallResolverFrontierSource | None = None,
+    capability_report: Any = None,
+    timeout: bool = False,
+    analyzer: DynamicImpactFrontierAnalyzer | None = None,
+) -> IncrementalPlanImpactAnalysis:
+    """Analyze the minimal plan-impact cone for an authoritative event.
+
+    Extends :class:`DynamicImpactFrontierAnalyzer` without creating a competing
+    impact subsystem, PlanDelta owner, or refill controller.
+    """
+
+    limits = _coerce_plan_impact_bounds(bounds)
+    impact_event = _coerce_impact_event(event)
+    normalized_nodes = tuple(_coerce_plan_impact_node(item) for item in nodes)
+    cone = compute_minimal_plan_impact_cone(
+        normalized_nodes,
+        impact_event.seed_node_ids,
+        bounds=limits,
+    )
+
+    dynamic_frontier: DynamicImpactFrontier | None = None
+    projected_closure = impact_closure
+    reason_codes: list[str] = ["incremental_plan_impact", "minimal_reverse_suffix"]
+    evidence = list(impact_event.evidence_refs)
+
+    open_required = False
+    unknown_frontier = bool(cone.frontier_unknown_ids)
+    if impact_event.roots is not None:
+        delta_id = impact_event.delta_id or f"delta:{impact_event.event_id}"
+        frontier_analyzer = analyzer or DynamicImpactFrontierAnalyzer()
+        dynamic_frontier = frontier_analyzer.analyze(
+            impact_event.roots,
+            delta_id,
+            observations=observations,
+            graph=graph,
+            resolver=resolver,
+            capability_report=capability_report,
+            closure_attempts=closure_attempts,
+            timeout=timeout,
+        )
+        evidence.extend(dynamic_frontier.evidence_refs)
+        reason_codes.extend(dynamic_frontier.reason_codes)
+        open_required = bool(dynamic_frontier.open_required_entry_ids)
+        if impact_closure is not None:
+            projected_closure = dynamic_frontier.apply_to_closure_receipt(impact_closure)
+        if open_required:
+            completeness = ImpactCompleteness.PARTIAL_WITH_FRONTIER
+            reason_codes.append("required_frontier_open")
+        elif dynamic_frontier.completeness is ImpactCompleteness.ABSTAINED:
+            completeness = ImpactCompleteness.ABSTAINED
+            reason_codes.append("dynamic_frontier_abstained")
+        elif cone.frontier_unknown_ids:
+            completeness = ImpactCompleteness.PARTIAL_WITH_FRONTIER
+            reason_codes.append("unknown_plan_dependency")
+        else:
+            completeness = ImpactCompleteness.COMPLETE
+            reason_codes.append("impact_cone_closed")
+    elif cone.frontier_unknown_ids:
+        completeness = ImpactCompleteness.PARTIAL_WITH_FRONTIER
+        reason_codes.append("unknown_plan_dependency")
+    else:
+        completeness = ImpactCompleteness.COMPLETE
+        reason_codes.append("impact_cone_closed")
+
+    refill_decision = decide_ordinary_refill(
+        cone,
+        normalized_nodes,
+        bounds=limits,
+        open_required_frontier=open_required,
+        unknown_frontier=unknown_frontier,
+    )
+    delta_seeds: tuple[PlanDeltaSeed, ...] = ()
+    if not open_required:
+        delta_seeds = propose_plan_delta_seeds(
+            cone, normalized_nodes, impact_event, bounds=limits
+        )
+    else:
+        reason_codes.append("delta_seeds_blocked_open_frontier")
+
+    return IncrementalPlanImpactAnalysis(
+        event_id=impact_event.event_id,
+        plan_epoch=impact_event.plan_epoch,
+        plan_root=impact_event.plan_root,
+        cone=cone,
+        nodes=normalized_nodes,
+        completeness=completeness,
+        refill_decision=refill_decision,
+        delta_seeds=delta_seeds,
+        dynamic_frontier=dynamic_frontier,
+        impact_closure=projected_closure,
+        reason_codes=tuple(sorted(set(reason_codes))),
+        evidence_refs=tuple(sorted(set(evidence))),
+    )
+
+
 __all__ = [
+    "AuthoritativeImpactEvent",
     "CLOSURE_MECHANISM_ALIASES",
     "ClosureAttempt",
     "ClosureMechanism",
@@ -1396,12 +2621,33 @@ __all__ = [
     "FrontierKind",
     "FrontierObservation",
     "IMPACT_FRONTIER_ENTRY_SCHEMA",
+    "INCREMENTAL_PLAN_IMPACT_PRODUCER_ID",
+    "INCREMENTAL_PLAN_IMPACT_SCHEMA",
+    "INCREMENTAL_PLAN_IMPACT_VERSION",
     "ImpactFrontierEntry",
+    "IncrementalPlanImpactAnalysis",
     "MAX_ENTRIES",
+    "OrdinaryRefillDisposition",
+    "PLAN_DELTA_SEED_SCHEMA",
+    "PLAN_IMPACT_NODE_SCHEMA",
+    "PLAN_IMPACT_REFILL_DECISION_SCHEMA",
     "PRODUCER_ID",
+    "PlanDeltaSeed",
+    "PlanDeltaSeedEffectClass",
+    "PlanDeltaSeedOperation",
+    "PlanImpactBounds",
+    "PlanImpactCone",
+    "PlanImpactDisposition",
+    "PlanImpactNode",
+    "PlanImpactNodeKind",
+    "PlanImpactRefillDecision",
     "ProgramCallResolverFrontierSource",
     "ProgramGraphFrontierSource",
     "all_frontier_kinds",
+    "analyze_incremental_plan_impact",
+    "compute_minimal_plan_impact_cone",
+    "decide_ordinary_refill",
+    "propose_plan_delta_seeds",
     "required_kind_coverage",
 ]
 
