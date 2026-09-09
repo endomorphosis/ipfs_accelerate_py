@@ -148,7 +148,7 @@ def test_stop_signal_handlers_default_still_catch_sigterm() -> None:
     assert signal.getsignal(signal.SIGTERM) == prior
 
 
-def test_stop_signal_handlers_survive_external_sigterm_leaves_sigterm() -> None:
+def test_stop_signal_handlers_survive_external_sigterm_ignores_sigterm() -> None:
     requested = threading.Event()
     received: dict[str, int] = {}
     prior = signal.getsignal(signal.SIGTERM)
@@ -157,11 +157,10 @@ def test_stop_signal_handlers_survive_external_sigterm_leaves_sigterm() -> None:
         received,
         survive_external_sigterm=True,
     ):
-        assert signal.getsignal(signal.SIGTERM) == prior
+        assert signal.getsignal(signal.SIGTERM) == signal.SIG_IGN
         handler = signal.getsignal(signal.SIGINT)
         assert callable(handler)
         handler(signal.SIGINT, None)
         assert requested.is_set()
         assert received == {"signum": signal.SIGINT}
     assert signal.getsignal(signal.SIGTERM) == prior
-    assert not requested.is_set() or received.get("signum") == signal.SIGINT
