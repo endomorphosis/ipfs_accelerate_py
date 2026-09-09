@@ -1438,6 +1438,7 @@ def verify_configured_board_accepted_source(
     *,
     repo_root: Path,
     transition_loader: CanonicalSourceTransitionLoader | None = None,
+    admitted_live_capsule_restart: bool = False,
 ) -> Mapping[str, object]:
     """Admit exact source, or a receipt-backed chain of supervisor merges.
 
@@ -1445,6 +1446,12 @@ def verify_configured_board_accepted_source(
     successor must be a two-parent merge, must retain every protected control,
     and must bind the implementation parent to a source-transition packet that
     was admitted inside the canonical Quack task-completion transaction.
+
+    Isolated child restarts of an already-running wave may set
+    ``admitted_live_capsule_restart``.  That path still requires the sealed
+    capsule source and protected controls, but allows a Git descendant HEAD
+    that is not a two-parent supervisor merge.  The child continues to execute
+    the admitted capsule, not the drifted worktree.
     """
 
     parsed = parse_configured_board_live_capsule_admission(
@@ -1474,102 +1481,118 @@ def verify_configured_board_accepted_source(
     store_generation = 0
     target_repository_id = checkout_repository_id(root)
     if (current_head, current_tree) != (parsed.source_head, parsed.source_tree):
-        kind = "accepted_supervisor_merge_successor"
-        try:
-            chain = tuple(
-                line
-                for line in _git(
+        if admitted_live_capsule_restart:
+            try:
+                _git(
                     root,
-                    "rev-list",
-                    "--first-parent",
-                    "--reverse",
-                    f"{parsed.source_head}..{current_head}",
-                ).decode("ascii").splitlines()
-                if line
-            )
-        except (UnicodeError, ConfiguredBoardLiveCapsuleError) as exc:
-            raise ConfiguredBoardLiveCapsuleError(
-                "configured-board accepted source is not a Git descendant"
-            ) from exc
-        if not chain:
-            raise ConfiguredBoardLiveCapsuleError(
-                "configured-board accepted source generation drifted"
-            )
-        if len(chain) > 4_096:
-            raise ConfiguredBoardLiveCapsuleError(
-                "configured-board accepted source chain is unbounded"
-            )
-        scheduler = _pinned_scheduler_payload(root, parsed)
-        target_branch = _text(
-            scheduler.get("merge_target_branch"), "merge target branch"
-        )
-        current_branch = _git(root, "symbolic-ref", "--short", "HEAD").decode(
-            "utf-8"
-        ).strip()
-        if current_branch != target_branch:
-            raise ConfiguredBoardLiveCapsuleError(
-                "configured-board accepted source target branch drifted"
-            )
-        loader = transition_loader or _default_canonical_source_transition
-        prior = parsed.source_head
-        for merge_head in chain:
-            parents = _git(root, "rev-list", "--parents", "-n", "1", merge_head)
-            parent_fields = parents.decode("ascii").strip().split()
-            if (
-                len(parent_fields) != 3
-                or parent_fields[0] != merge_head
-                or parent_fields[1] != prior
-            ):
-                raise ConfiguredBoardLiveCapsuleError(
-                    "configured-board accepted source contains a non-supervisor merge"
+                    "merge-base",
+                    "--is-ancestor",
+                    parsed.source_head,
+                    current_head,
                 )
-            implementation_head = parent_fields[2]
-            authority = loader(merge_head, scheduler)
-            verified = _verify_canonical_source_transition(
-                repo_root=root,
-                board_namespace=parsed.board_namespace,
-                admission_cid=parsed.admission_cid,
-                target_repository_id=target_repository_id,
-                prior_head=prior,
-                merge_head=merge_head,
-                implementation_head=implementation_head,
-                target_branch=target_branch,
-                authority=authority,
-            )
-            observed_uuid = str(authority.get("database_uuid") or "")
-            observed_generation = authority.get("store_generation")
-            if (
-                not observed_uuid
-                or isinstance(observed_generation, bool)
-                or not isinstance(observed_generation, int)
-                or observed_generation < 1
-                or (database_uuid and observed_uuid != database_uuid)
-                or (store_generation and observed_generation != store_generation)
-                or verified["task_alias"] in task_aliases
-                or verified["database_task_cid"] in database_task_cids
-                or verified["transition_cid"] in transition_cids
-                or verified["request_id"] in request_ids
-            ):
+            except ConfiguredBoardLiveCapsuleError as exc:
                 raise ConfiguredBoardLiveCapsuleError(
-                    "configured-board accepted source authority is ambiguous"
+                    "configured-board admitted restart is not a source descendant"
+                ) from exc
+            kind = "admitted_live_capsule_restart"
+        else:
+            kind = "accepted_supervisor_merge_successor"
+        if kind == "accepted_supervisor_merge_successor":
+            try:
+                chain = tuple(
+                    line
+                    for line in _git(
+                        root,
+                        "rev-list",
+                        "--first-parent",
+                        "--reverse",
+                        f"{parsed.source_head}..{current_head}",
+                    ).decode("ascii").splitlines()
+                    if line
                 )
-            database_uuid = observed_uuid
-            store_generation = observed_generation
-            task_aliases.append(verified["task_alias"])
-            database_task_cids.append(verified["database_task_cid"])
-            transition_cids.append(verified["transition_cid"])
-            request_ids.append(verified["request_id"])
-            implementation_commits.append(verified["implementation_commit"])
-            merge_commits.append(merge_head)
-            prior = merge_head
-        if prior != current_head:
-            raise ConfiguredBoardLiveCapsuleError(
-                "configured-board accepted source chain is incomplete"
+            except (UnicodeError, ConfiguredBoardLiveCapsuleError) as exc:
+                raise ConfiguredBoardLiveCapsuleError(
+                    "configured-board accepted source is not a Git descendant"
+                ) from exc
+            if not chain:
+                raise ConfiguredBoardLiveCapsuleError(
+                    "configured-board accepted source generation drifted"
+                )
+            if len(chain) > 4_096:
+                raise ConfiguredBoardLiveCapsuleError(
+                    "configured-board accepted source chain is unbounded"
+                )
+            scheduler = _pinned_scheduler_payload(root, parsed)
+            target_branch = _text(
+                scheduler.get("merge_target_branch"), "merge target branch"
             )
-        if _source_generation(root) != (current_head, current_tree):
-            raise ConfiguredBoardLiveCapsuleError(
-                "configured-board accepted source changed during verification"
-            )
+            current_branch = _git(root, "symbolic-ref", "--short", "HEAD").decode(
+                "utf-8"
+            ).strip()
+            if current_branch != target_branch:
+                raise ConfiguredBoardLiveCapsuleError(
+                    "configured-board accepted source target branch drifted"
+                )
+            loader = transition_loader or _default_canonical_source_transition
+            prior = parsed.source_head
+            for merge_head in chain:
+                parents = _git(root, "rev-list", "--parents", "-n", "1", merge_head)
+                parent_fields = parents.decode("ascii").strip().split()
+                if (
+                    len(parent_fields) != 3
+                    or parent_fields[0] != merge_head
+                    or parent_fields[1] != prior
+                ):
+                    raise ConfiguredBoardLiveCapsuleError(
+                        "configured-board accepted source contains a non-supervisor merge"
+                    )
+                implementation_head = parent_fields[2]
+                authority = loader(merge_head, scheduler)
+                verified = _verify_canonical_source_transition(
+                    repo_root=root,
+                    board_namespace=parsed.board_namespace,
+                    admission_cid=parsed.admission_cid,
+                    target_repository_id=target_repository_id,
+                    prior_head=prior,
+                    merge_head=merge_head,
+                    implementation_head=implementation_head,
+                    target_branch=target_branch,
+                    authority=authority,
+                )
+                observed_uuid = str(authority.get("database_uuid") or "")
+                observed_generation = authority.get("store_generation")
+                if (
+                    not observed_uuid
+                    or isinstance(observed_generation, bool)
+                    or not isinstance(observed_generation, int)
+                    or observed_generation < 1
+                    or (database_uuid and observed_uuid != database_uuid)
+                    or (store_generation and observed_generation != store_generation)
+                    or verified["task_alias"] in task_aliases
+                    or verified["database_task_cid"] in database_task_cids
+                    or verified["transition_cid"] in transition_cids
+                    or verified["request_id"] in request_ids
+                ):
+                    raise ConfiguredBoardLiveCapsuleError(
+                        "configured-board accepted source authority is ambiguous"
+                    )
+                database_uuid = observed_uuid
+                store_generation = observed_generation
+                task_aliases.append(verified["task_alias"])
+                database_task_cids.append(verified["database_task_cid"])
+                transition_cids.append(verified["transition_cid"])
+                request_ids.append(verified["request_id"])
+                implementation_commits.append(verified["implementation_commit"])
+                merge_commits.append(merge_head)
+                prior = merge_head
+            if prior != current_head:
+                raise ConfiguredBoardLiveCapsuleError(
+                    "configured-board accepted source chain is incomplete"
+                )
+            if _source_generation(root) != (current_head, current_tree):
+                raise ConfiguredBoardLiveCapsuleError(
+                    "configured-board accepted source changed during verification"
+                )
     body: dict[str, object] = {
         "schema": CONFIGURED_BOARD_ACCEPTED_SOURCE_SCHEMA,
         "kind": kind,
@@ -1592,6 +1615,8 @@ def verify_configured_board_accepted_source(
         "authority": (
             "exact_capsule_source"
             if kind == "exact"
+            else "exact_capsule_source_plus_descendant_head"
+            if kind == "admitted_live_capsule_restart"
             else "git_merge_plus_quack_admitted_source_transition"
         ),
         "task_completion_authority": False,
@@ -1669,6 +1694,7 @@ def verify_configured_board_live_capsule(
     repo_root: Path,
     expected_board_namespace: str = "",
     expected_config_path: str = "",
+    admitted_live_capsule_restart: bool = False,
 ) -> ConfiguredBoardLiveCapsuleAdmission:
     """Revalidate descriptor, source generation, and exact controls."""
 
@@ -1760,7 +1786,11 @@ def verify_configured_board_live_capsule(
             "configured-board admission names a different config"
         )
     root = Path(repo_root).resolve(strict=True)
-    verify_configured_board_accepted_source(parsed, repo_root=root)
+    verify_configured_board_accepted_source(
+        parsed,
+        repo_root=root,
+        admitted_live_capsule_restart=admitted_live_capsule_restart,
+    )
     _verify_protected_native_and_quack_authority(
         parsed,
         native_dependency_launch=native_dependency_launch,

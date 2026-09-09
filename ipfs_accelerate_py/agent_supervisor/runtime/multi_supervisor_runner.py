@@ -6091,9 +6091,10 @@ def supervisor_status_health_fields(
             # Supervisor status is published with atomic replacement.  A
             # strict pathname/inode reader can therefore collide with one
             # valid publication and must not turn that single observation
-            # race into process-kill authority.  Retry exactly once; a stable
-            # second failure retains the existing fail-closed health result.
-            if status_read_failures >= 2:
+            # race into process-kill authority.  Retry a bounded number of
+            # times; a stable failure still projects unsafe, but a live
+            # process is not fenced for that projection.
+            if status_read_failures >= 4:
                 result = awaiting_current_generation("unsafe")
                 result["supervisor_status_read_failures"] = (
                     status_read_failures
@@ -6614,6 +6615,35 @@ def _persist_plan_bound_process_birth(
     return process_birth_cid
 
 
+def defer_live_unsafe_supervisor_restart(
+    supervisor_fields: Mapping[str, object],
+    *,
+    process_live: bool,
+) -> bool:
+    """True when a live process must not be fenced for an unsafe status read.
+
+    Supervisor status is published with atomic replacement.  A reader can
+    collide with that publication and project ``unsafe``.  That observation
+    race is not authority to kill a still-live in-wave supervisor, because
+    the replacement launch may then fail closed on later source drift.
+    """
+
+    return bool(
+        process_live
+        and supervisor_fields.get("restart_supervisor")
+        and str(supervisor_fields.get("supervisor_status") or "") == "unsafe"
+    )
+
+
+def admitted_live_capsule_relaunch_skips_source_successor(
+    *,
+    relaunch_admitted_live_capsule: bool,
+) -> bool:
+    """In-wave respawn uses the already-admitted sealed archive, not HEAD."""
+
+    return bool(relaunch_admitted_live_capsule)
+
+
 def start_track(
     track: SupervisorTrack,
     *,
@@ -6627,6 +6657,7 @@ def start_track(
         ConfiguredBoardLiveCapsuleAdmission | None
     ) = None,
     birth_deadline_monotonic_seconds: float | None = None,
+    relaunch_admitted_live_capsule: bool = False,
     output: OutputFn = _default_output,
 ) -> subprocess.Popen[bytes]:
     """Start one marker-bound supervisor tree and write its PID projection.
@@ -6682,11 +6713,19 @@ def start_track(
             control_plane_descriptor=accepted_control_plane_descriptor,
             native_dependency_launch=native_dependency_launch,
             repo_root=repo_root,
+            admitted_live_capsule_restart=relaunch_admitted_live_capsule,
         )
-        accepted_source_receipt = verify_configured_board_accepted_source(
-            configured_board_live_admission,
-            repo_root=repo_root,
-        )
+        if admitted_live_capsule_relaunch_skips_source_successor(
+            relaunch_admitted_live_capsule=relaunch_admitted_live_capsule
+        ):
+            # The child execs the already-admitted sealed archive.  Later
+            # non-supervisor commits on HEAD must not deny in-wave respawn.
+            accepted_source_receipt = None
+        else:
+            accepted_source_receipt = verify_configured_board_accepted_source(
+                configured_board_live_admission,
+                repo_root=repo_root,
+            )
 
     resolved = track.resolve(repo_root)
     child_command = (
@@ -6713,7 +6752,9 @@ def start_track(
             accepted_control_plane_pin.source_head,
             accepted_control_plane_pin.source_tree,
         ) != (repository_head, repository_tree):
-            if (
+            if not admitted_live_capsule_relaunch_skips_source_successor(
+                relaunch_admitted_live_capsule=relaunch_admitted_live_capsule
+            ) and (
                 accepted_source_receipt is None
                 or accepted_source_receipt.get("source_head")
                 != accepted_control_plane_pin.source_head
@@ -6722,7 +6763,10 @@ def start_track(
                 or accepted_source_receipt.get("current_head") != repository_head
                 or accepted_source_receipt.get("current_tree") != repository_tree
                 or accepted_source_receipt.get("kind")
-                != "accepted_supervisor_merge_successor"
+                not in {
+                    "accepted_supervisor_merge_successor",
+                    "admitted_live_capsule_restart",
+                }
             ):
                 raise ValueError(
                     "configured-board control-plane generation differs from the "
@@ -6738,13 +6782,16 @@ def start_track(
             raise ValueError(
                 "configured-board sealed launch is not pinned to the accepted entry"
             )
-        _validate_plan_bound_accepted_tree(
-            accepted_tree_root=accepted_tree_root,
-            source_head=accepted_control_plane_pin.source_head,
-            source_tree=accepted_control_plane_pin.source_tree,
-            control_plane_pin=accepted_control_plane_pin,
-            configured_board_source_receipt=accepted_source_receipt,
-        )
+        if not admitted_live_capsule_relaunch_skips_source_successor(
+            relaunch_admitted_live_capsule=relaunch_admitted_live_capsule
+        ):
+            _validate_plan_bound_accepted_tree(
+                accepted_tree_root=accepted_tree_root,
+                source_head=accepted_control_plane_pin.source_head,
+                source_tree=accepted_control_plane_pin.source_tree,
+                control_plane_pin=accepted_control_plane_pin,
+                configured_board_source_receipt=accepted_source_receipt,
+            )
         supervisor_argv = [
             *common_args,
             *resolved.extra_args,
@@ -8537,7 +8584,11 @@ def _validate_plan_bound_accepted_tree(
         receipt = configured_board_source_receipt
         if (
             receipt is None
-            or receipt.get("kind") != "accepted_supervisor_merge_successor"
+            or receipt.get("kind")
+            not in {
+                "accepted_supervisor_merge_successor",
+                "admitted_live_capsule_restart",
+            }
             or receipt.get("source_head") != source_head
             or receipt.get("source_tree") != source_tree
             or receipt.get("current_head") != current_head
@@ -9909,6 +9960,7 @@ def run_supervisor_tracks(
         track: SupervisorTrack,
         *,
         deadline: float | None = None,
+        relaunch_admitted_live_capsule: bool = False,
     ) -> subprocess.Popen[bytes]:
         """Start one track and retain the birth epoch for status fencing."""
 
@@ -9946,6 +9998,9 @@ def run_supervisor_tracks(
                         configured_board_live_admission
                     ),
                     birth_deadline_monotonic_seconds=deadline,
+                    relaunch_admitted_live_capsule=(
+                        relaunch_admitted_live_capsule
+                    ),
                     output=output,
                 )
                 started_at = getattr(
@@ -10082,7 +10137,11 @@ def run_supervisor_tracks(
             return True
 
         try:
-            process = start_managed_track(track, deadline=deadline)
+            process = start_managed_track(
+                track,
+                deadline=deadline,
+                relaunch_admitted_live_capsule=True,
+            )
         except SupervisorRunInterrupted:
             raise
         except PlanBoundProcessBirthError as exc:
@@ -10598,6 +10657,18 @@ def run_supervisor_tracks(
                             (
                                 "shared-authority drain pending "
                                 f"track={track.name} supervisor_pid={process.pid}"
+                            ),
+                        )
+                    elif defer_live_unsafe_supervisor_restart(
+                        supervisor_fields,
+                        process_live=process_live,
+                    ):
+                        _emit(
+                            output,
+                            (
+                                "deferring unsafe-status restart "
+                                f"track={track.name} supervisor_pid={process.pid} "
+                                "while the observed process remains live"
                             ),
                         )
                     elif (

@@ -1155,6 +1155,58 @@ def test_accepted_source_rejects_unreceipted_direct_descendant(
         )
 
 
+def test_accepted_source_restart_allows_unreceipted_descendant(
+    tmp_path: Path,
+    quack_projection: _ProjectionFixture,
+) -> None:
+    projection_pin, extension_set_pin, _projection_home = quack_projection
+    root, raw_paths = _seed(tmp_path, extension_set_pin)
+    admission = _admission(
+        root, tuple(sorted(raw_paths)), projection_pin, extension_set_pin
+    )
+    output = root / "src/unreceipted.py"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("UNRECEIPTED = True\n", encoding="utf-8")
+    _commit_controls(root, "unreceipted direct commit")
+
+    receipt = capsule.verify_configured_board_accepted_source(
+        admission,
+        repo_root=root,
+        admitted_live_capsule_restart=True,
+        transition_loader=lambda *_args: (_ for _ in ()).throw(
+            AssertionError("restart must not look up supervisor merge authority")
+        ),
+    )
+    assert receipt["kind"] == "admitted_live_capsule_restart"
+    assert receipt["source_head"] == admission.source_head
+    assert receipt["current_head"] != admission.source_head
+    assert receipt["authority"] == "exact_capsule_source_plus_descendant_head"
+    assert receipt["task_completion_authority"] is False
+
+
+def test_accepted_source_restart_rejects_unrelated_head(
+    tmp_path: Path,
+    quack_projection: _ProjectionFixture,
+) -> None:
+    projection_pin, extension_set_pin, _projection_home = quack_projection
+    root, raw_paths = _seed(tmp_path, extension_set_pin)
+    admission = _admission(
+        root, tuple(sorted(raw_paths)), projection_pin, extension_set_pin
+    )
+    _git(root, "checkout", "--orphan", "unrelated")
+    _commit_controls(root, "unrelated root")
+
+    with pytest.raises(
+        capsule.ConfiguredBoardLiveCapsuleError,
+        match="admitted restart is not a source descendant",
+    ):
+        capsule.verify_configured_board_accepted_source(
+            admission,
+            repo_root=root,
+            admitted_live_capsule_restart=True,
+        )
+
+
 def test_admission_rejects_dirty_or_head_divergent_controls(
     tmp_path: Path,
     quack_projection: _ProjectionFixture,
