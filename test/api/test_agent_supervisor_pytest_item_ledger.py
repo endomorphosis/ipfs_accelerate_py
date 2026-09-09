@@ -241,3 +241,64 @@ def test_plugin_skips_green_and_reruns_failure(tmp_path: Path) -> None:
     combined = (second.stdout or "") + (second.stderr or "")
     assert "skipped" in combined.lower() or "SKIPPED" in combined
     assert second.returncode != 0
+
+
+def test_ivp_selection_skips_unrelated_test_file(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.board_pytest_selection import (
+        select_affected_test_files,
+    )
+
+    branch = "implementation/aseh-061-deadbeef-attempt-1-1"
+    workspace = _seed_worktree(tmp_path, branch=branch)
+    (workspace / "ipfs_accelerate_py").mkdir()
+    (workspace / "ipfs_accelerate_py" / "__init__.py").write_text("", encoding="utf-8")
+    (workspace / "ipfs_accelerate_py" / "mod.py").write_text("VALUE = 1\n", encoding="utf-8")
+    tests = workspace / "test"
+    tests.mkdir()
+    (tests / "test_hit.py").write_text(
+        "from ipfs_accelerate_py.mod import VALUE\n\ndef test_hit():\n    assert VALUE == 1\n",
+        encoding="utf-8",
+    )
+    (tests / "test_miss.py").write_text(
+        "def test_miss():\n    assert True\n",
+        encoding="utf-8",
+    )
+    _git(workspace, "add", "ipfs_accelerate_py", "test")
+    _git(workspace, "commit", "-m", "tests")
+    (workspace / "ipfs_accelerate_py" / "mod.py").write_text("VALUE = 2\n", encoding="utf-8")
+    affected = select_affected_test_files(
+        workspace,
+        ("test/test_hit.py", "test/test_miss.py"),
+    )
+    assert affected is not None
+    assert "test/test_hit.py" in affected
+    assert "test/test_miss.py" not in affected
+
+
+def test_ivp_selection_mentions_dirty_non_python(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.board_pytest_selection import (
+        select_affected_test_files,
+    )
+
+    branch = "implementation/aseh-061-deadbeef-attempt-1-1"
+    workspace = _seed_worktree(tmp_path, branch=branch)
+    docs = workspace / "docs"
+    docs.mkdir()
+    (docs / "note.md").write_text("migration\n", encoding="utf-8")
+    tests = workspace / "test"
+    tests.mkdir()
+    (tests / "test_doc.py").write_text(
+        "def test_doc():\n    assert 'note.md' in 'note.md'\n",
+        encoding="utf-8",
+    )
+    (tests / "test_other.py").write_text("def test_other():\n    assert True\n", encoding="utf-8")
+    _git(workspace, "add", "docs", "test")
+    _git(workspace, "commit", "-m", "docs")
+    (docs / "note.md").write_text("migration changed\n", encoding="utf-8")
+    affected = select_affected_test_files(
+        workspace,
+        ("test/test_doc.py", "test/test_other.py"),
+    )
+    assert affected is not None
+    assert "test/test_doc.py" in affected
+    assert "test/test_other.py" not in affected
