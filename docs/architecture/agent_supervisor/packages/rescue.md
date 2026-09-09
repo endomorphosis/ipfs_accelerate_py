@@ -55,6 +55,13 @@ owner's receipt-bound retry CAS and cooldown write. The retry carries the
 same immutable candidate through the existing fresh validation and merge
 path; this transition grants no completion and invokes no provider.
 
+Legacy auxiliary merge events that omit a canonical task key may be ignored
+only when the same verified event chain contains an exact validation start,
+worktree, enqueue request, candidate, and later fully bound implementation
+result. That later result supplies completion evidence through the ordinary
+verifier. Auxiliary events never acquire an inferred identity or become
+completion receipts, and nonempty mismatched keys remain errors.
+
 Changed or dirty candidate worktrees, unknown or live process identities,
 stale revision history, foreign lanes, and missing candidate evidence retain
 the quarantine. A clean-baseline/no-effect classification alone is not
