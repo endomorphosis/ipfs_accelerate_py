@@ -214,10 +214,10 @@ class FleetObserver:
         while not self.stop_event.is_set():
             try:
                 result = self.cycle()
+                self.last_progress = time.monotonic()
             except Exception as error:  # noqa: BLE001 - isolate one bounded observation cycle
                 result = {"schema": "ipfs_accelerate_py/agent-supervisor/fleet-observer-error@1", "error": type(error).__name__,
                           "reason": str(error)[:512], "completion_authority": False}
-            self.last_progress = time.monotonic()
             self.output_path.parent.mkdir(parents=True, exist_ok=True)
             temporary = self.output_path.with_suffix(".tmp")
             temporary.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")

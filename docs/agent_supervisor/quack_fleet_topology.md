@@ -105,4 +105,5 @@ five-minute cooldown and at most three requests per hour. `HOLD` or
 `OPERATOR_STOP` beside `deployment.json` disables these automatic requests.
 The aggregate worker also has an independent 600-second progress deadline;
 source query failures are retained as unavailable observations, while a stopped
-or hung worker makes the owner process exit for systemd recovery.
+or hung worker makes the owner process exit for systemd recovery. Repeated
+control-write failures do not refresh that progress deadline.

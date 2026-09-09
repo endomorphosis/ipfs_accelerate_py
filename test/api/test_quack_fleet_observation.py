@@ -195,3 +195,29 @@ def test_pctdd_direct_native_query_requires_exact_identity_and_bounded_latency(m
               "state_owner": {"lifecycle_consistent": True, "authoritative_lifecycle": {"available": True, "reason": "authenticated_live_quack_query", "direct_database_file_open": False, "latest": dict(identity)}}}
     mutate(native)
     assert bool(_pctdd_native_authority(native, identity, query_seconds=seconds)) is available
+
+
+@pytest.mark.parametrize("success", [False, True])
+def test_repeated_control_write_failures_do_not_refresh_progress_deadline(tmp_path, monkeypatch, success):
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_fleet_observer import (
+        FleetObserver,
+    )
+    worker = FleetObserver(None, tmp_path / "inventory.json", tmp_path / "view.json")
+    worker.last_progress = 100.0
+    calls = []
+    def cycle():
+        calls.append(None)
+        if len(calls) == 2:
+            worker.stop_event.set()
+        if not success:
+            raise RuntimeError("native control writer rejected the session")
+        return {"completion_authority": False}
+    monkeypatch.setattr(worker, "cycle", cycle)
+    monkeypatch.setattr(worker.stop_event, "wait", lambda _delay: None)
+    worker._run()
+    assert len(calls) == 2
+    if success:
+        assert worker.last_progress > 100
+    else:
+        assert worker.last_progress == 100
+        assert json.loads(worker.output_path.read_text())["error"] == "RuntimeError"
