@@ -4339,24 +4339,44 @@ class QuackStateServer:
     ) -> None:
         started = identity.started_at or _utc_iso()
         # Best-effort inserts; tables exist after migration.
+        generation_values = [
+            identity.generation,
+            identity.schema_revision,
+            identity.fence_epoch,
+            identity.revision,
+            identity.database_uuid,
+            identity.process_birth_id,
+            started,
+        ]
         try:
-            connection.execute(
-                """
-                INSERT INTO store_generations (
-                    generation, schema_revision, fence_epoch, revision,
-                    database_uuid, birth_id, created_at, extension_schema, extension_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, '', '{}')
-                """,
-                [
-                    identity.generation,
-                    identity.schema_revision,
-                    identity.fence_epoch,
-                    identity.revision,
-                    identity.database_uuid,
-                    identity.process_birth_id,
-                    started,
-                ],
-            )
+            if self.config.reuse_expected_generation:
+                connection.execute(
+                    """
+                    UPDATE store_generations SET
+                        schema_revision = ?, fence_epoch = ?, revision = ?,
+                        database_uuid = ?, birth_id = ?, created_at = ?
+                    WHERE generation = ?
+                    """,
+                    [
+                        identity.schema_revision,
+                        identity.fence_epoch,
+                        identity.revision,
+                        identity.database_uuid,
+                        identity.process_birth_id,
+                        started,
+                        identity.generation,
+                    ],
+                )
+            else:
+                connection.execute(
+                    """
+                    INSERT INTO store_generations (
+                        generation, schema_revision, fence_epoch, revision,
+                        database_uuid, birth_id, created_at, extension_schema, extension_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, '', '{}')
+                    """,
+                    generation_values,
+                )
         except Exception:
             pass
         try:

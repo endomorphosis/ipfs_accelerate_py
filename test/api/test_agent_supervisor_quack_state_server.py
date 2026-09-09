@@ -2085,6 +2085,10 @@ def test_reuse_expected_generation_restarts_current_generation(
     identity = server.start()
     assert identity.generation == 47
     assert transport.started is True
+    assert any(
+        "UPDATE STORE_GENERATIONS" in " ".join(item.upper().split())
+        for item in connection.statements
+    )
     server.stop()
 
 
