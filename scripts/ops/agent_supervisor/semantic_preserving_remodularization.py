@@ -521,6 +521,7 @@ def dependency_seal(documents: dict[str, bytes]) -> dict[str, Any]:
     bootstrap_runtime_paths = (
         "pyproject.toml",
         "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/launch_source_amendment.py",
@@ -530,6 +531,7 @@ def dependency_seal(documents: dict[str, bytes]) -> dict[str, Any]:
         "ipfs_accelerate_py/agent_supervisor/task_sources/spar_closeout_profile.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/closeout_snapshot.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/completion_projection_repair.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",

@@ -9195,6 +9195,11 @@ class IntentRepository:
                 self._set_dependencies_on(connection, tcid, [str(item) for item in deps])
             return
 
+        if event_type == "intent.completion_projection_repaired":
+            from .completion_projection_repair import apply_projection
+            apply_projection(connection, payload)
+            return
+
         if event_type in {
             IntentEventType.TASK_STATUS_CHANGED.value,
             IntentEventType.COMPLETION_RECORDED.value,

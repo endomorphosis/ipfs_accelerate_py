@@ -3623,6 +3623,16 @@ class QuackStateServer:
             return path
 
 
+    def recover_legacy_completion_projections(self) -> list[dict[str, Any]]:
+        """Run the exact launcher-only repair in the current native gateway."""
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError("completion repair requires a ready owner")
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError("typed command gateway is unavailable")
+        return gateway.recover_legacy_completion_projections()
+
     def bind_database_status_scope(self, **binding: Any) -> None:
         """Bind a non-federated sealed board to peer-bound read-only status."""
         with self._lock:

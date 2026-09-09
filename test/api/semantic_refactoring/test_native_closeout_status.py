@@ -37,6 +37,10 @@ def test_start_binds_readonly_population_and_never_rewrites_authority(
         def bind_database_status_scope(self, **binding):
             calls["binding"] = binding
 
+        def recover_legacy_completion_projections(self):
+            calls["recovered"] = True
+            return []
+
         def stop(self):
             calls["stopped"] = True
 
