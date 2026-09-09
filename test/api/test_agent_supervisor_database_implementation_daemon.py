@@ -12124,6 +12124,64 @@ def test_inflight_process_failure_retries_instead_of_blocking(
         daemon.close()
 
 
+@pytest.mark.parametrize("restart_count", [1, 2])
+def test_supervisor_checkout_recovery_survives_daemon_restart(
+    tmp_path: Path,
+    restart_count: int,
+) -> None:
+    repo = _git_repo(tmp_path)
+    lock_path = _write_supervisor_protected_recovery_journal(repo)
+    provider_calls: list[str] = []
+    session = "session:checkout-deferral-restart"
+    attempt = None
+    for _ in range(restart_count):
+        daemon = _open_daemon(
+            tmp_path / "lane", session=session, repo_root=repo,
+            provider_calls=provider_calls, clock_ms=lambda: 1_000,
+        )
+        try:
+            if attempt is None:
+                daemon.materialize_population(_population(1))
+                attempt = daemon.claim_next()
+                assert attempt is not None
+            else:
+                attempt = daemon.get_attempt(attempt.attempt_id)
+                assert attempt is not None
+            # Simulate restart after the pre-entry guard defers, before the
+            # outer loop handles it. Recovery must not create unknown intent.
+            with pytest.raises(
+                DatabasePortalBridgeDeferred,
+                match="external_protected_checkout_recovery_required",
+            ):
+                daemon.run_provider(attempt)
+            assert daemon.provider_invocation_recorded(
+                attempt.attempt_id,
+                idempotency_key=f"provider:{attempt.attempt_id}",
+            ) is None
+            assert daemon.task_source.get(attempt.task_cid).status == "in_progress"
+            assert lock_path.is_file()
+            assert provider_calls == []
+        finally:
+            daemon.close()
+
+    # Model the paired supervisor settling its test recovery journal.
+    lock_path.unlink()
+    restarted = _open_daemon(
+        tmp_path / "lane", session=session, repo_root=repo,
+        provider_calls=provider_calls, clock_ms=lambda: 1_000,
+    )
+    try:
+        result = restarted.run_once()["implementation_result"]
+        assert result["status"] == "succeeded"
+        assert result["attempt"]["attempt_id"] == attempt.attempt_id
+        assert restarted.task_source.get(attempt.task_cid).status == "completed"
+        assert provider_calls == [attempt.task_cid]
+        restarted.run_once()
+        assert provider_calls == [attempt.task_cid]
+    finally:
+        restarted.close()
+
+
 def test_inflight_process_deferral_does_not_exhaust_typed_budget(
     tmp_path: Path,
 ) -> None:
