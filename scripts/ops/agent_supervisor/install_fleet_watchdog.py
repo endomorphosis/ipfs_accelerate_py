@@ -16,6 +16,14 @@ from pathlib import Path
 MODULES = ("fleet_watchdog", "fleet_repair", "fleet_completion", "live_board_probe")
 
 
+def unit_directory(value: str) -> str:
+    # Unlike ExecStart and Environment, WorkingDirectory does not unquote its
+    # value; surrounding quotes turn an absolute path into an invalid one.
+    if not Path(value).is_absolute() or any(c in value for c in "\n\r\0"):
+        raise ValueError("unit working directory must be a single absolute path")
+    return value.replace("%", "%%")
+
+
 def atomic_write(path: Path, data: bytes, *, mode: int = 0o600) -> None:
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
@@ -154,7 +162,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory={unit_quote(entry['cwd'])}
+WorkingDirectory={unit_directory(entry['cwd'])}
 ExecStart={' '.join(unit_quote(arg) for arg in ensure_argv)}
 TimeoutStartSec=360
 TimeoutStopSec=30
@@ -199,7 +207,7 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-WorkingDirectory={unit_quote(str(release))}
+WorkingDirectory={unit_directory(str(release))}
 Environment={unit_quote('PYTHONPATH=' + str(release))}
 Environment=PYTHONUNBUFFERED=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 ExecStart={' '.join(unit_quote(arg) for arg in argv)}

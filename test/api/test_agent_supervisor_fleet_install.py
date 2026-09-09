@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import shutil
 
 import pytest
 
@@ -61,6 +62,17 @@ def test_install_uses_safe_python_path_and_separate_native_ensure_unit(inputs):
     assert "TimeoutStartSec=360" in native
     assert "native.py" in native
     assert result["ensure_services"] == ["ipfs-taskboard-spar-ensure.service"]
+
+
+@pytest.mark.skipif(shutil.which("systemd-analyze") is None, reason="systemd is unavailable")
+def test_generated_service_files_pass_systemd_validation(inputs):
+    source, inventory, board_root, home = inputs
+    result = installer.install(source, inventory, board_root, enable=False)
+    unit_dir = home / ".config/systemd/user"
+    paths = [str(unit_dir / name) for name in result["services"] + result["ensure_services"]]
+    process = subprocess.run(["systemd-analyze", "--user", "--man=no", "verify", *paths],
+                             capture_output=True, text=True, timeout=15)
+    assert process.returncode == 0, process.stderr
 
 
 def test_upgrade_preserves_holds_backoff_and_restarts_only_fleet_services(inputs, monkeypatch):
