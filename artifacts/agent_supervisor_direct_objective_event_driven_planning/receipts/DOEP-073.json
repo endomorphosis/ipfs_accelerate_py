@@ -1,0 +1,118 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-073",
+  "task_cid": "sha256:ab5418a0219be9ce0a4b04908aa12d2e04586a849025efa843de9d20920cc331",
+  "title": "Add selected-test and prover routing",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "base_repositories": {
+    "ipfs_accelerate_py": {
+      "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+      "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+    },
+    "ipfs_datasets_py": {
+      "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+      "tree": "456e09b51d6a07a3a5873436df24054768195320"
+    },
+    "ipfs_kit_py": {
+      "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+      "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+    },
+    "lift_coding": {
+      "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+      "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+    }
+  },
+  "changed_paths": [
+    "ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py",
+    "test/api/doep/test_doep_073_add_selected_test_and_prover_routing.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-073.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-073.json"
+  ],
+  "expected_outputs": [
+    "ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py",
+    "test/api/doep/test_doep_073_add_selected_test_and_prover_routing.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-073.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-073.json"
+  ],
+  "write_scope": [
+    "ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py",
+    "test/api/doep/test_doep_073_add_selected_test_and_prover_routing.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-073.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-073.json"
+  ],
+  "outputs_present": {
+    "ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py": true,
+    "test/api/doep/test_doep_073_add_selected_test_and_prover_routing.py": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-073.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-073.json": true
+  },
+  "path_digests": {
+    "ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py": "sha256:f94aa79563cfe12aa9981c0b15fb327da3663b369cf44fbe98f4bb9cdce75245",
+    "test/api/doep/test_doep_073_add_selected_test_and_prover_routing.py": "sha256:4b35e031647dc725dea2e261f0867f563920e9efa331f9c914cc4fd881e762bc",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-073.json": "sha256:f176bff43c8b123c1893aac7110e3c26527d8ba9c97bb0c008f0a186b6caa5ae"
+  },
+  "required_evidence": {
+    "source_commit_tree_gitlinks": {
+      "ipfs_accelerate_py": {
+        "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+        "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+      },
+      "ipfs_datasets_py": {
+        "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+        "tree": "456e09b51d6a07a3a5873436df24054768195320"
+      },
+      "ipfs_kit_py": {
+        "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+        "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+      },
+      "lift_coding": {
+        "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+        "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+      }
+    },
+    "test_proof_results": {
+      "validation_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/doep/test_doep_073_add_selected_test_and_prover_routing.py",
+        "-q"
+      ],
+      "proof_selection": "verified_empty",
+      "proof_reason": "The deterministic current-tree test exercises canonical selected-test selection via select_affected_verification and plan-only prover routing via route_obligation/MultiProverRouter; this task makes no separate formal proof claim and never executes tests or provers."
+    },
+    "limitations": [
+      "Candidate receipt only; independent fenced supervisor admission is required for completion.",
+      "Worker or model assertion alone is insufficient.",
+      "Selected-test/prover routing is advisory input to the existing model-route ladder; it never executes tests or provers and never authorizes proof.",
+      "Selected proof obligation identities require supplied obligation bodies; missing bodies fail closed rather than inventing portfolios."
+    ],
+    "verifier_admission": "pending_independent_fenced_supervisor"
+  },
+  "validation": {
+    "commands": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "test/api/doep/test_doep_073_add_selected_test_and_prover_routing.py",
+          "-q"
+        ],
+        "cwd": "external/ipfs_accelerate",
+        "status": "candidate_local"
+      }
+    ]
+  },
+  "supervisor_acceptance": {
+    "completion_authoritative": false,
+    "state": "pending_independent_fenced_supervisor"
+  }
+}

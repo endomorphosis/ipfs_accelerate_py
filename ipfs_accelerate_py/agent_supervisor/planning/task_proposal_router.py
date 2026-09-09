@@ -45,6 +45,26 @@ from ..runtime.provider_batch_scheduler import (
     ProviderBatchScheduler,
 )
 
+from ..verification.model_route import (
+    AnalysisKind,
+    ModelRouteFacts,
+    derive_model_route_facts,
+)
+from ..verification.selection import (
+    AffectedVerificationSelection,
+    FallbackMode,
+    SelectionError,
+    SelectionPolicy,
+    VerificationCatalog,
+    select_affected_verification,
+)
+from ..proof.multi_prover_router import (
+    MultiProverRouter,
+    PortfolioPlan,
+    PropertyObligation,
+    route_obligation,
+)
+
 
 PromptBuilder = Callable[[object, str], str]
 BootstrapCallback = Callable[[], None]
@@ -3676,4 +3696,349 @@ def route_adaptive_plan_candidates(
         request=request,
         candidates=tuple(candidates),
         outcomes=tuple(outcomes),
+    )
+
+
+# ---------------------------------------------------------------------------
+# DOEP-073: selected-test and prover routing (deterministic-first ladder)
+# ---------------------------------------------------------------------------
+
+SELECTED_TEST_PROVER_ROUTE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/selected-test-prover-route@1"
+)
+SELECTED_TEST_PROVER_ROUTE_INTERFACE = "SelectedTestProverRoute@1"
+
+
+def _obligation_identity_keys(obligation: PropertyObligation) -> tuple[str, ...]:
+    keys = []
+    for value in (obligation.obligation_id, obligation.content_id):
+        text = str(value or "").strip()
+        if text and text not in keys:
+            keys.append(text)
+    return tuple(keys)
+
+
+def _coerce_property_obligation(value: Any) -> PropertyObligation:
+    if isinstance(value, PropertyObligation):
+        return value
+    if isinstance(value, Mapping):
+        return PropertyObligation.from_dict(value)
+    from_code = getattr(PropertyObligation, "from_code_obligation", None)
+    if callable(from_code):
+        try:
+            return from_code(value)
+        except Exception:
+            pass
+    raise TaskProposalRouterError(
+        "proof_obligations entries must be PropertyObligation, CodeProofObligation, or mappings",
+        reason_code="invalid_proof_obligation",
+    )
+
+
+@dataclass(frozen=True)
+class SelectedTestProverRoute:
+    """Planning projection of selected tests and prover portfolios.
+
+    This is deliberately a thin seam over the existing verification selector and
+    multi-prover router.  It never executes tests or provers, never invents
+    missing edges or obligations, and never replaces ``decide_model_route``.
+    Callers must still pass ``model_route_facts`` into the canonical model-route
+    planner; this route is advisory input only.
+    """
+
+    selection: AffectedVerificationSelection
+    portfolio_plans: tuple[PortfolioPlan, ...]
+    model_route_facts: ModelRouteFacts
+    reasons: tuple[str, ...]
+    schema: str = SELECTED_TEST_PROVER_ROUTE_SCHEMA
+    interface: str = SELECTED_TEST_PROVER_ROUTE_INTERFACE
+    test_execution_count: int = 0
+    prover_execution_count: int = 0
+    proof_authoritative: bool = False
+
+    def __post_init__(self) -> None:
+        if self.schema != SELECTED_TEST_PROVER_ROUTE_SCHEMA:
+            raise TaskProposalRouterError(
+                f"unsupported selected-test/prover route schema {self.schema!r}",
+                reason_code="unsupported_route_schema",
+            )
+        if self.interface != SELECTED_TEST_PROVER_ROUTE_INTERFACE:
+            raise TaskProposalRouterError(
+                f"unsupported selected-test/prover route interface {self.interface!r}",
+                reason_code="unsupported_route_interface",
+            )
+        if not isinstance(self.selection, AffectedVerificationSelection):
+            raise TaskProposalRouterError(
+                "selection must be AffectedVerificationSelection",
+                reason_code="invalid_selection",
+            )
+        if any(not isinstance(item, PortfolioPlan) for item in self.portfolio_plans):
+            raise TaskProposalRouterError(
+                "portfolio_plans must contain PortfolioPlan values",
+                reason_code="invalid_portfolio_plans",
+            )
+        if not isinstance(self.model_route_facts, ModelRouteFacts):
+            raise TaskProposalRouterError(
+                "model_route_facts must be ModelRouteFacts",
+                reason_code="invalid_model_route_facts",
+            )
+        object.__setattr__(
+            self,
+            "reasons",
+            tuple(dict.fromkeys(str(item) for item in self.reasons if str(item))),
+        )
+        for name in ("test_execution_count", "prover_execution_count"):
+            if type(getattr(self, name)) is not int or getattr(self, name) != 0:
+                raise TaskProposalRouterError(
+                    f"{name} must be exactly zero; routing never executes",
+                    reason_code="execution_forbidden",
+                )
+        if self.proof_authoritative is not False:
+            raise TaskProposalRouterError(
+                "selected-test/prover routing has no proof authority",
+                reason_code="proof_authority_forbidden",
+            )
+
+    @property
+    def selected_tests(self) -> tuple[str, ...]:
+        return self.selection.selected_tests
+
+    @property
+    def affected_proof_obligation_cids(self) -> tuple[str, ...]:
+        return self.selection.affected_proof_obligation_cids
+
+    @property
+    def prover_ids(self) -> tuple[str, ...]:
+        ids: list[str] = []
+        seen: set[str] = set()
+        for plan in self.portfolio_plans:
+            for prover_id in plan.prover_ids:
+                if prover_id not in seen:
+                    seen.add(prover_id)
+                    ids.append(prover_id)
+        return tuple(ids)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "interface": self.interface,
+            "selection": self.selection.to_dict(),
+            "portfolio_plans": [plan.to_dict() for plan in self.portfolio_plans],
+            "model_route_facts": self.model_route_facts.to_dict(),
+            "reasons": list(self.reasons),
+            "selected_tests": list(self.selected_tests),
+            "affected_proof_obligation_cids": list(self.affected_proof_obligation_cids),
+            "prover_ids": list(self.prover_ids),
+            "test_execution_count": 0,
+            "prover_execution_count": 0,
+            "proof_authoritative": False,
+        }
+
+
+def route_selected_test_and_prover(
+    *,
+    changed_symbols: Sequence[str] | None = None,
+    changed_paths: Sequence[str] | None = None,
+    edges: Sequence[Any] | None = None,
+    uncovered_symbols: Sequence[str] | None = None,
+    uncovered_paths: Sequence[str] | None = None,
+    truncated: bool = False,
+    requires_broader_selection: bool = False,
+    invalidation_plan: Any = None,
+    semantic_capsule: Any = None,
+    validation_selection: Any = None,
+    catalog: VerificationCatalog | Mapping[str, Any] | None = None,
+    policy: SelectionPolicy | Mapping[str, Any] | None = None,
+    known_tests: Sequence[str] | None = None,
+    known_static_checks: Sequence[str] | None = None,
+    known_type_checks: Sequence[str] | None = None,
+    known_proof_obligations: Sequence[str] | None = None,
+    static_check_targets: Mapping[str, Sequence[str]] | None = None,
+    type_check_targets: Mapping[str, Sequence[str]] | None = None,
+    proof_obligation_dependencies: Mapping[str, Sequence[str]] | None = None,
+    proof_obligations: Sequence[Any] = (),
+    prover_router: MultiProverRouter | None = None,
+    context_pack: Any = None,
+    routing_hints: Mapping[str, Any] | None = None,
+    ast_route: Any = None,
+) -> SelectedTestProverRoute:
+    """Route selected tests and prover portfolios through existing subsystems.
+
+    Selection always goes through ``select_affected_verification``.  Selected
+    proof obligations are planned through ``route_obligation`` / 
+    ``MultiProverRouter`` only — never executed.  The result projects into
+    existing ``ModelRouteFacts`` for the DOEP-070 model-route ladder.
+    """
+
+    try:
+        selection = select_affected_verification(
+            changed_symbols=changed_symbols,
+            changed_paths=changed_paths,
+            edges=edges,
+            uncovered_symbols=uncovered_symbols,
+            uncovered_paths=uncovered_paths,
+            truncated=truncated,
+            requires_broader_selection=requires_broader_selection,
+            invalidation_plan=invalidation_plan,
+            semantic_capsule=semantic_capsule,
+            validation_selection=validation_selection,
+            catalog=catalog,
+            policy=policy,
+            known_tests=known_tests,
+            known_static_checks=known_static_checks,
+            known_type_checks=known_type_checks,
+            known_proof_obligations=known_proof_obligations,
+            static_check_targets=static_check_targets,
+            type_check_targets=type_check_targets,
+            proof_obligation_dependencies=proof_obligation_dependencies,
+        )
+    except SelectionError as exc:
+        raise TaskProposalRouterError(
+            f"selected-test routing rejected malformed selection input: {exc}",
+            reason_code="selection_input_rejected",
+        ) from exc
+
+    reasons: list[str] = [
+        "canonical_verification_selection",
+        "multi_prover_portfolio_plan",
+    ]
+    if selection.fallback_mode is FallbackMode.EXACT:
+        reasons.append("exact_selected_tests")
+    elif selection.fallback_mode is FallbackMode.BROADER:
+        reasons.append("broader_selected_tests")
+    else:
+        reasons.append("full_suite_selected_tests")
+    if selection.full_suite_required:
+        reasons.append("full_suite_required")
+    if selection.broader_selection_required and not selection.full_suite_required:
+        reasons.append("broader_selection_required")
+    if not selection.selected_tests and not selection.affected_proof_obligation_cids:
+        reasons.append("verified_empty_selection")
+
+    supplied = tuple(_coerce_property_obligation(item) for item in (proof_obligations or ()))
+    by_key: dict[str, PropertyObligation] = {}
+    for obligation in supplied:
+        for key in _obligation_identity_keys(obligation):
+            existing = by_key.get(key)
+            if existing is not None and existing is not obligation:
+                raise TaskProposalRouterError(
+                    f"duplicate proof obligation identity {key!r}",
+                    reason_code="duplicate_proof_obligation",
+                )
+            by_key[key] = obligation
+
+    selected_proof_ids = selection.affected_proof_obligation_cids
+    missing = tuple(item for item in selected_proof_ids if item not in by_key)
+    if missing:
+        raise TaskProposalRouterError(
+            "selected proof obligation identities lack supplied obligation bodies: "
+            + ", ".join(missing),
+            reason_code="missing_proof_obligation_body",
+        )
+
+    active_router = prover_router or MultiProverRouter()
+    portfolio_plans: list[PortfolioPlan] = []
+    for proof_id in selected_proof_ids:
+        obligation = by_key[proof_id]
+        try:
+            plan = route_obligation(obligation, router=active_router)
+        except Exception as exc:
+            raise TaskProposalRouterError(
+                f"prover routing failed for obligation {proof_id!r}: {exc}",
+                reason_code="prover_routing_failed",
+            ) from exc
+        if not isinstance(plan, PortfolioPlan):
+            raise TaskProposalRouterError(
+                "route_obligation must return PortfolioPlan",
+                reason_code="invalid_portfolio_plan",
+            )
+        portfolio_plans.append(plan)
+    if selected_proof_ids:
+        reasons.append("selected_proof_portfolios_planned")
+    else:
+        reasons.append("verified_empty_proof_selection")
+
+    # Prefer AST-route facts when provided; otherwise build from context/hints.
+    base_context: Any = context_pack
+    if base_context is None and ast_route is not None:
+        facts = getattr(ast_route, "model_route_facts", None)
+        if isinstance(facts, ModelRouteFacts):
+            base_context = facts
+        elif isinstance(ast_route, ModelRouteFacts):
+            base_context = ast_route
+
+    cone_size = max(
+        len(selection.dependency_cone_paths),
+        len(selection.dependency_cone_symbols),
+        len(selection.selected_tests),
+    )
+    changed_count = max(
+        len(tuple(changed_symbols or ())),
+        len(tuple(changed_paths or ())),
+        1 if (changed_symbols or changed_paths) else 0,
+    )
+
+    if selection.full_suite_required or selection.fallback_mode is FallbackMode.FULL_SUITE:
+        analysis_kind = AnalysisKind.BROAD
+    elif selection.broader_selection_required or selection.fallback_mode is FallbackMode.BROADER:
+        analysis_kind = AnalysisKind.AMBIGUOUS
+    elif selection.critical_uncertain_edges or selection.conflicting_edge_ids:
+        analysis_kind = AnalysisKind.OPAQUE
+    elif cone_size > 8 or len(selection.selected_tests) > 4:
+        analysis_kind = AnalysisKind.MULTI_FILE_SYNTHESIS
+    elif selection.selected_tests or selection.affected_proof_obligation_cids:
+        analysis_kind = AnalysisKind.LOCALIZED_EXACT
+    else:
+        analysis_kind = AnalysisKind.LOCALIZED_CONSERVATIVE
+
+    plan_map: dict[str, Any] = {
+        "full_suite_required": selection.full_suite_required,
+        "full_suite_pending": bool(selection.full_suite_required),
+        "unresolved_obligation_count": len(selected_proof_ids),
+        "dependency_cone_size": cone_size,
+        "changed_file_count": changed_count,
+        "affected_tests": list(selection.affected_tests),
+        "fallback_tests": list(selection.fallback_tests),
+        "affected_proof_obligation_cids": list(selected_proof_ids),
+        "analysis_kind": analysis_kind.value,
+    }
+    if selection.full_suite_required:
+        plan_map["plan_human_review_required"] = True
+        plan_map["plan_human_review_reason_codes"] = tuple(
+            selection.full_suite_reason_codes or selection.fallback_reason_codes or ("full_suite_required",)
+        )
+
+    hints = dict(routing_hints or {})
+    if "analysis_kind" not in hints:
+        hints["analysis_kind"] = analysis_kind.value
+    if "changed_file_count" not in hints and changed_count:
+        hints["changed_file_count"] = changed_count
+    if "dependency_cone_size" not in hints:
+        hints["dependency_cone_size"] = cone_size
+    if "context_token_estimate" not in hints and not isinstance(base_context, ModelRouteFacts):
+        # Compact estimate from selection identity only; no source bodies.
+        encoded = len(
+            json.dumps(selection.to_dict(), sort_keys=True, separators=(",", ":"), allow_nan=False).encode(
+                "utf-8"
+            )
+        )
+        hints["context_token_estimate"] = max(1, math.ceil(encoded / 4))
+
+    try:
+        facts = derive_model_route_facts(
+            base_context if base_context is not None else {"analysis_kind": analysis_kind.value},
+            plan_map,
+            routing_hints=hints,
+        )
+    except Exception as exc:
+        raise TaskProposalRouterError(
+            f"selected-test/prover routing could not derive model-route facts: {exc}",
+            reason_code="model_route_facts_rejected",
+        ) from exc
+
+    return SelectedTestProverRoute(
+        selection=selection,
+        portfolio_plans=tuple(portfolio_plans),
+        model_route_facts=facts,
+        reasons=tuple(reasons),
     )
