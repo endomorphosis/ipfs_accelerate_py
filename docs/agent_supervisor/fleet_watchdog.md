@@ -330,3 +330,17 @@ restoration alone cannot establish lasting qualification.
 The semantic-preserving remodularization owner can persist and re-read its
 [kit source-forest CAS component](kit_source_forest.md) through the existing
 native authority. This component does not settle semantic acceptance or goals.
+
+A native preflight that performs many intent reads can use
+`with source.intent.read_session():` to reuse a standalone client connection
+for the bounded observation. Nested sessions share that scope in the calling
+thread and reject repository mutations before SQL. The outer scope closes its
+adapter on success or interruption. Existing pooled Quack clients retain their
+per-read liveness checks and repository-owned close; injected owner connections
+retain their existing lock and connection ownership. Revoked discovered Quack
+sessions fail closed without silently switching transports.
+
+The read session controls resource lifetime only. It does not begin a read
+transaction, freeze task heads, grant authority, or replace native source/owner
+admission. The caller must retain the final snapshot comparison and retry only
+the typed observation drift that the native restart-check contract permits.

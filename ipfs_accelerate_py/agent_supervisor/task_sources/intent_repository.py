@@ -3476,6 +3476,7 @@ class IntentRepository:
         )
         self._open = False
         self._closed = False
+        self._read_session_state = threading.local()
         self._quack_connection: Any | None = None
         if self._quack_transport:
             # Schema is owned by the Quack state-owner / trusted materializer.
@@ -3556,8 +3557,50 @@ class IntentRepository:
             raise IntentRepositoryNotOpenError("intent repository is not open")
 
     @contextmanager
+    def read_session(self) -> Iterator[IntentRepository]:
+        """Reuse read resources for a bounded, thread-local observation.
+
+        Standalone clients retain one adapter until the outer session exits.
+        Existing Quack pools and injected owner connections keep their own
+        lifecycle, locks and per-read liveness checks. Nested sessions borrow
+        the outer scope. Repository writes in the session thread are refused.
+
+        This is resource lifetime only, not a transaction, frozen snapshot or
+        authority grant. Callers retain native admission and final drift checks.
+        """
+        self._require_open()
+        if getattr(self._read_session_state, "active", False):
+            yield self
+            return
+        connection = None
+        try:
+            if self._bound_connection is None and not self._quack_transport:
+                connection = open_duckdb_connection(self._open_target)
+                self._require_open()
+            self._read_session_state.connection = connection
+            self._read_session_state.active = True
+            yield self
+        finally:
+            # Clear before close so a failed close cannot retain a stale scope.
+            self._read_session_state.active = False
+            self._read_session_state.connection = None
+            if connection is not None:
+                connection.close()
+
+    @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[Any]:
         self._require_open()
+        if write and getattr(self._read_session_state, "active", False):
+            raise IntentRepositoryError("writes are forbidden inside a read session")
+        session_connection = getattr(self._read_session_state, "connection", None)
+        if session_connection is not None:
+            if (
+                getattr(session_connection, "_transport_mode", "") == "quack"
+                or getattr(session_connection, "_quack_uri", "")
+            ) and not quack_session_is_live(session_connection):
+                raise DuckDBConnectionPolicyError("read session Quack connection is no longer live")
+            yield session_connection
+            return
         if self._bound_connection is not None:
             # The exclusive state owner retains connection lifecycle authority.
             # Repository calls serialize on that connection and own only their
