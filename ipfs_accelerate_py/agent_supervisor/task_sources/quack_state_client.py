@@ -3628,7 +3628,7 @@ class QuackStateClient:
             )
         terminal_reason = prior.get("reason")
         if (
-            prior.get("operation") != TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION
+            prior.get("operation") not in {TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION, "database_portal_typed_deferral_budget_exhausted"}
             or type(terminal_reason) is not str
             or not terminal_reason.strip()
             or terminal_reason != terminal_reason.strip()
@@ -3638,6 +3638,13 @@ class QuackStateClient:
             or prior.get("control_expected_revision") != expected_task_revision - 1
         ):
             raise QuackClientError("blocked retry recovery terminal lineage is invalid")
+        if prior.get("operation") == "database_portal_typed_deferral_budget_exhausted" and (
+            require_fresh_portal_revalidation is not True
+            or prior.get("attempt_consumed") is not False
+            or prior.get("typed_deferral_slot_consumed") is not True
+            or prior.get("reason") != "typed_portal_deferral_budget_exhausted"
+        ):
+            raise QuackClientError("typed deferral operator recovery requires an unconsumed attempt and fresh validation")
         normalized_references: dict[str, str] = {}
         for name, value in {
             "operator_handoff_receipt_id": operator_handoff_receipt_id,

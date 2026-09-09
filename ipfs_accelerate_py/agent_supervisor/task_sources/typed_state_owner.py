@@ -5509,7 +5509,7 @@ def _validated_blocked_retry_recovery_parameters(
         or parameters.get("expected_task_status") != "blocked"
         or parameters.get("status") != "retrying"
         or parameters.get("terminal_operation")
-        != TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION
+        not in {TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION, "database_portal_typed_deferral_budget_exhausted"}
         or parameters.get("delay_ms") != 0
         or parameters.get("selection_penalty") != 0
         or parameters.get("reason") != TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON
@@ -5517,6 +5517,11 @@ def _validated_blocked_retry_recovery_parameters(
         raise TypedStateOwnerAuthorizationError(
             "blocked retry recovery is outside its closed transition"
         )
+    if parameters.get("terminal_operation") == "database_portal_typed_deferral_budget_exhausted" and (
+        parameters.get("require_fresh_portal_revalidation") is not True
+        or parameters.get("terminal_reason") != "typed_portal_deferral_budget_exhausted"
+    ):
+        raise TypedStateOwnerAuthorizationError("typed deferral operator recovery requires fresh validation")
     prior_json = parameters.get("expected_released_cooldown_json")
     prior_queue = None
     if prior_json is not None:
@@ -9897,7 +9902,7 @@ class TypedStateOwnerGateway:
             )
             if (
                 prior_receipt.get("operation")
-                != TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION
+                != recovery["terminal_operation"]
                 or prior_receipt.get("reason") != recovery["terminal_reason"]
                 or prior_receipt.get("retryable") is not False
                 or any(
@@ -9928,6 +9933,16 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "blocked retry recovery differs from terminal authority"
                 )
+            if prior_receipt.get("operation") == "database_portal_typed_deferral_budget_exhausted":
+                budget = prior_receipt.get("retry_budget")
+                if (
+                    prior_receipt.get("attempt_consumed") is not False
+                    or prior_receipt.get("typed_deferral_slot_consumed") is not True
+                    or not isinstance(budget, Mapping)
+                    or budget.get("exhausted") is not True
+                    or budget.get("task_cid") != values["task_cid"]
+                ):
+                    raise TypedStateOwnerAuthorizationError("typed deferral recovery has no exact unconsumed budget")
             queue_rows = self._connection.execute(
                 "SELECT "
                 + ", ".join(_RETRY_COOLDOWN_ROW_FIELDS)

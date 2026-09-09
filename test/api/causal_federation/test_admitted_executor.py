@@ -9145,7 +9145,7 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
 
 
 @pytest.mark.parametrize(
-    "tamper", ["", "active", "foreign", "stale", "altered_receipt", "newer_attempt"]
+    "tamper", ["", "active", "foreign", "stale", "altered_receipt", "newer_attempt", "typed_budget"]
 )
 def test_operator_blocked_retry_replaces_only_exact_older_released_cooldown(
     tmp_path: Path,
@@ -9240,6 +9240,8 @@ def test_operator_blocked_retry_replaces_only_exact_older_released_cooldown(
         "execution_route_policy_id": route["policy_id"],
         "execution_route_origin_revision": route["task_revision"],
     }
+    if tamper == "typed_budget":
+        terminal.update(operation="database_portal_typed_deferral_budget_exhausted", reason="typed_portal_deferral_budget_exhausted", attempt_consumed=False, typed_deferral_slot_consumed=True, retry_budget={"exhausted": True, "task_cid": task_cid})
     assert source.compare_and_set_status(
         admitted,
         3,
@@ -9415,7 +9417,7 @@ def test_operator_blocked_retry_replaces_only_exact_older_released_cooldown(
     )
     try:
         before = client.load_generation()
-        if tamper:
+        if tamper and tamper != "typed_budget":
             with pytest.raises(
                 (QuackClientError, TypedStateOwnerAuthorizationError, TransactionError)
             ):
