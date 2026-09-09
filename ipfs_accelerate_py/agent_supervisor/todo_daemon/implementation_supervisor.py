@@ -202,7 +202,6 @@ DATABASE_IDLE_DAEMON_STALL_REASON = "ready_work_idle_daemon_stall"
 DATABASE_BLOCKED_PORTAL_FRONTIER_REASON = (
     "idle_blocked_recoverable_portal_frontier"
 )
-DATABASE_STALE_ACTIVE_CLAIM_REASON = "stale_active_claim_prior_child_heartbeat"
 DATABASE_AUTHORITY_WATCHDOG_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-authority-watchdog@1"
 )
@@ -7429,66 +7428,6 @@ class PortalImplementationSupervisor:
                 except Exception:
                     pass
 
-    def _requeue_stale_active_database_claims(self) -> dict[str, Any]:
-        """Expire prior-child running attempts so a later daemon can retry."""
-
-        program = self.config.database_program
-        if program is None or str(getattr(program, "authority_mode", "") or "") != "quack":
-            return {"attempted": False, "reason": "quack_authority_required"}
-        endpoint = str(getattr(program, "quack_endpoint", "") or "").strip()
-        if not endpoint:
-            return {"attempted": False, "reason": "quack_endpoint_absent"}
-        from .implementation_daemon import DatabaseImplementationDaemon
-
-        store_id = str(getattr(program, "store_id", "") or "control.duckdb")
-        daemon = None
-        try:
-            daemon = DatabaseImplementationDaemon(
-                database_path=store_id,
-                state_dir=self.config.state_dir,
-                state_prefix=self.config.state_prefix,
-                owner_session_id=(
-                    "supervisor-stale-active-requeue:"
-                    f"{self.board_namespace}:{self.config.task_shard_index}"
-                ),
-                authority_mode="quack",
-                task_source_kind="duckdb",
-                quack_uri=endpoint,
-                task_prefix=self.config.task_prefix,
-                task_shard_count=int(self.config.task_shard_count),
-                task_shard_index=int(self.config.task_shard_index),
-                strict_task_sharding=bool(self.config.strict_task_sharding),
-                markdown_path=None,
-                install_schema=False,
-            )
-            daemon.open()
-            expired = daemon.reconcile_expired_running_attempts()
-            return {
-                "attempted": True,
-                "reason": DATABASE_STALE_ACTIVE_CLAIM_REASON,
-                "expired_count": len(expired),
-                "expired_task_ids": [
-                    str(item.get("task_cid") or "") for item in expired
-                ],
-            }
-        except Exception as exc:
-            logger.warning(
-                "Stale active claim requeue failed closed: %s",
-                type(exc).__name__,
-            )
-            return {
-                "attempted": True,
-                "reason": "stale_active_claim_requeue_failed",
-                "error_type": type(exc).__name__,
-                "expired_count": 0,
-            }
-        finally:
-            if daemon is not None:
-                try:
-                    daemon.close()
-                except Exception:
-                    pass
-
     def _authoritative_runnable_work_status(self) -> dict[str, Any]:
         """Read canonical ready/active work through the configured DB authority.
 
@@ -7518,7 +7457,7 @@ class PortalImplementationSupervisor:
             now_monotonic < float(self._readiness_probe_backoff_until or 0.0)
             and isinstance(self._readiness_probe_backoff_result, dict)
         ):
-            return dict(self._readiness_probe_backoff_result)
+            return {**self._readiness_probe_backoff_result, "cached_retryable_backoff": True}
 
         try:
             from ..task_sources.database_task_source import (
@@ -7563,47 +7502,17 @@ class PortalImplementationSupervisor:
                 ),
                 install_schema=False,
             ) as source:
-                ready_page = source.ready_tasks(limit=MAX_QUERY_LIMIT)
-                active_page = source.list_tasks(
-                    status=("claimed", "in_progress", "running"),
-                    limit=MAX_QUERY_LIMIT,
+                from ..task_sources.readiness_observation import observe_readiness
+
+                observation = observe_readiness(
+                    source,
+                    in_scope=self._database_task_in_scope,
+                    blocked_recoverable=self._blocked_task_is_recoverable_portal_frontier,
+                    include_blocked=self._is_board_maintenance_leader(),
                 )
-                if ready_page.next_cursor or active_page.next_cursor:
-                    raise RuntimeError(
-                        "authoritative readiness projection is truncated"
-                    )
-                ready = [
-                    task
-                    for task in ready_page.tasks
-                    if self._database_task_in_scope(task)
-                ]
-                active = [
-                    task
-                    for task in active_page.tasks
-                    if self._database_task_in_scope(task)
-                ]
-                blocked_recoverable: list[Any] = []
-                blocked_revision = 0
-                if self._is_board_maintenance_leader():
-                    try:
-                        blocked_page = source.list_tasks(
-                            status=("blocked",),
-                            limit=MAX_QUERY_LIMIT,
-                        )
-                        if not blocked_page.next_cursor:
-                            blocked_recoverable = [
-                                task
-                                for task in blocked_page.tasks
-                                if self._database_task_in_scope(task)
-                                and self._blocked_task_is_recoverable_portal_frontier(
-                                    task,
-                                    source,
-                                )
-                            ]
-                            blocked_revision = int(blocked_page.revision)
-                    except Exception:
-                        blocked_recoverable = []
-                        blocked_revision = 0
+                ready = observation.ready
+                active = observation.active
+                blocked_recoverable = observation.blocked_recoverable
 
             def task_id(task: Any) -> str:
                 return str(
@@ -7622,11 +7531,7 @@ class PortalImplementationSupervisor:
                 **base,
                 "available": True,
                 "reason": "authoritative_readiness_observed",
-                "task_source_revision": max(
-                    int(ready_page.revision),
-                    int(active_page.revision),
-                    int(blocked_revision),
-                ),
+                "task_source_revision": observation.revision,
                 "ready_task_ids": ready_ids,
                 "same_shard_ready_task_ids": [
                     task_id(task)
@@ -7668,7 +7573,6 @@ class PortalImplementationSupervisor:
                 self._readiness_probe_backoff_until = (
                     time.monotonic() + delay
                 )
-                result["cached_retryable_backoff"] = True
                 self._readiness_probe_backoff_result = dict(result)
             return result
 
@@ -8042,15 +7946,10 @@ class PortalImplementationSupervisor:
         if expected_birth is None:
             return {**base, "reason": "child_process_birth_unavailable"}
         if not self._process_birth_matches(observed_birth, expected_birth):
-            prior_active = str(payload.get("active_task_id") or "").strip()
             return {
                 **base,
                 "reason": "heartbeat_belongs_to_prior_child",
-                "stale": True if prior_active else bool(
-                    child_age is not None and child_age > threshold
-                ),
-                "active_task_id": prior_active,
-                "available": True,
+                "stale": bool(child_age is not None and child_age > threshold),
             }
         completed_at = parse_timestamp(str(payload.get("completed_at") or ""))
         if completed_at is None:
@@ -10978,56 +10877,6 @@ class PortalImplementationSupervisor:
             status_extra_fields=dict(proof_rollout_status_fields),
         )
 
-    def _recycle_if_stale_active_claim(
-        self,
-        loop: SupervisorLoop,
-        child: Any,
-        *,
-        now_ts: float,
-        same_shard_active_task_ids: Sequence[str] | None = None,
-        task_source_revision: int = 0,
-    ) -> SupervisorLoopDecision | None:
-        """Expire a prior-child in-progress claim and recycle the idle daemon."""
-
-        heartbeat = self._database_pass_heartbeat_status(
-            child,
-            now_ts=now_ts,
-        )
-        prior_child = (
-            heartbeat.get("reason") == "heartbeat_belongs_to_prior_child"
-        )
-        stale_active = bool(
-            heartbeat.get("stale") is True
-            and str(heartbeat.get("active_task_id") or "").strip()
-        )
-        if not (prior_child or stale_active):
-            return None
-        live_workers = self._active_agent_worker_processes()
-        requeue = self._requeue_stale_active_database_claims()
-        detail = {
-            "same_shard_active_task_ids": list(
-                same_shard_active_task_ids or ()
-            ),
-            "database_daemon_pass_heartbeat": dict(heartbeat),
-            "stale_active_claim_requeue": requeue,
-            "task_source_revision": int(task_source_revision or 0),
-            "live_implementation_worker_count": len(live_workers),
-        }
-        self._set_loop_status_fields(loop, detail)
-        self._record_event(
-            "stale_active_claim_prior_child_detected",
-            detail,
-        )
-        if live_workers:
-            # Pass heartbeat is written only after run_once completes. A
-            # live grok/codex child is the current attempt, not a hung
-            # prior-child pin; expire stale leases but do not recycle it.
-            return None
-        return SupervisorLoopDecision.recycle(
-            DATABASE_STALE_ACTIVE_CLAIM_REASON,
-            detail=detail,
-        )
-
     def _supervisor_loop_watchdog_decision(
         self,
         _loop: SupervisorLoop,
@@ -11100,13 +10949,6 @@ class PortalImplementationSupervisor:
                         str(readiness.get("error_type") or "")
                         in RETRYABLE_READINESS_ERROR_TYPES
                     ):
-                        recycle = self._recycle_if_stale_active_claim(
-                            _loop,
-                            _child,
-                            now_ts=now_ts,
-                        )
-                        if recycle is not None:
-                            return recycle
                         return SupervisorLoopDecision.keep_running()
                     guard = self._database_authority_terminal_guard(
                         state=state,
@@ -11140,13 +10982,6 @@ class PortalImplementationSupervisor:
                             DATABASE_AUTHORITY_UNAVAILABLE_REASON,
                             status=SHARED_AUTHORITY_TERMINAL_STATUS,
                         )
-                recycle = self._recycle_if_stale_active_claim(
-                    _loop,
-                    _child,
-                    now_ts=now_ts,
-                )
-                if recycle is not None:
-                    return recycle
                 return SupervisorLoopDecision.keep_running()
 
         # Shared database authority is probed before a source-reload deferral:
@@ -11237,22 +11072,9 @@ class PortalImplementationSupervisor:
                 # Ready work anywhere on this board outranks nonessential
                 # generated-board maintenance. Its home lane owns dispatch.
                 return SupervisorLoopDecision.keep_running()
-            same_shard_active_task_ids = list(
-                readiness.get("same_shard_active_task_ids") or ()
-            )
-            if same_shard_active_task_ids:
-                recycle = self._recycle_if_stale_active_claim(
-                    _loop,
-                    _child,
-                    now_ts=now_ts,
-                    same_shard_active_task_ids=same_shard_active_task_ids,
-                    task_source_revision=int(
-                        readiness.get("task_source_revision") or 0
-                    ),
-                )
-                if recycle is not None:
-                    return recycle
-                return SupervisorLoopDecision.keep_running()
+            # Canonical active work belongs to the native daemon's exact
+            # owner/fence reconciliation. A prior-child heartbeat cannot
+            # expire that claim or authorize recycling its current successor.
             if readiness.get("active_task_ids"):
                 return SupervisorLoopDecision.keep_running()
             blocked_recoverable_task_ids = list(

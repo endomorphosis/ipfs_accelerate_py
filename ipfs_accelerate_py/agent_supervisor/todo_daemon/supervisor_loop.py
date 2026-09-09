@@ -276,53 +276,6 @@ class SupervisorLoop:
         )
         self._persist_supervisor_pid_file()
 
-    def _clear_dead_child_pass_heartbeat(self) -> None:
-        """Drop leftover pass-heartbeat claims after a typed fail-closed child."""
-
-        directory = Path(self.config.spec.daemon_dir)
-        try:
-            paths = list(directory.glob("*_database_daemon_pass_heartbeat.json"))
-        except OSError:
-            return
-        for path in paths:
-            if path.is_symlink() or not path.is_file():
-                continue
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            if not isinstance(payload, dict):
-                continue
-            if not str(payload.get("active_task_id") or "").strip():
-                continue
-            birth = payload.get("process_birth")
-            pid = 0
-            if isinstance(birth, Mapping):
-                try:
-                    pid = int(birth.get("pid") or 0)
-                except (TypeError, ValueError):
-                    pid = 0
-            if pid > 1 and pid_alive(pid):
-                continue
-            payload["active_task_id"] = ""
-            payload["claimed_task_cid"] = ""
-            if not str(payload.get("selection_idle_reason") or "").strip():
-                payload["selection_idle_reason"] = TYPED_FAIL_CLOSED_RECYCLE_REASON
-            temporary = path.with_name(
-                f".{path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp"
-            )
-            try:
-                temporary.write_text(
-                    json.dumps(payload, indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8",
-                )
-                os.replace(temporary, path)
-            except OSError:
-                try:
-                    temporary.unlink()
-                except FileNotFoundError:
-                    pass
-
     def _safe_write_status(
         self,
         status: str,
@@ -721,7 +674,6 @@ class SupervisorLoop:
             and final_status == TYPED_CHILD_BLOCKER_STATUS
         ):
             extra = {"exact_source_worktree": True}
-            self._clear_dead_child_pass_heartbeat()
         self._safe_write_status(
             final_status,
             child=None,

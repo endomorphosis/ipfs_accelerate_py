@@ -2316,6 +2316,61 @@ def test_recoverable_accepted_source_portal_failure_auto_rearms_blocked_task(
         daemon.close()
 
 
+@pytest.mark.parametrize("reason", [
+    "cross_attempt_lifecycle_worktree_process_active",
+    "cross_attempt_lifecycle_process_inventory_unavailable",
+    "cross_attempt_lifecycle_absent_database_effect_admitted",
+    "new_native_deferred_reason",
+])
+def test_unknown_portal_deferral_preserves_exact_running_claim(
+    tmp_path: Path, reason: str,
+) -> None:
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(reason)
+
+    daemon = _open_daemon(
+        tmp_path, session="session:deferred-claim", provider_fn=provider,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+        assert result["implementation_result"]["deferred"] is True
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt is not None and attempt.status == "running"
+        assert daemon.task_source.get(attempt.task_cid).status == "in_progress"
+        claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None and str(getattr(claim.state, "value", claim.state)) == "accepted"
+        assert not daemon.reconcile_recoverable_portal_failure_rearms()
+    finally:
+        daemon.close()
+
+
+def test_protected_path_failure_with_provider_evidence_does_not_auto_rearm(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+    daemon = _open_daemon(tmp_path, provider_calls=calls)
+
+    def deferred_effect(attempt: DatabaseTaskAttempt, result: dict[str, object]) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred("implementation_protected_path_mutated")
+
+    daemon._effect_fn = deferred_effect
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        attempt = daemon.get_attempt(first["attempt_id"])
+        assert attempt is not None
+        counts = daemon._attempt_execution_evidence_counts(attempt.attempt_id)
+        assert counts["provider_invocation_count"] == 1
+        assert counts["effect_claim_count"] == 0
+        assert first["implementation_result"]["status"] == "blocked"
+        assert daemon.reconcile_recoverable_portal_failure_rearms() == []
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        assert len(calls) == 1
+    finally:
+        daemon.close()
+
+
 def test_protected_path_deferral_settles_instead_of_pinning_running_claim(
     tmp_path: Path,
 ) -> None:
