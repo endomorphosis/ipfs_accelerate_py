@@ -67933,6 +67933,9 @@ DATABASE_PORTAL_FAILURE_QUARANTINE_SCHEMA = (
 _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON = (
     "Portal accepted-source transition is not the exact Git merge"
 )
+_LIVE_OWNER_PORTAL_CLAIM_FAILURE_REARM_REASON = (
+    "live_owner_zero_provider_portal_claim_failure"
+)
 _AUTOMATIC_PORTAL_FAILURE_REARM_EVENT = (
     "automatic_recoverable_portal_failure_rearmed"
 )
@@ -70114,24 +70117,50 @@ class DatabaseImplementationDaemon:
             receipt = self._portal_failure_phase_receipt(attempt)
             if receipt is None:
                 continue
-            rearm = getattr(self.coordinator, "rearm_failed_task", None)
-            if not callable(rearm):
-                raise DatabaseImplementationAuthorityError(
-                    "coordinator does not implement exact failed-task rearm"
-                )
+            self._coordination_rearm_portal_failure(task, receipt)
+            return
+        body = getattr(task, "body", None)
+        control_receipt = (
+            body.get("completion_receipt") if isinstance(body, Mapping) else None
+        )
+        if isinstance(control_receipt, Mapping) and (
+            str(control_receipt.get("operation") or "")
+            == "database_task_claim_failure"
+            or str(control_receipt.get("schema") or "")
+            == DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA
+        ):
+            # Historical settlements live on the control task.  A later live
+            # owner must not require the original lane-local execution sidecar.
+            self._coordination_rearm_portal_failure(task, dict(control_receipt))
+            return
+        raise DatabaseImplementationAuthorityError(
+            "failed coordination barrier has no exact local Portal receipt"
+        )
+
+    def _coordination_rearm_portal_failure(
+        self,
+        task: Any,
+        receipt: Mapping[str, Any],
+        *,
+        observation: Mapping[str, Any] | None = None,
+    ) -> None:
+        rearm = getattr(self.coordinator, "rearm_failed_task", None)
+        if not callable(rearm):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator does not implement exact failed-task rearm"
+            )
+        payload = dict(observation) if observation is not None else None
+        if payload is None:
             to_dict = getattr(task, "to_dict", None)
             if not callable(to_dict):
                 raise DatabaseImplementationAuthorityError(
                     "operator requeue exposes no deterministic control projection"
                 )
-            rearm(
-                failure_receipt=receipt,
-                control_task_observation=dict(to_dict()),
-                now_ms=self._now_ms(),
-            )
-            return
-        raise DatabaseImplementationAuthorityError(
-            "failed coordination barrier has no exact local Portal receipt"
+            payload = dict(to_dict())
+        rearm(
+            failure_receipt=dict(receipt),
+            control_task_observation=payload,
+            now_ms=self._now_ms(),
         )
 
     def _portal_failure_matches_recoverable_reason(
@@ -70169,15 +70198,48 @@ class DatabaseImplementationDaemon:
         ).fetchall()
         return bool(rows)
 
-    def reconcile_recoverable_portal_failure_rearms(self) -> list[dict[str, Any]]:
-        """Unblock the accepted-source gitlink-follow-up portal failure class.
+    def _portal_claim_failure_is_live_owner_rearmable(
+        self,
+        receipt: Mapping[str, Any] | None,
+    ) -> bool:
+        """Admit one live-owner rearm of a zero-provider portal claim failure.
 
-        ``terminal_portal_bridge_error`` settlements keep
-        ``automatic_retry_admitted=false``.  The operator rearm path only
-        fires after a blocked→retrying CAS.  For the exact-Git-merge mismatch
-        that parked SAWM-006 after merge-train had already accepted a
-        gitlink-recording follow-up, perform that CAS once per task so the
-        next claim can verify the follow-up topology.
+        Embedded authority keeps the operator CAS gate.  A live Quack owner
+        may rearm a blocked frontier task whose settlement proves the provider
+        never ran, so a later healthy owner is not permanently fenced out.
+        """
+
+        if str(self.authority_mode or "").strip().lower() != "quack":
+            return False
+        if not isinstance(receipt, Mapping):
+            return False
+        try:
+            provider_count = int(receipt.get("provider_invocation_count") or 0)
+            effect_count = int(receipt.get("effect_claim_count") or 0)
+        except (TypeError, ValueError):
+            return False
+        return (
+            str(receipt.get("operation") or "")
+            == "database_task_claim_failure"
+            and str(receipt.get("failure_kind") or "")
+            == "terminal_portal_bridge_error"
+            and receipt.get("automatic_retry_admitted") is False
+            and provider_count == 0
+            and effect_count == 0
+            and str(receipt.get("settlement_id") or "").strip() != ""
+        )
+
+    def reconcile_recoverable_portal_failure_rearms(self) -> list[dict[str, Any]]:
+        """Unblock recoverable ``terminal_portal_bridge_error`` settlements.
+
+        Settlements keep ``automatic_retry_admitted=false``.  The operator
+        rearm path only fires after a blocked→retrying CAS.  Two closed
+        classes may perform that CAS once per task:
+
+        * the exact-Git-merge mismatch that parked a gitlink-recording
+          follow-up after merge-train acceptance;
+        * a live Quack owner seeing a zero-provider claim failure whose
+          settlement lives on the control task (no lane-local sidecar).
         """
 
         list_tasks = getattr(self.task_source, "list_tasks", None)
@@ -70190,6 +70252,8 @@ class DatabaseImplementationDaemon:
         rearmed: list[dict[str, Any]] = []
         for task in page.tasks:
             task_cid = str(task.task_cid)
+            if not self._task_is_in_lane(task, task_cid=task_cid):
+                continue
             if self._automatic_portal_failure_rearm_recorded(task_cid=task_cid):
                 continue
             rows = self._require_connection().execute(
@@ -70198,7 +70262,7 @@ class DatabaseImplementationDaemon:
                 "ORDER BY started_at_ms DESC, attempt_id DESC",
                 [task_cid],
             ).fetchall()
-            matched: tuple[DatabaseTaskAttempt, dict[str, Any]] | None = None
+            matched: tuple[DatabaseTaskAttempt | None, dict[str, Any], str] | None = None
             for row in rows:
                 attempt = self.get_attempt(str(row[0]))
                 if attempt is None:
@@ -70218,15 +70282,31 @@ class DatabaseImplementationDaemon:
                 except Exception:
                     continue
                 if recoverable:
-                    matched = (attempt, receipt)
+                    matched = (
+                        attempt,
+                        receipt,
+                        _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON,
+                    )
                     break
             if matched is None:
+                body = task.body if isinstance(getattr(task, "body", None), Mapping) else {}
+                control_receipt = body.get("completion_receipt")
+                if self._portal_claim_failure_is_live_owner_rearmable(control_receipt):
+                    if str(control_receipt.get("task_cid") or "") != task_cid:
+                        continue
+                    matched = (
+                        None,
+                        dict(control_receipt),
+                        _LIVE_OWNER_PORTAL_CLAIM_FAILURE_REARM_REASON,
+                    )
+            if matched is None:
                 continue
-            attempt, receipt = matched
+            attempt, receipt, reason = matched
             cas_receipt = {
                 "operation": "operator_control_plane_repair",
                 "settlement_id": str(receipt["settlement_id"]),
             }
+            cas_result = None
             try:
                 cas_result = self._cas_task_status_database(
                     task_cid,
@@ -70255,20 +70335,36 @@ class DatabaseImplementationDaemon:
                 or str(updated.status or "").strip().lower() != "retrying"
             ):
                 continue
+            observation = None
+            to_dict = getattr(cas_result, "to_dict", None) if cas_result is not None else None
+            if callable(to_dict):
+                observation = dict(to_dict())
+            try:
+                self._coordination_rearm_portal_failure(
+                    updated,
+                    receipt,
+                    observation=observation,
+                )
+            except Exception:
+                continue
             record = {
                 "task_cid": task_cid,
                 "task_alias": str(getattr(updated, "task_alias", "") or ""),
-                "attempt_id": attempt.attempt_id,
+                "attempt_id": (
+                    attempt.attempt_id
+                    if attempt is not None
+                    else str(receipt.get("attempt_id") or "")
+                ),
                 "settlement_id": str(receipt["settlement_id"]),
                 "from_status": "blocked",
                 "to_status": "retrying",
                 "from_revision": int(task.revision),
                 "to_revision": int(updated.revision),
-                "reason": _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON,
+                "reason": reason,
             }
             self._record_event(
                 _AUTOMATIC_PORTAL_FAILURE_REARM_EVENT,
-                attempt_id=attempt.attempt_id,
+                attempt_id=str(record["attempt_id"] or ""),
                 task_cid=task_cid,
                 body=record,
             )

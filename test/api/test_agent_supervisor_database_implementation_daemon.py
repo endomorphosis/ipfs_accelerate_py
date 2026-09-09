@@ -2315,6 +2315,65 @@ def test_recoverable_accepted_source_portal_failure_auto_rearms_blocked_task(
         daemon.close()
 
 
+def test_live_owner_auto_rearms_zero_provider_portal_claim_failure(
+    tmp_path: Path,
+) -> None:
+    fail = {"enabled": True}
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        if fail["enabled"]:
+            raise DatabasePortalBridgeError("embedded-store claim without live owner")
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-live-owner-rearm",
+        provider_fn=provider,
+        effect_calls=effect_calls,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        first_result = first["implementation_result"]
+        assert first_result["status"] == "blocked"
+        first_attempt = daemon.get_attempt(first["attempt_id"])
+        assert first_attempt is not None
+        blocked = daemon.task_source.get(first_attempt.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+        assert blocked.body["completion_receipt"]["provider_invocation_count"] == 0
+        assert blocked.body["completion_receipt"]["automatic_retry_admitted"] is False
+
+        idle = daemon.run_once()
+        assert idle["selection_idle_reason"] == "no_ready_tasks"
+        assert idle.get("portal_failure_rearms") == []
+
+        daemon.authority_mode = "quack"
+        fail["enabled"] = False
+        second = daemon.run_once()
+        rearms = second.get("portal_failure_rearms") or []
+        assert len(rearms) == 1
+        assert rearms[0]["from_status"] == "blocked"
+        assert rearms[0]["to_status"] == "retrying"
+        assert rearms[0]["reason"] == "live_owner_zero_provider_portal_claim_failure"
+        assert second["implementation_result"]["status"] == "succeeded"
+        second_attempt = daemon.get_attempt(second["attempt_id"])
+        assert second_attempt is not None
+        assert second_attempt.attempt_number == first_attempt.attempt_number + 1
+        assert provider_calls == [
+            first_attempt.attempt_id,
+            second_attempt.attempt_id,
+        ]
+        assert effect_calls == [first_attempt.task_cid]
+        third = daemon.run_once()
+        assert third["selection_idle_reason"] == "no_ready_tasks"
+        assert third.get("portal_failure_rearms") == []
+    finally:
+        daemon.close()
+
+
 def test_terminal_portal_failure_coordination_response_loss_replays_exactly_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
