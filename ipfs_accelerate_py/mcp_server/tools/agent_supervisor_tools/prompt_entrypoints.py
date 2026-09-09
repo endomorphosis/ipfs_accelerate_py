@@ -28,6 +28,18 @@ PROMPT_LIFECYCLE_TOOLS: Final[tuple[str, ...]] = (
     "agent_supervisor_doctor",
 )
 
+# These submission tools intentionally live alongside the established prompt
+# tools.  The manager registers this module for both MCP transports, so adding
+# a second registry or an MCP++-only service would create a competing surface.
+OBJECTIVE_SUBMISSION_MCP_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.objective-submission-mcp@1"
+)
+CANONICAL_MCP_OBJECTIVE_SUBMISSION_ADAPTER: Final = "ObjectiveSubmissionMCPAdapter@1"
+MCP_OBJECTIVE_SUBMISSION_TOOLS: Final[tuple[str, ...]] = (
+    "agent_supervisor_submit_objective",
+    "agent_supervisor_submit_objective_mcpplusplus",
+)
+
 _lock = RLock()
 _injected_supervisor: Any = None
 
@@ -38,6 +50,10 @@ class PromptEntrypointError(RuntimeError):
 
 class PathInjectionDenied(PromptEntrypointError):
     """Client-supplied path is not on the server allowlist."""
+
+
+class ObjectiveSubmissionMCPError(PromptEntrypointError):
+    """Typed failure at the objective-submission MCP boundary."""
 
 
 def configure_prompt_lifecycle_supervisor(supervisor: Any | None) -> None:
@@ -145,6 +161,147 @@ def _result_ok(payload: Mapping[str, Any], *, composition_cid: str | None = None
 
 def _result_err(error: str, *, code: str) -> dict[str, Any]:
     return {"ok": False, "error": error, "error_code": code}
+
+
+def _trusted_admission(admission: Any, *, require_delegation: bool) -> Any:
+    """Accept only a host-produced DOEP-016 admission record.
+
+    Raw principal, policy, UCAN, and delegation values are deliberately not
+    accepted here.  The transport must authenticate them and invoke the
+    canonical authority resolver before reaching this thin adapter.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.authority_resolver import (
+        AuthorityAdmission,
+    )
+
+    if not isinstance(admission, AuthorityAdmission):
+        raise ObjectiveSubmissionMCPError(
+            "objective submission requires trusted AuthorityAdmission"
+        )
+    if not admission.authorized:
+        raise ObjectiveSubmissionMCPError("objective submission authority denied")
+    if require_delegation and admission.delegation is None:
+        raise ObjectiveSubmissionMCPError(
+            "MCP++ objective submission requires verified delegation"
+        )
+    return admission
+
+
+def _receipt_payload(receipt: Any) -> dict[str, Any]:
+    if hasattr(receipt, "to_dict"):
+        receipt = receipt.to_dict()
+    if not isinstance(receipt, Mapping):
+        raise ObjectiveSubmissionMCPError(
+            "canonical objective submission returned an unreadable receipt"
+        )
+    return dict(receipt)
+
+
+def _submit_objective_adapter(
+    intent: Any,
+    *,
+    admission: Any,
+    require_delegation: bool,
+    submit_objective: Any | None = None,
+) -> dict[str, Any]:
+    """Delegate objective submission to DOEP-012 after DOEP-016 admission."""
+
+    _trusted_admission(admission, require_delegation=require_delegation)
+    if submit_objective is None:
+        from ipfs_accelerate_py.agent_supervisor.entrypoints.intent_service import (
+            submit_objective as _submit_objective,
+        )
+
+        submit_objective = _submit_objective
+    return _receipt_payload(submit_objective(intent))
+
+
+def submit_objective_mcp(
+    intent: Any,
+    *,
+    admission: Any,
+    submit_objective: Any | None = None,
+) -> dict[str, Any]:
+    """Authenticated MCP adapter over the canonical objective service."""
+
+    return _submit_objective_adapter(
+        intent,
+        admission=admission,
+        require_delegation=False,
+        submit_objective=submit_objective,
+    )
+
+
+def submit_objective_mcpplusplus(
+    intent: Any,
+    *,
+    admission: Any,
+    submit_objective: Any | None = None,
+) -> dict[str, Any]:
+    """Authenticated and delegated MCP++ adapter over the same service."""
+
+    return _submit_objective_adapter(
+        intent,
+        admission=admission,
+        require_delegation=True,
+        submit_objective=submit_objective,
+    )
+
+
+async def agent_supervisor_submit_objective(
+    intent: Any,
+    *,
+    authority_admission: Any = None,
+    **_ignored: Any,
+) -> dict[str, Any]:
+    """Submit a datasets-owned objective intent through authenticated MCP."""
+
+    try:
+        return _result_ok(
+            submit_objective_mcp(intent, admission=authority_admission),
+        )
+    except Exception as exc:
+        return _result_err(str(exc), code=type(exc).__name__)
+
+
+async def agent_supervisor_submit_objective_mcpplusplus(
+    intent: Any,
+    *,
+    authority_admission: Any = None,
+    **_ignored: Any,
+) -> dict[str, Any]:
+    """Submit a datasets-owned objective intent through delegated MCP++."""
+
+    try:
+        return _result_ok(
+            submit_objective_mcpplusplus(intent, admission=authority_admission),
+        )
+    except Exception as exc:
+        return _result_err(str(exc), code=type(exc).__name__)
+
+
+def objective_submission_mcp_discovery_manifest() -> dict[str, Any]:
+    """Static description of the two transport adapters; no service is opened."""
+
+    return {
+        "schema": OBJECTIVE_SUBMISSION_MCP_SCHEMA,
+        "adapter": CANONICAL_MCP_OBJECTIVE_SUBMISSION_ADAPTER,
+        "tools": list(MCP_OBJECTIVE_SUBMISSION_TOOLS),
+        "submission_delegate": (
+            "ipfs_accelerate_py.agent_supervisor.entrypoints.intent_service"
+            ".submit_objective"
+        ),
+        "authority_delegate": (
+            "ipfs_accelerate_py.agent_supervisor.entrypoints.authority_resolver"
+            ".admit_authority"
+        ),
+        "mcp_requires_authenticated_admission": True,
+        "mcpplusplus_requires_verified_delegation": True,
+        "callers_supply_authoritative_policy": False,
+        "completion_authority": False,
+        "cold_registration": True,
+    }
 
 
 async def agent_supervisor_run(
@@ -288,6 +445,10 @@ _TOOL_FUNCS: Final[Mapping[str, Any]] = {
     "agent_supervisor_follow": agent_supervisor_follow,
     "agent_supervisor_explain": agent_supervisor_explain,
     "agent_supervisor_doctor": agent_supervisor_doctor,
+    "agent_supervisor_submit_objective": agent_supervisor_submit_objective,
+    "agent_supervisor_submit_objective_mcpplusplus": (
+        agent_supervisor_submit_objective_mcpplusplus
+    ),
 }
 
 _TOOL_SCHEMAS: Final[Mapping[str, dict[str, Any]]] = {
@@ -307,20 +468,39 @@ _TOOL_SCHEMAS: Final[Mapping[str, dict[str, Any]]] = {
     "agent_supervisor_follow": _prompt_schema(require_prompt=False),
     "agent_supervisor_explain": _prompt_schema(require_prompt=False),
     "agent_supervisor_doctor": _prompt_schema(require_prompt=False),
+    # AuthorityAdmission is transport-owned context and intentionally absent
+    # from this public schema: clients cannot forge an authority decision.
+    "agent_supervisor_submit_objective": {
+        "type": "object",
+        "properties": {"intent": {"type": "object"}},
+        "required": ["intent"],
+        "additionalProperties": False,
+    },
+    "agent_supervisor_submit_objective_mcpplusplus": {
+        "type": "object",
+        "properties": {"intent": {"type": "object"}},
+        "required": ["intent"],
+        "additionalProperties": False,
+    },
 }
 
 
 def register_prompt_lifecycle_tools(manager: Any) -> None:
     """Register prompt-lifecycle tools without resolving a Supervisor."""
 
-    for name in PROMPT_LIFECYCLE_TOOLS:
+    for name in (*PROMPT_LIFECYCLE_TOOLS, *MCP_OBJECTIVE_SUBMISSION_TOOLS):
         manager.register_tool(
             category=PROMPT_LIFECYCLE_CATEGORY,
             name=name,
             func=_TOOL_FUNCS[name],
             description=(
-                f"Prompt-first supervisor {name.removeprefix(PROMPT_LIFECYCLE_TOOL_PREFIX)} "
-                "via the shared production facade (ASE3-011)."
+                (
+                    f"Objective submission {name.removeprefix(PROMPT_LIFECYCLE_TOOL_PREFIX)} "
+                    "through the canonical intent and authority services."
+                    if name in MCP_OBJECTIVE_SUBMISSION_TOOLS
+                    else f"Prompt-first supervisor {name.removeprefix(PROMPT_LIFECYCLE_TOOL_PREFIX)} "
+                    "via the shared production facade (ASE3-011)."
+                )
             ),
             input_schema=_TOOL_SCHEMAS[name],
             runtime="fastapi",
@@ -330,6 +510,8 @@ def register_prompt_lifecycle_tools(manager: Any) -> None:
                 "prompt-lifecycle",
                 "policy-controlled",
                 "body-free",
+                *( ["objective-submission", "authenticated"]
+                   if name in MCP_OBJECTIVE_SUBMISSION_TOOLS else [] ),
             ],
         )
 
@@ -337,6 +519,10 @@ def register_prompt_lifecycle_tools(manager: Any) -> None:
 __all__ = [
     "PROMPT_LIFECYCLE_CATEGORY",
     "PROMPT_LIFECYCLE_TOOLS",
+    "CANONICAL_MCP_OBJECTIVE_SUBMISSION_ADAPTER",
+    "MCP_OBJECTIVE_SUBMISSION_TOOLS",
+    "OBJECTIVE_SUBMISSION_MCP_SCHEMA",
+    "ObjectiveSubmissionMCPError",
     "PathInjectionDenied",
     "PromptEntrypointError",
     "REPOSITORY_ALLOWLIST_ENV",
@@ -347,7 +533,12 @@ __all__ = [
     "agent_supervisor_run",
     "agent_supervisor_status",
     "agent_supervisor_steer",
+    "agent_supervisor_submit_objective",
+    "agent_supervisor_submit_objective_mcpplusplus",
     "configure_prompt_lifecycle_supervisor",
     "prompt_lifecycle_discovery_manifest",
+    "objective_submission_mcp_discovery_manifest",
     "register_prompt_lifecycle_tools",
+    "submit_objective_mcp",
+    "submit_objective_mcpplusplus",
 ]

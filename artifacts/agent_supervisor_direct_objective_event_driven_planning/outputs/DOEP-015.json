@@ -1,0 +1,42 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-output@1",
+  "task_id": "DOEP-015",
+  "task_cid": "sha256:9022e48c40b4c930a6a78c67f9ae6d71100ea114147a5800d662d52fd413ff23",
+  "title": "Add MCP/MCP++ adapters",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "owning_repository": "ipfs_accelerate_py",
+  "primary_output": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/prompt_entrypoints.py",
+  "declared_outputs": [
+    "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/prompt_entrypoints.py",
+    "test/api/doep/test_doep_015_add_mcp_mcp_adapters.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-015.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-015.json"
+  ],
+  "canonical_mcp_objective_submission_adapter": {
+    "identifier": "ObjectiveSubmissionMCPAdapter@1",
+    "module": "ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools.prompt_entrypoints",
+    "mcp_entrypoint": "submit_objective_mcp",
+    "mcpplusplus_entrypoint": "submit_objective_mcpplusplus",
+    "tool_names": [
+      "agent_supervisor_submit_objective",
+      "agent_supervisor_submit_objective_mcpplusplus"
+    ],
+    "submission_delegate": "ipfs_accelerate_py.agent_supervisor.entrypoints.intent_service.submit_objective",
+    "authority_delegate": "ipfs_accelerate_py.agent_supervisor.entrypoints.authority_resolver.admit_authority",
+    "intent_contract": "ipfs_datasets_py.logic.intent_ir.schema.SupervisorObjectiveIntent",
+    "receipt_contract": "ipfs_datasets_py.logic.intent_ir.schema.ObjectiveMaterializationReceipt",
+    "mcp_requires_authenticated_admission": true,
+    "mcpplusplus_requires_verified_delegation": true,
+    "callers_supply_authoritative_policy": false,
+    "completion_authority": false,
+    "competing_subsystem_created": false,
+    "delegation": "Both transports are thin adapters over DOEP-012 submit_objective and only accept host-produced DOEP-016 AuthorityAdmission records; MCP++ additionally requires a verified delegation binding."
+  },
+  "no_competing_subsystem_created": true,
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-015@1"
+}
