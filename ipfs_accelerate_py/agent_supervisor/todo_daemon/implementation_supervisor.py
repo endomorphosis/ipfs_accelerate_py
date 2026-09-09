@@ -127,7 +127,10 @@ from ..rescue.supervisor_watchdog import (
     AutonomousUnstallPolicy,
 )
 from .core import ManagedDaemonSpec, terminate_pid_tree
-from .database_portal_bridge import DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+from .database_portal_bridge import (
+    DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+    _DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS,
+)
 from .implementation_daemon import (
     DEFAULT_TRACKS,
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
@@ -9020,30 +9023,10 @@ class PortalImplementationSupervisor:
             binding = self._load_single_link_json_object(binding_path)
             if binding is None:
                 continue
-            expected_binding_fields = {
-                "schema",
-                "interface",
-                "attempt_id",
-                "claim_id",
-                "task_cid",
-                "task_alias",
-                "goal_cid",
-                "plan_cid",
-                "task_revision",
-                "fencing_token",
-                "fence_epoch",
-                "lease_id",
-                "task_body_digest",
-                "projection_seed_digest",
-                "projection_immutable_digest",
-                "authoritative_task_store",
-                "projection_authority",
-                "binding_id",
-            }
             attempt_id = binding.get("attempt_id")
             binding_id = binding.get("binding_id")
             if (
-                set(binding) != expected_binding_fields
+                set(binding) != _DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS
                 or binding.get("schema")
                 != DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
                 or binding.get("interface")
@@ -9054,6 +9037,14 @@ class PortalImplementationSupervisor:
                 != attempt_dir.name
                 or binding.get("task_alias") != record.task_id
                 or binding.get("task_cid") != record.canonical_task_cid
+                or type(binding.get("canonical_task_key")) is not str
+                or not binding.get("canonical_task_key")
+                or type(binding.get("repository_tree_id")) is not str
+                or not binding.get("repository_tree_id")
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(binding.get("task_contract_digest") or ""),
+                ) is None
                 or type(binding.get("claim_id")) is not str
                 or not binding.get("claim_id")
                 or type(binding.get("lease_id")) is not str

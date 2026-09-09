@@ -109,6 +109,9 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         "attempt_id": attempt_id,
         "claim_id": "claim:vrif-010",
         "task_cid": task_cid,
+        "canonical_task_key": task_cid,
+        "task_contract_digest": "sha256:" + "a" * 64,
+        "repository_tree_id": "b" * 40,
         "task_alias": "VRIF-010",
         "goal_cid": "goal:vrif",
         "plan_cid": "plan:vrif",
@@ -451,3 +454,27 @@ def test_database_pool_lease_never_defers_without_exact_corroboration(
         fixture["nested_state_path"].write_text("[]\n", encoding="utf-8")
 
     assert fixture["supervisor"]._active_managed_database_pool_lease(fixture["child"]) is None
+
+
+@pytest.mark.parametrize("field,value", [
+    ("canonical_task_key", ""),
+    ("canonical_task_key", 1),
+    ("repository_tree_id", ""),
+    ("repository_tree_id", 1),
+    ("task_contract_digest", "sha256:bad"),
+])
+def test_database_pool_lease_rejects_malformed_current_binding_fields(
+    tmp_path: Path, field: str, value: Any,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    binding = json.loads(fixture["binding_path"].read_text())
+    binding[field] = value
+    binding.pop("binding_id")
+    binding["binding_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(binding, ensure_ascii=False, separators=(",", ":"),
+                   sort_keys=True, default=str).encode()
+    ).hexdigest()
+    _write_json(fixture["binding_path"], binding)
+    assert fixture["supervisor"]._active_managed_database_pool_lease(
+        fixture["child"]
+    ) is None
