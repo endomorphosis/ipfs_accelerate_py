@@ -18274,6 +18274,63 @@ def _rewrite_isolated_lane_operational_env_paths(
     return rewritten
 
 
+def _overlay_live_run_dir_into_exact_source(
+    *,
+    pin_root: Path,
+    repo_root: Path,
+    run_dir: Path,
+) -> Path:
+    """Expose live run-dir files under the pin cwd via an ignored overlay."""
+
+    pin_root = Path(pin_root).resolve()
+    repo_root = Path(repo_root).resolve()
+    run_dir = Path(run_dir).resolve()
+    relative = run_dir.relative_to(repo_root)
+    dest = pin_root / relative
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists() or dest.is_symlink():
+        if dest.resolve() != run_dir:
+            raise ValueError("isolated exact-source run-dir overlay drifted")
+    else:
+        os.symlink(str(run_dir), dest, target_is_directory=True)
+    git_dir = _isolated_exact_source_git(
+        "rev-parse",
+        "--absolute-git-dir",
+        cwd=pin_root,
+        timeout=10.0,
+    )
+    if git_dir.returncode != 0:
+        raise ValueError("isolated exact-source git dir is unavailable")
+    exclude = Path(git_dir.stdout.strip()) / "info" / "exclude"
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    overlay_root = relative.parts[:3]
+    overlay_prefix = "/".join(overlay_root) if overlay_root else relative.as_posix()
+    patterns = (
+        "/" + overlay_prefix,
+        "/" + overlay_prefix + "/",
+        "/" + relative.as_posix(),
+        "/" + relative.as_posix() + "/",
+    )
+    existing = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+    lines = existing.splitlines()
+    missing = [pattern for pattern in patterns if pattern not in lines]
+    if missing:
+        with exclude.open("a", encoding="utf-8") as handle:
+            if existing and not existing.endswith("\n"):
+                handle.write("\n")
+            handle.write("\n".join(missing) + "\n")
+    dirty = _isolated_exact_source_git(
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        cwd=pin_root,
+        timeout=30.0,
+    )
+    if dirty.returncode != 0 or dirty.stdout.strip():
+        raise ValueError("isolated exact-source overlay dirtied the pin checkout")
+    return dest
+
+
 def _rewrite_isolated_lane_peer_env(
     env: Mapping[str, str],
     *,
@@ -18378,6 +18435,11 @@ def _recycle_isolated_lane_from_live_peer(
             run_dir=run_dir,
             source_head=source_head,
         )
+        _overlay_live_run_dir_into_exact_source(
+            pin_root=cwd,
+            repo_root=repo_root,
+            run_dir=run_dir,
+        )
     except (
         OSError,
         TypeError,
@@ -18391,15 +18453,6 @@ def _recycle_isolated_lane_from_live_peer(
             "reason": f"exact_source_worktree:{type(exc).__name__}",
             "admission": admission,
         }
-    argv = [
-        _rewrite_isolated_lane_relative_run_paths(
-            part, repo_root=repo_root, run_dir=run_dir
-        )
-        for part in argv
-    ]
-    env = _rewrite_isolated_lane_operational_env_paths(
-        env, repo_root=repo_root, run_dir=run_dir
-    )
     log_dir = run_dir / "state" / f"lane-{int(dead_lane_index)}"
     log_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
