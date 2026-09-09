@@ -2304,12 +2304,17 @@ def test_shared_terminal_verification_deferral_does_not_consume_attempt(
     protected.parent.mkdir(parents=True)
     protected.write_text("unchanged\n", encoding="utf-8")
     daemon = _daemon(tmp_path)
+    # This regression exercises the admitted direct-checkout path. The
+    # default separate worktree root rejects dispatch before verification.
+    daemon.worktree_root = tmp_path
     task = _task(outputs=["src/example.py"])
     canonical_task_cid = daemon._canonical_ref(task)
     state = PortalTaskState(
         implementation_attempts={task.task_id: 2},
         implementation_attempts_by_cid={canonical_task_cid: 2},
     )
+    provider_calls: list[bool] = []
+    verification_calls: list[bool] = []
     queue_outcomes: list[int] = []
     diagnostics: list[str] = []
     deferral = {
@@ -2324,18 +2329,23 @@ def test_shared_terminal_verification_deferral_does_not_consume_attempt(
         "verification_deferred": True,
     }
 
+    def run_provider(*_args, **_kwargs):
+        provider_calls.append(True)
+        return subprocess.CompletedProcess(["fake-agent"], 0)
+
+    def defer_verification(**_kwargs):
+        verification_calls.append(True)
+        return dict(deferral)
+
     monkeypatch.setattr(
         implementation_daemon_module,
         "run_process_group_stream",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            ["fake-agent"],
-            0,
-        ),
+        run_provider,
     )
     monkeypatch.setattr(
         daemon,
         "_implementation_protected_path_violation",
-        lambda **_kwargs: dict(deferral),
+        defer_verification,
     )
     monkeypatch.setattr(
         daemon,
@@ -2350,6 +2360,8 @@ def test_shared_terminal_verification_deferral_does_not_consume_attempt(
 
     result = daemon._run_implementation(task, state)
 
+    assert provider_calls == [True]
+    assert verification_calls
     assert result["returncode"] == 1
     assert result["reason"] == deferral["reason"]
     assert result["deferred"] is True

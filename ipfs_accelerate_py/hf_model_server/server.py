@@ -478,7 +478,10 @@ class HFModelServer:
         if self.config.enable_hardware_detection:
             self.hardware_detector = HardwareDetector()
             self.hardware_selector = HardwareSelector(self.hardware_detector)
-            logger.info(f"Hardware available: {self.hardware_detector.get_available_hardware()}")
+            logger.info(
+                "Hardware detected (not production_authorized): "
+                f"{self.hardware_detector.get_available_hardware()}"
+            )
 
         # Initialize skill registry
         self.skill_registry = SkillRegistry(

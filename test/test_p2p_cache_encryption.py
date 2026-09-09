@@ -80,7 +80,7 @@ def test_libp2p_dependencies():
     except ImportError as e:
         logger.warning(f"⚠ libp2p package not available: {e}")
         logger.warning(
-            "  Optional but required for P2P: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main'"
+            "  Optional but required for P2P: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f'"
         )
         return False
 

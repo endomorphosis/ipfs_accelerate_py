@@ -154,6 +154,12 @@ _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS: Final[frozenset[str]] = frozenset(
         "worktree_lifecycle_transition_failed",
         "inflight_process",
         "external_protected_checkout_recovery_required",
+        "portal_execution_incomplete",
+        # Provider quota/capacity is a live wait, not a task defect. Counting
+        # identical provider_capacity_exhausted deferrals toward
+        # max_task_attempts turns a 402/quota wait into a permanent board
+        # block (PCPR-057).
+        "provider_capacity_exhausted",
     }
 )
 _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS: Final[frozenset[str]] = frozenset(
@@ -162,6 +168,43 @@ _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS: Final[frozenset[str]] = frozenset(
         "provider_capacity_backoff",
     }
 )
+
+
+def _leftover_wait_blocked_coordination_matches(
+    coordination: Any,
+    *,
+    attempt_id: str,
+    claim_id: str,
+    attempt_number: int,
+) -> bool:
+    """True when blocked-receipt coordination is identity-bound.
+
+    An empty mapping is accepted: typed deferral persist historically omitted
+    the nested copy when coordination evidence was missing, while the
+    receipt-level attempt/claim/number fields remain the fence.
+    """
+
+    if not isinstance(coordination, Mapping):
+        return False
+    if not coordination:
+        return True
+    return (
+        coordination.get("attempt_id") == attempt_id
+        and coordination.get("claim_id") == claim_id
+        and type(coordination.get("attempt_number")) is int
+        and coordination.get("attempt_number") == attempt_number
+    )
+
+
+def _leftover_wait_blocked_receipt_fields_match(receipt: Mapping[str, Any]) -> bool:
+    """Closed leftover-wait receipt: required fields plus known route lineage."""
+
+    fields = set(receipt)
+    extra = fields - _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS
+    missing = _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS - fields
+    return not missing and extra <= _LEFTOVER_WAIT_BLOCKED_RECEIPT_OPTIONAL_FIELDS
+
+
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW: Final[int] = 16
 _TYPED_DEFERRAL_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
 _TYPED_DEFERRAL_GIT_OBJECT_RE = re.compile(r"[0-9a-f]{40}")
@@ -255,6 +298,9 @@ _TYPED_DEFERRAL_BLOCK_RECEIPT_ROUTE_FIELDS = frozenset(
         "execution_route_policy_id",
         "execution_route_origin_revision",
     }
+)
+_LEFTOVER_WAIT_BLOCKED_RECEIPT_OPTIONAL_FIELDS = (
+    _TYPED_DEFERRAL_BLOCK_RECEIPT_OPTIONAL_FIELDS
 )
 _TYPED_DEFERRAL_BUDGET_FIELDS = frozenset(
     {
@@ -478,6 +524,7 @@ class TaskRecord:
     outputs: tuple[Mapping[str, Any], ...] = ()
     acceptance: tuple[Mapping[str, Any], ...] = ()
     validations: tuple[Mapping[str, Any], ...] = ()
+    updated_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -495,6 +542,7 @@ class TaskRecord:
             "outputs": [dict(item) for item in self.outputs],
             "acceptance": [dict(item) for item in self.acceptance],
             "validations": [dict(item) for item in self.validations],
+            "updated_at": self.updated_at,
         }
 
 
@@ -1040,12 +1088,11 @@ def _validated_leftover_wait_blocked_context(
             blocked_receipt.get(receipt_field),
             noun=f"leftover-wait exhausted {receipt_field}",
         )
-    if coordination and (
-        coordination.get("attempt_id") != blocked_receipt["attempt_id"]
-        or coordination.get("claim_id") != blocked_receipt["claim_id"]
-        or type(coordination.get("attempt_number")) is not int
-        or coordination.get("attempt_number")
-        != blocked_receipt["attempt_number"]
+    if not _leftover_wait_blocked_coordination_matches(
+        coordination,
+        attempt_id=str(blocked_receipt["attempt_id"]),
+        claim_id=str(blocked_receipt["claim_id"]),
+        attempt_number=int(blocked_receipt["attempt_number"]),
     ):
         raise TypedDeferralRecoveryError(
             "leftover-wait exhausted coordination has a foreign identity"
@@ -1941,6 +1988,7 @@ def _as_task_record(row: Mapping[str, Any]) -> TaskRecord:
         validations=tuple(
             MappingProxyType(dict(item)) for item in validations if isinstance(item, Mapping)
         ),
+        updated_at=str(row.get("updated_at") or ""),
     )
 
 
@@ -2164,16 +2212,6 @@ def execute_quack_owner_command(
             result = source.rearm_blocked_task(task.task_cid, receipt=request)
             return result.to_dict()
         if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS:
-            if (
-                str(args["status"] or "").strip().lower()
-                in _REOPENED_TASK_STATUSES
-                and args["receipt"].get("operation")
-                == _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
-            ):
-                raise TaskSourceConflictError(
-                    "leftover-wait recovery is unavailable through the generic "
-                    "remote queue/status command"
-                )
             result = source.record_queue_backoff_and_cas_status(
                 task_cid=args["task_cid"],
                 expected_revision=args["expected_revision"],
@@ -3786,15 +3824,6 @@ class DatabaseTaskSource:
             if _post_merge_recovery_admission is not None:
                 raise TaskSourceConflictError(
                     "process-local post-merge recovery admission cannot cross Quack"
-                )
-            if (
-                str(status or "").strip().lower() in _REOPENED_TASK_STATUSES
-                and receipt.get("operation")
-                == _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
-            ):
-                raise TaskSourceConflictError(
-                    "leftover-wait recovery is unavailable through the generic "
-                    "remote queue/status command"
                 )
             try:
                 result = submit_quack_owner_command(

@@ -2198,12 +2198,58 @@ def bind_database_portal_execution_from_args(
                 "production database daemon does not expose merge-train "
                 "recovery binding"
             )
+        consumer_root = Path(attempt_root) / "merge-train-consumer"
+        consumer_root.mkdir(parents=True, exist_ok=True)
+        (consumer_root / "implementation-logs").mkdir(exist_ok=True)
+        consumer_projection = consumer_root / "task-projection.md"
+        if not consumer_projection.exists():
+            consumer_projection.write_text(
+                "# merge-train-consumer\n",
+                encoding="utf-8",
+            )
+        for name in ("portal-task-state.json", "portal-strategy.json"):
+            path = consumer_root / name
+            if not path.exists():
+                path.write_text("{}\n", encoding="utf-8")
+        consumer_events = consumer_root / "portal-events.jsonl"
+        consumer_events.touch(exist_ok=True)
+        from .database_portal_bridge import DatabasePortalAttemptPaths
+
+        consumer_paths = DatabasePortalAttemptPaths(
+            root=consumer_root,
+            task_projection=consumer_projection,
+            binding=consumer_root / "database-attempt-binding.json",
+            state=consumer_root / "portal-task-state.json",
+            strategy=consumer_root / "portal-strategy.json",
+            events=consumer_events,
+            implementation_logs=consumer_root / "implementation-logs",
+        )
+
+        def consume_pending_merge() -> object:
+            portal = portal_factory(consumer_paths, "")
+            closer = getattr(portal, "close_event_runtime", None) or getattr(
+                portal, "close", None
+            )
+            try:
+                consume = getattr(
+                    portal, "_consume_any_pending_merge_candidate", None
+                )
+                if not callable(consume):
+                    raise RuntimeError(
+                        "Portal merge consumer lacks pending merge-train consume"
+                    )
+                return consume()
+            finally:
+                if callable(closer):
+                    closer()
+
         merge_train_binder(
             merge_queue=recovery_queue,
             repo_root=repo_root,
             merge_target_branch=configured_merge_target_branch,
             portal_attempt_root=bridge.attempt_root,
             worktree_submodule_paths=bridge.worktree_submodule_paths,
+            pending_merge_consume_fn=consume_pending_merge,
         )
         recovery_binder = getattr(daemon, "bind_post_merge_recovery", None)
         if callable(recovery_binder) and callable(

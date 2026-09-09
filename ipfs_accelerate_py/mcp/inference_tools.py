@@ -49,9 +49,10 @@ class InferenceEngine:
         self.model_manager = model_manager
         self.bandit_recommender = bandit_recommender
 
-        # Mock inference results for demonstration
-        # In a real implementation, these would call actual model inference
-        self._mock_mode = True
+        # PCPR-033: mock inference is not live. Ordinary runtime stays typed
+        # unavailable unless the caller selected explicit simulation.
+        self._mock_mode = False
+        self._explicit_simulation = False
 
         logger.info("Inference engine initialized")
 
@@ -106,130 +107,36 @@ class InferenceEngine:
 
         raise ValueError("No models available for inference")
 
+    def infer(
+        self,
+        task_type: str,
+        model_id: str,
+        input_data: Any,
+        *,
+        explicit_simulation: bool | None = None,
+    ) -> Dict[str, Any]:
+        """Run inference. Missing live evidence stays typed unavailable."""
+
+        from ipfs_accelerate_py.compatibility.simulation.fabricated_endpoint_success import (
+            run_inference,
+        )
+
+        simulated = (
+            bool(explicit_simulation)
+            if explicit_simulation is not None
+            else bool(self._explicit_simulation or self._mock_mode)
+        )
+        return run_inference(
+            task_type,
+            model_id,
+            input_data,
+            explicit_simulation=simulated,
+        )
+
     def _mock_inference(self, task_type: str, model_id: str, input_data: Any) -> Dict[str, Any]:
-        """
-        Mock inference for demonstration purposes.
+        """Compatibility name. Ordinary calls are typed unavailable, never live success."""
 
-        Args:
-            task_type: Type of inference
-            model_id: Model being used
-            input_data: Input data
-
-        Returns:
-            Mock inference results
-        """
-        if not self._mock_mode:
-            raise NotImplementedError("Real inference not implemented")
-
-        # Generate mock results based on task type
-        if task_type == "causal_language_modeling":
-            return {
-                "generated_text": f"[Mock output from {model_id}] This is a generated continuation of the input text.",
-                "confidence": 0.85,
-                "tokens_generated": 15,
-            }
-        elif task_type == "masked_language_modeling":
-            return {
-                "predictions": [
-                    {"token": "the", "score": 0.45},
-                    {"token": "a", "score": 0.23},
-                    {"token": "an", "score": 0.12},
-                ],
-                "confidence": 0.78,
-            }
-        elif task_type == "text_classification":
-            return {
-                "labels": [
-                    {"label": "POSITIVE", "score": 0.82},
-                    {"label": "NEGATIVE", "score": 0.18},
-                ],
-                "prediction": "POSITIVE",
-                "confidence": 0.82,
-            }
-        elif task_type == "embedding_generation":
-            return {
-                "embeddings": [0.1, -0.2, 0.3, 0.05, -0.15],  # Mock 5-dim embedding
-                "dimension": 5,
-                "norm": 0.367,
-            }
-        elif task_type == "image_diffusion":
-            return {
-                "status": "generated",
-                "image_url": f"mock://generated_image_{hash(str(input_data))}.png",
-                "steps": 50,
-                "guidance_scale": 7.5,
-            }
-        elif task_type == "question_answering":
-            return {
-                "answer": "The answer to your question based on the context.",
-                "confidence": 0.91,
-                "start": 10,
-                "end": 25,
-            }
-        elif task_type == "automatic_speech_recognition":
-            return {
-                "text": f"Mock transcription from {model_id}: This is the transcribed text from the audio input.",
-                "confidence": 0.89,
-                "segments": [
-                    {"start": 0.0, "end": 2.5, "text": "This is the transcribed"},
-                    {"start": 2.5, "end": 5.0, "text": "text from the audio input."},
-                ],
-            }
-        elif task_type == "image_classification":
-            return {
-                "predictions": [
-                    {"label": "cat", "score": 0.85},
-                    {"label": "dog", "score": 0.12},
-                    {"label": "bird", "score": 0.03},
-                ],
-                "confidence": 0.85,
-            }
-        elif task_type == "object_detection":
-            return {
-                "detections": [
-                    {"label": "person", "confidence": 0.92, "bbox": [100, 100, 200, 300]},
-                    {"label": "car", "confidence": 0.78, "bbox": [300, 150, 500, 250]},
-                ],
-                "confidence": 0.85,
-            }
-        elif task_type == "image_to_text":
-            return {
-                "caption": f"A detailed description of the image generated by {model_id} showing various objects and scenes.",
-                "confidence": 0.88,
-            }
-        elif task_type == "visual_question_answering":
-            return {
-                "answer": f"Based on the image analysis by {model_id}, the answer to your question is provided here.",
-                "confidence": 0.87,
-            }
-        elif task_type == "text_to_speech":
-            return {
-                "audio_url": f"mock://synthesized_{hash(str(input_data))}.wav",
-                "duration": len(str(input_data.get("text", ""))) * 0.1,
-                "sample_rate": 22050,
-                "confidence": 0.92,
-            }
-        elif task_type == "translation":
-            return {
-                "translated_text": f"[Translation by {model_id}] This is the translated version of the input text.",
-                "confidence": 0.91,
-            }
-        elif task_type == "summarization":
-            return {
-                "summary": f"[Summary by {model_id}] This is a concise summary of the input text highlighting the key points.",
-                "confidence": 0.86,
-            }
-        elif task_type == "audio_classification":
-            return {
-                "predictions": [
-                    {"label": "music", "score": 0.78},
-                    {"label": "speech", "score": 0.15},
-                    {"label": "noise", "score": 0.07},
-                ],
-                "confidence": 0.78,
-            }
-        else:
-            return {"result": f"Mock result for {task_type}", "confidence": 0.75}
+        return self.infer(task_type, model_id, input_data)
 
 
 class InferenceTools:
@@ -243,6 +150,50 @@ class InferenceTools:
             inference_engine: The inference engine instance
         """
         self.engine = inference_engine
+
+    def _present_inference_tool(
+        self,
+        *,
+        task_type: str,
+        model_id: Optional[str],
+        hardware: str,
+        input_type: str,
+        output_type: str,
+        input_data: Any,
+        parameters: Optional[Dict[str, Any]] = None,
+        error_label: str = "Inference failed",
+    ) -> Dict[str, Any]:
+        """Return live Observed/Verified results only. Otherwise typed unavailable."""
+
+        try:
+            selected_model, confidence = self.engine._select_model_for_task(
+                task_type=task_type,
+                model_id=model_id,
+                hardware=hardware,
+                input_type=input_type,
+                output_type=output_type,
+            )
+            result = self.engine.infer(task_type, selected_model, input_data)
+            envelope = dict(result)
+            envelope["model_used"] = selected_model
+            envelope["model_confidence"] = confidence
+            envelope["parameters"] = parameters or {"hardware": hardware}
+            if envelope.get("outcome") not in ("Observed", "Verified"):
+                envelope["live"] = False
+                envelope.setdefault(
+                    "status",
+                    str(envelope.get("outcome", "Unavailable")).lower(),
+                )
+            return envelope
+        except Exception as e:
+            logger.error(f"{error_label}: {e}")
+            return {
+                "status": "failed",
+                "outcome": "Failed",
+                "live": False,
+                "simulated": False,
+                "error": f"{error_label}: {str(e)}",
+            }
 
     def register_tools(self, mcp):
         """Register all inference tools with the MCP server."""
@@ -266,45 +217,27 @@ class InferenceTools:
                 hardware: Hardware type to use
 
             Returns:
-                Generated text and metadata
+                Generated text and metadata when live evidence exists; otherwise
+                a typed unavailable envelope.
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="causal_language_modeling",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="tokens",
-                    output_type="tokens",
-                )
-
-                # Perform inference
-                result = self.engine._mock_inference(
-                    task_type="causal_language_modeling",
-                    model_id=selected_model,
-                    input_data={
-                        "prompt": prompt,
-                        "max_length": max_length,
-                        "temperature": temperature,
-                    },
-                )
-
-                return {
-                    "generated_text": result["generated_text"],
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "inference_confidence": result["confidence"],
-                    "tokens_generated": result["tokens_generated"],
-                    "parameters": {
-                        "max_length": max_length,
-                        "temperature": temperature,
-                        "hardware": hardware,
-                    },
-                }
-
-            except Exception as e:
-                logger.error(f"Error in text generation: {e}")
-                return {"error": f"Text generation failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="causal_language_modeling",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="tokens",
+                output_type="tokens",
+                input_data={
+                    "prompt": prompt,
+                    "max_length": max_length,
+                    "temperature": temperature,
+                },
+                parameters={
+                    "max_length": max_length,
+                    "temperature": temperature,
+                    "hardware": hardware,
+                },
+                error_label="Text generation failed",
+            )
 
         @mcp.tool()
         def fill_mask(
@@ -325,34 +258,16 @@ class InferenceTools:
             Returns:
                 Predictions for masked tokens
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="masked_language_modeling",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="tokens",
-                    output_type="logits",
-                )
-
-                # Perform inference
-                result = self.engine._mock_inference(
-                    task_type="masked_language_modeling",
-                    model_id=selected_model,
-                    input_data={"text": text_with_mask, "top_k": top_k},
-                )
-
-                return {
-                    "predictions": result["predictions"][:top_k],
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "inference_confidence": result["confidence"],
-                    "parameters": {"top_k": top_k, "hardware": hardware},
-                }
-
-            except Exception as e:
-                logger.error(f"Error in mask filling: {e}")
-                return {"error": f"Mask filling failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="masked_language_modeling",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="tokens",
+                output_type="logits",
+                input_data={"text": text_with_mask, "top_k": top_k},
+                parameters={"top_k": top_k, "hardware": hardware},
+                error_label="Mask filling failed",
+            )
 
         @mcp.tool()
         def classify_text(
@@ -373,39 +288,16 @@ class InferenceTools:
             Returns:
                 Classification results
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="text_classification",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="tokens",
-                    output_type="logits",
-                )
-
-                # Perform inference
-                result = self.engine._mock_inference(
-                    task_type="text_classification",
-                    model_id=selected_model,
-                    input_data={"text": text},
-                )
-
-                response = {
-                    "prediction": result["prediction"],
-                    "confidence": result["confidence"],
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "parameters": {"return_all_scores": return_all_scores, "hardware": hardware},
-                }
-
-                if return_all_scores:
-                    response["all_scores"] = result["labels"]
-
-                return response
-
-            except Exception as e:
-                logger.error(f"Error in text classification: {e}")
-                return {"error": f"Text classification failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="text_classification",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="tokens",
+                output_type="logits",
+                input_data={"text": text, "return_all_scores": return_all_scores},
+                parameters={"return_all_scores": return_all_scores, "hardware": hardware},
+                error_label="Text classification failed",
+            )
 
         @mcp.tool()
         def generate_embeddings(
@@ -423,35 +315,16 @@ class InferenceTools:
             Returns:
                 Text embeddings
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="embedding_generation",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="tokens",
-                    output_type="embeddings",
-                )
-
-                # Perform inference
-                result = self.engine._mock_inference(
-                    task_type="embedding_generation",
-                    model_id=selected_model,
-                    input_data={"text": text, "normalize": normalize},
-                )
-
-                return {
-                    "embeddings": result["embeddings"],
-                    "dimension": result["dimension"],
-                    "norm": result["norm"],
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "parameters": {"normalize": normalize, "hardware": hardware},
-                }
-
-            except Exception as e:
-                logger.error(f"Error in embedding generation: {e}")
-                return {"error": f"Embedding generation failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="embedding_generation",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="tokens",
+                output_type="embeddings",
+                input_data={"text": text, "normalize": normalize},
+                parameters={"normalize": normalize, "hardware": hardware},
+                error_label="Embedding generation failed",
+            )
 
         @mcp.tool()
         def generate_image(
@@ -478,46 +351,28 @@ class InferenceTools:
             Returns:
                 Generated image information
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="image_diffusion",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="tokens",
-                    output_type="image",
-                )
-
-                # Perform inference
-                result = self.engine._mock_inference(
-                    task_type="image_diffusion",
-                    model_id=selected_model,
-                    input_data={
-                        "prompt": prompt,
-                        "width": width,
-                        "height": height,
-                        "steps": num_inference_steps,
-                        "guidance_scale": guidance_scale,
-                    },
-                )
-
-                return {
-                    "status": result["status"],
-                    "image_url": result["image_url"],
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "parameters": {
-                        "width": width,
-                        "height": height,
-                        "num_inference_steps": result["steps"],
-                        "guidance_scale": result["guidance_scale"],
-                        "hardware": hardware,
-                    },
-                }
-
-            except Exception as e:
-                logger.error(f"Error in image generation: {e}")
-                return {"error": f"Image generation failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="image_diffusion",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="tokens",
+                output_type="image",
+                input_data={
+                    "prompt": prompt,
+                    "width": width,
+                    "height": height,
+                    "steps": num_inference_steps,
+                    "guidance_scale": guidance_scale,
+                },
+                parameters={
+                    "width": width,
+                    "height": height,
+                    "num_inference_steps": num_inference_steps,
+                    "guidance_scale": guidance_scale,
+                    "hardware": hardware,
+                },
+                error_label="Image generation failed",
+            )
 
         @mcp.tool()
         def answer_question(
@@ -540,40 +395,20 @@ class InferenceTools:
             Returns:
                 Answer and metadata
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="question_answering",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="tokens",
-                    output_type="tokens",
-                )
-
-                # Perform inference
-                result = self.engine._mock_inference(
-                    task_type="question_answering",
-                    model_id=selected_model,
-                    input_data={
-                        "question": question,
-                        "context": context,
-                        "max_answer_length": max_answer_length,
-                    },
-                )
-
-                return {
-                    "answer": result["answer"],
-                    "confidence": result["confidence"],
-                    "start_position": result["start"],
-                    "end_position": result["end"],
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "parameters": {"max_answer_length": max_answer_length, "hardware": hardware},
-                }
-
-            except Exception as e:
-                logger.error(f"Error in question answering: {e}")
-                return {"error": f"Question answering failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="question_answering",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="tokens",
+                output_type="tokens",
+                input_data={
+                    "question": question,
+                    "context": context,
+                    "max_answer_length": max_answer_length,
+                },
+                parameters={"max_answer_length": max_answer_length, "hardware": hardware},
+                error_label="Question answering failed",
+            )
 
         # Advanced Inference Tools
         @mcp.tool()
@@ -597,40 +432,16 @@ class InferenceTools:
             Returns:
                 Transcription results with confidence scores
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="automatic_speech_recognition",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="audio",
-                    output_type="text",
-                )
-
-                # Mock inference result
-                result = self.engine._mock_inference(
-                    task_type="automatic_speech_recognition",
-                    model_id=selected_model,
-                    input_data={"audio": audio_data, "language": language, "task": task},
-                )
-
-                return {
-                    "transcription": result.get(
-                        "text",
-                        f"[Mock transcription from {selected_model}] This is the transcribed text from the audio.",
-                    ),
-                    "language": language or "en",
-                    "confidence": result.get("confidence", 0.89),
-                    "segments": result.get("segments", []),
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "task": task,
-                    "parameters": {"language": language, "hardware": hardware},
-                }
-
-            except Exception as e:
-                logger.error(f"Error in audio transcription: {e}")
-                return {"error": f"Audio transcription failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="automatic_speech_recognition",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="audio",
+                output_type="text",
+                input_data={"audio": audio_data, "language": language, "task": task},
+                parameters={"language": language, "task": task, "hardware": hardware},
+                error_label="Audio transcription failed",
+            )
 
         @mcp.tool()
         def classify_image(
@@ -651,41 +462,16 @@ class InferenceTools:
             Returns:
                 Classification results with confidence scores
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="image_classification",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="image",
-                    output_type="logits",
-                )
-
-                # Mock inference result
-                result = self.engine._mock_inference(
-                    task_type="image_classification",
-                    model_id=selected_model,
-                    input_data={"image": image_data, "top_k": top_k},
-                )
-
-                return {
-                    "predictions": result.get(
-                        "predictions",
-                        [
-                            {"label": "cat", "score": 0.85},
-                            {"label": "dog", "score": 0.12},
-                            {"label": "bird", "score": 0.03},
-                        ][:top_k],
-                    ),
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "inference_confidence": result.get("confidence", 0.85),
-                    "parameters": {"top_k": top_k, "hardware": hardware},
-                }
-
-            except Exception as e:
-                logger.error(f"Error in image classification: {e}")
-                return {"error": f"Image classification failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="image_classification",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="image",
+                output_type="logits",
+                input_data={"image": image_data, "top_k": top_k},
+                parameters={"top_k": top_k, "hardware": hardware},
+                error_label="Image classification failed",
+            )
 
         @mcp.tool()
         def detect_objects(
@@ -706,47 +492,19 @@ class InferenceTools:
             Returns:
                 Object detection results with bounding boxes and confidence scores
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="object_detection",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="image",
-                    output_type="boxes",
-                )
-
-                # Mock inference result
-                result = self.engine._mock_inference(
-                    task_type="object_detection",
-                    model_id=selected_model,
-                    input_data={"image": image_data, "threshold": confidence_threshold},
-                )
-
-                return {
-                    "detections": result.get(
-                        "detections",
-                        [
-                            {
-                                "label": "person",
-                                "confidence": 0.92,
-                                "bbox": [100, 100, 200, 300],  # x1, y1, x2, y2
-                            },
-                            {"label": "car", "confidence": 0.78, "bbox": [300, 150, 500, 250]},
-                        ],
-                    ),
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "inference_confidence": result.get("confidence", 0.85),
-                    "parameters": {
-                        "confidence_threshold": confidence_threshold,
-                        "hardware": hardware,
-                    },
-                }
-
-            except Exception as e:
-                logger.error(f"Error in object detection: {e}")
-                return {"error": f"Object detection failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="object_detection",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="image",
+                output_type="boxes",
+                input_data={"image": image_data, "threshold": confidence_threshold},
+                parameters={
+                    "confidence_threshold": confidence_threshold,
+                    "hardware": hardware,
+                },
+                error_label="Object detection failed",
+            )
 
         @mcp.tool()
         def generate_image_caption(
@@ -767,37 +525,16 @@ class InferenceTools:
             Returns:
                 Generated caption with confidence score
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="image_to_text",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="image",
-                    output_type="text",
-                )
-
-                # Mock inference result
-                result = self.engine._mock_inference(
-                    task_type="image_to_text",
-                    model_id=selected_model,
-                    input_data={"image": image_data, "max_length": max_length},
-                )
-
-                return {
-                    "caption": result.get(
-                        "caption",
-                        f"[Generated by {selected_model}] A detailed description of the image showing various objects and scenes.",
-                    ),
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "inference_confidence": result.get("confidence", 0.88),
-                    "parameters": {"max_length": max_length, "hardware": hardware},
-                }
-
-            except Exception as e:
-                logger.error(f"Error in image captioning: {e}")
-                return {"error": f"Image captioning failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="image_to_text",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="image",
+                output_type="text",
+                input_data={"image": image_data, "max_length": max_length},
+                parameters={"max_length": max_length, "hardware": hardware},
+                error_label="Image captioning failed",
+            )
 
         @mcp.tool()
         def answer_visual_question(
@@ -818,38 +555,16 @@ class InferenceTools:
             Returns:
                 Answer with confidence score
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="visual_question_answering",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="multimodal",
-                    output_type="text",
-                )
-
-                # Mock inference result
-                result = self.engine._mock_inference(
-                    task_type="visual_question_answering",
-                    model_id=selected_model,
-                    input_data={"image": image_data, "question": question},
-                )
-
-                return {
-                    "answer": result.get(
-                        "answer",
-                        f"[Answer from {selected_model}] Based on the image, the answer to your question is provided here.",
-                    ),
-                    "question": question,
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "inference_confidence": result.get("confidence", 0.87),
-                    "parameters": {"hardware": hardware},
-                }
-
-            except Exception as e:
-                logger.error(f"Error in visual question answering: {e}")
-                return {"error": f"Visual question answering failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="visual_question_answering",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="multimodal",
+                output_type="text",
+                input_data={"image": image_data, "question": question},
+                parameters={"question": question, "hardware": hardware},
+                error_label="Visual question answering failed",
+            )
 
         @mcp.tool()
         def synthesize_speech(
@@ -872,36 +587,16 @@ class InferenceTools:
             Returns:
                 Synthesized speech metadata and information
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="text_to_speech",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="text",
-                    output_type="audio",
-                )
-
-                # Mock inference result
-                result = self.engine._mock_inference(
-                    task_type="text_to_speech",
-                    model_id=selected_model,
-                    input_data={"text": text, "speaker": speaker, "language": language},
-                )
-
-                return {
-                    "status": "synthesized",
-                    "audio_url": result.get("audio_url", f"mock://synthesized_{hash(text)}.wav"),
-                    "duration": result.get("duration", len(text) * 0.1),  # Mock duration
-                    "sample_rate": result.get("sample_rate", 22050),
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "parameters": {"speaker": speaker, "language": language, "hardware": hardware},
-                }
-
-            except Exception as e:
-                logger.error(f"Error in speech synthesis: {e}")
-                return {"error": f"Speech synthesis failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="text_to_speech",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="text",
+                output_type="audio",
+                input_data={"text": text, "speaker": speaker, "language": language},
+                parameters={"speaker": speaker, "language": language, "hardware": hardware},
+                error_label="Speech synthesis failed",
+            )
 
         @mcp.tool()
         def translate_text(
@@ -924,43 +619,24 @@ class InferenceTools:
             Returns:
                 Translated text with confidence score
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="translation",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="text",
-                    output_type="text",
-                )
-
-                # Mock inference result
-                result = self.engine._mock_inference(
-                    task_type="translation",
-                    model_id=selected_model,
-                    input_data={
-                        "text": text,
-                        "source_language": source_language,
-                        "target_language": target_language,
-                    },
-                )
-
-                return {
-                    "translated_text": result.get(
-                        "translated_text",
-                        f"[Translation by {selected_model}] This is the translated version of the input text.",
-                    ),
+            return self._present_inference_tool(
+                task_type="translation",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="text",
+                output_type="text",
+                input_data={
+                    "text": text,
                     "source_language": source_language,
                     "target_language": target_language,
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "inference_confidence": result.get("confidence", 0.91),
-                    "parameters": {"hardware": hardware},
-                }
-
-            except Exception as e:
-                logger.error(f"Error in text translation: {e}")
-                return {"error": f"Text translation failed: {str(e)}"}
+                },
+                parameters={
+                    "source_language": source_language,
+                    "target_language": target_language,
+                    "hardware": hardware,
+                },
+                error_label="Text translation failed",
+            )
 
         @mcp.tool()
         def summarize_text(
@@ -983,41 +659,20 @@ class InferenceTools:
             Returns:
                 Summarized text with confidence score
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="summarization",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="text",
-                    output_type="text",
-                )
-
-                # Mock inference result
-                result = self.engine._mock_inference(
-                    task_type="summarization",
-                    model_id=selected_model,
-                    input_data={"text": text, "max_length": max_length, "min_length": min_length},
-                )
-
-                return {
-                    "summary": result.get(
-                        "summary",
-                        f"[Summary by {selected_model}] This is a concise summary of the input text highlighting the key points.",
-                    ),
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "inference_confidence": result.get("confidence", 0.86),
-                    "parameters": {
-                        "max_length": max_length,
-                        "min_length": min_length,
-                        "hardware": hardware,
-                    },
-                }
-
-            except Exception as e:
-                logger.error(f"Error in text summarization: {e}")
-                return {"error": f"Text summarization failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="summarization",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="text",
+                output_type="text",
+                input_data={"text": text, "max_length": max_length, "min_length": min_length},
+                parameters={
+                    "max_length": max_length,
+                    "min_length": min_length,
+                    "hardware": hardware,
+                },
+                error_label="Text summarization failed",
+            )
 
         @mcp.tool()
         def classify_audio(
@@ -1038,41 +693,16 @@ class InferenceTools:
             Returns:
                 Audio classification results with confidence scores
             """
-            try:
-                # Select model using bandit algorithm if not specified
-                selected_model, confidence = self.engine._select_model_for_task(
-                    task_type="audio_classification",
-                    model_id=model_id,
-                    hardware=hardware,
-                    input_type="audio",
-                    output_type="logits",
-                )
-
-                # Mock inference result
-                result = self.engine._mock_inference(
-                    task_type="audio_classification",
-                    model_id=selected_model,
-                    input_data={"audio": audio_data, "top_k": top_k},
-                )
-
-                return {
-                    "predictions": result.get(
-                        "predictions",
-                        [
-                            {"label": "music", "score": 0.78},
-                            {"label": "speech", "score": 0.15},
-                            {"label": "noise", "score": 0.07},
-                        ][:top_k],
-                    ),
-                    "model_used": selected_model,
-                    "model_confidence": confidence,
-                    "inference_confidence": result.get("confidence", 0.78),
-                    "parameters": {"top_k": top_k, "hardware": hardware},
-                }
-
-            except Exception as e:
-                logger.error(f"Error in audio classification: {e}")
-                return {"error": f"Audio classification failed: {str(e)}"}
+            return self._present_inference_tool(
+                task_type="audio_classification",
+                model_id=model_id,
+                hardware=hardware,
+                input_type="audio",
+                output_type="logits",
+                input_data={"audio": audio_data, "top_k": top_k},
+                parameters={"top_k": top_k, "hardware": hardware},
+                error_label="Audio classification failed",
+            )
 
         # Feedback tool for improving recommendations
         @mcp.tool()

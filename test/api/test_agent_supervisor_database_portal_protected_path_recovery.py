@@ -19,6 +19,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DatabaseTaskAttempt,
     PortalImplementationDaemon,
+    parse_task_file,
+    portal_task_identity,
 )
 
 
@@ -75,6 +77,7 @@ def _record() -> SimpleNamespace:
         acceptance=({"criterion": "focused validation passes"},),
         body={
             "objective": "Recover one exact cleanup race",
+            "allowed_paths": ["inventory/result.json"],
             "completion": "auto",
             "track": "analysis",
             "read_scope": ["ipfs_accelerate_py/agent_supervisor"],
@@ -203,13 +206,31 @@ def _recovery_fixture(
         max_passes=1,
     )
     attempt = _attempt()
-    paths, _binding = bridge._ensure_attempt_projection(attempt, record)
+    paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    [projected_task] = parse_task_file(
+        paths.task_projection,
+        f"## {record.task_alias}",
+    )
+    local_identity = portal_task_identity(
+        projected_task,
+        todo_path=paths.task_projection,
+    )
+    assert len(
+        {
+            attempt.task_cid,
+            projected_task.canonical_task_cid,
+            local_identity.canonical_task_cid,
+        }
+    ) == 3
+    assert binding["canonical_task_key"] != local_identity.canonical_task_key
     record.revision += 1
     identity = _identity(protected)
     workspace = worktree_root / "disposed"
     active = {
         "schema": "implementation-protected-path-active-v1",
         "task_id": record.task_alias,
+        "canonical_task_key": local_identity.canonical_task_key,
+        "canonical_task_cid": local_identity.canonical_task_cid,
         "attempt": 1,
         "workspace_path": str(workspace.absolute()),
         "ephemeral_worktree": True,
@@ -238,6 +259,8 @@ def _recovery_fixture(
         "requires_operator_clearance": True,
         "shared_checkout_restored": False,
         "task_id": record.task_alias,
+        "canonical_task_key": local_identity.canonical_task_key,
+        "canonical_task_cid": local_identity.canonical_task_cid,
         "attempt": 1,
         "workspace_path": str(workspace.absolute()),
         "protected_paths": ["docs/protected.md"],
@@ -257,6 +280,8 @@ def _recovery_fixture(
         "implementation_protected_path_mutated",
         {
             "task_id": record.task_alias,
+            "canonical_task_key": local_identity.canonical_task_key,
+            "canonical_task_cid": local_identity.canonical_task_cid,
             "attempt": 1,
             "workspace_path": str(workspace.absolute()),
             "mutations": [mutation],
@@ -272,6 +297,7 @@ def _bind_real_portal_factory(bridge: DatabasePortalExecutionBridge) -> None:
     ) -> PortalImplementationDaemon:
         return PortalImplementationDaemon(
             todo_path=paths.task_projection,
+            task_header_prefix="## PCAR-",
             state_path=paths.state,
             strategy_path=paths.strategy,
             events_path=paths.events,
@@ -284,6 +310,62 @@ def _bind_real_portal_factory(bridge: DatabasePortalExecutionBridge) -> None:
         )
 
     bridge.portal_factory = factory
+
+
+def test_real_portal_producer_binds_local_identity_in_recovery_artifacts(
+    tmp_path: Path,
+) -> None:
+    bridge, _attempt_value, record, paths, _protected, _created = (
+        _recovery_fixture(tmp_path)
+    )
+    active_path = paths.root / "implementation-protected-path-active.json"
+    incident_path = paths.root / "implementation-protected-path-incident.json"
+    prior_active = json.loads(active_path.read_text(encoding="utf-8"))
+    snapshot = prior_active["snapshot"]
+    active_path.unlink()
+    incident_path.unlink()
+    paths.events.unlink()
+    _bind_real_portal_factory(bridge)
+    assert callable(bridge.portal_factory)
+    portal = bridge.portal_factory(paths, record.task_alias)
+    assert isinstance(portal, PortalImplementationDaemon)
+    [task] = portal._load_tasks()
+    local_identity = portal_task_identity(
+        task,
+        todo_path=paths.task_projection,
+    )
+    workspace = Path(prior_active["workspace_path"])
+    portal._persist_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        snapshot=snapshot,
+    )
+    after = json.loads(json.dumps(snapshot))
+    after["workspace"]["paths"]["docs/protected.md"] = {
+        "state": "missing"
+    }
+    portal._implementation_protected_mutation_payload(
+        task_id=record.task_alias,
+        canonical_task_key=local_identity.canonical_task_key,
+        canonical_task_cid=local_identity.canonical_task_cid,
+        attempt=1,
+        workspace_path=workspace,
+        before=snapshot,
+        after=after,
+    )
+
+    active = json.loads(active_path.read_text(encoding="utf-8"))
+    incident = json.loads(incident_path.read_text(encoding="utf-8"))
+    mutation = [
+        json.loads(line)
+        for line in paths.events.read_text(encoding="utf-8").splitlines()
+        if json.loads(line).get("type")
+        == "implementation_protected_path_mutated"
+    ][0]
+    for artifact in (active, incident, mutation):
+        assert artifact["canonical_task_key"] == local_identity.canonical_task_key
+        assert artifact["canonical_task_cid"] == local_identity.canonical_task_cid
 
 
 def test_recovers_only_exact_disposed_workspace_and_replays(
@@ -326,6 +408,60 @@ def test_real_portal_reconciler_produces_bridge_verifiable_clearance(
     assert receipt["workspace_path"].endswith("/.managed-worktrees/disposed")
     assert not (paths.root / "implementation-protected-path-incident.json").exists()
     assert not (paths.root / "implementation-protected-path-active.json").exists()
+
+
+@pytest.mark.parametrize("artifact", ["active", "incident", "event"])
+def test_rejects_nonlocal_protected_path_recovery_identity(
+    tmp_path: Path,
+    artifact: str,
+) -> None:
+    bridge, attempt, _record_value, paths, _protected, created = (
+        _recovery_fixture(tmp_path)
+    )
+    binding = json.loads(paths.binding.read_text(encoding="utf-8"))
+    foreign_key = binding["canonical_task_key"]
+    if artifact in {"active", "incident"}:
+        target = paths.root / f"implementation-protected-path-{artifact}.json"
+        payload = json.loads(target.read_text(encoding="utf-8"))
+        payload["canonical_task_key"] = foreign_key
+        target.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    else:
+        [event] = [
+            json.loads(line)
+            for line in paths.events.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        envelope_fields = {
+            "event_id",
+            "previous_event_id",
+            "sequence",
+            "snapshot_id",
+            "stream_id",
+            "timestamp",
+            "type",
+        }
+        payload = {
+            key: value
+            for key, value in event.items()
+            if key not in envelope_fields
+        }
+        payload["canonical_task_key"] = foreign_key
+        paths.events.unlink()
+        append_jsonl_event(
+            paths.events,
+            "implementation_protected_path_mutated",
+            payload,
+        )
+
+    with pytest.raises(DatabasePortalBridgeError):
+        bridge.recover_protected_path_retry(attempt)
+
+    assert (paths.root / "implementation-protected-path-incident.json").is_file()
+    assert (paths.root / "implementation-protected-path-active.json").is_file()
+    assert created == []
 
 
 def test_replays_crash_between_incident_and_active_fence_removal(

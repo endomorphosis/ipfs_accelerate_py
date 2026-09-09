@@ -70,21 +70,38 @@ def hardware():
 
     detector = HardwareDetector()
     available = detector.get_available_hardware()
+    authorized = [
+        name for name in ["cuda", "rocm", "mps", "openvino", "qnn", "cpu"]
+        if detector.is_production_authorized(name)
+    ]
 
-    click.echo(f"\nAvailable hardware: {', '.join(available)}\n")
+    click.echo(
+        f"\nDetected hardware (not production_authorized): "
+        f"{', '.join(available) if available else 'none'}"
+    )
+    click.echo(
+        f"Production-authorized hardware: "
+        f"{', '.join(authorized) if authorized else 'none'}\n"
+    )
 
     for hw_name in ["cuda", "rocm", "mps", "openvino", "qnn", "cpu"]:
         cap = detector.get_capability(hw_name)
-        if cap and cap.available:
-            click.echo(f"{hw_name.upper()}:")
-            click.echo(f"  Devices: {cap.device_count}")
-            if cap.memory_total_mb > 0:
-                click.echo(
-                    f"  Memory: {cap.memory_total_mb:.0f} MB total, {cap.memory_available_mb:.0f} MB available"
-                )
-            if cap.compute_capability:
-                click.echo(f"  Compute: {cap.compute_capability}")
-            click.echo()
+        if cap is None:
+            continue
+        click.echo(f"{hw_name.upper()}:")
+        click.echo(f"  available (detection): {cap.available}")
+        click.echo(f"  origin: {cap.origin}")
+        click.echo(f"  evidence_kind: {cap.evidence_kind}")
+        click.echo(f"  production_authorized: {cap.production_authorized}")
+        click.echo(f"  qualified: {cap.qualified}")
+        click.echo(f"  Devices: {cap.device_count}")
+        if cap.memory_total_mb > 0:
+            click.echo(
+                f"  Memory: {cap.memory_total_mb:.0f} MB total, {cap.memory_available_mb:.0f} MB available"
+            )
+        if cap.compute_capability:
+            click.echo(f"  Compute: {cap.compute_capability}")
+        click.echo()
 
 
 if __name__ == "__main__":

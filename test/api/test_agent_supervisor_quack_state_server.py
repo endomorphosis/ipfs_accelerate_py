@@ -1364,6 +1364,46 @@ def test_stale_marker_not_reclaimed_when_owner_alive(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    ("liveness", "reason"),
+    [(OwnerLiveness.ALIVE, "owner_alive"),
+     (OwnerLiveness.UNKNOWN, "owner_liveness_unknown")],
+)
+def test_stale_marker_recovery_preserves_uncertain_owner_and_lock(
+    tmp_path: Path, liveness: OwnerLiveness, reason: str,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    marker_path = db.with_name(f".{db.name}.state-owner.json")
+    lock_path = db.with_name(f".{db.name}.state-owner.lock")
+    birth = _birth(pid=222, ticks=2, boot="live")
+    marker = OwnerMarker(
+        server_id="server:uncertain", process_birth=birth,
+        database_path=str(db), started_at="2020-01-01T00:00:00Z",
+        fence_token="fence-live", generation=127,
+    )
+    marker_path.write_text(json.dumps(marker.to_dict()), encoding="utf-8")
+    marker_path.chmod(0o600)
+    before = marker_path.read_bytes()
+    observed = []
+
+    def probe(actual: ProcessBirthIdentity) -> OwnerLiveness:
+        observed.append(actual)
+        return liveness
+
+    result = reclaim_stale_owner_marker(
+        marker_path=marker_path, lock_path=lock_path, liveness=probe,
+    )
+    assert result == {
+        "reclaimed": False, "reason": reason, "server_id": marker.server_id,
+    }
+    assert observed == [birth]
+    assert marker_path.read_bytes() == before
+    # Refusal must release the kernel lock so a later admitted recovery can run.
+    with lock_path.open("a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+@pytest.mark.parametrize(
     ("field", "value"),
     [
         ("server_id", True),

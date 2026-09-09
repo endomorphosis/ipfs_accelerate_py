@@ -1,0 +1,132 @@
+{
+  "schema": "pcce-073.fixture-population@1",
+  "population_cid": "bafkreif535gd4tuokudj2djynif5uspk3lq56pro3zjwulxqyflrgk3xta",
+  "files": [
+    {
+      "path": "patch_and_agent/compromised_adapter_authority.json.fixture",
+      "size": 401,
+      "sha256": "c62e1c9f24f48f047bea0d6486e35eb542be80a0eb662aee506d0ae787500f47",
+      "content_cid": "bafkreiggfyoj6jhur4chx2qnmsdogxvvik7ibihlmyvo4udnbltyouapi4"
+    },
+    {
+      "path": "patch_and_agent/evidence/argv_process_vectors.json.fixture",
+      "size": 684,
+      "sha256": "40250d965d04f01be518ee7f0cebda89ff80a45f1f1bde7738529e435cd8db45",
+      "content_cid": "bafkreicaeugzmxie6an6kghop4goxwuj76akixy7dpphoocstzbvzwg3iu"
+    },
+    {
+      "path": "patch_and_agent/evidence/limitations.json.fixture",
+      "size": 1860,
+      "sha256": "a3a48a714c5295e7756dae8383d11bf5ce2d07d4be4e8e48ffd54abba53f91ef",
+      "content_cid": "bafkreifdusfhctcssxtxk3noqob5cg7vzywqpvf6j2her76vjk52kp4r54"
+    },
+    {
+      "path": "patch_and_agent/evidence/receipts/compromised-adapter-authority.json.fixture",
+      "size": 4157,
+      "sha256": "20e888a995a76391aaa8cfdbd8b2ec6f1ad5313bb174dc308286030201bc0e1d",
+      "content_cid": "bafkreiba5cektfnhmoi2vkgp3pmlf3dpdlktco5rotodbaugambadpaodu"
+    },
+    {
+      "path": "patch_and_agent/evidence/receipts/model-policy-edit.json.fixture",
+      "size": 4591,
+      "sha256": "8bf4961d5f8e3c3b8c49889babfb584a8d49c3a5d47353951b4074f04c7f82dd",
+      "content_cid": "bafkreiel6slb2x4ohq5yysmitov7wwckrve4hjouonjzkg2aotyey74c3u"
+    },
+    {
+      "path": "patch_and_agent/evidence/receipts/out-of-scope-edit.json.fixture",
+      "size": 4125,
+      "sha256": "7b92dbebb07ee65df126994ff16e41daca7c00000df7164c0f7ca9dbeeea35f1",
+      "content_cid": "bafkreid3sln6xmd64zo7cjuzj7yw4qo2zj6aaaan64leyd34vhn652rv6e"
+    },
+    {
+      "path": "patch_and_agent/evidence/receipts/required-test-deletion.json.fixture",
+      "size": 4601,
+      "sha256": "795f93c3a5328bc0e0bfa0e3229461edc57b027fa0ea810555cf4d06be5707e1",
+      "content_cid": "bafkreidzl6j4hjjsrpaobp5a4mrjiypnyv5qe75a5kaqkvopjudl4vyh4e"
+    },
+    {
+      "path": "patch_and_agent/evidence/receipts/response-scope-lie.json.fixture",
+      "size": 4135,
+      "sha256": "8221c8f625200382c2221ecb3f6385fcca7f7dc232b33d464085bf5f15e1a41a",
+      "content_cid": "bafkreiecehepmjjaaobmeiq6zm7whbp4zj7x3qrswm6umqefx5prlynedi"
+    },
+    {
+      "path": "patch_and_agent/evidence/receipts/shell-argv-injection.json.fixture",
+      "size": 10924,
+      "sha256": "5bf4648fe4b7757cc2f47ad124cfe443f233890707961a00512e7ab780df54e3",
+      "content_cid": "bafkreic36rsi7zfxov6mf5d22esm7zcd6izysbyhsynaaujopk3ybx2u4m"
+    },
+    {
+      "path": "patch_and_agent/evidence/receipts/source-comment-prompt-injection.json.fixture",
+      "size": 4436,
+      "sha256": "135185874245c2a05c9efed07bc08248cbe17aa75d3ddf29cd2fabd645fafc40",
+      "content_cid": "bafkreiatkgcyoqsfykqfzhx62b54basizpqxvj25hxpsttjpvplel6x4ia"
+    },
+    {
+      "path": "patch_and_agent/evidence/receipts/valid-control-patch.json.fixture",
+      "size": 4034,
+      "sha256": "470b9eededf7f87aa92b8dbc2a8da550c7e78363f0b04cd69653a48a7a538741",
+      "content_cid": "bafkreichbopo33px7b5ksk4nxqvi3jkqy7tygy7qwbgnnfstusfhuu4hie"
+    },
+    {
+      "path": "patch_and_agent/evidence/receipts/weakened-proof-obligation.json.fixture",
+      "size": 4607,
+      "sha256": "e90939ada6257fae2b3cc9161d2ae8f2b7ecc06cafd43ea89721f22979e7b2d5",
+      "content_cid": "bafkreihjbe423jrfp6xcwpgjcyosv2hsw7wma3fp2q7krfzb6iuxtz5s2u"
+    },
+    {
+      "path": "patch_and_agent/evidence/sandbox_probe.c.fixture",
+      "size": 1277,
+      "sha256": "37880a611a08de16e9a852ce778c95d1ff09c79a3d8d1821a9b871b1b87d6f88",
+      "content_cid": "bafkreibxrafgcgqi3ylotkcszz3yzfor74e4pgr5rumcdknyogy3q7lpra"
+    },
+    {
+      "path": "patch_and_agent/model_policy_edit.json.fixture",
+      "size": 436,
+      "sha256": "913aff82e56986c7a0d768529fe40a24d95a8d915ecf71adbb0e118a0ce37ae8",
+      "content_cid": "bafkreierhl7yfzljq3d2bv3ikkp6icre3fni3ek6z5y23oyocgfazy325a"
+    },
+    {
+      "path": "patch_and_agent/out_of_scope_edit.json.fixture",
+      "size": 259,
+      "sha256": "8f77c50ebb585887d88dfe4315d68649a2d3331289ef7992385092af8b884260",
+      "content_cid": "bafkreiepo7cq5o2ylcd5rdp6imk5nbsjuljtgeuj554zeocqskxyxcccma"
+    },
+    {
+      "path": "patch_and_agent/required_test_deletion.json.fixture",
+      "size": 402,
+      "sha256": "6f2200223d214530560070a2131a5571f052e08db4dcb558b0fce6d599fd7f69",
+      "content_cid": "bafkreidpeiacepjbiuyfmadquijruvlr6bjobdnu3s2vrmh443kzt7l7ne"
+    },
+    {
+      "path": "patch_and_agent/response_scope_lie.json.fixture",
+      "size": 257,
+      "sha256": "241a3b62af959425099f02798241f71b50eb261f282ac2065970b052410e653d",
+      "content_cid": "bafkreibedi5wfl4vsqsqthycpgbed5y3kdvsmhziflbamwlqwbjecdtfhu"
+    },
+    {
+      "path": "patch_and_agent/shell_argv_injection.json.fixture",
+      "size": 156,
+      "sha256": "5878fe0efd50025f779ac67735bd37abc67db038c44ab4b5d7a8ff70b2963ce8",
+      "content_cid": "bafkreicypd7a57kqajpxpgwgo4232n5lyz63aogejk2llv5i75ylffr45a"
+    },
+    {
+      "path": "patch_and_agent/source_comment_prompt_injection.json.fixture",
+      "size": 417,
+      "sha256": "dea7ba607f8efe69b506ccc331762d08077115c4e33e4062697f0fa341166ea0",
+      "content_cid": "bafkreig6u65ga74o7zu3kbwmymyxmliia5yrlrhdhzage2l7b6rucftoua"
+    },
+    {
+      "path": "patch_and_agent/valid_control_patch.json.fixture",
+      "size": 319,
+      "sha256": "09650b6966133445465a2d3df013c08eaf92b3998c20745daeaaf02381a32d48",
+      "content_cid": "bafkreiajmufwszqtgrcumwrnhxybhqeov6jlhgmmeb2f3lvk6arydiznja"
+    },
+    {
+      "path": "patch_and_agent/weakened_proof_obligation.json.fixture",
+      "size": 410,
+      "sha256": "743ce82f06ef25a5f05fb5d80d00e9f266bc18fc1d8928b21993b07bab2b568a",
+      "content_cid": "bafkreiduhtuc6bxpews7ax5v3agqb2psm26br7a5reulegmtwb52wk2wri"
+    }
+  ]
+}

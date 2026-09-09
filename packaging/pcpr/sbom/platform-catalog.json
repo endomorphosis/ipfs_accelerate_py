@@ -1,0 +1,95 @@
+{
+  "catalog_cid": "baguqeerat3u7nixxjwft4jiwvphkw4fsjq3ysqtkyd56vgbtk6ppsb4ljoiq",
+  "closed_release_outcome": null,
+  "components": {
+    "ipfs_accelerate_py": {
+      "direct_package_count": 24,
+      "evidence_kind": "measured",
+      "files_analyzed": false,
+      "hashes_invented": false,
+      "live": false,
+      "lock_cid": "baguqeerayvfxbdt6m6go57s6dw2afwsvpkzpt25rewc6kglm2fhwkeowvuxa",
+      "package_name": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "provenance_cid": "baguqeera5m46bqdbtzywuntklfkbc7zxyn5ihyfr4ckazumexgjs3zuzvifa",
+      "provenance_kind": "declared_build_binding",
+      "provenance_path": "packaging/pcpr/provenance/cpython312/release.provenance.json",
+      "sbom_cid": "baguqeeraotw7oyqehxscvlcyo4udmmdnaxq3yg6rfz4pspxcnpcnbwhd5fiq",
+      "sbom_kind": "declared_release_profile",
+      "sbom_path": "packaging/pcpr/sbom/cpython312/release.sbom.json",
+      "status": "observed"
+    },
+    "ipfs_datasets_py": {
+      "provenance": {
+        "evidence_kind": "measured",
+        "live": false,
+        "package_name": "ipfs_datasets_py",
+        "package_version": "0.2.0",
+        "path": "../ipfs_datasets/packaging/pcpr/provenance/cpython312/release.provenance.json",
+        "provenance_cid": "baguqeeraoq7sa7f5vjjauqzgwuz5w4lo4cayvmf3lwiijyurtn6dhtgakeia",
+        "provenance_kind": "declared_build_binding",
+        "sbom_cid": "baguqeerao2zimzk7v7femnhzw5zhlvalaaor6foyvkrca3fneuhpe6ieoneq",
+        "sha256": "c1d95e7fd3c1b4e490ec553f3c73503ce3785d7363694a235ba05e2ded211f10",
+        "slsa_status": "unavailable",
+        "status": "observed"
+      },
+      "sbom": {
+        "direct_package_count": 0,
+        "evidence_kind": "measured",
+        "files_analyzed": false,
+        "hashes_invented": false,
+        "live": false,
+        "lock_cid": "baguqeeraxwt7j3qjwfy3yvicngqwrnx2suobs3yxa4ah6gbgbszxrbsrid7q",
+        "package_name": "ipfs_datasets_py",
+        "package_version": "0.2.0",
+        "path": "../ipfs_datasets/packaging/pcpr/sbom/cpython312/release.sbom.json",
+        "sbom_cid": "baguqeerao2zimzk7v7femnhzw5zhlvalaaor6foyvkrca3fneuhpe6ieoneq",
+        "sbom_kind": "declared_release_profile",
+        "sha256": "c16d7202a57602a9a6332d0897bdf7262aa00ead73bd9ac89ebf7734fd74c9ca",
+        "status": "observed"
+      }
+    },
+    "ipfs_kit_py": {
+      "provenance": {
+        "evidence_kind": "measured",
+        "live": false,
+        "package_name": "ipfs_kit_py",
+        "package_version": "0.3.0",
+        "path": "../ipfs_kit/packaging/pcpr/provenance/cpython312/release.provenance.json",
+        "provenance_cid": "baguqeeral6zl7kn2fy6rylk7rs74hzbwulnntq2w2fycoe2cbpq52fjqvgwq",
+        "provenance_kind": "declared_build_binding",
+        "sbom_cid": "baguqeeracvwc27foqiebwn3bc65riwro2ucvtpadwt53fsg4uuuyh5ec7eza",
+        "sha256": "cf228dc4f1b9ca199003d324c1b993a3338710a548766d4ea0b0136f532f6849",
+        "slsa_status": "unavailable",
+        "status": "observed"
+      },
+      "sbom": {
+        "direct_package_count": 22,
+        "evidence_kind": "measured",
+        "files_analyzed": false,
+        "hashes_invented": false,
+        "live": false,
+        "lock_cid": "baguqeerapndvhdlxynq6afrv4mfpsa7ajjregns3nwuth5hnho7rf3xc223a",
+        "package_name": "ipfs_kit_py",
+        "package_version": "0.3.0",
+        "path": "../ipfs_kit/packaging/pcpr/sbom/cpython312/release.sbom.json",
+        "sbom_cid": "baguqeeracvwc27foqiebwn3bc65riwro2ucvtpadwt53fsg4uuuyh5ec7eza",
+        "sbom_kind": "declared_release_profile",
+        "sha256": "19611843b44dc22fad1d347b19c6d2c6974d7643d4928fcb94cb0eebf1b17068",
+        "status": "observed"
+      }
+    }
+  },
+  "evidence_kind": "measured",
+  "goal_id": "PCPR-G600",
+  "hashes_invented": false,
+  "interface": "PlatformSbomAndProvenanceCatalog@1",
+  "live_scanner_qualified": false,
+  "mutable_main_reference": false,
+  "provenance_kind": "declared_build_binding",
+  "release_claim": false,
+  "sbom_kind": "declared_release_profile",
+  "schema": "ipfs_accelerate_py/assurance/platform-sbom-and-provenance-catalog@1",
+  "slsa_attestation_live": false,
+  "task_id": "PCPR-054"
+}

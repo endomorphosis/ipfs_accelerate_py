@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodically project native observations into QuackLake
+
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=120
+AccuracySec=10
+Unit=ipfs-quacklake-catalog-export.service
+
+[Install]
+WantedBy=timers.target

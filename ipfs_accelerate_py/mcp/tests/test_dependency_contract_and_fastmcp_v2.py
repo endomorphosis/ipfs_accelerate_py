@@ -115,7 +115,7 @@ def test_requirements_are_the_setup_source_of_truth() -> None:
         runpy.run_path(str(REPO_ROOT / "setup.py"), run_name="packaging_contract_test")
 
     assert captured["install_requires"] == root_requirements
-    assert captured["python_requires"] == ">=3.8"
+    assert captured["python_requires"] == ">=3.12"
 
     fastmcp = _find_requirement(root_requirements, "fastmcp")
     assert str(fastmcp.specifier) == "==2.14.7"

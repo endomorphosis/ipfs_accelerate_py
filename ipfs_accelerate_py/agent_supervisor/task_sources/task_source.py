@@ -705,6 +705,7 @@ class TaskSourceTask:
     body: Mapping[str, Any] = field(default_factory=dict)
     board_namespace: str = ""
     source_line: int = 0
+    updated_at: str = ""
 
     @property
     def task_alias(self) -> str:
@@ -731,6 +732,7 @@ class TaskSourceTask:
             "body": dict(self.body),
             "board_namespace": self.board_namespace,
             "source_line": self.source_line,
+            "updated_at": self.updated_at,
         }
 
 
@@ -1090,6 +1092,10 @@ class CanonicalTaskSource:
         dependency_aliases = tuple(alias_map.get(item, item) for item in dependency_cids)
         title = str(body.get("objective") or body.get("title") or body.get("description") or "")
         goal_id = str(body.get("goal_id") or body.get("goal_key") or record.goal_cid)
+        if isinstance(record, Mapping):
+            updated_at = str(record.get("updated_at") or "")
+        else:
+            updated_at = str(getattr(record, "updated_at", "") or "")
         return TaskSourceTask(
             task_id=str(record.task_alias),
             task_cid=str(record.task_cid),
@@ -1104,6 +1110,7 @@ class CanonicalTaskSource:
             body=body,
             board_namespace=str(body.get("board_namespace") or body.get("track") or "duckdb"),
             source_line=int(record.ordinal) + 1,
+            updated_at=updated_at,
         )
 
     def snapshot(self, *, include_tasks: bool = False) -> TaskSourceSnapshot:

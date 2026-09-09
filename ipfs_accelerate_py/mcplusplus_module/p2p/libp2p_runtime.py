@@ -22,24 +22,25 @@ from typing import Any, AsyncIterator
 
 logger = logging.getLogger(__name__)
 
-PY_LIBP2P_MAIN_SPEC = "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
+PY_LIBP2P_PINNED_SPEC = "libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f"
+PY_LIBP2P_MAIN_SPEC = PY_LIBP2P_PINNED_SPEC  # compatibility alias; value is an immutable commit
 PY_LIBP2P_PROTOBUF_SPEC = "protobuf>=5.27.0"
 PY_LIBP2P_EXTRA_PACKAGES = (
     PY_LIBP2P_PROTOBUF_SPEC,
     "pymultihash>=0.8.2",
     "dnspython>=2.2.1",
-    PY_LIBP2P_MAIN_SPEC,
+    PY_LIBP2P_PINNED_SPEC,
 )
 LIBP2P_COMPAT_ERROR = (
     "libp2p is installed but MCP++ dependency compatibility patches could not be applied. "
-    "Install the MCP++ P2P extra from py-libp2p main: "
-    f"pip install {PY_LIBP2P_PROTOBUF_SPEC!r} {PY_LIBP2P_MAIN_SPEC!r} "
+    "Install the MCP++ P2P extra from the pinned py-libp2p commit: "
+    f"pip install {PY_LIBP2P_PROTOBUF_SPEC!r} {PY_LIBP2P_PINNED_SPEC!r} "
     "'pymultihash>=0.8.2' 'dnspython>=2.2.1'"
 )
 LIBP2P_INSTALL_HINT = (
     "pip install "
     f"{PY_LIBP2P_PROTOBUF_SPEC!r} 'pymultihash>=0.8.2' 'dnspython>=2.2.1' "
-    f"{PY_LIBP2P_MAIN_SPEC!r}"
+    f"{PY_LIBP2P_PINNED_SPEC!r}"
 )
 
 _OPTIONAL_LIBP2P_ERROR_MARKERS = (
@@ -804,6 +805,7 @@ __all__ = [
     "LIBP2P_INSTALL_HINT",
     "PY_LIBP2P_EXTRA_PACKAGES",
     "PY_LIBP2P_MAIN_SPEC",
+    "PY_LIBP2P_PINNED_SPEC",
     "PY_LIBP2P_PROTOBUF_SPEC",
     "create_libp2p_key_pair",
     "ensure_libp2p_compatible",

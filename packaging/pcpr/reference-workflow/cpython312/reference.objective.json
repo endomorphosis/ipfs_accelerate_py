@@ -1,0 +1,328 @@
+{
+  "acceptance_conditions": [
+    "The named PCPR-060 receipt exists.",
+    "promotion_status is rnd_non_promoted or an honest typed unavailable/blocked status.",
+    "The receipt does not claim a closed release outcome."
+  ],
+  "applied": false,
+  "assumptions": [
+    "The repaired PCPR-004 Supervisor.run / CLI / MCP path is the only submission interface.",
+    "PCPR-001 live qualification remains rnd_non_promoted.",
+    "PCPR-002 did not freeze public supervisor contracts.",
+    "PCPR-057 branch and release gates are declared, not live GitHub protection.",
+    "Direct DuckDB or Quack writes are prohibited.",
+    "ContextPack construction is PCPR-061.",
+    "Durable storage and current-root CAS are PCPR-062.",
+    "Closed release decision remains PCPR-093/094."
+  ],
+  "authority": {
+    "complete_launch_plan_caller_injection_required": false,
+    "contracts_frozen": false,
+    "direct_interface_source": {
+      "all_present": true,
+      "evidence_kind": "measured",
+      "live_submission": false,
+      "missing": [],
+      "surfaces": {
+        "cli_supervisor_run": {
+          "evidence_kind": "measured",
+          "live": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/cli.py",
+          "present": true,
+          "sha256": "075199b1aca9ef8852f24c4c3fcd5b0b0da754131f3701ac8e9fd6bb7b18b894"
+        },
+        "intent_service": {
+          "evidence_kind": "measured",
+          "live": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/intent_service.py",
+          "present": true,
+          "sha256": "2ee8ef4ff8570553c1ef937ba5138738d86956045db6527074898201dd523142"
+        },
+        "mcp_agent_supervisor_run": {
+          "evidence_kind": "measured",
+          "live": false,
+          "path": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/prompt_entrypoints.py",
+          "present": true,
+          "sha256": "48f97508088683de322cf7d220d6120937d9ac1120e34933d0f7a2fa86017b72"
+        },
+        "plan_revision_store": {
+          "evidence_kind": "measured",
+          "live": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/task_sources/plan_revision_store.py",
+          "present": true,
+          "sha256": "50f193d25264b942813812f36ff7aa76007a145b1cf31c72df9b83d965eec232"
+        },
+        "plan_supervisor_service": {
+          "evidence_kind": "measured",
+          "live": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/prompt/plan_supervisor_service.py",
+          "present": true,
+          "sha256": "78763c8a89945a214860bf4f456391f7f4ef3069b57e6d2b25ce944c29cce386"
+        },
+        "prompt_workflow": {
+          "evidence_kind": "measured",
+          "live": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+          "present": true,
+          "sha256": "46f39aa94af460aa011372e5cffe7496a47cd3c189e1e6f890cde3084e068467"
+        },
+        "supervisor_run": {
+          "evidence_kind": "measured",
+          "live": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/facade.py",
+          "present": true,
+          "sha256": "5285628d8775857e761700c9fb92188d669f798bba9edebc929c388c9cdd597e"
+        }
+      }
+    },
+    "evidence_kind": "measured",
+    "freeze_task": "PCPR-002",
+    "live": false,
+    "python_cli_mcp_parity_required": true,
+    "repaired_direct_interface_task": "PCPR-004",
+    "requested_interface": "supervisor.objectives.submit",
+    "start_is_separate_authorized_control_operation": true
+  },
+  "board_namespace": "proof-carrying-platform-qualification-and-release-v1",
+  "budgets": {
+    "escalation_order": [
+      "exact receipt",
+      "AST and dependency analysis",
+      "schema, type, and static checks",
+      "selected tests",
+      "incremental prover",
+      "local small specialist",
+      "medium model",
+      "frontier model",
+      "human decision"
+    ],
+    "final_validation_reserve_percent": 30,
+    "maximum_automatically_generated_tasks_per_refill": 12,
+    "maximum_initial_tasks": 80,
+    "maximum_replan_epochs": 20,
+    "maximum_total_tasks_without_operator_scope_expansion": 140
+  },
+  "caller": {
+    "authenticated": false,
+    "authority": "intent_not_authority",
+    "evidence_kind": "unavailable",
+    "live": false,
+    "principal": "principal:pcpr-060-reference-submitter",
+    "reason": "The declared principal is captured as intent. No live authenticated caller session was admitted."
+  },
+  "closed_release_outcome": null,
+  "context_pack": {
+    "constructed": false,
+    "deferred": true,
+    "live": false,
+    "task_id": "PCPR-061"
+  },
+  "contracts_frozen": false,
+  "evidence_id": "pcpr/reference-high-level-objective@1",
+  "evidence_kind": "measured",
+  "goal_id": "PCPR-G700",
+  "goals": [
+    {
+      "goal_id": "PCPR-G700",
+      "title": "Reference proof-carrying workflow and recovery"
+    },
+    {
+      "goal_id": "PCPR-G710",
+      "title": "Objective, ContextPack, and durable root"
+    },
+    {
+      "goal_id": "PCPR-G720",
+      "title": "Deterministic route, patch, tests, and proofs"
+    },
+    {
+      "goal_id": "PCPR-G730",
+      "title": "Reuse, invalidation, PlanDelta, and refill"
+    },
+    {
+      "goal_id": "PCPR-G740",
+      "title": "Restart recovery and final receipt chain"
+    }
+  ],
+  "guarantees": [
+    "Live claims require live evidence.",
+    "Simulated results are not represented as live.",
+    "Missing environments stay typed unavailable.",
+    "DuckDB and Quack state are not written.",
+    "No closed PCPR release outcome is emitted.",
+    "No competing supervisor, planner, task database, or event database is created.",
+    "START remains a separate authorized control operation and is not performed."
+  ],
+  "hashes_invented": false,
+  "idea": "Modify a typed formal-logic API while reusing unaffected proofs, selecting only impacted tests, rejecting stale-tree evidence, and producing a complete proof-carrying execution receipt.",
+  "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+  "intent": {
+    "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+    "intent_cid": "baguqeeraa4tf7chcljsvpbljkswijpyq44aks2dq7zzjhos376f6rkjed3ra",
+    "interface": "SupervisorObjectiveIntent@1",
+    "language": "Python",
+    "live": false,
+    "objective_id": "PCPR-G700",
+    "pcpr_041_contract_vector_cid": "baguqeerak5dpgbfqb3y3lzidrzhctptq4czihlmihlrozcysqrwtk57luzya",
+    "schema": "pcpr/shared-contracts/supervisor-objective-intent@1"
+  },
+  "interface": "AccelerateReferenceHighLevelObjective@1",
+  "language": "Python",
+  "live": false,
+  "materialization": {
+    "admitted": false,
+    "applied": false,
+    "database_task_source_projected": false,
+    "duckdb_or_quack_state_written": false,
+    "evidence_kind": "unavailable",
+    "kind": "declared_not_live",
+    "live": false,
+    "plan_revision_store_applied": false,
+    "reason": "Live materialization requires an admitted Quack-fenced state-owner session. Direct DuckDB writes are prohibited. This document is declared intent, not live authority."
+  },
+  "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+  "objective_id": "PCPR-G700",
+  "objective_kind": "declared_reference_high_level_objective",
+  "operator_blocking_task": {
+    "action": "Submit the exact reference idea through supervisor.objectives.submit with current-root, lease, fence, idempotency, and expected-effect bindings. Apply through PlanRevisionStore and DatabaseTaskSource. Do not write DuckDB or Quack state directly. Keep START separate.",
+    "applied": false,
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "Sealed validation has no admitted Quack-fenced state-owner session. Direct DuckDB writes are prohibited. A live authenticated Supervisor.run, CLI supervisor run, or MCP agent_supervisor_run was not performed. The declared intent is not live materialization.",
+    "requires": "An admitted Quack-fenced state-owner session and an authenticated Supervisor.run / CLI / MCP caller on the repaired PCPR-004 path",
+    "status": "typed_blocked",
+    "task_id": "pcpr-060-operator-live-objective-materialization"
+  },
+  "package_name": "ipfs_accelerate_py",
+  "package_version": "0.0.45",
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "prerequisites": {
+    "closed_decision_tasks": [
+      "PCPR-093",
+      "PCPR-094"
+    ],
+    "pcpr_001_promotion_status": "rnd_non_promoted",
+    "pcpr_001_task_id": "PCPR-001",
+    "pcpr_002_contracts_frozen": false,
+    "pcpr_002_task_id": "PCPR-002",
+    "pcpr_004_task_id": "PCPR-004",
+    "pcpr_056_lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+    "pcpr_056_task_id": "PCPR-056",
+    "pcpr_057_branch_policy_cid": "baguqeeram3uegwfx6c4i76eyj5nuzlgsqw6yl5vb5c6drkuyacn5l77ksnna",
+    "pcpr_057_release_gate_cid": "baguqeerajahrusqwd33fqbuw46zgqcsw4xsuswdqq6td7c3nyddeeg5qofca",
+    "pcpr_057_task_id": "PCPR-057",
+    "pcpr_057_verdict_cid": "baguqeera7wftrxix6ocid4gaqw7kx6bnxsbybypnyplvx2ytzyo3k6ttkzca"
+  },
+  "program_id": "proof-carrying-platform-qualification-and-release-v1",
+  "release_claim": false,
+  "schema": "ipfs_accelerate_py/assurance/declared-reference-objective@1",
+  "sibling_source_required": false,
+  "signatures_invented": false,
+  "source": {
+    "binding": "current_head_not_mutable_main",
+    "commit": {
+      "evidence_kind": "measured",
+      "field": "PCPR-060 receipt current_tree_binding",
+      "live": false,
+      "reason": "Exact commit and tree are bound by the task receipt because nested admission rewrites HEAD. This document does not pin origin/main.",
+      "status": "observed_at_evaluation"
+    },
+    "kind": "git",
+    "mutable_main_reference": false,
+    "repository": "endomorphosis/ipfs_accelerate_py"
+  },
+  "source_date_epoch": "0",
+  "start": {
+    "evidence_kind": "measured",
+    "live": false,
+    "performed": false,
+    "reason": "START is separate from materialize and was not performed.",
+    "separate_authorized_control_operation": true
+  },
+  "state_owner": {
+    "direct_duckdb_write_prohibited": true,
+    "direct_quack_write_prohibited": true,
+    "duckdb_cli": "unavailable",
+    "duckdb_module": "unavailable",
+    "duckdb_module_is_not_live_materialization": true,
+    "duckdb_or_quack_state_written": false,
+    "quack": "unavailable"
+  },
+  "storage": {
+    "current_root_published": false,
+    "deferred": true,
+    "live": false,
+    "stored": false,
+    "task_id": "PCPR-062"
+  },
+  "submitted_live": false,
+  "task_id": "PCPR-060",
+  "tasks": [
+    {
+      "role": "this_task",
+      "task_id": "PCPR-060",
+      "title": "Submit reference high-level objective"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-061",
+      "title": "Build semantic ContextPack"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-062",
+      "title": "Persist and publish current ContextPack root"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-063",
+      "title": "Execute deterministic-first route"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-064",
+      "title": "Produce bounded patch"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-065",
+      "title": "Run selected tests and proofs"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-066",
+      "title": "Introduce unrelated state change"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-067",
+      "title": "Demonstrate safe reuse"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-068",
+      "title": "Introduce relevant interface change"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-069",
+      "title": "Demonstrate stale rejection and PlanDelta"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-070",
+      "title": "Restart authoritative state owner"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-071",
+      "title": "Demonstrate recovery and idempotency"
+    },
+    {
+      "role": "successor",
+      "task_id": "PCPR-072",
+      "title": "Produce final proof-carrying receipt chain"
+    }
+  ],
+  "this_task_created_competing_authority": false
+}

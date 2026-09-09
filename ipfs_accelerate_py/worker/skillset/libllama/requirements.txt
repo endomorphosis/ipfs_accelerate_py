@@ -1,3 +1,2 @@
 gguf
-git+https://github.com/ggerganov/llama.cpp.git#subdirectory=gguf-py
-git+https://github.com/ggerganov/llama.cpp.git#subdirectory=gguf-py
+git+https://github.com/ggerganov/llama.cpp.git@b96806d96061049a5b574269b049bf6241d63d46#subdirectory=gguf-py

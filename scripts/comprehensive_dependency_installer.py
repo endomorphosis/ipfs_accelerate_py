@@ -37,7 +37,7 @@ WEBSOCKETS_REQUIREMENT = (
     else "websockets==10.4; python_version < '3.10'"
 )
 LIBP2P_REQUIREMENT = (
-    "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main "
+    "libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f "
     "; python_version >= '3.10'"
 )
 

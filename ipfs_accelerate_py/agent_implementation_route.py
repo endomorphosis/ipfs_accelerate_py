@@ -4877,8 +4877,15 @@ def validate_agent_implementation_quota_evidence(
         )
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
         return None
+    final_selected_record = _agent_implementation_native_session_record(
+        grok_home=home,
+        expected_session_id=expected_session_id,
+        verifier_workspace=verifier_workspace,
+    )
     if (
-        final_update_type != "turn_completed"
+        final_selected_record is None
+        or final_selected_record != selected_record
+        or final_update_type != "turn_completed"
         or not observed_models.issubset({expected_model})
         or retry_failure_count != 1
         or user_message_count > 1

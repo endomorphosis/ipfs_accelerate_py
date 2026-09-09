@@ -1,0 +1,27 @@
+{
+  "schema": "pcce-073.argv-process-vectors@1",
+  "attack_id": "shell-argv-injection",
+  "literal_metachar_argument": "; touch escaped-process && printf pwned | sh",
+  "probes": [
+    {
+      "probe_id": "literal-metachar",
+      "mode": "literal",
+      "intended_boundary": "exact-argv-no-shell"
+    },
+    {
+      "probe_id": "descendant-exec",
+      "mode": "exec",
+      "intended_boundary": "descendant-exec-denial"
+    },
+    {
+      "probe_id": "host-path-write",
+      "mode": "write",
+      "intended_boundary": "landlock-host-write-denial"
+    },
+    {
+      "probe_id": "network-socket",
+      "mode": "socket4",
+      "intended_boundary": "deny-all-network"
+    }
+  ]
+}

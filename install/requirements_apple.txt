@@ -1,10 +1,10 @@
-ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py.git@main
-ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main
+ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py.git@a4fd25d944e6aaf25fb51e054a3f62bbcbea544d
+ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@f6151d2113f42e75ea7d83a1b2362fc97e55e44d
 protobuf>=5.27.0
 pymultihash>=0.8.2
 dnspython>=2.2.1
-libp2p @ git+https://github.com/libp2p/py-libp2p.git@main
-ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main
+libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f
+ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@b397988ed9e3e656475c1cf4417b84efdb95daf3
 transformers==4.46
 torch>=2.1
 torchvision

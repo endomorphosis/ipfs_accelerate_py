@@ -93,9 +93,9 @@ if [ -f "${REPO_DIR}/requirements.txt" ]; then
     pip install -r "${REPO_DIR}/requirements.txt"
 fi
 
-# Keep py-libp2p synced to upstream main (latest commit)
+# Keep py-libp2p on the PCPR-035 immutable commit pin.
 # NOTE: VCS installs can be slow; avoid forcing a full reinstall on every restart.
-LIBP2P_VCS_SPEC="libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
+LIBP2P_VCS_SPEC="libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f"
 LIBP2P_STATE_DIR="${IPFS_ACCELERATE_STATE_DIR:-/tmp/ipfs_accelerate_state}"
 LIBP2P_STAMP_FILE="${LIBP2P_STATE_DIR}/last_libp2p_reinstall.epoch"
 LIBP2P_REINSTALL_INTERVAL_SECONDS="${IPFS_ACCELERATE_LIBP2P_REINSTALL_INTERVAL_SECONDS:-86400}"

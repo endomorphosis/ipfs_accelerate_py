@@ -137,7 +137,7 @@ class TestStorageOperations:
         cid = storage.store(data, filename="test.txt")
         
         assert isinstance(cid, str)
-        assert cid.startswith("bafy")  # CIDv1-like format
+        assert cid.startswith("bafkrei")  # canonical CIDv1 raw sha2-256
         assert storage.exists(cid)
     
     def test_store_string(self, storage):

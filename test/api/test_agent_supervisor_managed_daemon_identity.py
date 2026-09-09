@@ -5,6 +5,7 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -1436,3 +1437,151 @@ def test_adopted_process_numeric_signal_methods_are_disabled() -> None:
         process.terminate()
     with pytest.raises(RuntimeError, match="ownership fence"):
         process.kill()
+
+
+@pytest.mark.parametrize("action", ["stop", "recycle"])
+@pytest.mark.parametrize("proof", ["gone", "alive", "unknown", "group_alive", "group_unknown", "missing_identity", "changed_birth"])
+def test_supervisor_loop_handles_exit_during_termination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    proof: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    pid_path = state_dir / "child.pid"
+    identity_path = state_dir / "child.identity.json"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("460\n", encoding="utf-8")
+    identity = SupervisedChildIdentity(
+        process_birth=ProcessBirthIdentity(
+            pid=460,
+            start_time_ticks=110,
+            boot_id="boot-test",
+            parent_pid=17,
+        ),
+        command=("python", "worker.py"),
+        owner_scope={"repo_root": str(repo)},
+        created_at="2026-08-03T00:00:00+00:00",
+    )
+    identity_path.write_text(
+        json.dumps(identity.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    identity = SupervisedChildIdentity.from_dict(identity.to_dict())
+    assert identity is not None
+    child = SupervisedChild(
+        pid=460,
+        command=("python", "worker.py"),
+        log_path=state_dir / "child.log",
+        child_pid_path=pid_path,
+        identity_path=identity_path,
+        identity_record_id=identity.record_id,
+        identity_process_birth=identity.process_birth,
+        owned_process_group_id=460,
+    )
+    launches = {"n": 0}
+
+    def fake_launch(_spec, **_kwargs):
+        launches["n"] += 1
+        return child
+
+    polls = {"n": 0}
+
+    def fake_poll(_child):
+        polls["n"] += 1
+        return None if polls["n"] == 1 else 0
+
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "adopt_or_launch_supervised_child",
+        fake_launch,
+    )
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "_poll_child_exit",
+        fake_poll,
+    )
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "terminate_supervised_child",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "wait_for_child_exit",
+        lambda _child: pytest.fail("DEAD child exit was awaited"),
+    )
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "supervised_child_identity_liveness",
+        lambda _identity: {
+            "alive": OwnerLiveness.ALIVE,
+            "unknown": OwnerLiveness.UNKNOWN,
+        }.get(proof, OwnerLiveness.DEAD),
+    )
+    def group_probe(pgid, signum):
+        assert pgid == 460
+        assert signum == 0, "reused process group must never be signalled"
+        if proof == "group_alive":
+            return
+        if proof == "group_unknown":
+            raise PermissionError("group observation unavailable")
+        raise ProcessLookupError("group gone")
+
+    monkeypatch.setattr(supervisor_runtime.os, "killpg", group_probe)
+    if proof == "missing_identity":
+        identity_path.unlink()
+    elif proof == "changed_birth":
+        child = replace(
+            child,
+            identity_process_birth=replace(identity.process_birth, start_time_ticks=111),
+        )
+    original_markers = {
+        p: p.read_bytes() for p in (pid_path, identity_path) if p.exists()
+    }
+    spec = ManagedDaemonSpec(
+        name="identity-required-daemon",
+        schema="test.identity-required-daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=("python", "worker.py"),
+        status_path=state_dir / "daemon-status.json",
+        supervisor_status_path=state_dir / "supervisor-status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=pid_path,
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure-status.json",
+        ensure_check_path=state_dir / "ensure-check.json",
+        supervisor_lock_path=state_dir / "supervisor.lock",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=child.command,
+            log_prefix="child",
+            heartbeat_seconds=0.01,
+            poll_seconds=0.01,
+            watchdog_startup_grace_seconds=0,
+            max_restarts=2,
+        ),
+        watchdog_hook=lambda *_args: getattr(SupervisorLoopDecision, action)(
+            "stale_child"
+        ),
+        sleep=lambda _seconds: None,
+    )
+
+    result = loop.run()
+
+    if proof == "gone":
+        assert launches["n"] == (2 if action == "recycle" else 1)
+        assert result.status != "termination_blocked"
+        assert result.last_recycle_reason == "stale_child"
+        assert not pid_path.exists()
+        assert not identity_path.exists()
+    else:
+        assert launches["n"] == 1
+        assert result.status == "termination_blocked"
+        for path, contents in original_markers.items():
+            assert path.read_bytes() == contents

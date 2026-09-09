@@ -1,0 +1,28 @@
+{
+  "schema": "pcce-073.test-limitations@1",
+  "runtime_commit": "489da803b9a778d41d8576d0c90a5384fb943eb5",
+  "runtime_integration_status": "not_integrated",
+  "enforcement_disposition": "observed_tested_limited",
+  "production_eligible": false,
+  "qualification_credit": false,
+  "board_receipt_in_authorized_path": false,
+  "bounded_claims": [
+    "Replay adapters are inert in-process fixtures and are surrounded by Python-level effect interposition.",
+    "Direct sandbox probes demonstrate exact argv transport and denied descendant exec, host-path write, and socket creation on this test host.",
+    "The nearby control is applied only to a disposable worktree and its required pytest process is not a PCCE-071 static-target sandbox execution.",
+    "All durable receipts deny approval, publication, production eligibility, and qualification credit."
+  ],
+  "known_gaps": [
+    "Python monkeypatch interposition cannot observe native syscalls made outside the in-process replay fixtures.",
+    "A genuinely compromised adapter could cause effects before returning unless an authoritative runtime path invokes it inside an integrated sandbox.",
+    "PCCE-071 direct sandbox receipts report completed_unpublished when a static probe handles a denied syscall and exits zero; typed per-probe denial traces are test-harness observations.",
+    "Same-UID hostile host actors, live credentials, live provider transport, route endpoint mediation, and publication are outside this test scope.",
+    "The parent authorization permits durable evidence only below fixtures/patch_and_agent, not the board-listed artifact receipt path."
+  ],
+  "unresolved_acceptance_items": [
+    "authoritative-runtime-sandbox-integration",
+    "semantic-protected-artifact-gate-in-runtime",
+    "control-test-process-pcce071-containment",
+    "board-artifact-receipt-output"
+  ]
+}

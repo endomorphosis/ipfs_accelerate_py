@@ -244,6 +244,33 @@ def _changed_paths(repo_root: Path, before: str, after: str) -> tuple[str, ...]:
     return tuple(_safe_output(value) for value in values)
 
 
+def _ls_tree_entry_kind(repo_root: Path, commit: str, path: str) -> str:
+    """Return blob/tree/commit for one tree path without following gitlinks.
+
+    ``git cat-file -t <commit>:<path>`` resolves a gitlink into the submodule
+    commit object and fail-closes when that object lives in a sibling store.
+    ``ls-tree`` only reads the parent tree entry.
+    """
+
+    raw = _run_git(
+        repo_root,
+        ["ls-tree", "--full-name", "-z", commit, "--", path],
+    )
+    record = raw.split("\0", 1)[0]
+    if not record:
+        raise LandedCompletionRecoveryError("declared output is absent from the tree")
+    meta, _sep, observed = record.partition("\t")
+    if observed != path:
+        raise LandedCompletionRecoveryError("declared output path identity changed")
+    parts = meta.split()
+    if len(parts) < 2:
+        raise LandedCompletionRecoveryError("declared output tree entry is malformed")
+    kind = parts[1]
+    if kind not in {"blob", "tree", "commit"}:
+        raise LandedCompletionRecoveryError("declared output tree entry kind is unknown")
+    return kind
+
+
 def _declared_outputs_cover_changed_paths(
     repo_root: Path,
     commit: str,
@@ -257,13 +284,8 @@ def _declared_outputs_cover_changed_paths(
     declarations: list[tuple[str, str]] = []
     for output in outputs:
         try:
-            object_type = _run_git(
-                repo_root,
-                ["cat-file", "-t", f"{commit}:{output}"],
-            )
+            object_type = _ls_tree_entry_kind(repo_root, commit, output)
         except LandedCompletionRecoveryError:
-            return False
-        if object_type not in {"blob", "tree"}:
             return False
         declarations.append((output, object_type))
 
@@ -280,9 +302,9 @@ def _declared_outputs_cover_changed_paths(
             index
             for index, (output, object_type) in enumerate(declarations)
             if (
-                changed_path == output
-                if object_type == "blob"
-                else _is_strict_descendant(changed_path, output)
+                _is_strict_descendant(changed_path, output)
+                if object_type == "tree"
+                else changed_path == output
             )
         ]
         if len(matching_declarations) != 1:
@@ -595,9 +617,25 @@ def discover_landed_completion_recovery(
             (item["candidate_commit"], item["integrating_merge"]): item
             for item in matches
         }
-        if len(unique) != 1:
+        if not unique:
             return None
-        landed = next(iter(unique.values()))
+        if len(unique) == 1:
+            landed = next(iter(unique.values()))
+        else:
+            # The same task alias can land more than once (a later
+            # re-implementation).  The current proof is the newest
+            # integrating merge still on the target; rev-list is newest-first.
+            merge_order = {
+                line.split()[0]: index
+                for index, line in enumerate(merge_lines)
+                if line.split()
+            }
+            landed = min(
+                unique.values(),
+                key=lambda item: int(
+                    merge_order.get(item["integrating_merge"], _MAX_MERGES + 1)
+                ),
+            )
         body: dict[str, Any] = {
             "schema": DATABASE_LANDED_COMPLETION_RECOVERY_SCHEMA,
             "disposition": "fresh_validation",

@@ -1,0 +1,264 @@
+{
+  "schema": "ipfs-accelerate.proof-context.v0.1/adversarial-concurrency-schedules",
+  "task_id": "PCCE-075",
+  "production_source_commit": "489da803b9a778d41d8576d0c90a5384fb943eb5",
+  "seed_derivation": "fixed decimal seeds; scheduling order is explicit and every outcome assertion is exact",
+  "log_schema": {
+    "required": [
+      "schema",
+      "task_id",
+      "schedule_id",
+      "seed",
+      "events",
+      "parent_root_cid",
+      "seal_cid",
+      "published_count",
+      "canonical_state",
+      "process",
+      "worktree",
+      "lease",
+      "fence",
+      "cas",
+      "checkpoints",
+      "authority_observation",
+      "disposition",
+      "log_identity_rule",
+      "log_artifact_cid",
+      "cleanup"
+    ],
+    "event_required": [
+      "sequence",
+      "actor",
+      "operation",
+      "generation",
+      "outcome"
+    ],
+    "section_required": [
+      "applicable",
+      "identities",
+      "observations"
+    ],
+    "cleanup_required": [
+      "applicable",
+      "identities",
+      "observations",
+      "errors",
+      "processes_absent",
+      "worktrees_absent",
+      "registry",
+      "storage_absent"
+    ],
+    "identity_policy": "content identities and sanitized disposable identifiers only; no raw paths, credentials, environment, stdout, stderr, or provider data",
+    "artifact_retention": "the outer task receipt must retain log_artifact_cid, the content identity of the full sanitized evidence log",
+    "log_identity_rule": "mint a recovery CID over the full sanitized evidence log with only log_artifact_cid normalized to null to avoid self-reference"
+  },
+  "concurrent_publication": {
+    "schedule_id": "two-runtime-stores-one-generation-minimized-failure",
+    "seed": 75001,
+    "writers": [
+      "writer-a",
+      "writer-b"
+    ],
+    "generation": 1,
+    "interleaving": [
+      "open writer-a and writer-b runtimes with required Kit capability, a shared Kit root, and distinct worktree parents",
+      "park both writers at a two-worker barrier",
+      "release both writers simultaneously",
+      "each publishes through its independently constructed in-process checkpoint store"
+    ],
+    "security_invariant": {
+      "maximum_accepted_records": 1,
+      "maximum_published_settlements": 1
+    },
+    "observed_current_tree": {
+      "accepted_records": 2,
+      "published_settlements": 2,
+      "distinct_evidence_cids": true,
+      "distinct_runtime_checkpoint_stores": true,
+      "shared_kit_root": true,
+      "simultaneous_barrier_release": true,
+      "overlap_proven": true,
+      "completion_order_recorded": true,
+      "disposition": "no-go-runtime-storage-owner-reopen-required"
+    },
+    "authority_finding": "Kit capability and content store are real, but each runtime independently constructs an in-process FencedCheckpointStore for recovery checkpoints"
+  },
+  "aba": {
+    "schedule_id": "delayed-generation-one-after-aba",
+    "seed": 75002,
+    "interleaving": [
+      "writer-a claims generation 1 with token-a",
+      "capture generation-1 credentials for a synthetic delayed store call",
+      "writer-b reclaims generation 2 with token-b",
+      "writer-a reclaims generation 3 with token-a",
+      "invoke the synthetic delayed generation-1 token-a store call"
+    ],
+    "expected_delayed_outcome": "stale_root:generation",
+    "integration_scope": "synthetic-in-process-store-only",
+    "qualification_credit": false,
+    "disposition": "no-go-insufficient-not-runtime-kit-repository-integrated"
+  },
+  "lease_and_fence_loss": {
+    "schedule_id": "loss-after-seal-checkpoint",
+    "seeds": {
+      "lease": 75003,
+      "fence": 75013
+    },
+    "losses": [
+      "lease",
+      "fence"
+    ],
+    "crash_stage": "seal",
+    "crash_position": "after",
+    "expected_status": "stale",
+    "expected_published": false
+  },
+  "duplicate_terminal": {
+    "schedule_id": "concurrent-resume-after-settlement",
+    "seed": 75004,
+    "resume_callers": 2,
+    "synchronization": {
+      "ready_barrier_parties": 3,
+      "call_barrier_parties": 2,
+      "required_max_active_callers": 2,
+      "completion_order": "observed-at-return-not-predeclared"
+    },
+    "invariants": {
+      "seal_invocations": 1,
+      "disposition_invocations": 1,
+      "published_settlements": 1,
+      "same_evidence_cid": true,
+      "identical_adapter_result_identity": true
+    }
+  },
+  "authoritative_integration": {
+    "schedule_id": "authoritative-runtime-integration-gaps",
+    "seed": 75005,
+    "observed_current_tree": {
+      "authoritative_sandbox": "not_integrated",
+      "authoritative_hidden_evaluator": "not_integrated",
+      "verification_execution": "marker-only-no-command-or-test-receipt",
+      "proof_execution": "unavailable-no-go",
+      "accepted_despite_gaps": true,
+      "disposition": "no-go-authoritative-integration-owner-reopen-required"
+    }
+  },
+  "bounded_probe_boundary": {
+    "schedule_id": "kill-stuck-concurrency-probe-process-group",
+    "seed": 75006,
+    "timeout_seconds": 3,
+    "successful_probe_timeout_seconds": 30,
+    "child_mode_admission": "dedicated-worker-operation-with-no-ordinary-test-mode",
+    "ambient_forgery_admitted": false,
+    "stuck_effect": "non-daemon-call-blocks-interpreter-exit-with-live-descendant",
+    "expected_outcome": "bounded-timeout-process-group-absent",
+    "cleanup": [
+      "probe controller absent",
+      "probe process group absent",
+      "descendant process absent",
+      "self-created pipe and matching environment rejected",
+      "raw identity handoff removed",
+      "raw return handoff removed"
+    ]
+  },
+  "crash_matrix": [
+    {
+      "schedule_id": "apply-before",
+      "seed": 75101,
+      "stage": "isolated-apply",
+      "position": "before",
+      "expected_status": "succeeded"
+    },
+    {
+      "schedule_id": "apply-during",
+      "seed": 75102,
+      "stage": "isolated-apply",
+      "position": "during",
+      "expected_status": "repair_required"
+    },
+    {
+      "schedule_id": "apply-after",
+      "seed": 75103,
+      "stage": "isolated-apply",
+      "position": "after",
+      "expected_status": "succeeded"
+    },
+    {
+      "schedule_id": "verify-before",
+      "seed": 75201,
+      "stage": "incremental-verify",
+      "position": "before",
+      "expected_status": "succeeded"
+    },
+    {
+      "schedule_id": "verify-during",
+      "seed": 75202,
+      "stage": "incremental-verify",
+      "position": "during",
+      "expected_status": "repair_required"
+    },
+    {
+      "schedule_id": "verify-after",
+      "seed": 75203,
+      "stage": "incremental-verify",
+      "position": "after",
+      "expected_status": "succeeded"
+    },
+    {
+      "schedule_id": "seal-before",
+      "seed": 75301,
+      "stage": "seal",
+      "position": "before",
+      "expected_status": "succeeded"
+    },
+    {
+      "schedule_id": "seal-during",
+      "seed": 75302,
+      "stage": "seal",
+      "position": "during",
+      "expected_status": "repair_required"
+    },
+    {
+      "schedule_id": "seal-after",
+      "seed": 75303,
+      "stage": "seal",
+      "position": "after",
+      "expected_status": "succeeded"
+    }
+  ],
+  "process_crash": {
+    "schedule_id": "bounded-process-apply-during",
+    "seed": 75401,
+    "stage": "isolated-apply",
+    "position": "during",
+    "expected_exit_code": 75,
+    "timeout_seconds": 30,
+    "child_pre_exit_observation": {
+      "in_flight": true,
+      "published": false,
+      "settled": false
+    },
+    "durable_resume_observed": false,
+    "no_cleanup_restart_observation": {
+      "status": "unavailable",
+      "error": "unavailable_capability",
+      "accepted": false,
+      "published": false,
+      "repair_required": false
+    },
+    "post_cleanup_fresh_restart_observation": {
+      "status": "succeeded",
+      "error": null,
+      "accepted": true,
+      "published": true,
+      "disposition": "no-go-lost-durable-checkpoint-false-success"
+    },
+    "cleanup": [
+      "process group absent",
+      "disposable Git worktree removed",
+      "Git worktree registry pruned",
+      "storage root removed",
+      "canonical head unchanged"
+    ]
+  }
+}

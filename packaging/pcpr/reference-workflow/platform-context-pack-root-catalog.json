@@ -1,0 +1,76 @@
+{
+  "catalog_cid": "baguqeeraz3qc64u4xanqmzrvahgmpiwo6czgqohvdfxju4konsdndsvzcdoq",
+  "closed_release_outcome": null,
+  "components": {
+    "ipfs_accelerate_py": {
+      "applied": false,
+      "binding_cid": "baguqeeraa74hjs5nhnymdtobmo2y66ha4jvqtcdakeyebt3zg75yz5tp7y7a",
+      "binding_path": "packaging/pcpr/reference-workflow/cpython312/reference.context-pack.root.json",
+      "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+      "evidence_kind": "measured",
+      "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+      "live": false,
+      "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+      "objective_kind": "declared_context_pack_root_binding",
+      "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+      "package_name": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "reminted": false,
+      "status": "observed"
+    },
+    "ipfs_datasets_py": {
+      "binding": {
+        "applied": false,
+        "binding_cid": "baguqeerajroer7ligg572jxrhqgor544bhmxhae5fj32v4i3764r5pakbcdq",
+        "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+        "evidence_kind": "measured",
+        "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+        "live": false,
+        "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+        "objective_kind": "declared_context_pack_root_binding",
+        "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+        "package_name": "ipfs_datasets_py",
+        "package_version": "0.2.0",
+        "path": "../ipfs_datasets/packaging/pcpr/reference-workflow/cpython312/reference.context-pack.root.binding.json",
+        "sha256": "a41dbeeb367c95255d954eabb658cc494562d3e3781d6ba0ba39429ad5b45048",
+        "status": "observed"
+      }
+    },
+    "ipfs_kit_py": {
+      "root": {
+        "applied": false,
+        "binding_cid": "baguqeera4ejmqjdeuqvaiyyurcbxqkjl25qkmfpbm4ltl45le4ghoo67scoa",
+        "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+        "evidence_kind": "measured",
+        "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+        "live": false,
+        "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+        "objective_kind": "declared_context_pack_root",
+        "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+        "package_name": "ipfs_kit_py",
+        "package_version": "0.3.0",
+        "path": "../ipfs_kit/packaging/pcpr/reference-workflow/cpython312/reference.context-pack.root.json",
+        "sha256": "69fa1a7b32ea1a14a97c5ca03200b1f59295dfcc5a6d563255dcea5b9c9f18e9",
+        "status": "observed"
+      }
+    }
+  },
+  "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+  "evidence_kind": "measured",
+  "goal_id": "PCPR-G700",
+  "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+  "interface": "PlatformContextPackRoot@1",
+  "live_context_pack_admission": false,
+  "live_execution": false,
+  "live_storage": false,
+  "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+  "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+  "objective_kind": "declared_context_pack_root_binding",
+  "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "release_claim": false,
+  "schema": "ipfs_accelerate_py/assurance/platform-context-pack-root-catalog@1",
+  "sibling_source_required": false,
+  "task_id": "PCPR-062"
+}

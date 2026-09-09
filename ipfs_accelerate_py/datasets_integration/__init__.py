@@ -189,6 +189,8 @@ from .filesystem import FilesystemHandler
 from .provenance import ProvenanceLogger
 from .workflow import WorkflowCoordinator
 
+# WorkflowCoordinator is PCPR-030 quarantined: ordinary runtime cannot
+# instantiate it without explicit_simulation=True.
 __all__ = [
     'is_datasets_available',
     'get_datasets_status',

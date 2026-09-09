@@ -342,6 +342,10 @@ def classify_exception(exc: BaseException) -> TransactionConflictKind:
             "reset",
             "broken pipe",
             "temporarily",
+            "fatalexception",
+            "internalexception",
+            "connectionexception",
+            "unusable after an uncertain",
         )
     ):
         return TransactionConflictKind.TRANSIENT

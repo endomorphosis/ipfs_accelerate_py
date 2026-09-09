@@ -623,7 +623,14 @@ def _run_vrif_terminal_hook(
     monkeypatch.setattr(
         runner,
         "supervisor_status_health_fields",
-        lambda *_a, **_k: {"restart_supervisor": False},
+        lambda *_a, **kwargs: {
+            "supervisor_status": "live",
+            "supervisor_status_generation": "valid",
+            "supervisor_status_generation_valid": True,
+            "expected_supervisor_pid": kwargs["expected_supervisor_pid"],
+            "observed_supervisor_pid": kwargs["expected_supervisor_pid"],
+            "restart_supervisor": False,
+        },
     )
     monkeypatch.setattr(runner, "format_supervisor_status_fields", lambda _v: "")
     monkeypatch.setattr(runner, "format_daemon_heartbeat_fields", lambda _v: "")

@@ -40,6 +40,7 @@ from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
     owner_liveness,
     proc_available,
     read_process_birth,
+    same_process_owner,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -301,6 +302,114 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
     assert terminal.terminal_reason == "controlled_restart_dead_owner"
     assert store.load_workspace(other_workspace).is_nonterminal
     assert store.load_workspace(live_workspace).is_nonterminal
+
+
+def test_same_process_owner_rejects_pid_reuse(tmp_path: Path) -> None:
+    current = current_process_birth()
+    assert same_process_owner(current, current) is True
+    reused = ProcessBirthIdentity(
+        pid=current.pid,
+        start_time_ticks=current.start_time_ticks + 99,
+        boot_id=current.boot_id,
+        parent_pid=current.parent_pid,
+    )
+    assert same_process_owner(reused, current) is False
+    other = ProcessBirthIdentity(
+        pid=current.pid + 1,
+        start_time_ticks=current.start_time_ticks,
+        boot_id=current.boot_id,
+    )
+    assert same_process_owner(other, current) is False
+
+
+def test_find_nonterminal_for_task_returns_newest_same_repo(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(tmp_path, clock=clock)
+    first = store.begin_preparing(
+        task_id="PCSM-011",
+        canonical_task_cid="cid:pcsm-011",
+        attempt=1,
+        lane_id="lane-0",
+        workspace_path=tmp_path / "ws-first",
+        branch="implementation/pcsm-011-first",
+        merge_target="main",
+        state_dir=str(tmp_path / "state" / "lane-0"),
+    )
+    store.mark_terminal(
+        first.workspace_path,
+        lease_id=first.lease_id,
+        expected_fence=first.fence,
+        reason="done",
+    )
+    clock.advance(5.0)
+    second = store.begin_preparing(
+        task_id="PCSM-011",
+        canonical_task_cid="cid:pcsm-011",
+        attempt=2,
+        lane_id="lane-0",
+        workspace_path=tmp_path / "ws-second",
+        branch="implementation/pcsm-011-second",
+        merge_target="main",
+        state_dir=str(tmp_path / "state" / "lane-0"),
+    )
+    store.begin_preparing(
+        task_id="PCSM-013",
+        attempt=1,
+        lane_id="lane-0",
+        workspace_path=tmp_path / "ws-other",
+        branch="implementation/pcsm-013",
+        merge_target="main",
+        state_dir=str(tmp_path / "state" / "lane-0"),
+    )
+
+    found = store.find_nonterminal_for_task(task_id="PCSM-011")
+    assert found is not None
+    assert found.workspace_path == second.workspace_path
+    assert found.attempt == 2
+    assert store.find_nonterminal_for_task(task_id="PCSM-099") is None
+
+
+def test_controlled_restart_reclaims_dead_owner_in_nested_portal_state_dir(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    lane_state = tmp_path / "state" / "lane-0"
+    portal_state = lane_state / "pcsm_lane_0_database_portal_attempts" / "abc123"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 11,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    workspace = tmp_path / "portal-nested"
+    record = store.begin_preparing(
+        task_id="PCSM-010",
+        canonical_task_cid="cid:pcsm-010",
+        attempt=1,
+        lane_id="lane-0",
+        workspace_path=workspace,
+        branch="implementation/pcsm-010-nested",
+        merge_target="main",
+        state_dir=str(portal_state),
+        owner=dead_owner,
+    )
+
+    recovered = store.reclaim_dead_owners_for_controlled_restart(
+        expected_state_dir=lane_state,
+    )
+
+    assert [item.task_id for item in recovered] == ["PCSM-010"]
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None
+    assert terminal.state is WorkspaceLifecycleState.TERMINAL
+    assert terminal.fence == record.fence + 1
 
 
 def test_same_lane_cleanup_reclaims_dead_owner_before_lease_expiry(

@@ -177,17 +177,27 @@ detect_platform() {
     log INFO "Detected platform: $PLATFORM ($ARCH)"
 }
 
-# Find Python
+# Find Python 3.12 or newer. Older interpreters are not the declared floor.
 find_python() {
-    for py in python3.12 python3.11 python3.10 python3.9 python3 python; do
+    for py in python3.12 python3 python; do
         if command -v "$py" >/dev/null 2>&1; then
-            PYTHON_CMD="$py"
-            PYTHON_VERSION=$($py --version 2>&1 | awk '{print $2}')
-            log INFO "Found Python: $PYTHON_CMD ($PYTHON_VERSION)"
-            return 0
+            ver="$($py -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
+            major="${ver%%.*}"
+            minor="${ver#*.}"
+            if [ -n "$major" ] && [ -n "$minor" ] && [ "$major" -gt 3 ] 2>/dev/null || {
+                [ "$major" -eq 3 ] 2>/dev/null && [ "$minor" -ge 12 ] 2>/dev/null
+            }; then
+                PYTHON_CMD="$py"
+                PYTHON_VERSION=$($py --version 2>&1 | awk '{print $2}')
+                log INFO "Found Python: $PYTHON_CMD ($PYTHON_VERSION)"
+                return 0
+            fi
+            if [ -n "$ver" ]; then
+                log WARN "$py is Python $ver; ipfs_accelerate_py requires Python 3.12+"
+            fi
         fi
     done
-    error_exit "Python 3.8+ not found. Please install Python first."
+    error_exit "Python 3.12+ not found. Please install Python 3.12 or newer first."
 }
 
 # Check if running in virtual environment

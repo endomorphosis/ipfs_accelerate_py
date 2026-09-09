@@ -18,6 +18,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 # Import MCP components from canonical mcp_server package.
 from ipfs_accelerate_py.mcp_server.mock_mcp import FastMCP, Context
 from ipfs_accelerate_py.mcp_server.types import IPFSAccelerateContext
+from ipfs_accelerate_py.compatibility.simulation.pseudo_cid import (
+    instantiate_mock_ipfs_client,
+)
 from ipfs_accelerate_py.mcp_server.tools.ipfs import MockIPFSClient
 from ipfs_accelerate_py.mcp_server.server import create_ipfs_mcp_server, register_tools
 
@@ -57,7 +60,7 @@ class TestMCPIntegration(unittest.TestCase):
     async def test_ipfs_add_file(self, mock_get_client):
         """Test the ipfs_add_file tool."""
         # Set up a mock IPFS client
-        mock_client = MockIPFSClient()
+        mock_client = instantiate_mock_ipfs_client(explicit_simulation=True)
         mock_get_client.return_value = mock_client
 
         # Import the tool registration function
@@ -92,7 +95,7 @@ class TestMCPIntegration(unittest.TestCase):
     async def test_ipfs_cat(self, mock_get_client):
         """Test the ipfs_cat tool."""
         # Set up a mock IPFS client
-        mock_client = MockIPFSClient()
+        mock_client = instantiate_mock_ipfs_client(explicit_simulation=True)
         mock_get_client.return_value = mock_client
 
         # Import the tool registration function
@@ -117,7 +120,7 @@ class TestMCPIntegration(unittest.TestCase):
     async def test_ipfs_files_write(self, mock_get_client):
         """Test the ipfs_files_write tool."""
         # Set up a mock IPFS client
-        mock_client = MockIPFSClient()
+        mock_client = instantiate_mock_ipfs_client(explicit_simulation=True)
         mock_get_client.return_value = mock_client
 
         # Import the tool registration function

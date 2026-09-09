@@ -84,6 +84,7 @@ PARALLEL_EXECUTION_COMPLETION_CONFIGURATION_REVISION: Final = (
     "parallel-execution-completion-policy@1"
 )
 PARALLEL_EXECUTION_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
+FILTERED_DEQUEUE_SNAPSHOT_LIMIT: Final[int] = 256
 PARALLEL_EXECUTION_PRODUCING_TASK_IDS: Final[tuple[str, ...]] = (
     "ASI-015",
     "ASI-016",
@@ -1047,6 +1048,9 @@ class MergeTrain:
             a queue claim.  Shared-lane consumers can use this to leave work
             pending for a compatible consumer without spending its retry
             budget.  Rejected requests are not completed or quarantined.
+        merge_lock_path: Exact repository merge lock used to verify a callback
+            lock-contention result.  Defaults to the repository-wide lock; a
+            board-scoped lock in the Git common directory is also accepted.
         merge_callback: Optional specialised merger.  It receives the claimed
             request and returns a merge-result mapping.
         state_dir: Train receipts/lease/worktrees directory.  Defaults beneath
@@ -1073,6 +1077,7 @@ class MergeTrain:
         merge_lock_deferral_seconds: float = DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS,
         max_merge_lock_deferrals: int = DEFAULT_MAX_MERGE_LOCK_DEFERRALS,
         request_filter: MergeRequestFilter | None = None,
+        merge_lock_path: Path | str | None = None,
         merge_callback: MergeCallback | None = None,
         state_dir: Path | str | None = None,
         git_timeout_seconds: float = 600.0,
@@ -1125,6 +1130,49 @@ class MergeTrain:
                 )
         self.resolver = resolver
         self.max_attempts = max(1, int(max_attempts))
+        default_merge_lock_path = checkout_mutation_lock_path(
+            self.repo_root
+        ).resolve(strict=False)
+        if merge_lock_path is None:
+            resolved_merge_lock_path = default_merge_lock_path
+        else:
+            configured_merge_lock_path = Path(merge_lock_path)
+            if not configured_merge_lock_path.is_absolute():
+                raise ValueError("merge lock path must be absolute")
+            resolved_merge_lock_path = configured_merge_lock_path.resolve(
+                strict=False
+            )
+        lock_name = resolved_merge_lock_path.name
+        board_lock_prefix = "implementation-board-"
+        board_lock_suffix = "-merge.lock"
+        board_lock_digest = (
+            lock_name[
+                len(board_lock_prefix) : -len(board_lock_suffix)
+            ]
+            if lock_name.startswith(board_lock_prefix)
+            and lock_name.endswith(board_lock_suffix)
+            else ""
+        )
+        board_lock_name_valid = bool(
+            len(board_lock_digest) == 16
+            and all(
+                character in "0123456789abcdef"
+                for character in board_lock_digest
+            )
+        )
+        if (
+            resolved_merge_lock_path.parent
+            != default_merge_lock_path.parent
+            or (
+                resolved_merge_lock_path != default_merge_lock_path
+                and not board_lock_name_valid
+            )
+        ):
+            raise ValueError(
+                "merge lock path must be the default or a board-scoped "
+                "lock in the repository Git common directory"
+            )
+        self.merge_lock_path = resolved_merge_lock_path
         merge_lock_deferral_seconds = float(merge_lock_deferral_seconds)
         if not math.isfinite(merge_lock_deferral_seconds):
             raise ValueError("merge lock deferral cooldown must be finite")
@@ -1357,20 +1405,35 @@ class MergeTrain:
                 fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
 
-    def run_once(self) -> dict[str, Any] | None:
+    def run_once(
+        self,
+        *,
+        request_filter: MergeRequestFilter | None = None,
+    ) -> dict[str, Any] | None:
         """Process at most one request.
 
         ``None`` means either the queue was empty or another train consumer owns
         the lease.  The latter can be distinguished using :meth:`status`.
+        When ``request_filter`` is supplied, candidates are inspected through a
+        bounded pending snapshot and the selected request is claimed by exact
+        request id.  A filtered consumer therefore never claims an unrelated
+        request merely to reject it after dequeue.
         """
+
+        if request_filter is not None and not callable(request_filter):
+            raise TypeError("request_filter must be callable")
 
         with self._consumer_lease() as acquired:
             if not acquired:
                 return None
             self._recover_abandoned_claims()
-            self._recover_integrated_quarantines()
+            if request_filter is None:
+                # Queue-wide quarantine revival belongs only to an ordinary
+                # train.  A claim-scoped consumer must not revive foreign work
+                # before its request filter has run.
+                self._recover_integrated_quarantines()
             self._cleanup_abandoned_worktrees()
-            request = self._dequeue()
+            request = self._dequeue(request_filter=request_filter)
             if request is None:
                 return None
             if (
@@ -1380,8 +1443,15 @@ class MergeTrain:
             ):
                 target = self._target_commit()
                 preflight = self._run_preflight(request, target_commit=target)
-                return self._process_after_preflight(request, preflight)
-            return self._process_claimed(request)
+                return self._process_after_preflight(
+                    request,
+                    preflight,
+                    force_merge_callback=request_filter is not None,
+                )
+            return self._process_claimed(
+                request,
+                force_merge_callback=request_filter is not None,
+            )
 
     def run_under_consumer_lease(
         self,
@@ -2734,6 +2804,8 @@ class MergeTrain:
         self,
         request: MergeRequest,
         preflight: Mapping[str, Any],
+        *,
+        force_merge_callback: bool = False,
     ) -> dict[str, Any]:
         started_at = time.time()
         publication_admission = self.admit_distributed_publication(request)
@@ -2755,6 +2827,7 @@ class MergeTrain:
             defer_completion=True,
             preflight_receipt=preflight,
             publication_admission=publication_admission,
+            force_merge_callback=force_merge_callback,
         )
         if not bool(integration.get("integrated")):
             return integration
@@ -4114,6 +4187,7 @@ class MergeTrain:
         defer_completion: bool = False,
         preflight_receipt: Mapping[str, Any] | None = None,
         publication_admission: Mapping[str, Any] | None = None,
+        force_merge_callback: bool = False,
     ) -> dict[str, Any]:
         started_at = time.time()
         if publication_admission is None:
@@ -4171,6 +4245,9 @@ class MergeTrain:
             )
         if (
             not self._allow_post_merge_declared_output_callback
+            and not (
+                force_merge_callback and self.merge_callback is not None
+            )
             and self._portal_projection_invalid_metadata_already_on_target(
                 request
             )
@@ -5985,9 +6062,7 @@ class MergeTrain:
             or lock_owner_pid <= 0
         ):
             return {}
-        expected_path = checkout_mutation_lock_path(self.repo_root).resolve(
-            strict=False
-        )
+        expected_path = self.merge_lock_path
         callback_path_text = str(callback_result.get("lock_path") or "")
         if not callback_path_text:
             return {}
@@ -6443,8 +6518,64 @@ class MergeTrain:
                 path = None
         return None
 
-    def _dequeue(self) -> MergeRequest | None:
-        """Claim with a consumer id when supported by the queue implementation."""
+    def _dequeue(
+        self,
+        *,
+        request_filter: MergeRequestFilter | None = None,
+    ) -> MergeRequest | None:
+        """Claim one request, using an exact bounded claim when filtered."""
+
+        if request_filter is not None:
+            pending_snapshot = getattr(self.queue, "pending_requests", None)
+            exact_claim = getattr(self.queue, "claim_pending_request", None)
+            if not callable(pending_snapshot) or not callable(exact_claim):
+                return None
+            try:
+                selected = next(
+                    (
+                        request
+                        for request in pending_snapshot(
+                            limit=FILTERED_DEQUEUE_SNAPSHOT_LIMIT
+                        )
+                        if isinstance(request, MergeRequest)
+                        and request_filter(request)
+                    ),
+                    None,
+                )
+            except Exception:
+                # A filter is a privilege-narrowing boundary.  Predicate or
+                # snapshot failure must not fall back to the ordinary dequeue.
+                return None
+            if selected is None:
+                return None
+            claimed: Any = None
+            claim_invoked = False
+            try:
+                signature = inspect.signature(exact_claim)
+                if "consumer_id" in signature.parameters:
+                    claim_invoked = True
+                    claimed = exact_claim(
+                        selected.request_id,
+                        consumer_id=self.owner_id,
+                    )
+            except (TypeError, ValueError):
+                pass
+            if not claim_invoked:
+                claimed = exact_claim(selected.request_id)
+            try:
+                claim_matches = bool(
+                    isinstance(claimed, MergeRequest)
+                    and claimed.request_id == selected.request_id
+                    and request_filter(claimed)
+                )
+            except Exception:
+                claim_matches = False
+            if not claim_matches:
+                # Compatibility queues are not trusted to honor an exact-id
+                # claim contract.  Never process a substituted or post-claim
+                # ineligible row.
+                return None
+            return claimed
 
         if self.request_filter is not None:
             pending_requests = getattr(self.queue, "pending_requests", None)

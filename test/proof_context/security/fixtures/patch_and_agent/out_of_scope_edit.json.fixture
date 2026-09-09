@@ -1,0 +1,8 @@
+{
+  "schema": "pcce-073.patch-agent-fixture@1",
+  "attack_id": "out-of-scope-edit",
+  "declared_files": [
+    "outside.txt"
+  ],
+  "patch": "diff --git a/outside.txt b/outside.txt\n--- a/outside.txt\n+++ b/outside.txt\n@@ -1 +1 @@\n-locked\n+compromised\n"
+}

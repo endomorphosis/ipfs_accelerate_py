@@ -18,6 +18,7 @@ import json
 import os
 import socket
 import stat
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
@@ -114,9 +115,32 @@ def _connect_inherited_listener(
         # SO_PEERCRED identity for this exact process birth.
         listener.close()
         listener = None
-        channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        channel.settimeout(max(0.1, float(timeout_seconds)))
-        channel.connect(address)
+        timeout = max(0.1, float(timeout_seconds))
+        deadline = time.monotonic() + timeout
+        last_error: BaseException | None = None
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                # timeout mode uses non-blocking connect internally, so a
+                # listener that nobody accept()s raises BlockingIOError
+                # (EAGAIN) instead of waiting. Retry until the deadline.
+                channel.settimeout(max(0.05, remaining))
+                channel.connect(address)
+                return channel
+            except (BlockingIOError, TimeoutError, InterruptedError) as exc:
+                last_error = exc
+                channel.close()
+                time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+            except OSError as exc:
+                last_error = exc
+                channel.close()
+                break
+        raise StateOwnerBootstrapError(
+            "state-owner bootstrap socket could not be opened"
+        ) from last_error
     except StateOwnerBootstrapError:
         if listener is not None:
             listener.close()
@@ -127,7 +151,6 @@ def _connect_inherited_listener(
         raise StateOwnerBootstrapError(
             "state-owner bootstrap socket could not be opened"
         ) from exc
-    return channel
 
 
 def validate_state_owner_bootstrap_listener(descriptor: int) -> str | bytes:

@@ -190,6 +190,10 @@ def _matching_attempts_digest(items: list[dict[str, object]]) -> str:
 
 def _block_leftover_wait_exhausted(
     source: DatabaseTaskSource,
+    *,
+    reason: str = "worktree_lifecycle_claim_exists",
+    coordination: dict[str, object] | None = None,
+    extra_receipt_fields: dict[str, object] | None = None,
 ) -> tuple[TaskRecord, dict[str, object]]:
     task = _materialize(source, alias="VRIF-leftover-wait")
     running = source.compare_and_set_status(
@@ -204,7 +208,7 @@ def _block_leftover_wait_exhausted(
         {
             "attempt_id": attempt_id,
             "attempt_number": attempt_number,
-            "reason": "worktree_lifecycle_claim_exists",
+            "reason": reason,
             "deferral_fingerprint": "sha256:" + ("6" * 64),
         }
     ]
@@ -250,13 +254,18 @@ def _block_leftover_wait_exhausted(
         "typed_deferral_slot_consumed": True,
         "retry_budget": budget,
         "prior_queue_entry_preserved_inactive": True,
-        "coordination": {
-            "attempt_id": attempt_id,
-            "claim_id": "claim:leftover-wait",
-            "attempt_number": attempt_number,
-        },
+        "coordination": (
+            dict(coordination)
+            if coordination is not None
+            else {
+                "attempt_id": attempt_id,
+                "claim_id": "claim:leftover-wait",
+                "attempt_number": attempt_number,
+            }
+        ),
         "control_expected_status": "in_progress",
         "control_expected_revision": running.revision,
+        **dict(extra_receipt_fields or {}),
     }
     blocked = source.compare_and_set_status(
         running.task_cid,
@@ -344,7 +353,16 @@ def _leftover_wait_recovery_request(
             "reason": queue_reason,
             "retry_not_before_ms": 2_000_001,
         },
-        "coordination": copy.deepcopy(blocked_receipt["coordination"]),
+        "coordination": (
+            copy.deepcopy(blocked_receipt["coordination"])
+            if isinstance(blocked_receipt.get("coordination"), dict)
+            and blocked_receipt["coordination"]
+            else {
+                "attempt_id": blocked_receipt["attempt_id"],
+                "claim_id": blocked_receipt["claim_id"],
+                "attempt_number": blocked_receipt["attempt_number"],
+            }
+        ),
         "leftover_wait_deferral_budget_recovery_seed": seed,
         "control_expected_status": "blocked",
         "control_expected_revision": blocked.revision,
@@ -1338,6 +1356,88 @@ def test_guarded_leftover_wait_recovery_updates_queue_and_status_atomically(
         assert queue is not None
         assert queue.reason == request["queue_reason"]
         assert queue.retry_not_before_ms == request["retry_not_before_ms"]
+
+
+def test_guarded_leftover_wait_recovery_accepts_empty_coordination(
+    tmp_path: Path,
+) -> None:
+    with DatabaseTaskSource(tmp_path / "control.duckdb") as source:
+        blocked, budget = _block_leftover_wait_exhausted(
+            source,
+            reason="portal_execution_incomplete",
+            coordination={},
+            extra_receipt_fields={
+                "execution_route_binding": {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "task-execution-route-binding@1"
+                    ),
+                    "task_alias": "VRIF-leftover-wait",
+                },
+                "execution_route_origin_revision": 1,
+                "execution_route_policy_id": "policy:leftover-wait",
+            },
+        )
+        request = _leftover_wait_recovery_request(blocked, budget)
+        blocked_receipt = dict(blocked.body["completion_receipt"])
+        assert blocked_receipt["coordination"] == {}
+        assert "execution_route_binding" in blocked_receipt
+
+        result = source.record_queue_backoff_and_cas_status(
+            task_cid=blocked.task_cid,
+            expected_revision=blocked.revision,
+            expected_control_receipt=blocked_receipt,
+            status="retrying",
+            receipt=request,
+            delay_ms=0,
+            reason=str(request["queue_reason"]),
+            exact_retry_not_before_ms=int(request["retry_not_before_ms"]),
+        )
+
+        assert result["cas_result"].changed is True
+        assert result["previous_status"] == "blocked"
+        observed = source.get_task(blocked.task_cid)
+        assert observed is not None and observed.status == "retrying"
+        assert observed.body["completion_receipt"]["operation"] == request[
+            "operation"
+        ]
+
+
+def test_guarded_leftover_wait_recovery_admits_provider_capacity_exhausted(
+    tmp_path: Path,
+) -> None:
+    """Reproduce PCPR-057: quota waits must rearm, not stay blocked."""
+
+    with DatabaseTaskSource(tmp_path / "control.duckdb") as source:
+        blocked, budget = _block_leftover_wait_exhausted(
+            source,
+            reason="provider_capacity_exhausted",
+        )
+        request = _leftover_wait_recovery_request(blocked, budget)
+        blocked_receipt = dict(blocked.body["completion_receipt"])
+        assert budget["matching_attempts"][0]["reason"] == (
+            "provider_capacity_exhausted"
+        )
+
+        result = source.record_queue_backoff_and_cas_status(
+            task_cid=blocked.task_cid,
+            expected_revision=blocked.revision,
+            expected_control_receipt=blocked_receipt,
+            status="retrying",
+            receipt=request,
+            delay_ms=0,
+            reason=str(request["queue_reason"]),
+            exact_retry_not_before_ms=int(request["retry_not_before_ms"]),
+        )
+
+        assert result["cas_result"].changed is True
+        assert result["previous_status"] == "blocked"
+        observed = source.get_task(blocked.task_cid)
+        assert observed is not None and observed.status == "retrying"
+        seed = observed.body["completion_receipt"][
+            "leftover_wait_deferral_budget_recovery_seed"
+        ]
+        assert seed["exhausting_reasons"] == ["provider_capacity_exhausted"]
 
 
 def test_guarded_leftover_wait_recovery_leaves_no_queue_after_lost_cas(

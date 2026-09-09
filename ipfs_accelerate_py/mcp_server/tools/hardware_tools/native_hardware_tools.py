@@ -30,47 +30,28 @@ def _load_hardware_tools_api() -> Dict[str, Any]:
         }
     except Exception:
         logger.warning(
-            "Source hardware_tools import unavailable, using fallback hardware functions"
+            "Source hardware_tools import unavailable, using typed-unavailable fallback"
+        )
+        from ipfs_accelerate_py.compatibility.simulation.fabricated_endpoint_success import (
+            unavailable_hardware_info,
+            unavailable_hardware_recommendation,
+            unavailable_hardware_test,
         )
 
         def _hardware_info_fallback(include_detailed: bool = False) -> Dict[str, Any]:
-            import platform
-
-            return {
-                "status": "success",
-                "platform": platform.system(),
-                "architecture": platform.machine(),
-                "processor": platform.processor(),
-                "cpu": {"available": True, "name": platform.processor()},
-                "cuda": {"available": False},
-                "mps": {"available": False},
-                "openvino": {"available": False},
-            }
+            return unavailable_hardware_info(include_detailed=include_detailed)
 
         def _test_hardware_fallback(
             accelerator: str = "all", test_level: str = "basic"
         ) -> Dict[str, Any]:
-            return {
-                "status": "success",
-                "accelerator": accelerator,
-                "test_level": test_level,
-                "results": {},
-                "overall_passed": True,
-            }
+            return unavailable_hardware_test(accelerator, test_level)
 
         def _recommend_hardware_fallback(
             model_type: str = "general",
             model_size: str = "medium",
             task: str = "inference",
         ) -> Dict[str, Any]:
-            return {
-                "status": "success",
-                "model_type": model_type,
-                "model_size": model_size,
-                "task": task,
-                "recommendation": "cpu",
-                "reasoning": "Fallback recommendation",
-            }
+            return unavailable_hardware_recommendation(model_type, model_size, task)
 
         return {
             "get_hardware_info": _hardware_info_fallback,
@@ -86,18 +67,41 @@ _API = _load_hardware_tools_api()
 
 
 def _normalize_payload(payload: Any) -> Dict[str, Any]:
-    """Normalize delegate payloads to deterministic dict envelopes."""
+    """Normalize delegate payloads. Missing results stay typed unavailable."""
     if isinstance(payload, dict):
         envelope = dict(payload)
+        outcome = envelope.get("outcome")
+        if outcome in {"Unavailable", "Rejected", "Failed", "Simulated", "Unknown"}:
+            envelope["live"] = False
+            envelope.setdefault("status", str(outcome).lower())
+            return envelope
         failed = bool(envelope.get("error")) or envelope.get("success") is False
         if failed:
             envelope["status"] = "error"
+            envelope.setdefault("outcome", "Failed")
+            envelope["live"] = False
         elif "status" not in envelope:
-            envelope["status"] = "success"
+            if envelope.get("live") is True:
+                envelope["status"] = "success"
+            else:
+                envelope["status"] = "unavailable"
+                envelope.setdefault("outcome", "Unavailable")
+                envelope["live"] = False
         return envelope
     if payload is None:
-        return {"status": "success"}
-    return {"status": "success", "result": payload}
+        return {
+            "status": "unavailable",
+            "outcome": "Unavailable",
+            "live": False,
+            "code": "hardware_result_absent",
+        }
+    return {
+        "status": "unavailable",
+        "outcome": "Unavailable",
+        "live": False,
+        "code": "hardware_result_untyped",
+        "result": payload,
+    }
 
 
 def _error_result(message: str, **context: Any) -> Dict[str, Any]:

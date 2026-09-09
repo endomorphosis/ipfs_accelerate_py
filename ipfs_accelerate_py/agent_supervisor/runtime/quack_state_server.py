@@ -3602,6 +3602,27 @@ class QuackStateServer:
                 ),
             )
 
+    def bind_fleet_observation_reads(self) -> Path:
+        """Publish a separate read credential for admitted fleet observations."""
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY or self._command_gateway is None:
+                raise QuackStateServerNotRunningError("fleet observation reads require a ready owner")
+            token = self._command_gateway.configure_fleet_observation_reads()
+            path = self.config.state_dir / "fleet-observation-read.token"
+            _atomic_write_text(path, token, mode=0o600)
+            return path
+
+    def bind_derived_coordination_service(self) -> Path:
+        """Expose bounded AST/hash/state references through this separate owner."""
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY or self._command_gateway is None:
+                raise QuackStateServerNotRunningError("derived coordination requires a ready owner")
+            token = self._command_gateway.bind_derived_coordination_service()
+            path = self.config.state_dir / "derived-coordination.token"
+            _atomic_write_text(path, token, mode=0o600)
+            return path
+
+
     def bind_database_status_scope(self, **binding: Any) -> None:
         """Bind a non-federated sealed board to peer-bound read-only status."""
         with self._lock:
@@ -7287,6 +7308,16 @@ def build_server(
     return server
 
 
+def admit_dead_exclusive_owner_recovery(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Admit rematerialize/relaunch only after exclusive owner death is proved."""
+
+    from .exclusive_owner_recovery import (
+        admit_dead_exclusive_owner_recovery as _admit,
+    )
+
+    return _admit(*args, **kwargs)
+
+
 __all__ = (
     "DEFAULT_LOOPBACK_HOST",
     "DEFAULT_STORE_ID",
@@ -7311,6 +7342,7 @@ __all__ = (
     "ServerLifecycle",
     "StateServerIdentity",
     "TokenVault",
+    "admit_dead_exclusive_owner_recovery",
     "assert_bind_admitted",
     "build_server",
     "listen_uri",

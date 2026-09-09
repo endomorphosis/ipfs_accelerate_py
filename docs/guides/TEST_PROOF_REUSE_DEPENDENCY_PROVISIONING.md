@@ -16,14 +16,9 @@ cache, or generate cryptographic material.
 
 ## Python runtime boundary
 
-The accelerator's general package metadata remains Python 3.8+, but the
-optional proof-reuse implementation currently uses Python 3.10-era type and
-dataclass features. The exact reviewed datasets verifier is stricter and
-requires Python 3.12+. Run the proof-reuse supervisor on Python 3.12 or newer.
-On Python 3.10/3.11 the verifier capability resolves to typed `RUN` fallback
-without provisioning; Python 3.8/3.9 environments should keep the optional
-pytest plugin disabled (for example, with pytest entry-point autoload disabled)
-until the proof-reuse compatibility floor is lowered.
+The accelerator's packaging metadata, classifiers, and installer selection
+declare Python 3.12 or newer. Run the proof-reuse supervisor on Python 3.12 or
+newer. Older interpreters are not declared and remain typed unavailable.
 
 ## Policy and first use
 

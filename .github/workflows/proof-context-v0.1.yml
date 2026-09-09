@@ -1,0 +1,737 @@
+name: Proof-context v0.1 required release gate
+
+on:
+  merge_group:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      evidence_run_id:
+        description: Immutable lift_coding workflow run containing the bounded PCCE evidence bundle
+        required: true
+        type: string
+      outer_evidence_commit:
+        description: Exact 40-hex lift_coding commit bound by that evidence bundle
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: proof-context-v0.1-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PCCE_ARTIFACT_MANIFEST_SHA256: b5b38995520aedd3392a205173182dcb07bc43361a5825b53639b985cb460ade
+  PCCE_DATASETS_COMMIT: 817a665897467b44e6b6fc413d757d9ade719d4d
+  PCCE_EVIDENCE_ARTIFACT_NAME: proof-context-pcce080-inputs
+  PCCE_EVIDENCE_REPOSITORY: endomorphosis/lift_coding
+  PCCE_EVIDENCE_RUN_ID: ${{ github.event.inputs.evidence_run_id }}
+  PCCE_KIT_COMMIT: f591ce1404df68bc597031141e483ae6e58b4dbb
+  PCCE_LOCK_INPUTS_SHA256: 2042dd244262bd26522c0fd7a0ff9fff049b5c17077d0b3fc6982e47aedd91fd
+  PCCE_MCP_COMMIT: 0ed2b23d13371a6cae25e5f328a10152e5d1da11
+  PCCE_OUTER_EVIDENCE_COMMIT: ${{ github.event.inputs.outer_evidence_commit }}
+  PYTHONHASHSEED: "0"
+  PYTHONNOUSERSITE: "1"
+
+jobs:
+  release-contract:
+    name: PCCE / release contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
+      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/release-contract.json
+      PCCE_JOB_ID: release-contract
+      PCCE_REQUIRED_JOB_MANIFEST: ${{ runner.temp }}/proof-context-evidence/artifacts/proof_carrying_context_engine/ci/required_jobs.json
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Provision the declared interpreter
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.3
+
+      - name: Initialize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py \
+            --write-job-evidence "$PCCE_JOB_EVIDENCE" \
+            --job-id "$PCCE_JOB_ID" \
+            --phase started \
+            --head-sha "${{ github.sha }}"
+
+      - name: Require explicit immutable evidence inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py \
+            --check-inputs \
+            --evidence-run-id "$PCCE_EVIDENCE_RUN_ID" \
+            --outer-commit "$PCCE_OUTER_EVIDENCE_COMMIT"
+
+      - name: Download the exact bounded evidence bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.PCCE_EVIDENCE_ARTIFACT_NAME }}
+          path: ${{ env.PCCE_EVIDENCE_ROOT }}
+          repository: ${{ env.PCCE_EVIDENCE_REPOSITORY }}
+          run-id: ${{ env.PCCE_EVIDENCE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Verify the workflow contract and external authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py \
+            --workflow .github/workflows/proof-context-v0.1.yml \
+            --manifest "$PCCE_REQUIRED_JOB_MANIFEST" \
+            --evidence-root "$PCCE_EVIDENCE_ROOT" \
+            --require-qualified
+
+      - name: Finalize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py \
+            --write-job-evidence "$PCCE_JOB_EVIDENCE" \
+            --job-id "$PCCE_JOB_ID" \
+            --phase completed \
+            --head-sha "${{ github.sha }}"
+
+      - name: Retain bounded release-contract evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: proof-context-release-contract-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 30
+          path: ${{ env.PCCE_JOB_EVIDENCE }}
+
+  clean-install:
+    name: PCCE / clean install
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      PCCE_CLEAN_INSTALL_REPORT: ${{ runner.temp }}/proof-context-clean-install.json
+      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
+      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/clean-install.json
+      PCCE_JOB_ID: clean-install
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Provision the declared interpreter
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.3
+
+      - name: Initialize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase started --head-sha "${{ github.sha }}"
+
+      - name: Require explicit immutable evidence inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --check-inputs --evidence-run-id "$PCCE_EVIDENCE_RUN_ID" --outer-commit "$PCCE_OUTER_EVIDENCE_COMMIT"
+
+      - name: Download the exact bounded evidence bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.PCCE_EVIDENCE_ARTIFACT_NAME }}
+          path: ${{ env.PCCE_EVIDENCE_ROOT }}
+          repository: ${{ env.PCCE_EVIDENCE_REPOSITORY }}
+          run-id: ${{ env.PCCE_EVIDENCE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Require every clean-install profile and container prerequisite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -I scripts/proof_context/test_clean_install.py \
+            --artifacts "$PCCE_EVIDENCE_ROOT/artifacts/proof_carrying_context_engine/environment/artifact_hashes.json" \
+            --artifact-root "$PCCE_EVIDENCE_ROOT/frozen-artifacts" \
+            --output "$PCCE_CLEAN_INSTALL_REPORT" \
+            --require-qualified
+
+      - name: Finalize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase completed --head-sha "${{ github.sha }}"
+
+      - name: Retain bounded clean-install evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: proof-context-clean-install-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ env.PCCE_JOB_EVIDENCE }}
+            ${{ env.PCCE_CLEAN_INSTALL_REPORT }}
+
+  unit-integration:
+    name: PCCE / unit and integration
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
+      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/unit-integration.json
+      PCCE_JOB_ID: unit-integration
+      PCCE_VENV: ${{ runner.temp }}/proof-context-venv
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Provision the declared interpreter
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.3
+
+      - name: Initialize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase started --head-sha "${{ github.sha }}"
+
+      - name: Require explicit immutable evidence inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --check-inputs --evidence-run-id "$PCCE_EVIDENCE_RUN_ID" --outer-commit "$PCCE_OUTER_EVIDENCE_COMMIT"
+
+      - name: Download the exact bounded evidence bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.PCCE_EVIDENCE_ARTIFACT_NAME }}
+          path: ${{ env.PCCE_EVIDENCE_ROOT }}
+          repository: ${{ env.PCCE_EVIDENCE_REPOSITORY }}
+          run-id: ${{ env.PCCE_EVIDENCE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Install only the frozen evaluation environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "$PCCE_VENV"
+          "$PCCE_VENV/bin/python" -m pip install \
+            --no-index \
+            --find-links "$PCCE_EVIDENCE_ROOT/frozen-artifacts" \
+            --only-binary=:all: \
+            --require-hashes \
+            --requirement packaging/proof_context/locks/cpython312-linux-aarch64/evaluation.txt
+
+      - name: Run required unit integration example and import tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$PCCE_VENV/bin/python" -m pytest -q \
+            test/proof_context/test_v01_dependencies.py \
+            test/proof_context/test_v01_contract_resources.py \
+            test/proof_context/test_runtime_integration.py \
+            test/proof_context/cli/test_cli_end_to_end.py \
+            test/proof_context/test_example_repository.py
+
+      - name: Finalize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase completed --head-sha "${{ github.sha }}"
+
+      - name: Retain bounded unit-integration evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: proof-context-unit-integration-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 30
+          path: ${{ env.PCCE_JOB_EVIDENCE }}
+
+  security:
+    name: PCCE / security
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
+      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/security.json
+      PCCE_JOB_ID: security
+      PCCE_VENV: ${{ runner.temp }}/proof-context-venv
+      PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/_pcce_external/ipfs_datasets:${{ github.workspace }}/_pcce_external/ipfs_kit
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Check out the exact datasets dependency
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          path: _pcce_external/ipfs_datasets
+          persist-credentials: false
+          ref: ${{ env.PCCE_DATASETS_COMMIT }}
+          repository: endomorphosis/ipfs_datasets_py
+
+      - name: Check out the exact kit dependency
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          path: _pcce_external/ipfs_kit
+          persist-credentials: false
+          ref: ${{ env.PCCE_KIT_COMMIT }}
+          repository: endomorphosis/ipfs_kit_py
+
+      - name: Provision the declared interpreter
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.3
+
+      - name: Initialize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase started --head-sha "${{ github.sha }}"
+
+      - name: Require explicit immutable evidence inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --check-inputs --evidence-run-id "$PCCE_EVIDENCE_RUN_ID" --outer-commit "$PCCE_OUTER_EVIDENCE_COMMIT"
+
+      - name: Download the exact bounded evidence bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.PCCE_EVIDENCE_ARTIFACT_NAME }}
+          path: ${{ env.PCCE_EVIDENCE_ROOT }}
+          repository: ${{ env.PCCE_EVIDENCE_REPOSITORY }}
+          run-id: ${{ env.PCCE_EVIDENCE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Install only the frozen evaluation environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "$PCCE_VENV"
+          "$PCCE_VENV/bin/python" -m pip install --no-index --find-links "$PCCE_EVIDENCE_ROOT/frozen-artifacts" --only-binary=:all: --require-hashes --requirement packaging/proof_context/locks/cpython312-linux-aarch64/evaluation.txt
+
+      - name: Run the complete required security population
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$PCCE_VENV/bin/python" -m pytest -q \
+            test/proof_context/security/test_threat_model.py \
+            test/proof_context/security/test_sandbox.py \
+            test/proof_context/security/test_adversarial_patch_and_agent.py \
+            test/proof_context/security/test_adversarial_concurrency.py \
+            _pcce_external/ipfs_datasets/tests/proof_context/benchmarks/test_isolation.py \
+            _pcce_external/ipfs_kit/tests/proof_context/test_trust_admission.py
+
+      - name: Require the admitted security qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --workflow .github/workflows/proof-context-v0.1.yml --evidence-root "$PCCE_EVIDENCE_ROOT" --require-category security --require-qualified
+
+      - name: Finalize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase completed --head-sha "${{ github.sha }}"
+
+      - name: Retain bounded security evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: proof-context-security-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 30
+          path: ${{ env.PCCE_JOB_EVIDENCE }}
+
+  benchmark-smoke:
+    name: PCCE / benchmark smoke
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
+      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/benchmark-smoke.json
+      PCCE_JOB_ID: benchmark-smoke
+      PCCE_VENV: ${{ runner.temp }}/proof-context-venv
+      PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/_pcce_external/ipfs_datasets
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Check out the exact datasets dependency
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          path: _pcce_external/ipfs_datasets
+          persist-credentials: false
+          ref: ${{ env.PCCE_DATASETS_COMMIT }}
+          repository: endomorphosis/ipfs_datasets_py
+
+      - name: Provision the declared interpreter
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.3
+
+      - name: Initialize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase started --head-sha "${{ github.sha }}"
+
+      - name: Require explicit immutable evidence inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --check-inputs --evidence-run-id "$PCCE_EVIDENCE_RUN_ID" --outer-commit "$PCCE_OUTER_EVIDENCE_COMMIT"
+
+      - name: Download the exact bounded evidence bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.PCCE_EVIDENCE_ARTIFACT_NAME }}
+          path: ${{ env.PCCE_EVIDENCE_ROOT }}
+          repository: ${{ env.PCCE_EVIDENCE_REPOSITORY }}
+          run-id: ${{ env.PCCE_EVIDENCE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Install only the frozen evaluation environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "$PCCE_VENV"
+          "$PCCE_VENV/bin/python" -m pip install --no-index --find-links "$PCCE_EVIDENCE_ROOT/frozen-artifacts" --only-binary=:all: --require-hashes --requirement packaging/proof_context/locks/cpython312-linux-aarch64/evaluation.txt
+
+      - name: Run the complete frozen benchmark smoke contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$PCCE_VENV/bin/python" -m pytest -q \
+            test/proof_context/benchmarks/test_configurations_ab.py \
+            test/proof_context/benchmarks/test_configurations_cd.py \
+            _pcce_external/ipfs_datasets/tests/proof_context/benchmarks/test_metrics.py
+
+      - name: Require the admitted benchmark qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --workflow .github/workflows/proof-context-v0.1.yml --evidence-root "$PCCE_EVIDENCE_ROOT" --require-category benchmark --require-qualified
+
+      - name: Finalize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase completed --head-sha "${{ github.sha }}"
+
+      - name: Retain bounded benchmark-smoke evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: proof-context-benchmark-smoke-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 30
+          path: ${{ env.PCCE_JOB_EVIDENCE }}
+
+  receipt-seal:
+    name: PCCE / receipt and seal verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
+      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/receipt-seal.json
+      PCCE_JOB_ID: receipt-seal
+      PCCE_REQUIRED_JOB_MANIFEST: ${{ runner.temp }}/proof-context-evidence/artifacts/proof_carrying_context_engine/ci/required_jobs.json
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Provision the declared interpreter
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.3
+
+      - name: Initialize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase started --head-sha "${{ github.sha }}"
+
+      - name: Require explicit immutable evidence inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --check-inputs --evidence-run-id "$PCCE_EVIDENCE_RUN_ID" --outer-commit "$PCCE_OUTER_EVIDENCE_COMMIT"
+
+      - name: Download the exact bounded evidence bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.PCCE_EVIDENCE_ARTIFACT_NAME }}
+          path: ${{ env.PCCE_EVIDENCE_ROOT }}
+          repository: ${{ env.PCCE_EVIDENCE_REPOSITORY }}
+          run-id: ${{ env.PCCE_EVIDENCE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Verify every admitted receipt and seal binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py \
+            --workflow .github/workflows/proof-context-v0.1.yml \
+            --manifest "$PCCE_REQUIRED_JOB_MANIFEST" \
+            --evidence-root "$PCCE_EVIDENCE_ROOT" \
+            --verify-receipts \
+            --require-qualified
+
+      - name: Finalize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase completed --head-sha "${{ github.sha }}"
+
+      - name: Retain bounded receipt-seal evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: proof-context-receipt-seal-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 30
+          path: ${{ env.PCCE_JOB_EVIDENCE }}
+
+  container:
+    name: PCCE / supported container
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      PCCE_CONTAINER_IID: ${{ runner.temp }}/proof-context-container.iid
+      PCCE_CONTAINER_LOG: ${{ runner.temp }}/proof-context-container.log
+      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
+      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/container.json
+      PCCE_JOB_ID: container
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Provision the declared interpreter
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.3
+
+      - name: Initialize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase started --head-sha "${{ github.sha }}"
+
+      - name: Require explicit immutable evidence inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --check-inputs --evidence-run-id "$PCCE_EVIDENCE_RUN_ID" --outer-commit "$PCCE_OUTER_EVIDENCE_COMMIT"
+
+      - name: Download the exact bounded evidence bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.PCCE_EVIDENCE_ARTIFACT_NAME }}
+          path: ${{ env.PCCE_EVIDENCE_ROOT }}
+          repository: ${{ env.PCCE_EVIDENCE_REPOSITORY }}
+          run-id: ${{ env.PCCE_EVIDENCE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Build the exact supported container without network
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/arm64 \
+            --network none \
+            --build-context "proof_context_artifacts=$PCCE_EVIDENCE_ROOT" \
+            --build-arg PROFILE=core \
+            --build-arg ARTIFACT_MANIFEST_PATH=artifacts/proof_carrying_context_engine/environment/artifact_hashes.json \
+            --build-arg ARTIFACT_ROOT_PATH=frozen-artifacts \
+            --file docker/proof-context/Dockerfile \
+            --iidfile "$PCCE_CONTAINER_IID" \
+            --load \
+            --tag proof-context-v0.1:required \
+            . 2>&1 | tee "$PCCE_CONTAINER_LOG"
+
+      - name: Finalize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase completed --head-sha "${{ github.sha }}"
+
+      - name: Retain bounded container evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: proof-context-container-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ env.PCCE_JOB_EVIDENCE }}
+            ${{ env.PCCE_CONTAINER_IID }}
+            ${{ env.PCCE_CONTAINER_LOG }}
+
+  dependency-license:
+    name: PCCE / dependency and license
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
+      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/dependency-license.json
+      PCCE_JOB_ID: dependency-license
+      PCCE_REQUIRED_JOB_MANIFEST: ${{ runner.temp }}/proof-context-evidence/artifacts/proof_carrying_context_engine/ci/required_jobs.json
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Provision the declared interpreter
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.3
+
+      - name: Initialize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase started --head-sha "${{ github.sha }}"
+
+      - name: Require explicit immutable evidence inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --check-inputs --evidence-run-id "$PCCE_EVIDENCE_RUN_ID" --outer-commit "$PCCE_OUTER_EVIDENCE_COMMIT"
+
+      - name: Download the exact bounded evidence bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.PCCE_EVIDENCE_ARTIFACT_NAME }}
+          path: ${{ env.PCCE_EVIDENCE_ROOT }}
+          repository: ${{ env.PCCE_EVIDENCE_REPOSITORY }}
+          run-id: ${{ env.PCCE_EVIDENCE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Audit exact locks SBOM dependencies and licenses
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py \
+            --workflow .github/workflows/proof-context-v0.1.yml \
+            --manifest "$PCCE_REQUIRED_JOB_MANIFEST" \
+            --evidence-root "$PCCE_EVIDENCE_ROOT" \
+            --audit-dependencies \
+            --require-qualified
+
+      - name: Finalize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase completed --head-sha "${{ github.sha }}"
+
+      - name: Retain bounded dependency-license evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: proof-context-dependency-license-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 30
+          path: ${{ env.PCCE_JOB_EVIDENCE }}
+
+  release-gate:
+    name: PCCE / required release gate
+    if: ${{ always() }}
+    needs:
+      - release-contract
+      - clean-install
+      - unit-integration
+      - security
+      - benchmark-smoke
+      - receipt-seal
+      - container
+      - dependency-license
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/release-gate.json
+      PCCE_JOB_ID: release-gate
+      PCCE_NEEDS_JSON: ${{ toJSON(needs) }}
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Provision the declared interpreter
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.3
+
+      - name: Initialize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase started --head-sha "${{ github.sha }}"
+
+      - name: Require every upstream result to succeed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --aggregate-needs "$PCCE_NEEDS_JSON"
+
+      - name: Finalize bounded job evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/proof_context/verify_release_ci.py --write-job-evidence "$PCCE_JOB_EVIDENCE" --job-id "$PCCE_JOB_ID" --phase completed --head-sha "${{ github.sha }}"
+
+      - name: Retain bounded aggregate evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: proof-context-release-gate-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 30
+          path: ${{ env.PCCE_JOB_EVIDENCE }}

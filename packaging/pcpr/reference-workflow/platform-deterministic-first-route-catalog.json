@@ -1,0 +1,80 @@
+{
+  "catalog_cid": "baguqeeraoml57h6xmpj4oaluoiqol5zatetlqqxsss3fafetz4locw4zfzma",
+  "closed_release_outcome": null,
+  "components": {
+    "ipfs_accelerate_py": {
+      "applied": false,
+      "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+      "document_cid": "baguqeeraxgzhxvhg7nhdgkz7tesw2il3endimzzr4xojgrvq2ojoussfsflq",
+      "document_path": "packaging/pcpr/reference-workflow/cpython312/reference.deterministic-first-route.json",
+      "evidence_kind": "measured",
+      "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+      "live": false,
+      "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+      "objective_kind": "declared_deterministic_first_route",
+      "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+      "package_name": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "reminted": false,
+      "route_cid": "baguqeerab6vsy7orm6wmxmqbzqh5f57dasnufhgngvh47gw7g3whrkr5smga",
+      "status": "observed"
+    },
+    "ipfs_datasets_py": {
+      "binding": {
+        "applied": false,
+        "binding_cid": "baguqeera6zp2piuzartdiullmhzz4miz7q4hsorzoseuzaylnlpiscc6hmga",
+        "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+        "evidence_kind": "measured",
+        "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+        "live": false,
+        "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+        "objective_kind": "declared_deterministic_first_route_binding",
+        "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+        "package_name": "ipfs_datasets_py",
+        "package_version": "0.2.0",
+        "path": "../ipfs_datasets/packaging/pcpr/reference-workflow/cpython312/reference.deterministic-first-route.binding.json",
+        "route_cid": "baguqeerab6vsy7orm6wmxmqbzqh5f57dasnufhgngvh47gw7g3whrkr5smga",
+        "sha256": "9187a9abb49347c84f9373b387a37d7be85fcafe65a2e8595ef9a3a7911507db",
+        "status": "observed"
+      }
+    },
+    "ipfs_kit_py": {
+      "binding": {
+        "applied": false,
+        "binding_cid": "baguqeerac7adss73uruuttm4s2bnscuxcrpipy34rjdu6j6qevalthp5mjhq",
+        "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+        "evidence_kind": "measured",
+        "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+        "live": false,
+        "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+        "objective_kind": "declared_deterministic_first_route_binding",
+        "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+        "package_name": "ipfs_kit_py",
+        "package_version": "0.3.0",
+        "path": "../ipfs_kit/packaging/pcpr/reference-workflow/cpython312/reference.deterministic-first-route.binding.json",
+        "route_cid": "baguqeerab6vsy7orm6wmxmqbzqh5f57dasnufhgngvh47gw7g3whrkr5smga",
+        "sha256": "9aa12a8fe3e04266c20bb051928315f2e02ff5c423fa12ac16117fd77548a2ae",
+        "status": "observed"
+      }
+    }
+  },
+  "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+  "evidence_kind": "measured",
+  "goal_id": "PCPR-G700",
+  "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+  "interface": "PlatformDeterministicFirstRoute@1",
+  "live_execution": false,
+  "live_prover": false,
+  "live_selected_tests": false,
+  "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+  "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+  "objective_kind": "declared_deterministic_first_route",
+  "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "release_claim": false,
+  "route_cid": "baguqeerab6vsy7orm6wmxmqbzqh5f57dasnufhgngvh47gw7g3whrkr5smga",
+  "schema": "ipfs_accelerate_py/assurance/platform-deterministic-first-route-catalog@1",
+  "sibling_source_required": false,
+  "task_id": "PCPR-063"
+}

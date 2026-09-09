@@ -1,0 +1,95 @@
+{
+  "catalog_cid": "baguqeerai2z72oxmcikbspuidbx3rmaikdm5tmm3ijubn5a3kdmerzhl6mea",
+  "checksum_kind": "declared_artifact_checksum_manifest",
+  "closed_release_outcome": null,
+  "components": {
+    "ipfs_accelerate_py": {
+      "checksum_kind": "declared_artifact_checksum_manifest",
+      "checksums_cid": "baguqeeraqqhpdtv7s33b3ha6prioigypgczlhvbx3ena24zwt4k5kxcsww5q",
+      "checksums_path": "packaging/pcpr/signed/cpython312/release.checksums.json",
+      "evidence_kind": "measured",
+      "hashes_invented": false,
+      "intended_tag_name": "ipfs_accelerate_py-v0.0.45",
+      "live": false,
+      "lock_cid": "baguqeerayvfxbdt6m6go57s6dw2afwsvpkzpt25rewc6kglm2fhwkeowvuxa",
+      "package_name": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "provenance_cid": "baguqeera5m46bqdbtzywuntklfkbc7zxyn5ihyfr4ckazumexgjs3zuzvifa",
+      "sbom_cid": "baguqeeraotw7oyqehxscvlcyo4udmmdnaxq3yg6rfz4pspxcnpcnbwhd5fiq",
+      "signatures_invented": false,
+      "signed": false,
+      "status": "observed",
+      "tag_kind": "declared_signed_tag_policy",
+      "tag_policy_cid": "baguqeera3b3o6eu5zb4avcvwq667jekuqt5bl7ucb5pa4jumseizgbuqdl5a",
+      "tag_policy_path": "packaging/pcpr/signed/cpython312/release.tag-policy.json"
+    },
+    "ipfs_datasets_py": {
+      "checksums": {
+        "checksum_kind": "declared_artifact_checksum_manifest",
+        "checksums_cid": "baguqeerax4bcjukmqipr76vndwafm2vomppsobybg7czameuzllcsgcymkwa",
+        "evidence_kind": "measured",
+        "live": false,
+        "package_name": "ipfs_datasets_py",
+        "package_version": "0.2.0",
+        "path": "../ipfs_datasets/packaging/pcpr/signed/cpython312/release.checksums.json",
+        "sha256": "1c081c5a4ee9766bbc43194e0ce8f946bbac64040e65e1e7b057a08635b8aab9",
+        "signed": false,
+        "status": "observed",
+        "tag_kind": null
+      },
+      "tag_policy": {
+        "checksum_kind": null,
+        "evidence_kind": "measured",
+        "live": false,
+        "package_name": "ipfs_datasets_py",
+        "package_version": "0.2.0",
+        "path": "../ipfs_datasets/packaging/pcpr/signed/cpython312/release.tag-policy.json",
+        "sha256": "0b25956e7a5348f8e4a1f54217e739f5e63be64ab82c16cf88f2f0a007d9b588",
+        "signed": false,
+        "status": "observed",
+        "tag_kind": "declared_signed_tag_policy",
+        "tag_policy_cid": "baguqeeraubun3du77i6xczjl2eufg4fxq6v7dcmapqjtgutukf5fbl6wi33a"
+      }
+    },
+    "ipfs_kit_py": {
+      "checksums": {
+        "checksum_kind": "declared_artifact_checksum_manifest",
+        "checksums_cid": "baguqeeragjykpkrsny4wzmq6vhk47o3u47w7c4rbp42554lwyzlrdoinxk2a",
+        "evidence_kind": "measured",
+        "live": false,
+        "package_name": "ipfs_kit_py",
+        "package_version": "0.3.0",
+        "path": "../ipfs_kit/packaging/pcpr/signed/cpython312/release.checksums.json",
+        "sha256": "6d8d615af999fbf7f5c8e337eca6b4d7701da34678a1cd6ab072b65f6a35724d",
+        "signed": false,
+        "status": "observed",
+        "tag_kind": null
+      },
+      "tag_policy": {
+        "checksum_kind": null,
+        "evidence_kind": "measured",
+        "live": false,
+        "package_name": "ipfs_kit_py",
+        "package_version": "0.3.0",
+        "path": "../ipfs_kit/packaging/pcpr/signed/cpython312/release.tag-policy.json",
+        "sha256": "987c702142c67d245d37df0c827b3dfd1ae09050c1eaafbba5ca61d1671dea62",
+        "signed": false,
+        "status": "observed",
+        "tag_kind": "declared_signed_tag_policy",
+        "tag_policy_cid": "baguqeerazr3ew2kjxvi7tz4eouy6eqsdoszfp4c6tdsvctvueycwjipdgpaa"
+      }
+    }
+  },
+  "evidence_kind": "measured",
+  "goal_id": "PCPR-G600",
+  "hashes_invented": false,
+  "interface": "PlatformSignedTagsAndArtifactsCatalog@1",
+  "live_artifact_signature": false,
+  "live_signed_tag": false,
+  "mutable_main_reference": false,
+  "release_claim": false,
+  "schema": "ipfs_accelerate_py/assurance/platform-signed-tags-and-artifacts-catalog@1",
+  "signatures_invented": false,
+  "tag_kind": "declared_signed_tag_policy",
+  "task_id": "PCPR-055"
+}

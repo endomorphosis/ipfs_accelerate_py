@@ -1,0 +1,407 @@
+{
+  "board_namespace": "proof-carrying-platform-qualification-and-release-v1",
+  "capabilities": {
+    "cpu": "declared_not_live_requalified",
+    "cuda": {
+      "evidence_kind": "unavailable",
+      "live": false,
+      "reason": "PCPR-038 CUDA live qualification remains typed unavailable.",
+      "status": "unavailable"
+    },
+    "ipfs": {
+      "evidence_kind": "unavailable",
+      "live": false,
+      "reason": "PCPR-021 pinned IPFS live qualification remains typed unavailable.",
+      "status": "unavailable"
+    },
+    "iroh": {
+      "evidence_kind": "unavailable",
+      "live": false,
+      "reason": "PCPR-022 Iroh live qualification remains typed unavailable.",
+      "status": "unavailable"
+    },
+    "solvers": {
+      "evidence_kind": "unavailable",
+      "live": false,
+      "reason": "PCPR-017 live solver qualification remains typed unavailable.",
+      "status": "unavailable"
+    },
+    "supported_combination_id": "pcpr.v1.python312.accelerate-datasets-kit.shared-contracts-v1"
+  },
+  "catalog_cid": "baguqeeraqpptps2gf55wmthv3sm5nzlxqqdjfyg2ggkbl5ovfzuvvvsxap4a",
+  "closed_release_outcome": null,
+  "compatibility_document_cid": "baguqeerafnibnbrsfaqvbxx444kqk3gi4sh244r7bl7usdxk2krg6njlquza",
+  "compatibility_task": "PCPR-043",
+  "components": {
+    "ipfs_accelerate_py": {
+      "checksums_cid": "baguqeeraqqhpdtv7s33b3ha6prioigypgczlhvbx3ena24zwt4k5kxcsww5q",
+      "commit": {
+        "evidence_kind": "measured",
+        "field": "PCPR-056 receipt current_tree_binding",
+        "live": false,
+        "reason": "Exact commit and tree are bound by the task receipt because nested admission rewrites HEAD. This document does not pin origin/main.",
+        "status": "observed_at_evaluation"
+      },
+      "container": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "No container digest is bound. A digest was not invented.",
+        "status": "unavailable"
+      },
+      "intended_tag_name": "ipfs_accelerate_py-v0.0.45",
+      "live": false,
+      "lock_cid": "baguqeerayvfxbdt6m6go57s6dw2afwsvpkzpt25rewc6kglm2fhwkeowvuxa",
+      "package_name": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "provenance_cid": "baguqeera5m46bqdbtzywuntklfkbc7zxyn5ihyfr4ckazumexgjs3zuzvifa",
+      "sbom_cid": "baguqeeraotw7oyqehxscvlcyo4udmmdnaxq3yg6rfz4pspxcnpcnbwhd5fiq",
+      "sdist": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "No published sdist digest is bound. Hermetic private builds are not a PCPR release. An sdist hash was not invented.",
+        "status": "unavailable"
+      },
+      "sibling_source_required": false,
+      "signed": false,
+      "tag_policy_cid": "baguqeera3b3o6eu5zb4avcvwq667jekuqt5bl7ucb5pa4jumseizgbuqdl5a",
+      "wheel": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "No published wheel digest is bound. Hermetic private builds are not a PCPR release. A wheel hash was not invented.",
+        "status": "unavailable"
+      }
+    },
+    "ipfs_datasets_py": {
+      "checksums_cid": "baguqeerax4bcjukmqipr76vndwafm2vomppsobybg7czameuzllcsgcymkwa",
+      "commit": {
+        "evidence_kind": "measured",
+        "field": "PCPR-056 receipt current_tree_binding",
+        "live": false,
+        "reason": "Exact commit and tree are bound by the task receipt because nested admission rewrites HEAD. This document does not pin origin/main.",
+        "status": "observed_at_evaluation"
+      },
+      "container": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "No container digest is bound. A digest was not invented.",
+        "status": "unavailable"
+      },
+      "intended_tag_name": "ipfs_datasets_py-v0.2.0",
+      "live": false,
+      "lock_cid": "baguqeeraxwt7j3qjwfy3yvicngqwrnx2suobs3yxa4ah6gbgbszxrbsrid7q",
+      "package_name": "ipfs_datasets_py",
+      "package_version": "0.2.0",
+      "provenance_cid": "baguqeeraoq7sa7f5vjjauqzgwuz5w4lo4cayvmf3lwiijyurtn6dhtgakeia",
+      "sbom_cid": "baguqeerao2zimzk7v7femnhzw5zhlvalaaor6foyvkrca3fneuhpe6ieoneq",
+      "sdist": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "No published sdist digest is bound. Hermetic private builds are not a PCPR release. An sdist hash was not invented.",
+        "status": "unavailable"
+      },
+      "sibling_source_required": false,
+      "signed": false,
+      "tag_policy_cid": "baguqeeraubun3du77i6xczjl2eufg4fxq6v7dcmapqjtgutukf5fbl6wi33a",
+      "wheel": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "No published wheel digest is bound. Hermetic private builds are not a PCPR release. A wheel hash was not invented.",
+        "status": "unavailable"
+      }
+    },
+    "ipfs_kit_py": {
+      "checksums_cid": "baguqeeragjykpkrsny4wzmq6vhk47o3u47w7c4rbp42554lwyzlrdoinxk2a",
+      "commit": {
+        "evidence_kind": "measured",
+        "field": "PCPR-056 receipt current_tree_binding",
+        "live": false,
+        "reason": "Exact commit and tree are bound by the task receipt because nested admission rewrites HEAD. This document does not pin origin/main.",
+        "status": "observed_at_evaluation"
+      },
+      "container": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "No container digest is bound. A digest was not invented.",
+        "status": "unavailable"
+      },
+      "intended_tag_name": "ipfs_kit_py-v0.3.0",
+      "live": false,
+      "lock_cid": "baguqeerapndvhdlxynq6afrv4mfpsa7ajjregns3nwuth5hnho7rf3xc223a",
+      "package_name": "ipfs_kit_py",
+      "package_version": "0.3.0",
+      "provenance_cid": "baguqeeral6zl7kn2fy6rylk7rs74hzbwulnntq2w2fycoe2cbpq52fjqvgwq",
+      "sbom_cid": "baguqeeracvwc27foqiebwn3bc65riwro2ucvtpadwt53fsg4uuuyh5ec7eza",
+      "sdist": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "No published sdist digest is bound. Hermetic private builds are not a PCPR release. An sdist hash was not invented.",
+        "status": "unavailable"
+      },
+      "sibling_source_required": false,
+      "signed": false,
+      "tag_policy_cid": "baguqeerazr3ew2kjxvi7tz4eouy6eqsdoszfp4c6tdsvctvueycwjipdgpaa",
+      "wheel": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "No published wheel digest is bound. Hermetic private builds are not a PCPR release. A wheel hash was not invented.",
+        "status": "unavailable"
+      }
+    }
+  },
+  "contract_authorities": {
+    "DurableArtifactReceipt": "ipfs_kit_py",
+    "ExecutionInvocation": "ipfs_accelerate_py",
+    "ExecutionReceipt": "ipfs_accelerate_py",
+    "ObjectiveMaterializationReceipt": "ipfs_accelerate_py",
+    "PortfolioCompatibilityManifest": "portfolio",
+    "ProofAdmissionDecision": "ipfs_accelerate_py",
+    "ProofObligation": "ipfs_accelerate_py",
+    "ProofResult": "ipfs_accelerate_py",
+    "ReleaseComponentManifest": "portfolio",
+    "SemanticArtifactIdentity": "ipfs_datasets_py",
+    "SupervisorContextPack": "ipfs_datasets_py",
+    "SupervisorEvent": "ipfs_accelerate_py",
+    "SupervisorObjectiveIntent": "ipfs_accelerate_py",
+    "TaskStateTransition": "ipfs_accelerate_py"
+  },
+  "contract_schema_ids": {
+    "DurableArtifactReceipt": "pcpr/shared-contracts/durable-artifact-receipt@1",
+    "ExecutionInvocation": "pcpr/shared-contracts/execution-invocation@1",
+    "ExecutionReceipt": "pcpr/shared-contracts/execution-receipt@1",
+    "ObjectiveMaterializationReceipt": "pcpr/shared-contracts/objective-materialization-receipt@1",
+    "PortfolioCompatibilityManifest": "pcpr/shared-contracts/portfolio-compatibility-manifest@1",
+    "ProofAdmissionDecision": "pcpr/shared-contracts/proof-admission-decision@1",
+    "ProofObligation": "pcpr/shared-contracts/proof-obligation@1",
+    "ProofResult": "pcpr/shared-contracts/proof-result@1",
+    "ReleaseComponentManifest": "pcpr/shared-contracts/release-component-manifest@1",
+    "SemanticArtifactIdentity": "pcpr/shared-contracts/semantic-artifact-identity@1",
+    "SupervisorContextPack": "pcpr/shared-contracts/supervisor-context-pack@1",
+    "SupervisorEvent": "pcpr/shared-contracts/supervisor-event@1",
+    "SupervisorObjectiveIntent": "pcpr/shared-contracts/supervisor-objective-intent@1",
+    "TaskStateTransition": "pcpr/shared-contracts/task-state-transition@1"
+  },
+  "datasets_owned_contracts": [
+    "SupervisorContextPack",
+    "SemanticArtifactIdentity"
+  ],
+  "evidence_id": "pcpr/portfolio-compatibility-lock@1",
+  "evidence_kind": "measured",
+  "freeze_task": "PCPR-002",
+  "frozen": false,
+  "goal_id": "PCPR-G600",
+  "governance_task": "PCPR-057",
+  "hashes_invented": false,
+  "incompatible_categories": [
+    "missing_repository",
+    "reminted_identity",
+    "sibling_import",
+    "cross_version",
+    "mixed_catalog_vectors",
+    "partial_publication",
+    "unsupported_python",
+    "authority_boundary",
+    "claimed_early"
+  ],
+  "interface": "AcceleratePortfolioCompatibilityLock@1",
+  "kit_owned_contracts": [
+    "DurableArtifactReceipt"
+  ],
+  "languages": [
+    "Python",
+    "JavaScript"
+  ],
+  "live": false,
+  "lock": true,
+  "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+  "lock_kind": "declared_portfolio_compatibility_lock",
+  "named_git_extras": [
+    "libp2p",
+    "mcp-p2p",
+    "ipfs-transformers",
+    "ipfs-model-manager"
+  ],
+  "named_git_extras_role": "source-checkout-development-and-integration",
+  "negative_document_cid": "baguqeeraior5lq3fvefhgwsm3cjjaxozffmdmqmszwxy4ozfb37mnqx6lfca",
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "program_id": "proof-carrying-platform-qualification-and-release-v1",
+  "protection": {
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "Protected signed tags and branch protection are PCPR-057. This task does not claim GitHub tag protection.",
+    "status": "unavailable"
+  },
+  "published": false,
+  "python": "3.12",
+  "python_requires": ">=3.12",
+  "qualification_receipts": [
+    {
+      "evidence_kind": "unavailable",
+      "promotion_status": "rnd_non_promoted",
+      "role": "live-supervisor-qualification",
+      "task_id": "PCPR-001"
+    },
+    {
+      "evidence_kind": "measured",
+      "promotion_status": "rnd_non_promoted",
+      "role": "cross-repository-compatibility",
+      "task_id": "PCPR-043"
+    },
+    {
+      "evidence_kind": "measured",
+      "promotion_status": "rnd_non_promoted",
+      "role": "datasets-clean-package",
+      "task_id": "PCPR-050"
+    },
+    {
+      "evidence_kind": "measured",
+      "promotion_status": "rnd_non_promoted",
+      "role": "kit-clean-package",
+      "task_id": "PCPR-051"
+    },
+    {
+      "evidence_kind": "measured",
+      "promotion_status": "rnd_non_promoted",
+      "role": "accelerate-clean-package",
+      "task_id": "PCPR-052"
+    },
+    {
+      "evidence_kind": "measured",
+      "promotion_status": "rnd_non_promoted",
+      "role": "dependency-locks",
+      "task_id": "PCPR-053"
+    },
+    {
+      "evidence_kind": "measured",
+      "promotion_status": "rnd_non_promoted",
+      "role": "sbom-and-provenance",
+      "task_id": "PCPR-054"
+    },
+    {
+      "evidence_kind": "measured",
+      "promotion_status": "rnd_non_promoted",
+      "role": "signed-tags-and-artifacts",
+      "task_id": "PCPR-055"
+    }
+  ],
+  "release_claim": false,
+  "remint": false,
+  "requires_python": ">=3.12",
+  "schema": "ipfs_accelerate_py/assurance/declared-portfolio-compatibility-lock@1",
+  "sibling_source_required": false,
+  "signatures_invented": false,
+  "signed_tags_task": "PCPR-055",
+  "signing": {
+    "algorithm": "git-gpg-or-ssh-or-cosign",
+    "evidence_kind": "unavailable",
+    "invented": false,
+    "key_id": "unavailable",
+    "live": false,
+    "reason": "gpg, ssh signing keys, and cosign are not admitted live signers in the sealed environment. A signature was not invented. This declared lock is not a live signed manifest.",
+    "signature": "unavailable",
+    "signed": false,
+    "status": "unavailable",
+    "tools": {
+      "cosign": "unavailable",
+      "gpg": "/usr/bin/gpg",
+      "gpg2": "unavailable",
+      "gpgsm": "/usr/bin/gpgsm",
+      "in_toto_sign": "unavailable",
+      "minisign": "unavailable",
+      "signify": "unavailable",
+      "signify_openbsd": "unavailable",
+      "slsa_generator": "unavailable",
+      "ssh_keygen": "/usr/bin/ssh-keygen"
+    }
+  },
+  "source": {
+    "binding": "current_head_not_mutable_main",
+    "commit": {
+      "evidence_kind": "measured",
+      "field": "PCPR-056 receipt current_tree_binding",
+      "live": false,
+      "reason": "Exact commit and tree are bound by the task receipt because nested admission rewrites HEAD. This document does not pin origin/main.",
+      "status": "observed_at_evaluation"
+    },
+    "kind": "git",
+    "mutable_main_reference": false,
+    "origin_url": "https://github.com/endomorphosis/ipfs_accelerate_py",
+    "repository": "endomorphosis/ipfs_accelerate_py"
+  },
+  "source_date_epoch": "0",
+  "supported_combination": {
+    "catalog_cid": "baguqeeraqpptps2gf55wmthv3sm5nzlxqqdjfyg2ggkbl5ovfzuvvvsxap4a",
+    "compatibility_document_cid": "baguqeerafnibnbrsfaqvbxx444kqk3gi4sh244r7bl7usdxk2krg6njlquza",
+    "contract_count": 14,
+    "duckdb_or_quack_state_written": false,
+    "frozen": false,
+    "id": "pcpr.v1.python312.accelerate-datasets-kit.shared-contracts-v1",
+    "languages": [
+      "Python",
+      "JavaScript"
+    ],
+    "lock": true,
+    "negative_document_cid": "baguqeeraior5lq3fvefhgwsm3cjjaxozffmdmqmszwxy4ozfb37mnqx6lfca",
+    "python": "3.12",
+    "repositories": [
+      "ipfs_accelerate_py",
+      "ipfs_datasets_py",
+      "ipfs_kit_py"
+    ],
+    "requires_python": ">=3.12",
+    "schema_suffix": "@1",
+    "sibling_import": false,
+    "typescript_compiler": "unavailable",
+    "vector_document_cid": "baguqeera6gwcyi3f7fkw5eufnhkovmqw7eevkeas4qxds5ws7b7rloic63da"
+  },
+  "supported_combination_count": 1,
+  "supported_combination_id": "pcpr.v1.python312.accelerate-datasets-kit.shared-contracts-v1",
+  "task_id": "PCPR-056",
+  "test_suites": {
+    "ipfs_accelerate_py": {
+      "authority": "candidate_only; cannot satisfy live supervisor promotion or a closed PCPR release",
+      "evidence_kind": "measured",
+      "live": false,
+      "paths": [
+        "test/api/test_agent_supervisor_signed_tags_and_artifacts.py",
+        "test/api/test_agent_supervisor_portfolio_compatibility_lock.py"
+      ]
+    },
+    "ipfs_datasets_py": {
+      "authority": "candidate_only; cannot satisfy live supervisor promotion or a closed PCPR release",
+      "evidence_kind": "measured",
+      "live": false,
+      "paths": [
+        "tests/unit/test_pcpr_055_signed_tags_and_artifacts.py",
+        "tests/unit/test_pcpr_056_portfolio_compatibility_lock.py"
+      ]
+    },
+    "ipfs_kit_py": {
+      "authority": "candidate_only; cannot satisfy live supervisor promotion or a closed PCPR release",
+      "evidence_kind": "measured",
+      "live": false,
+      "paths": [
+        "tests/test_pcpr_055_signed_tags_and_artifacts.py",
+        "tests/test_pcpr_056_portfolio_compatibility_lock.py"
+      ]
+    }
+  },
+  "typescript_compiler": "unavailable",
+  "vector_cids": {
+    "DurableArtifactReceipt": "baguqeeraigyma7xmhsrux6ofu6huqkmbahjclnwnnqs7qgvfiviifnzidz5a",
+    "ExecutionInvocation": "baguqeeral4cusw4s6vlidwgvfvndfcnikryjncau7gb7b43o2uwx3nfljpkq",
+    "ExecutionReceipt": "baguqeera6dmatb2hueqarvr44465a4lddoj6l7puyqckr444phr43nxe6w6a",
+    "ObjectiveMaterializationReceipt": "baguqeerafg73iznwh3di4uegoplcn6wvdleocvqw2ga76jlvfhqhwn2pe4oa",
+    "PortfolioCompatibilityManifest": "baguqeerazqmgj3lbt6sxeuzdpu5npsk73o4dulmbfvalct4q4atjobhrd2ma",
+    "ProofAdmissionDecision": "baguqeerapfeauyf46dsobfradbbj3dp7m5v2ndr7ewb2lmuijd4gntt2vkea",
+    "ProofObligation": "baguqeerawigphbus6bfz36rx3sym2rx4glfe3h6ocbkiabhpmmi5kfxyf2zq",
+    "ProofResult": "baguqeerao55s4irzaieuijpqsnsw7hdpi3szochjkbluemjqrloswjj5bbqa",
+    "ReleaseComponentManifest": "baguqeeraauz252uyxbcpkpggjbohdpyvdy5vpms77vlp44vw5ek56rgo6ela",
+    "SemanticArtifactIdentity": "baguqeeragx2oegrxxqeeofl7lyggiwyifk4wcd7mitlvqidaqfz6eabnpurq",
+    "SupervisorContextPack": "baguqeerajw2hkfnenwv44trg6yova47zknqj73ja5nv4foyunaidtmr3jzoq",
+    "SupervisorEvent": "baguqeera5mn57ji2oa56fjzgujogtlryqpzbho4yiedspdgst6bgyulliloq",
+    "SupervisorObjectiveIntent": "baguqeerak5dpgbfqb3y3lzidrzhctptq4czihlmihlrozcysqrwtk57luzya",
+    "TaskStateTransition": "baguqeeraupifx5zwkjhsfxuktg7dnkdfzva3i3bsd4mmfri4bjgwyix37tpa"
+  },
+  "vector_document_cid": "baguqeera6gwcyi3f7fkw5eufnhkovmqw7eevkeas4qxds5ws7b7rloic63da"
+}

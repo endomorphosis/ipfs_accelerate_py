@@ -54,7 +54,7 @@ def ensure_libp2p_installed() -> bool:
     if ensure_libp2p_runtime():
         return True
 
-    logger.info("libp2p not found — auto-installing from git (py-libp2p.git@main)...")
+    logger.info("libp2p not found — auto-installing from pinned py-libp2p commit...")
     if install_libp2p_runtime(quiet=True, timeout=120, upgrade=True):
         logger.info("libp2p installed successfully")
         return True

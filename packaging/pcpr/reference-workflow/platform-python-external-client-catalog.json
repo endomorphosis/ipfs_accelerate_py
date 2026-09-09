@@ -1,0 +1,83 @@
+{
+  "catalog_cid": "baguqeeraqne2wsmugfdqchhf2w6677svgyqrmp4rymzkfxbflhtx5cp6ky7q",
+  "chain_cid": "baguqeeraeuvfodvledfa4nvfuso6eyyytzk2acptcogzwzyarkdinpqcsdfq",
+  "client_cid": "baguqeerat346yf4k7kenbqlbtyejeilgxamna262z3axzjjatzm2hccehblq",
+  "closed_release_outcome": null,
+  "components": {
+    "ipfs_accelerate_py": {
+      "applied": false,
+      "chain_cid": "baguqeeraeuvfodvledfa4nvfuso6eyyytzk2acptcogzwzyarkdinpqcsdfq",
+      "client_cid": "baguqeerat346yf4k7kenbqlbtyejeilgxamna262z3axzjjatzm2hccehblq",
+      "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+      "document_cid": "baguqeera3u7t57ig7grslylppswjoc4pludmmhmhng74de7ynmquhzihaosa",
+      "document_path": "packaging/pcpr/reference-workflow/cpython312/reference.python-external-client.json",
+      "evidence_kind": "measured",
+      "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+      "live": false,
+      "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+      "objective_kind": "declared_python_external_client_demonstration",
+      "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+      "package_name": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "reminted": false,
+      "status": "observed"
+    },
+    "ipfs_datasets_py": {
+      "binding": {
+        "applied": false,
+        "binding_cid": "baguqeeractc7onhmmvhrnqmx4tserzu2q4vewgkm2mlaltwakk3jrsvopznq",
+        "chain_cid": "baguqeeraeuvfodvledfa4nvfuso6eyyytzk2acptcogzwzyarkdinpqcsdfq",
+        "client_cid": null,
+        "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+        "evidence_kind": "measured",
+        "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+        "live": false,
+        "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+        "objective_kind": "declared_python_external_client_binding",
+        "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+        "package_name": "ipfs_datasets_py",
+        "package_version": "0.2.0",
+        "path": "../ipfs_datasets/packaging/pcpr/reference-workflow/cpython312/reference.python-external-client.binding.json",
+        "sha256": "9ccd77c5b68972d7bc032b8ed0b2f874575c6e1cb704e185f1e7bfe714502cce",
+        "status": "observed"
+      }
+    },
+    "ipfs_kit_py": {
+      "binding": {
+        "applied": false,
+        "binding_cid": "baguqeeravilr2six2hpmqk5zu6zft6oasup7k4vqbwcv4fyy42bebmnglrra",
+        "chain_cid": "baguqeeraeuvfodvledfa4nvfuso6eyyytzk2acptcogzwzyarkdinpqcsdfq",
+        "client_cid": null,
+        "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+        "evidence_kind": "measured",
+        "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+        "live": false,
+        "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+        "objective_kind": "declared_python_external_client_binding",
+        "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+        "package_name": "ipfs_kit_py",
+        "package_version": "0.3.0",
+        "path": "../ipfs_kit/packaging/pcpr/reference-workflow/cpython312/reference.python-external-client.binding.json",
+        "sha256": "389ee5b82d7f5226cc7215809388f4298439dbcdbf877836439ed1a801ad47fb",
+        "status": "observed"
+      }
+    }
+  },
+  "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+  "evidence_kind": "measured",
+  "goal_id": "PCPR-G800",
+  "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+  "interface": "PlatformPythonExternalClient@1",
+  "live_application": false,
+  "live_client": false,
+  "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+  "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+  "objective_kind": "declared_python_external_client_demonstration",
+  "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "release_claim": false,
+  "schema": "ipfs_accelerate_py/assurance/platform-python-external-client-catalog@1",
+  "sibling_source_required": false,
+  "task_id": "PCPR-080"
+}

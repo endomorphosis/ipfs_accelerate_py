@@ -3,6 +3,7 @@ import requests
 import json
 import os
 import sys
+import inspect
 import anyio
 import random
 import ipfs_kit_py
@@ -421,117 +422,19 @@ class ipfs_accelerate_py:
         return None
 
     def _create_mock_handler(self, model, endpoint_type):
-        """
-        Creates a mock handler function for the specified model and endpoint type.
-        The handler will return appropriate mock responses based on the model type.
+        """PCPR-033: ordinary registration installs typed unavailable handlers."""
+        from ipfs_accelerate_py.compatibility.simulation.fabricated_endpoint_success import (
+            install_endpoint_handler,
+        )
 
-        Args:
-            model (str): The model name
-            endpoint_type (str): The endpoint type (e.g., "cpu:0", "cuda:0")
-        """
-        # Determine what kind of model this is based on name patterns
-        model_lower = model.lower()
-
-        # Create different mock handlers based on model type
-        if any(name in model_lower for name in ["bert", "roberta", "embed", "mpnet", "minilm"]):
-            # Embedding model
-            async def mock_embedding_handler(input_data):
-                # Return mock embedding
-                if isinstance(input_data, list):
-                    # For batch inputs, return batch of embeddings
-                    return {"embeddings": [[0.1, 0.2, 0.3, 0.4] * 96] * len(input_data)}
-                else:
-                    # For single input, return single embedding
-                    return {"embedding": [0.1, 0.2, 0.3, 0.4] * 96}
-
-            self.resources["endpoint_handler"][model][endpoint_type] = mock_embedding_handler
-
-        elif any(name in model_lower for name in ["llama", "gpt", "opt", "bloom", "qwen", "mistral"]):
-            # Text generation model
-            async def mock_text_gen_handler(input_data):
-                # Return mock generated text
-                return {
-                    "generated_text": "This is a mock response for a language model. The generated text is not real and is just for testing purposes.",
-                    "tokens": 20,
-                    "model": model
-                }
-
-            self.resources["endpoint_handler"][model][endpoint_type] = mock_text_gen_handler
-
-        elif any(name in model_lower for name in ["clip", "vit", "image"]):
-            # Vision model
-            async def mock_vision_handler(input_data):
-                # Return mock vision embedding
-                return {
-                    "image_embedding": [0.1, 0.2, 0.3, 0.4] * 128,
-                    "model": model
-                }
-
-            self.resources["endpoint_handler"][model][endpoint_type] = mock_vision_handler
-
-        elif any(name in model_lower for name in ["wav2vec", "whisper", "hubert", "clap"]):
-            # Audio model
-            async def mock_audio_handler(input_data):
-                if "whisper" in model_lower:
-                    # Return mock transcription
-                    return {
-                        "text": "This is a mock transcription of audio content for testing purposes.",
-                        "model": model
-                    }
-                else:
-                    # Return mock audio embedding
-                    return {
-                        "audio_embedding": [0.1, 0.2, 0.3, 0.4] * 64,
-                        "model": model
-                    }
-
-            self.resources["endpoint_handler"][model][endpoint_type] = mock_audio_handler
-
-        elif any(name in model_lower for name in ["t5", "mt5", "bart", "pegasus"]):
-            # Text-to-text model
-            async def mock_t5_handler(input_data):
-                # Return mock translation/summarization
-                return {
-                    "text": "Dies ist ein Testtext für Übersetzungen.",
-                    "model": model
-                }
-
-            self.resources["endpoint_handler"][model][endpoint_type] = mock_t5_handler
-
-        elif any(name in model_lower for name in ["llava", "qwen2-vl", "llava_next", "videomae", "xclip"]):
-            # Multimodal model
-            async def mock_multimodal_handler(input_data):
-                # Return mock vision-language response
-                return {
-                    "text": "The image shows a test pattern that is commonly used for testing purposes.",
-                    "model": model
-                }
-
-            self.resources["endpoint_handler"][model][endpoint_type] = mock_multimodal_handler
-
-        else:
-            # Generic fallback handler
-            async def mock_generic_handler(input_data):
-                return {
-                    "output": f"Mock response from {model} using {endpoint_type}",
-                    "input": input_data
-                }
-
-            self.resources["endpoint_handler"][model][endpoint_type] = mock_generic_handler
-
-        # Store the endpoint in the endpoints dictionary
-        if "local_endpoints" not in self.endpoints:
-            self.endpoints["local_endpoints"] = {}
-
-        if model not in self.endpoints["local_endpoints"]:
-            self.endpoints["local_endpoints"][model] = []
-
-        # Add endpoint to endpoints list if not already there
-        endpoint_entry = [model, endpoint_type, 2048]  # Using default context length
-        if endpoint_entry not in self.endpoints["local_endpoints"][model]:
-            self.endpoints["local_endpoints"][model].append(endpoint_entry)
-
-        print(f"Created mock handler for {model} with {endpoint_type} (REAL implementation type)")
+        metadata = self.metadata if isinstance(getattr(self, "metadata", None), dict) else {}
+        explicit = bool(metadata.get("explicit_simulation"))
+        return install_endpoint_handler(
+            self.resources,
+            model,
+            endpoint_type,
+            explicit_simulation=explicit,
+        )
 
     async def add_endpoint(self, model, endpoint_type, endpoint):
         this_model = endpoint[0]
@@ -553,7 +456,7 @@ class ipfs_accelerate_py:
                 if model not in self.resources["endpoint_handler"]:
                     self.resources["endpoint_handler"][model] = {}
 
-                # Create a mock handler for this endpoint
+                # Ordinary path installs a typed-unavailable handler, not live success.
                 self._create_mock_handler(model, backend)
 
                 # Update the handler - this handles any wrapper functionality needed
@@ -1243,7 +1146,7 @@ class ipfs_accelerate_py:
                 async def handler_wrapper(input_data):
                     try:
                         # Try to call as async function
-                        if inspect.iscoroutinefunction(  # Added import inspecthandler):
+                        if inspect.iscoroutinefunction(handler):
                             return await handler(input_data)
                         else:
                             # Call as sync function
@@ -1356,7 +1259,7 @@ class ipfs_accelerate_py:
                 else:
                     # Fallback to direct access
                     raw_handler = self.resources["endpoint_handler"][model][endpoint]
-                    if inspect.iscoroutinefunction(  # Added import inspectraw_handler):
+                    if inspect.iscoroutinefunction(raw_handler):
                         return await raw_handler(data)
                     else:
                         return raw_handler(data)

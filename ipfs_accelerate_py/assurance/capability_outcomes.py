@@ -223,11 +223,14 @@ SIMULATION_NAMESPACES: Final[frozenset[str]] = frozenset(
         "mock_hardware",
         "mock_worker",
         "mock_handler",
+        "mock_inference",
         "mock_ipfs",
         "compat_mock_ipfs",
         "cuda_mock_implementation",
         "skillset_mock_model",
         "ai_model_server_mock",
+        "legacy_mock_coordinator",
+        "hardware_test_fallback",
     }
 )
 

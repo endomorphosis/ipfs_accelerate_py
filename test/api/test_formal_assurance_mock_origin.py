@@ -404,11 +404,17 @@ def test_runtime_probes_remain_simulated_without_real_provider(
             assert classified["production_supported"] is False
             assert classified["outcome"] == "Simulated"
         elif kind == "mock_ipfs_random_cid":
-            from ipfs_accelerate_py.mcp.tools.mock_ipfs import MockIPFSClient, random_cid
+            from ipfs_accelerate_py.compatibility.simulation.pseudo_cid import (
+                MockIPFSClient,
+                PseudoCidIdentityError,
+                instantiate_mock_ipfs_client,
+                random_cid,
+            )
 
-            cid = random_cid()
-            assert cid.startswith("Qm")
-            assert len(cid) == 46
+            with pytest.raises(PseudoCidIdentityError):
+                random_cid()
+            with pytest.raises(PseudoCidIdentityError):
+                random_cid(explicit_simulation=True)
             # Same-name decoy: MockIPFSClient label alone does not grant live origin.
             client_name = MockIPFSClient.__name__
             assert client_name == case["shared_surface_name"]
@@ -421,10 +427,16 @@ def test_runtime_probes_remain_simulated_without_real_provider(
                 handle.flush()
                 temp_path = handle.name
             try:
-                result = MockIPFSClient().add_file(temp_path)
+                with pytest.raises(PseudoCidIdentityError):
+                    MockIPFSClient()
+                result = instantiate_mock_ipfs_client(explicit_simulation=True).add_file(
+                    temp_path
+                )
             finally:
                 Path(temp_path).unlink(missing_ok=True)
-            assert str(result.get("Hash", "")).startswith("Qm")
+            assert str(result.get("Hash", "")).startswith("b")
+            assert not str(result.get("Hash", "")).startswith("Qm")
+            assert result.get("live") is False
             assert _classify_mock_value(provenance="simulated")["production_supported"] is False
         else:
             raise AssertionError(f"unknown runtime_probe kind: {kind}")

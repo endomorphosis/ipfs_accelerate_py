@@ -11,7 +11,7 @@ Design goals:
 - Prefer ipfs_kit_py for distributed storage
 - Fall back gracefully to HF cache and Kubo with *explicit* degradation
 - Accurately report backend roles (ipfs_kit_py / kubo / cache)
-- Never treat synthetic HF ``bafy…`` cache keys as multiformats CIDs
+- Cache keys are canonical CIDv1 identities; hex and truncated ``bafy`` prefixes are not CIDs
 - Do not assume codec preservation or CAR export unless the role claims it
 - Keep behavior predictable in benchmarks/CI
 
@@ -29,7 +29,7 @@ import os
 import subprocess
 import tempfile
 import json
-import hashlib
+
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
@@ -500,14 +500,16 @@ class HuggingFaceCacheBackend:
         self._ipfs_cache.mkdir(parents=True, exist_ok=True)
 
     def _generate_cid(self, data: bytes) -> str:
-        """Generate a synthetic cache key (NOT a multiformats CID).
+        """Mint a canonical CIDv1 from retained bytes.
 
-        Compatibility note: historical callers and tests expect a ``bafy``
-        prefix.  The verified IPLD adapter must reject these strings via
-        ``validate_cid`` / rehash admission rather than treating them as CIDs.
+        PCPR-032: hexadecimal SHA-256 slices and ``bafy``-prefixed truncations
+        are not CIDs. Cache keys are real CIDv1 / raw / sha2-256 identities.
         """
-        hash_value = hashlib.sha256(data).hexdigest()
-        return f"bafy{hash_value[:56]}"
+        from ipfs_accelerate_py.compatibility.simulation.pseudo_cid import (
+            mint_canonical_cid,
+        )
+
+        return mint_canonical_cid(data)
 
     def add_bytes(self, data: bytes, *, pin: bool = True) -> str:
         """Store bytes in HF cache and return a synthetic cache key."""

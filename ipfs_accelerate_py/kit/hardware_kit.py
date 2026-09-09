@@ -127,16 +127,21 @@ class HardwareKit:
         """
         Detect CUDA GPUs.
 
-        Returns:
-            Dictionary with CUDA info
+        PCPR-031: nvidia-smi or torch.cuda.is_available is device visibility,
+        not production_authorized. Missing tools stay typed unavailable.
         """
-        cuda_info = {
-            "available": False,
-            "devices": [],
-        }
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            attach_ladder,
+            from_device_visibility,
+            from_measured_absence,
+            stamp_consolidation,
+            unavailable_backend,
+        )
+
+        cuda_info = unavailable_backend("cuda", devices=[])
+        cuda_info["declared"] = True
 
         try:
-            # Try using nvidia-smi
             result = subprocess.run(
                 [
                     "nvidia-smi",
@@ -148,70 +153,108 @@ class HardwareKit:
                 timeout=5,
             )
 
-            if result.returncode == 0:
-                cuda_info["available"] = True
+            if result.returncode == 0 and result.stdout.strip():
+                devices = []
                 for line in result.stdout.strip().split("\n"):
                     if line:
                         parts = [p.strip() for p in line.split(",")]
                         if len(parts) >= 2:
-                            cuda_info["devices"].append(
+                            devices.append(
                                 {
                                     "name": parts[0],
                                     "memory": parts[1] if len(parts) > 1 else "Unknown",
                                     "driver": parts[2] if len(parts) > 2 else "Unknown",
                                 }
                             )
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-            logger.debug(f"CUDA not detected: {e}")
+                if devices:
+                    cuda_info = from_device_visibility(
+                        "cuda",
+                        devices=devices,
+                        extra={"probe": "nvidia-smi"},
+                    )
+        except FileNotFoundError:
+            logger.debug("nvidia-smi not on PATH; CUDA probe remains typed unavailable")
+        except subprocess.TimeoutExpired as e:
+            logger.debug(f"CUDA nvidia-smi timed out: {e}")
 
-        # Try PyTorch CUDA detection
         try:
             import torch
 
-            if torch.cuda.is_available():
-                cuda_info["available"] = True
+            cuda_info["installed"] = True
+            cuda_info["pytorch_version"] = torch.__version__
+            if torch.cuda.is_available() is True:
+                cuda_info = from_device_visibility(
+                    "cuda",
+                    devices=cuda_info.get("devices") or [],
+                    extra={
+                        "probe": "torch.cuda.is_available",
+                        "pytorch_version": torch.__version__,
+                        "cuda_version": torch.version.cuda,
+                    },
+                )
                 cuda_info["pytorch_version"] = torch.__version__
                 cuda_info["cuda_version"] = torch.version.cuda
-                if not cuda_info["devices"]:
+                if not cuda_info.get("devices"):
                     for i in range(torch.cuda.device_count()):
                         cuda_info["devices"].append(
                             {"name": torch.cuda.get_device_name(i), "index": i}
                         )
+            elif torch.cuda.is_available() is False and cuda_info.get("detected") is not True:
+                cuda_info = from_measured_absence(
+                    "cuda",
+                    extra={
+                        "probe": "torch.cuda.is_available",
+                        "pytorch_version": torch.__version__,
+                    },
+                )
+                cuda_info["devices"] = []
+                cuda_info["pytorch_version"] = torch.__version__
         except ImportError:
-            pass
+            if cuda_info.get("detected") is not True:
+                cuda_info.setdefault("installed", None)
         except Exception as e:
             logger.debug(f"PyTorch CUDA detection failed: {e}")
 
-        return cuda_info
+        return stamp_consolidation(attach_ladder(cuda_info))
 
     def detect_rocm(self) -> Dict[str, Any]:
         """
         Detect ROCm GPUs (AMD).
 
-        Returns:
-            Dictionary with ROCm info
+        rocm-smi visibility is detection, not production_authorized.
         """
-        rocm_info = {
-            "available": False,
-            "devices": [],
-        }
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            attach_ladder,
+            from_device_visibility,
+            stamp_consolidation,
+            unavailable_backend,
+        )
+
+        rocm_info = unavailable_backend("rocm", devices=[])
+        rocm_info["declared"] = True
 
         try:
-            # Try using rocm-smi
             result = subprocess.run(
                 ["rocm-smi", "--showproductname"], capture_output=True, text=True, timeout=5
             )
 
-            if result.returncode == 0:
-                rocm_info["available"] = True
-                # Parse output for device names
+            if result.returncode == 0 and result.stdout.strip():
+                devices = []
                 for line in result.stdout.strip().split("\n"):
                     if "GPU" in line:
-                        rocm_info["devices"].append({"info": line.strip()})
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+                        devices.append({"info": line.strip()})
+                if devices:
+                    rocm_info = from_device_visibility(
+                        "rocm",
+                        devices=devices,
+                        extra={"probe": "rocm-smi"},
+                    )
+        except FileNotFoundError:
+            logger.debug("rocm-smi not on PATH; ROCm remains typed unavailable")
+        except subprocess.TimeoutExpired as e:
             logger.debug(f"ROCm not detected: {e}")
 
-        return rocm_info
+        return stamp_consolidation(attach_ladder(rocm_info))
 
     def detect_metal(self) -> Dict[str, Any]:
         """
@@ -220,61 +263,62 @@ class HardwareKit:
         Returns:
             Dictionary with Metal info
         """
-        metal_info = {
-            "available": False,
-        }
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            attach_ladder,
+            from_platform_presence,
+            stamp_consolidation,
+            unavailable_backend,
+        )
 
-        # Check if on macOS
         if platform.system() == "Darwin":
-            metal_info["available"] = True
-            metal_info["platform"] = "macOS"
-            metal_info["machine"] = platform.machine()
+            metal_info = from_platform_presence(
+                "metal",
+                platform_name="macOS",
+                extra={
+                    "machine": platform.machine(),
+                    "apple_silicon": platform.machine() == "arm64",
+                    "platform_presence_is_not_qualification": True,
+                },
+            )
+            return stamp_consolidation(attach_ladder(metal_info))
 
-            # Check for Apple Silicon
-            if platform.machine() == "arm64":
-                metal_info["apple_silicon"] = True
-
-        return metal_info
+        return stamp_consolidation(attach_ladder(unavailable_backend("metal")))
 
     def detect_webgpu(self) -> Dict[str, Any]:
         """
         Detect WebGPU support.
 
-        Returns:
-            Dictionary with WebGPU info
+        Browser absence stays typed unavailable, never fabricated False.
         """
-        webgpu_info = {"available": False, "note": "WebGPU requires browser environment"}
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            stamp_consolidation,
+            unavailable_backend,
+        )
 
-        # WebGPU is primarily browser-based
-        # Check if we're in a web environment
-        try:
-            # This would need to be implemented with actual WebGPU detection
-            # For now, just return basic info
-            pass
-        except Exception as e:
-            logger.debug(f"WebGPU detection: {e}")
-
-        return webgpu_info
+        return stamp_consolidation(
+            unavailable_backend(
+                "webgpu",
+                note="WebGPU requires a browser environment",
+            )
+        )
 
     def detect_webnn(self) -> Dict[str, Any]:
         """
         Detect WebNN support.
 
-        Returns:
-            Dictionary with WebNN info
+        Browser absence stays typed unavailable, never fabricated False.
         """
-        webnn_info = {"available": False, "note": "WebNN requires browser environment"}
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            stamp_consolidation,
+            unavailable_backend,
+        )
 
-        # WebNN is primarily browser-based
-        # Check if we're in a web environment
-        try:
-            # This would need to be implemented with actual WebNN detection
-            # For now, just return basic info
-            pass
-        except Exception as e:
-            logger.debug(f"WebNN detection: {e}")
-
-        return webnn_info
+        return stamp_consolidation(
+            unavailable_backend(
+                "webnn",
+                note="WebNN requires a browser environment",
+            )
+        )
 
     def get_hardware_info(self, include_detailed: bool = False) -> HardwareInfo:
         """
@@ -297,25 +341,13 @@ class HardwareKit:
         # Get memory info
         hardware_info.memory = self.get_memory_info()
 
-        # Detect accelerators
-        accelerators = {}
-
-        # CUDA
-        cuda_info = self.detect_cuda()
-        if cuda_info["available"]:
-            accelerators["cuda"] = cuda_info
-
-        # ROCm
-        rocm_info = self.detect_rocm()
-        if rocm_info["available"]:
-            accelerators["rocm"] = rocm_info
-
-        # Metal
-        metal_info = self.detect_metal()
-        if metal_info["available"]:
-            accelerators["metal"] = metal_info
-
-        # WebGPU (if applicable)
+        # Detect accelerators. Typed unavailable backends stay in the map;
+        # omission must not be read as measured absence or qualification.
+        accelerators = {
+            "cuda": self.detect_cuda(),
+            "rocm": self.detect_rocm(),
+            "metal": self.detect_metal(),
+        }
         if include_detailed:
             accelerators["webgpu"] = self.detect_webgpu()
             accelerators["webnn"] = self.detect_webnn()
@@ -343,56 +375,61 @@ class HardwareKit:
         if accelerator in ["cpu", "all"]:
             results["tests"]["cpu"] = self._test_cpu(test_level)
 
+        if accelerator in ["model_provider", "model"]:
+            results["tests"]["model_provider"] = self._test_model_provider(test_level)
+
         return results
 
     def _test_cuda(self, test_level: str) -> Dict[str, Any]:
-        """Test CUDA functionality."""
-        result = {"available": False, "tests_passed": False}
+        """Live CUDA canary. Passing execution is not production_authorized.
 
-        try:
-            import torch
+        PCPR-038: libcuda driver-API kernel, cancellation, timeout, cleanup,
+        and fail-closed resource admission. nvidia-smi, torch, and from_canary
+        visibility probes are not qualification. Missing CUDA stays typed
+        unavailable.
+        """
+        from ipfs_accelerate_py.assurance.cuda_execution import qualify_live_cuda_execution
 
-            if torch.cuda.is_available():
-                result["available"] = True
-
-                if test_level == "basic":
-                    # Basic test: create a tensor
-                    x = torch.ones(10, device="cuda")
-                    result["tests_passed"] = True
-                    result["device_count"] = torch.cuda.device_count()
-                elif test_level == "comprehensive":
-                    # More comprehensive test
-                    x = torch.randn(1000, 1000, device="cuda")
-                    y = torch.matmul(x, x)
-                    result["tests_passed"] = True
-                    result["device_count"] = torch.cuda.device_count()
-        except Exception as e:
-            result["error"] = str(e)
-
-        return result
+        report = qualify_live_cuda_execution(test_level=test_level)
+        report["tests_passed"] = bool(report.get("cuda_execution_qualified") is True)
+        report["production_authorized"] = False
+        report["qualified"] = False
+        return report
 
     def _test_cpu(self, test_level: str) -> Dict[str, Any]:
-        """Test CPU functionality."""
-        result = {"available": True, "tests_passed": False}
+        """Live CPU canary. Passing execution is not production_authorized.
 
-        try:
-            if test_level == "basic":
-                # Basic test
-                import numpy as np
+        PCPR-037: stdlib CPU kernel, cancellation, timeout, cleanup, and
+        fail-closed resource admission. Numpy is not required. CUDA and
+        model/provider paths stay typed unavailable.
+        """
+        from ipfs_accelerate_py.assurance.cpu_execution import qualify_live_cpu_execution
 
-                x = np.ones(10)
-                result["tests_passed"] = True
-            elif test_level == "comprehensive":
-                # More comprehensive test
-                import numpy as np
+        report = qualify_live_cpu_execution(test_level=test_level)
+        report["tests_passed"] = bool(report.get("cpu_execution_qualified") is True)
+        report["production_authorized"] = False
+        report["qualified"] = False
+        return report
 
-                x = np.random.randn(1000, 1000)
-                y = np.dot(x, x)
-                result["tests_passed"] = True
-        except Exception as e:
-            result["error"] = str(e)
+    def _test_model_provider(self, test_level: str) -> Dict[str, Any]:
+        """Live model/provider canary. Passing execution is not production_authorized.
 
-        return result
+        PCPR-039: local OpenAI-compatible canary model-server plus, when
+        present, a live llama.cpp local LLM path. Torch, transformers, and
+        HuggingFace Hub downloads are not qualification. Missing llama.cpp
+        stays typed unavailable.
+        """
+        from ipfs_accelerate_py.assurance.model_provider_execution import (
+            qualify_live_model_provider_execution,
+        )
+
+        report = qualify_live_model_provider_execution(test_level=test_level)
+        report["tests_passed"] = bool(
+            report.get("model_provider_execution_qualified") is True
+        )
+        report["production_authorized"] = False
+        report["qualified"] = False
+        return report
 
     def recommend_hardware(
         self, model_name: str, task: str = "inference", consider_available_only: bool = True
@@ -410,36 +447,43 @@ class HardwareKit:
         """
         recommendations = {"model": model_name, "task": task, "recommendations": []}
 
-        # Get available hardware
         hardware = self.get_hardware_info()
+        cuda_report = hardware.accelerators.get("cuda") or {}
+        cuda_detected = cuda_report.get("available") is True
+        recommendations["production_authorized"] = False
+        recommendations["live"] = False
+        recommendations["outcome"] = "Unavailable"
+        recommendations["advisory"] = True
 
-        # Simple recommendations based on model size and task
         if "large" in model_name.lower() or "xl" in model_name.lower():
-            if hardware.accelerators.get("cuda", {}).get("available"):
+            if cuda_detected:
                 recommendations["recommendations"].append(
                     {
                         "accelerator": "cuda",
-                        "reason": "Large model benefits from GPU acceleration",
+                        "reason": "Large model benefits from GPU acceleration (advisory; not production_authorized)",
                         "priority": 1,
+                        "available": True,
+                        "production_authorized": False,
                     }
                 )
             elif not consider_available_only:
                 recommendations["recommendations"].append(
                     {
                         "accelerator": "cuda",
-                        "reason": "Large model requires GPU for reasonable performance",
+                        "reason": "Large model requires GPU for reasonable performance (advisory; CUDA evidence typed unavailable)",
                         "priority": 1,
-                        "available": False,
+                        "available": cuda_report.get("available"),
+                        "production_authorized": False,
                     }
                 )
 
-        # Always recommend CPU as fallback
         recommendations["recommendations"].append(
             {
                 "accelerator": "cpu",
-                "reason": "Fallback option, available on all systems",
+                "reason": "Declared CPU host fallback (not production_authorized)",
                 "priority": 10,
                 "available": True,
+                "production_authorized": False,
             }
         )
 
@@ -488,25 +532,28 @@ def recommend(task_type: str) -> Dict[str, Any]:
 
     task = (task_type or "").strip().lower() or "inference"
     hw = _get_default_hardware_kit().get_hardware_info(include_detailed=False)
-    has_cuda = bool(hw.accelerators.get("cuda", {}).get("available"))
+    cuda_report = hw.accelerators.get("cuda") or {}
+    has_cuda = cuda_report.get("available") is True
 
     recs: List[Dict[str, Any]] = []
     if has_cuda and task in {"training", "fine-tuning", "finetuning", "inference"}:
         recs.append(
             {
                 "accelerator": "cuda",
-                "reason": "CUDA GPU available",
+                "reason": "CUDA GPU detected (advisory; not production_authorized)",
                 "priority": 1,
                 "available": True,
+                "production_authorized": False,
             }
         )
 
     recs.append(
         {
             "accelerator": "cpu",
-            "reason": "Fallback option, available on all systems",
+            "reason": "Declared CPU host fallback (not production_authorized)",
             "priority": 10,
             "available": True,
+            "production_authorized": False,
         }
     )
 
@@ -514,6 +561,10 @@ def recommend(task_type: str) -> Dict[str, Any]:
         "task_type": task_type,
         "recommendations": recs,
         "hardware": {"accelerators": hw.accelerators},
+        "production_authorized": False,
+        "live": False,
+        "outcome": "Unavailable",
+        "advisory": True,
     }
 
 

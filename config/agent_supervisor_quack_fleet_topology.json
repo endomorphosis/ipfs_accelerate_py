@@ -1,0 +1,29 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/quack-fleet-topology@1",
+  "defaults": {
+    "authority_mode": "quack",
+    "task_source_kind": "duckdb",
+    "failover_policy": "fail_closed"
+  },
+  "sources": [],
+  "owners": {
+    "aggregate_control": {
+      "database_program": {
+        "quack_endpoint": "quack:127.0.0.1:27841",
+        "endpoint_secret_handle": "handle:fleet-aggregate-control",
+        "store_id": "fleet-aggregate-control",
+        "store_generation": "1",
+        "schema_revision": "1"
+      }
+    },
+    "derived_coordination": {
+      "database_program": {
+        "quack_endpoint": "quack:127.0.0.1:27842",
+        "endpoint_secret_handle": "handle:fleet-derived-coordination",
+        "store_id": "fleet-derived-coordination",
+        "store_generation": "1",
+        "schema_revision": "1"
+      }
+    }
+  }
+}

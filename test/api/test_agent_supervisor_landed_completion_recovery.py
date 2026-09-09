@@ -159,6 +159,109 @@ def _landed_directory_repository(
     return candidate, integration, tree, (benchmark_root, declared_file)
 
 
+def _landed_gitlink_repository(
+    root: Path,
+    *,
+    task_alias: str,
+) -> tuple[str, str, str, tuple[str, ...]]:
+    """Land a gitlink plus blob without storing the gitlink commit object.
+
+    Production ``git cat-file -t <commit>:<gitlink>`` follows the submodule
+    pointer and fail-closes.  Recovery must classify the parent-tree entry.
+    """
+
+    root.mkdir(parents=True)
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "landed-recovery@example.invalid")
+    _git(root, "config", "user.name", "Landed Recovery Test")
+    (root / "README.md").write_text("base\n", encoding="utf-8")
+    _git(root, "add", "--", "README.md")
+    _git(root, "commit", "-qm", "base")
+    _git(root, "branch", "-M", "main")
+
+    rescue_branch = "rescue/gitlink-recovery-task"
+    _git(root, "checkout", "-qb", rescue_branch)
+    receipt = "artifacts/proof_carrying_platform_qualification_and_release/receipts/PCPR-001.json"
+    gitlink = "external/ipfs_accelerate"
+    destination = root / receipt
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text('{"status":"implemented"}\n', encoding="utf-8")
+    _git(root, "add", "--", receipt)
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "160000," + ("ab" * 20) + "," + gitlink,
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    _git(root, "commit", "-qm", f"{task_alias}: qualify gitlink and receipt")
+    candidate = _git(root, "rev-parse", "HEAD")
+    missing = subprocess.run(
+        ["git", "cat-file", "-t", f"{candidate}:{gitlink}"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert missing.returncode != 0
+
+    _git(root, "checkout", "-q", "main")
+    _git(
+        root,
+        "merge",
+        "--no-ff",
+        "-m",
+        f"Merge commit '{candidate}' into main",
+        rescue_branch,
+    )
+    integration = _git(root, "rev-parse", "HEAD")
+    tree = _git(root, "rev-parse", "HEAD^{tree}")
+    return candidate, integration, tree, (gitlink, receipt)
+
+
+def _landed_repeated_alias_repository(
+    root: Path,
+    *,
+    task_alias: str,
+) -> tuple[str, str, str, tuple[str, ...]]:
+    """Land the same task alias twice so discovery must pick the newest merge."""
+
+    first_candidate, _first_integration, _first_tree, outputs = _landed_repository(
+        root,
+        task_alias=task_alias,
+    )
+    rescue_branch = "rescue/recovery-task-second"
+    _git(root, "checkout", "-qb", rescue_branch)
+    (root / outputs[0]).write_text("VALUE = 2\n", encoding="utf-8")
+    (root / outputs[1]).write_text(
+        "from pathlib import Path\n"
+        "assert Path('src/recovered.py').read_text() == 'VALUE = 2\\n'\n",
+        encoding="utf-8",
+    )
+    _git(root, "add", "--", *outputs)
+    _git(root, "commit", "-qm", f"rescue {task_alias.lower()} landed output again")
+    candidate = _git(root, "rev-parse", "HEAD")
+    _git(root, "checkout", "-q", "main")
+    _git(
+        root,
+        "merge",
+        "--no-ff",
+        "-m",
+        "integrate later landed recovery candidate",
+        rescue_branch,
+    )
+    integration = _git(root, "rev-parse", "HEAD")
+    tree = _git(root, "rev-parse", "HEAD^{tree}")
+    assert candidate != first_candidate
+    return candidate, integration, tree, outputs
+
+
 def _discover_test_recovery(
     repository: Path,
     *,
@@ -646,6 +749,69 @@ def test_landed_recovery_accepts_directory_output_covering_changed_leaves(
     )
 
 
+def test_landed_recovery_accepts_gitlink_plus_blob_outputs(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    task_alias = "PCPR-001"
+    candidate, integration, target_tree, outputs = _landed_gitlink_repository(
+        repository,
+        task_alias=task_alias,
+    )
+
+    proof = _discover_test_recovery(
+        repository,
+        task_alias=task_alias,
+        task_cid="task:cid:gitlink-output",
+        declared_outputs=outputs,
+    )
+
+    assert proof is not None
+    assert proof["candidate_commit"] == candidate
+    assert proof["integrating_merge"] == integration
+    assert proof["declared_outputs"] == list(outputs)
+    assert (
+        revalidate_landed_completion_repository(
+            proof,
+            repo_root=repository,
+            target_ref="main",
+        )["current_target_tree"]
+        == target_tree
+    )
+
+
+def test_landed_recovery_selects_newest_of_multiple_alias_landings(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    task_alias = "PCPR-001"
+    candidate, integration, target_tree, outputs = (
+        _landed_repeated_alias_repository(
+            repository,
+            task_alias=task_alias,
+        )
+    )
+
+    proof = _discover_test_recovery(
+        repository,
+        task_alias=task_alias,
+        task_cid="task:cid:repeated-alias",
+        declared_outputs=outputs,
+    )
+
+    assert proof is not None
+    assert proof["candidate_commit"] == candidate
+    assert proof["integrating_merge"] == integration
+    assert (
+        revalidate_landed_completion_repository(
+            proof,
+            repo_root=repository,
+            target_ref="main",
+        )["current_target_tree"]
+        == target_tree
+    )
+
+
 def test_landed_recovery_rejects_extra_undeclared_changed_path(
     tmp_path: Path,
 ) -> None:
@@ -818,6 +984,7 @@ def test_landed_bypass_without_terminal_implementation_is_not_completion(
         {
             "task_id": task_alias,
             "canonical_task_cid": task_cid,
+            "canonical_task_key": "task-key:bypass-only",
             **bypass,
         },
     )
@@ -839,6 +1006,7 @@ def test_landed_bypass_without_terminal_implementation_is_not_completion(
             paths,
             alias=task_alias,
             task_cid=task_cid,
+            completion_task_key="task-key:bypass-only",
             verified_landed_completion_claim_seed=seed,
         )
 
@@ -849,6 +1017,8 @@ def test_landed_terminal_rejects_additional_conflicting_bypass(
     repository = tmp_path / "repo"
     task_alias = "REC-003C"
     task_cid = "task:cid:ambiguous-bypass"
+    event_task_cid = "task:cid:projection:ambiguous-bypass"
+    event_task_key = "task-key:projection:ambiguous-bypass"
     _candidate, integration, target_tree, outputs = _landed_repository(
         repository,
         task_alias=task_alias,
@@ -890,13 +1060,15 @@ def test_landed_terminal_rejects_additional_conflicting_bypass(
     event_envelope = {
         "type": "implementation_provider_bypassed_already_satisfied",
         "task_id": task_alias,
-        "canonical_task_cid": task_cid,
+        "canonical_task_cid": event_task_cid,
+        "canonical_task_key": event_task_key,
     }
     terminal = {
         "type": "implementation_finished",
         "event_id": "sha256:" + "a" * 64,
         "task_id": task_alias,
-        "canonical_task_cid": task_cid,
+        "canonical_task_cid": event_task_cid,
+        "canonical_task_key": event_task_key,
         "attempt": 1,
         "returncode": 0,
         "provider_dispatched": False,
@@ -928,6 +1100,41 @@ def test_landed_terminal_rejects_additional_conflicting_bypass(
         },
     }
 
+    admitted = DatabasePortalExecutionBridge._landed_no_change_completion_source(
+        [{**event_envelope, **bypass}, terminal],
+        terminal_index=1,
+        terminal=terminal,
+        alias=task_alias,
+        event_task_cid=event_task_cid,
+        event_task_key=event_task_key,
+        authority_task_cid=task_cid,
+        verified_claim_seed=seed,
+    )
+    assert admitted is not None
+    assert admitted["implementation_commit"] == integration
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="absent or ambiguous",
+    ):
+        DatabasePortalExecutionBridge._landed_no_change_completion_source(
+            [
+                {
+                    **event_envelope,
+                    **bypass,
+                    "canonical_task_key": "task-key:foreign",
+                },
+                terminal,
+            ],
+            terminal_index=1,
+            terminal=terminal,
+            alias=task_alias,
+            event_task_cid=event_task_cid,
+            event_task_key=event_task_key,
+            authority_task_cid=task_cid,
+            verified_claim_seed=seed,
+        )
+
     with pytest.raises(
         DatabasePortalBridgeError,
         match="absent or ambiguous",
@@ -941,7 +1148,9 @@ def test_landed_terminal_rejects_additional_conflicting_bypass(
             terminal_index=2,
             terminal=terminal,
             alias=task_alias,
-            task_cid=task_cid,
+            event_task_cid=event_task_cid,
+            event_task_key=event_task_key,
+            authority_task_cid=task_cid,
             verified_claim_seed=seed,
         )
 
@@ -968,7 +1177,9 @@ def test_landed_terminal_rejects_additional_conflicting_bypass(
                 terminal_index=1,
                 terminal=inexact_terminal,
                 alias=task_alias,
-                task_cid=task_cid,
+                event_task_cid=event_task_cid,
+                event_task_key=event_task_key,
+                authority_task_cid=task_cid,
                 verified_claim_seed=seed,
             )
 

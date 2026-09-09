@@ -111,21 +111,29 @@ Write-ColorOutput -Message "Detected architecture: $ARCH" -Level INFO
 
 # Find Python
 function Find-Python {
-    $pythonCommands = @("python3.12", "python3.11", "python3.10", "python3.9", "python3", "python", "py")
+    $pythonCommands = @("python3.12", "python3", "python", "py")
     
     foreach ($py in $pythonCommands) {
         try {
             $version = & $py --version 2>&1
             if ($LASTEXITCODE -eq 0) {
-                Write-ColorOutput -Message "Found Python: $py ($version)" -Level INFO
-                return $py
+                $match = [regex]::Match([string]$version, "(\d+)\.(\d+)")
+                if ($match.Success) {
+                    $major = [int]$match.Groups[1].Value
+                    $minor = [int]$match.Groups[2].Value
+                    if ($major -gt 3 -or ($major -eq 3 -and $minor -ge 12)) {
+                        Write-ColorOutput -Message "Found Python: $py ($version)" -Level INFO
+                        return $py
+                    }
+                    Write-ColorOutput -Message "$py is $version; ipfs_accelerate_py requires Python 3.12+" -Level WARN
+                }
             }
         } catch {
             continue
         }
     }
     
-    Exit-WithError "Python 3.8+ not found. Please install Python from python.org"
+    Exit-WithError "Python 3.12+ not found. Please install Python 3.12 or newer from python.org"
 }
 
 $PythonCmd = Find-Python

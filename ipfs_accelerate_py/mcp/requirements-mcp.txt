@@ -6,8 +6,8 @@ uvicorn>=0.35.0,<1.0.0; python_version >= "3.10"
 anyio>=3.7.0
 typing_extensions>=4.5.0
 
-# IPFS integration (use main branch from GitHub)
-ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py@main ; python_version >= "3.12"
+# IPFS integration (pinned immutable commit; not a mutable branch)
+ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py.git@a4fd25d944e6aaf25fb51e054a3f62bbcbea544d ; python_version >= "3.12"
 
 # Ensure protobuf is available for google.protobuf imports
 protobuf>=5.27.0
@@ -17,10 +17,10 @@ protobuf>=5.27.0
 websockets==10.4; python_version < "3.10"
 websockets>=15.0.1; python_version >= "3.10"
 semver>=2.13.0
-# libp2p Python package (enables p2p features) - track upstream main
+# libp2p Python package (enables p2p features) - pinned immutable commit
 pymultihash>=0.8.2
 dnspython>=2.2.1
-libp2p @ git+https://github.com/libp2p/py-libp2p.git@main ; python_version >= "3.10"
+libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f ; python_version >= "3.10"
 
 # For Server-Sent Events transport
 sse-starlette>=1.6.1; extra == "sse"

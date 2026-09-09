@@ -13,15 +13,12 @@ authors = [
 ]
 description = "A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 license = { text = "GNU Affero General Public License v3 or later (AGPLv3+)" }
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: MacOS",
@@ -33,6 +30,8 @@ Homepage = "https://github.com/endomorphosis/ipfs_accelerate_py"
 Issues = "https://github.com/endomorphosis/ipfs_accelerate_py/issues"
 
 [project.scripts]
+# Stable command is ipfs-accelerate. ipfs_accelerate is a documented
+# compatibility alias for the historical inference CLI (PCPR-036).
 ipfs_accelerate = "ipfs_accelerate_py.ai_inference_cli:main"
 ipfs-accelerate = "ipfs_accelerate_py.cli_entry:main"
 ipfs-accelerate-agent-objective-daemon = "ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon:main"
@@ -45,6 +44,7 @@ ipfs-accelerate-agent-merge-resolver = "ipfs_accelerate_py.agent_supervisor.merg
 ipfs-accelerate-agent-llm-merge-resolver-fallback = "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main"
 ipfs-accelerate-proof-reuse-provision = "ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main"
 ipfs-accelerate-llama-cpp-serve = "ipfs_accelerate_py.utils.llama_cpp:main"
+proof-context = "ipfs_accelerate_py.proof_context.cli.__main__:main"
 
 [project.entry-points.pytest11]
 ipfs-proof-reuse = "ipfs_accelerate_py.testing.proof_reuse.plugin"
@@ -55,6 +55,392 @@ package-dir = {"" = "."}
 [tool.setuptools.package-data]
 "*" = ["*.txt", "*.md"]
 
+[tool.ipfs_accelerate_py.clean-package]
+schema = "ipfs_accelerate_py/assurance/clean-package@1"
+interface = "AccelerateCleanPackage@1"
+task-id = "PCPR-052"
+goal-id = "PCPR-G600"
+requires-sibling-source-trees = false
+requires-recursive-submodules = false
+editable-local-dependencies = false
+sys-path-injection = false
+import-network = false
+mutable-git-release-requires = false
+runtime-requires-authority = "requirements.txt"
+development-requirements-role = "source-checkout-development-and-integration"
+named-git-extras-role = "source-checkout-development-and-integration"
+named-git-extras = ["libp2p", "mcp-p2p", "ipfs-transformers", "ipfs-model-manager"]
+sibling-trees = ["ipfs_datasets_py", "ipfs_kit_py", "ipfs_model_manager_py", "ipfs_transformers_py", ".tools"]
+recursive-submodule-trees = ["docs/fastmcp", "docs/mcp-python-sdk", "ipfs_accelerate_py/mcplusplus", "test/doc-builder", "test/huggingface_doc_builder", "test/huggingface_transformers"]
+
+[tool.ipfs_accelerate_py.dependency-locks]
+schema = "ipfs_accelerate_py/assurance/dependency-locks@1"
+interface = "AccelerateDependencyLocks@1"
+task-id = "PCPR-053"
+goal-id = "PCPR-G600"
+lock-kind = "declared_release_profile"
+profile = "release"
+python-requires = ">=3.12"
+requirements-authority = "requirements.txt"
+named-git-extras-role = "source-checkout-development-and-integration"
+named-git-extras = ["libp2p", "mcp-p2p", "ipfs-transformers", "ipfs-model-manager"]
+hashes-invented = false
+live-resolver-qualified = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.sbom-and-provenance]
+schema = "ipfs_accelerate_py/assurance/sbom-and-provenance@1"
+interface = "AccelerateSbomAndProvenance@1"
+task-id = "PCPR-054"
+goal-id = "PCPR-G600"
+sbom-kind = "declared_release_profile"
+provenance-kind = "declared_build_binding"
+spdx-version = "SPDX-2.3"
+files-analyzed = false
+hashes-invented = false
+live-scanner-qualified = false
+slsa-attestation-live = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.signed-tags-and-artifacts]
+schema = "ipfs_accelerate_py/assurance/signed-tags-and-artifacts@1"
+interface = "AccelerateSignedTagsAndArtifacts@1"
+task-id = "PCPR-055"
+goal-id = "PCPR-G600"
+tag-kind = "declared_signed_tag_policy"
+checksum-kind = "declared_artifact_checksum_manifest"
+intended-tag-name = "ipfs_accelerate_py-v0.0.45"
+hashes-invented = false
+signatures-invented = false
+live-signed-tag = false
+live-artifact-signature = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.portfolio-compatibility-lock]
+schema = "ipfs_accelerate_py/assurance/portfolio-compatibility-lock@1"
+interface = "AcceleratePortfolioCompatibilityLock@1"
+task-id = "PCPR-056"
+goal-id = "PCPR-G600"
+lock-kind = "declared_portfolio_compatibility_lock"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+supported-combination-id = "pcpr.v1.python312.accelerate-datasets-kit.shared-contracts-v1"
+hashes-invented = false
+signatures-invented = false
+live-signed-lock = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.branch-and-release-gates]
+schema = "ipfs_accelerate_py/assurance/branch-and-release-gates@1"
+interface = "AccelerateBranchAndReleaseGates@1"
+task-id = "PCPR-057"
+goal-id = "PCPR-G600"
+policy-kind = "declared_branch_protection_policy"
+gate-kind = "declared_release_gate"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+default-branch = "main"
+intended-tag-pattern = "ipfs_accelerate_py-v*"
+partial-required-build-failure-prohibits-release = true
+live-branch-protection = false
+live-tag-protection = false
+governance-gate-complete = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.reference-high-level-objective]
+schema = "ipfs_accelerate_py/assurance/reference-high-level-objective@1"
+interface = "AccelerateReferenceHighLevelObjective@1"
+task-id = "PCPR-060"
+goal-id = "PCPR-G700"
+objective-kind = "declared_reference_high_level_objective"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-objective-submission = false
+live-materialization = false
+live-start = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.semantic-context-pack]
+schema = "ipfs_accelerate_py/assurance/semantic-context-pack-binding@1"
+interface = "AccelerateSemanticContextPackBinding@1"
+task-id = "PCPR-061"
+goal-id = "PCPR-G700"
+objective-kind = "declared_semantic_context_pack_binding"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-context-pack-admission = false
+live-storage = false
+live-execution = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.context-pack-storage]
+schema = "ipfs_accelerate_py/assurance/context-pack-storage-binding@1"
+interface = "AccelerateContextPackStorageBinding@1"
+task-id = "PCPR-062"
+goal-id = "PCPR-G700"
+objective-kind = "declared_context_pack_root_binding"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-context-pack-admission = false
+live-storage = false
+live-execution = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.deterministic-first-route]
+schema = "ipfs_accelerate_py/assurance/deterministic-first-route@1"
+interface = "AccelerateDeterministicFirstRoute@1"
+task-id = "PCPR-063"
+goal-id = "PCPR-G700"
+objective-kind = "declared_deterministic_first_route"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-execution = false
+live-selected-tests = false
+live-prover = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.bounded-patch]
+schema = "ipfs_accelerate_py/assurance/bounded-patch@1"
+interface = "AccelerateBoundedPatch@1"
+task-id = "PCPR-064"
+goal-id = "PCPR-G700"
+objective-kind = "declared_bounded_patch"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-selected-tests = false
+live-prover = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.selected-tests-and-proofs]
+schema = "ipfs_accelerate_py/assurance/selected-tests-and-proofs@1"
+interface = "AccelerateSelectedTestsAndProofs@1"
+task-id = "PCPR-065"
+goal-id = "PCPR-G700"
+objective-kind = "declared_selected_tests_and_proofs"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-selected-tests = false
+live-prover = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.unrelated-state-change]
+schema = "ipfs_accelerate_py/assurance/unrelated-state-change@1"
+interface = "AccelerateUnrelatedStateChange@1"
+task-id = "PCPR-066"
+goal-id = "PCPR-G700"
+objective-kind = "declared_unrelated_state_change"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-reuse = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.safe-reuse]
+schema = "ipfs_accelerate_py/assurance/safe-reuse@1"
+interface = "AccelerateSafeReuse@1"
+task-id = "PCPR-067"
+goal-id = "PCPR-G700"
+objective-kind = "declared_safe_reuse"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-reuse = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.relevant-interface-change]
+schema = "ipfs_accelerate_py/assurance/relevant-interface-change@1"
+interface = "AccelerateRelevantInterfaceChange@1"
+task-id = "PCPR-068"
+goal-id = "PCPR-G700"
+objective-kind = "declared_relevant_interface_change"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-reuse = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.stale-rejection]
+schema = "ipfs_accelerate_py/assurance/stale-rejection-and-plan-delta@1"
+interface = "AccelerateStaleRejectionAndPlanDelta@1"
+task-id = "PCPR-069"
+goal-id = "PCPR-G700"
+objective-kind = "declared_stale_rejection_and_plan_delta"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-plan-delta = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.state-owner-restart]
+schema = "ipfs_accelerate_py/assurance/authoritative-state-owner-restart@1"
+interface = "AccelerateAuthoritativeStateOwnerRestart@1"
+task-id = "PCPR-070"
+goal-id = "PCPR-G700"
+objective-kind = "declared_authoritative_state_owner_restart"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-restart = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.recovery-and-idempotency]
+schema = "ipfs_accelerate_py/assurance/recovery-and-idempotency@1"
+interface = "AccelerateRecoveryAndIdempotency@1"
+task-id = "PCPR-071"
+goal-id = "PCPR-G700"
+objective-kind = "declared_recovery_and_idempotency"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-recovery = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.final-receipt-chain]
+schema = "ipfs_accelerate_py/assurance/final-receipt-chain@1"
+interface = "AccelerateFinalProofCarryingReceiptChain@1"
+task-id = "PCPR-072"
+goal-id = "PCPR-G700"
+objective-kind = "declared_final_proof_carrying_receipt_chain"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-chain = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.python-external-client]
+schema = "ipfs_accelerate_py/assurance/python-external-client@1"
+interface = "AcceleratePythonExternalClient@1"
+task-id = "PCPR-080"
+goal-id = "PCPR-G800"
+objective-kind = "declared_python_external_client_demonstration"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.generic-mcp-client]
+schema = "ipfs_accelerate_py/assurance/generic-mcp-client@1"
+interface = "AccelerateGenericMcpClient@1"
+task-id = "PCPR-081"
+goal-id = "PCPR-G800"
+objective-kind = "declared_generic_mcp_client_demonstration"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.objective-identity-parity]
+schema = "ipfs_accelerate_py/assurance/objective-identity-parity@1"
+interface = "AccelerateObjectiveIdentityParity@1"
+task-id = "PCPR-082"
+goal-id = "PCPR-G800"
+objective-kind = "declared_cross_client_objective_identity_parity"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.authority-bypass]
+schema = "ipfs_accelerate_py/assurance/authority-bypass@1"
+interface = "AccelerateAuthorityBypass@1"
+task-id = "PCPR-083"
+goal-id = "PCPR-G800"
+objective-kind = "declared_external_client_authority_bypass_proof"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.threat-model]
+schema = "ipfs_accelerate_py/assurance/threat-model@1"
+interface = "AccelerateThreatModel@1"
+task-id = "PCPR-090"
+goal-id = "PCPR-G900"
+objective-kind = "declared_objective_to_release_threat_model"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.trusted-computing-base]
+schema = "ipfs_accelerate_py/assurance/trusted-computing-base@1"
+interface = "AccelerateTrustedComputingBase@1"
+task-id = "PCPR-091"
+goal-id = "PCPR-G900"
+objective-kind = "declared_objective_to_release_trusted_computing_base"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.security-and-correctness-audit-package]
+schema = "ipfs_accelerate_py/assurance/security-and-correctness-audit-package@1"
+interface = "AccelerateSecurityAndCorrectnessAuditPackage@1"
+task-id = "PCPR-092"
+goal-id = "PCPR-G900"
+objective-kind = "declared_objective_to_release_security_and_correctness_audit_package"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.release-candidate-gate]
+schema = "ipfs_accelerate_py/assurance/release-candidate-gate@1"
+interface = "AccelerateReleaseCandidateGate@1"
+task-id = "PCPR-093"
+goal-id = "PCPR-G900"
+objective-kind = "declared_objective_to_release_candidate_gate"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.promotion-or-non-promotion]
+schema = "ipfs_accelerate_py/assurance/promotion-or-non-promotion-receipt@1"
+interface = "AcceleratePromotionOrNonPromotionReceipt@1"
+task-id = "PCPR-094"
+goal-id = "PCPR-G900"
+objective-kind = "declared_objective_to_release_promotion_or_non_promotion"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.residual-gap-report]
+schema = "ipfs_accelerate_py/assurance/residual-gap-report-receipt@1"
+interface = "AccelerateResidualGapReport@1"
+task-id = "PCPR-095"
+goal-id = "PCPR-G900"
+objective-kind = "declared_objective_to_release_residual_gap_report"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
+[tool.ipfs_accelerate_py.next-bounded-pilot]
+schema = "ipfs_accelerate_py/assurance/next-bounded-pilot-receipt@1"
+interface = "AccelerateNextBoundedPilot@1"
+task-id = "PCPR-096"
+goal-id = "PCPR-G900"
+objective-kind = "declared_objective_to_release_next_bounded_pilot_recommendation"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
@@ -64,6 +450,30 @@ agent-supervisor = [
   # The Quack and DuckLake extensions are capability-probed at runtime and
   # are never installed during import or test collection.
   "duckdb>=1.5.0,<1.6.0",
+]
+proof-context = [
+  # PCCE's three cross-repository provider/contract artifacts remain scoped to
+  # the proof-context capability so the repository's established core install
+  # dependency contract is not replaced during composition.
+  "ipfs_datasets_py==0.2.0",
+  "ipfs_kit_py==0.3.0",
+  "mcp-plus-plus-contracts==0.1.0",
+]
+verification = [
+  "jsonschema>=4.22,<5",
+]
+codex = []
+local-model = [
+  # Existing llama.cpp inventory only. This does not add a provider; the
+  # governed runtime continues to use CommandAdapter's frozen argv contract.
+  "llama-cpp-python[server]>=0.3.10,<0.4",
+  "huggingface-hub>=0.24,<1",
+]
+evaluation = [
+  "jsonschema>=4.22,<5",
+  "llama-cpp-python[server]>=0.3.10,<0.4",
+  "huggingface-hub>=0.24,<1",
+  "pytest>=8,<9",
 ]
 proof-reuse = [
   # Keep the install-time extra non-circular and aligned with
@@ -147,13 +557,12 @@ viz = [
   "plotly>=5.22.0",
 ]
 full = [
+  # Convenience release extra. Git pins live in named development extras.
   "torch>=2.1",
   "transformers>=4.46",
   "uvicorn>=0.27.0",
   "fastapi>=0.110.0",
   "sentence-transformers",
-  "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
-  "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
 ]
 testing = [
   "pytest>=8.0.0",
@@ -188,16 +597,26 @@ mcp = [
   "PyGithub>=2.3.0",
 ]
 mcp-p2p = [
-  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
+  # Source-checkout development extra only. Not the PCPR-052 release profile.
+  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f",
   "protobuf>=5.27.0",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
 ]
 libp2p = [
-  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
+  # Source-checkout development extra only. Not the PCPR-052 release profile.
+  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f",
   "protobuf>=5.27.0",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
+]
+ipfs-transformers = [
+  # Source-checkout development extra only. Not the PCPR-052 release profile.
+  "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@b397988ed9e3e656475c1cf4417b84efdb95daf3",
+]
+ipfs-model-manager = [
+  # Source-checkout development extra only. Not the PCPR-052 release profile.
+  "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
 ]
 webnn = [
   "playwright>=1.31.0",
@@ -209,14 +628,12 @@ llama_cpp = [
   "huggingface_hub>=0.24.0",
 ]
 all = [
-  # aggregate without native P2P by default
+  # Aggregate convenience extra without native P2P or Git pins.
   "torch>=2.1",
   "transformers>=4.46",
   "uvicorn>=0.27.0",
   "fastapi>=0.110.0",
   "sentence-transformers",
-  "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
-  "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
   "pytest>=8.0.0",
   "pytest-timeout>=2.4.0",
   "pytest-cov>=4.0.0",
@@ -385,6 +802,34 @@ requirements = []
 task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeera3y2hsc25gqc7wsa6nojhdz74fn4hkmgwexq5rgpajir3ahq6w4ma", declared-outputs = ["docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md", "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json"] }
 baseline = { state = "present", sha256 = "ca32167a0f4d1013a14f2c16676e1f6314662b78490ac6607d94663afeefad1d" }
 
+[tool.ipfs-accelerate.proof-context-profiles]
+schema = "ipfs-accelerate.proof-context.v0.1/install-profiles@1"
+core-distributions = [
+  "ipfs_datasets_py==0.2.0",
+  "ipfs_kit_py==0.3.0",
+  "mcp-plus-plus-contracts==0.1.0",
+]
+core-extra = "proof-context"
+verification-extra = "verification"
+codex-extra = "codex"
+codex-command-contract = "codex exec"
+local-model-extra = "local-model"
+local-model-inventory = "ipfs_accelerate_py.utils.llama_cpp"
+local-model-adapter = "ipfs_accelerate_py.proof_context.adapters.command:CommandAdapter"
+local-model-command-contract = "local-agent-json-argv@1"
+evaluation-extra = "evaluation"
+evaluation-surface = "ipfs_accelerate_py.agent_supervisor.self_hosting:SelfHostingQualificationHarness"
+console-script = "proof-context"
+console-target = "ipfs_accelerate_py.proof_context.cli.__main__:main"
+runtime-authority-widened = false
+
 [tool.setuptools.packages.find]
-include = ["ipfs_accelerate_py*", "scripts", "scripts.*"]
-exclude = ["test*", "benchmarks*"]
+include = ["ipfs_accelerate_py", "ipfs_accelerate_py.*", "scripts", "scripts.*"]
+exclude = [
+    "ipfs_datasets_py*",
+    "ipfs_kit_py*",
+    "ipfs_model_manager_py*",
+    "ipfs_transformers_py*",
+    "test*",
+    "benchmarks*",
+]

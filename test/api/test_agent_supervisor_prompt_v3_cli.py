@@ -179,6 +179,40 @@ def test_ambiguity_exit_code() -> None:
     assert code == supervisor_cli.EXIT_AMBIGUITY
 
 
+def test_start_command_is_registered() -> None:
+    assert "start" in supervisor_cli.SUPERVISOR_COMMANDS
+    manifest = supervisor_cli.supervisor_cli_discovery_manifest()
+    assert "start" in manifest["commands"]
+
+
+def test_cli_run_reports_plan_identities(tmp_path: Path) -> None:
+    from test.api.test_agent_supervisor_prompt_v3_python_api import (
+        _production_supervisor,
+    )
+
+    supervisor, prompt = _production_supervisor(tmp_path)
+    args = SimpleNamespace(
+        supervisor_command="run",
+        prompt=prompt,
+        prompt_file=None,
+        prompt_stdin=False,
+        output_json=True,
+        repository=None,
+        state_root=None,
+    )
+    out = io.StringIO()
+    code = supervisor_cli.run_supervisor_cli(
+        args, stdout=out, supervisor=supervisor
+    )
+    assert code == supervisor_cli.EXIT_SUCCESS
+    payload = json.loads(out.getvalue())
+    assert payload["ok"] is True
+    assert payload["result"]["workflow_request_cid"]
+    assert payload["result"]["plan_create_request_cid"]
+    assert payload["result"]["objective_cid"]
+    assert prompt not in out.getvalue()
+
+
 def test_preview_does_not_echo_prompt_body() -> None:
     secret = "super-secret-prompt-body"
     args = SimpleNamespace(

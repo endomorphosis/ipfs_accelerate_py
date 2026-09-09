@@ -106,6 +106,8 @@ ABSOLUTE_MAX_DEPTH: Final[int] = 32
 ABSOLUTE_MAX_FILES: Final[int] = 100_000
 ABSOLUTE_MAX_GOALS: Final[int] = 1_024
 ABSOLUTE_MAX_TASKS: Final[int] = 4_096
+# Initial admitted create-plan ceiling. Automatic later refills are smaller.
+INITIAL_TASK_CEILING: Final[int] = 80
 ABSOLUTE_MAX_EVIDENCE: Final[int] = 4_096
 ABSOLUTE_MAX_RESCUE_ACTIONS: Final[int] = 32
 ABSOLUTE_MAX_LATENCY_MS: Final[int] = 86_400_000
@@ -5569,6 +5571,61 @@ class PromptSupervisorService:
             self._start_results[fingerprint] = result
             return result
 
+    def materialization_inputs(
+        self, preview_ref: str | PromptWorkflowPreviewReceipt
+    ) -> Mapping[str, Any]:
+        """Complete, body-free apply inputs for an admitted preview.
+
+        The mapping is not authority: apply still requires current roots,
+        authorization, idempotency, lease, fence, and expected effects.
+        """
+
+        state = self._preview_state(preview_ref)
+        if state.receipt.status is not RecordStatus.ADMITTED:
+            raise PromptWorkflowAuthorizationError(
+                "materialization inputs require an admitted preview"
+            )
+        payload = {
+            "preview_receipt_cid": state.receipt.receipt_cid,
+            "request_cid": state.request.request_cid,
+            "plan_root_cid": state.receipt.plan_root_cid,
+            "scan_cid": state.scan.scan_cid,
+            "admission_receipt_cid": state.receipt.admission_receipt_cid,
+            "repository_root": state.request.repository_root,
+            "repository_root_cid": state.request.repository_root_cid,
+            "program_root": state.request.program_root,
+            "policy_root": state.request.policy_root,
+            "intent_ir_root": state.request.intent_ir_root,
+            "legal_ir_root": state.request.legal_ir_root,
+            "security_ir_root": state.request.security_ir_root,
+            "state_root": state.request.state_root,
+            "output_mode": state.request.output_policy.mode.value,
+            "output_root": state.request.output_policy.output_root,
+            "markdown_path": state.request.output_policy.markdown_path,
+            "duckdb_path": state.request.output_policy.duckdb_path,
+            "catalog_root": state.receipt.catalog_root,
+            "admitted_goal_cids": list(state.receipt.admitted_goal_cids),
+            "admitted_task_cids": list(state.receipt.admitted_task_cids),
+            "expected_effects": list(state.receipt.expected_materialization_effects),
+            "task_count": len(state.receipt.admitted_task_cids),
+            "goal_count": len(state.receipt.admitted_goal_cids),
+            "read_only": True,
+            "wrote_effects": (),
+            "apply_requires": [
+                "authorization",
+                "idempotency",
+                "lease",
+                "fence",
+                "event_cursor",
+                "current_roots",
+                "source_revision",
+            ],
+            "completion_authority": False,
+            "model_assertion_cannot_complete": True,
+            "empty_queue_cannot_complete": True,
+        }
+        return MappingProxyType(payload)
+
     def bootstrap(
         self,
         request: PromptWorkflowRequest,
@@ -5662,6 +5719,125 @@ class PromptSupervisorService:
             control_request=start_control_request,
             supervisor_profile=request.supervisor_profile,
         )
+
+
+def construct_prompt_workflow_request(
+    prompt: str,
+    *,
+    repository_root: str,
+    repository_root_cid: str,
+    allowlist_cid: str,
+    program_root: str,
+    intent_ir_root: str,
+    legal_ir_root: str,
+    security_ir_root: str,
+    policy_root: str,
+    caller: str,
+    output_root: str,
+    directory: str = "",
+    state_root: str = "",
+    supervisor_profile: str = "",
+    board_namespace: str = "prompt-workflow",
+    task_prefix: str = "TASK",
+    max_tasks: int = INITIAL_TASK_CEILING,
+    dry_run: bool = True,
+    materialize: bool = False,
+    start_after_materialize: bool = False,
+    authority_cid: str = "",
+    idempotency_key: str = "",
+    lease_id: str = "",
+    fencing_epoch: int | None = None,
+    duckdb_available: bool = True,
+) -> PromptWorkflowRequest:
+    """Build one bounded workflow request from observed production bindings.
+
+    Prompt text is intent only. Observed roots, not prompt prose, select
+    repository, policy, capability, and output authority. Campaign identifiers
+    are not synthesized here.
+    """
+
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise PromptSourceError("prompt must be a non-empty string")
+    if max_tasks < 1:
+        raise PromptWorkflowBoundsError("max_tasks must be positive")
+    if max_tasks > ABSOLUTE_MAX_TASKS:
+        raise PromptWorkflowBoundsError("max_tasks exceeds the absolute task bound")
+    selected_directory = directory or str(Path(repository_root) / "pkg")
+    if duckdb_available:
+        mode = OutputMode.BOTH
+        markdown_path = "projections/tasks.md"
+        duckdb_path = "projections/tasks.duckdb"
+    else:
+        mode = OutputMode.MARKDOWN
+        markdown_path = "projections/tasks.md"
+        duckdb_path = ""
+    return PromptWorkflowRequest(
+        prompt_source=PromptSource.inline(
+            prompt,
+            redacted_metadata={
+                "summary": "body-free production prompt capture",
+                "sensitivity": "redacted",
+                "byte_count": len(prompt.encode("utf-8")),
+            },
+        ),
+        repository_root=repository_root,
+        directory=selected_directory,
+        repository_root_cid=repository_root_cid,
+        allowlist_cid=allowlist_cid,
+        scan_policy=DirectoryScanPolicy(
+            policy_id="scan:production-strict",
+            scanner_version="1.0.0",
+            include_patterns=("**/*.py", "**/*.md", "**/*.json"),
+            exclude_patterns=(".git/**", "**/__pycache__/**"),
+        ),
+        planning_policy=PromptPlanningPolicy(
+            policy_id="planning:production-strict",
+            provider_preferences=(),
+            model_preferences=(),
+            allow_model=True,
+            fallback_policy=LocalFallbackPolicy.REQUIRED,
+        ),
+        output_policy=PromptOutputPolicy(
+            policy_id="output:production",
+            mode=mode,
+            output_root=output_root,
+            allowed_output_roots=(output_root,),
+            markdown_path=markdown_path,
+            duckdb_path=duckdb_path,
+            board_namespace=board_namespace,
+            task_prefix=task_prefix,
+        ),
+        budget=PromptWorkflowBudget(
+            max_files=10_000,
+            max_scan_bytes=64 * 1024 * 1024,
+            max_file_bytes=2 * 1024 * 1024,
+            max_symbols=50_000,
+            max_prompt_tokens=16_384,
+            max_provider_tokens=32_768,
+            max_latency_ms=300_000,
+            max_goals=128,
+            max_tasks=max_tasks,
+            max_evidence=1_024,
+            max_graph_depth=16,
+            max_serialized_bytes=512 * 1024,
+            max_rescue_actions=8,
+        ),
+        caller=caller,
+        program_root=program_root,
+        intent_ir_root=intent_ir_root,
+        legal_ir_root=legal_ir_root,
+        security_ir_root=security_ir_root,
+        policy_root=policy_root,
+        dry_run=dry_run,
+        materialize=materialize,
+        start_after_materialize=start_after_materialize,
+        supervisor_profile=supervisor_profile,
+        state_root=state_root,
+        authority_cid=authority_cid,
+        idempotency_key=idempotency_key,
+        lease_id=lease_id,
+        fencing_epoch=fencing_epoch,
+    )
 
 
 def decode_prompt_workflow_request(
@@ -6167,6 +6343,7 @@ __all__ = [
     "ABSOLUTE_MAX_PROMPT_BYTES",
     "ABSOLUTE_MAX_RESCUE_ACTIONS",
     "ABSOLUTE_MAX_TASKS",
+    "INITIAL_TASK_CEILING",
     "AcceptanceRecord",
     "CONTRACT_VERSION",
     "DirectoryScanPolicy",
@@ -6256,6 +6433,7 @@ __all__ = [
     "PromptWorkflowCLIError",
     "build_prompt_workflow_arg_parser",
     "canonical_prompt_workflow_bytes",
+    "construct_prompt_workflow_request",
     "decode_prompt_workflow_request",
     "get_plan_supervisor_service",
     "main",

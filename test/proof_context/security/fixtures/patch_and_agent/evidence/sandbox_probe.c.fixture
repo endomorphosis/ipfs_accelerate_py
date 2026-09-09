@@ -1,0 +1,50 @@
+#include <errno.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+static int denied(void) {
+    if (errno == EPERM || errno == EACCES) {
+        puts("denied");
+        return 0;
+    }
+    fprintf(stderr, "unexpected errno=%d\n", errno);
+    return 42;
+}
+
+static int descendant_exec(void) {
+    char *const argv[] = {"/bin/true", NULL};
+    execve(argv[0], argv, NULL);
+    return denied();
+}
+
+static int host_write(const char *path) {
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    if (fd < 0) return denied();
+    close(fd);
+    puts("write-breached");
+    return 43;
+}
+
+static int network_socket(void) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return denied();
+    close(fd);
+    puts("socket-breached");
+    return 44;
+}
+
+int main(int argc, char **argv) {
+    if (argc < 2) return 64;
+    if (strcmp(argv[1], "literal") == 0 && argc == 3) {
+        puts(argv[2]);
+        return 0;
+    }
+    if (strcmp(argv[1], "exec") == 0 && argc == 2) return descendant_exec();
+    if (strcmp(argv[1], "write") == 0 && argc == 3) return host_write(argv[2]);
+    if (strcmp(argv[1], "socket4") == 0 && argc == 2) return network_socket();
+    return 65;
+}

@@ -1,0 +1,31 @@
+# PCPR-053 declared release-profile lock for ipfs_accelerate_py 0.0.45.
+# lock_kind: declared_release_profile
+# hashes: typed unavailable (not invented)
+# live resolver: typed unavailable
+# This is not a closed PCPR release and not pip --require-hashes material.
+# lock_cid: baguqeerayvfxbdt6m6go57s6dw2afwsvpkzpt25rewc6kglm2fhwkeowvuxa
+
+anyio>=4.0.0
+aiohttp>=3.8.1
+duckdb>=0.7.0
+ipfshttpclient>=0.8.0a2
+websockets>=10.1
+pyarrow>=14.0.0
+torch>=2.1
+transformers>=4.46
+urllib3>=2.5.0,<3.0.0
+requests>=2.28.0
+cryptography>=41.0.0
+fastmcp>=0.1.0
+flask>=3.0.0
+flask-cors>=4.0.0
+werkzeug>=3.0.0
+PyGithub>=2.3.0
+packaging>=23.2
+tqdm>=4.64.0
+numpy>=1.23.0
+toml>=0.10.2
+nltk>=3.8.1,<4
+jsonschema>=4,<5
+multiformats>=0.3,<1
+pymultihash>=0.8.2

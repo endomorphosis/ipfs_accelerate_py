@@ -1,0 +1,8 @@
+{
+  "schema": "pcce-073.patch-agent-fixture@1",
+  "attack_id": "weakened-proof-obligation",
+  "declared_files": [
+    "proofs/obligation.json"
+  ],
+  "patch": "diff --git a/proofs/obligation.json b/proofs/obligation.json\n--- a/proofs/obligation.json\n+++ b/proofs/obligation.json\n@@ -1 +1 @@\n-{\"obligation\":\"answer-is-one\",\"required\":true}\n+{\"obligation\":\"answer-is-one\",\"required\":false}\n"
+}
