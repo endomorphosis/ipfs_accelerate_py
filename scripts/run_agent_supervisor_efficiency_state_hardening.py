@@ -25202,6 +25202,24 @@ def _candidate_authorization_witness(
     return first
 
 
+def _git_guard_index_lock_is_held() -> bool:
+    """Return whether a live Git-guard still owns the candidate index.lock.
+
+    The parent process may hold `git update-index --stdin` while a sealed
+    child re-asserts the authorization witness.  That child does not inherit
+    `_ASEH_CANDIDATE_GIT_GUARD`, so it must detect the held lock via /proc.
+    """
+
+    if _ASEH_CANDIDATE_GIT_GUARD is not None:
+        return True
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        git_lock_inode_is_open,
+    )
+
+    held = git_lock_inode_is_open(_git_guard_control_path("index.lock"))
+    return held is True
+
+
 def _assert_candidate_authorization_witness(
     witness: Mapping[str, str],
     *,
@@ -25212,21 +25230,31 @@ def _assert_candidate_authorization_witness(
     guard = _ASEH_CANDIDATE_GIT_GUARD
     recorded = dict(witness)
     empty_status = _identity(b"")
-    if guard is not None:
-        if (
-            guard.candidate_head != expected_head
-            or guard.candidate_tree != expected_tree
+    frozen = guard is not None or _git_guard_index_lock_is_held()
+    if frozen:
+        if guard is not None:
+            if (
+                guard.candidate_head != expected_head
+                or guard.candidate_tree != expected_tree
+            ):
+                raise OperatorError(
+                    "candidate Git guard is outside authorization witness authority"
+                )
+            _validate_candidate_git_guard_health(
+                guard,
+                boundary=f"before {boundary}",
+            )
+        elif (
+            _git("rev-parse", "HEAD") != expected_head
+            or _git("rev-parse", "HEAD^{tree}") != expected_tree
         ):
             raise OperatorError(
-                "candidate Git guard is outside authorization witness authority"
+                f"R11 candidate changed across authorization boundary: {boundary}"
             )
-        _validate_candidate_git_guard_health(
-            guard,
-            boundary=f"before {boundary}",
-        )
         # Git-guard holds index.lock via `git update-index --stdin`.  Re-running
         # `git status --untracked-files=all` contends on that lock and times out
-        # on large worktrees.  The guard itself is the frozen epoch.
+        # on large worktrees, including in the sealed child which does not
+        # inherit the in-process guard object.
         if (
             recorded.get("head") != expected_head
             or recorded.get("tree") != expected_tree
@@ -25235,10 +25263,11 @@ def _assert_candidate_authorization_witness(
             raise OperatorError(
                 f"R11 candidate changed across authorization boundary: {boundary}"
             )
-        _validate_candidate_git_guard_health(
-            guard,
-            boundary=f"after {boundary}",
-        )
+        if guard is not None:
+            _validate_candidate_git_guard_health(
+                guard,
+                boundary=f"after {boundary}",
+            )
         return
     observed = _candidate_authorization_witness(
         expected_head=expected_head,
@@ -89081,6 +89110,10 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         )
         if isinstance(r39_path, Path) and r39_path.is_file():
             _load_exact_r39_receipt_chain(paths)
+        authorization_witness = _candidate_authorization_witness(
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+        )
         if _r30_launch_requires_git_guard(
             paths=paths,
             candidate_head=candidate_head,
@@ -89092,10 +89125,6 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             )
             launch_git_guard_scope.__enter__()
             launch_git_guard_active = True
-        authorization_witness = _candidate_authorization_witness(
-            expected_head=candidate_head,
-            expected_tree=candidate_tree,
-        )
         interpreter = retain_control_plane_interpreter(
             ASEH_RECEIPT_VALIDATION_PYTHON
         )
@@ -89568,6 +89597,10 @@ def _run_supervisor_owner_impl(
         owner_launch_guard_scope.__exit__(*exception)
 
     try:
+        authorization_witness = _candidate_authorization_witness(
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+        )
         if _r30_launch_requires_git_guard(
             paths=paths,
             candidate_head=candidate_head,
@@ -89579,10 +89612,6 @@ def _run_supervisor_owner_impl(
             )
             owner_launch_guard_scope.__enter__()
             owner_launch_guard_active = True
-        authorization_witness = _candidate_authorization_witness(
-            expected_head=candidate_head,
-            expected_tree=candidate_tree,
-        )
         _set_sealed_owner_terminal_phase(terminal_phase, "launch_preflight")
         with _sealed_receipt_validation_executor_scope(
             interpreter=interpreter,
