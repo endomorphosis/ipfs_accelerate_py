@@ -1828,7 +1828,7 @@ def test_inner_scheduler_authenticates_inherited_launch_before_preflight(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    board = SimpleNamespace()
+    board = SimpleNamespace(board_namespace="test-board-v1", database_program=None)
     preflight_calls: list[object] = []
     monkeypatch.setattr(scheduler, "load_configured_board", lambda *_args, **_kwargs: board)
     monkeypatch.setattr(
