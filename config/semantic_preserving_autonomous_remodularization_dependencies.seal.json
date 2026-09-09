@@ -2,11 +2,14 @@
   "bootstrap_runtime_file_sha256": {
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py": "411a10323b0eeb9129159a49366c06e63f002f95e498ddc24c906302d62c4cad",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "3d8c16ff20838068bc2f2223a0930b28b46d696c77ce4c8e5ee922a734b24b74",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/closeout_snapshot.py": "01ccf3b5b479ea7d7352732e398a8f044f0cf0c1c930310af0950c1b7d2a298c",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py": "36d3ffe73d584ee15e7a217386f5d9f8156eded9469412dbdb2025f42b380b79",
     "ipfs_accelerate_py/agent_supervisor/task_sources/launch_source_amendment.py": "17d537f6e77ace1998162c50ea34e85ad08caf07c5932d6d6d64689839c7e6fb",
     "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py": "906b792ae520915666f8ec12aef25e353d21a038a2827f6934fe07e16e14841d",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/spar_closeout_profile.py": "ed05d991fc36c1a8400f0c0ddd46d00df4ad10747a994b3b44a2b0a7c135820b",
     "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py": "8f4b3b6bd4e38bdcbcbf12c9b1fa38e6cf582a756aa816081f12c69f0c931639",
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": "92ae856681fe8e59c45a4ad1cd76aa8b757d405aefe045f4443c0a1064bd3662",
-    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "ccf8123f41ea8499aaba5277c330d01c0e4ed79a7811fdf86701bec5240678ea",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "3f81eab90201a7751a097e2fc116859c82bfd541d6c8f0beb34ee6ad0420c285",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "500675d0453a9976c70d74972cea3c0b74ce882ea8f2c9c08aa8a920de061a9e",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "d97dd000de07da5f620e9b69ce2514309c9bd1701df8f77572dfc7370830cc45",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "09cbaa64445dffc53effca69ab83c81f2f62e85ce279e5f57f01ca75731281d7",
@@ -29,8 +32,8 @@
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/overlap_gap_matrix.json": "4c59e622a6497ad3538e20b23557b1acd37a6e14e78ba7de4dfc0321cce445d8",
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/repository_baseline.json": "6ef71a960844a5b49b13293de74b9ae8dc8c70e714beac4e1671f3c7ba61107a",
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/rollout_baseline.json": "b77373a0cefd1ea29058ed8a30cd1bb97be8bef6e420385629c5ff69fd5d3f39",
-    "scripts/materialize_semantic_preserving_remodularization_program.py": "4089204d1f4666cf49f67ad755e614c118621c9d16b3f5732409540a057e70bc",
-    "scripts/ops/agent_supervisor/semantic_preserving_remodularization.py": "e0e105751262e6e2958d27f371b44dde8ccad2ec6af5eea4808e90044d4fe6e7",
+    "scripts/materialize_semantic_preserving_remodularization_program.py": "f357a7e7c188867be7d32262575ad640ca90d644306dad88599174e409d7fcc2",
+    "scripts/ops/agent_supervisor/semantic_preserving_remodularization.py": "5d234b20d9f0d045751a997f14ccf64d1b7d55b6c3994b197037f6eeab1baf77",
     "scripts/validate_semantic_preserving_remodularization_board.py": "2f6cbe622e97e207ac6c901ccf1e70244739214b25e710c244d9c5b2b7c8d00d",
     "scripts/validate_semantic_preserving_remodularization_dependencies.py": "d42033c1c2f51c1f9d208bba2ec8e4144cc6e4b8c8625d318ae789ec2496af23",
     "test/api/semantic_refactoring/test_bootstrap_controls.py": "078591b41545fcbf79805684c7cbf81526ac2513881b05fba6bf796593eedd59"
@@ -491,7 +494,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:3211d9c52af97fff5a336810d9a9e22a93fe45e5d5776b49b98c734c9f35ad55",
+  "seal_cid": "sha256:551e2c943c9e0e988067ec0bf4d52882f8d9e939fbab63b18319dd1e493b5f13",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",

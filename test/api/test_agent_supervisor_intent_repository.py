@@ -1964,3 +1964,30 @@ def test_single_transaction_emits_events_without_external_files(
         if name.endswith((".md", ".json", ".jsonl")) and "control" not in name
     }
     assert not unexpected
+
+
+@pytest.mark.parametrize("reopen_count", [0, 2])
+def test_completion_seal_keeps_reopen_budget_outside_exact_receipt_and_replays(tmp_path, reopen_count):
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        task = repo.get_task(ids["task_a"])
+        repo.cas_task_status(task_cid=ids["task_a"], expected_revision=task["revision"],
+            new_status="in_progress", receipt={"operation":"claim", "unknown_callback_reopen_count":reopen_count})
+        task = repo.get_task(ids["task_a"])
+        repo.record_validation_result(task_cid=ids["task_a"], outcome="passed", evidence_digest=ids["evidence_digest"])
+        exact = {"operation":"completed", "validation":"passed"}
+        repo.cas_task_status(task_cid=ids["task_a"], expected_revision=task["revision"],
+            new_status="completed", receipt=exact, evidence_digests=[ids["evidence_digest"]])
+        before = repo.completion_evidence_projection(task_cids=[ids["task_a"]])
+        for replay in (False, True):
+            if replay:
+                repo.rebuild_projections_from_events()
+            task = repo.get_task(ids["task_a"])
+            assert task["body"]["completion_receipt"] == exact
+            assert task["body"]["unknown_callback_reopen_count"] == reopen_count
+            projection = repo.completion_evidence_projection(task_cids=[ids["task_a"]])
+            assert projection == before
+            with repo._connection(write=False) as connection:
+                rows = connection.execute("SELECT receipt_cid,task_cid,goal_cid,attempt_id,claim_cid,fencing_token,completed_at,validation_run_id,evidence_digest,body_json FROM completion_receipts WHERE task_cid=?", [ids["task_a"]]).fetchall()
+            binding, blockers = repo._current_task_completion_binding(task, rows)
+            assert binding is not None and blockers == []

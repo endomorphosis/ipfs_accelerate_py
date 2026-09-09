@@ -1972,6 +1972,59 @@ def _assert_start_not_held(board: Any) -> None:
             raise OperatorError(f"SPAR native startup held by {candidate}")
 
 
+def _native_closeout_profile(board: Any, config: Mapping[str, Any], bootstrap: Mapping[str, Any]) -> Any:
+    """Compile immutable SPAR contracts from verified original bootstrap blobs."""
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import content_identity
+    from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import parse_todo_blocks
+    from ipfs_accelerate_py.agent_supervisor.task_sources.spar_closeout_profile import SCHEMA, SparCloseoutProfile
+
+    original_head = bootstrap["source_head"]
+    sources = {}
+    for name, path in (("objectives", board.objectives_path), ("taskboard", board.taskboard_path),
+                       ("config", board.config_path.relative_to(ROOT).as_posix())):
+        raw = _git("show", f"{original_head}:{path}", binary=True)
+        if not isinstance(raw, bytes) or _identity(raw) != bootstrap["source_identities"][name]:
+            raise OperatorError(f"native SPAR profile differs from bootstrap {name}")
+        sources[name] = raw
+    original_config = json.loads(sources["config"])
+    if original_config["completion_policy"] != config["completion_policy"]:
+        raise OperatorError("SPAR completion policy differs from original bootstrap")
+    plan = bootstrap["plan_root_cid"]
+    tree = bootstrap["repository_tree_id"]
+    parsed_goals = _goal_blocks(sources["objectives"].decode())
+    goal_cids = {alias: content_identity({"goal_id": alias, "title": title,
+        "metadata": fields, "plan_root_cid": plan}) for alias, title, fields in parsed_goals}
+    goals, edges = [], []
+    for alias, title, fields in parsed_goals:
+        parent = goal_cids.get(fields.get("parent"), "")
+        goals.append({"goal_alias": alias, "goal_cid": goal_cids[alias], "title": title,
+                      "parent_goal_cid": parent, "body": fields})
+        if parent:
+            edges.append({"parent_goal_cid": parent, "child_goal_cid": goal_cids[alias], "edge_kind": "goal_parent"})
+        edges.extend({"parent_goal_cid": goal_cids[dependency], "child_goal_cid": goal_cids[alias],
+                      "edge_kind": "goal_dependency"} for dependency in _split_csv(fields.get("depends_on")))
+    parsed_tasks = parse_todo_blocks(sources["taskboard"].decode(), task_header_prefix="## SPAR-")
+    task_cids = {alias: content_identity({"task_id": alias, "title": title, "source_line": line,
+        "metadata": fields, "plan_root_cid": plan, "repository_tree_id": tree})
+        for alias, title, line, fields in parsed_tasks}
+    if sorted(task_cids.values()) != sorted(bootstrap["database_task_source_receipt"]["task_cids"]):
+        raise OperatorError("native SPAR profile task identities differ from bootstrap")
+    tasks = [{"task_alias": alias, "task_cid": task_cids[alias], "title": title,
+              "goal_cid": goal_cids[fields.get("subgoal_id") or fields.get("goal_id") or "SPAR-G000"],
+              "contract_fields": {key: fields[key] for key in ("completion_contract", "acceptance_subset", "validation", "predicted_files") if key in fields},
+              "dependencies": [task_cids[d] for d in _split_csv(fields.get("depends_on"))]}
+             for alias, title, _line, fields in parsed_tasks]
+    nested = []
+    for spec in bootstrap["source_forest"]["nested_repositories"]:
+        nested.append({"path": spec["path"], "repository": spec["repository"],
+                       "planning_revision": spec.get("planning_revision") or spec["head"]})
+    return SparCloseoutProfile({"schema": SCHEMA, "board_namespace": board.board_namespace,
+        "bootstrap_receipt_id": bootstrap["bootstrap_receipt_id"], "plan_root_cid": plan,
+        "repository_tree_id": tree, "source_identities": bootstrap["source_identities"],
+        "completion_policy": original_config["completion_policy"], "goals": goals, "tasks": tasks,
+        "goal_edges": edges, "nested_repositories": nested}, repository_root=str(ROOT))
+
+
 def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, Any, dict[str, Any]]:
     board, _ = _load_config(config_path)
     _assert_start_not_held(board)
@@ -1981,7 +2034,7 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
         ready = server.ready()
         # Execution grants stay on the inherited private channel. The separate
         # status credential admits only exact-peer, read-only snapshot sessions.
-        board, _ = _load_config(config_path)
+        board, current_config = _load_config(config_path)
         bootstrap = _json_object(paths["bootstrap_receipt"])
         body = {key: value for key, value in bootstrap.items() if key != "bootstrap_receipt_id"}
         if bootstrap.get("bootstrap_receipt_id") != _identity(body):
@@ -1991,6 +2044,7 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
             plan_root_cid=bootstrap["plan_root_cid"],
             repository_tree_id=bootstrap["repository_tree_id"],
             task_cids=bootstrap["database_task_source_receipt"]["task_cids"],
+            closeout_profile=_native_closeout_profile(board, current_config, bootstrap),
         )
     except BaseException:
         server.stop()
