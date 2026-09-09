@@ -233,3 +233,13 @@ uses `TypedStateOwnerConnection(..., fleet_observation_read=True)`; its exact
 peer receives a 120-second capability for identity and fleet-observation queries
 only. It cannot append observations, mutate a board, or open the derived writer
 service with that credential. Admission modes and credentials remain distinct.
+
+A quarantined merge candidate can be retired after a newer implementation has
+been accepted using `MergeQueue.supersede_quarantined`. The caller must supply
+an exact, content-addressed review and an independent current-acceptance
+verifier. The queue checks the candidate, canonical task, target and claim
+generation, then verifies acceptance again before committing. It records a
+cancellation with the original candidate and quarantine history preserved;
+this does not claim that the old candidate merged or complete a task or goal.
+Changed native receipts, source roots or validation evidence must reject the
+review. Ordinary `cancel` continues to refuse quarantined work.
