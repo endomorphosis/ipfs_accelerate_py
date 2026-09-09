@@ -221,20 +221,72 @@ class FleetObserver:
         self.poll_seconds = poll_seconds
         self.source_workers = source_workers
         self._polls: _SourcePolls | None = None
+        self._writer_client: QuackStateClient | None = None
+        self._writer_grant: Any = None
+        self._writer_token: str | None = None
+        self._writer_owner_key: tuple[Any, ...] | None = None
         self.stop_event = threading.Event()
         self.last_progress = time.monotonic()
         self.thread = threading.Thread(target=self._run, name="quack-fleet-observer", daemon=True)
 
+    def _close_writer_client(self) -> None:
+        client, self._writer_client = self._writer_client, None
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+    def _retire_writer(self, *, revoke: bool = True) -> None:
+        self._close_writer_client()
+        grant, self._writer_grant = self._writer_grant, None
+        self._writer_token = None
+        self._writer_owner_key = None
+        if revoke and grant is not None:
+            try:
+                self.server.revoke_typed_client_grant(grant.grant_id)
+            except Exception:
+                # A stopped/replaced owner has already invalidated its grants.
+                pass
+
     def _client(self) -> QuackStateClient:
         identity = self.server.identity
         if identity is None:
+            self._retire_writer(revoke=False)
             raise ValueError("native owner identity unavailable")
+        owner_key = tuple(getattr(identity, key) for key in (
+            "server_id", "store_id", "database_uuid", "generation", "fence_epoch",
+            "process_birth_id", "listen_uri"))
+        if self._writer_owner_key is not None and self._writer_owner_key != owner_key:
+            # Never revoke an old owner's grant ID in a replacement gateway.
+            self._retire_writer(revoke=False)
+        now_ms = int(time.time() * 1000)
+        if self._writer_grant is not None:
+            remaining_ms = self._writer_grant.expires_at - now_ms
+            if remaining_ms <= 0:
+                self._retire_writer()
+            elif remaining_ms <= 120_000 or self._writer_client is None:
+                try:
+                    self._writer_grant = self.server.renew_typed_client_grant(
+                        self._writer_grant.grant_id, ttl_seconds=600)
+                except Exception:
+                    # One failure per cycle; do not issue capabilities in a
+                    # tight retry loop when native ownership is unavailable.
+                    self._retire_writer()
+                    raise
         client_id = "fleet:observation-writer"
-        templates = _fleet_templates()
-        token = self.server.issue_typed_client_grant(client_id=client_id, process_birth_id=identity.process_birth_id,
-                    allowed_operations=("whoami_metadata", "load_store_generation", "txn_load_generation", "txn_lookup_idempotency",
-                                        "txn_advance_store_revision", "txn_record_idempotency", *(item.name for item in templates)),
-                    allowed_command_operations=(OPERATION,), ttl_seconds=600)
+        if self._writer_grant is None:
+            templates = _fleet_templates()
+            token, grant = self.server.issue_typed_client_grant_record(
+                client_id=client_id, process_birth_id=identity.process_birth_id,
+                allowed_operations=("whoami_metadata", "load_store_generation", "txn_load_generation", "txn_lookup_idempotency",
+                                    "txn_advance_store_revision", "txn_record_idempotency", *(item.name for item in templates)),
+                allowed_command_operations=(OPERATION,), ttl_seconds=600)
+            self._writer_token, self._writer_grant = token, grant
+            self._writer_owner_key = owner_key
+        if self._writer_client is not None:
+            return self._writer_client
+        token = self._writer_token
         def connect(_endpoint):
             return TypedStateOwnerConnection(socket_path=self.server.typed_command_socket_path(), token=token,
                     client_id=client_id, process_birth_id=identity.process_birth_id, store_id=identity.store_id)
@@ -244,6 +296,7 @@ class FleetObserver:
         except BaseException:
             client.close()
             raise
+        self._writer_client = client
         return client
 
     def cycle(self) -> dict[str, Any] | None:
@@ -270,8 +323,11 @@ class FleetObserver:
             view["source_admission"] = {identifier: "available" if item["available"] else "unavailable"
                                         for identifier, item in view["sources"].items()}
             return view
-        finally:
-            client.close()
+        except BaseException:
+            # Retry the connection on a later cycle using the same still-live
+            # owner grant. Poll cadence and the 600-second health bound remain.
+            self._close_writer_client()
+            raise
 
     def _run(self):
         try:
@@ -292,6 +348,7 @@ class FleetObserver:
                     os.replace(temporary, self.output_path)
                 self.stop_event.wait(delay)
         finally:
+            self._retire_writer()
             if self._polls is not None:
                 self._polls.close()
 

@@ -127,3 +127,14 @@ The aggregate worker also has an independent 600-second progress deadline;
 source query failures are retained as unavailable observations, while a stopped
 or hung worker makes the owner process exit for systemd recovery. Repeated
 control-write failures do not refresh that progress deadline.
+
+
+The aggregate observation writer reuses one native client and one grant bound to
+its exact owner identity and process birth. It renews that grant through the
+native owner before expiry, including before a transport reconnect. A failed
+write closes the connection; a later poll may reconnect with the same live
+grant. Expiry or owner replacement retires the cached binding, and each cycle
+attempts at most one renewal and one attach. This keeps ordinary polling from growing
+the owner's grant registry or revocation history. Observer shutdown closes its
+client and revokes the single remaining grant. No source admission, receipt TTL,
+or semantic acceptance policy changes with this lifecycle repair.
