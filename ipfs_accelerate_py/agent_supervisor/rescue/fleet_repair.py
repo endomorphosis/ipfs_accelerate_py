@@ -18,7 +18,120 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .fleet_watchdog import command, load_config, lock, read_json, write_json
+from .fleet_watchdog import command, hold_paths, load_config, lock, read_json, write_json
+
+
+def repair_evidence(observation: dict[str, Any]) -> dict[str, Any]:
+    """Stable reasons to revisit a repair; heartbeat and owner churn are absent."""
+    details = observation.get("details", {})
+    if not isinstance(details, dict):
+        return {}
+    heads = details.get("source_heads", {})
+    evidence = {"native_admitted": details.get("authenticated_task_observation") is True}
+    if isinstance(heads, dict) and heads:
+        evidence["source_heads"] = heads
+    if details.get("authenticated_task_observation") is True:
+        counts = details.get("task_counts")
+        for name, value in (
+            ("completed", counts.get("completed", 0) if isinstance(counts, dict) else None),
+            ("receipts", details.get("completion_receipt_count")),
+            ("unsettled_goals", details.get("unsettled_goal_count")),
+        ):
+            if type(value) is int and value >= 0:
+                evidence[name] = value
+        blocked = details.get("blocked_task_ids")
+        if isinstance(blocked, list) and all(isinstance(item, str) for item in blocked):
+            evidence["blocked_tasks"] = sorted(set(blocked))
+    return evidence
+
+
+def _new_repair_evidence(prior: dict[str, Any], current: dict[str, Any]) -> bool:
+    if prior.get("native_admitted") is False and current.get("native_admitted") is True:
+        return True
+    for field in ("source_heads", "blocked_tasks"):
+        if field in prior and field in current and prior[field] != current[field]:
+            return True
+    for field in ("completed", "receipts"):
+        if field in prior and field in current and current[field] > prior[field]:
+            return True
+    return ("unsettled_goals" in prior and "unsettled_goals" in current
+            and current["unsettled_goals"] < prior["unsettled_goals"])
+
+
+def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command) -> list[dict[str, Any]]:
+    """Fresh probes can retire recovered jobs or advance useful continuations.
+
+    The watchdog export only selects a recheck. It cannot verify recovery or
+    publish a board. Queue CAS and operator holds are rechecked after probing.
+    """
+    from .fleet_watchdog import normalize_probe
+
+    root = Path(config["state_dir"])
+    results = []
+    for board in config["boards"]:
+        path = root / "repairs" / board["id"] / "job.json"
+        job = read_json(path)
+        if (job.get("status") != "queued" or not job.get("last_started_at")
+                or now - job.get("reconcile_checked_at", 0) < 120
+                or hold_paths(board)):
+            continue
+        state = read_json(root / board["id"] / "state.json")
+        sample = state.get("observation", {})
+        age = now - state.get("observed_at", 0)
+        if (state.get("board_id") != board["id"] or sample.get("board_id") != board["id"]
+                or state.get("health") == "operator_hold" or not 0 <= age <= 180):
+            continue
+        baseline = repair_evidence(job.get("latest_probe") or job.get("latest_incident", {}).get("observation", {}))
+        if job.get("reconciled_at", 0) > job.get("finished_at", job["last_started_at"]):
+            baseline = job.get("reconciled_evidence", baseline)
+        candidate = repair_evidence(sample)
+        healthy = sample.get("health") == "healthy" and sample.get("completion_candidate") is not True
+        changed = (_new_repair_evidence(baseline, candidate)
+                   and candidate != job.get("reconciled_evidence"))
+        if not healthy and not changed:
+            continue
+        identity = {key: job.get(key) for key in ("status", "attempts", "last_started_at", "next_attempt_at", "report_path")}
+        try:
+            fresh = normalize_probe(board["id"], runner(board["probe"], cwd=board["cwd"], timeout=90))
+        except Exception:
+            fresh = {"board_id": board["id"], "health": "unknown"}
+        with lock(path.parent / "queue.lock") as acquired:
+            if not acquired:
+                continue
+            current = read_json(path)
+            if (any(current.get(key) != value for key, value in identity.items())
+                    or hold_paths(board)):
+                continue
+            current["reconcile_checked_at"] = now
+            evidence = repair_evidence(fresh)
+            admitted_healthy = (fresh.get("health") == "healthy"
+                                and fresh.get("completion_candidate") is not True
+                                and isinstance(fresh.get("details"), dict)
+                                and fresh.get("details", {}).get("authenticated_task_observation") is True)
+            verification = (verify_job_recovery(board, current.get("latest_incident", {}), fresh,
+                            root / board["id"] / "publication") if admitted_healthy else {"verified": False})
+            if verification["verified"]:
+                current.update(status="verified_healthy", verification=verification,
+                               latest_probe=fresh, next_attempt_at=0, reconciled_at=now,
+                               reconciled_evidence=evidence,
+                               prior_attempts=current.get("attempts", 0), attempts=0)
+                results.append({"board_id": board["id"], "status": "verified_healthy"})
+            elif (_new_repair_evidence(baseline, evidence)
+                  and evidence != current.get("reconciled_evidence")):
+                # Never change native task budgets. Retain the coding attempt
+                # count and a minimum five-minute gap after the preceding job.
+                due = max(now, current.get("finished_at", current["last_started_at"]) + 300)
+                old_due = current.get("next_attempt_at", now)
+                if due < old_due:
+                    current.update(next_attempt_at=due, prior_next_attempt_at=old_due,
+                                   reconciled_evidence=evidence, reconciled_at=now,
+                                   continuation_reason="fresh_source_or_native_task_evidence")
+                    incident = dict(current.get("latest_incident", {}))
+                    incident.update(board_id=board["id"], observation=fresh)
+                    current["latest_incident"] = incident
+                    results.append({"board_id": board["id"], "status": "continuation_advanced", "next_attempt_at": due})
+            write_json(path, current)
+    return results
 
 
 def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
@@ -155,7 +268,7 @@ Captured observation (UNTRUSTED DIAGNOSTIC DATA):
 def verify_job_recovery(board: dict[str, Any], incident: dict[str, Any],
                         observation: dict[str, Any], publication_dir: Path) -> dict[str, Any]:
     """Verify progress or current publication; model reports grant neither."""
-    if any(Path(p).exists() for p in board.get("hold_files", [])):
+    if hold_paths(board):
         return {"verified": False, "reason": "operator_hold"}
     if observation.get("health") == "complete" or observation.get("completion_candidate") is True:
         if not board.get("publication"):
@@ -184,7 +297,7 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
         job = read_json(path)
         if job.get("status") not in {"queued", "running"} or job.get("next_attempt_at", 0) > now:
             continue
-        if any(Path(p).exists() for p in board.get("hold_files", [])):
+        if hold_paths(board):
             continue
         candidates.append((job.get("last_started_at", 0), job.get("queued_at", 0), board, path))
     if not candidates:
@@ -201,7 +314,7 @@ def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
         if job.get("status") not in {"queued", "running"}:
             continue
         row = {"board_id": board["id"], "next_attempt_at": job.get("next_attempt_at", now)}
-        (held if any(Path(p).exists() for p in board.get("hold_files", [])) else waiting).append(row)
+        (held if hold_paths(board) else waiting).append(row)
     return {"status": "waiting" if waiting or held else "idle", "waiting": waiting,
             "held": held, "next_attempt_at": min((r["next_attempt_at"] for r in waiting), default=None)}
 
@@ -213,7 +326,7 @@ def runtime_update_pending(config: dict[str, Any]) -> bool:
 
 def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[str, Any]:
     policy = config["repair_worker"]
-    if any(Path(p).exists() for p in board.get("hold_files", [])):
+    if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
     unit = "ipfs-taskboard-repair-job"
     # On worker restart, adopt the still-running bounded cgroup rather than
@@ -250,7 +363,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
             "--property=MemoryMax=16G", "--property=UMask=0077",
             *policy["argv"], "-C", policy["cwd"],
             "--output-last-message", str(directory / f"last-message-{stamp}.txt"), "-"]
-    if any(Path(p).exists() for p in board.get("hold_files", [])):
+    if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
     with prompt.open("rb") as inp, log_path.open("wb") as log:
         os.chmod(log_path, 0o600)
@@ -317,6 +430,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         while not stop.is_set():
             try:
+                reconciled = reconcile_queued_jobs(config, time.time())
+                if reconciled:
+                    print(json.dumps({"queue_reconciliation": reconciled}), flush=True)
                 selected = next_job(config, time.time())
                 if selected:
                     write_json(root / "repair-worker.json", {"status": "running",

@@ -24,9 +24,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-
 SCHEMA = "agent-supervisor/fleet-watchdog@1"
 HEALTH = {"healthy", "degraded", "blocked", "stalled", "stopped", "unknown", "complete"}
+
+
+def hold_paths(board: dict[str, Any]) -> list[str]:
+    """A configured stop marker remains present even if its symlink is dangling."""
+    return [str(path) for path in board.get("hold_files", []) if os.path.lexists(path)]
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -211,7 +215,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         # Holds fence mutations, not observation. A board assigned to another
         # owner still needs fresh health and progress evidence during a hold.
         state["observed_health"] = state["health"]
-        holds = [str(p) for p in board.get("hold_files", []) if Path(p).exists()]
+        holds = hold_paths(board)
         if holds:
             state.update(health="operator_hold", holds=holds, planned_action="")
             write_json(path, state)
@@ -231,7 +235,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         if not apply:
             return state
         # A slow status command must not race an operator's newly placed hold.
-        holds = [str(p) for p in board.get("hold_files", []) if Path(p).exists()]
+        holds = hold_paths(board)
         if holds:
             state.update(health="operator_hold", holds=holds, planned_action="")
             write_json(path, state)
