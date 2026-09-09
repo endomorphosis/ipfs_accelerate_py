@@ -6329,6 +6329,61 @@ def test_chain_inexact_protected_preservation_block_recovers_once(
         daemon.close()
 
 
+@pytest.mark.parametrize("defect", ["historical_revision", "foreign_attempt"])
+def test_protected_preservation_recovery_rejects_unbound_seed_without_rearming(
+    tmp_path: Path,
+    defect: str,
+) -> None:
+    """A preserved candidate alone cannot authorize a later blocked revision."""
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError(
+            "Portal consumed-attempt retry seed state conflicts with its receipt"
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:protected-preservation-unbound-{defect}",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.run_once()
+        attempt = daemon.get_attempt(failed["attempt_id"])
+        assert attempt is not None
+        before = daemon.task_source.get(attempt.task_cid)
+        assert before is not None and before.status == "blocked"
+        queue_before = daemon.task_source.get_queue_entry(attempt.task_cid)
+        seed = _protected_preservation_receipt(
+            daemon, attempt, source_task_revision=before.revision - 1,
+        )
+        if defect == "historical_revision":
+            seed["source_task_revision"] -= 1
+            assert seed["source_task_revision"] >= 1
+        else:
+            seed["attempt_id"] = "attempt:earlier-preserved-candidate"
+        seed.pop("receipt_id")
+        seed["receipt_id"] = daemon._database_portal_evidence_digest(seed)
+
+        with pytest.raises((
+            DatabaseImplementationAuthorityError,
+            DatabaseImplementationConflictError,
+        )):
+            daemon.recover_blocked_portal_protected_preservation(
+                attempt, retry_evidence=seed,
+            )
+
+        after = daemon.task_source.get(attempt.task_cid)
+        assert after is not None
+        assert after.status == before.status
+        assert after.revision == before.revision
+        assert after.body == before.body
+        assert daemon.task_source.get_queue_entry(attempt.task_cid) == queue_before
+        assert daemon.get_attempt(attempt.attempt_id) == attempt
+    finally:
+        daemon.close()
+
+
 def test_protected_reconciliation_self_lock_rearms_original_seed_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -12122,6 +12177,64 @@ def test_inflight_process_failure_retries_instead_of_blocking(
         assert daemon.task_source.get(attempt.task_cid).status == "retrying"
     finally:
         daemon.close()
+
+
+@pytest.mark.parametrize("restart_count", [1, 2])
+def test_supervisor_checkout_recovery_survives_daemon_restart(
+    tmp_path: Path,
+    restart_count: int,
+) -> None:
+    repo = _git_repo(tmp_path)
+    lock_path = _write_supervisor_protected_recovery_journal(repo)
+    provider_calls: list[str] = []
+    session = "session:checkout-deferral-restart"
+    attempt = None
+    for _ in range(restart_count):
+        daemon = _open_daemon(
+            tmp_path / "lane", session=session, repo_root=repo,
+            provider_calls=provider_calls, clock_ms=lambda: 1_000,
+        )
+        try:
+            if attempt is None:
+                daemon.materialize_population(_population(1))
+                attempt = daemon.claim_next()
+                assert attempt is not None
+            else:
+                attempt = daemon.get_attempt(attempt.attempt_id)
+                assert attempt is not None
+            # Simulate restart after the pre-entry guard defers, before the
+            # outer loop handles it. Recovery must not create unknown intent.
+            with pytest.raises(
+                DatabasePortalBridgeDeferred,
+                match="external_protected_checkout_recovery_required",
+            ):
+                daemon.run_provider(attempt)
+            assert daemon.provider_invocation_recorded(
+                attempt.attempt_id,
+                idempotency_key=f"provider:{attempt.attempt_id}",
+            ) is None
+            assert daemon.task_source.get(attempt.task_cid).status == "in_progress"
+            assert lock_path.is_file()
+            assert provider_calls == []
+        finally:
+            daemon.close()
+
+    # Model the paired supervisor settling its test recovery journal.
+    lock_path.unlink()
+    restarted = _open_daemon(
+        tmp_path / "lane", session=session, repo_root=repo,
+        provider_calls=provider_calls, clock_ms=lambda: 1_000,
+    )
+    try:
+        result = restarted.run_once()["implementation_result"]
+        assert result["status"] == "succeeded"
+        assert result["attempt"]["attempt_id"] == attempt.attempt_id
+        assert restarted.task_source.get(attempt.task_cid).status == "completed"
+        assert provider_calls == [attempt.task_cid]
+        restarted.run_once()
+        assert provider_calls == [attempt.task_cid]
+    finally:
+        restarted.close()
 
 
 def test_inflight_process_deferral_does_not_exhaust_typed_budget(
@@ -21003,5 +21116,63 @@ def test_descendant_requalification_recovery_replays_one_queue_write(
         assert repeated["changed"] is False
         assert repeated["write_count"] == 0
         assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
+def test_compatibility_projection_uses_canonical_dependency_readiness(tmp_path: Path) -> None:
+    daemon = _open_daemon(tmp_path, session="session:dependency-projection")
+    try:
+        population = _population(2)
+        population["tasks"][1]["dependencies"] = ["task:cid:001"]
+        daemon.materialize_population(population)
+        projection = daemon.materialize_task_state_compatibility_projection(
+            state_path=tmp_path / "projection.json", pass_result={},
+        )
+        assert projection["projection_complete"] is True
+        assert projection["task_statuses"]["DQP-T002"] == "todo"
+        assert projection["ready_task_ids"] == ["DQP-T001"]
+        assert projection["ready_count"] == projection["eligible_ready_count"] == 1
+        daemon.run_once()
+        projection = daemon.materialize_task_state_compatibility_projection(
+            state_path=tmp_path / "projection.json", pass_result={},
+        )
+        assert projection["ready_task_ids"] == ["DQP-T002"]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("failure", ["unavailable", "revision", "cursor", "foreign"])
+def test_compatibility_projection_rejects_unbound_ready_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:ready-projection-error")
+    state_path = tmp_path / "projection.json"
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        idle_pass = daemon.run_once()
+        assert daemon.materialize_task_state_compatibility_projection(
+            state_path=state_path, pass_result=idle_pass,
+        )["projection_complete"] is True
+        original = daemon.task_source.ready_tasks
+
+        def broken_ready(**kwargs: Any) -> Any:
+            page = original(**kwargs)
+            if failure == "unavailable":
+                raise RuntimeError("ready query unavailable")
+            if failure == "revision":
+                return replace(page, revision=page.revision + 1)
+            if failure == "cursor":
+                return replace(page, next_cursor="more")
+            return replace(page, tasks=(SimpleNamespace(task_cid="foreign"),))
+
+        monkeypatch.setattr(daemon.task_source, "ready_tasks", broken_ready)
+        failed = daemon.materialize_task_state_compatibility_projection(
+            state_path=state_path, pass_result=idle_pass,
+        )
+        assert failed["projection_complete"] is False
+        assert failed["implementation_in_progress"] is True
+        assert json.loads(state_path.read_text())["projection_complete"] is False
     finally:
         daemon.close()

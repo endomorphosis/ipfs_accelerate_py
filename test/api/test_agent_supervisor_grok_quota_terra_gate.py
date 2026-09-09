@@ -4643,3 +4643,91 @@ def test_incomplete_quota_route_defaults_medium_reasoning_effort(
     assert plan.fallback_trigger == "primary_quota_exhausted"
     assert plan.fallback_reasoning_effort == "medium"
     assert plan.permits_authentication_unavailable is False
+
+
+@pytest.mark.parametrize(
+    ("bound", "value", "reason"),
+    [
+        ("_WORKSPACE_FINGERPRINT_MAX_ENTRIES", 1, "entry"),
+        ("_WORKSPACE_FINGERPRINT_MAX_BYTES", 3, "byte"),
+    ],
+)
+def test_workspace_fingerprint_rejects_archives_without_partial_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    bound: str, value: int, reason: str,
+) -> None:
+    archive = tmp_path / "data" / "campaign.pre-reboot" / "worktrees"
+    archive.mkdir(parents=True)
+    (archive / "candidate.py").write_bytes(b"payload")
+    monkeypatch.setattr(grok_cli_runner, bound, value)
+    with pytest.raises(ValueError, match=f"{reason} budget exceeded"):
+        grok_cli_runner._workspace_content_fingerprint(tmp_path)
+
+
+def test_workspace_fingerprint_checks_deadline_while_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "large.bin").write_bytes(b"x" * (2 * 1024 * 1024))
+    # Initialization, directory, file, first chunk, second chunk.
+    ticks = iter([0.0, 0.0, 0.0, 0.0, 61.0])
+    monkeypatch.setattr(grok_cli_runner.time, "monotonic", lambda: next(ticks))
+    with pytest.raises(ValueError, match="time budget exceeded"):
+        grok_cli_runner._workspace_content_fingerprint(tmp_path)
+
+
+def test_workspace_fingerprint_does_not_silently_skip_walk_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unreadable_walk(*args, **kwargs):
+        kwargs["onerror"](PermissionError("unreadable archive"))
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(grok_cli_runner.os, "walk", unreadable_walk)
+    with pytest.raises(ValueError, match="unable to fingerprint"):
+        grok_cli_runner._workspace_content_fingerprint(tmp_path)
+
+
+def test_workspace_fingerprint_keeps_ignored_archive_bytes_in_fence(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".gitignore").write_text("data/\n")
+    archive = tmp_path / "data" / "campaign.pre-reboot" / "worktrees"
+    archive.mkdir(parents=True)
+    source = archive / "candidate.py"
+    source.write_text("before")
+    baseline = grok_cli_runner._workspace_content_fingerprint(tmp_path)
+    assert grok_cli_runner._workspace_content_fingerprint(tmp_path) == baseline
+    source.write_text("after")
+    assert grok_cli_runner._workspace_content_fingerprint(tmp_path) != baseline
+
+
+def test_merge_preflight_fingerprint_budget_denies_before_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "archive.bin").write_bytes(b"oversized archive")
+    grok = tmp_path / "grok"
+    grok.write_text("#!/bin/sh\nexit 0\n")
+    grok.chmod(0o700)
+    monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("resolve merge"))
+    monkeypatch.setattr(grok_cli_runner, "_WORKSPACE_FINGERPRINT_MAX_BYTES", 1)
+    monkeypatch.setattr(grok_cli_runner, "_repository_head", lambda _workspace: "a" * 40)
+    monkeypatch.setattr(
+        grok_cli_runner, "_resolve_trusted_grok_bin", lambda **_kwargs: str(grok),
+    )
+    for name in (
+        "_run_typed_grok_preflight", "_independently_verify_grok_quota",
+        "_run_grok_with_typed_failure_capture", "_run_codex_quota_fallback_in_docker",
+    ):
+        monkeypatch.setattr(
+            grok_cli_runner, name,
+            lambda *args, **kwargs: pytest.fail("over-budget scan must deny provider dispatch"),
+        )
+    command = grok_cli_runner.build_grok_quota_routed_agent_command(
+        workspace=workspace, python_executable=sys.executable,
+        fallback_reasoning_effort="medium", enable_internal_legacy_preflight=True,
+    )
+    assert grok_cli_runner.main(command[3:]) == 2
+    assert "fingerprint byte budget exceeded" in capsys.readouterr().err

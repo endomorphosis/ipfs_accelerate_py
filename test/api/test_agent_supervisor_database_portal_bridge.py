@@ -4851,6 +4851,56 @@ def test_bridge_defers_paired_supervisor_external_checkout_recovery(
     assert portal.closed is True
 
 
+def test_bridge_restarts_after_paired_checkout_deferral_without_terminal_receipt(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    class WaitingPortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            calls.append("waiting")
+            return {
+                "blocked": True,
+                "reason": "external_protected_checkout_recovery_required",
+                "protected_checkout_recovery": {
+                    "protected_recovery_owner": "implementation_supervisor",
+                },
+            }
+
+    class RecoveredPortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            calls.append("recovered")
+            return super().run_once()
+
+    def open_bridge(
+        portal_type: type[_CompletingPortal],
+    ) -> DatabasePortalExecutionBridge:
+        return DatabasePortalExecutionBridge(
+            task_source=_TaskSource(_record()),
+            attempt_root=tmp_path / "attempts",
+            portal_factory=lambda paths, alias: portal_type(paths, alias),
+            max_passes=1,
+        )
+
+    attempt = _attempt()
+    # Reconstruct the bridge each time, retaining the exact attempt directory.
+    # Waiting must remain a typed deferral after restart, allowing the same
+    # bound attempt to finish once the paired supervisor has recovered.
+    for _ in range(2):
+        bridge = open_bridge(WaitingPortal)
+        with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+            bridge.run_provider(attempt)
+        assert caught.value.provider_dispatched is False
+        assert caught.value.attempt_consumed is False
+
+    recovered = open_bridge(RecoveredPortal)
+    receipt = recovered.run_provider(attempt)
+    assert receipt["accepted"] is True
+    assert receipt["attempt_id"] == attempt.attempt_id
+    assert receipt["task_cid"] == attempt.task_cid
+    assert calls == ["waiting", "waiting", "recovered"]
+
+
 def test_bridge_defers_foreign_external_checkout_recovery_fence(
     tmp_path: Path,
 ) -> None:
@@ -6763,8 +6813,14 @@ def test_bridge_recovers_consumed_attempt_and_seeds_lane_local_successor(
     assert replayed.value.retry_receipt["remaining_task_attempts"] == 2
 
 
+@pytest.mark.parametrize("diagnostic", [
+    "",
+    "retry_budget_repair_runtime_revision_unavailable",
+    "nested_submodule_initialization_guarded",
+])
 def test_bridge_replays_exact_protected_preservation_before_seed_reinit(
     tmp_path: Path,
+    diagnostic: str,
 ) -> None:
     (
         record,
@@ -6775,7 +6831,9 @@ def test_bridge_replays_exact_protected_preservation_before_seed_reinit(
         preserved_commit,
         rescue_branch,
         terminal,
-    ) = _prepare_seeded_protected_preservation_replay(tmp_path)
+    ) = _prepare_seeded_protected_preservation_replay(
+        tmp_path, interposed_event_type=diagnostic,
+    )
     started, mutation, preserved, finished = terminal
     factory_calls: list[str] = []
 
@@ -17348,3 +17406,133 @@ def test_bridge_routes_only_owned_missing_output_quarantine_and_replays_completi
     record.status = "in_progress"
     assert replay_bridge.recover_post_merge_declared_outputs(authority) is None
     assert len(recovered_evidence) == 3
+
+
+@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize(
+    ("section", "field", "bad_value", "predicate"),
+    [
+        ("seed", "extra", "sensitive-value", "seed_fields"),
+        ("seed", "schema", "unknown", "seed_schema"),
+        ("seed", "seed_id", "sha256:" + "0" * 64, "seed_digest"),
+        ("seed", "request_id", "", "seed_string_fields"),
+        ("seed", "attempt_number", True, "seed_integer_fields"),
+        ("seed", "terminal_reason", "unknown", "terminal_reason"),
+        ("seed", "qualification_kind", "unknown", "qualification_kind"),
+        ("seed", "candidate_commit", "invalid", "commit_format"),
+        ("seed", "recovery_evidence_id", "invalid", "evidence_digest_format"),
+        ("claim", "operation", "terminal", "claim_operation"),
+        ("claim", "post_merge_completion_recovery_source_attempt_id", "other", "source_attempt_binding"),
+        ("claim", "attempt_id", "other", "claim_attempt_binding"),
+        ("claim", "claim_id", "other", "claim_id_binding"),
+        ("claim", "lease_id", "other", "claim_lease_binding"),
+        ("claim", "owner_session_id", "other", "claim_owner_binding"),
+        ("claim", "fencing_token", 99, "claim_fencing_token_binding"),
+        ("claim", "fence_epoch", 99, "claim_fence_epoch_binding"),
+        ("seed", "task_cid", "other", "task_cid_binding"),
+        ("seed", "task_alias", "other", "task_alias_binding"),
+        ("seed", "attempt_id", "attempt:001", "successor_attempt_reused"),
+        ("seed", "claim_id", "claim:001", "successor_claim_reused"),
+        ("seed", "lease_id", "lease:001", "successor_lease_reused"),
+        ("record", "revision", True, "record_revision_type"),
+        ("record", "revision", "11", "record_revision_type"),
+        ("record", "revision", 12, "successor_revision_binding"),
+        ("seed", "source_task_revision", 11, "recovery_revision_order"),
+        ("seed", "recovery_control_revision", True, "seed_integer_fields"),
+        ("none", "", None, ""),
+    ],
+)
+def test_post_merge_seed_claim_diagnostic_preserves_rejection(
+    tmp_path: Path,
+    version: int,
+    section: str,
+    field: str,
+    bad_value: object,
+    predicate: str,
+) -> None:
+    """Exercise real claim verification before any queue, Git or provider access."""
+    module = database_portal_bridge_module
+    attempt = _attempt()
+    record = _record()
+    seed = {
+        "schema": module.DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA,
+        "task_cid": attempt.task_cid,
+        "task_alias": attempt.task_alias,
+        "attempt_id": "attempt:source",
+        "claim_id": "claim:source",
+        "lease_id": "lease:source",
+        "attempt_number": 1,
+        "owner_session_id": "source-owner",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "source_task_revision": 9,
+        "request_id": "request:source",
+        "candidate_commit": "a" * 40,
+        "qualified_target_commit": "b" * 40,
+        "qualification_kind": "repair",
+        "qualification_receipt_id": "receipt:source",
+        "queue_source_attempt_id": "attempt:source",
+        "queue_source_claim_id": "claim:source",
+        "queue_source_lease_id": "lease:source",
+        "queue_source_fencing_token": 1,
+        "queue_source_fence_epoch": 1,
+        "queue_source_binding_id": "sha256:" + "c" * 64,
+        "queue_source_projection_immutable_digest": "sha256:" + "d" * 64,
+        "recovery_evidence_id": "sha256:" + "e" * 64,
+        "terminal_reason": sorted(module._DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS)[0],
+    }
+    if version == 2:
+        seed.update(
+            schema=module.DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+            source_task_revision=7,
+            recovery_control_revision=9,
+        )
+    if version == 1 and field == "source_task_revision":
+        predicate = "successor_revision_binding"
+    if version == 1 and field == "recovery_control_revision":
+        predicate = "seed_fields"
+    if section == "seed" and field != "seed_id":
+        seed[field] = bad_value
+    if section == "seed" and field == "schema":
+        # Match the V1 field set selected by an unknown schema so the schema
+        # predicate, rather than the earlier field-set predicate, is isolated.
+        seed.pop("recovery_control_revision", None)
+    seed["seed_id"] = module._sha256_bytes(module._canonical_json(seed))
+    if section == "seed" and field == "seed_id":
+        seed[field] = bad_value
+    claim = {
+        "operation": "database_claim",
+        "post_merge_completion_recovery_source_attempt_id": seed["attempt_id"],
+        "post_merge_completion_recovery_seed": seed,
+        **{key: getattr(attempt, key) for key in (
+            "attempt_id", "claim_id", "lease_id", "owner_session_id",
+            "fencing_token", "fence_epoch",
+        )},
+    }
+    if section == "claim":
+        claim[field] = bad_value
+    if section == "record":
+        setattr(record, field, bad_value)
+    record.body = {"completion_receipt": claim}
+
+    class UnreachableQueue:
+        def get(self, _request_id: str) -> None:
+            pytest.fail("invalid claim reached merge queue")
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda *_args: pytest.fail("claim diagnosis dispatched provider"),
+    )
+    if predicate:
+        bridge.merge_queue = UnreachableQueue()
+        expected = "post-merge completion recovery seed failed claim verification: " + predicate
+    else:
+        # Passing claim checks still requires independent queue qualification.
+        expected = "post-merge completion recovery seed has no merge queue"
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge._post_merge_completion_recovery_seed_from_record(
+            attempt=attempt, record=record,
+        )
+    assert str(caught.value) == expected
+    assert not (tmp_path / "attempts").exists()

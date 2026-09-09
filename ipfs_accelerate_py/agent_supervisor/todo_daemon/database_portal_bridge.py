@@ -15006,13 +15006,23 @@ class DatabasePortalExecutionBridge:
         if not marker_present:
             return None
 
+        # These diagnostics are emitted by normal task selection and nested
+        # dependency setup. Keep them in the verified hash chain, but exclude
+        # them from the execution sequence checked below. Every other event,
+        # including a later provider dispatch, still fails the exact match.
+        terminal_events = [
+            event for event in events
+            if str(event.get("type") or "") not in {
+                "retry_budget_repair_runtime_revision_unavailable",
+                "nested_submodule_initialization_guarded",
+            }
+        ]
         seed_event: Mapping[str, Any] | None = None
-        terminal_events = events
-        if events and str(events[0].get("type") or "") in (
+        if terminal_events and str(terminal_events[0].get("type") or "") in (
             _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS
         ):
-            seed_event = events[0]
-            terminal_events = events[1:]
+            seed_event = terminal_events[0]
+            terminal_events = terminal_events[1:]
         terminal_events = [
             event
             for event in terminal_events
@@ -19204,34 +19214,57 @@ class DatabasePortalExecutionBridge:
         )
         if schema == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2:
             integer_fields = (*integer_fields, "recovery_control_revision")
-        if (
-            set(seed) != expected_fields
-            or schema
+        # Keep the original short-circuit order: later checks rely on earlier
+        # type checks. Emit only a fixed predicate name, never receipt values.
+        claim_error = ""
+        if set(seed) != expected_fields:
+            claim_error = "seed_fields"
+        elif (
+            schema
             not in {
                 DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA,
                 DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
             }
-            or seed_id != _sha256_bytes(_canonical_json(value))
-            or any(
+        ):
+            claim_error = "seed_schema"
+        elif seed_id != _sha256_bytes(_canonical_json(value)):
+            claim_error = "seed_digest"
+        elif (
+            any(
                 not isinstance(value.get(field), str) or not value[field]
                 for field in string_fields
             )
-            or any(
+        ):
+            claim_error = "seed_string_fields"
+        elif (
+            any(
                 isinstance(value.get(field), bool)
                 or not isinstance(value.get(field), int)
                 or int(value[field]) < 1
                 for field in integer_fields
             )
-            or value.get("terminal_reason")
+        ):
+            claim_error = "seed_integer_fields"
+        elif (
+            value.get("terminal_reason")
             not in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
-            or value.get("qualification_kind")
+        ):
+            claim_error = "terminal_reason"
+        elif (
+            value.get("qualification_kind")
             not in {"repair", "requalification", "callback_integration"}
-            or any(
+        ):
+            claim_error = "qualification_kind"
+        elif (
+            any(
                 re.fullmatch(r"[0-9a-f]{40}", str(value.get(field) or ""))
                 is None
                 for field in ("candidate_commit", "qualified_target_commit")
             )
-            or any(
+        ):
+            claim_error = "commit_format"
+        elif (
+            any(
                 re.fullmatch(r"sha256:[0-9a-f]{64}", str(value.get(field) or ""))
                 is None
                 for field in (
@@ -19240,40 +19273,71 @@ class DatabasePortalExecutionBridge:
                     "recovery_evidence_id",
                 )
             )
-            or not seed_id
-            or not isinstance(status_receipt, Mapping)
-            or status_receipt.get("operation") != "database_claim"
-            or status_receipt.get("post_merge_completion_recovery_source_attempt_id")
-            != value.get("attempt_id")
-            or status_receipt.get("post_merge_completion_recovery_seed")
-            != dict(seed)
-            or status_receipt.get("attempt_id") != str(attempt.attempt_id)
-            or status_receipt.get("claim_id") != str(attempt.claim_id)
-            or status_receipt.get("lease_id") != str(attempt.lease_id)
-            or status_receipt.get("owner_session_id")
-            != str(attempt.owner_session_id)
-            or status_receipt.get("fencing_token")
-            != int(attempt.fencing_token)
-            or status_receipt.get("fence_epoch") != int(attempt.fence_epoch)
-            or value.get("task_cid") != str(attempt.task_cid)
-            or value.get("task_alias") != str(attempt.task_alias)
-            or value.get("attempt_id") == str(attempt.attempt_id)
-            or value.get("claim_id") == str(attempt.claim_id)
-            or value.get("lease_id") == str(attempt.lease_id)
-            or isinstance(record_revision, bool)
-            or not isinstance(record_revision, int)
-            or isinstance(recovery_control_revision, bool)
-            or not isinstance(recovery_control_revision, int)
-            or int(recovery_control_revision) + 2 != record_revision
-            or (
-                schema
-                == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
-                and int(recovery_control_revision)
-                <= int(value["source_task_revision"])
-            )
         ):
+            claim_error = "evidence_digest_format"
+        elif not seed_id:
+            claim_error = "seed_id_missing"
+        elif not isinstance(status_receipt, Mapping):
+            claim_error = "claim_receipt_type"
+        elif status_receipt.get("operation") != "database_claim":
+            claim_error = "claim_operation"
+        elif (
+            status_receipt.get("post_merge_completion_recovery_source_attempt_id")
+            != value.get("attempt_id")
+        ):
+            claim_error = "source_attempt_binding"
+        elif (
+            status_receipt.get("post_merge_completion_recovery_seed")
+            != dict(seed)
+        ):
+            claim_error = "claim_seed_binding"
+        elif status_receipt.get("attempt_id") != str(attempt.attempt_id):
+            claim_error = "claim_attempt_binding"
+        elif status_receipt.get("claim_id") != str(attempt.claim_id):
+            claim_error = "claim_id_binding"
+        elif status_receipt.get("lease_id") != str(attempt.lease_id):
+            claim_error = "claim_lease_binding"
+        elif (
+            status_receipt.get("owner_session_id")
+            != str(attempt.owner_session_id)
+        ):
+            claim_error = "claim_owner_binding"
+        elif (
+            status_receipt.get("fencing_token")
+            != int(attempt.fencing_token)
+        ):
+            claim_error = "claim_fencing_token_binding"
+        elif status_receipt.get("fence_epoch") != int(attempt.fence_epoch):
+            claim_error = "claim_fence_epoch_binding"
+        elif value.get("task_cid") != str(attempt.task_cid):
+            claim_error = "task_cid_binding"
+        elif value.get("task_alias") != str(attempt.task_alias):
+            claim_error = "task_alias_binding"
+        elif value.get("attempt_id") == str(attempt.attempt_id):
+            claim_error = "successor_attempt_reused"
+        elif value.get("claim_id") == str(attempt.claim_id):
+            claim_error = "successor_claim_reused"
+        elif value.get("lease_id") == str(attempt.lease_id):
+            claim_error = "successor_lease_reused"
+        elif isinstance(record_revision, bool):
+            claim_error = "record_revision_type"
+        elif not isinstance(record_revision, int):
+            claim_error = "record_revision_type"
+        elif isinstance(recovery_control_revision, bool):
+            claim_error = "recovery_revision_type"
+        elif not isinstance(recovery_control_revision, int):
+            claim_error = "recovery_revision_type"
+        elif int(recovery_control_revision) + 2 != record_revision:
+            claim_error = "successor_revision_binding"
+        elif (
+            schema == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+            and int(recovery_control_revision) <= int(value["source_task_revision"])
+        ):
+            claim_error = "recovery_revision_order"
+        if claim_error:
             raise DatabasePortalBridgeError(
-                "post-merge completion recovery seed failed claim verification"
+                "post-merge completion recovery seed failed claim verification: "
+                + claim_error
             )
         if self.merge_queue is None:
             raise DatabasePortalBridgeError(

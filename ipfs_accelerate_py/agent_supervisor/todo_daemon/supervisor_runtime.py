@@ -777,6 +777,11 @@ def build_python_module_command(
     return tuple(command)
 
 
+TYPED_FAIL_CLOSED_EXIT_CODE = 78
+TYPED_CHILD_BLOCKER_STATUS = "typed_child_blocker"
+TYPED_FAIL_CLOSED_RECYCLE_REASON = "typed_fail_closed_exit"
+
+
 def child_exit_should_restart(
     *,
     exit_code: Optional[int],
@@ -787,7 +792,7 @@ def child_exit_should_restart(
 ) -> bool:
     """Return whether a supervised child should be replaced after exit."""
 
-    if exit_code is None or stop_requested:
+    if exit_code is None or stop_requested or exit_code == TYPED_FAIL_CLOSED_EXIT_CODE:
         return False
     try:
         count = int(restart_count)
@@ -2158,6 +2163,33 @@ def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: O
     ):
         identity_path.unlink(missing_ok=True)
     return True
+
+
+def supervised_child_is_proven_dead(child: SupervisedChild) -> bool:
+    """Prove the adopted birth and its owned process group have both exited.
+
+    A child may exit between polling and a termination request. A refused
+    signal is not proof of a live child, but a dead root alone is insufficient:
+    surviving group members must continue to fence a replacement launch.
+    Missing identity, changed generation, and unavailable group observations
+    all fail closed. This check never sends a termination signal.
+    """
+
+    identity_path = child.identity_path or supervised_child_identity_path(
+        child.child_pid_path
+    )
+    identity = load_supervised_child_identity(identity_path)
+    if not _supervised_child_identity_matches_handle(child, identity):
+        return False
+    if supervised_child_identity_liveness(identity) is not OwnerLiveness.DEAD:
+        return False
+    try:
+        os.killpg(int(child.owned_process_group_id), 0)
+    except ProcessLookupError:
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+    return False
 
 
 def terminate_supervised_child(

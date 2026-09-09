@@ -2105,3 +2105,22 @@ def test_database_pool_lease_never_defers_without_exact_corroboration(
         fixture["nested_state_path"].write_text("[]\n", encoding="utf-8")
 
     assert fixture["supervisor"]._active_managed_database_pool_lease(fixture["child"]) is None
+
+
+@pytest.mark.parametrize("field,value", [
+    ("canonical_task_key", ""),
+    ("canonical_task_key", 1),
+    ("repository_tree_id", ""),
+    ("repository_tree_id", 1),
+    ("task_contract_digest", "sha256:bad"),
+])
+def test_database_pool_lease_rejects_malformed_current_binding_fields(
+    tmp_path: Path, field: str, value: Any,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    binding = json.loads(fixture["binding_path"].read_text())
+    binding[field] = value
+    _write_recommitted_binding(fixture["binding_path"], binding)
+    assert fixture["supervisor"]._active_managed_database_pool_lease(
+        fixture["child"]
+    ) is None

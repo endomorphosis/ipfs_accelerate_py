@@ -19,11 +19,15 @@ from .supervisor import (
     worktree_phase_worker_status,
 )
 from .supervisor_runtime import (
+    TYPED_FAIL_CLOSED_EXIT_CODE,
+    TYPED_CHILD_BLOCKER_STATUS,
+    TYPED_FAIL_CLOSED_RECYCLE_REASON,
     RestartPolicy,
     SupervisedChild,
     SupervisedChildSpec,
     adopt_or_launch_supervised_child,
     clear_child_pid_file,
+    supervised_child_is_proven_dead,
     supervised_log_path,
     supervisor_run_id,
     terminate_supervised_child,
@@ -631,6 +635,10 @@ class SupervisorLoop:
                             clear_pid_file=False,
                         )
                         if not stopped:
+                            if supervised_child_is_proven_dead(child):
+                                self.last_exit_code = 0
+                                stop_requested = True
+                                break
                             final_status = "termination_blocked"
                             self.last_recycle_reason = (
                                 "supervised_child_termination_unproven"
@@ -655,6 +663,10 @@ class SupervisorLoop:
                             clear_pid_file=False,
                         )
                         if not stopped:
+                            if supervised_child_is_proven_dead(child):
+                                self.last_exit_code = 0
+                                recycled = True
+                                break
                             final_status = "termination_blocked"
                             self.last_recycle_reason = (
                                 "supervised_child_termination_unproven"
@@ -672,6 +684,10 @@ class SupervisorLoop:
                 break
             run_duration = self.monotonic() - child_started_at
             self.restart_count += 1
+            if self.last_exit_code == TYPED_FAIL_CLOSED_EXIT_CODE:
+                final_status = TYPED_CHILD_BLOCKER_STATUS
+                self.last_recycle_reason = TYPED_FAIL_CLOSED_RECYCLE_REASON
+                break
             if self.config.max_restarts > 0 and self.restart_count >= self.config.max_restarts:
                 final_status = "max_restarts_reached" if recycled else "child_exited"
                 break
