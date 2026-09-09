@@ -6992,20 +6992,46 @@ def supervisor_status_health_fields(
             **generation_fields,
         }
 
-    child_state_path = _relative_or_absolute_path(
-        repo_root,
-        payload.get("current_status_path") or payload.get("progress_path") or payload.get("state_path"),
-    )
+    child_state_path = _track_task_state_path(track, repo_root=repo_root)
     child_state = _read_json_dict(child_state_path)
     active_task_id = str(child_state.get("active_task_id") or "").strip()
     implementation_in_progress = bool(child_state.get("implementation_in_progress"))
-    active_child = bool(active_task_id or implementation_in_progress)
+    child_heartbeat = _parse_status_timestamp(
+        child_state.get("heartbeat_at") or child_state.get("updated_at")
+    )
+    child_age_seconds = (
+        (observed_at - child_heartbeat).total_seconds()
+        if child_heartbeat is not None
+        else None
+    )
+    # Task ownership is durable state, not proof that a daemon still makes
+    # progress. A dead daemon can leave these flags set indefinitely. Give an
+    # active child the existing stale-status exemption only while its own
+    # heartbeat is current and belongs to this supervisor generation. Do not
+    # use file mtime: copying an old projection must not refresh its lease.
+    child_heartbeat_fresh = bool(
+        child_age_seconds is not None
+        and 0.0 <= child_age_seconds <= stale_seconds
+        and (
+            generation_started_at is None
+            or child_heartbeat.timestamp() + 1e-6 >= generation_started_at
+        )
+    )
+    active_child = bool(
+        (active_task_id or implementation_in_progress) and child_heartbeat_fresh
+    )
     return {
         "supervisor_status": "stale_active" if active_child else "stale",
         "supervisor_status_path": str(status_path),
         "supervisor_status_age_seconds": round(age_seconds, 1),
         "supervisor_active_task_id": active_task_id,
         "supervisor_child_in_progress": implementation_in_progress,
+        "supervisor_child_heartbeat_fresh": child_heartbeat_fresh,
+        "supervisor_child_heartbeat_age_seconds": (
+            round(child_age_seconds, 1)
+            if child_age_seconds is not None
+            else None
+        ),
         "restart_supervisor": not active_child,
         **generation_fields,
     }
