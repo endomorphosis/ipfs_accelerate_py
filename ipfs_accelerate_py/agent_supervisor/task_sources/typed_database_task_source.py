@@ -3555,7 +3555,23 @@ class TypedDatabaseTaskSource:
                     )
                 )
                 continue
-            receipt = self.record_task_retry_cooldown(**payload)
+            try:
+                receipt = self.record_task_retry_cooldown(**payload)
+            except (QuackClientError, TransactionError) as exc:
+                # A newer/foreign queue fence is a per-task admission denial.
+                # Preserve it and let unrelated tasks continue; never rearm the
+                # provider or turn the denial into a daemon restart loop.
+                outcomes.append(MappingProxyType({
+                    "task_cid": str(task.task_cid),
+                    "task_alias": str(task.task_alias),
+                    "changed": False,
+                    "reason": "retrying_cooldown_repair_rejected",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:512],
+                    "provider_dispatched": False,
+                    "operator_review_required": True,
+                }))
+                continue
             outcomes.append(
                 MappingProxyType(
                     {
