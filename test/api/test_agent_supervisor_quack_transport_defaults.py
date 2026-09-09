@@ -1374,3 +1374,26 @@ def test_quack_attach_exhausted_contention_raises_typed_error(monkeypatch) -> No
             open_quack_transport_connection("quack:127.0.0.1:41347")
     finally:
         reset_quack_transport_cache()
+
+
+def test_owner_start_honors_native_authority_policy_before_stale_recovery(monkeypatch):
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server as module
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("disabled native policy reached legacy age-based recovery")
+
+    monkeypatch.setattr(module, "unstall_stale_in_progress_tasks", forbidden)
+    server = SimpleNamespace(config=SimpleNamespace(allow_legacy_board_unstall=False), _log=lambda _: None)
+    module.QuackStateServer._unstall_stale_board_gates(server, object())
+
+
+def test_owner_start_keeps_legacy_default_staleness_threshold(monkeypatch):
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server as module
+    calls = []
+    monkeypatch.setattr(module, "unstall_stale_in_progress_tasks", lambda *args, **kwargs: calls.append((args, kwargs)) or {"unstalled": []})
+    server = SimpleNamespace(config=SimpleNamespace(allow_legacy_board_unstall=True), _log=lambda _: None)
+    connection = object()
+    module.QuackStateServer._unstall_stale_board_gates(server, connection)
+    assert calls == [((connection,), {})]

@@ -4647,18 +4647,17 @@ class QuackStateServer:
         )
 
     def _unstall_stale_board_gates(self, connection: Any) -> None:
-        """Retry leftover in_progress gates before quack_serve occupies the writer.
+        """Honor authority policy before considering legacy stale task gates.
 
-        A new exclusive owner has no live implementers yet. Post-crash
-        leftover ``in_progress`` (SPAR-050 after gen-90 died) would otherwise
-        stay claimed for ``STALE_IN_PROGRESS_UNSTALL_SECONDS`` while lanes
-        get ``authorization_denied`` on the dead generation's claim.
+        Exclusive database ownership does not prove that an old effect or
+        implementer is dead. Typed boards recover exact claims through their
+        native recovery authority; startup must not bypass that policy.
         """
-
+        if not self.config.allow_legacy_board_unstall:
+            self._log("legacy board unstall disabled by task-authority policy")
+            return
         try:
-            result = unstall_stale_in_progress_tasks(
-                connection, stale_seconds=1
-            )
+            result = unstall_stale_in_progress_tasks(connection)
         except Exception as exc:
             self._log(f"board unstall skipped: {type(exc).__name__}")
             return
