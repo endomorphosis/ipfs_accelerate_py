@@ -6444,6 +6444,18 @@ def sealed_archive_origin_skips_worktree_capsule_verify(origin: object) -> bool:
     return type(origin) is str and origin.startswith("/proc/self/fd/")
 
 
+def isolated_exact_source_head_matches_capsule_pin(
+    source_head: object, current_head: object
+) -> bool:
+    """True when cwd HEAD is the sealed capsule pin, so old verify stays exact."""
+
+    if type(source_head) is not str or type(current_head) is not str:
+        return False
+    if source_head != current_head or len(source_head) != 40:
+        return False
+    return all(character in "0123456789abcdef" for character in source_head)
+
+
 @dataclass
 class PortalSupervisorConfig:
     todo_path: Path

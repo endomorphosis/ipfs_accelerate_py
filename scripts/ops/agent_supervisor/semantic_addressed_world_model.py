@@ -18071,6 +18071,166 @@ def _isolated_lane_relaunch_pass_fds(native_src: int, capsule_src: int) -> tuple
     return tuple(dict.fromkeys((int(native_src), int(capsule_src))))
 
 
+def _rewind_isolated_lane_relaunch_fds(descriptors: Sequence[int]) -> None:
+    """Seek inherited capsule memfds back to offset 0 before spawn."""
+
+    for descriptor in descriptors:
+        try:
+            os.lseek(int(descriptor), 0, os.SEEK_SET)
+        except (OSError, TypeError, ValueError):
+            continue
+
+
+def _sealed_capsule_source_head(args: Sequence[str]) -> str:
+    """Read the sealed control-plane pin from a live peer argv."""
+
+    for index, value in enumerate(args[:-1]):
+        if value != "--accepted-control-plane-pin-json":
+            continue
+        pin = json.loads(args[index + 1])
+        if not isinstance(pin, Mapping):
+            raise ValueError("sealed capsule pin is not a mapping")
+        head = str(pin.get("source_head") or "")
+        if re.fullmatch(r"[0-9a-f]{40}", head) is None:
+            raise ValueError("sealed capsule source_head is invalid")
+        return head
+    raise ValueError("sealed capsule pin is missing")
+
+
+def _isolated_exact_source_worktree_path(run_dir: Path, source_head: str) -> Path:
+    return (Path(run_dir) / "worktrees" / f"exact-source-{source_head}").resolve()
+
+
+def _isolated_exact_source_git(
+    *arguments: str,
+    cwd: Path,
+    timeout: float,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            "/usr/bin/git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            *arguments,
+        ],
+        cwd=str(cwd),
+        env={
+            "PATH": "/usr/bin:/bin",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=timeout,
+    )
+
+
+def _ensure_isolated_exact_source_worktree(
+    *,
+    repo_root: Path,
+    run_dir: Path,
+    source_head: str,
+) -> Path:
+    """Create or reuse a clean worktree pinned to the sealed capsule source."""
+
+    if re.fullmatch(r"[0-9a-f]{40}", source_head) is None:
+        raise ValueError("isolated exact-source head is invalid")
+    dest = _isolated_exact_source_worktree_path(run_dir, source_head)
+    if dest.exists():
+        observed = _isolated_exact_source_git(
+            "rev-parse",
+            "HEAD",
+            cwd=dest,
+            timeout=10.0,
+        )
+        dirty = _isolated_exact_source_git(
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            cwd=dest,
+            timeout=30.0,
+        )
+        if (
+            observed.returncode == 0
+            and observed.stdout.strip() == source_head
+            and dirty.returncode == 0
+            and not dirty.stdout.strip()
+        ):
+            return dest
+        raise ValueError("isolated exact-source worktree drifted")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    added = _isolated_exact_source_git(
+        "worktree",
+        "add",
+        "--detach",
+        str(dest),
+        source_head,
+        cwd=repo_root,
+        timeout=180.0,
+    )
+    if added.returncode != 0:
+        _isolated_exact_source_git("worktree", "prune", cwd=repo_root, timeout=30.0)
+        added = _isolated_exact_source_git(
+            "worktree",
+            "add",
+            "--detach",
+            str(dest),
+            source_head,
+            cwd=repo_root,
+            timeout=180.0,
+        )
+    if added.returncode != 0:
+        raise ValueError(
+            "isolated exact-source worktree add failed: "
+            + (added.stderr or added.stdout or "")[-400:]
+        )
+    _isolated_exact_source_git(
+        "submodule",
+        "update",
+        "--init",
+        "--checkout",
+        "--",
+        "ipfs_datasets_py",
+        "ipfs_kit_py",
+        cwd=dest,
+        timeout=180.0,
+    )
+    dirty = _isolated_exact_source_git(
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        cwd=dest,
+        timeout=30.0,
+    )
+    if dirty.returncode != 0 or dirty.stdout.strip():
+        raise ValueError("isolated exact-source worktree is not clean")
+    return dest
+
+
+def _rewrite_isolated_lane_relative_run_paths(
+    value: str,
+    *,
+    repo_root: Path,
+    run_dir: Path,
+) -> str:
+    """Make run-dir relative paths absolute so cwd can be the pin worktree."""
+
+    try:
+        relative = Path(run_dir).resolve().relative_to(Path(repo_root).resolve())
+    except ValueError:
+        return value
+    marker = relative.as_posix()
+    if not marker or marker == ".":
+        return value
+    return value.replace(marker, str(Path(run_dir).resolve()))
+
+
 def _rewrite_isolated_lane_peer_env(
     env: Mapping[str, str],
     *,
@@ -18168,6 +18328,38 @@ def _recycle_isolated_lane_from_live_peer(
         peer_index=int(peer_lane_index),
         dead_index=int(dead_lane_index),
     )
+    try:
+        source_head = _sealed_capsule_source_head(argv)
+        cwd = _ensure_isolated_exact_source_worktree(
+            repo_root=repo_root,
+            run_dir=run_dir,
+            source_head=source_head,
+        )
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        subprocess.TimeoutExpired,
+        subprocess.SubprocessError,
+    ) as exc:
+        return {
+            "restarted": False,
+            "reason": f"exact_source_worktree:{type(exc).__name__}",
+            "admission": admission,
+        }
+    argv = [
+        _rewrite_isolated_lane_relative_run_paths(
+            part, repo_root=repo_root, run_dir=run_dir
+        )
+        for part in argv
+    ]
+    env = {
+        key: _rewrite_isolated_lane_relative_run_paths(
+            value, repo_root=repo_root, run_dir=run_dir
+        )
+        for key, value in env.items()
+    }
     log_dir = run_dir / "state" / f"lane-{int(dead_lane_index)}"
     log_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -18182,6 +18374,7 @@ def _recycle_isolated_lane_from_live_peer(
         f"/proc/{int(master_pid)}/fd/{int(capsule_fd)}",
         os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
     )
+    _rewind_isolated_lane_relaunch_fds((native_src, capsule_src))
     native_dst = int(native_fd)
     capsule_dst = int(capsule_fd)
 
@@ -18217,6 +18410,7 @@ def _recycle_isolated_lane_from_live_peer(
     try:
         os.dup2(native_src, native_dst)
         os.dup2(capsule_src, capsule_dst)
+        _rewind_isolated_lane_relaunch_fds((native_dst, capsule_dst))
         for fd in (native_dst, capsule_dst):
             flags = fcntl.fcntl(fd, fcntl.F_GETFD)
             fcntl.fcntl(fd, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
@@ -18236,7 +18430,7 @@ def _recycle_isolated_lane_from_live_peer(
     try:
         process = subprocess.Popen(
             argv,
-            cwd=str(repo_root),
+            cwd=str(cwd),
             env=env,
             stdin=subprocess.DEVNULL,
             stdout=handle,
@@ -18280,6 +18474,8 @@ def _recycle_isolated_lane_from_live_peer(
         "restarted": True,
         "new_pid": int(process.pid),
         "log_path": str(log_path),
+        "cwd": str(cwd),
+        "source_head": source_head,
         "admission": admission,
     }
 

@@ -1696,6 +1696,7 @@ class SupervisorWatchdog:
         restart_info.setdefault("pid_path", str(pid_check.get("pid_path") or ""))
         if not bool(pid_check.get("alive")):
             restart_info["unstall_class"] = "lane_supervisor_dead"
+            restart_info["exact_source_worktree"] = True
 
         def current_health() -> Mapping[str, Any]:
             current_pid = check_lane_pid(state_dir, state_prefix)

@@ -1266,3 +1266,4 @@ def test_supervisor_loop_stops_on_typed_fail_closed_child_exit(tmp_path: Path) -
     assert status["status"] == TYPED_CHILD_BLOCKER_STATUS
     assert status["last_exit_code"] == TYPED_FAIL_CLOSED_EXIT_CODE
     assert status["last_recycle_reason"] == TYPED_FAIL_CLOSED_RECYCLE_REASON
+    assert status["exact_source_worktree"] is True

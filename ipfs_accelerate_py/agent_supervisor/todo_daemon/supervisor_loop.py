@@ -635,12 +635,19 @@ class SupervisorLoop:
             )
             self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason, run_duration=run_duration))
 
+        extra = None
+        if (
+            self.last_exit_code == TYPED_FAIL_CLOSED_EXIT_CODE
+            and final_status == TYPED_CHILD_BLOCKER_STATUS
+        ):
+            extra = {"exact_source_worktree": True}
         self._safe_write_status(
             final_status,
             child=None,
             run_id=self.last_run_id,
             log_path=self.last_log_path,
             last_exit_code=self.last_exit_code,
+            extra=extra,
         )
         return SupervisorLoopResult(
             status=final_status,

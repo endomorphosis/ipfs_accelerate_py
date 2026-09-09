@@ -2308,6 +2308,35 @@ def test_operator_does_not_kill_coordinator_for_isolated_dead_lane() -> None:
     assert 8 not in operator._isolated_lane_relaunch_pass_fds(3, 4)
     assert dead_master["kill_coordinator"] is False
     assert dead_master["reason"] == "master_down_isolated_lane_recycle"
+    pin = {
+        "source_head": "96e29f54ffebbae814aca16703f4af04c5fe30e1",
+        "source_tree": "e2753c48624f171c52841a300a4cb0623f29d6cb",
+    }
+    argv_with_pin = argv + [
+        "--accepted-control-plane-pin-json",
+        json.dumps(pin, separators=(",", ":")),
+        "--state-store-id",
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb",
+    ]
+    assert operator._sealed_capsule_source_head(argv_with_pin) == pin["source_head"]
+    run_dir = Path(
+        "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2/"
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+    )
+    repo_root = Path(
+        "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2"
+    )
+    rewritten_store = operator._rewrite_isolated_lane_relative_run_paths(
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb",
+        repo_root=repo_root,
+        run_dir=run_dir,
+    )
+    assert rewritten_store == str(run_dir / "control.duckdb")
+    exact_cwd = operator._isolated_exact_source_worktree_path(
+        run_dir, pin["source_head"]
+    )
+    assert exact_cwd.name == f"exact-source-{pin['source_head']}"
+    assert exact_cwd.parent.name == "worktrees"
 
 
 def test_operator_admits_process_dead_generation_48_stale_ready_owner() -> None:

@@ -963,6 +963,7 @@ def test_watchdog_restarts_dead_lane_when_owner_ready(
         nonlocal restart_calls
         restart_calls += 1
         assert lane.get("unstall_class") == "lane_supervisor_dead"
+        assert lane.get("exact_source_worktree") is True
         (state_dir / "lane_1_bundle_supervisor.pid").write_text(
             "123\n",
             encoding="utf-8",
@@ -1194,6 +1195,18 @@ def test_sealed_archive_child_skips_worktree_capsule_verify() -> None:
         "/home/barberb/lift_coding/ipfs_accelerate_py/agent_supervisor/"
         "todo_daemon/implementation_supervisor.py"
     )
+
+
+def test_isolated_exact_source_head_matches_capsule_pin() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        isolated_exact_source_head_matches_capsule_pin,
+    )
+
+    pin = "96e29f54ffebbae814aca16703f4af04c5fe30e1"
+    drifted = "14e1e13c00b9d4b164316ee7f7cab5ed73364b2c"
+    assert isolated_exact_source_head_matches_capsule_pin(pin, pin)
+    assert not isolated_exact_source_head_matches_capsule_pin(pin, drifted)
+    assert not isolated_exact_source_head_matches_capsule_pin(pin, pin.upper())
 
 
 def test_supervisor_loop_retries_status_write(tmp_path: Path) -> None:
