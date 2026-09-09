@@ -41,9 +41,18 @@ Two user services run continuously:
   completions, changed blocked-task sets, or settled goals can advance a pending
   continuation while retaining its coding attempt history and a five-minute
   minimum gap after the previous job. Heartbeat, PID and event-cursor changes
-  alone do not shorten retries. Rechecks are limited to once per two minutes
-per queued board, honor holds before and after probing, and never publish a
-  board or change native task budgets.
+  alone do not shorten retries. Each coding attempt also records a fresh
+  configured probe before launch. Authenticated source or native task evidence
+  changed by the final probe earns another pass five minutes after finish,
+  preserving the attempt count even if the worker exits unsuccessfully. A
+  successful worker report alone earns no continuation. For older finished
+  jobs, a recorded native reconciliation within three minutes before launch
+  can supply the baseline for up to six hours after finish; a matching fresh
+  probe and an exact attempt/report marker admit this continuation only once.
+  Rechecks are limited to once per two minutes per queued board, honor holds
+  before and after probing, and never publish a board or change native task
+  budgets. Configured source integrity must pass before recovery or publication
+  can be verified, even when native health temporarily reports healthy.
 
 For a known stopped-owner condition, the watchdog invokes only the board's
 configured native ensure command. Otherwise it enqueues a repair. The coding
