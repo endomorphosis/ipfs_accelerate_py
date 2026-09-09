@@ -703,6 +703,21 @@ class DatabaseTaskSource:
 
     # -- reads ---------------------------------------------------------------
 
+    def restart_check_pin(
+        self, *, anchor_heads: Sequence[Mapping[str, Any]], anchor_cursor: int,
+    ) -> dict[str, Any]:
+        """Automatically derive the current task check from its retained anchor.
+
+        This does not grant launch authority or replace source/owner and effect
+        checks. The native caller must still admit the current database binding.
+        """
+        from .restart_check_pin import inspect_restart_check_pin
+
+        with self._intent._connection(write=False) as connection:
+            return inspect_restart_check_pin(
+                connection, anchor_heads=anchor_heads, anchor_cursor=anchor_cursor,
+            )
+
     def snapshot(self) -> TaskSourceSnapshot:
         snap = self._intent.snapshot()
         terminal = True

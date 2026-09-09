@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -563,6 +564,7 @@ class IntentRepository:
         )
         self._open = False
         self._closed = False
+        self._read_session_state = threading.local()
         if self._quack_transport:
             # Schema is owned by the Quack state-owner / trusted materializer.
             install_schema = False
@@ -624,8 +626,40 @@ class IntentRepository:
             raise IntentRepositoryNotOpenError("intent repository is not open")
 
     @contextmanager
+    def read_session(self) -> Iterator[IntentRepository]:
+        """Reuse one read connection within this thread's bounded observation.
+
+        Nested sessions borrow the outer connection; different threads never
+        share it. This is connection reuse, not a transaction or a frozen
+        snapshot. Callers retain native admission and final drift checks.
+        Repository writes in the session thread are refused before any SQL.
+        The outer context owns physical close, including when close() marks
+        the repository closed while an observation is still unwinding.
+        """
+        self._require_open()
+        if getattr(self._read_session_state, "connection", None) is not None:
+            yield self
+            return
+        connection = open_duckdb_connection(self._open_target)
+        try:
+            self._require_open()
+            self._read_session_state.connection = connection
+            yield self
+        finally:
+            # Clear before close so an exceptional close cannot leave a stale
+            # adapter installed for a later observation in the same thread.
+            self._read_session_state.connection = None
+            connection.close()
+
+    @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[Any]:
         self._require_open()
+        session_connection = getattr(self._read_session_state, "connection", None)
+        if session_connection is not None:
+            if write:
+                raise IntentRepositoryError("writes are forbidden inside a read session")
+            yield session_connection
+            return
         # Match DuckDBTaskSource / StateTransaction durability: begin with SQL,
         # commit/rollback with SQL, and always close the adapter explicitly.
         # Avoid relying on DuckDBConnection.__exit__ transaction bookkeeping,

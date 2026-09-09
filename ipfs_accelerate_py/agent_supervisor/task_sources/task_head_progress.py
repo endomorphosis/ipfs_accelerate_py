@@ -14,13 +14,24 @@ from typing import Any
 
 from .control_plane_contracts import content_identity
 from .intent_repository import INTENT_EVENT_SCHEMA, INTENT_STREAM_ID
-from .quack_owner_mutation import _ALLOWED_STATUS_TRANSITIONS
 
 MAX_PROGRESS_EVENTS = 4096
 MAX_PROGRESS_TASKS = 512
 _HEAD_KEYS = frozenset({"task_cid", "task_alias", "goal_cid", "status", "revision"})
 _STATUS_EVENTS = frozenset({"intent.task_status_changed", "intent.completion_recorded"})
 _EVIDENCE_EVENTS = frozenset({"intent.validation_recorded", "intent.evidence_recorded"})
+# Closed intent status vocabulary, independent of a particular owner transport.
+# The verifier observes these existing transitions; it never admits a mutation.
+_STATUS_SUCCESSORS = {
+    **{status: frozenset({"in_progress"}) for status in (
+        "todo", "ready", "open", "pending", "queued", "proposed", "admitted",
+    )},
+    "retrying": frozenset({"in_progress", "blocked"}),
+    "claimed": frozenset({"in_progress", "ready", "blocked"}),
+    "running": frozenset({"ready", "completed", "blocked", "retrying"}),
+    "in_progress": frozenset({"ready", "completed", "blocked", "retrying"}),
+    "blocked": frozenset({"retrying", "ready"}),
+}
 
 
 class TaskHeadProgressError(ValueError):
@@ -128,7 +139,7 @@ def verify_task_head_progress(
                 or body.get("goal_cid") != head["goal_cid"]
                 or body.get("previous_status") != head["status"]
                 or revision != head["revision"] + 1
-                or status not in _ALLOWED_STATUS_TRANSITIONS.get(head["status"], ())
+                or status not in _STATUS_SUCCESSORS.get(head["status"], ())
                 or (kind == "intent.completion_recorded") != (status == "completed")
             ):
                 raise TaskHeadProgressError("task transition chain")

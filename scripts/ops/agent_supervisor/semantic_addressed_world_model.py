@@ -11086,6 +11086,36 @@ def _require_m48_source_successor_marker(
     return MappingProxyType(dict(observed))
 
 
+def _m70_restart_check_pin(
+    source: Any, population: Mapping[str, Any], authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Move the task-head check automatically; retain M70 as its immutable anchor."""
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_head_progress import (
+        TaskHeadProgressError,
+    )
+
+    heads = authority.get("expected_task_heads")
+    if not isinstance(heads, Mapping):
+        raise OperatorError("M70 restart anchor heads are missing")
+    anchor = []
+    for task in population["taskboard"]:
+        alias = str(task["task_id"])
+        head = heads.get(alias)
+        if not isinstance(head, Mapping):
+            raise OperatorError("M70 restart anchor task is missing")
+        anchor.append({
+            "task_cid": str(task["task_cid"]), "task_alias": alias,
+            "goal_cid": str(task["goal_cid"]),
+            "status": head.get("status"), "revision": head.get("revision"),
+        })
+    try:
+        return source.restart_check_pin(
+            anchor_heads=anchor, anchor_cursor=_M70_TARGET_EVENT_WATERMARK,
+        )
+    except TaskHeadProgressError as exc:
+        raise OperatorError(f"M70 automatic restart check cannot advance: {exc}") from exc
+
+
 def _verify_m70_live_head_task_projection(
     source: Any,
     population: Mapping[str, Any],
@@ -11094,21 +11124,34 @@ def _verify_m70_live_head_task_projection(
     authority: Mapping[str, Any],
     expected_projection_cid: str,
 ) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
-    """Verify M70's live heads at event 342/generation 48.
+    """Verify M70's live heads, replaying later admitted task progress.
 
     The sealed contract binds the store report to the live event digest, so a
-    generation-48 restart may keep watermark 342 while minting a new
-    projection CID. Frozen M69 baguqeera equality is not required then.
+    generation-48 restart retains watermark 342 as its anchor and derives the
+    current check from the event suffix. Source and owner admission stay separate.
     """
+    from ipfs_accelerate_py.agent_supervisor.task_sources.restart_check_pin import (
+        RestartCheckPinChanged,
+    )
 
     contract = materializer._validated_m70_live_preflight_contract(authority)
     bind_live = contract.get("bind_store_report_to_live_event_digest") is True
     snapshot = source.snapshot()
     plan = source.get_plan(str(population["plan_root_cid"]))
     live_projection_cid = str(getattr(snapshot, "projection_cid", "") or "")
+    if bind_live and live_projection_cid != expected_projection_cid:
+        raise RestartCheckPinChanged("M70 restart observation changed during verification")
+    restart_pin = None
+    if bind_live and snapshot.event_cursor > _M70_TARGET_EVENT_WATERMARK:
+        restart_pin = _m70_restart_check_pin(source, population, authority)
+        if restart_pin["event_cursor"] != snapshot.event_cursor:
+            raise RestartCheckPinChanged("M70 restart observation changed during verification")
     if bind_live:
         if (
-            snapshot.event_cursor != _M70_TARGET_EVENT_WATERMARK
+            snapshot.event_cursor != (
+                restart_pin["event_cursor"] if restart_pin is not None
+                else _M70_TARGET_EVENT_WATERMARK
+            )
             or snapshot.task_count != 45
             or snapshot.goal_count != 29
             or snapshot.dependency_count != 136
@@ -11138,6 +11181,11 @@ def _verify_m70_live_head_task_projection(
     revisions: dict[str, int] = {}
     receipt_cids: dict[str, str] = {}
     heads = authority.get("expected_task_heads")
+    if restart_pin is not None:
+        heads = {
+            head["task_alias"]: head
+            for head in restart_pin["progress"]["observed_heads"]
+        }
     if not isinstance(heads, Mapping):
         raise materializer.MigrationRequired("M70 expected task heads are missing")
     for expected in population["taskboard"]:
@@ -11150,11 +11198,15 @@ def _verify_m70_live_head_task_projection(
             or observed.status != expected_head.get("status")
             or int(observed.revision) != int(expected_head.get("revision") or 0)
         ):
+            if restart_pin is not None and source.snapshot().to_dict() != snapshot.to_dict():
+                raise RestartCheckPinChanged("M70 restart observation changed during verification")
             raise materializer.MigrationRequired(
                 f"M70 live task head differs: {alias}"
             )
         statuses[alias] = str(observed.status)
         revisions[alias] = int(observed.revision)
+    if restart_pin is not None and source.snapshot().to_dict() != snapshot.to_dict():
+        raise RestartCheckPinChanged("M70 restart observation changed during verification")
     return statuses, revisions, receipt_cids
 
 
@@ -25568,6 +25620,10 @@ def _live_preflight(
     before_token_handoff_retirement: Callable[[], Any] | None = None,
     token_handoff_transaction_sink: Callable[[Any], Any] | None = None,
 ) -> dict[str, Any]:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.restart_check_pin import (
+        RestartCheckPinChanged,
+    )
+
     if probe_provider and not retire_provider_token_handoff:
         raise OperatorError(
             "provider probe requires prior retirement of the token handoff"
@@ -26123,6 +26179,17 @@ def _live_preflight(
         )
     except Exception:
         raise OperatorError("authenticated live Quack preflight open failed") from None
+    # A large native preflight reads hundreds of rows. Reuse the admitted read
+    # client for its duration instead of repeatedly loading sealed extensions.
+    # This scopes resources only; the final snapshot still detects progress.
+    read_session = None
+    if m70_active:
+        try:
+            read_session = live.intent.read_session()
+            read_session.__enter__()
+        except BaseException:
+            live.close()
+            raise
     # Newest successor receipts are part of launch, not a separate operator
     # step.  If the live cursor is still the sealed prior watermark, append
     # and publish before the snapshot gate.  An unhandled newer key fails
@@ -27704,6 +27771,7 @@ def _live_preflight(
                 remote_identity=remote_identity,
             )
         live_snapshot = live.snapshot().to_dict()
+        restart_check_pin = None
         if (
             m70_active
             and preflight_contract.get("bind_store_report_to_live_event_digest")
@@ -27711,8 +27779,14 @@ def _live_preflight(
         ):
             expected_event_cursor = int(live_snapshot["event_cursor"])
             expected_projection_cid = str(live_snapshot["projection_cid"] or "")
-            if expected_event_cursor != _M70_TARGET_EVENT_WATERMARK:
-                raise OperatorError("M70 live event head is not 342")
+            if expected_event_cursor < _M70_TARGET_EVENT_WATERMARK:
+                raise OperatorError("M70 live event head precedes restart anchor 342")
+            if expected_event_cursor > _M70_TARGET_EVENT_WATERMARK:
+                restart_check_pin = _m70_restart_check_pin(
+                    live, population, active_source_repair,
+                )
+                if restart_check_pin["event_cursor"] != expected_event_cursor:
+                    raise RestartCheckPinChanged("M70 restart observation changed during verification")
         elif (
             m69_active
             and preflight_contract.get("bind_store_report_to_live_event_digest")
@@ -28570,14 +28644,20 @@ def _live_preflight(
             )
         if statuses.get("SAWM-000") not in {"completed", "complete", "done"}:
             raise OperatorError("live Quack authority lacks the SAWM-000 completion CAS")
+        if restart_check_pin is not None and live.snapshot().to_dict() != live_snapshot:
+            raise RestartCheckPinChanged("M70 restart observation changed during verification")
     except Exception as exc:
         if discovery.token and discovery.token in str(exc):
             raise OperatorError("authenticated live Quack preflight failed") from None
         raise
     finally:
         try:
-            if live is not None:
-                live.close()
+            try:
+                if read_session is not None:
+                    read_session.__exit__(None, None, None)
+            finally:
+                if live is not None:
+                    live.close()
         except Exception:
             raise OperatorError("authenticated live Quack preflight close failed") from None
     store_report = {
@@ -28590,6 +28670,7 @@ def _live_preflight(
         "direct_authoritative_file_opened": False,
         "statuses": statuses,
         "coordination_projection_digest": live_snapshot["projection_cid"],
+        "restart_check_pin": restart_check_pin,
     }
     if m66_active and final_pair_marker:
         store_report.update(
@@ -29586,6 +29667,17 @@ def _live_preflight(
     }
 
 
+def _live_preflight_with_restart_pin_refresh(
+    config: Mapping[str, Any], **options: Any,
+) -> dict[str, Any]:
+    """Recheck concurrent progress automatically before token retirement/launch."""
+    from ipfs_accelerate_py.agent_supervisor.task_sources.restart_check_pin import (
+        refresh_restart_check,
+    )
+
+    return refresh_restart_check(lambda: _live_preflight(config, **options))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=CONFIG_PATH)
@@ -29629,7 +29721,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         return _emit(
                             {
                                 "action": "checked_live",
-                                **_live_preflight(config, probe_provider=False),
+                                **_live_preflight_with_restart_pin_refresh(config, probe_provider=False),
                             }
                         )
                     finally:
@@ -29899,7 +29991,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         live: dict[str, Any]
         live_environment = _snapshot_live_quack_environment()
         try:
-            live = _live_preflight(
+            live = _live_preflight_with_restart_pin_refresh(
                 config,
                 probe_provider=real_launch,
                 retire_provider_token_handoff=real_launch,
