@@ -92522,6 +92522,16 @@ class DatabaseImplementationDaemon:
         )
 
     @staticmethod
+    def _reason_is_missing_managed_workspace(reason: str) -> bool:
+        """Classify missing-workspace diagnostics without granting retry authority."""
+
+        normalized = str(reason or "").replace("\\", "/")
+        return (
+            "/worktrees/workspace_" in normalized
+            or "managed worktree cwd missing:" in normalized
+        )
+
+    @staticmethod
     def _exception_is_missing_managed_workspace(exc: BaseException) -> bool:
         """True when extra-gate setup hit a vanished managed workspace.
 
@@ -92532,16 +92542,12 @@ class DatabaseImplementationDaemon:
         Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
         """
 
+        text = str(exc)
         if not isinstance(exc, (FileNotFoundError, OSError)):
-            text = str(exc)
             if "managed worktree cwd missing:" not in text:
                 return False
-        else:
-            text = str(exc)
-        normalized = text.replace("\\", "/")
-        return (
-            "/worktrees/workspace_" in normalized
-            or "managed worktree cwd missing:" in normalized
+        return DatabaseImplementationDaemon._reason_is_missing_managed_workspace(
+            text
         )
 
     @staticmethod

@@ -10708,6 +10708,313 @@ def _historical_quiesced_release_task_cid(task_alias: str) -> str:
     return matches[0]
 
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
+def test_extra_gate_predecessor_process_preserves_unknown_outcome_limit(
+    tmp_path: Path,
+) -> None:
+    """A new process cannot refund a consumed retry budget without proof."""
+
+    population = _population(1)
+    population["tasks"][0]["task_id"] = "PCTDD-006"
+    seed = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-pred-rearm-limit",
+        max_task_attempts=2,
+    )
+    try:
+        seed.materialize_population(population)
+        task = seed.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = seed._retry_budget_receipt(
+            task,
+            attempts_used=1,
+            operation="database_unknown_outcome_blocked",
+            reason="provider_dispatch_outcome_unknown",
+        )
+        receipt["forced_block"] = True
+        receipt["authority_outcome"] = "unknown"
+        receipt["unknown_outcome_rearm_count"] = DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+        receipt["process_instance_id"] = "process:predecessor-owner"
+        seed._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="blocked",
+            receipt=receipt,
+        )
+        assert seed._automatic_claim_forbidden_current(
+            seed.task_source.get("task:cid:001")
+        ) is True
+    finally:
+        seed.close()
+
+    successor = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-pred-rearm-limit",
+        max_task_attempts=2,
+    )
+    try:
+        assert successor.process_instance_id != "process:predecessor-owner"
+        rearms = successor.reconcile_blocked_unknown_outcome_tasks()
+        assert not any(item.get("rearmed") is True for item in rearms)
+        recovered = successor.task_source.get("task:cid:001")
+        assert recovered is not None and recovered.status == "blocked"
+    finally:
+        successor.close()
+
+
+_MISSING_WORKSPACE_REASON = (
+    "[Errno 2] No such file or directory: PosixPath('"
+    "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery/"
+    "data/agent_supervisor/parallel_content_sealing_proof_carrying_tdd_v1_g9/"
+    "worktrees/workspace_b6c6c987ab22_678bd72ae733')"
+)
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
+def test_extra_gate_callback_authority_incomplete_without_evidence_stays_blocked(
+    tmp_path: Path,
+) -> None:
+    """An alias and predecessor change cannot resolve an unknown callback."""
+
+    population = _population(1)
+    population["tasks"][0]["task_id"] = "PCTDD-006"
+    seed = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-callback-incomplete-rearm",
+        max_task_attempts=2,
+    )
+    try:
+        seed.materialize_population(population)
+        task = seed.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = seed._retry_budget_receipt(
+            task,
+            attempts_used=1,
+            operation="database_unknown_outcome_blocked",
+            reason="callback_authority_incomplete_blocked",
+        )
+        receipt["forced_block"] = True
+        receipt["authority_outcome"] = "unknown"
+        receipt["retry_exhausted"] = True
+        receipt["unknown_outcome_rearm_count"] = DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+        receipt["process_instance_id"] = "process:predecessor-owner"
+        seed._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="blocked",
+            receipt=receipt,
+        )
+    finally:
+        seed.close()
+
+    successor = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-callback-incomplete-rearm",
+        max_task_attempts=2,
+    )
+    cas_statuses: list[str] = []
+    original_cas = successor._cas_task_status_database
+    try:
+        assert successor.process_instance_id != "process:predecessor-owner"
+
+        def tracking_cas(task_cid: str, **kwargs: object) -> object:
+            status = str(kwargs.get("new_status") or "")
+            cas_statuses.append(status)
+            assert status != "completed"
+            return original_cas(task_cid, **kwargs)
+
+        monkeypatch_cas = tracking_cas
+        successor._cas_task_status_database = monkeypatch_cas  # type: ignore[method-assign]
+        successor._database_portal_no_provider_rearm_evidence = (  # type: ignore[method-assign]
+            lambda *_args, **_kwargs: None
+        )
+        rearms = successor.reconcile_blocked_unknown_outcome_tasks()
+        assert not any(item.get("rearmed") is True for item in rearms)
+        recovered = successor.task_source.get("task:cid:001")
+        assert recovered is not None and recovered.status == "blocked"
+        assert "completed" not in cas_statuses
+        assert cas_statuses == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
+def test_extra_gate_stale_terminal_link_does_not_grant_generic_rearm(
+    tmp_path: Path,
+) -> None:
+    """An unverified terminal candidate cannot resolve an unknown callback."""
+
+    population = _population(1)
+    population["tasks"][0]["task_id"] = "PCTDD-007"
+    seed = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-stale-landed-rearm",
+        max_task_attempts=2,
+    )
+    try:
+        seed.materialize_population(population)
+        task = seed.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = seed._retry_budget_receipt(
+            task,
+            attempts_used=1,
+            operation="database_unknown_outcome_blocked",
+            reason="callback_authority_incomplete_blocked",
+        )
+        receipt["forced_block"] = True
+        receipt["authority_outcome"] = "unknown"
+        receipt["retry_exhausted"] = True
+        receipt["unknown_outcome_rearm_count"] = DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+        receipt["process_instance_id"] = "process:predecessor-owner"
+        receipt["terminal_reconciliation"] = {"schema": "stale-candidate"}
+        seed._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="blocked",
+            receipt=receipt,
+        )
+    finally:
+        seed.close()
+
+    successor = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-stale-landed-rearm",
+        max_task_attempts=2,
+    )
+    cas_statuses: list[str] = []
+    original_cas = successor._cas_task_status_database
+    landed_calls: list[str] = []
+    try:
+        def tracking_cas(task_cid: str, **kwargs: object) -> object:
+            status = str(kwargs.get("new_status") or "")
+            cas_statuses.append(status)
+            assert status != "completed"
+            return original_cas(task_cid, **kwargs)
+
+        def landed(*, task: object, bridge: object) -> dict[str, object]:
+            landed_calls.append(str(getattr(task, "task_alias", "")))
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery receipt is malformed or stale"
+            )
+
+        successor._cas_task_status_database = tracking_cas  # type: ignore[method-assign]
+        successor._database_portal_no_provider_rearm_evidence = (  # type: ignore[method-assign]
+            lambda *_args, **_kwargs: None
+        )
+        successor._reconcile_one_blocked_terminal_landed_task = landed  # type: ignore[method-assign]
+        rearms = successor.reconcile_blocked_unknown_outcome_tasks()
+        assert landed_calls == []
+        assert all(
+            item.get("operation") != DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION
+            for item in rearms
+        )
+        assert not any(item.get("rearmed") is True for item in rearms)
+        recovered = successor.task_source.get("task:cid:001")
+        assert recovered is not None and recovered.status == "blocked"
+        assert "completed" not in cas_statuses
+    finally:
+        successor.close()
+
+
+@pytest.mark.parametrize("task_alias", ("PCTDD-005", "PCTDD-007", "PCTDD-034"))
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
+def test_extra_gate_missing_workspace_retry_exhausted_stays_blocked(
+    tmp_path: Path,
+    task_alias: str,
+) -> None:
+    """A missing path string is not proof of a provider-free predecessor."""
+
+    population = _population(1)
+    population["tasks"][0]["task_id"] = task_alias
+    seed = _open_daemon(
+        tmp_path,
+        session=f"session:extra-gate-missing-ws-{task_alias.lower()}",
+        max_task_attempts=2,
+    )
+    try:
+        seed.materialize_population(population)
+        task = seed.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = seed._retry_budget_receipt(
+            task,
+            attempts_used=2,
+            operation="database_retry_exhausted",
+            reason=_MISSING_WORKSPACE_REASON,
+        )
+        receipt["retry_exhausted"] = True
+        receipt["unknown_outcome_rearm_count"] = DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+        seed._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="blocked",
+            receipt=receipt,
+        )
+        blocked = seed.task_source.get("task:cid:001")
+        assert blocked is not None
+    finally:
+        seed.close()
+
+    successor = _open_daemon(
+        tmp_path,
+        session=f"session:extra-gate-missing-ws-{task_alias.lower()}",
+        max_task_attempts=2,
+    )
+    cas_statuses: list[str] = []
+    original_cas = successor._cas_task_status_database
+    try:
+        def tracking_cas(task_cid: str, **kwargs: object) -> object:
+            status = str(kwargs.get("new_status") or "")
+            cas_statuses.append(status)
+            assert status != "completed"
+            return original_cas(task_cid, **kwargs)
+
+        successor._cas_task_status_database = tracking_cas  # type: ignore[method-assign]
+        rearms = successor.reconcile_blocked_unknown_outcome_tasks()
+        assert not any(item.get("rearmed") is True for item in rearms)
+        recovered = successor.task_source.get("task:cid:001")
+        assert recovered is not None and recovered.status == "blocked"
+        assert "completed" not in cas_statuses
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
+def test_ordinary_missing_workspace_retry_exhausted_stays_blocked(
+    tmp_path: Path,
+) -> None:
+    """Ordinary tasks cannot use extra-gate missing-workspace rearm."""
+
+    seed = _open_daemon(
+        tmp_path,
+        session="session:ordinary-missing-ws-rearm",
+        max_task_attempts=2,
+    )
+    try:
+        seed.materialize_population(_population(1))
+        task = seed.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = seed._retry_budget_receipt(
+            task,
+            attempts_used=2,
+            operation="database_retry_exhausted",
+            reason=_MISSING_WORKSPACE_REASON,
+        )
+        receipt["retry_exhausted"] = True
+        seed._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="blocked",
+            receipt=receipt,
+        )
+        blocked = seed.task_source.get("task:cid:001")
+        assert blocked is not None
+        assert seed.reconcile_blocked_unknown_outcome_tasks() == []
+        held = seed.task_source.get("task:cid:001")
+        assert held is not None and held.status == "blocked"
+    finally:
+        seed.close()
+
+
 @pytest.mark.parametrize("task_alias", ("PCTDD-006", "PCTDD-007", "PCTDD-034"))
 def test_retained_recovery_reserved_alias_cannot_be_rebound(task_alias: str) -> None:
     daemon = object.__new__(DatabaseImplementationDaemon)
