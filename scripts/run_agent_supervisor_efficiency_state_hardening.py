@@ -5786,21 +5786,33 @@ class OperatorStopRequested(OperatorError):
 
 @contextmanager
 def _stop_signal_handlers(
-    requested: threading.Event, received: dict[str, int]
+    requested: threading.Event,
+    received: dict[str, int],
+    *,
+    survive_external_sigterm: bool = False,
 ) -> Any:
-    """Install reversible SIGINT/SIGTERM handlers for orderly shutdown."""
+    """Install reversible SIGINT/SIGTERM handlers for orderly shutdown.
+
+    ``survive_external_sigterm`` is for exclusive owners whose lifetime is
+    bound to the board. Session compaction sends SIGTERM to the wrapper,
+    which previously forwarded it and then SIGKILL'd the sealed child.
+    SIGINT still requests stop.
+    """
 
     if threading.current_thread() is not threading.main_thread():
         yield
         return
     prior: dict[int, Any] = {}
+    caught = (signal.SIGINT,)
+    if not survive_external_sigterm:
+        caught = (signal.SIGINT, signal.SIGTERM)
 
     def request_stop(signum: int, _frame: Any) -> None:
         received.setdefault("signum", int(signum))
         requested.set()
 
     try:
-        for signum in (signal.SIGINT, signal.SIGTERM):
+        for signum in caught:
             prior[signum] = signal.getsignal(signum)
             signal.signal(signum, request_stop)
         yield
@@ -89276,7 +89288,11 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         received_signal: dict[str, int] = {}
         forwarded = False
         forwarding_deadline: float | None = None
-        with _stop_signal_handlers(shutdown_requested, received_signal):
+        with _stop_signal_handlers(
+            shutdown_requested,
+            received_signal,
+            survive_external_sigterm=True,
+        ):
             while child.poll() is None:
                 if shutdown_requested.is_set() and not forwarded:
                     forwarded = True
@@ -89669,7 +89685,11 @@ def _run_supervisor_owner_impl(
     except BaseException:
         retire_owner_launch_git_guard(sys.exc_info())
         raise
-    with _stop_signal_handlers(shutdown_requested, received_signal):
+    with _stop_signal_handlers(
+        shutdown_requested,
+        received_signal,
+        survive_external_sigterm=True,
+    ):
         try:
             # The owner becomes non-dumpable before it creates the reusable
             # sealed broker secret.  Children never inherit that descriptor;

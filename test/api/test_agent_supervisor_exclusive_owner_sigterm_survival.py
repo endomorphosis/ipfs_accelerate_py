@@ -6,7 +6,10 @@ import os
 import signal
 import sys
 import textwrap
+import threading
 from pathlib import Path
+
+from scripts import run_agent_supervisor_efficiency_state_hardening as aseh_operator
 
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     build_arg_parser,
@@ -130,3 +133,35 @@ def test_run_supervisor_tracks_still_stops_on_sigterm_by_default(
     )
     assert result["completed"] is False
     assert "received signal 15" in str(result["interrupted"])
+
+
+def test_stop_signal_handlers_default_still_catch_sigterm() -> None:
+    requested = threading.Event()
+    received: dict[str, int] = {}
+    prior = signal.getsignal(signal.SIGTERM)
+    with aseh_operator._stop_signal_handlers(requested, received):
+        handler = signal.getsignal(signal.SIGTERM)
+        assert callable(handler)
+        handler(signal.SIGTERM, None)
+        assert requested.is_set()
+        assert received == {"signum": signal.SIGTERM}
+    assert signal.getsignal(signal.SIGTERM) == prior
+
+
+def test_stop_signal_handlers_survive_external_sigterm_leaves_sigterm() -> None:
+    requested = threading.Event()
+    received: dict[str, int] = {}
+    prior = signal.getsignal(signal.SIGTERM)
+    with aseh_operator._stop_signal_handlers(
+        requested,
+        received,
+        survive_external_sigterm=True,
+    ):
+        assert signal.getsignal(signal.SIGTERM) == prior
+        handler = signal.getsignal(signal.SIGINT)
+        assert callable(handler)
+        handler(signal.SIGINT, None)
+        assert requested.is_set()
+        assert received == {"signum": signal.SIGINT}
+    assert signal.getsignal(signal.SIGTERM) == prior
+    assert not requested.is_set() or received.get("signum") == signal.SIGINT
