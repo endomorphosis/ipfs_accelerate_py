@@ -40,7 +40,9 @@ those three scopes. Its `call` method accepts these closed operations:
 | --- | --- | --- |
 | `enqueue` | `branch_name`, `task_id`, `priority`, `lane_id`, `commit_sha`, `canonical_task_id`, `canonical_task_key`, `metadata_json` | Preserve legacy task/commit/target deduplication; return the existing row or insert one bound request. |
 | `get` | `request_id` | Observe one row in the exact bound target. |
-| `pending_requests`, `processing_requests` | `limit`, `after_request_id` | Observe a bounded target-scoped page, without recovering claims. |
+| `pending_requests`, `processing_requests`, `quarantined_requests` | `limit`, `after_request_id` | Observe a bounded target-scoped page, without recovering claims. |
+| `completed_requests` | Native completion filters, `limit`, descending `before_request_id` cursor | Observe bounded exact-target historical queue rows; no task acceptance or settlement authority. |
+| `has_pending_for_task` | `task_id`, nullable `commit_sha` | Observe active task/commit ownership, including pending cooldowns and expired processing claims. |
 | `claim` | `request_id` | Claim that exact eligible pending row under the existing capacity checks. |
 | `dequeue` | none | Atomically claim the fairest eligible pending row in the admitted target, using the granted consumer and owner capacity policy. |
 | `owns_claim` | `request_id`, `claim_token`, `claim_generation` | Observe the current consumer, token, generation and expiry fence. |
@@ -70,7 +72,7 @@ single-request envelope as `claim`, including `null` when no work is eligible.
 This supplies consumer selection; native producer/consumer adapter wiring and
 owner migration still require qualification.
 
-The two page operations also require separate explicit grants. `limit` is an
+Every page operation and the active-task check require separate explicit grants. `limit` is an
 integer from 1 to 256, and serialized request data must fit within 4 MiB. A page
 that exceeds the byte bound is rejected; callers can explicitly request a
 smaller page. No truncation or automatic replay occurs. A `null` cursor retains
@@ -86,15 +88,26 @@ producer calls and ordinary `MergeTrain` consumption. Pass an explicitly admitte
 `OwnerMergeQueueClient`; the adapter never discovers a server, opens a database,
 issues credentials, imports attempt history, or changes its target/consumer.
 It decodes the owner responses into the native `MergeRequest` type and supports
-enqueue, get, pending/processing pages, exact or unfiltered claims, claim checks,
-completion, retry/quarantine and cooldown deferral. Filtered native consumption
+enqueue, get, pending/processing/completed/quarantined pages, active-task
+observations, exact or unfiltered claims, claim checks, completion, retry/quarantine
+and cooldown deferral. Filtered native consumption
 uses the page plus exact-ID claim path and never falls back to a broader claim
 when selection fails. `fail` uses the separately granted retry or quarantine
 operation. Deferral carries its finite numeric delay as JSON text because the
 outer typed envelope does not permit floats.
 
-This adapter does not implement the native recovery, cancellation, historical
-completion scans or settlement authority methods. Those need their own admitted
+Historical completion pages preserve all native exact metadata/identity filters
+before the bounded limit, including the descending immutable request-ID cursor.
+Quarantine pages preserve the native oldest-first or ascending keyset order.
+Neither reader revives, cancels, reopens, recovers or accepts a row. The active-task
+check matches the native case-insensitive task, canonical ID/key and optional
+commit semantics across the entire active target population. It deliberately
+does not reuse pending pages: cooldown rows and expired processing claims still
+own work. Invalid preserved identities deny the observation, and admission is
+rechecked after every new reader, including a false active-task result.
+
+This adapter does not implement the native recovery, cancellation, recovery
+cursor storage or settlement authority methods. Those need their own admitted
 contracts before replacing every production queue factory. The owner does not
 write legacy JSON receipt paths; terminal methods return no local receipt path.
 The adapter's availability is not a live migration or a board acceptance gate.

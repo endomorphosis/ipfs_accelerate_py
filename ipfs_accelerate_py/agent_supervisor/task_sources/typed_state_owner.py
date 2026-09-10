@@ -441,7 +441,8 @@ _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
         "derived.coordination.write",
         *("legacy.merge_queue." + operation for operation in (
             "get", "enqueue", "claim", "dequeue", "owns_claim", "complete", "requeue", "quarantine",
-            "pending_requests", "processing_requests", "defer"
+            "pending_requests", "processing_requests", "defer",
+            "completed_requests", "quarantined_requests", "has_pending_for_task"
         )),
         *_EVENT_WAIT_SERVICE_OPERATIONS,
         *_EAAEF_COMMAND_SERVICE_OPERATIONS,
