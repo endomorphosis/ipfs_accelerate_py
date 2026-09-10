@@ -34,6 +34,9 @@ OPERATIONS = frozenset(
         "defer",
         "pending_requests",
         "processing_requests",
+        "completed_requests",
+        "quarantined_requests",
+        "has_pending_for_task",
     }
 )
 SERVICE_OPERATIONS = frozenset("legacy.merge_queue." + name for name in OPERATIONS)
@@ -244,6 +247,32 @@ class _OwnerQueue(MergeQueue):
             # Validate before legacy enqueue's idempotent COMMIT, not after it.
             self._request_from_row(row)
         return row
+
+    def has_pending_for_task(self, task_id, *, commit_sha=None):
+        # Pending cooldowns and expired processing claims still own work.
+        # Page readers intentionally omit cooldowns, so they cannot answer this
+        # dispatch-suppression question. Validate preserved identities as well.
+        target_sql, target_parameters = self._target_binding_sql()
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM merge_requests "
+                "WHERE status IN ('pending','processing')" + target_sql,
+                target_parameters,
+            ).fetchall()
+        identity = task_id.casefold()
+        found = False
+        for row in rows:
+            request = self._request_from_row(row)
+            if identity in {
+                request.task_id.casefold(),
+                request.canonical_task_id.casefold(),
+                request.canonical_task_key.casefold(),
+            } and (
+                commit_sha is None
+                or request.commit_sha.casefold() == commit_sha.casefold()
+            ):
+                found = True
+        return found
 
     def _stage_path(self, request):
         return None
@@ -512,20 +541,66 @@ class _OwnerMergeQueueService:
         result = None
         owns_claim = None
         requests_json = None
-        if operation in {"pending_requests", "processing_requests"}:
-            if set(args) != {"limit", "after_request_id"}:
+        has_pending = None
+        if operation == "has_pending_for_task":
+            if set(args) != {"task_id", "commit_sha"}:
                 raise OwnerMergeQueueError(
-                    "snapshot fields differ from closed contract"
+                    "active task fields differ from closed contract"
                 )
+            task_id = _text(args["task_id"], "task_id")
+            commit_sha = args["commit_sha"]
+            if commit_sha is not None:
+                commit_sha = _text(commit_sha, "commit_sha", empty=True)
+            has_pending = self._queue.has_pending_for_task(
+                task_id, commit_sha=commit_sha
+            )
+            self._validate_owner()
+        elif operation in {
+            "pending_requests",
+            "processing_requests",
+            "quarantined_requests",
+            "completed_requests",
+        }:
+            if operation == "completed_requests":
+                text_fields = {
+                    "metadata_schema",
+                    "completion_schema",
+                    "completion_reason",
+                    "canonical_task_id",
+                    "database_task_cid",
+                    "reopen_schema",
+                    "reopen_reason",
+                    "before_request_id",
+                }
+                bool_fields = {"require_completion_absent", "ordered_by_request_id"}
+                if set(args) != {"limit"} | text_fields | bool_fields:
+                    raise OwnerMergeQueueError(
+                        "completion page fields differ from closed contract"
+                    )
+                arguments = {
+                    key: _text(args[key], key, empty=True) for key in text_fields
+                }
+                for key in bool_fields:
+                    if type(args[key]) is not bool:
+                        raise OwnerMergeQueueError(
+                            "completion page flags must be boolean"
+                        )
+                    arguments[key] = args[key]
+            else:
+                if set(args) != {"limit", "after_request_id"}:
+                    raise OwnerMergeQueueError(
+                        "snapshot fields differ from closed contract"
+                    )
+                cursor = args["after_request_id"]
+                if cursor is not None:
+                    cursor = _text(cursor, "after_request_id", empty=True)
+                arguments = {"after_request_id": cursor}
             limit = args["limit"]
             if type(limit) is not int or not 1 <= limit <= 256:
                 raise OwnerMergeQueueError(
                     "snapshot limit must be an integer from 1 to 256"
                 )
-            cursor = args["after_request_id"]
-            if cursor is not None:
-                cursor = _text(cursor, "after_request_id", empty=True)
-            rows = getattr(self._queue, operation)(limit=limit, after_request_id=cursor)
+            rows = getattr(self._queue, operation)(limit=limit, **arguments)
             # One page is an observation, never a lease recovery or settlement.
             # Retain the native fair/oldest order and explicit ID cursor order.
             encoded = []
@@ -674,6 +749,8 @@ class _OwnerMergeQueueService:
             if result is None
             else json.dumps(result.to_dict(), sort_keys=True, allow_nan=False),
         }
+        if has_pending is not None:
+            response["has_pending"] = has_pending
         if requests_json is not None:
             response["requests_json"] = requests_json
         return response
