@@ -67841,12 +67841,6 @@ _LIVE_OWNER_PORTAL_CLAIM_FAILURE_REARM_REASON = (
 _AUTOMATIC_PORTAL_FAILURE_REARM_EVENT = (
     "automatic_recoverable_portal_failure_rearmed"
 )
-_AUTOMATIC_FOREIGN_SESSION_IN_PROGRESS_REQUEUE = (
-    "automatic_foreign_session_in_progress_requeue"
-)
-_AUTOMATIC_FOREIGN_SESSION_IN_PROGRESS_REQUEUE_EVENT = (
-    "foreign_session_in_progress_requeued"
-)
 DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1 = (
     "ipfs_accelerate_py/agent-supervisor/database-control-claim-binding@1"
 )
@@ -70597,150 +70591,18 @@ class DatabaseImplementationDaemon:
                 )
         return None
 
-    @staticmethod
-    def _claim_state_name(claim: Any) -> str:
-        return str(
-            getattr(
-                getattr(claim, "state", ""),
-                "value",
-                getattr(claim, "state", ""),
-            )
-            or ""
-        )
-
-    def _this_session_has_running_attempt(self, task_cid: str) -> bool:
-        running_row = self._require_connection().execute(
-            "SELECT attempt_id FROM database_task_attempts "
-            "WHERE task_cid = ? AND owner_session_id = ? "
-            "AND status = 'running' LIMIT 1",
-            [task_cid, self.owner_session_id],
-        ).fetchone()
-        return running_row is not None
-
-    def _list_implementation_process_commands(self) -> list[str]:
-        """Return live process command lines for implementer liveness checks."""
-
-        lines: list[str] = []
-        proc_root = Path("/proc")
-        if not proc_root.is_dir():
-            return lines
-        try:
-            for entry in proc_root.iterdir():
-                if not entry.name.isdigit():
-                    continue
-                cmdline_path = entry / "cmdline"
-                try:
-                    raw = cmdline_path.read_bytes()
-                except OSError:
-                    continue
-                if not raw:
-                    continue
-                text = raw.replace(b"\0", b" ").decode(
-                    "utf-8",
-                    errors="replace",
-                ).strip()
-                if text:
-                    lines.append(text)
-        except OSError:
-            return []
-        return lines
-
-    def _in_progress_task_has_live_implementation_worker(self, task: Any) -> bool:
-        """True when a grok/codex runner is still live for this in-progress card."""
-
-        alias = str(getattr(task, "task_alias", "") or "")
-        cid = str(getattr(task, "task_cid", "") or "")
-        markers = tuple(item for item in (alias, cid) if item)
-        if not markers:
-            return False
-        for line in self._list_implementation_process_commands():
-            if not IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line):
-                continue
-            if any(marker in line for marker in markers):
-                return True
-        return False
-
-    def _release_foreign_in_progress_claim(self, claim: Any) -> str:
-        """Close one still-accepted foreign claim so this lane can requeue it.
-
-        ``release`` is fence-checked, not owner-checked.  Callers must already
-        have proven the task is in-lane, this session has no running attempt,
-        and no grok/codex child is live for the card.
-        """
-
-        get_lease = getattr(self.coordinator, "get_lease", None)
-        release = getattr(self.coordinator, "release", None)
-        if not callable(get_lease) or not callable(release):
-            raise DatabaseImplementationAuthorityError(
-                "coordinator cannot release a foreign in-progress claim"
-            )
-        lease = get_lease(str(claim.lease_id))
-        if lease is None:
-            observed = self.coordinator.get_task_claim(str(claim.claim_id))
-            return self._claim_state_name(observed) if observed is not None else "missing"
-        try:
-            release(lease, reason="foreign_session_in_progress_orphan")
-        except Exception:
-            observed = self.coordinator.get_task_claim(str(claim.claim_id))
-            state = self._claim_state_name(observed) if observed is not None else ""
-            if state not in {"released", "expired", "superseded"}:
-                raise
-            return state
-        observed = self.coordinator.get_task_claim(str(claim.claim_id))
-        state = self._claim_state_name(observed) if observed is not None else "released"
-        if state not in {"released", "expired", "superseded"}:
-            raise DatabaseImplementationAuthorityError(
-                "foreign in-progress claim did not enter a closed fence"
-            )
-        return state
-
-    def _cas_in_progress_claim_to_retrying(
-        self,
-        task: Any,
-        *,
-        recovery_receipt: Mapping[str, Any],
-        event_type: str,
-    ) -> dict[str, Any]:
-        task_cid = str(task.task_cid)
-        result = self._cas_task_status_database(
-            task_cid,
-            expected_revision=int(task.revision),
-            new_status="retrying",
-            receipt=recovery_receipt,
-        )
-        updated = getattr(result, "task", None)
-        if (
-            updated is None
-            or str(updated.status or "").strip().lower() != "retrying"
-        ):
-            raise DatabaseImplementationAuthorityError(
-                "orphan-claim recovery did not enter retrying"
-            )
-        record = dict(recovery_receipt)
-        record["resulting_control_revision"] = int(updated.revision)
-        self._record_event(
-            event_type,
-            task_cid=task_cid,
-            body=record,
-        )
-        return record
-
     def _requeue_expired_owned_claims(self) -> list[dict[str, Any]]:
-        """Requeue crash-boundary and dead-session in-progress claims.
+        """Requeue exact crash-boundary claims once their fence is closed.
 
-        Same-session recovery stays the original closed class: an
-        ``in_progress`` task whose current receipt names an
+        Foreign or missing claims require independent predecessor reconciliation;
+        process absence and a different session do not prove absence of effects.
+        This is intentionally narrower than generic stale-task recovery.  It
+        applies only to an ``in_progress`` task whose current receipt names an
         expired/released/superseded claim owned by this stable lane.  With no
         local attempt it proves that provider execution was never admitted.
         With a failed local attempt it additionally requires the exact durable
         cross-store reconciliation receipt, and never reuses its execution
         evidence under the replacement fence.
-
-        A later wave also requeues an in-lane ``in_progress`` card whose
-        claim belongs to a different ``owner_session_id``, is missing from
-        coordination, or is still accepted after that owner died.  That path
-        refuses to steal when this session already has a running attempt or a
-        grok/codex child is live for the card.
         """
 
         # This call also deterministically sweeps accepted leases whose expiry
@@ -70770,63 +70632,47 @@ class DatabaseImplementationDaemon:
                 continue
             if str(receipt.get("operation") or "") != "database_claim":
                 continue
+            if str(receipt.get("owner_session_id") or "") != self.owner_session_id:
+                continue
             claim_id = str(receipt.get("claim_id") or "")
             if not claim_id:
                 continue
-            receipt_owner = str(receipt.get("owner_session_id") or "")
             claim = self.coordinator.get_task_claim(claim_id)
-            if self._this_session_has_running_attempt(task_cid):
-                continue
-            if self._in_progress_task_has_live_implementation_worker(task):
-                continue
-            foreign_or_missing = (
-                receipt_owner != self.owner_session_id or claim is None
-            )
-            if (
-                claim is not None
-                and not self._task_has_exact_database_claim_receipt(task, claim)
+            if claim is None or not self._task_has_exact_database_claim_receipt(
+                task,
+                claim,
             ):
                 continue
-            if not foreign_or_missing:
-                claim_state = self._claim_state_name(claim)
-                if claim_state == "accepted":
+            claim_state = str(
+                getattr(
+                    getattr(claim, "state", ""),
+                    "value",
+                    getattr(claim, "state", ""),
+                )
+                or ""
+            )
+            if claim_state == "accepted":
+                continue
+            if claim_state not in {"expired", "released", "superseded"}:
+                raise DatabaseImplementationAuthorityError(
+                    "orphan claim has an unsupported terminal state"
+                )
+            attempt = self.get_attempt(str(claim.attempt_id))
+            if attempt is not None:
+                reconciliation = (
+                    self._failed_attempt_cross_store_reconciliation(attempt)
+                )
+                if reconciliation is None:
                     continue
-                if claim_state not in {"expired", "released", "superseded"}:
-                    raise DatabaseImplementationAuthorityError(
-                        "orphan claim has an unsupported terminal state"
-                    )
-                attempt = self.get_attempt(str(claim.attempt_id))
-                if attempt is not None:
-                    reconciliation = (
-                        self._failed_attempt_cross_store_reconciliation(attempt)
-                    )
-                    if reconciliation is None:
-                        continue
-                    updated = self._requeue_control_after_expired_attempt(
-                        claim=claim,
-                        reconciliation=reconciliation,
-                    )
-                    record = {
-                        "operation": "automatic_failed_attempt_requeue_replay",
-                        "task_cid": task_cid,
-                        "prior_control_revision": int(task.revision),
-                        "resulting_control_revision": int(updated.revision),
-                        "claim_id": str(claim.claim_id),
-                        "attempt_id": str(claim.attempt_id),
-                        "lease_id": str(claim.lease_id),
-                        "owner_session_id": str(claim.owner_session_id),
-                        "fencing_token": int(claim.fencing_token),
-                        "fence_epoch": int(claim.fence_epoch),
-                        "claim_state": claim_state,
-                        "prior_execution_evidence_reused": False,
-                        "reconciliation": reconciliation,
-                    }
-                    reconciled.append(record)
-                    continue
-                recovery_receipt = {
-                    "operation": "automatic_unadmitted_claim_requeue",
+                updated = self._requeue_control_after_expired_attempt(
+                    claim=claim,
+                    reconciliation=reconciliation,
+                )
+                record = {
+                    "operation": "automatic_failed_attempt_requeue_replay",
                     "task_cid": task_cid,
                     "prior_control_revision": int(task.revision),
+                    "resulting_control_revision": int(updated.revision),
                     "claim_id": str(claim.claim_id),
                     "attempt_id": str(claim.attempt_id),
                     "lease_id": str(claim.lease_id),
@@ -70834,74 +70680,53 @@ class DatabaseImplementationDaemon:
                     "fencing_token": int(claim.fencing_token),
                     "fence_epoch": int(claim.fence_epoch),
                     "claim_state": claim_state,
-                    "provider_execution_admitted": False,
-                    "effect_execution_admitted": False,
+                    "prior_execution_evidence_reused": False,
+                    "reconciliation": reconciliation,
                 }
-                reconciled.append(
-                    self._cas_in_progress_claim_to_retrying(
-                        task,
-                        recovery_receipt=recovery_receipt,
-                        event_type="unadmitted_claim_requeued",
-                    )
-                )
+                reconciled.append(record)
                 continue
-            claim_state = (
-                self._claim_state_name(claim) if claim is not None else "missing"
-            )
-            if claim is not None and claim_state == "accepted":
-                claim_state = self._release_foreign_in_progress_claim(claim)
-            elif claim is not None and claim_state not in {
-                "expired",
-                "released",
-                "superseded",
-            }:
-                raise DatabaseImplementationAuthorityError(
-                    "foreign in-progress claim has an unsupported terminal state"
-                )
-            identity = claim if claim is not None else receipt
+            running_row = self._require_connection().execute(
+                "SELECT attempt_id FROM database_task_attempts "
+                "WHERE task_cid = ? AND status = 'running' LIMIT 1",
+                [task_cid],
+            ).fetchone()
+            if running_row is not None:
+                continue
             recovery_receipt = {
-                "operation": _AUTOMATIC_FOREIGN_SESSION_IN_PROGRESS_REQUEUE,
+                "operation": "automatic_unadmitted_claim_requeue",
                 "task_cid": task_cid,
                 "prior_control_revision": int(task.revision),
-                "claim_id": str(
-                    getattr(identity, "claim_id", None)
-                    or receipt.get("claim_id")
-                    or ""
-                ),
-                "attempt_id": str(
-                    getattr(identity, "attempt_id", None)
-                    or receipt.get("attempt_id")
-                    or ""
-                ),
-                "lease_id": str(
-                    getattr(identity, "lease_id", None)
-                    or receipt.get("lease_id")
-                    or ""
-                ),
-                "owner_session_id": receipt_owner,
-                "successor_owner_session_id": self.owner_session_id,
-                "fencing_token": int(
-                    getattr(identity, "fencing_token", None)
-                    or receipt.get("fencing_token")
-                    or 0
-                ),
-                "fence_epoch": int(
-                    getattr(identity, "fence_epoch", None)
-                    or receipt.get("fence_epoch")
-                    or 0
-                ),
+                "claim_id": str(claim.claim_id),
+                "attempt_id": str(claim.attempt_id),
+                "lease_id": str(claim.lease_id),
+                "owner_session_id": str(claim.owner_session_id),
+                "fencing_token": int(claim.fencing_token),
+                "fence_epoch": int(claim.fence_epoch),
                 "claim_state": claim_state,
-                "claim_missing": claim is None,
                 "provider_execution_admitted": False,
                 "effect_execution_admitted": False,
-                "live_implementation_worker": False,
             }
-            reconciled.append(
-                self._cas_in_progress_claim_to_retrying(
-                    task,
-                    recovery_receipt=recovery_receipt,
-                    event_type=_AUTOMATIC_FOREIGN_SESSION_IN_PROGRESS_REQUEUE_EVENT,
+            result = self._cas_task_status_database(
+                task_cid,
+                expected_revision=int(task.revision),
+                new_status="retrying",
+                receipt=recovery_receipt,
+            )
+            updated = getattr(result, "task", None)
+            if (
+                updated is None
+                or str(updated.status or "").strip().lower() != "retrying"
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "orphan-claim recovery did not enter retrying"
                 )
+            record = dict(recovery_receipt)
+            record["resulting_control_revision"] = int(updated.revision)
+            reconciled.append(record)
+            self._record_event(
+                "unadmitted_claim_requeued",
+                task_cid=task_cid,
+                body=record,
             )
         return reconciled
 
