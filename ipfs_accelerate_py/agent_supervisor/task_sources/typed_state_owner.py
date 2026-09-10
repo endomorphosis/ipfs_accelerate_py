@@ -390,7 +390,6 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "database_portal_post_commit_candidate_recovery",
         TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
         "database_portal_callback_no_effect_recovery",
-        "database_portal_unknown_callback_no_merge_recovery",
         "database_portal_post_merge_declared_output_recovery",
         "database_post_merge_declared_outputs_repair_recovery",
         "database_post_merge_declared_outputs_requalification_recovery",

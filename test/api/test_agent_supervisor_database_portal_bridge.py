@@ -2072,6 +2072,69 @@ def test_bridge_reconciles_exact_clean_baseline_callback_unknown(
     assert factory_calls == [source.task_alias]
 
 
+@pytest.mark.parametrize(
+    "field", ("attempt_id", "attempt_number", "claim_id", "lease_id", "fencing_token", "fence_epoch")
+)
+def test_callback_no_effect_closure_is_bound_to_exact_attempt_generation(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    """A valid closure from a different attempt cannot authorize this retry."""
+    from test.api.test_agent_supervisor_database_implementation_daemon import (
+        _open_daemon,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DatabaseImplementationAuthorityError,
+    )
+
+    bridge, source, _record_value, paths, _workspace, _factory_calls = (
+        _callback_no_effect_fixture(tmp_path)
+    )
+    receipt = dict(bridge.recover_post_commit_candidate(source))
+    # Exercise the independent bridge verification over the actual temporary
+    # Git worktree and closed callback stream before the daemon admission.
+    assert bridge._verify_callback_no_effect_recovery_receipt(
+        attempt=source, paths=paths, receipt=receipt
+    ) == receipt
+    daemon = _open_daemon(tmp_path / "lane", max_task_attempts=2)
+    try:
+        assert daemon._verified_callback_no_effect_recovery_receipt(
+            source, receipt
+        ) == receipt
+        value = getattr(source, field)
+        other_generation = replace(
+            source, **{field: value + 1 if isinstance(value, int) else value + ":other"}
+        )
+        with pytest.raises(DatabasePortalBridgeError, match="malformed or foreign"):
+            bridge._verify_callback_no_effect_recovery_receipt(
+                attempt=other_generation, paths=paths, receipt=receipt
+            )
+        with pytest.raises(DatabaseImplementationAuthorityError, match="failed verification"):
+            daemon._verified_callback_no_effect_recovery_receipt(
+                other_generation, receipt
+            )
+    finally:
+        daemon.close()
+
+
+def test_callback_no_effect_receipt_requires_preserved_closed_event_stream(
+    tmp_path: Path,
+) -> None:
+    bridge, source, _record_value, paths, _workspace, _factory_calls = (
+        _callback_no_effect_fixture(tmp_path)
+    )
+    receipt = dict(bridge.recover_post_commit_candidate(source))
+    events = paths.events.read_text(encoding="utf-8").splitlines()
+    assert len(events) >= 3
+    # Retaining only the pre-closure prefix cannot establish a closed outcome,
+    # even when the old final receipt remains present with its original digest.
+    paths.events.write_text("\n".join(events[:-1]) + "\n", encoding="utf-8")
+    with pytest.raises(DatabasePortalBridgeError):
+        bridge._verify_callback_no_effect_recovery_receipt(
+            attempt=source, paths=paths, receipt=receipt
+        )
+
+
 def test_portal_controlled_restart_cleanup_requires_exact_clean_baseline(
     tmp_path: Path,
 ) -> None:
@@ -2234,7 +2297,7 @@ def test_bridge_callback_no_effect_replay_rejects_post_intent_effect_event(
     ).exists()
 
 
-@pytest.mark.parametrize("unsafe_shape", ("dirty", "ambiguous", "effectful"))
+@pytest.mark.parametrize("unsafe_shape", ("dirty", "ambiguous", "effectful", "missing_source"))
 def test_bridge_callback_no_effect_recovery_rejects_unsafe_evidence(
     tmp_path: Path,
     unsafe_shape: str,
@@ -2244,6 +2307,13 @@ def test_bridge_callback_no_effect_recovery_rejects_unsafe_evidence(
     )
     if unsafe_shape == "dirty":
         (workspace / "untracked.txt").write_text("candidate\n", encoding="utf-8")
+    elif unsafe_shape == "missing_source":
+        subprocess.run(
+            ["git", "worktree", "remove", str(workspace)],
+            cwd=bridge.repository_root,
+            check=True,
+            capture_output=True,
+        )
     elif unsafe_shape == "ambiguous":
         state = json.loads(paths.state.read_text(encoding="utf-8"))
         state["active_provider_runner"] = {"pid": 999999}

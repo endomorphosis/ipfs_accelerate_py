@@ -97,8 +97,6 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD,
     TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
-    TYPED_RETRYING_RECEIPT_OPERATIONS,
-    TypedStateOwnerRemoteError,
     _process_birth_content_id,
     typed_database_blocked_retry_revalidation_requirement,
 )
@@ -3721,11 +3719,26 @@ def test_unknown_callback_without_landed_outputs_never_reopens_or_requeues(
         daemon.close()
 
 
-def test_unknown_callback_without_merge_source_requeues_instead_of_operator_review(
+@pytest.mark.parametrize("retained_effect", (False, True))
+def test_unknown_callback_without_merge_source_preserves_unknown_outcome(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    retained_effect: bool,
 ) -> None:
+    """A no-write recovery rejection does not close the provider callback."""
+
+    class SimulatedProcessCrash(BaseException):
+        pass
+
     repo = _git_repo(tmp_path)
+    now = {"ms": 1_000}
+    provider_calls: list[str] = []
+    retained = repo / "uncommitted-provider-work.py"
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        if retained_effect:
+            retained.write_text("# preserved provider work\n", encoding="utf-8")
+        raise SimulatedProcessCrash("callback outcome unavailable")
 
     def recover(attempt: DatabaseTaskAttempt) -> dict[str, object]:
         raise _sealed_post_commit_recovery_diagnostic(
@@ -3754,184 +3767,69 @@ def test_unknown_callback_without_merge_source_requeues_instead_of_operator_revi
             reason_code="source_count_rejected",
         )
 
+    settings = {
+        "repo_root": repo,
+        "session": "session:no-merge-callback",
+        "provider_fn": provider,
+        "lease_ms": 5_000,
+        "max_task_attempts": 2,
+        "clock_ms": lambda: now["ms"],
+        "strict_task_sharding": True,
+    }
+    first = _open_daemon(tmp_path / "lane", **settings)
+    try:
+        first.materialize_population(_population(2))
+        source = first.claim_next()
+        assert source is not None and source.task_cid == "task:cid:001"
+        with pytest.raises(SimulatedProcessCrash):
+            first._resume_attempt_without_process_crash(source)
+    finally:
+        first.close()
+
+    now["ms"] = 7_000
     daemon = _open_daemon(
         tmp_path / "lane",
-        repo_root=repo,
-        session="session:doep-031-unknown",
         post_commit_candidate_recovery_fn=recover,
+        **settings,
     )
     try:
-        daemon.materialize_population(_population(1))
-        task = daemon.task_source.get("task:cid:001")
-        assert task is not None
-        source_attempt = DatabaseTaskAttempt(
-            attempt_id="attempt:doep-031-unknown",
-            claim_id="claim:doep-031-unknown",
-            task_cid=str(task.task_cid),
-            task_alias=str(task.task_alias),
-            attempt_number=2,
-            owner_session_id="session:doep-031-unknown",
-            fencing_token=2,
-            fence_epoch=2,
-            lease_id="lease:doep-031-unknown",
-            committed_phase="failed",
-            status="failed",
-            started_at_ms=100,
-            finished_at_ms=900,
-            revision=2,
+        expired = daemon.reconcile_expired_running_attempts()
+        assert any(item.get("disposition") == "quarantined" for item in expired)
+        quarantined = daemon.task_source.get(source.task_cid)
+        assert quarantined is not None and quarantined.status == "quarantined"
+        expected_revision = int(quarantined.revision)
+        expected_receipt = dict(quarantined.body["completion_receipt"])
+        attempt_before = daemon.get_attempt(source.attempt_id)
+        assert attempt_before is not None
+        assert daemon._strict_resume_rejection_receipt_matches(
+            quarantined, attempt_before
         )
-        receipt = _unknown_callback_quarantine_receipt()
-        receipt["attempt_id"] = source_attempt.attempt_id
-        quarantined = daemon.task_source.compare_and_set_status(
-            "task:cid:001",
-            int(task.revision),
-            "quarantined",
-            receipt=receipt,
-        ).task
-        monkeypatch.setattr(daemon, "get_attempt", lambda _id: source_attempt)
-        monkeypatch.setattr(
-            daemon,
-            "_strict_resume_rejection_receipt_matches",
-            lambda *args, **kwargs: True,
-        )
-        outcome = daemon._reopen_unimplemented_unknown_callback_task(quarantined)
-        assert outcome is not None
-        assert outcome["reopened"] is True
-        assert outcome["operator_review_required"] is False
-        assert outcome["reason"] == "unknown_callback_no_merge_source_requeued"
-        updated = daemon.task_source.get("task:cid:001")
-        assert updated is not None
-        assert updated.status == "retrying"
-        recovery = updated.body["completion_receipt"]
-        assert recovery["operation"] in TYPED_RETRYING_RECEIPT_OPERATIONS
-        assert recovery["operation"] == "database_portal_callback_no_effect_recovery"
-        assert recovery["reason"] == "unknown_callback_no_merge_source_requeued"
-        assert recovery["queue_reason"]
-        assert recovery["backoff_ms"] == 0
-        assert type(recovery["retry_not_before_ms"]) is int
-        assert recovery["retry_not_before_ms"] >= 0
-        assert recovery["control_expected_revision"] == int(quarantined.revision)
-        assert recovery["unknown_callback_reopen_count"] == 0
+
+        for _ in range(2):
+            [outcome] = daemon.reconcile_unimplemented_unknown_callback_quarantines()
+            assert outcome["reopened"] is False
+            assert outcome["changed"] is False
+            assert outcome["write_count"] == 0
+            assert outcome["provider_dispatched"] is False
+            assert outcome["operator_review_required"] is True
+            assert outcome["reason"] == "post_commit_recovery_evidence_rejected"
+            assert outcome["diagnostic_reason_code"] == "source_count_rejected"
+            assert set(outcome["mutation_provenance"].values()) == {"not_attempted"}
+            current = daemon.task_source.get(source.task_cid)
+            assert current is not None and current.status == "quarantined"
+            assert int(current.revision) == expected_revision
+            assert current.body["completion_receipt"] == expected_receipt
+            assert daemon.task_source.get_queue_entry(source.task_cid) is None
+            assert daemon.get_attempt(source.attempt_id) == attempt_before
+
+        # Recovery cannot spend another provider attempt or discard its work.
+        assert provider_calls == [source.attempt_id]
+        if retained_effect:
+            assert retained.read_text(encoding="utf-8") == "# preserved provider work\n"
+        unrelated = daemon.claim_next()
+        assert unrelated is not None and unrelated.task_cid == "task:cid:002"
     finally:
         daemon.close()
-
-
-def test_unknown_callback_authorization_denied_does_not_bubble(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = _git_repo(tmp_path)
-
-    def recover(attempt: DatabaseTaskAttempt) -> dict[str, object]:
-        raise _sealed_post_commit_recovery_diagnostic(
-            task=SimpleNamespace(
-                task_cid=attempt.task_cid,
-                task_alias=attempt.task_alias,
-            ),
-            attempt=attempt,
-            admission={
-                "phase": "unspecified",
-                "gate": "not_evaluated",
-                "allowed_task_statuses": [],
-                "allow_shared_lane_source": False,
-                "allow_callback_reconciliation_transport_lineage": False,
-                "request_present": False,
-                "request_status": "",
-                "missing_output_lineage": False,
-                "callback_transport_lineage": False,
-                "projection_scope": "unresolved",
-                "task_source_getter": "unavailable",
-                "canonical_task_present": False,
-                "canonical_task_identity_matches": False,
-                "canonical_task_status": "",
-            },
-            stage="callback_transport_rejected",
-            reason_code="source_count_rejected",
-        )
-
-    daemon = _open_daemon(
-        tmp_path / "lane",
-        repo_root=repo,
-        session="session:doep-031-authz",
-        post_commit_candidate_recovery_fn=recover,
-    )
-    try:
-        daemon.materialize_population(_population(1))
-        task = daemon.task_source.get("task:cid:001")
-        assert task is not None
-        source_attempt = DatabaseTaskAttempt(
-            attempt_id="attempt:doep-031-authz",
-            claim_id="claim:doep-031-authz",
-            task_cid=str(task.task_cid),
-            task_alias=str(task.task_alias),
-            attempt_number=2,
-            owner_session_id="session:doep-031-authz",
-            fencing_token=2,
-            fence_epoch=2,
-            lease_id="lease:doep-031-authz",
-            committed_phase="failed",
-            status="failed",
-            started_at_ms=100,
-            finished_at_ms=900,
-            revision=2,
-        )
-        receipt = _unknown_callback_quarantine_receipt()
-        receipt["attempt_id"] = source_attempt.attempt_id
-        quarantined = daemon.task_source.compare_and_set_status(
-            "task:cid:001",
-            int(task.revision),
-            "quarantined",
-            receipt=receipt,
-        ).task
-        monkeypatch.setattr(daemon, "get_attempt", lambda _id: source_attempt)
-        monkeypatch.setattr(
-            daemon,
-            "_strict_resume_rejection_receipt_matches",
-            lambda *args, **kwargs: True,
-        )
-        denied = TypedStateOwnerRemoteError(
-            "authorization_denied",
-            "TypedStateOwnerAuthorizationError",
-        )
-
-        def refuse_retry(*_args: object, **_kwargs: object) -> object:
-            raise denied
-
-        monkeypatch.setattr(
-            daemon.task_source,
-            "record_queue_backoff_and_cas_status",
-            refuse_retry,
-        )
-        monkeypatch.setattr(daemon, "_cas_task_status_database", refuse_retry)
-        outcome = daemon._reopen_unimplemented_unknown_callback_task(quarantined)
-        assert outcome is not None
-        assert outcome["reopened"] is False
-        assert "typed state-owner authorization_denied" not in str(
-            outcome.get("reason") or ""
-        )
-        assert outcome.get("error_type") != "TypedStateOwnerRemoteError"
-        outcomes = daemon.reconcile_unimplemented_unknown_callback_quarantines()
-        assert outcomes
-        assert all(
-            "typed state-owner authorization_denied" not in str(item.get("reason") or "")
-            for item in outcomes
-        )
-        current = daemon.task_source.get("task:cid:001")
-        assert current is not None
-        assert current.status == "quarantined"
-    finally:
-        daemon.close()
-
-
-def test_unknown_callback_no_merge_retry_operation_is_admitted() -> None:
-    assert (
-        "database_portal_callback_no_effect_recovery"
-        in TYPED_RETRYING_RECEIPT_OPERATIONS
-    )
-    assert (
-        "database_portal_unknown_callback_no_merge_recovery"
-        in TYPED_RETRYING_RECEIPT_OPERATIONS
-    )
 
 
 def test_unknown_callback_without_declared_outputs_stays_quarantined(
