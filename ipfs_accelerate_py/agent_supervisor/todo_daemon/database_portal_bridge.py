@@ -1221,7 +1221,10 @@ class DatabasePortalCandidateRetry(DatabasePortalBridgeError):
     provider error strings.
     """
 
-    def __init__(self, reason: str, *, backoff_seconds: int = 0) -> None:
+    def __init__(
+        self, reason: str, *, backoff_seconds: int = 0,
+        diagnostic_summary: Mapping[str, Any] | None = None,
+    ) -> None:
         if (
             isinstance(backoff_seconds, bool)
             or not isinstance(backoff_seconds, int)
@@ -1240,6 +1243,9 @@ class DatabasePortalCandidateRetry(DatabasePortalBridgeError):
         self.backoff_seconds = int(backoff_seconds)
         self.attempt_consumed = True
         self.provider_dispatched = True
+        from .candidate_failure_diagnostics import normalize_candidate_failure_diagnostics
+
+        self.diagnostic_summary = normalize_candidate_failure_diagnostics(diagnostic_summary)
 
 
 class DatabasePortalBridgeConsumedNoProgressError(DatabasePortalBridgeError):
@@ -22031,7 +22037,12 @@ class DatabasePortalExecutionBridge:
                         and self.max_task_attempts > 0
                         and 1 <= bounded_attempt < self.max_task_attempts
                     ):
-                        raise DatabasePortalCandidateRetry(candidate_reason)
+                        from .candidate_failure_diagnostics import summarize_candidate_failure
+
+                        raise DatabasePortalCandidateRetry(
+                            candidate_reason,
+                            diagnostic_summary=summarize_candidate_failure(implementation),
+                        )
                 failure = self._terminal_failure(raw_result)
                 if failure:
                     implementation = raw_result.get("implementation_result")

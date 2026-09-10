@@ -113448,6 +113448,23 @@ class DatabaseImplementationDaemon:
                 "retry control operation is absent from typed admission"
             )
 
+        from .candidate_failure_diagnostics import candidate_failure_codes_from_history
+        from .database_portal_bridge import DATABASE_PORTAL_CANDIDATE_RETRY_REASONS
+
+        candidate_diagnostic_codes = {}
+        if (
+            retry_operation == "database_portal_retry"
+            and reason_text in DATABASE_PORTAL_CANDIDATE_RETRY_REASONS
+        ):
+            try:
+                candidate_diagnostic_codes = candidate_failure_codes_from_history(
+                    attempt, self.phase_history(attempt.attempt_id), reason=reason_text,
+                )
+            except Exception:
+                # Optional diagnostics never replace or prevent native retry
+                # admission. A missing phase read cannot invent prior feedback.
+                pass
+
         def retry_control_receipt(
             *,
             retry_not_before_ms: int,
@@ -113462,7 +113479,7 @@ class DatabaseImplementationDaemon:
                 if validation_retry_successor_evidence is not None
                 else dict(queue_receipt)
             )
-            return {
+            receipt = {
                 "operation": retry_operation,
                 "attempt_id": attempt.attempt_id,
                 "claim_id": attempt.claim_id,
@@ -113475,6 +113492,7 @@ class DatabaseImplementationDaemon:
                 "execution_revision": int(attempt.revision),
                 "execution_finished_at_ms": attempt.finished_at_ms,
                 "reason": reason_text,
+                **candidate_diagnostic_codes,
                 "backoff_seconds": delay_seconds,
                 "backoff_ms": delay_ms,
                 "retry_not_before_ms": int(retry_not_before_ms),
@@ -113611,6 +113629,17 @@ class DatabaseImplementationDaemon:
                 "control_expected_status": task_status,
                 "control_expected_revision": int(task.revision),
             }
+            if candidate_diagnostic_codes:
+                try:
+                    preflight_task_body(receipt)
+                except DatabaseImplementationAuthorityError:
+                    # Preserve the original canonical task/event ceilings.
+                    # Optional diagnostics cannot make an otherwise valid
+                    # native retry exceed either bound; the base still must fit.
+                    for field in candidate_diagnostic_codes:
+                        receipt.pop(field, None)
+                    preflight_task_body(receipt)
+            return receipt
 
         def preflight_task_body(receipt: Mapping[str, Any]) -> tuple[int, int]:
             prospective_body = dict(getattr(task, "body", {}) or {})
@@ -125173,6 +125202,14 @@ class DatabaseImplementationDaemon:
                         if protected_preservation
                         else None
                     )
+                    from .candidate_failure_diagnostics import normalize_candidate_failure_diagnostics
+
+                    candidate_diagnostics = (
+                        normalize_candidate_failure_diagnostics(
+                            getattr(exc, "diagnostic_summary", None)
+                        )
+                        if candidate_retry else {}
+                    )
                     failure_body = {
                         "reason": reason,
                         "portal_retryable_failure": retryable,
@@ -125203,6 +125240,10 @@ class DatabaseImplementationDaemon:
                             else "unknown"
                         ),
                         "backoff_seconds": backoff_seconds,
+                        **(
+                            {"candidate_failure_diagnostics": candidate_diagnostics}
+                            if candidate_diagnostics else {}
+                        ),
                         **(
                             {"typed_deferral": typed_deferral}
                             if typed_deferral is not None
