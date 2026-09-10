@@ -17,6 +17,15 @@ open-witness count from one to zero.
 smallest dependent suffix of an impact or typed failure.  That path is not a
 competing planner and never grants completion authority.
 
+:func:`refine_cegar_plan` is the DOEP-G090.S2 CEGAR plan-refinement owner on
+the same carrier.  It consumes redacted counterexample / unsat-core refinement
+records and qualified interpolation planning assistance as public mappings,
+refines only implicated abstraction constraints for spurious traces, and
+reopens only the smallest dependent suffix for real counterexamples.  It is
+not a second planner and not a competing CEGAR subsystem: software-verification
+CEGAR and proof-development CEGIS/CEGAR remain separate injectable engines.
+Bounded iteration never grants completion authority.
+
 Only :class:`CodexRepairPacket` is model-facing.  It contains the selected
 transition and the already redacted, byte-bounded counterexample capsule; it
 never contains the source snapshot, rejected candidates, compiler diagnostics,
@@ -83,6 +92,47 @@ AFFECTED_SUFFIX_REPLAN_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/affected-suffix-replan@1"
 )
 AFFECTED_SUFFIX_REPLAN_INTERFACE: Final = "AffectedSuffixReplanning@1"
+CEGAR_PLAN_REFINEMENT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/cegar-plan-refinement@1"
+)
+CEGAR_PLAN_REFINEMENT_INTERFACE: Final = "CegarPlanRefinement@1"
+CEGAR_PLAN_REFINEMENT_ALGORITHM: Final = "deterministic_cegar_plan_refinement"
+CEGAR_PLAN_REFINEMENT_ALGORITHM_VERSION: Final = "cegar-plan-refinement/1.0.0"
+CEGAR_PLAN_REFINEMENT_FORBIDDEN_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "lease_id",
+        "admission_receipt_cid",
+        "policy_pointer",
+        "self_granted_substitution",
+        "self_granted_admission",
+        "authorizes_full_replan",
+        "cegar_engine",
+        "raw",
+        "raw_output",
+        "prover_output",
+    }
+)
+_CEGAR_HINT_AUTHORITIES: Final[frozenset[str]] = frozenset(
+    {
+        "none",
+        "advisory",
+        "hypothesis",
+    }
+)
+_CEGAR_HINT_ORIGINS: Final[frozenset[str]] = frozenset(
+    {
+        "validated_interpolant",
+        "shared_vocabulary",
+        "unsat_core",
+        "unsat_core_member",
+        "counterexample_divergence",
+        "causal_link",
+        "repair_hypothesis",
+        "decoded_core_member",
+        "reviewed_predicate",
+        "weakest_precondition",
+    }
+)
 VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/verifier-backed-repair-closure@1"
 )
@@ -2827,6 +2877,54 @@ class FormalReplanner:
             required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
         )
 
+    def refine_cegar_plan(
+        self,
+        plan: DeltaPlan | Mapping[str, Any],
+        *,
+        trace_kind: CegarPlanTraceKind | str,
+        predicate_hints: Iterable[CegarPlanPredicateRefinement | Mapping[str, Any]] = (),
+        affected_region_ids: Iterable[str] = (),
+        anchor_step_ids: Iterable[str] | None = None,
+        counterexample_refinement: Mapping[str, Any] | None = None,
+        interpolation_assistance: Mapping[str, Any] | None = None,
+        observation: BranchFailureObservation | Mapping[str, Any] | None = None,
+        failure_event_id: str | None = None,
+        diagnostic_id: str | None = None,
+        failure_memory: PlanFailureMemory | None = None,
+        limits: DeltaReplanLimits | Mapping[str, Any] | None = None,
+        observed_at_milliseconds: int = 1,
+        now_milliseconds: int | None = None,
+        deadline_milliseconds: int | None = None,
+        cancelled: Any = None,
+        required_preserved_guarantee_step_ids: Iterable[str] = (),
+        cegar_limits: CegarPlanRefinementLimits | Mapping[str, Any] | None = None,
+        iteration: int = 0,
+    ) -> CegarPlanRefinementDecision:
+        """Bounded CEGAR plan refinement; not a competing planner subsystem."""
+
+        return FormalDeltaReplanner(
+            failure_memory=failure_memory,
+            limits=limits,
+        ).refine_cegar_plan(
+            plan,
+            trace_kind=trace_kind,
+            predicate_hints=predicate_hints,
+            affected_region_ids=affected_region_ids,
+            anchor_step_ids=anchor_step_ids,
+            counterexample_refinement=counterexample_refinement,
+            interpolation_assistance=interpolation_assistance,
+            observation=observation,
+            failure_event_id=failure_event_id,
+            diagnostic_id=diagnostic_id,
+            observed_at_milliseconds=observed_at_milliseconds,
+            now_milliseconds=now_milliseconds,
+            deadline_milliseconds=deadline_milliseconds,
+            cancelled=cancelled,
+            required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
+            cegar_limits=cegar_limits,
+            iteration=iteration,
+        )
+
     def generate_repairs(
         self,
         source: Mapping[str, Any],
@@ -3761,10 +3859,18 @@ class FormalDeltaReplanner:
     preserved prefix untouched.  Assume-guarantee substitutions that bind only
     to preserved steps remain eligible; required preserved guarantees that
     intersect the invalidated suffix fail closed.
+
+    ``refine_cegar_plan`` is the CEGAR plan-refinement owner on this same
+    carrier.  It is not a competing planner and not a competing CEGAR
+    subsystem: spurious traces refine implicated abstraction constraints only,
+    real traces reopen the smallest dependent suffix, and completion authority
+    is never granted.
     """
 
     INTERFACE: ClassVar[str] = AFFECTED_SUFFIX_REPLAN_INTERFACE
     SCHEMA: ClassVar[str] = AFFECTED_SUFFIX_REPLAN_SCHEMA
+    CEGAR_INTERFACE: ClassVar[str] = CEGAR_PLAN_REFINEMENT_INTERFACE
+    CEGAR_SCHEMA: ClassVar[str] = CEGAR_PLAN_REFINEMENT_SCHEMA
 
     def __init__(
         self,
@@ -4173,6 +4279,329 @@ class FormalDeltaReplanner:
             required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
         )
 
+    def refine_cegar_plan(
+        self,
+        plan: DeltaPlan | Mapping[str, Any],
+        *,
+        trace_kind: CegarPlanTraceKind | str,
+        predicate_hints: Iterable[CegarPlanPredicateRefinement | Mapping[str, Any]] = (),
+        affected_region_ids: Iterable[str] = (),
+        anchor_step_ids: Iterable[str] | None = None,
+        counterexample_refinement: Mapping[str, Any] | None = None,
+        interpolation_assistance: Mapping[str, Any] | None = None,
+        observation: BranchFailureObservation | Mapping[str, Any] | None = None,
+        failure_event_id: str | None = None,
+        diagnostic_id: str | None = None,
+        observed_at_milliseconds: int = 1,
+        now_milliseconds: int | None = None,
+        deadline_milliseconds: int | None = None,
+        cancelled: Any = None,
+        required_preserved_guarantee_step_ids: Iterable[str] = (),
+        cegar_limits: CegarPlanRefinementLimits | Mapping[str, Any] | None = None,
+        iteration: int = 0,
+    ) -> CegarPlanRefinementDecision:
+        """Bounded CEGAR plan refinement over the affected-suffix carrier.
+
+        Spurious traces refine only implicated abstraction constraints.
+        Real traces reopen the smallest dependent suffix.  This is not a
+        second planner and never grants completion authority.
+        """
+
+        value = plan if isinstance(plan, DeltaPlan) else DeltaPlan.from_dict(plan)
+        limits = _cegar_limits(cegar_limits)
+        if isinstance(trace_kind, CegarPlanTraceKind):
+            kind = trace_kind
+        else:
+            kind = CegarPlanTraceKind(str(trace_kind or "").strip().lower())
+        if (
+            isinstance(iteration, bool)
+            or not isinstance(iteration, int)
+            or iteration < 0
+        ):
+            raise ReplannerValidationError("iteration must be a non-negative integer")
+        if iteration >= limits.max_iterations:
+            preserved, _, _ = self._branch_projection(value, set())
+            return CegarPlanRefinementDecision(
+                original_plan_id=value.plan_id,
+                resulting_plan=value,
+                stop_reason=CegarPlanStopReason.BUDGET_EXHAUSTED,
+                trace_kind=kind,
+                iteration=iteration,
+                refined_predicates=(),
+                affected_step_ids=(),
+                preserved_step_ids=preserved,
+                limits=limits,
+            )
+        if _cancelled(cancelled):
+            preserved, _, _ = self._branch_projection(value, set())
+            return CegarPlanRefinementDecision(
+                original_plan_id=value.plan_id,
+                resulting_plan=value,
+                stop_reason=CegarPlanStopReason.CANCELLED,
+                trace_kind=kind,
+                iteration=iteration,
+                refined_predicates=(),
+                affected_step_ids=(),
+                preserved_step_ids=preserved,
+                limits=limits,
+            )
+
+        source_ids: list[str] = []
+        predicates = _normalize_cegar_predicates(predicate_hints)
+        if isinstance(affected_region_ids, (str, bytes, bytearray)):
+            raise ReplannerValidationError("affected_region_ids must be an array")
+        regions = _delta_identifiers(affected_region_ids, "affected_region_ids")
+
+        cex_predicates = _predicates_from_counterexample_refinement(counterexample_refinement)
+        if counterexample_refinement is not None:
+            source_ids.append(
+                str(
+                    counterexample_refinement.get("refinement_id")
+                    or counterexample_refinement.get("content_id")
+                    or counterexample_refinement.get("explanation_id")
+                    or "source:counterexample-refinement"
+                ).strip()
+                or "source:counterexample-refinement"
+            )
+        assistance_result = _predicates_from_interpolation_assistance(
+            interpolation_assistance
+        )
+        assistance_only = (
+            interpolation_assistance is not None
+            and counterexample_refinement is None
+            and not predicates
+            and not regions
+            and anchor_step_ids is None
+            and observation is None
+        )
+        if isinstance(assistance_result, CegarPlanStopReason):
+            if assistance_only or not (predicates or cex_predicates or regions or anchor_step_ids or observation):
+                preserved, _, _ = self._branch_projection(value, set())
+                return CegarPlanRefinementDecision(
+                    original_plan_id=value.plan_id,
+                    resulting_plan=value,
+                    stop_reason=assistance_result,
+                    trace_kind=kind,
+                    iteration=iteration,
+                    refined_predicates=(),
+                    affected_step_ids=(),
+                    preserved_step_ids=preserved,
+                    refinement_source_ids=tuple(
+                        sorted(
+                            {
+                                str(
+                                    (interpolation_assistance or {}).get("assistance_id")
+                                    or (interpolation_assistance or {}).get("content_id")
+                                    or "source:interpolation-assistance"
+                                ).strip()
+                                or "source:interpolation-assistance"
+                            }
+                        )
+                    ),
+                    limits=limits,
+                )
+            assistance_predicates: tuple[CegarPlanPredicateRefinement, ...] = ()
+        else:
+            assistance_predicates = assistance_result
+            if interpolation_assistance is not None:
+                source_ids.append(
+                    str(
+                        interpolation_assistance.get("assistance_id")
+                        or interpolation_assistance.get("content_id")
+                        or interpolation_assistance.get("interpolant_cid")
+                        or "source:interpolation-assistance"
+                    ).strip()
+                    or "source:interpolation-assistance"
+                )
+
+        predicates = _normalize_cegar_predicates(
+            tuple(predicates) + tuple(cex_predicates) + tuple(assistance_predicates)
+        )
+        if len(predicates) > limits.max_predicates:
+            predicates = predicates[: limits.max_predicates]
+
+        if kind is CegarPlanTraceKind.UNAVAILABLE:
+            preserved, _, _ = self._branch_projection(value, set())
+            return CegarPlanRefinementDecision(
+                original_plan_id=value.plan_id,
+                resulting_plan=value,
+                stop_reason=CegarPlanStopReason.UNAVAILABLE,
+                trace_kind=kind,
+                iteration=iteration,
+                refined_predicates=(),
+                affected_step_ids=(),
+                preserved_step_ids=preserved,
+                refinement_source_ids=_delta_identifiers(source_ids, "refinement_source_ids")
+                if source_ids
+                else (),
+                limits=limits,
+            )
+
+        if observation is not None and anchor_step_ids is None:
+            failure = (
+                observation
+                if isinstance(observation, BranchFailureObservation)
+                else BranchFailureObservation.from_dict(observation)
+            )
+            anchors = self._anchors(value, failure)
+            if not anchors:
+                preserved, _, _ = self._branch_projection(value, set())
+                return CegarPlanRefinementDecision(
+                    original_plan_id=value.plan_id,
+                    resulting_plan=value,
+                    stop_reason=CegarPlanStopReason.NO_PROGRESS,
+                    trace_kind=kind,
+                    iteration=iteration,
+                    refined_predicates=predicates,
+                    affected_step_ids=(),
+                    preserved_step_ids=preserved,
+                    refinement_source_ids=_delta_identifiers(source_ids, "refinement_source_ids")
+                    if source_ids
+                    else (),
+                    limits=limits,
+                )
+        else:
+            anchors = _resolve_cegar_anchors(
+                value,
+                anchor_step_ids=anchor_step_ids,
+                affected_region_ids=regions,
+                predicates=predicates,
+            )
+
+        suffix = self._dependent_suffix(value, anchors)
+        if len(suffix) > limits.max_affected_steps:
+            preserved, _, _ = self._branch_projection(value, set())
+            return CegarPlanRefinementDecision(
+                original_plan_id=value.plan_id,
+                resulting_plan=value,
+                stop_reason=CegarPlanStopReason.BUDGET_EXHAUSTED,
+                trace_kind=kind,
+                iteration=iteration,
+                refined_predicates=(),
+                affected_step_ids=(),
+                preserved_step_ids=preserved,
+                refinement_source_ids=_delta_identifiers(source_ids, "refinement_source_ids")
+                if source_ids
+                else (),
+                limits=limits,
+            )
+
+        source_tuple = (
+            _delta_identifiers(source_ids, "refinement_source_ids") if source_ids else ()
+        )
+
+        if kind in {CegarPlanTraceKind.SPURIOUS, CegarPlanTraceKind.UNKNOWN}:
+            if not predicates:
+                preserved, _, _ = self._branch_projection(value, set())
+                return CegarPlanRefinementDecision(
+                    original_plan_id=value.plan_id,
+                    resulting_plan=value,
+                    stop_reason=CegarPlanStopReason.NO_PROGRESS
+                    if kind is CegarPlanTraceKind.SPURIOUS
+                    else CegarPlanStopReason.UNAVAILABLE,
+                    trace_kind=kind,
+                    iteration=iteration,
+                    refined_predicates=(),
+                    affected_step_ids=suffix,
+                    preserved_step_ids=preserved,
+                    refinement_source_ids=source_tuple,
+                    limits=limits,
+                )
+            resulting = _apply_spurious_predicate_refinement(
+                value,
+                anchors=anchors,
+                predicates=predicates,
+            )
+            before_constraints = {
+                item.step_id: item.constraint_ids for item in value.steps
+            }
+            after_constraints = {
+                item.step_id: item.constraint_ids for item in resulting.steps
+            }
+            if before_constraints == after_constraints:
+                preserved, _, _ = self._branch_projection(value, set())
+                return CegarPlanRefinementDecision(
+                    original_plan_id=value.plan_id,
+                    resulting_plan=value,
+                    stop_reason=CegarPlanStopReason.NO_PROGRESS,
+                    trace_kind=kind,
+                    iteration=iteration,
+                    refined_predicates=predicates,
+                    affected_step_ids=suffix,
+                    preserved_step_ids=preserved,
+                    refinement_source_ids=source_tuple,
+                    limits=limits,
+                )
+            preserved, _, _ = self._branch_projection(resulting, set(suffix))
+            return CegarPlanRefinementDecision(
+                original_plan_id=value.plan_id,
+                resulting_plan=resulting,
+                stop_reason=CegarPlanStopReason.ABSTRACTION_REFINED,
+                trace_kind=kind,
+                iteration=iteration + 1,
+                refined_predicates=predicates,
+                affected_step_ids=suffix,
+                preserved_step_ids=preserved,
+                refinement_source_ids=source_tuple,
+                limits=limits,
+            )
+
+        # REAL counterexample: reopen only the smallest dependent suffix.
+        event_id = failure_event_id or "event:cegar-real-counterexample"
+        diagnostic = diagnostic_id or "diagnostic:cegar-real-counterexample"
+        if observation is not None:
+            delta = self.replan_affected_suffix(
+                value,
+                observation,
+                observed_at_milliseconds=observed_at_milliseconds,
+                now_milliseconds=now_milliseconds,
+                deadline_milliseconds=deadline_milliseconds,
+                cancelled=cancelled,
+                required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
+            )
+        else:
+            delta = self.replan_affected_suffix(
+                value,
+                anchor_step_ids=anchors,
+                failure_event_id=event_id,
+                diagnostic_id=diagnostic,
+                cancelled=cancelled,
+                required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
+            )
+        if delta.stop_reason is not DeltaReplanStopReason.REPLAN_REQUIRED:
+            mapped = {
+                DeltaReplanStopReason.CANCELLED: CegarPlanStopReason.CANCELLED,
+                DeltaReplanStopReason.REPAIR_BOUND_EXCEEDED: CegarPlanStopReason.BUDGET_EXHAUSTED,
+            }.get(delta.stop_reason, CegarPlanStopReason.NO_PROGRESS)
+            return CegarPlanRefinementDecision(
+                original_plan_id=value.plan_id,
+                resulting_plan=delta.resulting_plan,
+                stop_reason=mapped,
+                trace_kind=kind,
+                iteration=iteration,
+                refined_predicates=predicates,
+                affected_step_ids=delta.direct_failure_step_ids or anchors,
+                preserved_step_ids=delta.preserved_step_ids,
+                invalidated_step_ids=delta.invalidated_step_ids,
+                refinement_source_ids=source_tuple,
+                delta_replan=delta,
+                limits=limits,
+            )
+        return CegarPlanRefinementDecision(
+            original_plan_id=value.plan_id,
+            resulting_plan=delta.resulting_plan,
+            stop_reason=CegarPlanStopReason.REPLAN_REQUIRED,
+            trace_kind=kind,
+            iteration=iteration + 1,
+            refined_predicates=predicates,
+            affected_step_ids=delta.invalidated_step_ids or suffix,
+            preserved_step_ids=delta.preserved_step_ids,
+            invalidated_step_ids=delta.invalidated_step_ids,
+            refinement_source_ids=source_tuple,
+            delta_replan=delta,
+            limits=limits,
+        )
+
 
 def compute_affected_plan_suffix(
     plan: DeltaPlan | Mapping[str, Any],
@@ -4228,6 +4657,539 @@ def _require_preserved_assume_guarantees(
         )
 
 
+class CegarPlanTraceKind(str, Enum):
+    """How an abstract plan counterexample was classified for refinement."""
+
+    SPURIOUS = "spurious"
+    REAL = "real"
+    UNKNOWN = "unknown"
+    UNAVAILABLE = "unavailable"
+
+
+class CegarPlanStopReason(str, Enum):
+    """Typed terminal disposition for one bounded CEGAR plan-refinement step."""
+
+    ABSTRACTION_REFINED = "abstraction_refined"
+    REPLAN_REQUIRED = "replan_required"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    UNAVAILABLE = "unavailable"
+    NONQUALIFIED_ASSISTANCE = "nonqualified_assistance"
+    NO_PROGRESS = "no_progress"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True)
+class CegarPlanRefinementLimits:
+    """Hard bounds for one CEGAR plan-refinement decision."""
+
+    max_iterations: int = 8
+    max_predicates: int = 16
+    max_affected_steps: int = 64
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            _positive(getattr(self, name), name)
+
+    def to_dict(self) -> dict[str, int]:
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CegarPlanRefinementLimits":
+        if not isinstance(payload, Mapping) or set(payload) != set(cls.__dataclass_fields__):
+            raise ReplannerValidationError(
+                "cegar plan refinement limits must use the closed schema"
+            )
+        return cls(**dict(payload))
+
+
+@dataclass(frozen=True)
+class CegarPlanPredicateRefinement:
+    """Advisory predicate bound into an affected plan region.
+
+    Authority is capped at advisory/hypothesis.  These hints never close a
+    witness and never grant completion authority.
+    """
+
+    predicate_id: str
+    origin: str
+    authority: str = "advisory"
+    statement: str = ""
+    implicated_step_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "predicate_id",
+            _delta_identifier(self.predicate_id, "predicate_id"),
+        )
+        origin = str(self.origin or "").strip().lower()
+        if origin not in _CEGAR_HINT_ORIGINS:
+            raise ReplannerValidationError(
+                "cegar predicate origin must be one of "
+                + ", ".join(sorted(_CEGAR_HINT_ORIGINS))
+            )
+        object.__setattr__(self, "origin", origin)
+        authority = str(self.authority or "advisory").strip().lower() or "advisory"
+        if authority not in _CEGAR_HINT_AUTHORITIES:
+            raise ReplannerValidationError(
+                "cegar predicate authority must be none, advisory, or hypothesis"
+            )
+        object.__setattr__(self, "authority", authority)
+        statement = str(self.statement or "").strip()
+        if "\x00" in statement:
+            raise ReplannerValidationError("cegar predicate statement is invalid")
+        object.__setattr__(self, "statement", statement)
+        object.__setattr__(
+            self,
+            "implicated_step_ids",
+            _delta_identifiers(self.implicated_step_ids, "implicated_step_ids"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "predicate_id": self.predicate_id,
+            "origin": self.origin,
+            "authority": self.authority,
+            "statement": self.statement,
+            "implicated_step_ids": list(self.implicated_step_ids),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CegarPlanPredicateRefinement":
+        if not isinstance(payload, Mapping):
+            raise ReplannerValidationError("cegar predicate refinement must be an object")
+        forbidden = set(payload).intersection(CEGAR_PLAN_REFINEMENT_FORBIDDEN_FIELDS)
+        if forbidden:
+            raise ReplannerValidationError(
+                "operational authority field forbidden in cegar predicate: "
+                + ", ".join(sorted(forbidden))
+            )
+        return cls(
+            predicate_id=str(payload.get("predicate_id") or payload.get("id") or ""),
+            origin=str(payload.get("origin") or ""),
+            authority=str(payload.get("authority") or "advisory"),
+            statement=str(payload.get("statement") or ""),
+            implicated_step_ids=tuple(
+                payload.get("implicated_step_ids")
+                or payload.get("affected_region_ids")
+                or ()
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class CegarPlanRefinementDecision:
+    """Tamper-evident result of one bounded CEGAR plan-refinement step.
+
+    Structural abstraction updates and affected-suffix invalidation are not
+    completion authority.  Verifier-backed witness closure remains separate.
+    """
+
+    SCHEMA: ClassVar[str] = CEGAR_PLAN_REFINEMENT_SCHEMA
+    INTERFACE: ClassVar[str] = CEGAR_PLAN_REFINEMENT_INTERFACE
+
+    original_plan_id: str
+    resulting_plan: DeltaPlan
+    stop_reason: CegarPlanStopReason
+    trace_kind: CegarPlanTraceKind
+    iteration: int
+    refined_predicates: tuple[CegarPlanPredicateRefinement, ...]
+    affected_step_ids: tuple[str, ...]
+    preserved_step_ids: tuple[str, ...]
+    invalidated_step_ids: tuple[str, ...] = ()
+    refinement_source_ids: tuple[str, ...] = ()
+    delta_replan: DeltaReplanDecision | None = None
+    limits: CegarPlanRefinementLimits = field(default_factory=CegarPlanRefinementLimits)
+    completion_authoritative: bool = False
+
+    def __post_init__(self) -> None:
+        plan_id = str(self.original_plan_id or "").strip()
+        if not plan_id or "\x00" in plan_id:
+            raise ReplannerValidationError("original_plan_id is required")
+        object.__setattr__(self, "original_plan_id", plan_id)
+        if not isinstance(self.resulting_plan, DeltaPlan):
+            raise ReplannerValidationError("resulting_plan must be DeltaPlan")
+        object.__setattr__(self, "stop_reason", CegarPlanStopReason(self.stop_reason))
+        object.__setattr__(self, "trace_kind", CegarPlanTraceKind(self.trace_kind))
+        if (
+            isinstance(self.iteration, bool)
+            or not isinstance(self.iteration, int)
+            or self.iteration < 0
+        ):
+            raise ReplannerValidationError("iteration must be a non-negative integer")
+        predicates = tuple(
+            item
+            if isinstance(item, CegarPlanPredicateRefinement)
+            else CegarPlanPredicateRefinement.from_dict(item)
+            for item in self.refined_predicates
+        )
+        object.__setattr__(self, "refined_predicates", predicates)
+        object.__setattr__(
+            self,
+            "affected_step_ids",
+            _delta_identifiers(self.affected_step_ids, "affected_step_ids"),
+        )
+        object.__setattr__(
+            self,
+            "preserved_step_ids",
+            _delta_identifiers(self.preserved_step_ids, "preserved_step_ids"),
+        )
+        object.__setattr__(
+            self,
+            "invalidated_step_ids",
+            _delta_identifiers(self.invalidated_step_ids, "invalidated_step_ids"),
+        )
+        object.__setattr__(
+            self,
+            "refinement_source_ids",
+            _delta_identifiers(self.refinement_source_ids, "refinement_source_ids"),
+        )
+        if self.delta_replan is not None and not isinstance(
+            self.delta_replan, DeltaReplanDecision
+        ):
+            raise ReplannerValidationError("delta_replan must be DeltaReplanDecision or None")
+        limits = self.limits
+        if isinstance(limits, Mapping):
+            limits = CegarPlanRefinementLimits.from_dict(limits)
+        if not isinstance(limits, CegarPlanRefinementLimits):
+            raise ReplannerValidationError("limits must be CegarPlanRefinementLimits")
+        object.__setattr__(self, "limits", limits)
+        if self.completion_authoritative:
+            raise ReplannerValidationError(
+                "cegar plan refinement cannot grant completion authority"
+            )
+        object.__setattr__(self, "completion_authoritative", False)
+        if len(predicates) > limits.max_predicates:
+            raise ReplannerValidationError("refined predicate budget exceeded")
+        if len(self.affected_step_ids) > limits.max_affected_steps:
+            raise ReplannerValidationError("affected step budget exceeded")
+
+    @property
+    def changed(self) -> bool:
+        return self.stop_reason in {
+            CegarPlanStopReason.ABSTRACTION_REFINED,
+            CegarPlanStopReason.REPLAN_REQUIRED,
+        }
+
+    @property
+    def refined_predicate_ids(self) -> tuple[str, ...]:
+        return tuple(item.predicate_id for item in self.refined_predicates)
+
+    @property
+    def decision_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": CEGAR_PLAN_REFINEMENT_SCHEMA,
+            "interface": CEGAR_PLAN_REFINEMENT_INTERFACE,
+            "algorithm": CEGAR_PLAN_REFINEMENT_ALGORITHM,
+            "algorithm_version": CEGAR_PLAN_REFINEMENT_ALGORITHM_VERSION,
+            "replanner_version": FORMAL_REPLANNER_VERSION,
+            "original_plan_id": self.original_plan_id,
+            "resulting_plan": self.resulting_plan.to_dict(),
+            "stop_reason": self.stop_reason.value,
+            "trace_kind": self.trace_kind.value,
+            "iteration": self.iteration,
+            "refined_predicates": [item.to_dict() for item in self.refined_predicates],
+            "refined_predicate_ids": list(self.refined_predicate_ids),
+            "affected_step_ids": list(self.affected_step_ids),
+            "preserved_step_ids": list(self.preserved_step_ids),
+            "invalidated_step_ids": list(self.invalidated_step_ids),
+            "refinement_source_ids": list(self.refinement_source_ids),
+            "delta_replan": (
+                None if self.delta_replan is None else self.delta_replan.to_dict()
+            ),
+            "limits": self.limits.to_dict(),
+            "completion_authoritative": False,
+            "changed": self.changed,
+        }
+        if include_identity:
+            payload["decision_id"] = self.decision_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CegarPlanRefinementDecision":
+        if not isinstance(payload, Mapping):
+            raise ReplannerValidationError("cegar plan refinement decision must be an object")
+        forbidden = set(payload).intersection(CEGAR_PLAN_REFINEMENT_FORBIDDEN_FIELDS)
+        if forbidden:
+            raise ReplannerValidationError(
+                "operational authority field forbidden in cegar decision: "
+                + ", ".join(sorted(forbidden))
+            )
+        if payload.get("schema") not in {None, "", CEGAR_PLAN_REFINEMENT_SCHEMA}:
+            raise ReplannerValidationError("unsupported cegar plan refinement schema")
+        if payload.get("interface") not in {None, "", CEGAR_PLAN_REFINEMENT_INTERFACE}:
+            raise ReplannerValidationError("unsupported cegar plan refinement interface")
+        if bool(payload.get("completion_authoritative")):
+            raise ReplannerValidationError(
+                "cegar plan refinement cannot grant completion authority"
+            )
+        delta_raw = payload.get("delta_replan")
+        delta = (
+            None
+            if delta_raw in (None, {})
+            else DeltaReplanDecision.from_dict(delta_raw)
+        )
+        result = cls(
+            original_plan_id=str(payload.get("original_plan_id") or ""),
+            resulting_plan=DeltaPlan.from_dict(payload.get("resulting_plan") or {}),
+            stop_reason=payload.get("stop_reason", CegarPlanStopReason.NO_PROGRESS),
+            trace_kind=payload.get("trace_kind", CegarPlanTraceKind.UNKNOWN),
+            iteration=payload.get("iteration", 0),
+            refined_predicates=tuple(payload.get("refined_predicates") or ()),
+            affected_step_ids=tuple(payload.get("affected_step_ids") or ()),
+            preserved_step_ids=tuple(payload.get("preserved_step_ids") or ()),
+            invalidated_step_ids=tuple(payload.get("invalidated_step_ids") or ()),
+            refinement_source_ids=tuple(payload.get("refinement_source_ids") or ()),
+            delta_replan=delta,
+            limits=payload.get("limits") or CegarPlanRefinementLimits(),
+            completion_authoritative=False,
+        )
+        claimed = payload.get("decision_id")
+        if claimed and claimed != result.decision_id:
+            raise ReplannerValidationError("cegar decision identity does not match content")
+        return result
+
+
+def _reject_cegar_forbidden_fields(payload: Mapping[str, Any] | None, label: str) -> None:
+    if payload is None:
+        return
+    if not isinstance(payload, Mapping):
+        raise ReplannerValidationError(f"{label} must be an object")
+    forbidden = set(payload).intersection(CEGAR_PLAN_REFINEMENT_FORBIDDEN_FIELDS)
+    if forbidden:
+        raise ReplannerValidationError(
+            f"operational authority field forbidden in {label}: "
+            + ", ".join(sorted(forbidden))
+        )
+
+
+def _cegar_limits(
+    value: CegarPlanRefinementLimits | Mapping[str, Any] | None,
+) -> CegarPlanRefinementLimits:
+    if value is None:
+        return CegarPlanRefinementLimits()
+    if isinstance(value, CegarPlanRefinementLimits):
+        return value
+    return CegarPlanRefinementLimits.from_dict(value)
+
+
+def _normalize_cegar_predicates(
+    hints: Iterable[CegarPlanPredicateRefinement | Mapping[str, Any]] = (),
+    *,
+    default_steps: Sequence[str] = (),
+) -> tuple[CegarPlanPredicateRefinement, ...]:
+    result: list[CegarPlanPredicateRefinement] = []
+    seen: set[str] = set()
+    defaults = _delta_identifiers(default_steps, "default_steps") if default_steps else ()
+    for item in hints:
+        hint = (
+            item
+            if isinstance(item, CegarPlanPredicateRefinement)
+            else CegarPlanPredicateRefinement.from_dict(item)
+        )
+        if not hint.implicated_step_ids and defaults:
+            hint = replace(hint, implicated_step_ids=defaults)
+        if hint.predicate_id in seen:
+            continue
+        seen.add(hint.predicate_id)
+        result.append(hint)
+    return tuple(sorted(result, key=lambda item: item.predicate_id))
+
+
+def _predicates_from_counterexample_refinement(
+    payload: Mapping[str, Any] | None,
+) -> tuple[CegarPlanPredicateRefinement, ...]:
+    if payload is None:
+        return ()
+    _reject_cegar_forbidden_fields(payload, "counterexample_refinement")
+    if bool(payload.get("completion_authoritative")):
+        raise ReplannerValidationError(
+            "cegar plan refinement cannot grant completion authority"
+        )
+    if bool(payload.get("claims_interpolant")):
+        raise ReplannerValidationError(
+            "unsat-core counterexample refinement must never claim interpolant status"
+        )
+    regions = tuple(payload.get("affected_region_ids") or ())
+    raw_hints = payload.get("predicate_hints") or ()
+    if not isinstance(raw_hints, Sequence) or isinstance(raw_hints, (str, bytes, bytearray)):
+        raise ReplannerValidationError("predicate_hints must be a sequence")
+    normalized: list[dict[str, Any]] = []
+    for item in raw_hints:
+        if not isinstance(item, Mapping):
+            raise ReplannerValidationError("predicate hint must be an object")
+        _reject_cegar_forbidden_fields(item, "predicate hint")
+        origin = str(item.get("origin") or "counterexample_divergence").strip().lower()
+        if origin == "unsat_core_member":
+            origin = "unsat_core_member"
+        predicate_id = str(
+            item.get("predicate_id") or item.get("id") or item.get("name") or ""
+        ).strip()
+        if not predicate_id:
+            continue
+        normalized.append(
+            {
+                "predicate_id": predicate_id
+                if ":" in predicate_id
+                else f"predicate:{predicate_id}",
+                "origin": origin if origin in _CEGAR_HINT_ORIGINS else "counterexample_divergence",
+                "authority": str(item.get("authority") or "advisory"),
+                "statement": str(item.get("statement") or item.get("summary") or ""),
+                "implicated_step_ids": tuple(
+                    item.get("implicated_step_ids")
+                    or item.get("affected_region_ids")
+                    or regions
+                ),
+            }
+        )
+    core = payload.get("unsat_core")
+    if isinstance(core, Mapping):
+        _reject_cegar_forbidden_fields(core, "unsat_core")
+        if bool(core.get("claims_interpolant")):
+            raise ReplannerValidationError(
+                "unsat core must never be called an interpolant"
+            )
+        for member in core.get("refined_core") or core.get("original_core") or ():
+            member_id = str(member or "").strip()
+            if not member_id:
+                continue
+            predicate_id = (
+                member_id
+                if member_id.startswith("predicate:")
+                else f"predicate:{member_id}"
+            )
+            normalized.append(
+                {
+                    "predicate_id": predicate_id,
+                    "origin": "unsat_core",
+                    "authority": "advisory",
+                    "statement": f"Unsat-core member {member_id}",
+                    "implicated_step_ids": regions,
+                }
+            )
+    return _normalize_cegar_predicates(normalized, default_steps=regions)
+
+
+def _predicates_from_interpolation_assistance(
+    payload: Mapping[str, Any] | None,
+) -> tuple[CegarPlanPredicateRefinement, ...] | CegarPlanStopReason:
+    if payload is None:
+        return ()
+    _reject_cegar_forbidden_fields(payload, "interpolation_assistance")
+    if bool(payload.get("completion_authoritative")):
+        raise ReplannerValidationError(
+            "cegar plan refinement cannot grant completion authority"
+        )
+    qualified = bool(payload.get("qualified"))
+    validated = bool(payload.get("validated_interpolant"))
+    if not qualified or not validated:
+        return CegarPlanStopReason.NONQUALIFIED_ASSISTANCE
+    regions = tuple(payload.get("affected_region_ids") or ())
+    raw_hints = payload.get("predicate_hints") or ()
+    if not isinstance(raw_hints, Sequence) or isinstance(raw_hints, (str, bytes, bytearray)):
+        raise ReplannerValidationError("predicate_hints must be a sequence")
+    normalized: list[dict[str, Any]] = []
+    for item in raw_hints:
+        if not isinstance(item, Mapping):
+            raise ReplannerValidationError("predicate hint must be an object")
+        _reject_cegar_forbidden_fields(item, "predicate hint")
+        origin = str(item.get("origin") or "validated_interpolant").strip().lower()
+        if origin not in _CEGAR_HINT_ORIGINS:
+            origin = "validated_interpolant"
+        predicate_id = str(
+            item.get("predicate_id") or item.get("id") or item.get("name") or ""
+        ).strip()
+        if not predicate_id:
+            continue
+        normalized.append(
+            {
+                "predicate_id": predicate_id
+                if ":" in predicate_id
+                else f"predicate:{predicate_id}",
+                "origin": origin,
+                "authority": str(item.get("authority") or "advisory"),
+                "statement": str(item.get("statement") or ""),
+                "implicated_step_ids": tuple(
+                    item.get("implicated_step_ids")
+                    or item.get("affected_region_ids")
+                    or regions
+                ),
+            }
+        )
+    return _normalize_cegar_predicates(normalized, default_steps=regions)
+
+
+def _resolve_cegar_anchors(
+    plan: DeltaPlan,
+    *,
+    anchor_step_ids: Iterable[str] | None,
+    affected_region_ids: Iterable[str],
+    predicates: Sequence[CegarPlanPredicateRefinement],
+) -> tuple[str, ...]:
+    known = {item.step_id for item in plan.steps}
+    if anchor_step_ids is not None:
+        anchors = _delta_identifiers(anchor_step_ids, "anchor_step_ids")
+        if set(anchors).difference(known):
+            raise ReplannerValidationError("anchor_step_ids names a step outside the plan")
+        if not anchors:
+            raise ReplannerValidationError("anchor_step_ids must be non-empty")
+        return anchors
+    candidates: set[str] = set()
+    for region in affected_region_ids:
+        text = str(region or "").strip()
+        if text in known:
+            candidates.add(text)
+    for hint in predicates:
+        candidates.update(step_id for step_id in hint.implicated_step_ids if step_id in known)
+    if not candidates:
+        # Fall back to constraint/obligation/conflict bindings that match regions.
+        region_set = {str(item).strip() for item in affected_region_ids if str(item).strip()}
+        for step in plan.steps:
+            bindings = (
+                set(step.constraint_ids)
+                | set(step.obligation_ids)
+                | set(step.conflict_scope_ids)
+                | set(step.validation_signature_ids)
+            )
+            if bindings.intersection(region_set):
+                candidates.add(step.step_id)
+    if not candidates:
+        raise ReplannerValidationError(
+            "cegar plan refinement requires anchors, implicated steps, or matching affected regions"
+        )
+    return tuple(sorted(candidates))
+
+
+def _apply_spurious_predicate_refinement(
+    plan: DeltaPlan,
+    *,
+    anchors: Sequence[str],
+    predicates: Sequence[CegarPlanPredicateRefinement],
+) -> DeltaPlan:
+    affected = set(FormalDeltaReplanner._dependent_suffix(plan, anchors))
+    predicate_by_step: dict[str, set[str]] = {step_id: set() for step_id in affected}
+    for hint in predicates:
+        targets = set(hint.implicated_step_ids).intersection(affected) or set(affected)
+        for step_id in targets:
+            predicate_by_step.setdefault(step_id, set()).add(hint.predicate_id)
+    steps: list[DeltaPlanStep] = []
+    for item in plan.steps:
+        added = predicate_by_step.get(item.step_id) or set()
+        if not added:
+            steps.append(item)
+            continue
+        steps.append(
+            replace(
+                item,
+                constraint_ids=tuple(sorted(set(item.constraint_ids).union(added))),
+            )
+        )
+    return DeltaPlan(scope=plan.scope, steps=tuple(steps))
+
+
 CounterexampleDeltaReplanner = FormalDeltaReplanner
 DeltaReplanner = FormalDeltaReplanner
 DeltaReplanResult = DeltaReplanDecision
@@ -4235,6 +5197,7 @@ DeltaReplanBudget = DeltaReplanLimits
 DeltaPlanNode = DeltaPlanStep
 FormalPlanReplanner = FormalReplanner
 AffectedSuffixReplanner = FormalDeltaReplanner
+CegarPlanRefiner = FormalDeltaReplanner
 
 
 def replan_plan_delta(
@@ -4301,6 +5264,60 @@ def replan_affected_suffix(
         deadline_milliseconds=deadline_milliseconds,
         cancelled=cancelled,
         required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
+    )
+
+
+def refine_cegar_plan(
+    plan: DeltaPlan | Mapping[str, Any],
+    *,
+    trace_kind: CegarPlanTraceKind | str,
+    predicate_hints: Iterable[CegarPlanPredicateRefinement | Mapping[str, Any]] = (),
+    affected_region_ids: Iterable[str] = (),
+    anchor_step_ids: Iterable[str] | None = None,
+    counterexample_refinement: Mapping[str, Any] | None = None,
+    interpolation_assistance: Mapping[str, Any] | None = None,
+    observation: BranchFailureObservation | Mapping[str, Any] | None = None,
+    failure_event_id: str | None = None,
+    diagnostic_id: str | None = None,
+    failure_memory: PlanFailureMemory | None = None,
+    limits: DeltaReplanLimits | Mapping[str, Any] | None = None,
+    observed_at_milliseconds: int = 1,
+    now_milliseconds: int | None = None,
+    deadline_milliseconds: int | None = None,
+    cancelled: Any = None,
+    required_preserved_guarantee_step_ids: Iterable[str] = (),
+    cegar_limits: CegarPlanRefinementLimits | Mapping[str, Any] | None = None,
+    iteration: int = 0,
+) -> CegarPlanRefinementDecision:
+    """Canonical CEGAR plan refinement over :class:`FormalDeltaReplanner`.
+
+    This is not a second planner and not a competing CEGAR subsystem.  It
+    refines implicated abstraction constraints for spurious traces, reopens
+    only the smallest dependent suffix for real counterexamples, and never
+    grants completion authority.
+    """
+
+    return FormalDeltaReplanner(
+        failure_memory=failure_memory,
+        limits=limits,
+    ).refine_cegar_plan(
+        plan,
+        trace_kind=trace_kind,
+        predicate_hints=predicate_hints,
+        affected_region_ids=affected_region_ids,
+        anchor_step_ids=anchor_step_ids,
+        counterexample_refinement=counterexample_refinement,
+        interpolation_assistance=interpolation_assistance,
+        observation=observation,
+        failure_event_id=failure_event_id,
+        diagnostic_id=diagnostic_id,
+        observed_at_milliseconds=observed_at_milliseconds,
+        now_milliseconds=now_milliseconds,
+        deadline_milliseconds=deadline_milliseconds,
+        cancelled=cancelled,
+        required_preserved_guarantee_step_ids=required_preserved_guarantee_step_ids,
+        cegar_limits=cegar_limits,
+        iteration=iteration,
     )
 
 
@@ -4488,6 +5505,11 @@ __all__ = [
     "AFFECTED_SUFFIX_REPLAN_INTERFACE",
     "AFFECTED_SUFFIX_REPLAN_SCHEMA",
     "BOUNDED_REFINEMENT_EVIDENCE_ID",
+    "CEGAR_PLAN_REFINEMENT_ALGORITHM",
+    "CEGAR_PLAN_REFINEMENT_ALGORITHM_VERSION",
+    "CEGAR_PLAN_REFINEMENT_FORBIDDEN_FIELDS",
+    "CEGAR_PLAN_REFINEMENT_INTERFACE",
+    "CEGAR_PLAN_REFINEMENT_SCHEMA",
     "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID",
     "CODEX_REPAIR_PACKET_SCHEMA",
     "DELTA_PLAN_SCHEMA",
@@ -4503,6 +5525,12 @@ __all__ = [
     "RESPONSIVE_REPLAN_SIGNAL_KINDS",
     "VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA",
     "AffectedSuffixReplanner",
+    "CegarPlanPredicateRefinement",
+    "CegarPlanRefinementDecision",
+    "CegarPlanRefinementLimits",
+    "CegarPlanRefiner",
+    "CegarPlanStopReason",
+    "CegarPlanTraceKind",
     "CodexRepairPacket",
     "CounterexampleDeltaReplanner",
     "DeltaPlan",
@@ -4543,6 +5571,7 @@ __all__ = [
     "evaluate_verifier_backed_closure",
     "generate_plan_repairs",
     "preserved_assume_guarantee_step_ids",
+    "refine_cegar_plan",
     "replan_affected_suffix",
     "replan_plan_delta",
     "replan_if_changed",
