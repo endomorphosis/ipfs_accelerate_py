@@ -171,6 +171,24 @@ def test_stop_signal_handlers_survive_external_sigterm_ignores_sigterm() -> None
     assert signal.getsignal(signal.SIGTERM) == prior
 
 
+def test_restore_control_plane_modes_undoes_umask_strip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import stat as stat_module
+
+    from test.api import conftest as api_conftest
+
+    script = tmp_path / "scripts" / "run_agent_supervisor_efficiency_state_hardening.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("print(1)\n", encoding="utf-8")
+    script.chmod(0o664)
+    api_conftest._snapshot_control_plane_modes(tmp_path)
+    script.chmod(0o644)
+    assert stat_module.S_IMODE(script.stat().st_mode) == 0o644
+    api_conftest._restore_control_plane_modes()
+    assert stat_module.S_IMODE(script.stat().st_mode) == 0o664
+
+
 def test_lane_status_rejects_collection_time_future_worker_observation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
