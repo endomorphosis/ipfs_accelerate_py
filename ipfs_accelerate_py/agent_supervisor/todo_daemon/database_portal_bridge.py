@@ -21525,6 +21525,32 @@ class DatabasePortalExecutionBridge:
                     for terminal in sources)):
             raise DatabasePortalBridgeError("retained callback recovery requires exact source seed before dispatch")
 
+    def _bind_database_attempt_feedback(
+        self, daemon, attempt, record, *, paths, binding
+    ):
+        from .database_attempt_feedback import read_database_attempt_feedback
+        from .implementation_daemon import parse_task_text
+
+        binder = getattr(daemon, "bind_database_attempt_feedback", None)
+        if callable(binder):
+            projection = self._verify_projection(paths, binding)
+            tasks = parse_task_text(
+                projection,
+                path=paths.task_projection,
+                task_header_prefix=f"## {attempt.task_alias}",
+            )
+            if len(tasks) != 1:
+                return
+            feedback = read_database_attempt_feedback(
+                self.task_source,
+                attempt,
+                record,
+                binding=binding,
+                portal_task=tasks[0],
+            )
+            if feedback is not None:
+                binder(feedback)
+
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
@@ -21736,6 +21762,7 @@ class DatabasePortalExecutionBridge:
                     "Portal daemon cannot bind the admitted task execution route"
                 )
             bind_route(execution_route_binding)
+        self._bind_database_attempt_feedback(daemon, attempt, record, paths=paths, binding=binding)
         try:
             quota_fallback_continued = False
             ordinary_passes = 0

@@ -86251,6 +86251,16 @@ class PortalImplementationDaemon:
             f"{self._authoritative_validation_environment_guidance()}\n"
         )
 
+    def bind_database_attempt_feedback(self, feedback: Mapping[str, Any]) -> None:
+        """Bind diagnostic data only; never import retry or context authority."""
+        from .database_attempt_feedback import freeze_database_attempt_feedback
+
+        value = freeze_database_attempt_feedback(feedback)
+        previous = getattr(self, "_database_attempt_feedback", None)
+        if previous is not None and previous != value:
+            raise ValueError("database attempt diagnostic binding changed")
+        self._database_attempt_feedback = value
+
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
         if self._implementation_cancel_requested():
             raise ImplementationRetryDeferred("implementation dispatch cancelled")
@@ -86432,6 +86442,32 @@ class PortalImplementationDaemon:
                     "## Prior attempt seed recovery\n"
                     f"{seed_guidance}\n"
                 )
+        if attempt == 1:
+            from .database_attempt_feedback import render_database_attempt_feedback
+
+            feedback = render_database_attempt_feedback(
+                getattr(self, "_database_attempt_feedback", None), task
+            )
+            if feedback:
+                candidate = rendered.rstrip() + feedback
+                byte_limit = self._task_llm_context_budget_bytes(task)
+                tokens, token_limit = self._implementation_prompt_token_usage(
+                    task, candidate
+                )
+                if (
+                    byte_limit is None or len(candidate.encode("utf-8")) <= byte_limit
+                ) and tokens <= token_limit:
+                    rendered = candidate
+                else:
+                    self._decision_runtime_route(
+                        "implementation_context",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": 1,
+                            "mode": "database_attempt_diagnostic_omitted",
+                            "reason": "provider_input_budget",
+                        },
+                    )
         self._require_implementation_prompt_byte_budget(task, rendered)
         self._require_implementation_prompt_token_budget(task, rendered)
         if attempt > 1 and seed_guidance:
