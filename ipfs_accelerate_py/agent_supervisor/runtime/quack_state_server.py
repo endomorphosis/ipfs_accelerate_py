@@ -212,6 +212,9 @@ OWNER_COMMAND_PROCESSING_NAME: Final[re.Pattern[str]] = re.compile(
 MUTATION_PROCESSING_NAME: Final[re.Pattern[str]] = re.compile(
     r"^(?P<request_id>b[a-z2-7]{40,127})\.processing\.json$"
 )
+MUTATION_RETAINED_RESULT_NAME: Final[re.Pattern[str]] = re.compile(
+    r"^(?:b[a-z2-7]{40,127}|[0-9a-f]{32})\.done\.json$"
+)
 MUTATION_MAX_DIRECTORY_ENTRIES: Final[int] = 4_096
 MUTATION_MAX_PER_PASS: Final[int] = 32
 _MUTATION_REQUEST_FIELDS: Final[frozenset[str]] = frozenset(
@@ -5800,9 +5803,30 @@ class QuackStateServer:
             ) from exc
         return result
 
+    @staticmethod
+    def _unsettled_mutation_entries(inbox: Path) -> tuple[Path, ...]:
+        """Bound pending work without charging retained results to that budget.
+
+        Result filenames only exclude regular retained files from scheduling;
+        replay still independently authenticates their contents. Preserve them
+        in place. Unknown entries and symlinks retain the population limit.
+        """
+        entries: list[Path] = []
+        with os.scandir(inbox) as directory:
+            for entry in directory:
+                if (
+                    MUTATION_RETAINED_RESULT_NAME.fullmatch(entry.name)
+                    and entry.is_file(follow_symlinks=False)
+                ):
+                    continue
+                entries.append(inbox / entry.name)
+                if len(entries) > MUTATION_MAX_DIRECTORY_ENTRIES:
+                    raise QuackStateServerMutationError("inbox_population_exceeded")
+        return tuple(entries)
+
     def _recover_stale_mutation_claims(self, inbox: Path) -> None:
         now = time.time()
-        for path in tuple(inbox.iterdir())[:MUTATION_MAX_DIRECTORY_ENTRIES]:
+        for path in self._unsettled_mutation_entries(inbox):
             command_match = OWNER_COMMAND_PROCESSING_NAME.fullmatch(path.name)
             if command_match is not None:
                 self._service_owner_command_request(
@@ -6226,9 +6250,7 @@ class QuackStateServer:
                         "mutation inbox is not a safe owner directory"
                     )
                 os.chmod(inbox, 0o700)
-                entries = tuple(inbox.iterdir())
-                if len(entries) > MUTATION_MAX_DIRECTORY_ENTRIES:
-                    raise QuackStateServerMutationError("inbox_population_exceeded")
+                entries = self._unsettled_mutation_entries(inbox)
                 self._recover_stale_mutation_claims(inbox)
                 if self._lifecycle is not ServerLifecycle.READY:
                     return 0
