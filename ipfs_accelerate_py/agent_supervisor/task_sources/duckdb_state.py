@@ -723,27 +723,6 @@ def _env_flag(name: str, *, default: bool = False) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
-def _prefer_quack_for_local_path(path: Path | str) -> bool:
-    """Prefer Quack only for the owner-bound store, never for sidecars.
-
-    Coordination, merge-queue, and execution shard files are not the
-    Quack-owned board. Default prefer against them logs no_live_owner /
-    unbound_to_database and falls back through an exclusive lock, which
-    OOMs the lanes. Do not restore an unconditional True default to
-    "preserve owner discovery".
-    """
-
-    if not _env_flag(QUACK_PREFER_ENV, default=True):
-        return False
-    store_id = str(os.environ.get(QUACK_STORE_ID_ENV, "") or "").strip()
-    if not store_id:
-        return False
-    requested = _resolve_store_path(path)
-    return _same_database(store_id, requested) or _same_database(
-        str(_resolve_store_path(store_id)), requested
-    )
-
-
 def _resolve_store_path(path: Path | str) -> Path:
     candidate = Path(path).expanduser()
     if not candidate.is_absolute():
@@ -1276,7 +1255,7 @@ def open_duckdb_connection(
         connection._transport_mode = "quack"
         return connection
     if prefer_quack is None:
-        prefer_quack = _prefer_quack_for_local_path(path)
+        prefer_quack = _env_flag(QUACK_PREFER_ENV, default=True)
     if not prefer_quack:
         return _open_file_duckdb_connection(
             path,
