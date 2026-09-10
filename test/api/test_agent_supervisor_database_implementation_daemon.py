@@ -2086,6 +2086,193 @@ def test_expired_unadmitted_claim_is_exactly_requeued_and_reclaimed(
         replacement.close()
 
 
+def test_foreign_session_in_progress_without_worker_is_requeued_and_claimed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    first = _open_daemon(
+        tmp_path,
+        session="session:prior-wave",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+    )
+    try:
+        first.materialize_population(_population(1))
+
+        def crash_before_attempt_insert(*args: object, **kwargs: object) -> object:
+            raise SystemExit("simulated prior-wave death before attempt insert")
+
+        monkeypatch.setattr(
+            first,
+            "_insert_attempt_from_claim",
+            crash_before_attempt_insert,
+        )
+        with pytest.raises(SystemExit, match="prior-wave death"):
+            first.claim_next()
+        leases = first.coordinator.list_active_leases(
+            lease_kind="task",
+            owner_session_id="session:prior-wave",
+        )
+        assert len(leases) == 1
+        original_claim = first.coordinator.get_task_claim(leases[0].claim_id)
+        assert original_claim is not None
+        task = first.task_source.get(original_claim.task_cid)
+        assert task is not None and task.status == "in_progress"
+        assert original_claim.state.value == "accepted"
+    finally:
+        first.close()
+
+    successor = _open_daemon(
+        tmp_path,
+        session="session:successor-wave",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+    )
+    try:
+        result = successor.run_once()
+        assert result["implementation_result"]["status"] == "succeeded"
+        assert result["claim_id"] != original_claim.claim_id
+        assert result["attempt_id"] != original_claim.attempt_id
+        assert len(result["orphan_claim_reconciliations"]) == 1
+        recovery = result["orphan_claim_reconciliations"][0]
+        assert recovery["operation"] == (
+            "automatic_foreign_session_in_progress_requeue"
+        )
+        assert recovery["owner_session_id"] == "session:prior-wave"
+        assert recovery["successor_owner_session_id"] == (
+            "session:successor-wave"
+        )
+        assert recovery["claim_id"] == original_claim.claim_id
+        assert recovery["claim_state"] == "released"
+        assert recovery["provider_execution_admitted"] is False
+        assert recovery["effect_execution_admitted"] is False
+        assert recovery["live_implementation_worker"] is False
+        successor_claim = successor.coordinator.get_task_claim(result["claim_id"])
+        assert successor_claim is not None
+        assert successor_claim.owner_session_id == "session:successor-wave"
+        assert successor_claim.fencing_token > original_claim.fencing_token
+        assert provider_calls == [original_claim.task_cid]
+        assert effect_calls == [original_claim.task_cid]
+    finally:
+        successor.close()
+
+
+def test_foreign_session_in_progress_is_not_stolen_while_worker_is_live(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _open_daemon(tmp_path, session="session:prior-wave")
+    try:
+        first.materialize_population(_population(1))
+
+        def crash_before_attempt_insert(*args: object, **kwargs: object) -> object:
+            raise SystemExit("simulated prior-wave death before attempt insert")
+
+        monkeypatch.setattr(
+            first,
+            "_insert_attempt_from_claim",
+            crash_before_attempt_insert,
+        )
+        with pytest.raises(SystemExit, match="prior-wave death"):
+            first.claim_next()
+        leases = first.coordinator.list_active_leases(
+            lease_kind="task",
+            owner_session_id="session:prior-wave",
+        )
+        original_claim = first.coordinator.get_task_claim(leases[0].claim_id)
+        assert original_claim is not None
+        task = first.task_source.get(original_claim.task_cid)
+        assert task is not None
+        worker_line = (
+            f"python -m ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            f"grok_cli_runner --task {task.task_alias} {original_claim.task_cid}"
+        )
+    finally:
+        first.close()
+
+    successor = _open_daemon(tmp_path, session="session:successor-wave")
+    try:
+        monkeypatch.setattr(
+            successor,
+            "_list_implementation_process_commands",
+            lambda: [worker_line],
+        )
+        result = successor.run_once()
+        assert result["implementation_result"] is None
+        assert result["orphan_claim_reconciliations"] == []
+        parked = successor.task_source.get(original_claim.task_cid)
+        assert parked is not None and parked.status == "in_progress"
+        live_claim = successor.coordinator.get_task_claim(original_claim.claim_id)
+        assert live_claim is not None and live_claim.state.value == "accepted"
+    finally:
+        successor.close()
+
+
+def test_foreign_session_in_progress_missing_claim_is_requeued(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _open_daemon(tmp_path, session="session:prior-wave")
+    try:
+        first.materialize_population(_population(1))
+
+        def crash_before_attempt_insert(*args: object, **kwargs: object) -> object:
+            raise SystemExit("simulated prior-wave death before attempt insert")
+
+        monkeypatch.setattr(
+            first,
+            "_insert_attempt_from_claim",
+            crash_before_attempt_insert,
+        )
+        with pytest.raises(SystemExit, match="prior-wave death"):
+            first.claim_next()
+        leases = first.coordinator.list_active_leases(
+            lease_kind="task",
+            owner_session_id="session:prior-wave",
+        )
+        original_claim = first.coordinator.get_task_claim(leases[0].claim_id)
+        assert original_claim is not None
+        task_cid = original_claim.task_cid
+    finally:
+        first.close()
+
+    successor = _open_daemon(tmp_path, session="session:successor-wave")
+    try:
+        original_get = successor.coordinator.get_task_claim
+
+        def hide_prior_claim(claim_id: str) -> object:
+            if claim_id == original_claim.claim_id:
+                return None
+            return original_get(claim_id)
+
+        monkeypatch.setattr(
+            successor.coordinator,
+            "get_task_claim",
+            hide_prior_claim,
+        )
+        # The exclusive lease still exists; release it so the successor can
+        # claim after control CAS. Missing-claim recovery only mutates control.
+        successor.coordinator.release(
+            successor.coordinator.get_lease(original_claim.lease_id),
+            reason="test-missing-claim-lease-close",
+        )
+        result = successor.run_once()
+        assert result["implementation_result"]["status"] == "succeeded"
+        recovery = result["orphan_claim_reconciliations"][0]
+        assert recovery["operation"] == (
+            "automatic_foreign_session_in_progress_requeue"
+        )
+        assert recovery["claim_missing"] is True
+        assert recovery["claim_id"] == original_claim.claim_id
+        parked = successor.task_source.get(task_cid)
+        assert parked is not None
+        assert parked.status in {"completed", "complete", "done"}
+    finally:
+        successor.close()
+
+
 def test_automatic_claim_exclusions_re_resolve_legacy_on_hold_projection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
