@@ -8,22 +8,37 @@ completion. Legacy queue transitions remain the implementation of record.
 from __future__ import annotations
 
 import json
+import math
 import time
 from dataclasses import replace
 from typing import Any, Mapping
 
 from .merge_queue import (
     MERGE_TARGET_BINDING_SCHEMA,
+    MAX_MERGE_QUEUE_DEFERRAL_SECONDS,
     MergeQueue,
     MergeQueueFenceError,
     _MERGE_QUEUE_SETTLEMENT_COLUMNS,
 )
 
 OPERATIONS = frozenset(
-    {"get", "enqueue", "claim", "dequeue", "owns_claim", "complete", "requeue", "quarantine"}
+    {
+        "get",
+        "enqueue",
+        "claim",
+        "dequeue",
+        "owns_claim",
+        "complete",
+        "requeue",
+        "quarantine",
+        "defer",
+        "pending_requests",
+        "processing_requests",
+    }
 )
 SERVICE_OPERATIONS = frozenset("legacy.merge_queue." + name for name in OPERATIONS)
 SCHEMA = "ipfs_accelerate_py/legacy-owner-merge-queue@1"
+MAX_SNAPSHOT_BYTES = 4 * 1024 * 1024
 
 
 class OwnerMergeQueueError(RuntimeError):
@@ -496,7 +511,38 @@ class _OwnerMergeQueueService:
         consumer = _text(scopes["consumer_id"], "consumer_id")
         result = None
         owns_claim = None
-        if operation == "enqueue":
+        requests_json = None
+        if operation in {"pending_requests", "processing_requests"}:
+            if set(args) != {"limit", "after_request_id"}:
+                raise OwnerMergeQueueError(
+                    "snapshot fields differ from closed contract"
+                )
+            limit = args["limit"]
+            if type(limit) is not int or not 1 <= limit <= 256:
+                raise OwnerMergeQueueError(
+                    "snapshot limit must be an integer from 1 to 256"
+                )
+            cursor = args["after_request_id"]
+            if cursor is not None:
+                cursor = _text(cursor, "after_request_id", empty=True)
+            rows = getattr(self._queue, operation)(limit=limit, after_request_id=cursor)
+            # One page is an observation, never a lease recovery or settlement.
+            # Retain the native fair/oldest order and explicit ID cursor order.
+            encoded = []
+            size = 2
+            for row in rows:
+                item = json.dumps(row.to_dict(), sort_keys=True, allow_nan=False)
+                size += len(item.encode("utf-8")) + 2
+                if size > MAX_SNAPSHOT_BYTES:
+                    raise OwnerMergeQueueError(
+                        "snapshot byte budget exceeded; use a smaller page"
+                    )
+                encoded.append(item)
+            requests_json = "[" + ", ".join(encoded) + "]"
+            # A grant revoked/expired or a detached session during the read
+            # cannot supply a successful observation from the former binding.
+            self._validate_owner()
+        elif operation == "enqueue":
             allowed = {
                 "branch_name",
                 "task_id",
@@ -544,10 +590,12 @@ class _OwnerMergeQueueService:
                     )
         else:
             fields = {"request_id", "claim_token", "claim_generation"}
-            if operation in {"complete", "requeue", "quarantine"}:
+            if operation in {"complete", "requeue", "quarantine", "defer"}:
                 fields.add("metadata_json")
-            if operation in {"requeue", "quarantine"}:
+            if operation in {"requeue", "quarantine", "defer"}:
                 fields.add("reason")
+            if operation == "defer":
+                fields.add("delay_seconds_json")
             if set(args) != fields:
                 raise OwnerMergeQueueError(
                     "claim operation fields differ from closed contract"
@@ -590,6 +638,23 @@ class _OwnerMergeQueueService:
                         reason=_text(args["reason"], "reason", empty=True),
                         metadata=metadata,
                     )
+                elif operation == "defer":
+                    delay_text = _text(args["delay_seconds_json"], "delay_seconds_json")
+                    delay = json.loads(delay_text)
+                    if (
+                        type(delay) not in {int, float}
+                        or not math.isfinite(delay)
+                        or not 0 <= delay <= MAX_MERGE_QUEUE_DEFERRAL_SECONDS
+                    ):
+                        raise OwnerMergeQueueError(
+                            "deferral delay is outside the native bound"
+                        )
+                    self._queue.defer(
+                        request,
+                        reason=_text(args["reason"], "reason", empty=True),
+                        delay_seconds=delay,
+                        metadata=metadata,
+                    )
                 else:
                     self._queue.quarantine(
                         request,
@@ -599,7 +664,7 @@ class _OwnerMergeQueueService:
                 result = self._queue.get(request_id)
         # Legacy floating timestamps/metadata travel losslessly as JSON text:
         # the typed control-plane envelope intentionally forbids floats.
-        return {
+        response = {
             "schema": SCHEMA,
             "owner_identity": dict(self.identity),
             "operation": operation,
@@ -609,6 +674,9 @@ class _OwnerMergeQueueService:
             if result is None
             else json.dumps(result.to_dict(), sort_keys=True, allow_nan=False),
         }
+        if requests_json is not None:
+            response["requests_json"] = requests_json
+        return response
 
 
 class OwnerMergeQueueClient:
