@@ -24,6 +24,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .live_board_probe import COMPLETED
+
 SCHEMA = "agent-supervisor/fleet-watchdog@1"
 HEALTH = {"healthy", "degraded", "blocked", "stalled", "stopped", "unknown", "complete"}
 
@@ -156,12 +158,49 @@ def normalize_probe(board_id: str, result: dict[str, Any]) -> dict[str, Any]:
                 "returncode": result.get("returncode"), "timed_out": result.get("timed_out")}}
 
 
+def _accepted_progress_counts(observation: dict[str, Any]) -> dict[str, int]:
+    details = observation.get("details", {})
+    if not isinstance(details, dict) or details.get("authenticated_task_observation") is not True:
+        return {}
+    counts = details.get("task_counts")
+    completed = None
+    if isinstance(counts, dict):
+        totals = [counts.get(status, 0) for status in COMPLETED]
+        if all(type(value) is int and value >= 0 for value in totals):
+            completed = sum(totals)
+    values = {"completed": completed,
+              "receipts": details.get("completion_receipt_count"),
+              "unsettled_goals": details.get("unsettled_goal_count")}
+    return {key: value for key, value in values.items() if type(value) is int and value >= 0}
+
+
 def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[str, Any], now: float) -> dict[str, Any]:
     state = dict(previous)
     state.update(board_id=board["id"], observed_at=now, observation=observation)
     token = observation.get("progress_token")
-    if token and token != previous.get("progress_token"):
-        state.update(progress_token=token, last_progress_at=now)
+    details = observation.get("details", {})
+    previous_details = previous.get("observation", {}).get("details", {})
+    native_probe = any(isinstance(value, dict) and "authenticated_task_observation" in value
+                       for value in (details, previous_details))
+    if "task_progress_counts" in previous or native_probe:
+        # Status/retry cycling and temporarily missing authority are not new
+        # accepted work. Persist monotone evidence across either kind of churn.
+        prior = dict(previous.get("task_progress_counts",
+                     _accepted_progress_counts(previous.get("observation", {}))))
+        progressed = False
+        for key, value in _accepted_progress_counts(observation).items():
+            if key not in prior:
+                prior[key] = value
+            elif (value < prior[key] if key == "unsettled_goals" else value > prior[key]):
+                prior[key] = value
+                progressed = True
+        state["task_progress_counts"] = prior
+        if progressed:
+            state["last_progress_at"] = now
+    elif token and token != previous.get("progress_token"):
+        state["last_progress_at"] = now
+    if token:
+        state["progress_token"] = token
     state.setdefault("last_progress_at", now)
     # A newly healthy heartbeat is not work progress. Stale busy flags are the
     # adapter's responsibility; only an explicit live activity probe sets busy.

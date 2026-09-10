@@ -56,6 +56,92 @@ def test_control_events_cannot_postpone_task_stall_repair(tmp_path):
     assert "no_task_progress" in incident["observation"]["reason_codes"]
 
 
+def _native_observation(status="in_progress", *, completed=32, receipts=32,
+                        goals=7, authenticated=True, **changes):
+    return _observation(progress_token=f"{status}:{completed}:{receipts}:{goals}",
+        details={"authenticated_task_observation": authenticated,
+                 "task_counts": {"completed": completed, status: 1},
+                 "completion_receipt_count": receipts, "unsettled_goal_count": goals},
+        **changes)
+
+
+def test_native_retry_cycles_cannot_postpone_task_stall_repair(tmp_path):
+    board = _board(tmp_path)
+    runner = Runner(_native_observation())
+    root = tmp_path / "watch"
+    fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    for now, status in ((130, "retrying"), (160, "in_progress"), (181, "retrying")):
+        runner.observation = _native_observation(status)
+        latest = fleet.tick_board(board, root, apply=True, runner=runner, now=now)
+    assert latest["last_progress_at"] == 100
+    assert latest["health"] == "stalled"
+    assert latest["last_action"] == "repair"
+    assert len([call for call in runner.calls if call["argv"][0] == "repair"]) == 1
+
+
+def test_native_progress_regression_and_restoration_do_not_extend_deadline(tmp_path):
+    board = _board(tmp_path)
+    state = fleet.assess(_native_observation(), {}, board, 100)
+    state = fleet.assess(_native_observation(completed=31, receipts=31, goals=8), state, board, 130)
+    state = fleet.assess(_native_observation(), state, board, 161)
+    assert state["last_progress_at"] == 100
+    assert state["health"] == "stalled"
+
+
+def test_native_authentication_gap_cannot_reestablish_progress(tmp_path):
+    board = _board(tmp_path)
+    state = fleet.assess(_native_observation(), {}, board, 100)
+    state = fleet.assess(_native_observation(completed=33, authenticated=False), state, board, 130)
+    state = fleet.assess(_observation(progress_token="unavailable", health="unknown"), state, board, 140)
+    state = fleet.assess(_native_observation(), state, board, 161)
+    assert state["last_progress_at"] == 100
+    assert state["health"] == "stalled"
+
+
+def test_first_probe_failure_after_upgrade_preserves_native_progress_baseline(tmp_path):
+    board = _board(tmp_path)
+    state = {"observation": _native_observation(), "last_progress_at": 100,
+             "progress_token": "old-native-token", "health": "healthy"}
+    state = fleet.assess(_observation(progress_token="unavailable", health="unknown"), state, board, 130)
+    state = fleet.assess(_native_observation(completed=31), state, board, 140)
+    state = fleet.assess(_native_observation(), state, board, 170)
+    assert state["last_progress_at"] == 100
+    assert state["health"] == "stalled"
+
+
+@pytest.mark.parametrize("alias", sorted(live_board_probe.COMPLETED))
+def test_native_completion_aliases_count_work_without_counting_relabels(tmp_path, alias):
+    board = _board(tmp_path)
+    state = fleet.assess(_native_observation(), {}, board, 100)
+    observed = _native_observation()
+    observed["details"]["task_counts"] = {alias: 32, "in_progress": 1}
+    state = fleet.assess(observed, state, board, 170)
+    assert state["health"] == "stalled"
+    observed["details"]["task_counts"][alias] = 33
+    state = fleet.assess(observed, state, board, 180)
+    assert state["last_progress_at"] == 180
+    assert state["health"] == "healthy"
+
+
+@pytest.mark.parametrize("advancement", [{"completed": 33}, {"receipts": 33}, {"goals": 6}])
+def test_native_accepted_progress_renews_task_stall_deadline(tmp_path, advancement):
+    board = _board(tmp_path)
+    state = fleet.assess(_native_observation(), {}, board, 100)
+    state = fleet.assess(_native_observation(**advancement), state, board, 170)
+    assert state["last_progress_at"] == 170
+    assert state["health"] == "healthy"
+
+
+def test_live_native_worker_does_not_erase_idle_progress_deadline(tmp_path):
+    board = _board(tmp_path)
+    state = fleet.assess(_native_observation(), {}, board, 100)
+    state = fleet.assess(_native_observation("retrying", busy=True), state, board, 161)
+    assert state["health"] == "healthy"
+    state = fleet.assess(_native_observation(), state, board, 200)
+    assert state["health"] == "stalled"
+    assert state["last_progress_at"] == 100
+
+
 class Runner:
     def __init__(self, observation, action=None):
         self.observation = observation

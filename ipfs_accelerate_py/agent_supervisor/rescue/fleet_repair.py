@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .fleet_watchdog import command, load_config, lock, read_json, write_json
+from .fleet_watchdog import _accepted_progress_counts, command, load_config, lock, read_json, write_json
 from .fleet_watchdog import repair_hold_paths as hold_paths
 
 
@@ -32,14 +32,7 @@ def repair_evidence(observation: dict[str, Any]) -> dict[str, Any]:
     if isinstance(heads, dict) and heads:
         evidence["source_heads"] = heads
     if details.get("authenticated_task_observation") is True:
-        counts = details.get("task_counts")
-        for name, value in (
-            ("completed", counts.get("completed", 0) if isinstance(counts, dict) else None),
-            ("receipts", details.get("completion_receipt_count")),
-            ("unsettled_goals", details.get("unsettled_goal_count")),
-        ):
-            if type(value) is int and value >= 0:
-                evidence[name] = value
+        evidence.update(_accepted_progress_counts(observation))
         blocked = details.get("blocked_task_ids")
         if isinstance(blocked, list) and all(isinstance(item, str) for item in blocked):
             evidence["blocked_tasks"] = sorted(set(blocked))

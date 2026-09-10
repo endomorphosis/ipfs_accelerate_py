@@ -38,9 +38,12 @@ Two user services run continuously:
   A fresh heartbeat alone does not count as task progress. Recent provider
   output plus a matching live descendant prevents false idle alarms.
   Database event-cursor changes also remain diagnostic: maintenance or lease
-  events cannot reset the task-stall deadline. Task identity sets are compared
-  independent of result ordering, and changes in unsettled goal counts remain
-  visible as progress. Completion still requires the separate native gate.
+  events cannot reset the task-stall deadline. For native authenticated probes,
+  only increasing completed-task/receipt counts or decreasing unsettled goals
+  renew that deadline. Status/retry cycles, regressed counts returning to an
+  earlier value, and authentication gaps cannot postpone idle-stall repair.
+  Opaque-token adapters retain their explicit progress contract. Completion
+  still requires the separate native gate.
 * `ipfs-taskboard-repair.service` processes the durable coding-repair queue,
   one board at a time. Each job runs in its own systemd cgroup for at most 40
   minutes. Unresolved work is retained and retried with a 30-minute to six-hour
