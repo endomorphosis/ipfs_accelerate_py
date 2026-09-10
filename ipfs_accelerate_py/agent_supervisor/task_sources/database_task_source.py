@@ -1516,11 +1516,48 @@ class DatabaseTaskSource:
     ) -> dict[str, Any]:
         """Retry leftover in_progress gates through the intent authority."""
 
-        return self._intent.unstall_stale_in_progress_tasks(
-            now=now,
-            stale_seconds=stale_seconds,
-            orphan_previous_generation=orphan_previous_generation,
+        result = dict(
+            self._intent.unstall_stale_in_progress_tasks(
+                now=now,
+                stale_seconds=stale_seconds,
+                orphan_previous_generation=orphan_previous_generation,
+            )
+            or {}
         )
+        extra: list[dict[str, Any]] = []
+        try:
+            page = self.list_tasks(status="blocked", limit=40)
+        except Exception:
+            page = None
+        for record in getattr(page, "tasks", ()) or ():
+            blob = " ".join(
+                str(item)
+                for item in (
+                    getattr(record, "body", None),
+                    getattr(record, "body_json", None),
+                    getattr(record, "failure_reason", None),
+                    getattr(record, "reason", None),
+                )
+                if item
+            )
+            if "isolate_merge_queue_to_task_projection" not in blob:
+                continue
+            cas = self.rearm_blocked_task(
+                record,
+                receipt={"operation": "false_terminal_blocked_supervisor_bug"},
+            )
+            if getattr(cas, "changed", False):
+                extra.append(
+                    {
+                        "task_alias": str(getattr(record, "task_alias", "")),
+                        "task_cid": str(getattr(record, "task_cid", "")),
+                        "revision": int(getattr(cas, "revision", 0) or 0),
+                        "reason": "false_terminal_blocked_supervisor_bug",
+                    }
+                )
+        if extra:
+            result["unstalled"] = list(result.get("unstalled") or []) + extra
+        return result
 
     def rearm_blocked_task(
         self,
