@@ -2773,6 +2773,7 @@ class MergeQueue:
         reopen_schema: str = "",
         reopen_reason: str = "",
         before_request_id: str = "",
+        ordered_by_request_id: bool = False,
     ) -> tuple[MergeRequest, ...]:
         """Return a bounded target-bound completion snapshot.
 
@@ -2780,6 +2781,8 @@ class MergeQueue:
         ``LIMIT`` and paginate by the immutable time-prefixed request id.  All
         pages use that same keyset order; mutable or out-of-order completion
         timestamps therefore cannot hide rows after the first page.
+        ``ordered_by_request_id`` retains the current owner adapter signature;
+        this native reader always uses that immutable order for either value.
         """
 
         requested = max(0, min(int(limit), 256))

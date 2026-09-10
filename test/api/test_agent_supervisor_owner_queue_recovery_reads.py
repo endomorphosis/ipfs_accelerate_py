@@ -61,8 +61,9 @@ def test_active_task_check_retains_cooldown_expired_claim_and_exact_target(
     assert not conn.in_transaction
 
 
+@pytest.mark.parametrize("ordered_by_request_id", [False, True])
 def test_terminal_pages_preserve_filter_before_limit_and_native_keysets(
-    owner, monkeypatch
+    owner, monkeypatch, ordered_by_request_id
 ):
     _, conn, bind, attach, retained, *_ = owner
     bind()
@@ -97,6 +98,7 @@ def test_terminal_pages_preserve_filter_before_limit_and_native_keysets(
             limit=1,
             before_request_id=cursor,
             completion_schema="accepted",
+            ordered_by_request_id=ordered_by_request_id,
             completion_reason="verified",
             metadata_schema="candidate@3",
         )
