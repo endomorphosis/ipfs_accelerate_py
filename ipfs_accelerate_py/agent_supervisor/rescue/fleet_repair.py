@@ -441,6 +441,11 @@ Older runtimes can otherwise create host-sized DuckDB worker pools inside a
 small CPU allocation, starving health queries and lane dispatch. Apply limits
 before LOAD/ATTACH, including disposable failed/retried probes; do not weaken
 authentication, owner bindings, receipt freshness or transport requirements.
+Also check whether the native reload guard consumes the producer's canonical
+attempt-binding schema and verifies its immutable projection. An obsolete exact
+field set can silently reject a live managed pool lease and reload during task
+validation. Backport the compatible verified guard; an unreadable binding is not
+proof of quiescence. Do not turn unknown binding fields into task authority.
 Preserve board-specific external ownership and service overrides. Updating
 the watchdog configuration and staging a validated runtime release are within
 the user's authorization. Do not repeatedly publish diagnostic-only changes
