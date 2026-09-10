@@ -20230,6 +20230,8 @@ class _SawmQuackTransport:
                     "enable_external_access": "true",
                     "allow_unsigned_extensions": "false",
                     "extension_directory": str(sealed.extension_directory),
+                    "threads": "1",
+                    "memory_limit": "256MB",
                     "lock_configuration": "true",
                 },
             )
