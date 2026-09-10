@@ -30,6 +30,9 @@ reconciliation and resumption of already admitted attempts continue; those paths
 may execute a retained provider obligation. Their phase is reported separately.
 The existing explicit shutdown, finite run-window and native process-lifetime
 policies retain their behavior. The pause itself sends no signals.
+For this native profile a finite run also bounds the initial wait before its
+first lane launch, using the existing deadline return and finalization path.
+An infinite run keeps waiting until a verified release or an explicit stop.
 
 Native actors use their own inherited credential and verified launch admission.
 The owner validates the actual kernel peer UID/birth, current native master,

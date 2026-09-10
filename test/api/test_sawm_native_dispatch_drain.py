@@ -697,7 +697,7 @@ def test_actual_coordinator_waits_for_release_before_any_new_launch(
             [track],
             repo_root=native.root,
             common_args=[],
-            duration_seconds=0.15,
+            duration_seconds=0.5,
             heartbeat_interval_seconds=0.05,
             python_executable=sys.executable,
             output=lambda _: None,
@@ -797,6 +797,75 @@ def test_actual_coordinator_pause_never_recycles_existing_lane(
     assert result["all_trees_fenced"] is False
     assert native.supervisor.is_alive()
     assert native.owner.is_alive()
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ["native_dispatch_pause_requested", "native_dispatch_observation_unavailable"],
+)
+def test_initial_native_dispatch_wait_obeys_finite_run_without_birth_or_signal(
+    tmp_path, monkeypatch, reason
+):
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        multi_supervisor_runner as runner,
+    )
+
+    began = time.monotonic()
+    launches, teardown_populations = [], []
+
+    class Boundary:
+        def coordinator_boundary(self, _processes):
+            # The delayed permit bounds the original broken implementation
+            # too; no real child or native service is involved in this test.
+            return {
+                "new_dispatch_permitted": time.monotonic() - began >= 0.45,
+                "reason": reason,
+            }
+
+    class Process:
+        pid = os.getpid()
+
+        def poll(self):
+            return None
+
+    def start(*_args, **_kwargs):
+        launches.append(True)
+        return Process()
+
+    def stopped(_tracks, processes, **_kwargs):
+        teardown_populations.append(dict(processes))
+        return {
+            "all_trees_fenced": not processes,
+            "stopped_pids": [],
+            "stopped_count": 0,
+            "removed_runtime_markers": [],
+            "stop_failure_receipts": [],
+        }
+
+    monkeypatch.setattr(drain, "from_native_admission", lambda **_: Boundary())
+    monkeypatch.setattr(runner, "start_track", start)
+    monkeypatch.setattr(runner, "stop_tracks", stopped)
+    monkeypatch.setattr(
+        runner,
+        "_terminate_managed_process",
+        lambda *a, **k: pytest.fail("pause cannot signal a process"),
+    )
+    runner.run_supervisor_tracks(
+        [
+            runner.parse_track_spec(
+                "lane-0|unused.py|logs/{stamp}.log|state/super.pid|state/daemon.pid",
+                stamp="TEST",
+            )
+        ],
+        repo_root=tmp_path,
+        common_args=[],
+        duration_seconds=0.1,
+        heartbeat_interval_seconds=0.05,
+        output=lambda _: None,
+    )
+    assert launches == []
+    assert teardown_populations == [{}]
+    assert time.monotonic() - began < 0.4
 
 
 from test.api import (

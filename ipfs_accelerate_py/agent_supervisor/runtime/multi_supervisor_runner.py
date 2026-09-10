@@ -10518,12 +10518,23 @@ def run_supervisor_tracks(
 
     try:
         _emit(output, f"starting {label} duration_seconds={duration_seconds:g}")
+        # Native pause observation can defer the very first birth. Bound that
+        # startup wait by the configured run window too; its normal post-start
+        # deadline does not exist yet. Other profiles retain their old policy.
+        initial_dispatch_deadline = (
+            time.monotonic() + max(0.0, float(duration_seconds))
+            if dispatch_control is not None else None
+        )
+        initial_dispatch_window_expired = False
         for track in managed_tracks:
             started, exhausted, deadline_reached = admit_managed_track(
                 track,
                 cause="initial_supervisor",
+                deadline=initial_dispatch_deadline,
             )
-            assert deadline_reached is False
+            if deadline_reached:
+                initial_dispatch_window_expired = True
+                break
             if started is not None:
                 processes[track.name] = started
                 continue
@@ -10534,7 +10545,7 @@ def run_supervisor_tracks(
 
         deadline = time.monotonic() + (
             0.0
-            if restart_admission_blocked
+            if restart_admission_blocked or initial_dispatch_window_expired
             else max(0.0, float(duration_seconds))
         )
         while time.monotonic() < deadline:
