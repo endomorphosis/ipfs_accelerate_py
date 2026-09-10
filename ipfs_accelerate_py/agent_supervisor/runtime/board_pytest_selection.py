@@ -23,7 +23,6 @@ from .pytest_item_ledger import dirty_source_paths
 UNAFFECTED_SKIP_REASON = "ivp-unaffected"
 _MAX_IMPORT_FILES = 400
 _MAX_FILE_BYTES = 2 * 1024 * 1024
-_LOCAL_ROOTS = ("ipfs_accelerate_py", "test")
 
 
 def _read_text(path: Path) -> str | None:
@@ -33,7 +32,7 @@ def _read_text(path: Path) -> str | None:
         if path.stat().st_size > _MAX_FILE_BYTES:
             return None
         return path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeError):
         return None
 
 
@@ -44,25 +43,53 @@ def _relative(workspace: Path, path: Path) -> str | None:
         return None
 
 
-def _module_file(workspace: Path, dotted: str) -> str | None:
-    if not dotted or dotted.startswith("."):
-        return None
-    root = dotted.split(".", 1)[0]
-    if root not in _LOCAL_ROOTS:
-        return None
+def _import_files(
+    workspace: Path, dotted: str, changed_paths: frozenset[str],
+) -> tuple[set[str], bool]:
+    """Resolve local source and package initializers without importing anything.
+
+    Local operators and namespace packages are dependencies too. A local path
+    that cannot be inspected inside this workspace makes the caller uncertain;
+    it must not be mistaken for an unrelated installed package.
+    """
+    if not dotted:
+        return set(), False
     parts = dotted.split(".")
-    base = workspace.joinpath(*parts)
-    py_file = base.with_suffix(".py")
-    init_file = base / "__init__.py"
-    if py_file.is_file():
-        return _relative(workspace, py_file)
-    if init_file.is_file():
-        return _relative(workspace, init_file)
-    parent = workspace.joinpath(*parts[:-1]) if len(parts) > 1 else workspace
-    sibling = parent.with_suffix(".py") if parent != workspace else None
-    if sibling is not None and sibling.is_file():
-        return _relative(workspace, sibling)
-    return None
+    if any(not part.isidentifier() for part in parts):
+        return set(), True
+    found: set[str] = set()
+    try:
+        root = workspace / parts[0]
+        changed_root = any(
+            path == parts[0] + ".py" or path.startswith(parts[0] + "/")
+            for path in changed_paths
+        )
+        if not (changed_root or root.is_dir() or root.is_symlink()
+                or root.with_suffix(".py").is_file()):
+            return found, False
+        workspace_root = workspace.resolve()
+        for length in range(1, len(parts) + 1):
+            base = workspace.joinpath(*parts[:length])
+            if not base.resolve().is_relative_to(workspace_root):
+                return found, True
+            # Importing a.b executes a/__init__.py as well as b's source.
+            # A from-import may name an attribute; its containing module is
+            # still retained even when no child module exists for that name.
+            for candidate in (base / "__init__.py", base.with_suffix(".py")):
+                lexical = candidate.relative_to(workspace).as_posix()
+                if lexical in changed_paths:
+                    # Deleted modules still explain affected imports. Keeping
+                    # the path also makes the bounded reader report uncertainty
+                    # instead of letting a surviving __init__ hide the deletion.
+                    found.add(lexical)
+                if candidate.is_file():
+                    relative = _relative(workspace, candidate)
+                    if relative is None:
+                        return found, True
+                    found.add(relative)
+        return found, not bool(found)
+    except (OSError, RuntimeError, ValueError):
+        return found, True
 
 
 def _package_of(workspace: Path, relative: str) -> str:
@@ -74,7 +101,9 @@ def _package_of(workspace: Path, relative: str) -> str:
     return ".".join(parts)
 
 
-def _walk_imports(workspace: Path, relative: str) -> tuple[set[str], bool]:
+def _walk_imports(
+    workspace: Path, relative: str, changed_paths: frozenset[str],
+) -> tuple[set[str], bool]:
     """Return imported local files and whether the file is uncertain."""
 
     text = _read_text(workspace / relative)
@@ -90,9 +119,9 @@ def _walk_imports(workspace: Path, relative: str) -> tuple[set[str], bool]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                resolved = _module_file(workspace, alias.name)
-                if resolved:
-                    found.add(resolved)
+                resolved, unresolved = _import_files(workspace, alias.name, changed_paths)
+                found.update(resolved)
+                uncertain |= unresolved
         elif isinstance(node, ast.ImportFrom):
             if node.level and node.level > 0:
                 pkg_parts = package.split(".") if package else []
@@ -104,16 +133,16 @@ def _walk_imports(workspace: Path, relative: str) -> tuple[set[str], bool]:
                 base = node.module or ""
             if node.names and any(alias.name == "*" for alias in node.names):
                 uncertain = True
-            resolved = _module_file(workspace, base) if base else None
-            if resolved:
-                found.add(resolved)
+            resolved, unresolved = _import_files(workspace, base, changed_paths)
+            found.update(resolved)
+            uncertain |= unresolved
             for alias in node.names:
                 if alias.name == "*":
                     continue
                 child = f"{base}.{alias.name}" if base else alias.name
-                child_path = _module_file(workspace, child)
-                if child_path:
-                    found.add(child_path)
+                resolved, unresolved = _import_files(workspace, child, changed_paths)
+                found.update(resolved)
+                uncertain |= unresolved
         elif isinstance(node, ast.Call):
             func = node.func
             name = ""
@@ -126,7 +155,9 @@ def _walk_imports(workspace: Path, relative: str) -> tuple[set[str], bool]:
     return found, uncertain
 
 
-def _import_cone(workspace: Path, start: str) -> tuple[set[str], bool]:
+def _import_cone(
+    workspace: Path, start: str, changed_paths: frozenset[str],
+) -> tuple[set[str], bool]:
     seen: set[str] = set()
     queue = [start]
     uncertain = False
@@ -137,7 +168,7 @@ def _import_cone(workspace: Path, start: str) -> tuple[set[str], bool]:
         seen.add(current)
         if not current.endswith(".py"):
             continue
-        imported, local_uncertain = _walk_imports(workspace, current)
+        imported, local_uncertain = _walk_imports(workspace, current, changed_paths)
         if local_uncertain:
             uncertain = True
         for item in imported:
@@ -165,11 +196,11 @@ def select_affected_test_files(
     dirty = dirty_source_paths(workspace)
     if not dirty:
         return None
-    dirty_set = set(dirty)
+    dirty_set = frozenset(dirty)
     edges: list[dict[str, Any]] = []
     uncertain_tests: set[str] = set()
     for test_file in tests:
-        cone, uncertain = _import_cone(workspace, test_file)
+        cone, uncertain = _import_cone(workspace, test_file, dirty_set)
         if uncertain:
             uncertain_tests.add(test_file)
         text = _read_text(workspace / test_file) or ""
