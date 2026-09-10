@@ -1242,6 +1242,41 @@ def test_portal_rearm_source_uses_admitted_live_capsule_restart() -> None:
     assert "admitted_live_capsule_restart=True" in source
 
 
+def test_sealed_daemon_child_uses_admitted_live_capsule_restart() -> None:
+    source = inspect.getsource(implementation._run_sealed_daemon_child)
+    assert "admitted_live_capsule_restart=True" in source
+
+
+def test_accepted_source_restart_allows_dirty_non_control_porcelain(
+    tmp_path: Path,
+    quack_projection: _ProjectionFixture,
+) -> None:
+    projection_pin, extension_set_pin, _projection_home = quack_projection
+    root, raw_paths = _seed(tmp_path, extension_set_pin)
+    admission = _admission(
+        root, tuple(sorted(raw_paths)), projection_pin, extension_set_pin
+    )
+    (root / "untracked.py").write_text("dirty implementation tree\n", encoding="utf-8")
+    with pytest.raises(
+        capsule.ConfiguredBoardLiveCapsuleError,
+        match="clean accepted checkout",
+    ):
+        capsule.verify_configured_board_accepted_source(
+            admission,
+            repo_root=root,
+        )
+    receipt = capsule.verify_configured_board_accepted_source(
+        admission,
+        repo_root=root,
+        admitted_live_capsule_restart=True,
+        transition_loader=lambda *_args: (_ for _ in ()).throw(
+            AssertionError("restart must not look up supervisor merge authority")
+        ),
+    )
+    assert receipt["kind"] == "exact"
+    assert receipt["source_head"] == admission.source_head
+
+
 def test_accepted_source_restart_rejects_unrelated_head(
     tmp_path: Path,
     quack_projection: _ProjectionFixture,

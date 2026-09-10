@@ -2094,7 +2094,14 @@ def _run_sealed_daemon_child(argv: Sequence[str]) -> int:
             control_plane_descriptor=pinned.accepted_control_plane_fd,
             native_dependency_launch=native_launch,
             repo_root=REPO_ROOT,
+            admitted_live_capsule_restart=True,
         )
+    except ConfiguredBoardLiveCapsuleError as exc:
+        logger.error(
+            "sealed daemon child capsule verify failed type=%s",
+            type(exc).__name__,
+        )
+        raise
     except (OSError, ValueError) as exc:
         raise PlanBoundDispatchError(
             "sealed daemon accepted control plane is invalid"

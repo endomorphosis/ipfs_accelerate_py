@@ -954,10 +954,16 @@ def _git(root: Path, *arguments: str, input_bytes: bytes | None = None) -> bytes
     return completed.stdout
 
 
-def _source_generation(root: Path) -> tuple[str, str]:
+def _source_generation(
+    root: Path,
+    *,
+    allow_dirty: bool = False,
+) -> tuple[str, str]:
     head = _git(root, "rev-parse", "HEAD").decode("ascii").strip()
     tree = _git(root, "rev-parse", "HEAD^{tree}").decode("ascii").strip()
-    if _git(root, "status", "--porcelain=v1", "--untracked-files=all"):
+    if not allow_dirty and _git(
+        root, "status", "--porcelain=v1", "--untracked-files=all"
+    ):
         raise ConfiguredBoardLiveCapsuleError(
             "configured-board live capsule requires a clean accepted checkout"
         )
@@ -1469,7 +1475,10 @@ def verify_configured_board_accepted_source(
         else admission
     )
     root = Path(repo_root).resolve(strict=True)
-    current_head, current_tree = _source_generation(root)
+    current_head, current_tree = _source_generation(
+        root,
+        allow_dirty=admitted_live_capsule_restart,
+    )
     control_paths = tuple(str(item["path"]) for item in parsed.control_artifacts)
     if admitted_live_capsule_restart:
         expected_artifacts = _pinned_git_artifact_records(
