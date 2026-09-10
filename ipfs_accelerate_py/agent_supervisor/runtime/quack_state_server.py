@@ -4295,100 +4295,34 @@ class QuackStateServer:
             raise
 
     def _copy_authoritative_read_replica(self) -> tuple[str, int]:
-        """Checkpoint and atomically refresh the bounded replica file."""
+        """Checkpoint and copy in a credential-free child, preserving writer locks.
+
+        The caller retains the existing owner transaction/lifecycle serialization.
+        Closing any canonical descriptor in this process would drop DuckDB's
+        POSIX writer lock, so only the isolated copier opens that file.
+        """
+        from .replica_file_copy import copy_replica
 
         if self._connection is None:
             raise QuackStateServerReadyError("authoritative writer is unavailable")
-        source = self.config.database_path
-        replica = self.read_replica_path()
+        source, replica = self.config.database_path, self.read_replica_path()
         if source.parent != replica.parent or source == replica:
             raise QuackStateServerReadyError("read-replica path is outside owner root")
-        temporary = replica.with_name(
-            f".{replica.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-        )
-        source_descriptor: int | None = None
-        target_descriptor: int | None = None
         started = time.monotonic()
         try:
             self._connection.execute("CHECKPOINT")
-            source_descriptor = os.open(
-                source,
-                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+            observation = copy_replica(
+                source, replica,
+                timeout_seconds=READ_REPLICA_COPY_TIMEOUT_SECONDS - (time.monotonic() - started),
+                max_database_bytes=READ_REPLICA_MAX_BYTES,
             )
-            before = os.fstat(source_descriptor)
-            if (
-                not stat.S_ISREG(before.st_mode)
-                or before.st_uid != os.getuid()
-                or before.st_size <= 0
-                or before.st_size > READ_REPLICA_MAX_BYTES
-            ):
-                raise QuackStateServerReadyError(
-                    "authoritative database is not an owner-only bounded regular file"
-                )
-            target_descriptor = os.open(
-                temporary,
-                os.O_WRONLY
-                | os.O_CREAT
-                | os.O_EXCL
-                | getattr(os, "O_NOFOLLOW", 0)
-                | getattr(os, "O_CLOEXEC", 0),
-                0o600,
-            )
-            digest = hashlib.sha256()
-            copied = 0
-            while copied < before.st_size:
-                if time.monotonic() - started > READ_REPLICA_COPY_TIMEOUT_SECONDS:
-                    raise QuackStateServerReadyError("read-replica copy timed out")
-                chunk = os.read(
-                    source_descriptor,
-                    min(READ_REPLICA_COPY_CHUNK_BYTES, before.st_size - copied),
-                )
-                if not chunk:
-                    raise QuackStateServerReadyError(
-                        "authoritative database changed during replica copy"
-                    )
-                digest.update(chunk)
-                view = memoryview(chunk)
-                while view:
-                    written = os.write(target_descriptor, view)
-                    if written <= 0:
-                        raise QuackStateServerReadyError(
-                            "read-replica copy made no progress"
-                        )
-                    view = view[written:]
-                copied += len(chunk)
-            after = os.fstat(source_descriptor)
-            stable_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
-            if any(getattr(before, name) != getattr(after, name) for name in stable_fields):
-                raise QuackStateServerReadyError(
-                    "authoritative database changed during replica copy"
-                )
-            os.fsync(target_descriptor)
-            os.close(target_descriptor)
-            target_descriptor = None
-            os.replace(temporary, replica)
-            os.chmod(replica, 0o600)
-            directory_descriptor = os.open(
-                replica.parent,
-                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0),
-            )
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
-            return f"sha256:{digest.hexdigest()}", copied
+            return "sha256:" + observation["sha256"], observation["size_bytes"]
         except QuackStateServerError:
             raise
         except Exception as exc:
             raise QuackStateServerReadyError(
                 f"read-replica refresh failed: {type(exc).__name__}"
             ) from exc
-        finally:
-            if source_descriptor is not None:
-                os.close(source_descriptor)
-            if target_descriptor is not None:
-                os.close(target_descriptor)
-            temporary.unlink(missing_ok=True)
 
     def _wait_for_transport_endpoint_closed(self) -> None:
         """Independently observe endpoint closure before replacing a replica."""
