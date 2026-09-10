@@ -17133,7 +17133,7 @@ def test_implementation_supervisor_keeps_quiet_live_agent_subprocess(
     monkeypatch.setattr(
         supervisor,
         "_active_agent_worker_processes",
-        lambda: [{"pid": 1234, "cmdline": ("codex", "exec")}],
+        lambda _state=None: [{"pid": 1234, "cmdline": ("codex", "exec")}],
     )
     now = datetime.now(timezone.utc)
     state = TodoTaskState(
@@ -17168,8 +17168,9 @@ def test_implementation_supervisor_keeps_quiet_live_agent_subprocess(
         (-1, 10000, "", False),
     ],
 )
+@pytest.mark.parametrize("clock_kind", ["missing", "future"])
 def test_implementation_supervisor_bounds_missing_attempt_clock(
-    tmp_path, monkeypatch, age, observed_ticks, finished, expected_active
+    tmp_path, monkeypatch, age, observed_ticks, finished, expected_active, clock_kind
 ):
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_supervisor as module
 
@@ -17180,7 +17181,7 @@ def test_implementation_supervisor_bounds_missing_attempt_clock(
         implementation_timeout=14400,
     )
     supervisor = TodoImplementationSupervisor(config)
-    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda _state=None: [
         {"pid": 123, "start_ticks": observed_ticks},
         {"pid": 124, "start_ticks": 10001},
     ])
@@ -17193,12 +17194,13 @@ def test_implementation_supervisor_bounds_missing_attempt_clock(
         active_task_id="TASK-041", implementation_in_progress=True, ready_count=10,
         heartbeat_at=(now - timedelta(seconds=2000)).isoformat(),
         last_implementation_finished_at=finished,
+        last_implementation_started_at=(now + timedelta(days=1)).isoformat() if clock_kind == "future" else "",
     )
     assert supervisor._implementation_attempt_is_active(state, now_ts=now.timestamp()) is expected_active
     assert supervisor.is_stuck(state, now_ts=now.timestamp())[0] is (not expected_active)
 
 
-def test_implementation_supervisor_uses_heartbeat_when_progress_absent(tmp_path):
+def test_implementation_supervisor_requires_progress_or_explicit_bounded_grace(tmp_path):
     config = TodoSupervisorConfig(
         todo_path=tmp_path / "todo.md", state_path=tmp_path / "state.json",
         strategy_path=tmp_path / "strategy.json", events_path=tmp_path / "events.jsonl",
@@ -17208,8 +17210,20 @@ def test_implementation_supervisor_uses_heartbeat_when_progress_absent(tmp_path)
     now = datetime.now(timezone.utc)
     state = TodoTaskState(active_task_id="TASK-041", ready_count=10,
                           heartbeat_at=now.isoformat())
-    assert supervisor.is_stuck(state, now_ts=now.timestamp()) == (False, "")
-    assert supervisor.is_stuck(state, now_ts=now.timestamp() + 1801)[0]
+    assert supervisor.is_stuck(state, now_ts=now.timestamp()) == (
+        True, "no progress on active task TASK-041"
+    )
+    # Compatibility projection grace must be explicit and expire; ongoing
+    # heartbeat updates do not renew it or manufacture progress evidence.
+    grace_until = now.timestamp() + 60
+    assert supervisor.is_stuck(
+        state, now_ts=now.timestamp(), ignore_progress_until_ts=grace_until
+    ) == (False, "")
+    state.heartbeat_at = datetime.fromtimestamp(grace_until, timezone.utc).isoformat()
+    assert supervisor.is_stuck(
+        state, now_ts=grace_until, ignore_progress_until_ts=grace_until
+    ) == (True, "no progress on active task TASK-041")
+    assert state.last_progress_at == ""
 
 
 def test_implementation_supervisor_honors_configured_worker_stall_threshold(
@@ -17808,7 +17822,7 @@ def test_implementation_supervisor_keeps_quiet_live_agent_worker(tmp_path, monke
     monkeypatch.setattr(
         supervisor,
         "_active_agent_worker_processes",
-        lambda: [{"pid": 1234, "cmdline": "codex exec"}],
+        lambda _state=None: [{"pid": 1234, "cmdline": "codex exec"}],
     )
 
     reason = supervisor._implementation_log_stall_reason(state, now_ts=now.timestamp())

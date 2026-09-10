@@ -193,6 +193,7 @@ from .implementation_daemon import (
     validate_external_provider_isolation_config,
 )
 from .supervisor import (
+    _active_implementation_identity,
     active_codex_exec_workers,
     descendant_processes,
     worktree_phase_worker_status,
@@ -9499,6 +9500,7 @@ class PortalImplementationSupervisor:
         self.last_start_at: float | None = None
         self._last_supervisor_maintenance_at: float = 0.0
         self._worktree_worker_phase = ""
+        self._worktree_worker_generation = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
         self._watchdog_attribution_deferral_key = ""
         self._watchdog_attribution_deferral_started_monotonic: float | None = (
@@ -12526,6 +12528,7 @@ class PortalImplementationSupervisor:
             result = loop.run()
             self.restart_count = result.restart_count
             self._worktree_worker_phase = ""
+            self._worktree_worker_generation = ""
             self._last_worktree_worker_seen_monotonic = None
             result_payload = {
                 "status": result.status,
@@ -14054,7 +14057,7 @@ class PortalImplementationSupervisor:
         self._set_loop_status_fields(_loop, control_plane_status)
         if control_plane_status["control_plane_update_pending"]:
             state = PortalTaskState.load(self.config.state_path)
-            agent_worker_active = bool(self._active_agent_worker_processes())
+            agent_worker_active = bool(self._active_agent_worker_processes(state))
             validation_active = self._active_validation_subprocess_exists()
             projected_active = bool(
                 state.active_task_id
@@ -25539,12 +25542,13 @@ class PortalImplementationSupervisor:
         if state.last_implementation_task_id and state.last_implementation_task_id != state.active_task_id:
             return False
         started_at = parse_timestamp(state.last_implementation_started_at or state.active_phase_started_at)
-        if started_at is None:
-            # Compatibility projections can omit the attempt clock. A verified
+        if started_at is None or started_at.timestamp() > now_ts:
+            # Compatibility projections can omit the attempt clock or carry
+            # a future value that cannot grant timestamp-based grace. A verified
             # descendant birth supplies a bounded fallback, never an unlimited
             # exemption for a quiet or hung provider. Use the oldest worker so
             # spawning another descendant cannot renew the timeout.
-            workers = self._active_agent_worker_processes()
+            workers = self._active_agent_worker_processes(state)
             if not workers or state.last_implementation_finished_at:
                 return False
             try:
@@ -25575,15 +25579,27 @@ class PortalImplementationSupervisor:
             float(self.config.stale_seconds),
             self._implementation_watchdog_timeout_seconds(),
         )
-        return max(0.0, now_ts - started_at.timestamp()) <= max_age_seconds + grace_seconds
+        attempt_age = now_ts - started_at.timestamp()
+        return 0.0 <= attempt_age <= max_age_seconds + grace_seconds
 
     def _implementation_log_stall_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
         if not state.active_task_id or not state.implementation_in_progress:
             return ""
+        # The launch boundary precedes the new runner receipt/log. An older
+        # attempt's quiet log must not consume this bounded birth grace.
+        if (
+            state.active_phase == "implementing"
+            and state.active_phase_detail == "provider_launch_birth"
+            and _active_implementation_identity(vars(state)) is not None
+        ):
+            launched_at = parse_timestamp(state.active_phase_started_at)
+            launch_grace = max(30.0, float(self.config.implementation_log_stall_seconds))
+            if launched_at is not None and 0.0 <= now_ts - launched_at.timestamp() < launch_grace:
+                return ""
         # Agent and validation subprocesses can remain quiet while making
         # progress. Their implementation timeout is the authoritative bound.
         if self._implementation_attempt_is_active(state, now_ts=now_ts) and (
-            self._active_agent_worker_processes()
+            self._active_agent_worker_processes(state)
             or state.active_phase in {"validating", "merge_reconciliation", "merge_resolver"}
             or self._active_validation_subprocess_exists()
         ):
@@ -25609,11 +25625,15 @@ class PortalImplementationSupervisor:
             f"{age_seconds:.0f}s without output in {log_path}"
         )
 
-    def _active_agent_worker_processes(self) -> list[dict[str, Any]]:
+    def _active_agent_worker_processes(
+        self,
+        state: PortalTaskState | None = None,
+    ) -> list[dict[str, Any]]:
         daemon_pid = self._read_managed_daemon_pid()
         if not daemon_pid:
             return []
-        return active_codex_exec_workers(daemon_pid)
+        current_state = state if state is not None else PortalTaskState.load(self.config.state_path)
+        return active_codex_exec_workers(daemon_pid, vars(current_state))
 
     def _active_validation_subprocess_exists(
         self,
@@ -25676,10 +25696,7 @@ class PortalImplementationSupervisor:
         if self._implementation_attempt_is_active(state, now_ts=now_ts):
             return False, ""
         heartbeat_age = self._age_seconds(state.heartbeat_at, now_ts)
-        progress_age = self._age_seconds(
-            state.last_progress_at or state.heartbeat_at,
-            now_ts,
-        )
+        progress_age = self._age_seconds(state.last_progress_at, now_ts)
         stale = self.config.stale_seconds
         if state.active_task_id and heartbeat_age > stale:
             return True, f"heartbeat stale for active task {state.active_task_id}"
@@ -25706,23 +25723,26 @@ class PortalImplementationSupervisor:
 
     def _worktree_phase_without_worker_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
         if not state.active_task_id:
+            self._worktree_worker_phase = ""
+            self._worktree_worker_generation = ""
+            self._last_worktree_worker_seen_monotonic = None
             return ""
         threshold = max(30.0, float(self.config.implementation_log_stall_seconds))
         worker_status = worktree_phase_worker_status(
-            {
-                "active_phase": state.active_phase,
-                "active_phase_started_at": state.active_phase_started_at,
-            },
+            vars(state),
             self._read_managed_daemon_pid(),
             threshold,
             now=datetime.fromtimestamp(now_ts, tz=timezone.utc),
         )
         phase = str(worker_status.get("phase") or "")
+        tracking_generation = str(worker_status.get("tracking_generation") or phase)
         if not worker_status.get("required"):
             self._worktree_worker_phase = ""
+            self._worktree_worker_generation = ""
             self._last_worktree_worker_seen_monotonic = None
-        elif phase != self._worktree_worker_phase:
+        elif tracking_generation != self._worktree_worker_generation:
             self._worktree_worker_phase = phase
+            self._worktree_worker_generation = tracking_generation
             self._last_worktree_worker_seen_monotonic = None
 
         now_monotonic = time.monotonic()

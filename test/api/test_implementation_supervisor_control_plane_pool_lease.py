@@ -775,7 +775,7 @@ def test_control_plane_reload_defers_for_exact_nested_database_pool_lease(
             "repository_revision": "current-revision",
         },
     )
-    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda _state=None: [])
     monkeypatch.setattr(
         supervisor,
         "_active_validation_subprocess_exists",
@@ -1344,7 +1344,7 @@ def test_control_plane_reload_defers_for_exact_live_database_nonterminal_claim(
             "repository_revision": "current-revision",
         },
     )
-    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda _state=None: [])
     monkeypatch.setattr(
         supervisor,
         "_active_validation_subprocess_exists",
@@ -1440,7 +1440,7 @@ def test_control_plane_reload_defers_for_exact_database_portal_callback_gap(
             "repository_revision": "current-revision",
         },
     )
-    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda _state=None: [])
     monkeypatch.setattr(
         supervisor,
         "_active_validation_subprocess_exists",
@@ -2671,7 +2671,7 @@ def test_reload_preserves_live_pool_with_unresolved_task_evidence(tmp_path, monk
     assert supervisor._database_worktree_status_projection(fixture["child"], {}) is None
     supervisor._loaded_control_plane_source = {"source_id": "old", "repository_revision": "old"}
     monkeypatch.setattr(supervisor, "_control_plane_source_snapshot", lambda: {"source_id": "new", "repository_revision": "new"})
-    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda _state=None: [])
     monkeypatch.setattr(supervisor, "_active_validation_subprocess_exists", lambda: False)
     loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
     decision = supervisor._supervisor_loop_watchdog_decision(loop, fixture["child"], {})
