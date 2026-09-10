@@ -3668,7 +3668,7 @@ def test_portal_rearm_new_source_retains_once_per_source_and_settlement_budget(t
         assert len(second["portal_failure_rearms"]) == 1
         assert second["implementation_result"]["status"] == "blocked"
         assert daemon.reconcile_recoverable_portal_failure_rearms() == []
-        task = daemon.task_source.get(first["task_cid"])
+        task = daemon.task_source.get(daemon.get_attempt(first["attempt_id"]).task_cid)
         def rejected_source():
             raise ValueError("sealed admission rejected")
         with pytest.raises(ValueError, match="sealed admission rejected"):
