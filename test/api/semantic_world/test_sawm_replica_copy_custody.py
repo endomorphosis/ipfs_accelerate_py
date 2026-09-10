@@ -191,3 +191,111 @@ def test_child_temporary_collision_preserves_existing_work(operator, canonical_w
     assert collision.read_bytes() == b"another copy's preserved temporary work"
     assert _canonical_write_lock_held(database)
     assert writer.execute("SELECT SUM(value) FROM progress").fetchone()[0] == 1
+
+
+def _injected_copy_child(operator, request, injection):
+    script = """
+import json, os, runpy, sys
+from pathlib import Path
+module = runpy.run_path(sys.argv[1], run_name='isolated_copy_test')
+request = json.loads(sys.stdin.read())
+""" + injection + """
+try:
+    result = module['_copy'](request)
+except Exception:
+    sys.exit(1)
+print(json.dumps(result))
+"""
+    return subprocess.run(
+        [sys.executable, "-I", "-S", "-c", script,
+         str(Path(operator.__file__).with_name("sawm_replica_copy.py"))],
+        input=json.dumps(request), capture_output=True, text=True, timeout=10, check=False,
+        env={"PATH": os.defpath, "LANG": "C.UTF-8"},
+    )
+
+
+@pytest.mark.parametrize(
+    "replacement", ["foreign_regular", "foreign_same_size", "symlink", "truncated_owned"],
+)
+def test_child_promotion_requires_exact_owned_regular_entry(
+    operator, canonical_writer, replacement,
+):
+    database, connection = canonical_writer
+    target = database.with_name("control.read-replica.duckdb")
+    target.write_bytes(b"previous replica")
+    request = _request(database, target)
+    temporary = target.with_name(f".{target.name}.{request['nonce']}.tmp")
+    displaced = temporary.with_suffix(".preserved")
+    foreign = target.with_name("foreign-entry")
+    foreign.write_bytes(b"foreign work")
+    injection = """
+original_fsync = os.fsync
+fired = False
+def interfere(fd):
+    global fired
+    original_fsync(fd)
+    if fired:
+        return
+    fired = True
+    temporary = Path(request['target']).with_name('.' + Path(request['target']).name + '.' + request['nonce'] + '.tmp')
+    mode = MODE
+    if mode == 'truncated_owned':
+        os.ftruncate(fd, 1)
+    else:
+        temporary.rename(temporary.with_suffix('.preserved'))
+        if mode == 'foreign_regular':
+            temporary.write_bytes(b'foreign work')
+        elif mode == 'foreign_same_size':
+            temporary.write_bytes(b'x' * request['source_identity'][2])
+        else:
+            temporary.symlink_to('foreign-entry')
+os.fsync = interfere
+""".replace("MODE", repr(replacement))
+    result = _injected_copy_child(operator, request, injection)
+    assert result.returncode == 1, "copier promoted an entry without its exact ownership"
+    assert result.stdout == ""
+    assert target.read_bytes() == b"previous replica"
+    assert foreign.read_bytes() == b"foreign work"
+    if replacement == "truncated_owned":
+        assert not temporary.exists()
+    else:
+        assert displaced.exists()
+        expected = b"x" * request["source_identity"][2] if replacement == "foreign_same_size" else b"foreign work"
+        assert temporary.read_bytes() == expected
+        assert temporary.is_symlink() == (replacement == "symlink")
+    assert _canonical_write_lock_held(database)
+    assert not _independent_writer_can_open(database)
+    connection.execute("INSERT INTO progress VALUES (2)")
+    assert connection.execute("SELECT SUM(value) FROM progress").fetchone()[0] == 3
+
+
+def test_child_receipt_rejects_promoted_content_changed_during_directory_fsync(
+    operator, canonical_writer,
+):
+    database, connection = canonical_writer
+    target = database.with_name("control.read-replica.duckdb")
+    request = _request(database, target)
+    injection = """
+import stat
+original_fsync = os.fsync
+fired = False
+def interfere(fd):
+    global fired
+    original_fsync(fd)
+    if fired or not stat.S_ISDIR(os.fstat(fd).st_mode):
+        return
+    fired = True
+    target = Path(request['target'])
+    before = target.lstat()
+    target.write_bytes(b'x' * before.st_size)
+    os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns + 1000000000))
+os.fsync = interfere
+"""
+    result = _injected_copy_child(operator, request, injection)
+    assert result.returncode == 1, "copier acknowledged a digest for changed promoted bytes"
+    assert result.stdout == ""
+    assert target.read_bytes() == b"x" * request["source_identity"][2]
+    assert _canonical_write_lock_held(database)
+    assert not _independent_writer_can_open(database)
+    connection.execute("INSERT INTO progress VALUES (2)")
+    assert connection.execute("SELECT SUM(value) FROM progress").fetchone()[0] == 3

@@ -80,16 +80,28 @@ def _copy(request):
                 or _identity(source.lstat()) != before):
             raise ReplicaCopyUnavailable()
         os.fsync(target_fd)
-        os.close(target_fd)
-        target_fd = -1
+        # The directory entry must still be the exact regular file we created.
+        # Keep its descriptor through promotion so replacement/truncation cannot
+        # be mistaken for our completed copy or silently promote foreign work.
+        completed = _identity(os.fstat(target_fd))
+        if (tuple(completed[:2]) != temporary_identity or completed[2] != size
+                or _identity(temporary.lstat()) != completed):
+            raise ReplicaCopyUnavailable()
         os.replace(temporary, target)
+        promoted = _identity(os.fstat(target_fd))
+        if (tuple(promoted[:2]) != temporary_identity or promoted[2] != size
+                or _identity(target.lstat()) != promoted):
+            raise ReplicaCopyUnavailable()
         directory_fd = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
         try:
             os.fsync(directory_fd)
         finally:
             os.close(directory_fd)
+        if (_identity(target.lstat()) != promoted
+                or _identity(os.fstat(target_fd)) != promoted):
+            raise ReplicaCopyUnavailable()
         return {"nonce": request["nonce"], "sha256": digest.hexdigest(), "size_bytes": size,
-                "source_identity": before, "target_identity": _identity(target.lstat())}
+                "source_identity": before, "target_identity": promoted}
     finally:
         if source_fd >= 0:
             os.close(source_fd)
