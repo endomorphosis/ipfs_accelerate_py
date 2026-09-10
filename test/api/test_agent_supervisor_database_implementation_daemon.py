@@ -3933,26 +3933,43 @@ def test_portal_rearm_same_source_admits_later_settlement_within_attempt_budget(
         daemon.close()
 
 
+@pytest.mark.parametrize("callback_proof", [True, False, None, "true"])
 def test_portal_rearm_supervisor_helper_uses_daemon_max_task_attempts(
-    tmp_path: Path,
+    tmp_path: Path, callback_proof,
 ) -> None:
-    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
-        raise DatabasePortalBridgeError("closed bridge failure")
+    class _ProviderWithoutBudget:
+        def provider(self, _attempt: DatabaseTaskAttempt) -> dict[str, object]:
+            raise DatabasePortalBridgeError("closed bridge failure")
 
+        def zero_provider_failure_rearm_ready(self, attempt):
+            assert attempt.status == "failed"
+            assert attempt.committed_phase == "failed"
+            return callback_proof
+
+    holder = _ProviderWithoutBudget()
     daemon = _open_daemon(
         tmp_path,
         session="session:supervisor-rearm-limit",
-        provider_fn=provider,
+        provider_fn=holder.provider,
         max_task_attempts=4,
     )
     source = {"source_head": "a" * 40, "source_tree": "b" * 40}
     try:
         daemon.materialize_population(_population(1))
-        daemon.run_once()
+        first_pass = daemon.run_once()
+        attempt = daemon.get_attempt(first_pass["attempt_id"])
+        before = daemon.task_source.get(attempt.task_cid)
         daemon.authority_mode = "quack"
         first = daemon.reconcile_recoverable_portal_failure_rearms(
             recovery_source_validator=lambda: source
         )
+        if callback_proof is not True:
+            after = daemon.task_source.get(attempt.task_cid)
+            assert first == []
+            assert after.status == "blocked"
+            assert after.revision == before.revision
+            assert after.body == before.body
+            return
         assert len(first) == 1
         second_pass = daemon.run_once()
         assert second_pass["implementation_result"]["status"] == "blocked"
