@@ -11,7 +11,16 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .board_pytest_selection import UNAFFECTED_SKIP_REASON, select_affected_test_files
+try:
+    from .board_pytest_selection import (
+        UNAFFECTED_SKIP_REASON,
+        select_affected_test_files,
+    )
+except Exception:  # hermetic/capsule import must not disable the green ledger
+    UNAFFECTED_SKIP_REASON = "ivp-unaffected"
+
+    def select_affected_test_files(*_args, **_kwargs):
+        return None
 from .pytest_item_ledger import (
     SKIP_REASON,
     command_fingerprint,
