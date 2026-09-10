@@ -33,13 +33,13 @@ def test_database_cleanup_retains_merged_callback_and_registration(tmp_path, mis
     assert (repo / "retained-callback" if missing_workspace else workspace).is_dir()
 
 
-@pytest.mark.parametrize("attributes", [{}, {"isolate_merge_queue_to_task_projection": True}])
+@pytest.mark.parametrize("attributes", [{}, {"isolate_merge_queue_to_task_projection": True}, {"isolate_merge_queue_to_task_projection": False}])
 def test_task_projection_cannot_enter_peer_cleanup_mutation(attributes):
     peer = SimpleNamespace(**attributes)
     result = PortalImplementationDaemon._cleanup_already_merged_worktrees(peer)
     assert result == {
         "attempted": False, "removed_count": 0,
-        "reason": "task_projection_has_no_peer_cleanup_authority",
+        "reason": "canonical_cleanup_requires_guarded_runtime",
     }
 
 

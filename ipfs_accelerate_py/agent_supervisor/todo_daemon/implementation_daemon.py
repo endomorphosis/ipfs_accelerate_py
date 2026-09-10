@@ -55478,43 +55478,19 @@ class PortalImplementationDaemon:
             }
 
     def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
-        """Continuously drain inactive worktrees whose branches are already merged."""
+        """Retain peer source until a canonical completion gate is available.
 
-        # Older sealed Portal constructors do not expose this flag. Absence
-        # cannot grant peer cleanup authority, and must not abort task startup.
-        if getattr(self, "isolate_merge_queue_to_task_projection", True) is not False:
-            return {
-                "attempted": False,
-                "reason": "task_projection_has_no_peer_cleanup_authority",
-                "removed_count": 0,
-            }
-        max_cleanups = max(0, int(self.merged_worktree_cleanup_max))
-        if max_cleanups <= 0:
-            return {"attempted": False, "reason": "merged_worktree_cleanup_disabled"}
-
-        lease, lock_reason, existing_lock, waited = (
-            self._acquire_checkout_mutation_lease(
-                task_id="__merged_worktree_cleanup__",
-                operation="cleanup_already_merged_worktrees",
-                timeout_seconds=0.0,
-            )
-        )
-        if lease is None:
-            return {
-                "attempted": True,
-                "removed_count": 0,
-                "skipped_count": 0,
-                "reason": f"checkout_mutation_{lock_reason}",
-                "lock_path": str(self._repo_merge_lock_path()),
-                "lock_owner_pid": int((existing_lock or {}).get("pid") or 0),
-                "waited_seconds": waited,
-            }
-        try:
-            return self._cleanup_already_merged_worktrees_locked(
-                max_cleanups=max_cleanups,
-            )
-        finally:
-            self._release_checkout_mutation_lease(lease)
+        This older sealed runtime has no canonical peer-cleanup recheck. A
+        caller's projection flag (including a compatibility default of False)
+        cannot supply that missing authority. Exact task-owned merge completion
+        keeps its separate cleanup path; background cleanup cannot delete a
+        pending or unknown callback's source merely because its branch merged.
+        """
+        return {
+            "attempted": False,
+            "reason": "canonical_cleanup_requires_guarded_runtime",
+            "removed_count": 0,
+        }
 
     def _cleanup_already_merged_worktrees_locked(
         self,
