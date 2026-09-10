@@ -2541,6 +2541,7 @@ def test_live_query_bounds_native_resources_before_loading_and_closes_client(
     duckdb = pytest.importorskip("duckdb")
     native_connect = duckdb.connect
     clients: list[Any] = []
+    effective_settings: list[tuple[Any, Any]] = []
 
     class Client:
         def __init__(self, database: str, **kwargs: Any) -> None:
@@ -2555,6 +2556,7 @@ def test_live_query_bounds_native_resources_before_loading_and_closes_client(
                 "SELECT current_setting('threads'), "
                 "current_setting('memory_limit')"
             ).fetchone()
+            effective_settings.append((threads, memory))
             assert threads == 1
             assert memory == "244.1 MiB"
             if (sql == "LOAD quack" and failure_stage == "load") or (
@@ -2589,6 +2591,10 @@ def test_live_query_bounds_native_resources_before_loading_and_closes_client(
             transport.live_query(
                 FakeConnection(), identity=identity, token="isolated-probe-token",
             )
+    # Check outside the transport exception wrapper, which also catches
+    # AssertionError on the deliberately failed LOAD/query paths.
+    assert effective_settings
+    assert all(value == (1, "244.1 MiB") for value in effective_settings)
     assert len(clients) == 1
     assert clients[0].closed is True
     with pytest.raises(duckdb.ConnectionException):
