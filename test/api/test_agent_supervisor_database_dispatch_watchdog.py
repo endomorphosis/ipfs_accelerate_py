@@ -811,6 +811,50 @@ def test_database_watchdog_rearms_blocked_frontier_when_later_tasks_are_ready(
     ]
 
 
+def test_control_plane_update_detects_worktree_file_drift_without_imported_git() -> None:
+    loaded = {
+        "repository_revision": "",
+        "control_plane_tree_id": "",
+        "sources": [
+            {
+                "path": (
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+                    "implementation_supervisor.py"
+                ),
+                "available": True,
+                "sha256": "abc",
+            }
+        ],
+    }
+    current = {
+        "repository_revision": "def" * 10 + "abcd",
+        "control_plane_tree_id": "aaa" * 10 + "aaaa",
+        "sources": [
+            {
+                "path": (
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+                    "implementation_supervisor.py"
+                ),
+                "available": True,
+                "sha256": "xyz",
+            }
+        ],
+    }
+    assert (
+        implementation_supervisor_module._control_plane_update_is_pending(
+            loaded, current
+        )
+        is True
+    )
+    current["sources"][0]["sha256"] = "abc"
+    assert (
+        implementation_supervisor_module._control_plane_update_is_pending(
+            loaded, current
+        )
+        is False
+    )
+
+
 @pytest.mark.parametrize("commit_outputs", [False, True])
 def test_database_board_producer_cannot_mutate_markdown(tmp_path, commit_outputs):
     supervisor = _supervisor(tmp_path, lane_index=0)

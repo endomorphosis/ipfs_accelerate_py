@@ -269,10 +269,20 @@ CONTROL_PLANE_SOURCE_PATHS = (
 )
 
 
-def _read_control_plane_source_snapshot() -> dict[str, Any]:
-    """Return the current accelerator control-plane tree and file identity."""
+def _read_control_plane_source_snapshot(
+    repository_root: Path | None = None,
+) -> dict[str, Any]:
+    """Return the current accelerator control-plane tree and file identity.
 
-    repository_root = Path(__file__).resolve().parents[3]
+    Import-time capture uses this module's path so a sealed archive records
+    the generation it actually loaded. Live probes pass the operator
+    worktree ``repo_root`` so a descendant HEAD is visible.
+    """
+
+    if repository_root is None:
+        repository_root = Path(__file__).resolve().parents[3]
+    else:
+        repository_root = Path(repository_root).resolve()
 
     def git_revision(revision: str) -> str:
         try:
@@ -332,6 +342,41 @@ def _read_control_plane_source_snapshot() -> dict[str, Any]:
 # construction. A wrapper that imported this module before a target checkout
 # advanced must never claim the new on-disk generation as code it loaded.
 IMPORTED_CONTROL_PLANE_SOURCE = _read_control_plane_source_snapshot()
+
+
+def _control_plane_update_is_pending(
+    loaded: Mapping[str, Any],
+    current: Mapping[str, Any],
+) -> bool:
+    """True when the operator worktree control plane moved past what loaded."""
+
+    loaded_rev = str(loaded.get("repository_revision") or "")
+    current_rev = str(current.get("repository_revision") or "")
+    if loaded_rev and current_rev and loaded_rev != current_rev:
+        return True
+    loaded_tree = str(loaded.get("control_plane_tree_id") or "")
+    current_tree = str(current.get("control_plane_tree_id") or "")
+    if loaded_tree and current_tree and loaded_tree != current_tree:
+        return True
+
+    def file_map(snapshot: Mapping[str, Any]) -> dict[str, str]:
+        mapped: dict[str, str] = {}
+        for item in snapshot.get("sources") or ():
+            if not isinstance(item, Mapping):
+                continue
+            if item.get("available") is not True:
+                continue
+            digest = str(item.get("sha256") or "")
+            path = str(item.get("path") or "")
+            if path and digest:
+                mapped[path] = digest
+        return mapped
+
+    loaded_files = file_map(loaded)
+    current_files = file_map(current)
+    return bool(
+        loaded_files and current_files and loaded_files != current_files
+    )
 
 
 # --- restored SCHEDULER_CONFIG_SCHEMA_PATTERN ---
@@ -6940,11 +6985,10 @@ class PortalImplementationSupervisor:
         if resolved_branch and not str(self.config.merge_target_branch or "").strip():
             self.config.merge_target_branch = resolved_branch
 
-    @staticmethod
-    def _control_plane_source_snapshot() -> dict[str, Any]:
+    def _control_plane_source_snapshot(self) -> dict[str, Any]:
         """Bind a long-lived supervisor to the source generation it loaded."""
 
-        return _read_control_plane_source_snapshot()
+        return _read_control_plane_source_snapshot(self.config.repo_root)
 
     def _control_plane_status_projection(self) -> dict[str, Any]:
         now_monotonic = time.monotonic()
@@ -6964,7 +7008,10 @@ class PortalImplementationSupervisor:
             self._loaded_control_plane_source.get("source_id") or ""
         )
         current_id = str(current.get("source_id") or "")
-        pending = not loaded_id or not current_id or loaded_id != current_id
+        pending = _control_plane_update_is_pending(
+            self._loaded_control_plane_source,
+            current,
+        )
         if pending and not self._control_plane_update_detected_at:
             self._control_plane_update_detected_at = utc_now()
         elif not pending:
