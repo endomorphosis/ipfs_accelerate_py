@@ -92365,6 +92365,7 @@ class DatabaseImplementationDaemon:
         self._merge_portal_attempt_root: Path | None = None
         self._merge_worktree_submodule_paths: tuple[str, ...] = ()
         self._quack_attach_blocked_until = 0.0
+        self._consecutive_quack_portal_deferrals = 0
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
@@ -126900,8 +126901,17 @@ class DatabaseImplementationDaemon:
             result = self._run_once_impl()
             with self._lock:
                 self._consecutive_embedded_sidecar_reopens = 0
-            return result
         except Exception as exc:
+            from .completion_deferral import missing_completion_deferral
+
+            completion_wait = missing_completion_deferral(exc)
+            if completion_wait is not None:
+                # Preserve completed prefix operations as observations, but do
+                # not claim a complete write count or manufacture settlement.
+                completion_wait["recovery_prefix"] = dict(
+                    self._idle_recovery_prefix or {}
+                )
+                return completion_wait
             recovered = self._reopen_unusable_embedded_sidecars(exc)
             if recovered is not None:
                 # A poisoned connection proves that a prior transaction's
@@ -126973,8 +126983,6 @@ class DatabaseImplementationDaemon:
                 if prefix.get("pending_merge_train_consume") is not None:
                     result["pending_merge_train_consume"] = dict(prefix["pending_merge_train_consume"])
                 return result
-            result = self._run_once_impl()
-        except Exception as exc:
             if self._is_quack_transport_unavailable(exc):
                 return self._quack_transport_unavailable_deferral(
                     exc,

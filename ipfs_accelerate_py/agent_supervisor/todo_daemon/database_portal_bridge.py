@@ -1066,6 +1066,9 @@ _POST_MERGE_RECOVERY_CURSOR_SCHEMA: Final[str] = (
 _POST_MERGE_RECOVERY_CURSOR_STAGES: Final[tuple[str, ...]] = (
     "priority_task_cids",
     "completed_requests",
+    "false_completed_requests",
+    "false_pending_requests",
+    "false_processing_requests",
     "pending_requests",
     "quarantined_requests",
     "processing_requests",
