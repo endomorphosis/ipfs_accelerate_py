@@ -981,7 +981,7 @@ def test_provider_launch_boundary_refreshes_workerless_grace(
     )
     assert outer._worktree_worker_generation == after["tracking_generation"]
     assert outer._last_worktree_worker_seen_monotonic is None
-    monkeypatch.setattr(outer, "_active_agent_worker_processes", list)
+    monkeypatch.setattr(outer, "_active_agent_worker_processes", lambda _state=None: [])
     monkeypatch.setattr(outer, "_active_validation_subprocess_exists", bool)
     assert (
         outer._implementation_log_stall_reason(
@@ -1492,3 +1492,202 @@ def test_supervisor_loop_graces_packaged_runner_disappearance(
     assert expired.action == "recycle"
     assert expired.reason == "worktree_phase_without_active_child"
     assert expired.detail["worker_absence_age_seconds"] == 61.0
+
+
+def _outer_worker_test_config(tmp_path: Path) -> PortalSupervisorConfig:
+    return PortalSupervisorConfig(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        state_dir=tmp_path / "state",
+        stale_seconds=3600,
+        implementation_timeout=3600,
+        implementation_log_stall_seconds=60,
+    )
+
+
+@pytest.mark.parametrize(
+    "drift",
+    ["none", "missing_receipt", "attempt", "revision", "workspace", "owner_birth", "runner_birth"],
+)
+def test_outer_worker_custody_uses_supplied_exact_state(
+    tmp_path, monkeypatch, sealed_control_plane_fd, drift,
+):
+    descriptor, digest = sealed_control_plane_fd
+    status, argv, item = _sealed_receipt_case(
+        tmp_path, descriptor=descriptor, archive_sha256=digest,
+    )
+    _preserve_process_identity(monkeypatch, argv=argv)
+    monkeypatch.setattr(supervisor, "descendant_processes", lambda _pid: [item])
+    outer = PortalImplementationSupervisor(_outer_worker_test_config(tmp_path))
+    monkeypatch.setattr(outer, "_read_managed_daemon_pid", os.getppid)
+    # A separately loaded projection is deliberately stale. Evaluation must
+    # consistently use the actual supplied attempt and receipt.
+    PortalTaskState().save(outer.config.state_path)
+    if drift == "missing_receipt":
+        status["active_provider_runner"] = {}
+    elif drift == "attempt":
+        status["active_attempt"] += 1
+    elif drift == "revision":
+        status["active_task_cid"] += "changed"
+    elif drift == "workspace":
+        status["active_worktree_path"] = str(tmp_path / "other-worktree")
+    elif drift in {"owner_birth", "runner_birth"}:
+        field = "owner_start_ticks" if drift == "owner_birth" else "start_ticks"
+        status["active_provider_runner"][field] += 1
+        _readdress_receipt(status)
+    state = PortalTaskState(**{
+        key: value for key, value in status.items()
+        if key in PortalTaskState.__dataclass_fields__
+    })
+    before = json.dumps(vars(state), sort_keys=True)
+    assert outer._active_agent_worker_processes() == []
+    assert outer._active_agent_worker_processes(state) == ([item] if drift == "none" else [])
+    reason = outer._worktree_phase_without_worker_reason(
+        state, now_ts=datetime.now(UTC).timestamp(),
+    )
+    assert (reason == "") is (drift == "none")
+    assert json.dumps(vars(state), sort_keys=True) == before
+
+
+@pytest.mark.parametrize(
+    "field,replacement",
+    [("active_task_id", "VGO-010"), ("active_attempt", 2),
+     ("active_task_cid", "baguqeera-new-revision"), ("active_worktree_path", "/other-worktree")],
+)
+def test_new_exact_attempt_does_not_inherit_previous_worker_custody(
+    tmp_path, monkeypatch, sealed_control_plane_fd, field, replacement,
+):
+    descriptor, digest = sealed_control_plane_fd
+    status, argv, item = _sealed_receipt_case(
+        tmp_path, descriptor=descriptor, archive_sha256=digest,
+    )
+    state = PortalTaskState(**{
+        key: value for key, value in status.items()
+        if key in PortalTaskState.__dataclass_fields__
+    })
+    _preserve_process_identity(monkeypatch, argv=argv)
+    monkeypatch.setattr(supervisor, "descendant_processes", lambda _pid: [item])
+    outer = PortalImplementationSupervisor(_outer_worker_test_config(tmp_path))
+    monkeypatch.setattr(outer, "_read_managed_daemon_pid", os.getppid)
+    now = datetime.now(UTC).timestamp()
+    assert outer._worktree_phase_without_worker_reason(state, now_ts=now) == ""
+    prior_generation = outer._worktree_worker_generation
+    assert outer._last_worktree_worker_seen_monotonic is not None
+    # Reusing the old sealed receipt and phase timestamp does not grant a
+    # launch grace or retain the previous attempt's disappearance timer.
+    setattr(state, field, replacement)
+    assert "no active worker" in outer._worktree_phase_without_worker_reason(state, now_ts=now)
+    assert outer._worktree_worker_generation != prior_generation
+    assert outer._last_worktree_worker_seen_monotonic is None
+
+
+def test_worker_generation_ignores_observation_churn(tmp_path, monkeypatch):
+    state = PortalTaskState(
+        active_task_id="TASK-001", active_attempt=1, active_task_cid="revision-one",
+        active_worktree_path=str(tmp_path), implementation_in_progress=True,
+        active_phase="implementing", active_phase_started_at="2026-09-10T00:00:00+00:00",
+    )
+    monkeypatch.setattr(supervisor, "descendant_processes", lambda _pid: [])
+    outer = PortalImplementationSupervisor(_outer_worker_test_config(tmp_path))
+    now = datetime(2026, 9, 10, 1, tzinfo=UTC)
+    old_status = supervisor.worktree_phase_worker_status(vars(state), now=now)
+    outer._worktree_worker_generation = old_status["tracking_generation"]
+    outer._last_worktree_worker_seen_monotonic = time.monotonic() - 61
+    previous_seen = outer._last_worktree_worker_seen_monotonic
+    state.heartbeat_at = state.last_progress_at = now.isoformat()
+    state.active_provider_runner = {"observed_at": now.isoformat()}
+    assert "no active worker" in outer._worktree_phase_without_worker_reason(state, now_ts=now.timestamp())
+    assert outer._worktree_worker_generation == old_status["tracking_generation"]
+    assert outer._last_worktree_worker_seen_monotonic == previous_seen
+    state.active_task_id = ""
+    assert outer._worktree_phase_without_worker_reason(state, now_ts=now.timestamp()) == ""
+    assert outer._worktree_worker_generation == ""
+    assert outer._last_worktree_worker_seen_monotonic is None
+
+
+@pytest.mark.parametrize(
+    "elapsed,clock,attempt,expected_grace",
+    [(59, "valid", 1, True), (60, "valid", 1, False),
+     (61, "valid", 1, False), (-1, "valid", 1, False),
+     (0, "", 1, False), (0, "invalid", 1, False),
+     (0, "valid", 0, False), (0, "valid", True, False)],
+)
+def test_provider_birth_log_grace_requires_exact_bounded_birth(
+    tmp_path, monkeypatch, elapsed, clock, attempt, expected_grace,
+):
+    now = datetime.now(UTC)
+    log = tmp_path / "prior-attempt.log"
+    log.write_text("old output\n")
+    old = now.timestamp() - 600
+    os.utime(log, (old, old))
+    state = PortalTaskState(
+        active_task_id="TASK-001", active_attempt=attempt, active_task_cid="revision-one",
+        active_worktree_path=str(tmp_path), implementation_in_progress=True,
+        active_phase="implementing", active_phase_detail="provider_launch_birth",
+        active_phase_started_at=(now - timedelta(seconds=elapsed)).isoformat() if clock == "valid" else clock,
+        last_implementation_task_id="TASK-001",
+        last_implementation_started_at=datetime.fromtimestamp(old, UTC).isoformat(),
+        last_implementation_log_path=str(log),
+    )
+    outer = PortalImplementationSupervisor(_outer_worker_test_config(tmp_path))
+    monkeypatch.setattr(outer, "_read_managed_daemon_pid", lambda: None)
+    before = json.dumps(vars(state), sort_keys=True)
+    reason = outer._implementation_log_stall_reason(state, now_ts=now.timestamp())
+    assert (reason == "") is expected_grace
+    assert json.dumps(vars(state), sort_keys=True) == before
+    assert state.active_provider_runner == {}
+    assert state.last_progress_at == ""
+
+
+@pytest.mark.parametrize("clock_field", ["active_phase_started_at", "last_implementation_started_at"])
+def test_future_attempt_clock_does_not_hide_missing_progress_without_log(
+    tmp_path, monkeypatch, clock_field,
+):
+    now = datetime.now(UTC)
+    state = PortalTaskState(
+        active_task_id="TASK-001", active_attempt=1, active_task_cid="revision-one",
+        active_worktree_path=str(tmp_path), implementation_in_progress=True,
+        active_phase="implementing", active_phase_detail="provider_launch_birth",
+        heartbeat_at=now.isoformat(), ready_count=1,
+    )
+    setattr(state, clock_field, (now + timedelta(days=1)).isoformat())
+    outer = PortalImplementationSupervisor(_outer_worker_test_config(tmp_path))
+    monkeypatch.setattr(outer, "_read_managed_daemon_pid", lambda: None)
+    monkeypatch.setattr(supervisor, "descendant_processes", lambda _pid: [])
+    before = json.dumps(vars(state), sort_keys=True)
+    assert outer.is_stuck(state, now_ts=now.timestamp()) == (
+        True, "no progress on active task TASK-001",
+    )
+    assert json.dumps(vars(state), sort_keys=True) == before
+
+
+def test_future_attempt_clock_preserves_bounded_exact_sealed_worker(
+    tmp_path, monkeypatch, sealed_control_plane_fd,
+):
+    descriptor, digest = sealed_control_plane_fd
+    status, argv, item = _sealed_receipt_case(
+        tmp_path, descriptor=descriptor, archive_sha256=digest,
+    )
+    now = datetime.now(UTC)
+    status.update({
+        "heartbeat_at": now.isoformat(), "last_progress_at": "", "ready_count": 1,
+        "last_implementation_started_at": (now + timedelta(days=1)).isoformat(),
+    })
+    state = PortalTaskState(**{
+        key: value for key, value in status.items()
+        if key in PortalTaskState.__dataclass_fields__
+    })
+    _preserve_process_identity(monkeypatch, argv=argv)
+    monkeypatch.setattr(supervisor, "descendant_processes", lambda _pid: [item])
+    outer = PortalImplementationSupervisor(_outer_worker_test_config(tmp_path))
+    monkeypatch.setattr(outer, "_read_managed_daemon_pid", os.getppid)
+    # The real sealed runner birth is young enough for the existing bound;
+    # neither the future wall clock nor a refreshed progress field grants it.
+    assert outer._implementation_attempt_is_active(state, now_ts=now.timestamp())
+    assert outer.is_stuck(state, now_ts=now.timestamp()) == (False, "")
+    assert state.last_progress_at == ""
+    state.active_provider_runner = {}
+    assert not outer._implementation_attempt_is_active(state, now_ts=now.timestamp())
+    assert outer.is_stuck(state, now_ts=now.timestamp())[0]

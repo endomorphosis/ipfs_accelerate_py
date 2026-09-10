@@ -28,6 +28,10 @@ def test_exact_argv_recognizes_worker_when_ps_text_is_missing(monkeypatch, argv)
     item = {"pid": 41002, "cmdline": "", "argv": argv, "start_ticks": 900}
     monkeypatch.setattr(workers, "descendant_processes", lambda pid: [item])
     assert workers.active_codex_exec_workers(41001) == [item]
+    status = workers.worktree_phase_worker_status(
+        {"active_phase": "implementing"}, daemon_pid=41001
+    )
+    assert status["active_worker_pids"] == [41002]
 
 
 @pytest.mark.parametrize(
@@ -47,6 +51,10 @@ def test_exact_argv_cannot_be_overridden_by_worker_text(monkeypatch, argv):
     item = {"pid": 41002, "cmdline": "/usr/bin/grok", "argv": argv}
     monkeypatch.setattr(workers, "descendant_processes", lambda pid: [item])
     assert workers.active_codex_exec_workers(41001) == []
+    status = workers.worktree_phase_worker_status(
+        {"active_phase": "implementing"}, daemon_pid=41001
+    )
+    assert status["active_worker_pids"] == []
 
 
 def test_procfs_argument_reader_preserves_empty_trailing_argument(monkeypatch):

@@ -665,13 +665,7 @@ def active_codex_exec_workers(
         # Exact argument boundaries survive an empty/truncated ps display.
         # This remains diagnostic recognition; sealed task-bound workers
         # retain their existing independent receipt verification below.
-        argv = item.get("argv")
-        command_match = (
-            _is_agent_worker_argv(argv)
-            if argv is not None
-            else _is_agent_worker_command(str(item.get("cmdline") or ""))
-        )
-        if command_match or (
+        if _recognized_agent_worker_process(item) or (
             _sealed_agent_worker_process(
                 item,
                 current_status,
@@ -680,6 +674,17 @@ def active_codex_exec_workers(
         ):
             workers.append(item)
     return workers
+
+
+def _recognized_agent_worker_process(item: Mapping[str, Any]) -> bool:
+    """Use exact argv when present; display text cannot override it."""
+
+    argv = item.get("argv")
+    return (
+        _is_agent_worker_argv(argv)
+        if argv is not None
+        else _is_agent_worker_command(str(item.get("cmdline") or ""))
+    )
 
 
 def _is_agent_worker_command(cmdline: str) -> bool:
@@ -796,6 +801,9 @@ def worktree_phase_worker_status(
             "phase_started_at": (
                 "" if started is None else started.isoformat()
             ),
+            # A new exact attempt cannot inherit disappearance custody from
+            # its predecessor. Heartbeat/progress/receipt churn is excluded.
+            "active_implementation_identity": _active_implementation_identity(current),
         }
     )
     if phase not in phases:
@@ -815,7 +823,7 @@ def worktree_phase_worker_status(
     workers = [
         item
         for item in descendants
-        if _is_agent_worker_command(str(item.get("cmdline") or ""))
+        if _recognized_agent_worker_process(item)
         or _sealed_agent_worker_process(
             item,
             current,
