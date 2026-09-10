@@ -597,6 +597,7 @@ _M70_TARGET_PROJECTION_CID = _M69_TARGET_PROJECTION_CID
 _M70_TARGET_QUACK_PORT = _M69_TARGET_QUACK_PORT
 _M70_PRIOR_SERVER_ID = "server:f81e4868-4c9b-468d-900a-f2b7fffbcdff"
 _M70_PRIOR_PROCESS_BIRTH_ID = "birth:a8d50a126a63065713847d065752d3bd"
+_M70_LIVE_OWNER_RETIRED_TOKEN_WAIT_SECONDS = 8.0
 
 _M50_SUCCESSOR_KEY = (
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
@@ -18043,7 +18044,7 @@ def _m70_published_owner_is_process_dead(config: Mapping[str, Any]) -> bool:
         or lifecycle not in {"ready", "stopped", "starting"}
     ):
         return False
-    if Path(f"/proc/{pid}").exists():
+    if Path(f"/proc/{pid}").exists() and _quack_owner_cmdline_matches(pid):
         return False
     probe = socket.socket()
     probe.settimeout(0.4)
@@ -18640,11 +18641,15 @@ def _read_pid_file(path: Path) -> int:
 
 
 def _coordinator_pid_alive(run_dir: Path) -> bool:
-    """True when wave.pid or master.pid names a live coordinator."""
+    """True when wave.pid or master.pid names a live matching coordinator."""
 
     for path in _coordinator_pid_paths(run_dir):
         pid = _read_pid_file(path)
-        if pid > 1 and _pid_alive(pid):
+        if (
+            pid > 1
+            and _pid_alive(pid)
+            and _coordinator_cmdline_matches(pid)
+        ):
             return True
     return False
 
@@ -18655,7 +18660,11 @@ def _authoritative_coordinator_pid_path(run_dir: Path) -> Path:
     wave, master = _coordinator_pid_paths(run_dir)
     for path in (wave, master):
         pid = _read_pid_file(path)
-        if pid > 1 and _pid_alive(pid):
+        if (
+            pid > 1
+            and _pid_alive(pid)
+            and _coordinator_cmdline_matches(pid)
+        ):
             return path
     terminal = wave.with_name(f"{wave.name}.terminal.json")
     if wave.exists() or terminal.exists():
@@ -18719,6 +18728,36 @@ def _pid_alive(pid: int) -> bool:
     except OSError:
         return False
     return True
+
+
+def _pid_cmdline_text(pid: int) -> str:
+    if pid <= 1:
+        return ""
+    try:
+        return (
+            Path(f"/proc/{int(pid)}/cmdline")
+            .read_bytes()
+            .replace(b"\0", b" ")
+            .decode("utf-8", "replace")
+        )
+    except OSError:
+        return ""
+
+
+def _quack_owner_cmdline_matches(pid: int) -> bool:
+    text = _pid_cmdline_text(pid)
+    return (
+        "semantic_addressed_world_model.py" in text
+        and "quack-start" in text
+    )
+
+
+def _coordinator_cmdline_matches(pid: int) -> bool:
+    text = _pid_cmdline_text(pid)
+    return (
+        "configured_board_scheduler" in text
+        or "multi_supervisor_runner" in text
+    )
 
 
 def _recycle_isolated_lane_from_live_peer(
@@ -25888,6 +25927,23 @@ def _live_preflight(
     )
     discovery = discover_live_quack_endpoint(store)
     expected_uri = str(config["database_program"]["quack_endpoint"])
+    if m70_active and discovery.uri == expected_uri and not discovery.token:
+        if not _m70_published_owner_is_process_dead(config):
+            deadline = (
+                time.monotonic() + _M70_LIVE_OWNER_RETIRED_TOKEN_WAIT_SECONDS
+            )
+            while time.monotonic() < deadline:
+                time.sleep(0.05)
+                discovery = discover_live_quack_endpoint(store)
+                if discovery.uri == expected_uri and discovery.token:
+                    break
+            else:
+                raise OperatorError(
+                    "M70 generation-48 owner is live but the one-time client "
+                    "token handoff is retired; wait for owner or coordinator "
+                    "rearm after coordinator absence; do not quack-start and "
+                    "do not mint generation 49"
+                )
     if not discovery.uri or discovery.uri != expected_uri or not discovery.token:
         if m70_active:
             raise OperatorError(
