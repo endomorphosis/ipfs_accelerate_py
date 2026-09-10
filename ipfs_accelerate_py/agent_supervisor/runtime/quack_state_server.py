@@ -1667,7 +1667,10 @@ class InProcessQuackTransport:
         try:
             import duckdb
 
-            client = duckdb.connect(":memory:")
+            client = duckdb.connect(
+                ":memory:",
+                config={"threads": 1, "memory_limit": DEFAULT_MEMORY_LIMIT},
+            )
             try:
                 client.execute("LOAD quack")
                 rows = client.execute(

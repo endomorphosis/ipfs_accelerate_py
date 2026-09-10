@@ -1182,8 +1182,15 @@ class QuackStateClient:
             raise QuackClientTransportError(
                 "DuckDB is required for Quack transport"
             ) from exc
+        from .duckdb_state import DEFAULT_MEMORY_LIMIT
+
+        connection = None
+        attached = False
         try:
-            connection = duckdb.connect(":memory:")
+            connection = duckdb.connect(
+                ":memory:",
+                config={"threads": 1, "memory_limit": DEFAULT_MEMORY_LIMIT},
+            )
             # LOAD is local-only; network INSTALL is never implicit here.
             try:
                 connection.execute("LOAD quack")
@@ -1198,6 +1205,7 @@ class QuackStateClient:
             connection.execute(f"ATTACH '{safe_uri}' AS control_plane (READ_WRITE)")
             # Subsequent statements run against the attached alias by setting path.
             connection.execute("USE control_plane")
+            attached = True
             return _ConnectionAdapter(connection)
         except QuackClientError:
             raise
@@ -1205,6 +1213,12 @@ class QuackStateClient:
             raise QuackClientTransportError(
                 f"failed to attach Quack endpoint: {exc}"
             ) from exc
+        finally:
+            if connection is not None and not attached:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
 
     @staticmethod
     def _is_loopback_quack_uri(uri: str) -> bool:
