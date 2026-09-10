@@ -320,12 +320,22 @@ def _blocked_task_ids(authority: Mapping[str, Any]) -> list[str]:
 
 
 def _progress(authority: Mapping[str, Any]) -> str:
-    """Exclude heartbeats, snapshot CIDs and source revisions that change on reads."""
+    """Track task/goal changes, excluding publication and maintenance activity.
+
+    A database event cursor can advance for leases, observations or other
+    control events without advancing any task. Keep that cursor in diagnostic
+    details, but never use it to postpone the watchdog's task-stall deadline.
+    """
     counts = _counts(authority)
     fields = {key: authority[key] for key in (
-        "event_cursor", "active_task_ids", "completed_task_ids",
-        "task_count"
+        "task_count", "unsettled_goal_count"
     ) if key in authority}
+    for key in ("active_task_ids", "completed_task_ids"):
+        values = authority.get(key)
+        if isinstance(values, list):
+            # Native result ordering and duplicate projections are not work.
+            fields[key] = sorted({value for value in values
+                                  if isinstance(value, str) and value.strip()})
     if any(key in authority for key in ("blocked_task_ids", "failed_or_blocked_task_ids")):
         fields["blocked_task_ids"] = _blocked_task_ids(authority)
     statuses = authority.get("task_statuses")

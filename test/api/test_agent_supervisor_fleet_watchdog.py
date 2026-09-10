@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.rescue import fleet_watchdog as fleet
+from ipfs_accelerate_py.agent_supervisor.rescue import live_board_probe
 
 
 def _board(tmp_path, **changes):
@@ -32,6 +33,27 @@ def _observation(**changes):
 def _result(observation, **changes):
     return {"returncode": 0, "stdout": json.dumps(observation),
             "stderr": "", "timed_out": False, **changes}
+
+
+def test_control_events_cannot_postpone_task_stall_repair(tmp_path):
+    board = _board(tmp_path)
+    authority = {"task_count": 2, "task_statuses": {"T-001": "completed", "T-002": "in_progress"}}
+    runner = Runner(_observation(progress_token=live_board_probe._progress({**authority, "event_cursor": 1})))
+    state_root = tmp_path / "watch"
+    first = fleet.tick_board(board, state_root, apply=True, runner=runner, now=100)
+    assert first["health"] == "healthy"
+    for now, cursor in ((130, 100), (160, 200), (181, 300)):
+        runner.observation = _observation(progress_token=live_board_probe._progress(
+            {**authority, "event_cursor": cursor}))
+        latest = fleet.tick_board(board, state_root, apply=True, runner=runner, now=now)
+    assert latest["last_progress_at"] == 100
+    assert latest["health"] == "stalled"
+    assert latest["last_action"] == "repair"
+    repairs = [call for call in runner.calls if call["argv"][0] == "repair"]
+    assert len(repairs) == 1
+    incident = json.loads(Path(repairs[0]["argv"][2]).read_text())
+    assert incident["action"] == "repair"
+    assert "no_task_progress" in incident["observation"]["reason_codes"]
 
 
 class Runner:

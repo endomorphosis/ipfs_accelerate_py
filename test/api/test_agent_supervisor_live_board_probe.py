@@ -90,11 +90,23 @@ def test_all_tasks_complete_only_proposes_separate_gate(board, monkeypatch):
 
 def test_progress_token_excludes_heartbeats_and_projection_refreshes():
     before = {"task_statuses": {"T-001": "todo"}, "source_revision": 1,
-              "heartbeat_at": "yesterday", "last_progress_at": "yesterday", "source_projection_cid": "old"}
+              "heartbeat_at": "yesterday", "last_progress_at": "yesterday", "source_projection_cid": "old",
+              "event_cursor": 10}
     after = {**before, "source_revision": 20, "heartbeat_at": "now",
-             "last_progress_at": "now", "source_projection_cid": "new"}
+             "last_progress_at": "now", "source_projection_cid": "new", "event_cursor": 100}
     assert probe._progress(before) == probe._progress(after)
     assert probe._progress(after) != probe._progress({**after, "task_statuses": {"T-001": "completed"}})
+
+
+def test_progress_requires_task_or_goal_evidence_and_normalizes_identity_sets():
+    assert probe._progress({"event_cursor": 100}) == ""
+    before = {"active_task_ids": ["T-001", "T-002"],
+              "completed_task_ids": ["T-003", "T-004"], "unsettled_goal_count": 2}
+    reordered = {**before, "active_task_ids": ["T-002", "T-001", "T-002"],
+                 "completed_task_ids": ["T-004", "T-003"]}
+    assert probe._progress(before) == probe._progress(reordered)
+    assert probe._progress(before) != probe._progress({**before, "active_task_ids": ["T-002"]})
+    assert probe._progress(before) != probe._progress({**before, "unsettled_goal_count": 1})
 
 
 def test_daemon_pid_alone_is_never_provider_activity(board, monkeypatch):
