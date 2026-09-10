@@ -90168,9 +90168,13 @@ def _copy_published_replica(
             or before.st_uid != os.geteuid()
             or before.st_nlink != 1
             or stat.S_IMODE(before.st_mode) != 0o600
-            or before.st_size != int(binding["size_bytes"])
         ):
             raise OperatorError("published replica file identity is unsafe")
+        if before.st_size != int(binding["size_bytes"]):
+            # A synchronous owner publication may replace this file between
+            # status() and open(). Retry with a new owner binding; never admit
+            # the new bytes against the old size or digest.
+            raise OperatorError("published replica changed during shadow copy")
         destination_descriptor = os.open(
             destination,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | nofollow,
@@ -90235,9 +90239,10 @@ def _published_replica_bytes_still_match(binding: Mapping[str, Any]) -> None:
             or before.st_uid != os.geteuid()
             or before.st_nlink != 1
             or stat.S_IMODE(before.st_mode) != 0o600
-            or before.st_size != int(binding["size_bytes"])
         ):
             raise OperatorError("published replica file identity is unsafe")
+        if before.st_size != int(binding["size_bytes"]):
+            raise OperatorError("published replica bytes differ from owner status")
         digest = hashlib.sha256()
         remaining = before.st_size
         while remaining:
@@ -91013,10 +91018,13 @@ def _status_sample(
     server: Any,
     scheduler: subprocess.Popen[Any],
 ) -> dict[str, Any]:
-    observed_at = time.time()
     owner_status_after: Mapping[str, Any] = {}
     authority: dict[str, Any] = {}
     for attempt in range(STATUS_REPLICA_STABILITY_ATTEMPTS):
+        # A failed publication observation is discarded in full. Date the
+        # next query at its actual start, never at the failed attempt's start
+        # or at publication time (which could disguise an overlong query).
+        observed_at = time.time()
         owner_status_before = server.status()
         retryable_publication_race = False
         try:

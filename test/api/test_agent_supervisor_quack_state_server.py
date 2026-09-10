@@ -37,6 +37,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     STATE_SERVER_IDENTITY_INTERFACE,
     ExclusiveOwnerLease,
     FakeQuackTransport,
+    InProcessQuackTransport,
     OwnerMarker,
     QuackStateServer,
     QuackStateServerBindError,
@@ -2497,6 +2498,67 @@ def test_stale_or_malformed_stop_control_is_pre_effect_and_recoverable(
     assert server.request_stop()["requested"] is True
     assert server.stop()["stopped"] is True
     assert server.lifecycle is ServerLifecycle.STOPPED
+
+
+@pytest.mark.parametrize("failure_stage", ["load", "query", "none"])
+def test_live_query_bounds_native_resources_before_loading_and_closes_client(
+    monkeypatch: pytest.MonkeyPatch, failure_stage: str,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    native_connect = duckdb.connect
+    clients: list[Any] = []
+
+    class Client:
+        def __init__(self, database: str, **kwargs: Any) -> None:
+            self.native = native_connect(database, **kwargs)
+            self.closed = False
+            clients.append(self)
+
+        def execute(self, sql: str, _params: Any = None) -> _Result:
+            # Inspect effective native settings at the extension boundary;
+            # accepting a config argument alone does not establish the cap.
+            threads, memory = self.native.execute(
+                "SELECT current_setting('threads'), "
+                "current_setting('memory_limit')"
+            ).fetchone()
+            assert threads == 1
+            assert memory == "244.1 MiB"
+            if (sql == "LOAD quack" and failure_stage == "load") or (
+                "quack_query" in sql and failure_stage == "query"
+            ):
+                raise RuntimeError("isolated probe failure")
+            return _Result((1,))
+
+        def close(self) -> None:
+            self.native.close()
+            self.closed = True
+
+    monkeypatch.setattr(duckdb, "connect", Client)
+    identity = StateServerIdentity(
+        server_id="server:bounded-probe", store_id="store:bounded-probe",
+        database_uuid=_UUID, schema_revision=1, schema_fingerprint=_DIGEST,
+        generation=1, fence_epoch=1, revision=0, process_birth=_birth(),
+        listen_uri="quack:127.0.0.1:45692", extension_fingerprint=_DIGEST,
+        credential_generation=1, secret_handle="handle:bounded-probe",
+    )
+    transport = InProcessQuackTransport()
+    transport.start(
+        FakeConnection(), host="127.0.0.1", port=45692,
+        token="isolated-probe-token", identity=identity,
+    )
+    if failure_stage == "none":
+        assert transport.live_query(
+            FakeConnection(), identity=identity, token="isolated-probe-token",
+        )["live"] is True
+    else:
+        with pytest.raises(QuackStateServerReadyError):
+            transport.live_query(
+                FakeConnection(), identity=identity, token="isolated-probe-token",
+            )
+    assert len(clients) == 1
+    assert clients[0].closed is True
+    with pytest.raises(duckdb.ConnectionException):
+        clients[0].native.execute("SELECT 1")
 
 
 def test_ready_requires_live_query(tmp_path: Path) -> None:
