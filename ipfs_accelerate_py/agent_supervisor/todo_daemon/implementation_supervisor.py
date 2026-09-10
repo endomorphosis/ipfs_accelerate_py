@@ -13677,6 +13677,8 @@ class PortalImplementationSupervisor:
     def _active_managed_database_pool_evidence(
         self,
         child: Any,
+        *,
+        include_unresolved: bool = False,
     ) -> tuple[dict[str, str], dict[str, Any]] | None:
         """Prove nested database work and return its exact task projection.
 
@@ -13685,9 +13687,10 @@ class PortalImplementationSupervisor:
         be no provider or validation descendant to discover.  A live pool
         lease is therefore considered active only when it is owned by this
         exact supervised child birth and corroborated by the canonical
-        worktree lifecycle plus its database-attempt binding.  Any missing,
-        malformed, idle, peer, stale, or foreign record fails open to the
-        ordinary control-plane reload.
+        worktree lifecycle plus its database-attempt binding. Unverified task
+        evidence does not prove quiescence for a corroborated live lease.
+        Only the reload caller may request that unresolved observation; task
+        and phase projections continue to require independent verification.
         """
 
         worktree_root = self.config.worktree_root
@@ -13724,6 +13727,21 @@ class PortalImplementationSupervisor:
             lifecycle_store = WorktreeLifecycleStore(repo_root)
         except (OSError, RuntimeError, ValueError):
             return None
+
+        unresolved = []
+
+        def custody_stable(pool_path, pool, lock, record, workspace):
+            try:
+                return (
+                    self._load_single_link_json_object(pool_path) == pool
+                    and self._load_single_link_json_object(pool_path.with_suffix(".lock")) == lock
+                    and lifecycle_store.load_workspace(workspace) == record
+                    and self._stable_process_birth_identity(read_process_birth(child_pid))
+                    == self._stable_process_birth_identity(child_birth)
+                    and owner_liveness(record.owner) is OwnerLiveness.ALIVE
+                )
+            except (OSError, RuntimeError, ValueError):
+                return False
 
         for pool_path in pool_state_paths:
             try:
@@ -13794,6 +13812,8 @@ class PortalImplementationSupervisor:
                     continue
             except (OSError, RuntimeError):
                 continue
+            if include_unresolved:
+                unresolved.append((pool_path, dict(pool), dict(lock), record, resolved_workspace))
             # The lifecycle record, pool lease, and nested daemon state expose
             # Portal's path-bound task identity, local attempt, branch,
             # workspace, and live process birth.  The validator correlates
@@ -13849,6 +13869,11 @@ class PortalImplementationSupervisor:
             if (
                 self._stable_process_birth_identity(current_birth)
                 != self._stable_process_birth_identity(child_birth)
+                or not custody_stable(pool_path, pool, lock, record, resolved_workspace)
+                or self._load_single_link_json_object(nested_state_path) != nested_state_payload
+                or self._validated_managed_database_lifecycle_binding(
+                    record, attempt_root=attempt_root
+                ) != validated_binding
             ):
                 continue
             return (
@@ -13863,6 +13888,16 @@ class PortalImplementationSupervisor:
                 },
                 dict(nested_state_payload),
             )
+        for pool_path, pool, lock, record, workspace in unresolved:
+            if custody_stable(pool_path, pool, lock, record, workspace):
+                return ({
+                    "activity_verification": "unresolved",
+                    "task_id": "",
+                    "task_cid": "",
+                    "phase": "",
+                    "worktree_path": str(workspace),
+                    "lease_pid": str(child_pid),
+                }, {})
         return None
 
     def _active_managed_database_pool_lease(
@@ -13940,6 +13975,13 @@ class PortalImplementationSupervisor:
             "execution_active": bool(provider_workers or validation_active),
         }
 
+
+    def _managed_database_pool_reload_activity(self, child: Any) -> dict[str, str] | None:
+        """Preserve live custody without promoting unknown bindings to task authority."""
+
+        evidence = self._active_managed_database_pool_evidence(child, include_unresolved=True)
+        return None if evidence is None else dict(evidence[0])
+
     def _database_worktree_status_projection(
         self,
         child: Any,
@@ -13984,7 +14026,7 @@ class PortalImplementationSupervisor:
             database_pool_activity = (
                 None
                 if projected_active
-                else self._active_managed_database_pool_lease(_child)
+                else self._managed_database_pool_reload_activity(_child)
             )
             database_nonterminal_activity = (
                 None
@@ -14014,7 +14056,9 @@ class PortalImplementationSupervisor:
                     **control_plane_status,
                     "control_plane_reload_deferred": True,
                     "control_plane_reload_deferred_reason": (
-                        "active_managed_database_worktree_pool_lease"
+                        "live_managed_database_pool_quiescence_unresolved"
+                        if database_pool_activity and database_pool_activity.get("activity_verification") == "unresolved"
+                        else "active_managed_database_worktree_pool_lease"
                         if database_pool_activity
                         else (
                             "active_managed_database_nonterminal_lifecycle_claim"
