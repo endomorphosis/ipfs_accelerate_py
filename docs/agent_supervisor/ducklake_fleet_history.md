@@ -60,7 +60,11 @@ systemctl --user start ipfs-ducklake-fleet-export.service
 ```
 
 The timer retries every two minutes. The service has a 90-second deadline,
-512 MiB memory limit and a process-group cleanup boundary. Native aggregate
+512 MiB memory limit, 128-task ceiling and a process-group cleanup boundary.
+Numerical worker pools are limited to one thread. The task ceiling accommodates
+the native reader subprocess and extension loading; a 32-task unit aborted
+during live qualification. DuckDB connection thread limits are supplied at
+creation rather than after initialization. Native aggregate
 reads have a 45-second deadline and a 16 MiB output limit. A hung history worker
 can therefore be terminated without stopping either Quack owner or a board's
 supervisors. Fleet `HOLD` and `OPERATOR_STOP` files suppress scheduled export.

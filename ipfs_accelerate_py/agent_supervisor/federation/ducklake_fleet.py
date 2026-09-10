@@ -55,9 +55,9 @@ def open_history(root: Path, *, create: bool = True):
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         import duckdb
 
-        connection = duckdb.connect(":memory:")
-        connection.execute("SET threads=1")
-        connection.execute("SET memory_limit='256MB'")
+        # Apply the worker bound at connection creation: SET afterwards lets
+        # DuckDB create a CPU-sized pool first and can abort under TasksMax.
+        connection = duckdb.connect(":memory:", config={"threads": 1, "memory_limit": "256MB"})
         connection.execute("SET autoinstall_known_extensions=false")
         connection.execute("SET autoload_known_extensions=false")
         connection.execute("LOAD ducklake")
