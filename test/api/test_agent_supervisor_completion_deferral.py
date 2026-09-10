@@ -102,3 +102,39 @@ def test_tick_does_not_swallow_other_coordination_failures():
         daemon.run_once()
     assert caught.value is error
     assert daemon._idle_recovery_prefix is None
+
+
+@pytest.mark.parametrize("required", [False, True])
+def test_preparation_disappearing_at_identity_recheck_is_not_stale_evidence(tmp_path, required):
+    coordinator, _ = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:missing", task_id="MISSING")
+        claim = coordinator.claim_task(task_cid="task:missing", owner_session_id="session:one")
+        coordinator.prepare_task_completion(
+            claim, control_expected_revision=2, evidence_digest="sha256:evidence"
+        )
+        connection = coordinator._require()
+
+        class DisappearingRow:
+            reads = 0
+
+            def execute(self, sql, parameters):
+                self.reads += 1
+                if self.reads == 2:
+                    connection.execute("DELETE FROM task_completions WHERE task_cid = ?", [claim.task_cid])
+                return connection.execute(sql, parameters)
+
+        # Model the exact producer interleaving between enumeration and the
+        # identity recheck. Required settlement still raises; an optional
+        # lookup returns no evidence and cannot return the stale preparation.
+        observed = DisappearingRow()
+        if required:
+            with pytest.raises(DatabaseCoordinationNotReadyError) as caught:
+                coordinator._prepared_completion_unlocked(observed, claim.task_cid, required=True)
+            assert caught.value.evidence["reason"] == "completion_missing"
+        else:
+            assert coordinator._prepared_completion_unlocked(observed, claim.task_cid, required=False) is None
+        assert observed.reads == 2
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+    finally:
+        coordinator.close()
