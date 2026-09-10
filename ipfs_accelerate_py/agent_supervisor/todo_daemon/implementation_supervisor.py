@@ -1973,33 +1973,11 @@ def _run_daemon_main_with_retryable_memory_backoff(
     Non-retryable failures and ``SystemExit`` still fail closed.
     """
 
-    attempt = 0
-    delays = tuple(float(item) for item in backoff_seconds) or (30.0,)
-    while True:
-        try:
-            return int(main(list(argv)) or 0)
-        except Exception as exc:
-            if type(exc).__name__ not in RETRYABLE_READINESS_ERROR_TYPES:
-                # The sealed bootstrap deliberately suppresses exception text.
-                # Preserve a secret-free code location before it maps to exit 78.
-                trace = exc.__traceback__
-                while trace is not None and trace.tb_next is not None:
-                    trace = trace.tb_next
-                logger.error(
-                    "Sealed daemon child non-retryable failure type=%s function=%s line=%s",
-                    type(exc).__name__,
-                    trace.tb_frame.f_code.co_name if trace is not None else "unknown",
-                    trace.tb_lineno if trace is not None else 0,
-                )
-                raise
-            delay = delays[min(attempt, len(delays) - 1)]
-            attempt += 1
-            logger.warning(
-                "Sealed daemon child retryable pressure (%s); retry in %.1fs",
-                type(exc).__name__,
-                delay,
-            )
-            sleep(delay)
+    from ..runtime.database_daemon_backoff import run_database_daemon_with_backoff
+
+    return run_database_daemon_with_backoff(
+        main, argv, sleep=sleep, backoff_seconds=backoff_seconds, logger=logger,
+    )
 
 
 def _run_sealed_daemon_child(argv: Sequence[str]) -> int:
