@@ -68748,10 +68748,7 @@ class DatabaseImplementationDaemon:
             self._acquire_embedded_writer_lock()
             try:
                 self.execution_path.parent.mkdir(parents=True, exist_ok=True)
-                self._connection = open_duckdb_connection(
-                    self.execution_path,
-                    prefer_quack=False,
-                )
+                self._connection = open_duckdb_connection(self.execution_path)
                 for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
                     self._connection.execute(statement)
                 lane_metadata = {
