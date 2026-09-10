@@ -3751,12 +3751,16 @@ class DatabaseCoordinator:
             )
         prepared = self._validate_preparation_mapping(body, task_cid=task_cid)
         identity = self._task_claim_identity(prepared)
-        self._task_completion_for_identity_unlocked(
+        completion = self._task_completion_for_identity_unlocked(
             connection,
             identity=identity,
             required=required,
             expected_statuses=tuple(sorted(allowed_statuses)),
         )
+        if completion is None:
+            # Optional enumeration can lose its row between observations.
+            # Never return the earlier preparation as current evidence.
+            return None
         return {
             **prepared,
             "status": status,
