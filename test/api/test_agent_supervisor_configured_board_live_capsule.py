@@ -489,6 +489,7 @@ def _source_transition_authority(
     integration_base: str = "",
     ordinal: int = 1,
     reconciled: bool = False,
+    binding_version: int = 1,
 ) -> dict[str, object]:
     identity_digit = f"{ordinal + 6:x}"[-1]
     identity_letter = chr(ord("a") + ordinal - 1)
@@ -553,6 +554,14 @@ def _source_transition_authority(
         "authoritative_task_store": "duckdb",
         "projection_authority": False,
     }
+    if binding_version == 2:
+        database_attempt_binding.update({
+            "schema": "ipfs_accelerate_py/agent-supervisor/database-portal-attempt-binding@2",
+            "control_binding_id": "baguq-control-binding",
+            "control_task_projection_cid": "baguq-control-projection",
+            "control_expected_revision": 1,
+            "control_portal_binding_basis_cid": "baguq-control-basis",
+        })
     database_attempt_binding["binding_id"] = "sha256:" + hashlib.sha256(
         json.dumps(
             database_attempt_binding,
@@ -905,10 +914,12 @@ def test_accepted_source_exact_pin_needs_no_transition_authority(
     (False, True),
     ids=("accepted-source-transition-at-1", "accepted-source-transition-at-2"),
 )
+@pytest.mark.parametrize("binding_version", (1, 2))
 def test_accepted_source_admits_only_exact_database_receipted_merge(
     tmp_path: Path,
     quack_projection: _ProjectionFixture,
     reconciled: bool,
+    binding_version: int,
 ) -> None:
     projection_pin, extension_set_pin, _projection_home = quack_projection
     root, raw_paths = _seed(tmp_path, extension_set_pin)
@@ -923,6 +934,7 @@ def test_accepted_source_admits_only_exact_database_receipted_merge(
         implementation=implementation,
         merge_commit=merge_commit,
         reconciled=reconciled,
+        binding_version=binding_version,
     )
 
     receipt = capsule.verify_configured_board_accepted_source(

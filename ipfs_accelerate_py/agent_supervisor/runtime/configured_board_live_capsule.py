@@ -1313,25 +1313,14 @@ def _verify_canonical_source_transition(
     database_binding_id = str(
         normalized_database_binding.pop("binding_id", "") or ""
     )
-    expected_database_binding_fields = {
-        "schema",
-        "interface",
-        "attempt_id",
-        "claim_id",
-        "task_cid",
-        "task_alias",
-        "goal_cid",
-        "plan_cid",
-        "task_revision",
-        "fencing_token",
-        "fence_epoch",
-        "lease_id",
-        "task_body_digest",
-        "projection_seed_digest",
-        "projection_immutable_digest",
-        "authoritative_task_store",
-        "projection_authority",
-    }
+    from ..task_sources.database_attempt_binding import validate_database_attempt_binding
+
+    try:
+        validate_database_attempt_binding(database_binding)
+    except (TypeError, ValueError) as exc:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board canonical source transition is inconsistent"
+        ) from exc
     if (
         set(normalized) != expected_fields
         or str(authority.get("status") or "").lower()
@@ -1376,12 +1365,6 @@ def _verify_canonical_source_transition(
         or isinstance(transition.get("fencing_token"), bool)
         or not isinstance(transition.get("fencing_token"), int)
         or int(transition.get("fencing_token") or 0) < 1
-        or set(normalized_database_binding) != expected_database_binding_fields
-        or database_binding.get("schema")
-        != (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "database-portal-attempt-binding@1"
-        )
         or database_binding.get("interface")
         != "DatabasePortalExecutionBridge@1"
         or database_binding.get("attempt_id") != transition.get("attempt_id")
