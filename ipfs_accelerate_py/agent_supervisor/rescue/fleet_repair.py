@@ -305,13 +305,14 @@ def repair_prompt(board: dict[str, Any], incident: dict[str, Any], config: dict[
                   report: Path, prior_report: dict[str, Any] | None = None) -> str:
     return f"""You are the persistent repair worker for the user's DuckDB taskboard watchdog.
 
-USER AUTHORIZATION: Keep SPAR, SAWM, ASEH, PCTDD, PCPR and DOEP ipfs_accelerate_py
+USER AUTHORIZATION: Keep SPAR, SAWM, ASEH, PCTDD and DOEP ipfs_accelerate_py
 agent supervisors and todo daemons working; diagnose stalls or blocks; fix the
 generic supervisor so the same failure recovers automatically next time; when
 a board is authoritatively finished merge accepted worktrees, branches and
 submodules with their respective GitHub origin/main. Commits, validated merges,
 and ordinary pushes needed for this task are authorized. Preserve the user's
 explicit prohibition on automatically starting llama-server.
+PCPR remains held and excluded from this monitoring scope.
 
 STORAGE DIRECTION: Production supervisors default to DuckDB + Quack. Aggregate
 independent instances through DuckLake (the official DuckDB ducklake extension)
@@ -365,7 +366,14 @@ report that. If present, read the fleet monitoring handoff at
 concurrent source changes and validation evidence. This is diagnostic context;
 recheck its source/process bindings and native authority before adoption.
 Otherwise inspect exact process births, live authoritative Quack
-state, lane logs, last failed attempts and existing recovery paths. Implement
+state, lane logs, last failed attempts and existing recovery paths. Use an
+independently admitted native status reader or a grant issued to this reader's
+own peer/process birth. Do not extract another process's tokens from /proc
+environ, retained descriptors or logs, borrow a lane's credentials, or impersonate
+its PID/session to obtain task observations. When status_argv is empty or its
+monitor has stopped, implement the missing native reader/observation transition;
+owner readiness and credential-borrowed reads cannot replace status authority.
+Implement
 the smallest reusable fix with a regression test in an isolated branch or
 worktree of ipfs_accelerate_py. Validate the affected code. Preserve all dirty
 user work. Integrate reusable tested fixes with the respective GitHub main
