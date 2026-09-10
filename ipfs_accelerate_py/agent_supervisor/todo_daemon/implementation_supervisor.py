@@ -7476,6 +7476,7 @@ class PortalImplementationSupervisor:
                 strict_task_sharding=False,
                 markdown_path=None,
                 install_schema=False,
+                max_task_attempts=max(0, int(self.config.max_task_attempts)),
             )
             daemon.open()
             recovery_source = self._sealed_portal_recovery_source()

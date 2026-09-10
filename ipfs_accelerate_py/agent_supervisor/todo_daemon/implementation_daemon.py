@@ -68375,6 +68375,7 @@ class DatabaseImplementationDaemon:
         effect_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
         validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
         require_real_execution: bool = False,
+        max_task_attempts: int = 0,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
         coordinator: Any = None,
@@ -68528,6 +68529,13 @@ class DatabaseImplementationDaemon:
         self._effect_fn = effect_fn
         self._validation_fn = validation_fn
         self.require_real_execution = bool(require_real_execution)
+        try:
+            attempts = int(max_task_attempts)
+        except (TypeError, ValueError):
+            attempts = 0
+        if isinstance(max_task_attempts, bool) or attempts < 0:
+            attempts = 0
+        self.max_task_attempts = attempts
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
         self._connection: Any = None
@@ -70098,11 +70106,14 @@ class DatabaseImplementationDaemon:
         """
 
         portal = getattr(self._provider_fn, "__self__", None)
+        raw = getattr(portal, "max_task_attempts", None)
+        if raw in (None, 0):
+            raw = getattr(self, "max_task_attempts", 0)
         try:
-            attempts = int(getattr(portal, "max_task_attempts", 0) or 0)
+            attempts = int(raw or 0)
         except (TypeError, ValueError):
             return 1
-        if isinstance(getattr(portal, "max_task_attempts", 0), bool) or attempts < 1:
+        if isinstance(raw, bool) or attempts < 1:
             return 1
         return attempts
 
