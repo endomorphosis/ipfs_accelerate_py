@@ -1001,9 +1001,9 @@ class DatabaseMergeQueue:
                 ).fetchone()
                 mapping = _row_mapping(row)
                 self._ordinal = int(_row_get(mapping, "max_ordinal", "0", default=0) or 0)
+                self._commit_if_idle(connection)
                 self._connection = connection
                 self._closed = False
-                self._commit_if_idle(connection)
                 return self
             except Exception:
                 try:
@@ -1047,43 +1047,28 @@ class DatabaseMergeQueue:
         return self._connection
 
     def _begin(self, connection: Any) -> None:
+        # A failed BEGIN must not turn the following settlement writes into
+        # independent autocommits. The queue owns its connection and each
+        # public mutation owns a complete transaction.
         if getattr(connection, "in_transaction", False):
-            return
-        try:
-            connection.execute("BEGIN TRANSACTION")
-        except Exception:
-            pass
+            raise DatabaseMergeQueueError(
+                "merge queue connection already has a transaction"
+            )
+        connection.execute("BEGIN TRANSACTION")
 
     def _rollback_if_open(self, connection: Any) -> None:
         try:
-            rollback = getattr(connection, "rollback", None)
-            if callable(rollback) and getattr(connection, "in_transaction", False):
-                rollback()
-                return
-            raw = getattr(connection, "_connection", None)
-            raw_rollback = getattr(raw, "rollback", None) if raw is not None else None
-            if callable(raw_rollback):
-                raw_rollback()
+            connection.rollback()
         except Exception:
-            pass
+            # Preserve the original operation error, but never reuse an
+            # uncertain transaction after an owner/transport failure.
+            self.close()
 
     def _commit_if_idle(self, connection: Any) -> None:
-        try:
-            if getattr(connection, "in_transaction", False):
-                commit = getattr(connection, "commit", None)
-                if callable(commit):
-                    commit()
-                    return
-            raw = getattr(connection, "_connection", None)
-            raw_commit = getattr(raw, "commit", None) if raw is not None else None
-            if callable(raw_commit):
-                raw_commit()
-                return
-            commit = getattr(connection, "commit", None)
-            if callable(commit):
-                commit()
-        except Exception:
-            pass
+        # Use the policy wrapper, never its raw handle: on Quack, commit also
+        # submits the authenticated owner mutation bundle. Its failure is not
+        # evidence of durable settlement and must reach the caller.
+        connection.commit()
 
     def _now_ms(self) -> int:
         return int(self._clock_ms())
