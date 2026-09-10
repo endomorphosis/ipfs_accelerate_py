@@ -92203,55 +92203,64 @@ def _status_monitor_loop(
     )
     prior = dict(previous)
     unhealthy_edges = 0
-    while not stop.wait(interval):
-        try:
-            current = _status_sample(board, paths, server, scheduler)
-            if _authoritative_progress_between(prior, current):
-                last_progress_at = float(current["observed_at"])
-            receipt = _health_receipt(
-                board, paths, samples=(prior, current), launched_at=launched_at,
-                last_progress_at=last_progress_at, failure=failure,
+    # A terminal sample cannot retire the retained owner's observer. Keep the
+    # same closure (including outage/progress budgets) across every sample.
+    from ipfs_accelerate_py.agent_supervisor.runtime.retained_observation import (
+        run_retained_observation,
+    )
+
+    def observe_once() -> None:
+        nonlocal prior, last_progress_at, unhealthy_edges
+        current = _status_sample(board, paths, server, scheduler)
+        if _authoritative_progress_between(prior, current):
+            last_progress_at = float(current["observed_at"])
+        receipt = _health_receipt(
+            board, paths, samples=(prior, current), launched_at=launched_at,
+            last_progress_at=last_progress_at, failure=failure,
+        )
+        _atomic_json(paths["status_receipt"], receipt)
+        prior_authority = prior.get("authority")
+        current_authority = current.get("authority")
+        prior_available = (
+            isinstance(prior_authority, Mapping)
+            and prior_authority.get("available") is True
+        )
+        current_available = (
+            isinstance(current_authority, Mapping)
+            and current_authority.get("available") is True
+        )
+        action, reason_code, unhealthy_edges = (
+            _post_admission_health_action(
+                receipt,
+                prior_available=prior_available,
+                current_available=current_available,
+                unhealthy_edges=unhealthy_edges,
             )
-            _atomic_json(paths["status_receipt"], receipt)
-            prior_authority = prior.get("authority")
-            current_authority = current.get("authority")
-            prior_available = (
-                isinstance(prior_authority, Mapping)
-                and prior_authority.get("available") is True
-            )
-            current_available = (
-                isinstance(current_authority, Mapping)
-                and current_authority.get("available") is True
-            )
-            action, reason_code, unhealthy_edges = (
-                _post_admission_health_action(
-                    receipt,
-                    prior_available=prior_available,
-                    current_available=current_available,
-                    unhealthy_edges=unhealthy_edges,
-                )
-            )
-            if action == "stop":
-                return
-            if action == "fail":
-                _record_control_failure(
-                    paths, failure, failure_event,
-                    reason_code=reason_code,
-                    error_type=(
-                        "ASEHHealthQueryFailure"
-                        if reason_code.startswith("authoritative_status_")
-                        else "ASEHHealthGateFailure"
-                    ),
-                )
-                return
-            prior = current
-        except Exception as exc:
+        )
+        if action == "fail":
             _record_control_failure(
                 paths, failure, failure_event,
-                reason_code="health_monitor_failed",
-                error_type=type(exc).__name__,
+                reason_code=reason_code,
+                error_type=(
+                    "ASEHHealthQueryFailure"
+                    if reason_code.startswith("authoritative_status_")
+                    else "ASEHHealthGateFailure"
+                ),
             )
             return
+        prior = current
+
+    def on_error(exc: Exception) -> None:
+        _record_control_failure(
+            paths, failure, failure_event,
+            reason_code="health_monitor_failed",
+            error_type=type(exc).__name__,
+        )
+
+    run_retained_observation(
+        observe_once, stop=stop, failed=failure_event, interval=interval,
+        on_error=on_error,
+    )
 
 
 def _read_live_status_receipt(

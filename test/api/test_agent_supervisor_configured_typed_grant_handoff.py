@@ -3283,7 +3283,7 @@ def test_aseh_health_requires_two_sample_semantic_authority_and_exact_terminal(
         prior_available=True,
         current_available=True,
         unhealthy_edges=0,
-    )[:2] == ("stop", "")
+    )[:2] == ("continue", "")
 
     terminal_current["authority"]["task_authority_spec_cids"][  # type: ignore[index]
         "ASEH-000"
