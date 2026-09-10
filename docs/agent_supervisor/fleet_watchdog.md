@@ -18,6 +18,15 @@ freshness and identity checks; rejected samples are never used. Blocked, stuck,
 and command-failure decisions are returned immediately. Probe details include
 `native_status_attempts` so recovery from a publication gap is visible.
 
+Process observations include the Linux state and, when readable, the kernel
+wait channel. A stopped (`T`/`t`) or uninterruptible (`D`) owner, supervisor or
+daemon degrades health even when supervisor heartbeats remain fresh. Its exact
+live birth stays visible; the probe does not treat it as a missing process.
+Persistent conditions enter the existing repair queue after the configured
+grace period, while transient kernel waits can clear before repair. Holds and
+native recovery admission still apply, and providers in other lanes remain
+visible. These diagnostics do not authorize signalling or callback replay.
+
 ## Operation
 
 Two user services run continuously:

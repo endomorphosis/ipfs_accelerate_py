@@ -142,7 +142,67 @@ def test_hardened_cwd_does_not_hide_birth_identity(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "resolve", resolve)
     observed = probe.process_identity(100, proc_root=tmp_path)
     assert observed["cwd"] == ""
+    assert observed["process_state"] == "S"
+    assert observed["wait_channel"] == ""
     assert probe.birth_matches(observed, {"pid": 100, "start_time_ticks": 42, "boot_id": "known-boot"})
+
+
+@pytest.mark.parametrize("latest_state,latest_birth,accepted", [
+    ("D", "42", True), ("T", "42", True), ("t", "42", True),
+    ("Z", "42", False), ("X", "42", False), ("D", "43", False),
+])
+def test_process_condition_uses_same_birth_final_sample(
+    tmp_path, monkeypatch, latest_state, latest_birth, accepted,
+):
+    proc = tmp_path / "100"
+    proc.mkdir()
+    (proc / "cmdline").write_bytes(b"python3\0-m\0safe_module\0")
+    (proc / "cwd").symlink_to(tmp_path, target_is_directory=True)
+    (proc / "wchan").write_text("kernel_clone")
+    boot = tmp_path / "sys/kernel/random/boot_id"
+    boot.parent.mkdir(parents=True)
+    boot.write_text("known-boot")
+    def stat(state, birth):
+        return "100 (python worker) " + " ".join([state, "1"] + ["0"] * 17 + [birth] + ["0"] * 3)
+    samples = iter([stat("S", "42"), stat(latest_state, latest_birth)])
+    original = Path.read_text
+    def read(path, *args, **kwargs):
+        return next(samples) if path == proc / "stat" else original(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "read_text", read)
+    observed = probe.process_identity(100, proc_root=tmp_path)
+    if not accepted:
+        assert observed == {}
+        return
+    public = probe._public_identity(observed)
+    assert public["process_state"] == latest_state
+    assert public["wait_channel"] == "kernel_clone"
+    assert public["start_time_ticks"] == 42
+    assert "argv" not in public
+
+
+@pytest.mark.parametrize("role", ["owner", "supervisor", "daemon"])
+@pytest.mark.parametrize("state,condition", [("T", "stopped"), ("t", "stopped"), ("D", "uninterruptible")])
+def test_fresh_heartbeat_does_not_hide_kernel_process_condition(board, monkeypatch, role, state, condition):
+    config, identities, _ = board
+    identities[50]["process_state"] = state if role == "owner" else "S"
+    affected = {"supervisor": 60, "daemon": 61}.get(role)
+    monkeypatch.setattr(probe, "_lane_process", lambda pid, *_: {
+        "pid": pid, "process_state": state if pid == affected else "S",
+        "start_time_ticks": 42, "boot_id": "known-boot", "wait_channel": "kernel_clone"})
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({"task_authority": {
+        "status_counts": {"todo": 1}, "task_count": 1, "authenticated_query": True}}, ""))
+    # Work in another lane remains visible and must be preserved by recovery.
+    monkeypatch.setattr(probe, "_provider_busy", lambda *_: [{"pid": 70}])
+    result = probe.observe_board(config, now=1000)
+    prefix = "owner" if role == "owner" else f"lane_0_{role}"
+    assert f"{prefix}_process_{condition}" in result["reason_codes"]
+    assert not any("missing" in reason for reason in result["reason_codes"])
+    assert result["health"] == "degraded"
+    assert result["busy"] is True
+    assert result["complete"] is False
+    assert "recovery_action" not in result
+    if affected:
+        assert result["details"]["lanes"][0][role]["pid"] == affected
 
 
 def test_cancelled_task_is_not_complete(board, monkeypatch):

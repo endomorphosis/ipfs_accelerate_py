@@ -85,14 +85,21 @@ def process_identity(pid: Any, *, proc_root: Path = Path("/proc")) -> dict[str, 
             # Hardened state owners intentionally disable dumpability, which
             # hides cwd even from their Unix user. Birth fields remain visible.
             cwd = ""
+        try:
+            wait_channel = (root / "wchan").read_text().strip()
+        except OSError:
+            # Hardened owners can hide this diagnostic without hiding birth.
+            wait_channel = ""
         after = (root / "stat").read_text()
-        if before != after and stat[19] != after[after.rfind(")") + 2:].split()[19]:
+        latest = after[after.rfind(")") + 2:].split()
+        if stat[19] != latest[19] or latest[0] in {"Z", "X"}:
             return {}
         return {
             "pid": pid, "parent_pid": int(stat[1]), "start_time_ticks": int(stat[19]),
             "boot_id": (proc_root / "sys/kernel/random/boot_id").read_text().strip(),
             "cwd": cwd, "argv": argv, "cmdline_sha256": hashlib.sha256(cmdline).hexdigest(),
             "cpu_ticks": int(stat[11]) + int(stat[12]),
+            "process_state": latest[0], "wait_channel": wait_channel,
         }
     except (OSError, ValueError, IndexError, TypeError):
         return {}
@@ -109,8 +116,19 @@ def _public_identity(identity: Mapping[str, Any]) -> dict[str, Any]:
     # Keep enough information for an operator to recheck identity, not argv (which
     # may contain long prompts or credentials in unrelated process descendants).
     return {key: identity[key] for key in (
-        "pid", "parent_pid", "start_time_ticks", "boot_id", "cwd", "cmdline_sha256", "cpu_ticks"
+        "pid", "parent_pid", "start_time_ticks", "boot_id", "cwd", "cmdline_sha256", "cpu_ticks",
+        "process_state", "wait_channel",
     ) if key in identity}
+
+
+def _process_condition(identity: Mapping[str, Any]) -> str:
+    """Report a kernel observation, never infer death or permission to signal."""
+    state = identity.get("process_state")
+    if state in {"T", "t"}:
+        return "stopped"
+    if state == "D":
+        return "uninterruptible"
+    return ""
 
 
 def _flag(argv: list[str], flag: str) -> str:
@@ -508,6 +526,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         reasons.append("owner_process_missing_or_birth_mismatch")
     elif not owner_ready:
         reasons.append("owner_not_ready")
+    if owner_live and (condition := _process_condition(owner)):
+        reasons.append(f"owner_process_{condition}")
     if owner_live:
         try:
             endpoint = str(board["quack_endpoint"]).removeprefix("quack:")
@@ -541,6 +561,13 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             reasons.append(f"lane_{index}_supervisor_heartbeat_stale")
         if not daemon:
             reasons.append(f"lane_{index}_daemon_missing")
+        # A supervisor heartbeat can advance while its daemon is stopped or
+        # waiting in the kernel. Keep the exact live identity and route a
+        # persistent condition through the watchdog's existing incident grace,
+        # holds and native repair admission; one sample never authorizes a kill.
+        for role, identity in (("supervisor", supervisor), ("daemon", daemon)):
+            if condition := _process_condition(identity):
+                reasons.append(f"lane_{index}_{role}_process_{condition}")
         if status.get("stalled_without_active_worker") is True:
             reasons.append(f"lane_{index}_reports_stalled")
         if status.get("last_exit_code") == 78 and not daemon:

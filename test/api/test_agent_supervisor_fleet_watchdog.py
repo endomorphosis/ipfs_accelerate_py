@@ -71,6 +71,27 @@ class Runner:
         return {"returncode": 0, "stdout": "private output", "stderr": ""}
 
 
+def test_transient_kernel_wait_does_not_trigger_repair_but_persistent_wait_does(tmp_path):
+    board = _board(tmp_path)
+    runner = Runner(_observation(health="degraded", busy=True,
+        reason_codes=["lane_0_daemon_process_uninterruptible"]))
+    root = tmp_path / "watch"
+    first = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    assert first["planned_action"] == ""
+    runner.observation = _observation(busy=True)
+    recovered = fleet.tick_board(board, root, apply=True, runner=runner, now=105)
+    assert recovered["health"] == "healthy"
+    runner.observation = _observation(health="degraded", busy=True,
+        reason_codes=["lane_0_daemon_process_uninterruptible"])
+    for now in (110, 129):
+        assert fleet.tick_board(board, root, apply=True, runner=runner, now=now)["planned_action"] == ""
+    persistent = fleet.tick_board(board, root, apply=True, runner=runner, now=131)
+    assert persistent["last_action"] == "repair"
+    assert persistent["observation"]["busy"] is True
+    assert [call["argv"][0] for call in runner.calls].count("repair") == 1
+    assert not any(call["argv"][0] == "ensure" for call in runner.calls)
+
+
 def test_stopped_board_uses_ensure_only_after_grace(tmp_path):
     board = _board(tmp_path)
     runner = Runner(_observation(health="stopped", recovery_action="ensure"))
