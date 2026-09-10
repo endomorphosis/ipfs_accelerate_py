@@ -4109,3 +4109,35 @@ def test_missing_logical_completion_is_skipped_instead_of_fail_closed(
         assert daemon.reconcile_prepared_task_completions() == []
     finally:
         daemon.close()
+
+
+def test_missing_logical_completion_during_unsettled_enumeration_is_skipped(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinationNotReadyError,
+    )
+
+    daemon = _open_daemon(tmp_path, session="session:missing-completion-enum")
+    try:
+        daemon.materialize_population(_population(1))
+
+        def missing_enum(**_kwargs: object) -> list[dict[str, object]]:
+            raise DatabaseCoordinationNotReadyError(
+                "task task:cid:001 has no logical completion to settle",
+                evidence={
+                    "task_cid": "task:cid:001",
+                    "claim_id": "claim-missing",
+                    "attempt_id": "attempt-missing",
+                    "reason": "completion_missing",
+                },
+            )
+
+        daemon.coordinator.list_unsettled_task_completions = (  # type: ignore[method-assign]
+            missing_enum
+        )
+        assert daemon.reconcile_prepared_task_completions() == []
+        result = daemon.run_once()
+        assert result["implementation_result"]["status"] == "succeeded"
+    finally:
+        daemon.close()

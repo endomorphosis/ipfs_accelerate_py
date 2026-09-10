@@ -72419,7 +72419,20 @@ class DatabaseImplementationDaemon:
         now = self._now_ms()
         from ..merge.database_coordination import DatabaseCoordinationNotReadyError
 
-        for prepared in list_unsettled(limit=100, now_ms=now):
+        try:
+            unsettled = list_unsettled(limit=100, now_ms=now)
+        except DatabaseCoordinationNotReadyError as exc:
+            evidence = dict(getattr(exc, "evidence", {}) or {})
+            if str(evidence.get("reason") or "") != "completion_missing":
+                raise
+            logger.warning(
+                "Skipping unsettled-completion enumeration with missing row task=%s claim=%s",
+                evidence.get("task_cid"),
+                evidence.get("claim_id"),
+            )
+            return []
+
+        for prepared in unsettled:
             try:
                 outcome = self._reconcile_one_prepared_task_completion(
                     prepared,
