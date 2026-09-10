@@ -8934,6 +8934,7 @@ class PortalSupervisorConfig:
     database_owner_session_id: str = ""
     state_owner_bootstrap_fd: int = -1
     state_owner_bootstrap_store_id: str = ""
+    owner_merge_bootstrap_profile: str = ""
     require_launch_source_amendment: bool = False
     launch_source_amendment_json: str = ""
     reconciliation_only: bool = False
@@ -9166,6 +9167,14 @@ class PortalSupervisorConfig:
                 or self.database_owner_session_id
             )
         )
+        if self.owner_merge_bootstrap_profile:
+            from ..semantic_refactoring.residual_authority import SPAR_BOARD_NAMESPACE
+            if (self.owner_merge_bootstrap_profile != "native-owner-merge-pair@1"
+                or self.board_namespace != SPAR_BOARD_NAMESPACE
+                or not self.require_launch_source_amendment
+                or not self.launch_source_amendment_json
+                or self.state_owner_bootstrap_fd < 3):
+                raise SupervisorSchedulerConfigError("native merge bootstrap profile is not admitted")
         if self.require_launch_source_amendment and not self.launch_source_amendment_json:
             raise SupervisorSchedulerConfigError(
                 "required launch-source amendment is unavailable"
@@ -26914,6 +26923,8 @@ class PortalImplementationSupervisor:
                     )
             if self.config.require_launch_source_amendment:
                 command.append("--require-launch-source-amendment")
+            if self.config.owner_merge_bootstrap_profile:
+                command.extend(["--owner-merge-bootstrap-profile", self.config.owner_merge_bootstrap_profile])
             if self.config.launch_source_amendment_json:
                 command.extend(
                     [
@@ -28043,6 +28054,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument("--owner-merge-bootstrap-profile", choices=("native-owner-merge-pair@1",), default="", help=argparse.SUPPRESS)
     parser.add_argument(
         "--require-launch-source-amendment",
         action="store_true",
@@ -28892,6 +28904,7 @@ def supervisor_config_from_args(
         state_owner_bootstrap_store_id=str(
             getattr(args, "state_owner_bootstrap_store_id", "") or ""
         ),
+        owner_merge_bootstrap_profile=str(getattr(args, "owner_merge_bootstrap_profile", "") or ""),
         require_launch_source_amendment=bool(
             getattr(args, "require_launch_source_amendment", False)
         ),

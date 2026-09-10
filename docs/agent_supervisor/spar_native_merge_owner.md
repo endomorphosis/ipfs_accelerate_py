@@ -47,3 +47,56 @@ dispatch, source adoption, claim recovery or completion. Unknown processing
 claims and existing receipt/cursor evidence remain preserved. The subsequent
 versioned broker/daemon handoff supplies the actual native factory; it is a
 separate source component from this offline role.
+
+## Fresh-origin production handoff
+
+The native operator has an explicit `supervise --merge-owner-profile
+native-fresh-origin@1` path. It runs the existing clean-source, sealed-board
+preflight and current `LaunchSourceAmendment` admission before creating either
+owner or granting workers access. It initializes only an absent private
+configured queue directory. An existing directory or legacy database without
+the canonical `legacy_merge_native_origins` record is refused, even if the
+queue is empty or a caller supplies a JSON origin/closure claim. The separate
+`native-legacy-capture@1` profile remains refused until coherent capture and
+old-consumer closure have independently admitted native producers.
+
+Fresh initialization creates the empty legacy queue schema and a new owner
+UUID, then records its exact namespace, immutable creation manifest and content
+identity in that database. Restarts retain this UUID and origin, validate the
+current repository/target/store/path and all five-field recovery scopes, and
+refuse an observed active database lock before opening the file. Creation
+source head/tree remain historical metadata. They do not authenticate current
+source or pin all future restarts to the initial commit: current source
+acceptance comes from the existing operator amendment gate. The schema helper
+requires this admitted caller; it is not a remote admission or migration API.
+A changed config or plan scope requires explicit migration, never an empty
+cursor reset.
+
+The controller retains two independent Quack servers with distinct database
+UUIDs, stores, sockets, ports, and owner generations. Its existing inherited
+listener admits the exact daemon process birth and controller/supervisor/daemon
+lineage. A versioned response supplies three different credentials: the
+unchanged task-only grant, the exact three-scope queue grant, and the exact
+four-scope recovery grant. No queue/recovery credential enters an environment
+variable, CLI argument, file or diagnostic. The daemon hardens its process
+before receiving the response, verifies the controller kernel peer and both
+owner identities, opens the three typed connections, and passes the queue and
+recovery pair plus its currently admitted config/plan CIDs into the actual
+`bind_database_portal_execution_from_args` factory call.
+
+The client may retry one lost bootstrap response with its original nonce. The
+controller returns only the same still-current three grants for that exact
+birth and both unchanged owners; revoked grants or a different nonce cannot
+revive the bundle. Partial grant issuance is revoked before any response.
+Malformed/foreign requests produce bounded rejection and do not restart the
+owner. Closing daemon client streams does not release a retained consumer
+lease. Unknown prior-generation leases, claims, callback history and all goal
+acceptance predicates remain governed by the existing owner recovery API.
+There is no filesystem queue fallback and no timeout-only lease settlement.
+
+Qualification includes two actual Quack transports under one controller PID,
+real typed sockets and distinct identities, writer-lock survival through
+checkpoint, actual supervisor/daemon child lineage, lost-response replay,
+malformed-request isolation, and the actual factory recovery call. These are
+disposable tests. This source path does not authorize adoption of SPAR's current
+legacy queue or claim that any live callback has closed.
