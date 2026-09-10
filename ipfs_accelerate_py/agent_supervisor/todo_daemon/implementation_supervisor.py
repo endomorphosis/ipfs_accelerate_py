@@ -586,6 +586,30 @@ IMPLEMENTATION_DAEMON_MODULE_SENTINEL = (
 # Redeem state authority before importing the native preload helper or the very
 # large daemon module.  A ``-c`` bootstrap is kept inline so the supervisor's
 # protected source remains the sole new control-plane dependency.
+IMPLEMENTATION_SUPERVISOR_MODULE_SENTINEL = (
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
+)
+
+# Control-plane reload execv's this process. The daemon bootstrap already
+# preloads sealed DuckDB; supervisor `-m` reload did not, so lane recycle
+# died with ModuleNotFoundError: duckdb and leftover-unstalled ASEH-062.
+ORDINARY_IMPLEMENTATION_SUPERVISOR_BOOTSTRAP = (
+    "import sys;"
+    f"_EXPECTED_SUPERVISOR_MODULE={IMPLEMENTATION_SUPERVISOR_MODULE_SENTINEL!r};"
+    "sys.argv[1:2] == [_EXPECTED_SUPERVISOR_MODULE] or sys.exit(78);"
+    "sys.argv.pop(1);"
+    "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+    "import harden_state_authority_process;"
+    "harden_state_authority_process();"
+    "from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner "
+    "import preload_sealed_native_dependency_from_environment;"
+    "preload_sealed_native_dependency_from_environment();"
+    "from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor "
+    "import main as implementation_supervisor_main;"
+    "raise SystemExit(implementation_supervisor_main())"
+)
+
+
 ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP = (
     "import sys;"
     f"_EXPECTED_DAEMON_MODULE={IMPLEMENTATION_DAEMON_MODULE_SENTINEL!r};"
@@ -6905,18 +6929,11 @@ class PortalImplementationSupervisor:
                 *accepted_argv,
             ]
         else:
-            module_name = (
-                __spec__.name
-                if __spec__ is not None and __spec__.name
-                else (
-                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-                    "implementation_supervisor"
-                )
-            )
             arguments = [
                 sys.executable,
-                "-m",
-                module_name,
+                "-c",
+                ORDINARY_IMPLEMENTATION_SUPERVISOR_BOOTSTRAP,
+                IMPLEMENTATION_SUPERVISOR_MODULE_SENTINEL,
                 *accepted_argv,
             ]
         os.execv(
