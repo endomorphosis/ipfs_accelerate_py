@@ -125549,6 +125549,9 @@ class DatabaseImplementationDaemon:
                     "attempt_consumed": True,
                     "operator_review_required": False,
                 }
+            # Missing source and an untouched recovery queue do not close the
+            # original callback generation.  A diagnostic or an operation name
+            # cannot substitute for independently verified retained evidence.
             seed = self._verified_post_commit_candidate_recovery_receipt(
                 attempt,
                 recovered,
