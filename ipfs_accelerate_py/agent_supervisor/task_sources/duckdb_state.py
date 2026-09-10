@@ -2817,8 +2817,8 @@ def apply_owner_command_payload(
         )
         blocked = unstall_false_terminal_blocked_tasks(
             connection,
-            canonical_transition=canonical_transition,
-            allow_projection_only=allow_projection_only,
+            canonical_transition=None,
+            allow_projection_only=True,
         )
         merged = {
             **result,
