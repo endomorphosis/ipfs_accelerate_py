@@ -82,6 +82,7 @@ from ..task_sources.control_plane_schema import (
     install_control_plane_schema,
 )
 from ..task_sources.database_task_source import (
+    DatabaseTaskSource,
     execute_quack_owner_command,
     quack_owner_command_error_code,
 )
@@ -112,6 +113,7 @@ from ..task_sources.duckdb_state import (
     QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
     QUACK_OWNER_MUTATION_RESULT_SCHEMA,
     DuckDBConnection,
+    clear_owner_board_unstall_bounce,
     open_duckdb_connection,
     open_quack_state_owner_connection,
     quack_owner_command_response,
@@ -5227,12 +5229,16 @@ class QuackStateServer:
                     "board projection recovery "
                     f"candidates={len(candidates)} event_id={recovery.event_id}"
                 )
-            result = repository.unstall_stale_in_progress_tasks(
+            # DatabaseTaskSource also rearms isolate_merge_queue leftover
+            # blocked rows that IntentRepository stale-in-progress skips.
+            source = DatabaseTaskSource(intent=repository)
+            result = source.unstall_stale_in_progress_tasks(
                 orphan_previous_generation=True
             )
             repository.assert_projection_matches_events()
         finally:
             repository.close()
+        clear_owner_board_unstall_bounce()
         unstalled = result.get("unstalled") or []
         sanitized = result.get("sanitized_malformed_validation_retry_seeds") or []
         if not unstalled and not sanitized:

@@ -72498,6 +72498,7 @@ _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
         "validation_project_dependency_preflight_failed",
         "typed_portal_deferral_budget_exhausted",
         "grok_quota_exhausted",
+        "isolate_merge_queue_to_task_projection",
     }
 )
 _SANDBOX_HOST_FAILURE_REOPEN_SCHEMA = (
@@ -79905,6 +79906,8 @@ class DatabaseImplementationDaemon:
             return "quack_transport_unavailable"
         if lowered == "implementation_protected_path_verification_lock_timeout":
             return "implementation_protected_path_verification_lock_timeout"
+        if "isolate_merge_queue_to_task_projection" in reason:
+            return "isolate_merge_queue_to_task_projection"
         return (reason or "portal_execution_deferred")[:1024]
 
     @staticmethod
@@ -80013,6 +80016,45 @@ class DatabaseImplementationDaemon:
                 if not page:
                     break
                 offset += len(page)
+            if not stale_gate_found:
+                blocked_offset = 0
+                while True:
+                    blocked_page = intent.list_tasks(
+                        status="blocked",
+                        limit=MAX_PAGE_LIMIT,
+                        offset=blocked_offset,
+                    )
+                    if not isinstance(blocked_page, Sequence) or isinstance(
+                        blocked_page, (str, bytes)
+                    ):
+                        raise DatabaseImplementationAuthorityError(
+                            "Quack task source returned malformed "
+                            "false-terminal blocked projection"
+                        )
+                    for row in blocked_page:
+                        if not isinstance(row, Mapping):
+                            raise DatabaseImplementationAuthorityError(
+                                "Quack task source returned malformed "
+                                "false-terminal blocked row"
+                            )
+                        blob = " ".join(
+                            str(item)
+                            for item in (
+                                row.get("body"),
+                                row.get("body_json"),
+                                row.get("completion_receipt"),
+                                row.get("reason"),
+                            )
+                            if item
+                        )
+                        if "isolate_merge_queue_to_task_projection" in blob:
+                            stale_gate_found = True
+                            break
+                    if stale_gate_found or len(blocked_page) < MAX_PAGE_LIMIT:
+                        break
+                    if not blocked_page:
+                        break
+                    blocked_offset += len(blocked_page)
             if not stale_gate_found:
                 return []
             request = self._request_owner_board_unstall()

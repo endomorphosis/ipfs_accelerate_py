@@ -1590,6 +1590,35 @@ def test_false_terminal_unstalls_protected_path_verification_lock_timeout(
         daemon.close()
 
 
+def test_false_terminal_unstalls_isolate_merge_queue_attribute_error(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:isolate-merge-queue-unstall",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason=(
+                "'PortalImplementationDaemon' object has no attribute "
+                "'isolate_merge_queue_to_task_projection'"
+            ),
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+        assert retried.body["completion_receipt"]["previous_reason"] == (
+            "isolate_merge_queue_to_task_projection"
+        )
+    finally:
+        daemon.close()
+
+
 def test_false_terminal_unstalls_operator_merge_protected_path_block(
     tmp_path: Path,
 ) -> None:
