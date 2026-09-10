@@ -9624,7 +9624,16 @@ class DatabasePortalExecutionBridge:
             )
         seed = self._render_projection(attempt, record)
         expected_binding = self._binding(attempt, record, seed)
-        observed_binding = self._read_binding(paths.binding)
+        from ..task_sources.database_attempt_binding import validate_database_attempt_binding
+
+        try:
+            observed_binding = validate_database_attempt_binding(
+                self._read_binding(paths.binding)
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "Portal recovery binding does not match the claim"
+            ) from exc
         observed_body = dict(observed_binding)
         observed_binding_id = str(observed_body.pop("binding_id", "") or "")
         observed_revision = observed_body.get("task_revision")
