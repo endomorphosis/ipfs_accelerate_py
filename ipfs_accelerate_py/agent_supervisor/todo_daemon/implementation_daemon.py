@@ -92668,64 +92668,6 @@ class DatabaseImplementationDaemon:
             )
         return False
 
-    def _extra_gate_later_epoch_unknown_block_opens_generic_rearm(
-        self,
-        task: Any,
-        receipt: Mapping[str, Any],
-        *,
-        no_provider_evidence: Mapping[str, Any] | None,
-    ) -> bool:
-        """Open generic rearm after the sealed extra-gate one-shot.
-
-        Leftover retained compact pairs from the original pin become
-        ``invalid_consumed_epoch`` on a later blocked unknown-outcome
-        receipt.  That must not skip ``callback_authority_incomplete_blocked``
-        when nested evidence is None.  Official unstick is rearm, never CAS.
-        Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
-        """
-
-        if no_provider_evidence is not None:
-            return False
-        if (
-            str(getattr(task, "status", "") or "").strip().lower() != "blocked"
-            or str(receipt.get("operation") or "")
-            != "database_unknown_outcome_blocked"
-            or str(receipt.get("reason") or "")
-            != "callback_authority_incomplete_blocked"
-            or receipt.get("forced_block") is not True
-            or receipt.get("authority_outcome") != "unknown"
-        ):
-            return False
-        from .database_portal_bridge import (
-            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
-            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
-        )
-
-        pins = (
-            *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
-            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
-        )
-        task_cid = str(getattr(task, "task_cid", "") or "")
-        pin = next(
-            (
-                dict(item)
-                for item in pins
-                if task_cid and item.get("task_cid") == task_cid
-            ),
-            None,
-        )
-        if pin is None:
-            return False
-        try:
-            revision = int(getattr(task, "revision"))
-            pin_revision = int(pin["blocked_task_revision"])
-        except (TypeError, ValueError, AttributeError, KeyError):
-            return False
-        return bool(
-            revision != pin_revision
-            and self._retained_occurrence_has_left_sealed_pin(task, pin)
-        )
-
     @staticmethod
     def _exception_is_protected_checkout_peer_deferral(exc: BaseException) -> bool:
         """True when a peer still owns the shared checkout recovery journal."""
@@ -98698,35 +98640,18 @@ class DatabaseImplementationDaemon:
                 and no_provider_evidence.get("schema")
                 == DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA
             )
-            consumed_callback_authority_incomplete = bool(
-                no_provider_evidence is None
-                and reason == "callback_authority_incomplete_blocked"
-                and self._retained_recovery_reserved_epoch_state(task)
-                == "consumed"
-            )
-            later_epoch_generic_rearm = (
-                self._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
-                    task,
-                    receipt,
-                    no_provider_evidence=no_provider_evidence,
-                )
-                or stale_in_progress
-            )
             if (
                 reserved_claim_forbidden
                 and not proof_backed_nonconsuming_refund
                 and not fenced_provider_evidence
-                and not consumed_callback_authority_incomplete
-                and not later_epoch_generic_rearm
+                and not stale_in_progress
             ):
                 # A consumed one-shot still cannot take a generic retry claim.
                 # Proof-backed no-effect refunds remain available so a
                 # pre-provider control-plane fault can return the credit.
-                # After the one-shot is consumed, a later
-                # callback_authority_incomplete_blocked with no nested
-                # evidence is still generic rearm authority.  Leftover
-                # compact pairs that no longer bind this later epoch must
-                # not skip that rearm as invalid_consumed_epoch.
+                # A different task revision or stale predecessor tuple is
+                # not recovery authority. The stale-in-progress path above
+                # separately reproduces the exact failed/expired claim.
                 continue
             if fenced_provider_evidence:
                 # Owner-session IDs are deliberately restart-stable and are
@@ -98755,7 +98680,7 @@ class DatabaseImplementationDaemon:
                 continue
             prior_rearms = raw_prior_rearms
             extra_gate_nonconsuming_rearm = bool(
-                proof_backed_nonconsuming_refund or later_epoch_generic_rearm
+                proof_backed_nonconsuming_refund or stale_in_progress
             )
             if (
                 prior_rearms >= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
