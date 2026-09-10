@@ -6787,3 +6787,63 @@ def test_protected_failure_rearm_missing_binding_is_not_clearance(tmp_path):
     bridge = _bridge_for_projection(tmp_path)
     assert not bridge.protected_path_failure_rearm_ready(_attempt())
     assert not bridge._paths(_attempt()).root.exists()
+
+
+@pytest.mark.parametrize("source_claim", ["queued", "failed_alignment", "malformed_completion"])
+def test_receipt_does_not_downgrade_unsettled_source_to_legacy(
+    tmp_path: Path, source_claim: str,
+) -> None:
+    """A completed projection cannot conceal a landed but unaccepted merge."""
+    bridge = _bridge_for_projection(tmp_path)
+    attempt = _attempt()
+    paths, binding = bridge._ensure_attempt_projection(attempt, _record())
+    paths.task_projection.write_text(
+        paths.task_projection.read_text().replace("- Status: ready", "- Status: completed")
+    )
+    source_event = {
+        "type": "implementation_finished",
+        "task_id": attempt.task_alias,
+        "attempt": 1,
+        "returncode": 0,
+        "implementation_commit": "a" * 40,
+        "board_completion": {
+            "complete": False, "pending_merge": True,
+            "reason": "merge_queued_awaiting_integration",
+        },
+        "merge_result": {"queued": True, "request_id": "request:unsettled"},
+    }
+    if source_claim == "failed_alignment":
+        source_event["merge_result"] = {
+            "merged": False, "merge_commit": "b" * 40,
+            "reason": "submodule_gitlink_recording_failed",
+            "merged_gitlink_recording": {"ok": False},
+        }
+    elif source_claim == "malformed_completion":
+        source_event["board_completion"] = {"complete": True}
+    paths.events.write_text("\n".join(json.dumps(event) for event in (
+        source_event,
+        {"type": "task_completed", "task_id": attempt.task_alias},
+    )) + "\n")
+    before = paths.task_projection.read_bytes()
+    with pytest.raises(DatabasePortalBridgeDeferred, match="source transition.*unsettled"):
+        bridge._acceptance_receipt(
+            attempt=attempt, paths=paths, binding=binding, summaries=[],
+        )
+    assert paths.task_projection.read_bytes() == before
+
+
+def test_legacy_receipt_without_source_effects_remains_supported(tmp_path: Path) -> None:
+    bridge = _bridge_for_projection(tmp_path)
+    attempt = _attempt()
+    paths, binding = bridge._ensure_attempt_projection(attempt, _record())
+    paths.task_projection.write_text(
+        paths.task_projection.read_text().replace("- Status: ready", "- Status: completed")
+    )
+    paths.events.write_text(json.dumps({
+        "type": "task_completed", "task_id": attempt.task_alias,
+    }) + "\n")
+    receipt = bridge._acceptance_receipt(
+        attempt=attempt, paths=paths, binding=binding, summaries=[],
+    )
+    assert receipt["schema"] == DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1
+    assert bridge.apply_effect(attempt, receipt)["status"] == "applied"

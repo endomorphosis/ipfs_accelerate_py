@@ -8754,6 +8754,76 @@ class DatabasePortalExecutionBridge:
                 )
         return result
 
+    def zero_provider_failure_rearm_ready(self, attempt: Any) -> bool:
+        """Require explicit, bound non-dispatch before a zero-provider rearm.
+
+        Outer provider/effect receipt counts omit work whose Portal callback
+        failed.  They cannot prove that no provider ran.  This is an additional
+        precondition only: it neither clears a fence nor grants task/merge
+        authority. Missing, changing or contradictory evidence remains blocked.
+        """
+        from ..runtime.portal_rearm_evidence import verified_zero_provider_events
+
+        try:
+            paths = self._paths(attempt)
+            directory = self._seal_attempt_directory(
+                paths, attempt_id=str(attempt.attempt_id), create=False,
+            )
+            binding = self._strict_binding(paths.binding)
+            for field in (
+                "attempt_id", "claim_id", "lease_id", "task_cid", "task_alias",
+                "fencing_token", "fence_epoch",
+            ):
+                if binding.get(field) != getattr(attempt, field, None):
+                    return False
+            identity = self._prior_projection_identity(paths, binding)
+            records, digest = _accepted_source_events(paths.events)
+            if not verified_zero_provider_events(records, identity=identity):
+                return False
+            state_bytes, _state_identity = _stable_regular_bytes(
+                paths.state, noun="zero-provider Portal callback state",
+            )
+            state = json.loads(
+                state_bytes, object_pairs_hook=_reject_duplicate_control_keys,
+            )
+            if (
+                not isinstance(state, Mapping)
+                or state.get("implementation_in_progress") is not False
+                or state.get("active_provider_runner") != {}
+                or type(state.get("active_attempt")) is not int
+                or state["active_attempt"] != 0
+                or any(state.get(name) not in (None, "") for name in (
+                    "active_task_id", "active_task_cid", "active_task_key",
+                    "active_branch", "active_worktree_path", "active_log_path",
+                ))
+                or state.get("last_implementation_task_id") != identity["task_id"]
+                or state.get("last_implementation_task_cid")
+                != identity["canonical_task_cid"]
+                or state.get("last_implementation_commit") not in (None, "")
+            ):
+                return False
+            finished = next(
+                item for item in reversed(records)
+                if item.get("type") == "implementation_finished"
+            )
+            if state.get("last_implementation_returncode") != finished["returncode"]:
+                return False
+            # This existing predicate retains protected incident/active markers.
+            # An absent marker alone never establishes the non-dispatch proof.
+            return bool(
+                self.protected_path_failure_rearm_ready(attempt)
+                and self._strict_binding(paths.binding) == binding
+                and _accepted_source_events(paths.events)[1] == digest
+                and _stable_regular_bytes(
+                    paths.state, noun="zero-provider Portal callback state",
+                )[0] == state_bytes
+                and self._seal_attempt_directory(
+                    paths, attempt_id=str(attempt.attempt_id), create=False,
+                ) == directory
+            )
+        except Exception:
+            return False
+
     def protected_path_failure_rearm_ready(self, attempt: Any) -> bool:
         """Keep a settled callback blocked until its native fences are cleared.
 
@@ -9895,6 +9965,27 @@ class DatabasePortalExecutionBridge:
                     )
         candidate_count = len(direct_candidates) + len(reconciled_pairs)
         if candidate_count == 0:
+            # A completed projection may follow a failed/queued merge whose
+            # parent commit already landed.  That is not a legacy no-source
+            # completion: retain the attempt until native merge reconciliation
+            # supplies the exact accepted transition.  Never downgrade it to
+            # an execution-receipt@1 merely because no valid pair was found.
+            if any(
+                event.get("type") == "implementation_finished"
+                and str(event.get("task_id") or "") == task_alias
+                and (
+                    event.get("implementation_commit")
+                    or event.get("merge_result")
+                    or (
+                        isinstance(event.get("board_completion"), Mapping)
+                        and event["board_completion"].get("pending_merge")
+                    )
+                )
+                for event in event_records
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "Portal accepted-source transition is unsettled"
+                )
             return None
         if candidate_count != 1:
             raise DatabasePortalBridgeError(
@@ -10507,6 +10598,24 @@ class DatabasePortalExecutionBridge:
             return str(implementation.get("reason") or "portal_execution_deferred")
         returncode = implementation.get("returncode")
         if isinstance(returncode, int) and not isinstance(returncode, bool) and returncode != 0:
+            validation = implementation.get("validation_result")
+            if (
+                isinstance(validation, Mapping)
+                and validation.get("attempted") is True
+                and validation.get("passed") is False
+                and validation.get("error") == "proposal_validation_failed"
+                and validation.get("reason") in (
+                    "scoped_test_secret_remediation_proposal_unchanged",
+                    "scoped_test_secret_remediation_proposal_rejected",
+                    "scoped_test_secret_remediation_test_semantics_not_preserved",
+                )
+            ):
+                # These are failed acceptance gates, even if the provider
+                # process exited successfully. Do not collapse them to the
+                # generic provider-exit class used by recovery predicates.
+                # In particular, empty outer execution-receipt tables do
+                # not erase the nested Portal provider's execution.
+                return str(validation["reason"])
             return str(implementation.get("reason") or "portal_provider_failed")
         if implementation.get("skipped") is True:
             return str(implementation.get("reason") or "portal_execution_skipped")

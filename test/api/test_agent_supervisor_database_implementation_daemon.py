@@ -2088,189 +2088,70 @@ def test_expired_unadmitted_claim_is_exactly_requeued_and_reclaimed(
         replacement.close()
 
 
-def test_foreign_session_in_progress_without_worker_is_requeued_and_claimed(
+@pytest.mark.parametrize(
+    ("successor_session", "claim_visibility"),
+    [
+        ("session:successor-wave", "accepted"),
+        ("session:successor-wave", "released"),
+        ("session:successor-wave", "missing"),
+        ("session:prior-wave", "missing"),
+    ],
+)
+def test_orphan_requeue_requires_owned_exact_claim_evidence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    successor_session: str,
+    claim_visibility: str,
 ) -> None:
+    """No local attempt or visible worker proves nothing about foreign effects."""
     provider_calls: list[str] = []
     effect_calls: list[str] = []
-    first = _open_daemon(
-        tmp_path,
-        session="session:prior-wave",
-        provider_calls=provider_calls,
-        effect_calls=effect_calls,
-    )
+    first = _open_daemon(tmp_path, session="session:prior-wave")
     try:
         first.materialize_population(_population(1))
 
         def crash_before_attempt_insert(*args: object, **kwargs: object) -> object:
-            raise SystemExit("simulated prior-wave death before attempt insert")
+            raise SystemExit("prior-wave crash")
 
-        monkeypatch.setattr(
-            first,
-            "_insert_attempt_from_claim",
-            crash_before_attempt_insert,
-        )
-        with pytest.raises(SystemExit, match="prior-wave death"):
+        monkeypatch.setattr(first, "_insert_attempt_from_claim", crash_before_attempt_insert)
+        with pytest.raises(SystemExit, match="prior-wave crash"):
             first.claim_next()
-        leases = first.coordinator.list_active_leases(
-            lease_kind="task",
-            owner_session_id="session:prior-wave",
-        )
-        assert len(leases) == 1
-        original_claim = first.coordinator.get_task_claim(leases[0].claim_id)
+        lease = first.coordinator.list_active_leases(
+            lease_kind="task", owner_session_id="session:prior-wave",
+        )[0]
+        original_claim = first.coordinator.get_task_claim(lease.claim_id)
         assert original_claim is not None
-        task = first.task_source.get(original_claim.task_cid)
-        assert task is not None and task.status == "in_progress"
-        assert original_claim.state.value == "accepted"
+        if claim_visibility in {"released", "missing"}:
+            first.coordinator.release(lease, reason="test-closed-lease")
+        original_task = first.task_source.get(original_claim.task_cid)
+        assert original_task is not None
     finally:
         first.close()
 
     successor = _open_daemon(
-        tmp_path,
-        session="session:successor-wave",
-        provider_calls=provider_calls,
-        effect_calls=effect_calls,
+        tmp_path, session=successor_session,
+        provider_calls=provider_calls, effect_calls=effect_calls,
     )
     try:
-        result = successor.run_once()
-        assert result["implementation_result"]["status"] == "succeeded"
-        assert result["claim_id"] != original_claim.claim_id
-        assert result["attempt_id"] != original_claim.attempt_id
-        assert len(result["orphan_claim_reconciliations"]) == 1
-        recovery = result["orphan_claim_reconciliations"][0]
-        assert recovery["operation"] == (
-            "automatic_foreign_session_in_progress_requeue"
-        )
-        assert recovery["owner_session_id"] == "session:prior-wave"
-        assert recovery["successor_owner_session_id"] == (
-            "session:successor-wave"
-        )
-        assert recovery["claim_id"] == original_claim.claim_id
-        assert recovery["claim_state"] == "released"
-        assert recovery["provider_execution_admitted"] is False
-        assert recovery["effect_execution_admitted"] is False
-        assert recovery["live_implementation_worker"] is False
-        successor_claim = successor.coordinator.get_task_claim(result["claim_id"])
-        assert successor_claim is not None
-        assert successor_claim.owner_session_id == "session:successor-wave"
-        assert successor_claim.fencing_token > original_claim.fencing_token
-        assert provider_calls == [original_claim.task_cid]
-        assert effect_calls == [original_claim.task_cid]
-    finally:
-        successor.close()
-
-
-def test_foreign_session_in_progress_is_not_stolen_while_worker_is_live(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    first = _open_daemon(tmp_path, session="session:prior-wave")
-    try:
-        first.materialize_population(_population(1))
-
-        def crash_before_attempt_insert(*args: object, **kwargs: object) -> object:
-            raise SystemExit("simulated prior-wave death before attempt insert")
-
-        monkeypatch.setattr(
-            first,
-            "_insert_attempt_from_claim",
-            crash_before_attempt_insert,
-        )
-        with pytest.raises(SystemExit, match="prior-wave death"):
-            first.claim_next()
-        leases = first.coordinator.list_active_leases(
-            lease_kind="task",
-            owner_session_id="session:prior-wave",
-        )
-        original_claim = first.coordinator.get_task_claim(leases[0].claim_id)
-        assert original_claim is not None
-        task = first.task_source.get(original_claim.task_cid)
-        assert task is not None
-        worker_line = (
-            f"python -m ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            f"grok_cli_runner --task {task.task_alias} {original_claim.task_cid}"
-        )
-    finally:
-        first.close()
-
-    successor = _open_daemon(tmp_path, session="session:successor-wave")
-    try:
-        monkeypatch.setattr(
-            successor,
-            "_list_implementation_process_commands",
-            lambda: [worker_line],
-        )
-        result = successor.run_once()
-        assert result["implementation_result"] is None
-        assert result["orphan_claim_reconciliations"] == []
-        parked = successor.task_source.get(original_claim.task_cid)
-        assert parked is not None and parked.status == "in_progress"
-        live_claim = successor.coordinator.get_task_claim(original_claim.claim_id)
-        assert live_claim is not None and live_claim.state.value == "accepted"
-    finally:
-        successor.close()
-
-
-def test_foreign_session_in_progress_missing_claim_is_requeued(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    first = _open_daemon(tmp_path, session="session:prior-wave")
-    try:
-        first.materialize_population(_population(1))
-
-        def crash_before_attempt_insert(*args: object, **kwargs: object) -> object:
-            raise SystemExit("simulated prior-wave death before attempt insert")
-
-        monkeypatch.setattr(
-            first,
-            "_insert_attempt_from_claim",
-            crash_before_attempt_insert,
-        )
-        with pytest.raises(SystemExit, match="prior-wave death"):
-            first.claim_next()
-        leases = first.coordinator.list_active_leases(
-            lease_kind="task",
-            owner_session_id="session:prior-wave",
-        )
-        original_claim = first.coordinator.get_task_claim(leases[0].claim_id)
-        assert original_claim is not None
-        task_cid = original_claim.task_cid
-    finally:
-        first.close()
-
-    successor = _open_daemon(tmp_path, session="session:successor-wave")
-    try:
         original_get = successor.coordinator.get_task_claim
-
-        def hide_prior_claim(claim_id: str) -> object:
-            if claim_id == original_claim.claim_id:
-                return None
-            return original_get(claim_id)
-
-        monkeypatch.setattr(
-            successor.coordinator,
-            "get_task_claim",
-            hide_prior_claim,
-        )
-        # The exclusive lease still exists; release it so the successor can
-        # claim after control CAS. Missing-claim recovery only mutates control.
-        successor.coordinator.release(
-            successor.coordinator.get_lease(original_claim.lease_id),
-            reason="test-missing-claim-lease-close",
-        )
-        result = successor.run_once()
-        assert result["implementation_result"]["status"] == "succeeded"
-        recovery = result["orphan_claim_reconciliations"][0]
-        assert recovery["operation"] == (
-            "automatic_foreign_session_in_progress_requeue"
-        )
-        assert recovery["claim_missing"] is True
-        assert recovery["claim_id"] == original_claim.claim_id
-        parked = successor.task_source.get(task_cid)
-        assert parked is not None
-        assert parked.status in {"completed", "complete", "done"}
+        before_claim = original_get(original_claim.claim_id)
+        if claim_visibility == "missing":
+            monkeypatch.setattr(
+                successor.coordinator, "get_task_claim",
+                lambda claim_id: None if claim_id == original_claim.claim_id else original_get(claim_id),
+            )
+        # A scan can miss an unlabelled callback or a detached provider. The
+        # closed owner/claim proof must deny even when the scan sees nothing.
+        monkeypatch.setattr(successor, "_list_implementation_process_commands", lambda: [], raising=False)
+        assert successor._requeue_expired_owned_claims() == []
+        after = successor.task_source.get(original_claim.task_cid)
+        assert after is not None
+        assert after.status == "in_progress"
+        assert after.revision == original_task.revision
+        assert after.body == original_task.body
+        assert original_get(original_claim.claim_id) == before_claim
+        assert provider_calls == []
+        assert effect_calls == []
     finally:
         successor.close()
 
@@ -2524,6 +2405,7 @@ def test_zero_provider_portal_provider_failed_auto_rearms_blocked_task(
         provider_fn=provider,
         effect_calls=effect_calls,
     )
+    _bind_explicit_zero_provider_callback(daemon)
     try:
         daemon.materialize_population(_population(1))
         first = daemon.run_once()
@@ -2630,6 +2512,7 @@ def test_protected_path_deferral_settles_instead_of_pinning_running_claim(
         session="session:portal-protected-path",
         provider_fn=provider,
     )
+    _bind_explicit_zero_provider_callback(daemon)
     try:
         daemon.materialize_population(_population(1))
         first = daemon.run_once()
@@ -2654,6 +2537,24 @@ def test_protected_path_deferral_settles_instead_of_pinning_running_claim(
         daemon.close()
 
 
+def _bind_explicit_zero_provider_callback(daemon):
+    """Supply the native non-dispatch proof in these execution-store tests.
+
+    The separate bridge tests exercise the real immutable callback verifier.
+    Raising from this provider double alone is deliberately not that proof.
+    """
+    original = daemon._provider_fn
+
+    class VerifiedCallbackProvider:
+        def run(self, attempt):
+            return original(attempt)
+
+        def zero_provider_failure_rearm_ready(self, attempt):
+            return attempt.status == "failed" and attempt.committed_phase == "failed"
+
+    daemon._provider_fn = VerifiedCallbackProvider().run
+
+
 def test_live_owner_auto_rearms_zero_provider_portal_claim_failure(
     tmp_path: Path,
 ) -> None:
@@ -2673,6 +2574,7 @@ def test_live_owner_auto_rearms_zero_provider_portal_claim_failure(
         provider_fn=provider,
         effect_calls=effect_calls,
     )
+    _bind_explicit_zero_provider_callback(daemon)
     try:
         daemon.materialize_population(_population(1))
         first = daemon.run_once()
@@ -2725,6 +2627,7 @@ def test_verified_source_rearms_new_zero_provider_settlement_after_lifetime_budg
             DatabasePortalBridgeError("embedded-store claim without live owner")
         ),
     )
+    _bind_explicit_zero_provider_callback(daemon)
     try:
         daemon.materialize_population(_population(1))
         daemon.authority_mode = "quack"
@@ -3947,6 +3850,7 @@ def test_portal_rearm_new_source_retains_once_per_source_and_settlement_budget(t
         raise DatabasePortalBridgeError("closed bridge failure")
     daemon = _open_daemon(tmp_path, session="session:source-recovery", provider_fn=provider)
     source = {"source_head": "a" * 40, "source_tree": "b" * 40}
+    _bind_explicit_zero_provider_callback(daemon)
     try:
         daemon.materialize_population(_population(1))
         first = daemon.run_once()
@@ -3973,14 +3877,21 @@ def test_portal_rearm_new_source_retains_once_per_source_and_settlement_budget(t
         daemon.close()
 
 
+@pytest.mark.parametrize("later_callback_proof", [True, False, None, "true"])
 def test_portal_rearm_same_source_admits_later_settlement_within_attempt_budget(
-    tmp_path: Path,
+    tmp_path: Path, later_callback_proof,
 ) -> None:
     class _BoundedProvider:
         max_task_attempts = 4
+        callback_proof = True
 
         def provider(self, _attempt: DatabaseTaskAttempt) -> dict[str, object]:
             raise DatabasePortalBridgeError("closed bridge failure")
+
+        def zero_provider_failure_rearm_ready(self, attempt):
+            assert attempt.status == "failed"
+            assert attempt.committed_phase == "failed"
+            return self.callback_proof
 
     holder = _BoundedProvider()
     daemon = _open_daemon(
@@ -3999,36 +3910,66 @@ def test_portal_rearm_same_source_admits_later_settlement_within_attempt_budget(
         assert len(first) == 1
         second_pass = daemon.run_once()
         assert second_pass["implementation_result"]["status"] == "blocked"
+        attempt = daemon.get_attempt(second_pass["attempt_id"])
+        before = daemon.task_source.get(attempt.task_cid)
+        holder.callback_proof = later_callback_proof
         later = daemon.reconcile_recoverable_portal_failure_rearms(
             recovery_source_validator=lambda: source
         )
-        assert len(later) == 1
-        assert later[0]["accepted_recovery_source"] == source
-        assert later[0]["settlement_id"] != first[0]["settlement_id"]
+        after = daemon.task_source.get(attempt.task_cid)
+        if later_callback_proof is True:
+            assert len(later) == 1
+            assert later[0]["accepted_recovery_source"] == source
+            assert later[0]["settlement_id"] != first[0]["settlement_id"]
+            assert after.status == "retrying"
+            assert after.revision == before.revision + 1
+        else:
+            assert later == []
+            assert after.status == "blocked"
+            assert after.revision == before.revision
+            assert after.body == before.body
+        assert daemon.get_attempt(attempt.attempt_id).status == "failed"
     finally:
         daemon.close()
 
 
+@pytest.mark.parametrize("callback_proof", [True, False, None, "true"])
 def test_portal_rearm_supervisor_helper_uses_daemon_max_task_attempts(
-    tmp_path: Path,
+    tmp_path: Path, callback_proof,
 ) -> None:
-    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
-        raise DatabasePortalBridgeError("closed bridge failure")
+    class _ProviderWithoutBudget:
+        def provider(self, _attempt: DatabaseTaskAttempt) -> dict[str, object]:
+            raise DatabasePortalBridgeError("closed bridge failure")
 
+        def zero_provider_failure_rearm_ready(self, attempt):
+            assert attempt.status == "failed"
+            assert attempt.committed_phase == "failed"
+            return callback_proof
+
+    holder = _ProviderWithoutBudget()
     daemon = _open_daemon(
         tmp_path,
         session="session:supervisor-rearm-limit",
-        provider_fn=provider,
+        provider_fn=holder.provider,
         max_task_attempts=4,
     )
     source = {"source_head": "a" * 40, "source_tree": "b" * 40}
     try:
         daemon.materialize_population(_population(1))
-        daemon.run_once()
+        first_pass = daemon.run_once()
+        attempt = daemon.get_attempt(first_pass["attempt_id"])
+        before = daemon.task_source.get(attempt.task_cid)
         daemon.authority_mode = "quack"
         first = daemon.reconcile_recoverable_portal_failure_rearms(
             recovery_source_validator=lambda: source
         )
+        if callback_proof is not True:
+            after = daemon.task_source.get(attempt.task_cid)
+            assert first == []
+            assert after.status == "blocked"
+            assert after.revision == before.revision
+            assert after.body == before.body
+            return
         assert len(first) == 1
         second_pass = daemon.run_once()
         assert second_pass["implementation_result"]["status"] == "blocked"
