@@ -110,6 +110,7 @@ def test_rejects_unknown_foreign_or_unqualified_observation(section, key, value)
         ("reason", "unrelated error mentioning isolate_merge_queue_to_task_projection"),
         ("operation", "database_portal_typed_deferral_budget_exhausted"),
         ("claim_id", "claim:new"),
+        ("task_cid", "task:foreign"),
         ("execution_revision", 4),
         ("retryable", True),
     ],
@@ -119,3 +120,112 @@ def test_exception_substring_or_foreign_terminal_receipt_is_not_authority(key, v
     observed["task"]["body"]["completion_receipt"][key] = value
     with pytest.raises(RuntimeInitializationRecoveryRejected):
         admit_closed_initialization_failure(**observed)
+
+
+def test_admission_accepts_real_native_terminal_receipt(tmp_path):
+    from dataclasses import asdict
+
+    from test.api.test_agent_supervisor_database_implementation_daemon import (
+        _open_daemon,
+        _population,
+    )
+
+    daemon = _open_daemon(tmp_path, session="session:initialization-recovery")
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        attempt = daemon.commit_phase(attempt, "context")
+        attempt = daemon.commit_phase(
+            attempt,
+            "failed",
+            body={
+                "reason": PORTAL_INITIALIZATION_FAILURE,
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        daemon.run_once()
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task.status == "blocked"
+        terminal = dict(task.body["completion_receipt"])
+        # The native receipt binds task identity through its canonical row.
+        assert "task_cid" not in terminal
+        # Source and closed callback observations here are hermetic fixtures;
+        # only the task/execution/phase/terminal receipt come from the daemon.
+        observed = context()
+        observed["attempt"] = asdict(attempt)
+        observed["latest_attempt"] = asdict(daemon._latest_failed_attempts()[0])
+        observed["task"] = task.to_dict()
+        observed["failed_phase"] = next(
+            p
+            for p in reversed(daemon.phase_history(attempt.attempt_id))
+            if p["phase"] == "failed"
+        )
+        for key in (
+            "task_cid",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+        ):
+            observed["callback"][key] = getattr(attempt, key)
+        observed["callback"]["execution_revision"] = attempt.revision
+        proposal = admit_closed_initialization_failure(**observed)
+        assert proposal["task_revision"] == task.revision
+        assert (
+            daemon.task_source.get(attempt.task_cid).body["completion_receipt"]
+            == terminal
+        )
+    finally:
+        daemon.close()
+
+
+def test_native_callback_exception_keeps_unknown_intent(tmp_path):
+    """An exception/failed phase alone cannot assert closed callback evidence."""
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DatabasePortalBridgeError,
+    )
+    from test.api.test_agent_supervisor_database_implementation_daemon import (
+        _open_daemon,
+        _population,
+    )
+
+    def fail(_attempt):
+        raise DatabasePortalBridgeError(PORTAL_INITIALIZATION_FAILURE)
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:unknown-initialization",
+        provider_fn=fail,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        claimed = daemon.claim_next()
+        daemon._resume_attempt_without_process_crash(claimed)
+        attempt = daemon._latest_failed_attempts()[0]
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task.status == "blocked"
+        intent = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        assert intent["callback_state"] == "started_outcome_unknown"
+        assert intent["provider_effect_state"] == "unknown_may_have_started"
+        assert intent["attempt_id"] == attempt.attempt_id
+        terminal = task.body["completion_receipt"]
+        assert terminal["reason"] == PORTAL_INITIALIZATION_FAILURE
+        assert terminal["retryable"] is False
+        # Both durable facts coexist. Do not turn the exception into a
+        # no-effects claim or overwrite this intent to admit a retry.
+        assert (
+            daemon.provider_invocation_recorded(
+                attempt.attempt_id,
+                idempotency_key=f"provider:{attempt.attempt_id}",
+            )
+            == intent
+        )
+    finally:
+        daemon.close()

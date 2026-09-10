@@ -93,7 +93,15 @@ def admit_closed_initialization_failure(
         receipt.get("operation") == "database_portal_terminal_failure",
         "foreign terminal operation",
     )
+    # The native producer binds the task through the canonical containing row;
+    # it does not duplicate task_cid inside the completion receipt. Optional
+    # legacy duplicates must still agree, and all execution identities remain
+    # mandatory. Never invent a receipt field to make an observation admissible.
+    if "task_cid" in receipt:
+        require(receipt["task_cid"] == attempt["task_cid"], "foreign terminal task_cid")
     for key in identity_fields:
+        if key == "task_cid":
+            continue
         require(
             type(receipt.get(key)) is type(attempt[key])
             and receipt.get(key) == attempt[key],
