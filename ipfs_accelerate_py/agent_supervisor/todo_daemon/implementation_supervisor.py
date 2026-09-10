@@ -7390,7 +7390,28 @@ class PortalImplementationSupervisor:
                 install_schema=False,
             )
             daemon.open()
-            rearmed = daemon.reconcile_recoverable_portal_failure_rearms()
+            def verified_recovery_source() -> Mapping[str, Any]:
+                admission = verify_configured_board_live_capsule(
+                    self.config.configured_board_live_admission,
+                    control_plane_pin=self.config.accepted_control_plane_pin,
+                    control_plane_descriptor=self.config.accepted_control_plane_descriptor,
+                    native_dependency_launch=self.config.native_dependency_launch,
+                    repo_root=self.config.repo_root,
+                    expected_board_namespace=self.board_namespace,
+                )
+                return {
+                    "source_head": admission.source_head,
+                    "source_tree": admission.source_tree,
+                    "admission_cid": admission.admission_cid,
+                }
+
+            rearmed = daemon.reconcile_recoverable_portal_failure_rearms(
+                recovery_source_validator=(
+                    verified_recovery_source
+                    if self.config.configured_board_live_admission is not None
+                    else None
+                ),
+            )
             return {
                 "attempted": True,
                 "reason": DATABASE_BLOCKED_PORTAL_FRONTIER_REASON,

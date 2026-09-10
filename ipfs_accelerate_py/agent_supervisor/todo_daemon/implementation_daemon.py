@@ -70190,16 +70190,23 @@ class DatabaseImplementationDaemon:
         return str(receipt.get("failure_payload_digest") or "") == expected
 
     def _automatic_portal_failure_rearm_recorded(
-        self,
-        *,
-        task_cid: str,
+        self, *, task_cid: str, settlement_id: str = "",
+        accepted_source: Mapping[str, Any] | None = None,
     ) -> bool:
+        from ..runtime.portal_recovery_budget import portal_recovery_budget_consumed
+
         rows = self._require_connection().execute(
-            "SELECT 1 FROM daemon_execution_events "
-            "WHERE event_type = ? AND task_cid = ? LIMIT 1",
+            "SELECT body_json FROM daemon_execution_events "
+            "WHERE event_type = ? AND task_cid = ?",
             [_AUTOMATIC_PORTAL_FAILURE_REARM_EVENT, str(task_cid)],
         ).fetchall()
-        return bool(rows)
+        try:
+            history = [json.loads(row[0]) for row in rows]
+        except (ValueError, TypeError):
+            return True
+        return portal_recovery_budget_consumed(
+            history, settlement_id=settlement_id, accepted_source=accepted_source,
+        )
 
     @staticmethod
     def portal_claim_failure_receipt_is_zero_provider_rearmable(
@@ -70242,12 +70249,16 @@ class DatabaseImplementationDaemon:
             receipt
         )
 
-    def reconcile_recoverable_portal_failure_rearms(self) -> list[dict[str, Any]]:
+    def reconcile_recoverable_portal_failure_rearms(
+        self, *, recovery_source_validator: Callable[[], Mapping[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
         """Unblock recoverable ``terminal_portal_bridge_error`` settlements.
 
         Settlements keep ``automatic_retry_admitted=false``.  The operator
         rearm path only fires after a blocked→retrying CAS.  Three closed
-        classes may perform that CAS once per task:
+        classes may perform that CAS once per task. A freshly verified sealed
+        repair source may admit one further, distinct settlement, once per
+        source head/tree; restarting the same source does not reset its budget:
 
         * the exact-Git-merge mismatch that parked a gitlink-recording
           follow-up after merge-train acceptance;
@@ -70267,8 +70278,6 @@ class DatabaseImplementationDaemon:
         for task in page.tasks:
             task_cid = str(task.task_cid)
             if not self._task_is_in_lane(task, task_cid=task_cid):
-                continue
-            if self._automatic_portal_failure_rearm_recorded(task_cid=task_cid):
                 continue
             rows = self._require_connection().execute(
                 "SELECT attempt_id FROM database_task_attempts "
@@ -70329,6 +70338,16 @@ class DatabaseImplementationDaemon:
             if matched is None:
                 continue
             attempt, receipt, reason = matched
+            accepted_source = (
+                dict(recovery_source_validator())
+                if recovery_source_validator is not None else None
+            )
+            if self._automatic_portal_failure_rearm_recorded(
+                task_cid=task_cid,
+                settlement_id=str(receipt.get("settlement_id") or ""),
+                accepted_source=accepted_source,
+            ):
+                continue
             cas_receipt = {
                 "operation": "operator_control_plane_repair",
                 "settlement_id": str(receipt["settlement_id"]),
@@ -70389,6 +70408,8 @@ class DatabaseImplementationDaemon:
                 "to_revision": int(updated.revision),
                 "reason": reason,
             }
+            if accepted_source is not None:
+                record["accepted_recovery_source"] = accepted_source
             self._record_event(
                 _AUTOMATIC_PORTAL_FAILURE_REARM_EVENT,
                 attempt_id=str(record["attempt_id"] or ""),
