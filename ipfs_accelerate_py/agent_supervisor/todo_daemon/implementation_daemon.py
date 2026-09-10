@@ -90540,6 +90540,14 @@ class DatabaseImplementationConflictError(DatabaseImplementationDaemonError):
     """Raised when a claim or phase transition conflicts with durable state."""
 
 
+class _DatabaseReconciliationConflictDeferral(DatabaseImplementationDaemonError):
+    """Private whole-tick barrier after a typed reconciliation CAS conflict."""
+
+    def __init__(self, step: str) -> None:
+        super().__init__("reconciliation_task_revision_conflict")
+        self.step = step
+
+
 def _is_control_transition_invalid(exc: BaseException) -> bool:
     """Return True for a closed owner rejection of an illegal status CAS."""
 
@@ -102615,10 +102623,16 @@ class DatabaseImplementationDaemon:
         self,
         callback: Callable[[], list[dict[str, Any]]],
     ) -> list[dict[str, Any]]:
-        """Run one reconciliation pass; attach failures idle the whole tick."""
+        """Run once; typed CAS races and attach failures idle the whole tick."""
 
         try:
             return callback()
+        except (TaskSourceConflictError, DatabaseTaskSourceConflictError) as exc:
+            # Never continue to a fresh claim or retry a stale receipt in the
+            # same tick. Preserve the exact typed cause for the outer guard.
+            raise _DatabaseReconciliationConflictDeferral(
+                str(getattr(callback, "__name__", "reconciliation"))[:128]
+            ) from exc
         except DatabaseImplementationAuthorityError as exc:
             if "typed blocked recovery is unavailable without" not in str(exc):
                 raise
@@ -102628,30 +102642,6 @@ class DatabaseImplementationDaemon:
                 str(exc)[:512],
             )
             return []
-        """Run one reconciliation pass without letting one stale receipt freeze the rest."""
-
-        try:
-            return callback()
-        except Exception as exc:
-            if self._is_quack_transport_unavailable(exc):
-                raise
-            if self._is_quack_attach_contention(exc):
-                return []
-            if isinstance(
-                exc,
-                (
-                    DatabaseImplementationAuthorityError,
-                    DatabaseImplementationConflictError,
-                ),
-            ):
-                return [
-                    {
-                        "changed": False,
-                        "reason": "reconciliation_step_skipped_authority_error",
-                        "error_type": type(exc).__name__,
-                    }
-                ]
-            raise
 
     def reconcile_stale_in_progress_gates(self) -> list[dict[str, Any]]:
         """Retry leftover in_progress control tasks that freeze claim_next.
@@ -126904,6 +126894,29 @@ class DatabaseImplementationDaemon:
         except Exception as exc:
             from .completion_deferral import missing_completion_deferral
 
+            if isinstance(exc, _DatabaseReconciliationConflictDeferral):
+                # Earlier callbacks may have committed before this conflict.
+                # Preserve their diagnostics without inventing a total write
+                # count or concluding that the interrupted tick had no effects.
+                return {
+                    "changed": False,
+                    "unchanged": None,
+                    "deferred": True,
+                    "skipped": True,
+                    "reason": "reconciliation_task_revision_conflict",
+                    "selection_idle_reason": "reconciliation_task_revision_conflict",
+                    "reconciliation_step": exc.step,
+                    "conflict_error_type": type(exc.__cause__).__name__,
+                    "implementation_result": None,
+                    "active_task_id": "",
+                    "attempt_consumed": "unknown",
+                    "provider_dispatched": "unknown",
+                    "recovery_attempt_consumed": False,
+                    "recovery_provider_dispatched": False,
+                    "backoff_seconds": 5,
+                    "completion_authority": False,
+                    "recovery_prefix": dict(self._idle_recovery_prefix or {}),
+                }
             completion_wait = missing_completion_deferral(exc)
             if completion_wait is not None:
                 # Preserve completed prefix operations as observations, but do
