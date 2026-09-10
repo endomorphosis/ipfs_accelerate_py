@@ -328,6 +328,11 @@ operator in the scope, retaining its exact source/owner/admission checks and
 propagating failure. Do not relax the repair service's KillMode or wrap an
 already sealed child in a new unqualified Python/module invocation. Verify
 that the board's actual cgroup survives the repair job's completion.
+Background worktree cleanup must not infer completion from branch ancestry or
+a terminal dead-owner lifecycle. Preserve unknown callback workspaces and refs;
+task-isolated Portal workers do not have peer cleanup authority. Database
+supervisor cleanup requires its exact canonical completion proof, rechecked at
+the mutation boundary. Already missing source is not proof of no effects.
 Preserve board-specific external ownership and service overrides. Updating
 the watchdog configuration and staging a validated runtime release are within
 the user's authorization. Do not repeatedly publish diagnostic-only changes
