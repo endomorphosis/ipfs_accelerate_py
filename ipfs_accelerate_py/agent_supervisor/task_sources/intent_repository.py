@@ -9969,6 +9969,66 @@ class IntentRepository:
         with self._connection(write=False) as connection:
             return self._snapshot_on(connection)
 
+    def task_revision_diagnostic_window(
+        self, task_cid: str, *, current_revision: int
+    ) -> Mapping[str, Any]:
+        """Read one bounded diagnostic suffix without materializing full history."""
+        from .diagnostic_history import (
+            diagnostic_history_window,
+            diagnostic_window_start,
+        )
+
+        # This optional local read owns only a new standalone connection.
+        # Nested DuckDB BEGIN can itself abort an outer transaction, so reject
+        # borrowed/read-session/remote handles before issuing any SQL.
+        if (
+            self._bound_connection is not None
+            or self._quack_transport
+            or getattr(self._read_session_state, "active", False)
+        ):
+            raise IntentRepositoryError(
+                "diagnostic history requires an isolated local read handle"
+            )
+        key = _identifier(task_cid, noun="task_cid")
+        start = diagnostic_window_start(current_revision)
+        with self._connection(write=False) as connection:
+            if getattr(connection, "in_transaction", None) is not False:
+                raise IntentRepositoryError(
+                    "diagnostic read transaction ownership is unavailable"
+                )
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                head = connection.execute(
+                    "SELECT revision, status, body_json FROM tasks WHERE task_cid = ?",
+                    [key],
+                ).fetchone()
+                if head is None or head[0] != current_revision:
+                    raise IntentRepositoryConflictError("diagnostic task head changed")
+                raw = connection.execute(
+                    "SELECT revision, status, body_json FROM task_revisions WHERE task_cid = ? AND revision >= ? AND revision <= ? ORDER BY revision LIMIT 32",
+                    [key, start, current_revision],
+                ).fetchall()
+                rows = [
+                    {
+                        "revision": row[0],
+                        "status": row[1],
+                        "body": _decode_json(row[2], noun="diagnostic history body"),
+                    }
+                    for row in raw
+                ]
+                result = diagnostic_history_window(key, current_revision, rows)
+                if rows[-1]["status"] != head[1] or rows[-1]["body"] != _decode_json(
+                    head[2], noun="diagnostic current body"
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "diagnostic history differs from current task"
+                    )
+                connection.execute("COMMIT")
+                return result
+            except BaseException:
+                connection.execute("ROLLBACK")
+                raise
+
     def task_revision_history_projection(self, task_cid_or_alias: str) -> Mapping[str, Any]:
         """Return bounded task-body revisions for legacy spec-CID replay.
 
