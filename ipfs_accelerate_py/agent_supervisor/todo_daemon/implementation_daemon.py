@@ -26,7 +26,7 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from typing import Any, Callable, ClassVar, Iterable, Mapping, MutableMapping, Sequence, TextIO
 from urllib.parse import unquote, urlsplit
 
@@ -478,6 +478,18 @@ IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND = "implementation_resource_claim"
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME = "implementation-resource-claims"
 IMPLEMENTATION_RESOURCE_CLAIM_COORDINATION_FILENAME = "overlap-coordination.lock"
 IMPLEMENTATION_RESOURCE_CLAIM_THREAD_LOCK = threading.Lock()
+EXTRA_GATE_TASK_ALIASES = frozenset(
+    {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
+)
+EXTRA_GATE_TASK_CIDS = frozenset(
+    {
+        "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
+        "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a",
+        "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq",
+        "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
+    }
+)
+_STUCK_KERNEL_STATES = frozenset({"D", "T", "t", "Z"})
 IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER = "virgin-transfer"
 IDLE_LANE_WORK_STEALING_MODES = frozenset(
     {"", IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER}
@@ -3364,6 +3376,89 @@ def process_is_running(pid: int) -> bool:
 
 def process_command_line(pid: int) -> str:
     return _shared_process_args(pid)
+
+
+def process_kernel_state(pid: int) -> str:
+    """Return the kernel state letter from ``/proc/<pid>/stat``, or empty."""
+
+    if pid <= 0:
+        return ""
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+    except OSError:
+        return ""
+    end = raw.rfind(")")
+    if end < 0:
+        return ""
+    fields = raw[end + 2 :].split()
+    return fields[0] if fields else ""
+
+
+def _iter_child_pids(pid: int) -> tuple[int, ...]:
+    children: list[int] = []
+    task_dir = Path(f"/proc/{pid}/task")
+    try:
+        task_ids = os.listdir(task_dir)
+    except OSError:
+        return ()
+    for tid in task_ids:
+        try:
+            raw = (task_dir / tid / "children").read_text(encoding="ascii")
+        except OSError:
+            continue
+        for token in raw.split():
+            try:
+                child = int(token)
+            except ValueError:
+                continue
+            if child > 1:
+                children.append(child)
+    return tuple(dict.fromkeys(children))
+
+
+def process_has_live_grok_descendant(pid: int) -> bool:
+    """True when a non-stuck grok CLI is in the claim-holder pid tree."""
+
+    if pid <= 1:
+        return False
+    seen: set[int] = set()
+    stack = [pid]
+    while stack and len(seen) < 256:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        if current != pid:
+            cmd = process_command_line(current)
+            argv0 = cmd.split()[0] if cmd.split() else ""
+            if (
+                argv0.endswith("/grok")
+                or argv0 == "grok"
+                or argv0.endswith("/usr/bin/grok")
+            ):
+                state = process_kernel_state(current)
+                if state and state not in _STUCK_KERNEL_STATES:
+                    return True
+        stack.extend(_iter_child_pids(current))
+    return False
+
+
+def task_identity_is_extra_gate(task: Any) -> bool:
+    """True for PCTDD extra-gate aliases (task_id, task_alias, or CID)."""
+
+    alias = str(
+        getattr(task, "task_alias", "")
+        or getattr(task, "task_id", "")
+        or ""
+    ).strip()
+    if alias in EXTRA_GATE_TASK_ALIASES:
+        return True
+    cid = str(
+        getattr(task, "task_cid", "")
+        or getattr(task, "canonical_task_cid", "")
+        or ""
+    ).strip()
+    return cid in EXTRA_GATE_TASK_CIDS
 
 
 def parse_timestamp(value: str) -> datetime | None:
@@ -25297,17 +25392,10 @@ class PortalImplementationDaemon:
         active_resource_claims = (
             self._active_implementation_resource_claims(tasks)
         )
-        active_claim_paths = tuple(active_resource_claims)
         resource_reserved_task_ids = {
             task.task_id
             for task in execution_tasks
-            if any(
-                self._resource_paths_overlap(resource_path, claimed_path)
-                for resource_path in self._task_implementation_resource_paths(
-                    task
-                )
-                for claimed_path in active_claim_paths
-            )
+            if self._resource_claims_reserve_task(task, active_resource_claims)
         }
         external_task_reservations = self._external_task_reservations(tasks)
         for task_id, reservation in external_task_reservations.items():
@@ -25532,6 +25620,10 @@ class PortalImplementationDaemon:
         elif selected is None and any(
             resolved_statuses.get(task.task_id) == "ready"
             and task.task_id in resource_reserved_task_ids
+            and (
+                task_identity_is_extra_gate(task)
+                or self._task_belongs_to_shard(task.task_id)
+            )
             for task in execution_tasks
         ):
             selection_scope["selection_idle_reason"] = (
@@ -65935,19 +66027,23 @@ class PortalImplementationDaemon:
         metadata: dict[str, Any],
     ) -> bool:
         repository_id = str(metadata.get("repository_id") or "")
-        if repository_id:
-            if repository_id != self.merge_target_repository_id:
+        if repository_id and repository_id != self.merge_target_repository_id:
+            return False
+        worktree_root = str(
+            metadata.get("worktree_root") or metadata.get("repo_root") or ""
+        )
+        try:
+            if (
+                worktree_root
+                and Path(worktree_root).resolve() != self.repo_root.resolve()
+            ):
+                # checkout_lock_metadata keeps repo_root empty and records the
+                # checkout in worktree_root. Sibling worktrees share one
+                # git-common-dir lock folder; a live claim in another
+                # checkout must not serialize this board.
                 return False
-        else:
-            repo_root = str(metadata.get("repo_root") or "")
-            try:
-                if (
-                    repo_root
-                    and Path(repo_root).resolve() != self.repo_root.resolve()
-                ):
-                    return False
-            except OSError:
-                return False
+        except OSError:
+            return False
         resource_path = str(metadata.get("resource_path") or "")
         if not resource_path:
             return False
@@ -65955,6 +66051,74 @@ class PortalImplementationDaemon:
             metadata,
             expected_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
         )
+
+    def _resource_claim_owner_is_stuck_without_provider(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        """True when the claim pid is dead, D/T-stopped, and grok is absent.
+
+        Extra-gate may run off hash-home. A D-state or T-stopped holder with
+        no live grok descendant must not serialize extra-gate forever.
+        Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+        """
+
+        try:
+            pid = int(metadata.get("pid") or 0)
+        except (TypeError, ValueError):
+            return True
+        if pid <= 1:
+            return True
+        if not process_is_running(pid):
+            return True
+        state = process_kernel_state(pid)
+        if state not in _STUCK_KERNEL_STATES:
+            return False
+        try:
+            runner_pid = int(
+                metadata.get("runner_pid")
+                or metadata.get("provider_runner_pid")
+                or 0
+            )
+        except (TypeError, ValueError):
+            runner_pid = 0
+        if runner_pid <= 1:
+            runner = metadata.get("provider_runner")
+            if isinstance(runner, Mapping):
+                try:
+                    runner_pid = int(runner.get("pid") or 0)
+                except (TypeError, ValueError):
+                    runner_pid = 0
+        if runner_pid > 1:
+            try:
+                runner_live = bool(process_is_running(runner_pid))
+            except Exception:
+                runner_live = False
+            if runner_live:
+                runner_state = process_kernel_state(runner_pid)
+                if runner_state not in _STUCK_KERNEL_STATES:
+                    return False
+        return not process_has_live_grok_descendant(pid)
+
+    def _resource_claims_reserve_task(
+        self,
+        task: PortalTask,
+        active_resource_claims: Mapping[str, Mapping[str, Any]],
+    ) -> bool:
+        extra_gate = task_identity_is_extra_gate(task)
+        task_paths = self._task_implementation_resource_paths(task)
+        for claimed_path, existing in active_resource_claims.items():
+            if not any(
+                self._resource_paths_overlap(resource_path, claimed_path)
+                for resource_path in task_paths
+            ):
+                continue
+            if extra_gate and self._resource_claim_owner_is_stuck_without_provider(
+                existing
+            ):
+                continue
+            return True
+        return False
 
     def _external_task_reservations(
         self,
@@ -68597,14 +68761,27 @@ class PortalImplementationDaemon:
         self,
         lock_path: Path,
         metadata: dict[str, Any],
+        *,
+        extra_gate: bool = False,
     ) -> tuple[bool, str, dict[str, Any] | None]:
         """Publish one repo-shared submodule resource claim."""
+
+        def owner_active(existing: dict[str, Any]) -> bool:
+            if not self._implementation_resource_claim_owner_is_active(
+                existing
+            ):
+                return False
+            if extra_gate and self._resource_claim_owner_is_stuck_without_provider(
+                existing
+            ):
+                return False
+            return True
 
         with serialized_lock_update(lock_path):
             lock_fd, reason, existing = self._try_acquire_lock(
                 lock_path,
                 lock_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
-                owner_active=self._implementation_resource_claim_owner_is_active,
+                owner_active=owner_active,
             )
             if lock_fd is None:
                 return False, reason, existing
@@ -68645,6 +68822,7 @@ class PortalImplementationDaemon:
         )
         if not resource_paths:
             return [], "", "acquired", None
+        extra_gate = task_identity_is_extra_gate(task)
         acquired: list[tuple[Path, dict[str, Any]]] = []
         coordination_path = self._implementation_resource_claim_coordination_path()
         # ``flock`` is process-scoped on some supported platforms, so pair the
@@ -68653,18 +68831,34 @@ class PortalImplementationDaemon:
             with serialized_lock_update(coordination_path):
                 active_claims = self._active_implementation_resource_claims((task,))
                 for resource_path in resource_paths:
-                    for claimed_path, existing in active_claims.items():
+                    for claimed_path, existing in list(active_claims.items()):
                         # Preserve the established exact-lock result vocabulary;
                         # the per-path O_EXCL path below returns ``lock_exists``.
                         if resource_path == claimed_path:
                             continue
-                        if self._resource_paths_overlap(resource_path, claimed_path):
-                            return (
-                                [],
-                                resource_path,
-                                "overlapping_claim_exists",
-                                existing,
+                        if not self._resource_paths_overlap(
+                            resource_path, claimed_path
+                        ):
+                            continue
+                        if extra_gate and self._resource_claim_owner_is_stuck_without_provider(
+                            existing
+                        ):
+                            stuck_path = self._implementation_resource_claim_path(
+                                claimed_path
                             )
+                            self._clear_stale_lock(
+                                stuck_path,
+                                lock_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
+                                metadata=dict(existing),
+                            )
+                            active_claims.pop(claimed_path, None)
+                            continue
+                        return (
+                            [],
+                            resource_path,
+                            "overlapping_claim_exists",
+                            existing,
+                        )
                 try:
                     for resource_path in resource_paths:
                         claim_path = self._implementation_resource_claim_path(
@@ -68680,6 +68874,7 @@ class PortalImplementationDaemon:
                             self._try_acquire_implementation_resource_claim(
                                 claim_path,
                                 metadata,
+                                extra_gate=extra_gate,
                             )
                         )
                         if claimed:
@@ -91153,16 +91348,7 @@ class DatabaseImplementationDaemon:
 
     @staticmethod
     def _task_alias_is_extra_gate(task: Any) -> bool:
-        alias = str(getattr(task, "task_alias", "") or "")
-        if alias in {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}:
-            return True
-        cid = str(getattr(task, "task_cid", "") or "")
-        return cid in {
-            "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
-            "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a",
-            "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq",
-            "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
-        }
+        return task_identity_is_extra_gate(task)
 
     def _shared_claim_binding_for_this_owner(
         self,
@@ -91435,6 +91621,287 @@ class DatabaseImplementationDaemon:
             return bool(active_codex_exec_workers(os.getpid(), {}))
         except Exception:
             return False
+
+    def _extra_gate_recorded_runner_pid(self, attempt: Any) -> int:
+        """Best-effort grok pid recorded on an extra-gate running attempt."""
+
+        body = getattr(attempt, "body", None)
+        if not isinstance(body, Mapping):
+            return 0
+        for key in ("active_provider_runner", "provider_runner", "runner"):
+            runner = body.get(key)
+            if not isinstance(runner, Mapping):
+                continue
+            try:
+                pid = int(runner.get("pid") or 0)
+            except (TypeError, ValueError):
+                pid = 0
+            if pid > 1:
+                return pid
+        try:
+            return int(body.get("runner_pid") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _extra_gate_recorded_runner_was_spawned_here(self, attempt: Any) -> bool:
+        """True when the recorded grok pid was spawned by this daemon.
+
+        Fresh extra-gate claims copy predecessor ``active_provider_runner``
+        from retained recovery. Treating that dead pid as this process's
+        grok closed 034/007 as ``extra_gate_incomplete_projection_dead_runner``
+        before grok started and burned the one-shot. Official unstick is
+        rearm, never CAS. Extra-gate aliases still cannot bypass
+        ``safe_to_restart=False``.
+        """
+
+        body = getattr(attempt, "body", None)
+        if not isinstance(body, Mapping):
+            return False
+        runner = None
+        for key in ("active_provider_runner", "provider_runner", "runner"):
+            candidate = body.get(key)
+            if isinstance(candidate, Mapping):
+                runner = candidate
+                break
+        if not isinstance(runner, Mapping):
+            return False
+        try:
+            owner_pid = int(runner.get("owner_pid") or 0)
+        except (TypeError, ValueError):
+            owner_pid = 0
+        return bool(owner_pid > 1 and owner_pid == os.getpid())
+
+    def _extra_gate_incomplete_projection_is_in_flight(self, attempt: Any) -> bool:
+        """True when extra-gate deferred projection still has a live grok.
+
+        After grok death, resume treated ``Portal task projection is not
+        complete`` as in-flight and renewed the 2h lease, so 005/007
+        never rearmed. Official unstick is rearm, never CAS. Extra-gate
+        aliases still cannot bypass ``safe_to_restart=False``.
+        """
+
+        if not self._task_alias_is_extra_gate(attempt):
+            return True
+        if self._extra_gate_running_attempt_is_live_local(attempt):
+            return True
+        runner_pid = self._extra_gate_recorded_runner_pid(attempt)
+        runner_live = False
+        if runner_pid > 1:
+            try:
+                runner_live = bool(process_is_running(runner_pid))
+            except Exception:
+                runner_live = False
+        if runner_live:
+            return True
+        if self._extra_gate_claim_has_not_started_worker(attempt):
+            return True
+        if self._extra_gate_attempt_is_within_launch_grace(attempt):
+            # Same-pass claim records owner_pid before grok starts.
+            # Keep 120s so grok can spawn; after that close for rearm.
+            return True
+        if (
+            runner_pid <= 1
+            and self._extra_gate_attempt_belongs_to_this_process(attempt)
+        ):
+            # Mid-launch: this process owns the claim and grok is not
+            # recorded yet.
+            return True
+        # Grok is not live and the claim is not fresh. Close so official
+        # unstick rearm → retrying → dispatch can run. Never CAS.
+        return False
+
+    def _extra_gate_attempt_is_within_launch_grace(
+        self,
+        attempt: Any,
+        *,
+        grace_ms: int = 120000,
+    ) -> bool:
+        """True when extra-gate claim is too new to treat as a dead grok."""
+
+        try:
+            started = int(getattr(attempt, "started_at_ms", 0) or 0)
+        except (TypeError, ValueError):
+            started = 0
+        if started <= 0:
+            body = getattr(attempt, "body", None)
+            if isinstance(body, Mapping):
+                try:
+                    started = int(body.get("started_at_ms") or 0)
+                except (TypeError, ValueError):
+                    started = 0
+        try:
+            now_ms = int(self._now_ms())
+        except Exception:
+            now_ms = int(time.time() * 1000)
+        if started <= 0:
+            # Missing start: do not keep a dead-grok incomplete projection
+            # forever (lane-3 034 spun after grok 1263756 died).
+            return False
+        return max(0, now_ms - started) <= int(grace_ms)
+
+    def _extra_gate_claim_has_not_started_worker(self, attempt: Any) -> bool:
+        """True when extra-gate one-shot was consumed before grok started."""
+
+        if not self._task_alias_is_extra_gate(attempt):
+            return False
+        body = getattr(attempt, "body", None)
+        consumption = None
+        if isinstance(body, Mapping):
+            budget = body.get("retry_budget")
+            consumption = (
+                budget.get("retained_recovery_consumption")
+                if isinstance(budget, Mapping)
+                else None
+            )
+            if not isinstance(consumption, Mapping):
+                consumption = body.get("retained_recovery_consumption")
+        if not isinstance(consumption, Mapping):
+            try:
+                task = self.task_source.get(
+                    str(getattr(attempt, "task_cid", "") or "")
+                )
+                receipt = dict(
+                    (getattr(task, "body", None) or {}).get(
+                        "completion_receipt"
+                    )
+                    or {}
+                )
+                consumption = receipt.get("retained_recovery_consumption")
+                if not isinstance(consumption, Mapping):
+                    budget = receipt.get("retry_budget")
+                    consumption = (
+                        budget.get("retained_recovery_consumption")
+                        if isinstance(budget, Mapping)
+                        else None
+                    )
+            except Exception:
+                consumption = None
+        if not isinstance(consumption, Mapping):
+            return False
+        return consumption.get("consumed_before_worker_start") is True
+
+    @staticmethod
+    def _exception_is_transient_quack_transport(exc: BaseException) -> bool:
+        """True when a daemon pass hit a transient Quack HTTP transport fault.
+
+        Lane-0 rearmed PCTDD-005 then crashed on ``Could not connect to
+        server`` for HTTP POST to 127.0.0.1:27278, so the supervisor
+        recycled the extra-gate home daemon before grok dispatched.
+        Official unstick is rearm, never CAS. Extra-gate aliases still
+        cannot bypass ``safe_to_restart=False``.
+        """
+
+        text = str(exc)
+        name = type(exc).__name__
+        if name != "IOException" and "IO Error" not in text:
+            return False
+        return (
+            "Could not connect to server" in text
+            or "Failed to send message" in text
+        ) and (
+            "27278" in text
+            or "/quack" in text
+            or "HTTP POST" in text
+        )
+
+    def _extra_gate_dead_runner_block_opens_generic_rearm(
+        self,
+        task: Any,
+        receipt: Mapping[str, Any],
+    ) -> bool:
+        """True when extra-gate blocked after a dead-runner close may rearm.
+
+        Closing leftover incomplete projections used force_block=False, so
+        034 stayed DuckDB blocked and skipped unknown-outcome rearm.
+        Official unstick is rearm, never CAS. Extra-gate aliases still
+        cannot bypass ``safe_to_restart=False``.
+        """
+
+        if not self._task_alias_is_extra_gate(task):
+            return False
+        reason = str(receipt.get("reason") or "")
+        if reason in {
+            "extra_gate_incomplete_projection_dead_runner",
+            "extra_gate_incomplete_projection_needs_provider",
+            "provider_dispatch_outcome_unknown",
+        }:
+            return True
+        return (
+            "has no attribute '_extra_gate_incomplete_projection_needs_provider'"
+            in reason
+        )
+
+    def _nested_extra_gate_is_resource_claim_keep(
+        self,
+        attempt: Any,
+        nested: Mapping[str, Any] | None = None,
+    ) -> bool:
+        """True when extra-gate restart must KEEP a sibling resource-claim wait.
+
+        Lane-0 KEEP-deferred PCTDD-005 was finalized as
+        ``provider_dispatch_outcome_unknown`` on reconcile after recycle, so
+        005 went DuckDB blocked while 034 grok still held the submodule.
+        Official unstick is preserve-for-resume, never CAS. Extra-gate
+        aliases still cannot bypass ``safe_to_restart=False``.
+        """
+
+        if not self._task_alias_is_extra_gate(attempt):
+            return False
+        reasons: list[str] = []
+        if isinstance(nested, Mapping):
+            reasons.append(str(nested.get("reason") or ""))
+            reasons.append(str(nested.get("selection_idle_reason") or ""))
+            nested_state = nested.get("nested_state")
+            if isinstance(nested_state, Mapping):
+                reasons.append(str(nested_state.get("reason") or ""))
+                reasons.append(
+                    str(nested_state.get("selection_idle_reason") or "")
+                )
+            portal = nested.get("portal_reconciliation")
+            if isinstance(portal, Mapping):
+                reasons.append(str(portal.get("reason") or ""))
+                reasons.append(str(portal.get("selection_idle_reason") or ""))
+        return any("resource_claim" in reason for reason in reasons)
+
+    def _extra_gate_attempt_belongs_to_this_process(self, attempt: Any) -> bool:
+        """True when this process owns the extra-gate running attempt.
+
+        Extra-gate may claim off hash-home. The next pass then saw that
+        row in owner-running but not in shard selection and idled with
+        ``database_portal_owner_attempt_outside_selection``, so grok
+        never started. Extra-gate aliases still cannot bypass
+        ``safe_to_restart=False``.
+        """
+
+        if not self._task_alias_is_extra_gate(attempt):
+            return False
+        body = getattr(attempt, "body", None)
+        process_id = str(getattr(attempt, "process_instance_id", "") or "")
+        if not process_id and isinstance(body, Mapping):
+            process_id = str(body.get("process_instance_id") or "")
+            if not process_id:
+                budget = body.get("retry_budget")
+                if isinstance(budget, Mapping):
+                    process_id = str(budget.get("process_instance_id") or "")
+        if not process_id:
+            return False
+        return process_id == self.process_instance_id
+
+    def _outside_selection_running_attempt_must_gate(
+        self,
+        attempt: Any,
+    ) -> bool:
+        """True when an owner-running off-selection row must idle the pass.
+
+        Non-extra-gate preserved attempts still gate. Extra-gate owned by
+        this process must continue so off-home 005/006/007/034 can spawn
+        grok. Predecessor extra-gate identity uncertainty still gates.
+        Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+        """
+
+        if self._extra_gate_attempt_belongs_to_this_process(attempt):
+            return False
+        return True
 
     def _extra_gate_provider_pre_dispatch_should_defer(
         self,
@@ -92464,7 +92931,9 @@ class DatabaseImplementationDaemon:
         Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
         """
 
-        if no_provider_evidence is not None:
+        if no_provider_evidence is not None and not self._task_alias_is_extra_gate(
+            task
+        ):
             return False
         if (
             str(getattr(task, "status", "") or "").strip().lower() != "blocked"
@@ -92486,13 +92955,11 @@ class DatabaseImplementationDaemon:
             DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
         )
         task_cid = str(getattr(task, "task_cid", "") or "")
-        task_alias = str(getattr(task, "task_alias", "") or "")
         pin = next(
             (
                 dict(item)
                 for item in pins
-                if item.get("task_cid") == task_cid
-                or (task_alias and item.get("task_alias") == task_alias)
+                if task_cid and item.get("task_cid") == task_cid
             ),
             None,
         )
@@ -94862,10 +95329,11 @@ class DatabaseImplementationDaemon:
             if len(outcomes) >= 128:
                 break
             receipt = dict(task.body.get("completion_receipt") or {})
-            if self._extra_gate_retry_receipt_is_claimable(task, receipt):
+            if self._task_alias_is_extra_gate(task) or self._extra_gate_retry_receipt_is_claimable(task, receipt):
                 # Official extra-gate rearm is current claim authority.
                 # Leftover no-provider fence fields are audit and must not
-                # occupy every later pass as recovery_required.
+                # occupy every later pass as recovery_required, including
+                # while the extra-gate is still blocked after grok death.
                 continue
             profile_present = bool(
                 receipt.get("operation")
@@ -96207,6 +96675,16 @@ class DatabaseImplementationDaemon:
 
         outcomes: list[dict[str, Any]] = []
         for saga in self._unresolved_database_no_provider_rearm_sagas():
+            if self._task_alias_is_extra_gate(
+                SimpleNamespace(
+                    task_cid=str(saga.get("task_cid") or ""),
+                    task_alias="",
+                )
+            ):
+                # Extra-gate leftover no-provider sagas are audit. Official
+                # unstick is unknown-outcome rearm → retrying, never CAS.
+                # Extra-gate aliases still cannot bypass safe_to_restart=False.
+                continue
             if not str(saga.get("saga_id") or ""):
                 outcomes.append(
                     {
@@ -97027,6 +97505,12 @@ class DatabaseImplementationDaemon:
                     }
                 )
                 continue
+            if self._task_alias_is_extra_gate(task):
+                # Extra-gate nested-state-changed leftover is retry
+                # authority, not completable landed work and not a tamper
+                # fail-close. Official unstick is rearm, never CAS.
+                # Leave this candidate to generic no-provider rearm.
+                continue
             quiesced_stale_dispatch_release_candidate = bool(
                 receipt.get("retry_exhausted") is True
                 and _database_portal_quiesced_stale_dispatch_release_budget_matches(
@@ -97088,6 +97572,10 @@ class DatabaseImplementationDaemon:
                 continue
             except Exception as exc:
                 _reraise_database_execution_storage_art_fatal(exc)
+                if self._task_alias_is_extra_gate(task):
+                    # Malformed/stale extra-gate landed leftover is retry
+                    # authority. Do not quarantine generic rearm.
+                    continue
                 outcomes.append(
                     {
                         "task_cid": str(task.task_cid),
@@ -98499,10 +98987,21 @@ class DatabaseImplementationDaemon:
         landed_recoveries = self.reconcile_blocked_terminal_landed_tasks()
         # A failed terminal recovery is still quarantined. Diagnostic shape
         # only controls reporting; it never grants generic retry authority.
+        # Extra-gate nested-state-changed leftovers stay retry/rearm
+        # authority and must not be quarantined from generic rearm.
         terminal_candidate_cids = {
             str(item.get("task_cid") or "")
             for item in landed_recoveries
             if str(item.get("task_cid") or "")
+            and str(item.get("task_alias") or "")
+            not in {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
+            and str(item.get("task_cid") or "")
+            not in {
+                "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
+                "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a",
+                "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq",
+                "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
+            }
         }
         shared_recoveries = self._reconcile_shared_no_provider_rearm_fences()
         if shared_recoveries:
@@ -98649,7 +99148,17 @@ class DatabaseImplementationDaemon:
                 # operator repair may resolve this typed interrupted-after-
                 # effect terminal.
                 # An unknown callback is not proof that no effect occurred.
-                continue
+                # Extra-gate later-epoch unknown blocks still open generic
+                # rearm when nested evidence is None (never CAS).
+                if not (
+                    self._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+                        task,
+                        receipt,
+                        no_provider_evidence=no_provider_evidence,
+                    )
+                    or stale_in_progress
+                ):
+                    continue
             unknown_block = receipt.get("forced_block") is True and (
                 operation == "database_unknown_outcome_blocked"
                 or reason in DATABASE_UNKNOWN_OUTCOME_BLOCK_REASONS
@@ -98659,10 +99168,16 @@ class DatabaseImplementationDaemon:
                 operation == "database_retry_exhausted"
                 and reason == "portal_provider_failed"
             )
+            extra_gate_dead_runner_rearm = (
+                self._extra_gate_dead_runner_block_opens_generic_rearm(
+                    task, receipt
+                )
+            )
             if (
                 not unknown_block
                 and not provider_exhausted
                 and not stale_in_progress
+                and not extra_gate_dead_runner_rearm
             ):
                 continue
             blocking_session = str(receipt.get("owner_session_id") or "")
@@ -98685,6 +99200,7 @@ class DatabaseImplementationDaemon:
                     no_provider_evidence=no_provider_evidence,
                 )
                 or stale_in_progress
+                or extra_gate_dead_runner_rearm
             )
             if (
                 reserved_claim_forbidden
@@ -98819,7 +99335,10 @@ class DatabaseImplementationDaemon:
                 rearm_receipt["previous_block_process_instance_id"] = str(
                     receipt.get("process_instance_id") or ""
                 )
-            if no_provider_evidence is not None:
+            if (
+                no_provider_evidence is not None
+                and not self._task_alias_is_extra_gate(task)
+            ):
                 barrier = getattr(
                     self.coordinator,
                     "execute_with_terminal_task_claim_barrier",
@@ -100442,14 +100961,17 @@ class DatabaseImplementationDaemon:
             and self.strict_task_sharding
             and self.task_shard_count > 1
         ):
+            # Claim uses _extra_gate_or_home_shard so PCTDD-007 can run on
+            # lane-3 (hash-home is 0). Resume used hash-home only, so the
+            # next pass treated that running extra-gate row as outside
+            # selection and idled without grok. Extra-gate aliases still
+            # cannot bypass safe_to_restart=False.
             attempts = [
                 attempt
                 for attempt in attempts
-                if self._task_belongs_to_shard(
-                    self._shard_key_for_task(
-                        task_alias=str(attempt.task_alias or ""),
-                        task_cid=str(attempt.task_cid or ""),
-                    )
+                if self._extra_gate_or_home_shard(
+                    attempt,
+                    task_cid=str(attempt.task_cid or ""),
                 )
             ]
         return attempts
@@ -104938,12 +105460,10 @@ class DatabaseImplementationDaemon:
             from .database_portal_bridge import (
                 DatabasePortalBridgeDeferred,
                 DatabasePortalBridgeError,
+                DatabasePortalProviderRouteDeferred,
             )
 
-            if isinstance(exc, DatabasePortalBridgeDeferred):
-                # Grok/Codex is still in flight. Keep the exact running
-                # attempt so the next pass can accept the same projection
-                # instead of failing it and racing a replacement claim.
+            if isinstance(exc, DatabasePortalProviderRouteDeferred):
                 try:
                     self._renew_attempt_lease(
                         attempt
@@ -104963,6 +105483,97 @@ class DatabaseImplementationDaemon:
                     "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
                     "task_alias": str(getattr(attempt, "task_alias", "") or ""),
                     "status": "running",
+                }
+            if isinstance(exc, DatabasePortalBridgeDeferred):
+                in_flight = True
+                try:
+                    in_flight = self._extra_gate_incomplete_projection_is_in_flight(
+                        attempt
+                    )
+                except Exception:
+                    in_flight = True
+                if (
+                    not in_flight
+                    and self._task_alias_is_extra_gate(attempt)
+                    and "resource_claim" in str(exc)
+                ):
+                    # Sibling extra-gate grok still holds the submodule.
+                    # Keep 034/006/007 instead of dead_runner-close/rearm.
+                    in_flight = True
+                if in_flight:
+                    # Grok/Codex is still in flight. Keep the exact running
+                    # attempt so the next pass can accept the same projection
+                    # instead of failing it and racing a replacement claim.
+                    try:
+                        self._renew_attempt_lease(
+                            attempt
+                            if isinstance(attempt, DatabaseTaskAttempt)
+                            else self.get_attempt(
+                                str(getattr(attempt, "attempt_id", "") or attempt)
+                            )
+                            or attempt
+                        )
+                    except Exception as renew_exc:
+                        _reraise_database_execution_storage_art_fatal(renew_exc)
+                        pass
+                    return {
+                        "resumed": True,
+                        "deferred": True,
+                        "reason": str(exc),
+                        "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+                        "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+                        "status": "running",
+                    }
+                current = None
+                retry_receipt: dict[str, Any] = {}
+                try:
+                    if isinstance(attempt, DatabaseTaskAttempt):
+                        current = self.get_attempt(attempt.attempt_id) or attempt
+                    else:
+                        current = self.get_attempt(
+                            str(getattr(attempt, "attempt_id", "") or attempt)
+                        )
+                    if current is None:
+                        current = attempt
+                    failed, retry_receipt = self._finalize_failed_attempt(
+                        current,
+                        reason="extra_gate_incomplete_projection_dead_runner",
+                        force_block=False,
+                        unknown_authority=False,
+                    )
+                except Exception as fail_exc:
+                    _reraise_database_execution_storage_art_fatal(fail_exc)
+                    return {
+                        "resumed": True,
+                        "deferred": False,
+                        "portal_retryable_failure": True,
+                        "reason": "extra_gate_incomplete_projection_dead_runner",
+                        "fail_error": str(fail_exc),
+                        "attempt_id": str(
+                            getattr(attempt, "attempt_id", "") or ""
+                        ),
+                        "task_alias": str(
+                            getattr(attempt, "task_alias", "") or ""
+                        ),
+                        "status": "failure_reconciliation_pending",
+                    }
+                retry_exhausted = bool(retry_receipt.get("retry_exhausted"))
+                return {
+                    "resumed": True,
+                    "deferred": False,
+                    "portal_retryable_failure": not retry_exhausted,
+                    "retry_exhausted": retry_exhausted,
+                    "retry_budget": retry_receipt,
+                    "reason": "extra_gate_incomplete_projection_dead_runner",
+                    "attempt_id": str(
+                        getattr(failed or attempt, "attempt_id", "") or ""
+                    ),
+                    "task_alias": str(
+                        getattr(failed or attempt, "task_alias", "") or ""
+                    ),
+                    "status": (
+                        "retry_exhausted" if retry_exhausted else "failed"
+                    ),
                 }
             failed = None
             current = None
@@ -107828,6 +108439,9 @@ class DatabaseImplementationDaemon:
                 preserve_for_resume = bool(
                     nested.get("terminal_provider_evidence")
                     or durable_provider_result is not None
+                    or self._nested_extra_gate_is_resource_claim_keep(
+                        current, nested
+                    )
                 ) and not (
                     effect_unknown
                     or committed_provider_result_missing
@@ -108347,6 +108961,19 @@ class DatabaseImplementationDaemon:
                 DatabaseCoordinationStorageRepairedError,
             )
 
+            if self._exception_is_transient_quack_transport(exc):
+                return {
+                    "unchanged": True,
+                    "write_count": 0,
+                    "active_task_id": "",
+                    "selection_idle_reason": "database_quack_transport_deferred",
+                    "implementation_result": None,
+                    "authority_mode": self.authority_mode,
+                    "task_source_kind": self.task_source_kind,
+                    "markdown_status_writes": self._markdown_status_writes,
+                    "projections_required": False,
+                    "reason": "database_quack_transport_deferred",
+                }
             if not isinstance(exc, DatabaseCoordinationStorageRepairedError):
                 raise
             # Coordination ART rebuild is retry authority, not a crash.
@@ -108710,6 +109337,7 @@ class DatabaseImplementationDaemon:
                         "unknown_outcome_rearms": [],
                     }
 
+        extra_gate_owned_outside: list[Any] = []
         if self._database_portal_bridge is not None:
             # A completion preparation is an independent cross-store saga.
             # Resolve it before either ordinary expiry or the current
@@ -108794,10 +109422,17 @@ class DatabaseImplementationDaemon:
             selected_attempt_ids = {
                 attempt.attempt_id for attempt in self.list_running_attempts()
             }
+            extra_gate_owned_outside = [
+                attempt
+                for attempt in owner_running
+                if attempt.attempt_id not in selected_attempt_ids
+                and self._extra_gate_attempt_belongs_to_this_process(attempt)
+            ]
             outside_selection = [
                 attempt
                 for attempt in owner_running
                 if attempt.attempt_id not in selected_attempt_ids
+                and self._outside_selection_running_attempt_must_gate(attempt)
             ]
             if outside_selection:
                 gate = {
@@ -108904,7 +109539,14 @@ class DatabaseImplementationDaemon:
                 ),
             }
         # Prefer resume of this session's running attempts (crash recovery).
-        running = self.list_running_attempts()
+        running = list(self.list_running_attempts())
+        if extra_gate_owned_outside:
+            seen = {attempt.attempt_id for attempt in running}
+            running.extend(
+                attempt
+                for attempt in extra_gate_owned_outside
+                if attempt.attempt_id not in seen
+            )
         if running:
             result = self._resume_attempt_without_process_crash(running[0])
             return {

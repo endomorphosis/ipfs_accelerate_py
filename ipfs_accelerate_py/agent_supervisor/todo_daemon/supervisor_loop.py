@@ -49,6 +49,31 @@ class SupervisorLoopDecision:
         return cls(action="stop", reason=reason, status=status)
 
 
+def failed_child_termination_should_keep_running(
+    decision: SupervisorLoopDecision,
+    *,
+    child_still_alive: bool,
+) -> bool:
+    """True when a live extra-gate child must keep its supervisor attached.
+
+    After watchdog_startup_grace_seconds the loop treated failed
+    terminate_supervised_child as termination_blocked and exited the
+    supervisor process. Master then SIGTERM-killed leftover grok.
+    Extra-gate aliases still cannot bypass safe_to_restart=False.
+    """
+
+    if not child_still_alive:
+        return False
+    reason = str(getattr(decision, "reason", "") or "")
+    if reason in {
+        "control_plane_source_changed",
+        "control_plane_reload_deferred",
+        "extra_gate_in_progress_preserve_worker",
+    }:
+        return True
+    return reason.startswith("extra_gate_")
+
+
 WatchdogQuiescentStatusPredicate = Callable[[Mapping[str, Any]], bool]
 
 
@@ -471,6 +496,17 @@ class SupervisorLoop:
                 )
                 if exception is not None:
                     return exception
+            if (
+                self.watchdog_hook is not None
+                and decision.reason == "worktree_phase_without_active_child"
+            ):
+                # Default recycle ran before the extra-gate hook, so a live
+                # grok_cli_runner that was not counted as a worktree worker
+                # was SIGTERM-killed (PCTDD-005). Extra-gate aliases still
+                # cannot bypass safe_to_restart=False.
+                hooked = self.watchdog_hook(self, child, current_status)
+                if hooked.action == "continue":
+                    return hooked
             return decision
         if self.watchdog_hook is not None:
             return self.watchdog_hook(self, child, current_status)
@@ -541,6 +577,15 @@ class SupervisorLoop:
                 if self.monotonic() - child_started_at >= self.config.watchdog_startup_grace_seconds:
                     decision = self.watchdog_decision(child)
                     if decision.action == "stop":
+                        if failed_child_termination_should_keep_running(
+                            decision,
+                            child_still_alive=_poll_child_exit(child)
+                            is None,
+                        ):
+                            # Do not SIGTERM a live extra-gate child on
+                            # control_plane_source_changed. Lane-0 STOP then
+                            # termination_blocked killed PCTDD-005 grok.
+                            continue
                         final_status = decision.status or "stopped"
                         self.last_recycle_reason = decision.reason
                         stopped = terminate_supervised_child(
@@ -553,6 +598,12 @@ class SupervisorLoop:
                                 self.last_exit_code = 0
                                 stop_requested = True
                                 break
+                            if failed_child_termination_should_keep_running(
+                                decision,
+                                child_still_alive=_poll_child_exit(child)
+                                is None,
+                            ):
+                                continue
                             final_status = "termination_blocked"
                             self.last_recycle_reason = (
                                 "supervised_child_termination_unproven"
@@ -584,6 +635,12 @@ class SupervisorLoop:
                                 self.last_exit_code = 0
                                 recycled = True
                                 break
+                            if failed_child_termination_should_keep_running(
+                                decision,
+                                child_still_alive=_poll_child_exit(child)
+                                is None,
+                            ):
+                                continue
                             final_status = "termination_blocked"
                             self.last_recycle_reason = (
                                 "supervised_child_termination_unproven"

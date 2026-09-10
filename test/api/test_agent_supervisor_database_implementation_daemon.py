@@ -16,6 +16,7 @@ import copy
 import fcntl
 import hashlib
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -6384,6 +6385,365 @@ def test_extra_gate_foreign_process_running_attempt_is_not_live_local(
     )
 
 
+def test_extra_gate_incomplete_projection_closes_when_grok_is_dead(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dead extra-gate grok must not keep a deferred incomplete projection.
+
+    Resume renewed the 2h lease on ``Portal task projection is not complete``
+    after PCTDD-005 grok 1592311 died, so rearm never dispatched. Official
+    unstick is rearm, never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    daemon = SimpleNamespace(
+        process_instance_id="process:live",
+        task_source=SimpleNamespace(get=lambda _cid: None),
+        _task_alias_is_extra_gate=Daemon._task_alias_is_extra_gate,
+        _extra_gate_running_attempt_is_live_local=lambda attempt: (
+            Daemon._extra_gate_running_attempt_is_live_local(daemon, attempt)
+        ),
+        _extra_gate_recorded_runner_pid=lambda attempt: (
+            Daemon._extra_gate_recorded_runner_pid(daemon, attempt)
+        ),
+        _extra_gate_recorded_runner_was_spawned_here=lambda attempt: (
+            Daemon._extra_gate_recorded_runner_was_spawned_here(daemon, attempt)
+        ),
+        _extra_gate_attempt_belongs_to_this_process=lambda attempt: (
+            Daemon._extra_gate_attempt_belongs_to_this_process(daemon, attempt)
+        ),
+        _extra_gate_claim_has_not_started_worker=lambda attempt: (
+            Daemon._extra_gate_claim_has_not_started_worker(daemon, attempt)
+        ),
+        _extra_gate_attempt_is_within_launch_grace=lambda attempt: (
+            Daemon._extra_gate_attempt_is_within_launch_grace(daemon, attempt)
+        ),
+        _now_ms=lambda: 1_000_000,
+        _extra_gate_dead_runner_block_opens_generic_rearm=lambda task, receipt: (
+            Daemon._extra_gate_dead_runner_block_opens_generic_rearm(
+                daemon, task, receipt
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "active_codex_exec_workers",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(daemon_module, "process_is_running", lambda _pid: False)
+    dead = SimpleNamespace(
+        task_alias="PCTDD-005",
+        task_cid="task:cid:005",
+        process_instance_id="process:dead",
+        body={
+            "process_instance_id": "process:dead",
+            "active_provider_runner": {"pid": 1592311, "owner_pid": 1366231},
+        },
+    )
+    this_dead = SimpleNamespace(
+        task_alias="PCTDD-005",
+        task_cid="task:cid:005",
+        process_instance_id="process:live",
+        started_at_ms=1,
+        body={
+            "process_instance_id": "process:live",
+            "started_at_ms": 1,
+            "active_provider_runner": {
+                "pid": 1592311,
+                "owner_pid": os.getpid(),
+            },
+        },
+    )
+    this_dead_fresh = SimpleNamespace(
+        task_alias="PCTDD-005",
+        task_cid="task:cid:005",
+        process_instance_id="process:live",
+        started_at_ms=999_000,
+        body={
+            "process_instance_id": "process:live",
+            "started_at_ms": 999_000,
+            "active_provider_runner": {
+                "pid": 1592311,
+                "owner_pid": os.getpid(),
+            },
+        },
+    )
+    predecessor = SimpleNamespace(
+        task_alias="PCTDD-034",
+        task_cid="task:cid:034",
+        process_instance_id="process:live",
+        started_at_ms=999_000,
+        body={
+            "process_instance_id": "process:live",
+            "started_at_ms": 999_000,
+            "active_provider_runner": {"pid": 2804560, "owner_pid": 2421577},
+        },
+    )
+    live_runner = SimpleNamespace(
+        task_alias="PCTDD-034",
+        task_cid="task:cid:034",
+        process_instance_id="process:other",
+        body={"active_provider_runner": {"pid": 2804560}},
+    )
+    mid_launch = SimpleNamespace(
+        task_alias="PCTDD-007",
+        task_cid="task:cid:007",
+        process_instance_id="process:live",
+        body={"process_instance_id": "process:live"},
+    )
+    ordinary = SimpleNamespace(
+        task_alias="PCTDD-008",
+        task_cid="task:cid:008",
+        body={},
+    )
+    fresh_copied = SimpleNamespace(
+        task_alias="PCTDD-005",
+        task_cid="task:cid:005",
+        process_instance_id="process:other",
+        body={
+            "process_instance_id": "process:other",
+            "retry_budget": {
+                "retained_recovery_consumption": {
+                    "consumed_before_worker_start": True,
+                }
+            },
+            "active_provider_runner": {"pid": 1592311, "owner_pid": 1366231},
+        },
+    )
+    blocked_034 = SimpleNamespace(
+        task_alias="PCTDD-034",
+        status="blocked",
+        body={},
+    )
+    assert (
+        Daemon._extra_gate_incomplete_projection_is_in_flight(daemon, dead)
+        is False
+    )
+    assert (
+        Daemon._extra_gate_incomplete_projection_is_in_flight(daemon, this_dead)
+        is False
+    )
+    assert (
+        Daemon._extra_gate_incomplete_projection_is_in_flight(
+            daemon, this_dead_fresh
+        )
+        is True
+    )
+    assert (
+        Daemon._extra_gate_incomplete_projection_is_in_flight(
+            daemon, predecessor
+        )
+        is True
+    )
+    monkeypatch.setattr(
+        daemon_module, "process_is_running", lambda pid: int(pid) == 2804560
+    )
+    assert (
+        Daemon._extra_gate_incomplete_projection_is_in_flight(
+            daemon, live_runner
+        )
+        is True
+    )
+    assert (
+        Daemon._extra_gate_incomplete_projection_is_in_flight(
+            daemon, mid_launch
+        )
+        is True
+    )
+    assert (
+        Daemon._extra_gate_incomplete_projection_is_in_flight(daemon, ordinary)
+        is True
+    )
+    monkeypatch.setattr(daemon_module, "process_is_running", lambda _pid: False)
+    assert (
+        Daemon._extra_gate_incomplete_projection_is_in_flight(
+            daemon, fresh_copied
+        )
+        is True
+    )
+    quack_exc = type("IOException", (Exception,), {})(
+        "IO Error: Failed to send message: IO Error: Could not connect "
+        "to server error for HTTP POST to 'http://127.0.0.1:27278/quack'"
+    )
+    assert Daemon._exception_is_transient_quack_transport(quack_exc) is True
+    assert Daemon._exception_is_transient_quack_transport(RuntimeError("x")) is False
+    assert (
+        Daemon._extra_gate_dead_runner_block_opens_generic_rearm(
+            daemon,
+            blocked_034,
+            {"reason": "extra_gate_incomplete_projection_dead_runner"},
+        )
+        is True
+    )
+    assert (
+        Daemon._extra_gate_dead_runner_block_opens_generic_rearm(
+            daemon,
+            ordinary,
+            {"reason": "extra_gate_incomplete_projection_dead_runner"},
+        )
+        is False
+    )
+    assert (
+        Daemon._extra_gate_dead_runner_block_opens_generic_rearm(
+            daemon,
+            blocked_034,
+            {
+                "reason": (
+                    "'DatabasePortalExecutionBridge' object has no "
+                    "attribute '_extra_gate_incomplete_projection_needs_provider'"
+                )
+            },
+        )
+        is True
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_incomplete_projection_needs_provider_when_grok_dead(
+    tmp_path: Path,
+) -> None:
+    """Extra-gate leftover projection must retry provider, not wait.
+
+    Lane-0/3 kept ``Portal task projection is not complete`` with no grok
+    child. Official unstick is provider-route deferral, never CAS.
+    Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DatabasePortalExecutionBridge,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    state = tmp_path / "portal-task-state.json"
+    state.write_text(json.dumps({"active_task_id": "PCTDD-005"}), encoding="utf-8")
+    paths = SimpleNamespace(state=state)
+    assert (
+        DatabasePortalExecutionBridge._extra_gate_incomplete_projection_needs_provider(
+            {"task_alias": "PCTDD-005"}, paths
+        )
+        is True
+    )
+    state.write_text(
+        json.dumps({"active_provider_runner": {"pid": os.getpid()}}),
+        encoding="utf-8",
+    )
+    assert (
+        DatabasePortalExecutionBridge._extra_gate_incomplete_projection_needs_provider(
+            {"task_alias": "PCTDD-007"}, paths
+        )
+        is False
+    )
+    assert (
+        DatabasePortalExecutionBridge._extra_gate_incomplete_projection_needs_provider(
+            {"task_alias": "PCTDD-008"}, paths
+        )
+        is False
+    )
+    state.write_text(
+        json.dumps(
+            {
+                "active_task_id": "PCTDD-034",
+                "selection_idle_reason": (
+                    "all_selectable_ready_tasks_deferred_by_resource_claim"
+                ),
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert (
+        DatabasePortalExecutionBridge._extra_gate_incomplete_projection_waiting_on_resource_claim(
+            {"task_alias": "PCTDD-034"}, paths
+        )
+        is True
+    )
+    assert (
+        DatabasePortalExecutionBridge._extra_gate_incomplete_projection_waiting_on_resource_claim(
+            {"task_alias": "PCTDD-008"}, paths
+        )
+        is False
+    )
+    assert (
+        DatabasePortalExecutionBridge._extra_gate_incomplete_projection_waiting_on_resource_claim(
+            {"task_alias": "PCTDD-034"},
+            paths,
+            [{"selection_idle_reason": "all_selectable_ready_tasks_deferred_by_resource_claim"}],
+        )
+        is True
+    )
+    extra_gate = SimpleNamespace(task_alias="PCTDD-034")
+    ordinary = SimpleNamespace(task_alias="PCTDD-008")
+    daemon = SimpleNamespace(
+        _task_alias_is_extra_gate=daemon_module.DatabaseImplementationDaemon._task_alias_is_extra_gate,
+    )
+    assert daemon._task_alias_is_extra_gate(extra_gate) is True
+    assert daemon._task_alias_is_extra_gate(ordinary) is False
+    keep_daemon = SimpleNamespace(
+        _task_alias_is_extra_gate=daemon_module.DatabaseImplementationDaemon._task_alias_is_extra_gate,
+        _nested_extra_gate_is_resource_claim_keep=daemon_module.DatabaseImplementationDaemon._nested_extra_gate_is_resource_claim_keep,
+    )
+    keep_nested = {
+        "reason": "resource_claim",
+        "nested_state": {
+            "selection_idle_reason": (
+                "all_selectable_ready_tasks_deferred_by_resource_claim"
+            )
+        },
+    }
+    assert (
+        daemon_module.DatabaseImplementationDaemon._nested_extra_gate_is_resource_claim_keep(
+            keep_daemon, extra_gate, keep_nested
+        )
+        is True
+    )
+    assert (
+        daemon_module.DatabaseImplementationDaemon._nested_extra_gate_is_resource_claim_keep(
+            keep_daemon, ordinary, keep_nested
+        )
+        is False
+    )
+    blocked_005 = SimpleNamespace(task_alias="PCTDD-005")
+    assert (
+        daemon_module.DatabaseImplementationDaemon._extra_gate_dead_runner_block_opens_generic_rearm(
+            keep_daemon,
+            blocked_005,
+            {"reason": "provider_dispatch_outcome_unknown"},
+        )
+        is True
+    )
+    assert (
+        daemon_module.DatabaseImplementationDaemon._extra_gate_dead_runner_block_opens_generic_rearm(
+            keep_daemon,
+            ordinary,
+            {"reason": "provider_dispatch_outcome_unknown"},
+        )
+        is False
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
 def test_extra_gate_pre_dispatch_provider_error_defers_without_force_block(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -7027,6 +7387,155 @@ def test_extra_gate_may_claim_off_hash_home_shard() -> None:
     daemon.task_shard_index = 2
     assert daemon._extra_gate_or_home_shard(_Task()) is True
     assert daemon._extra_gate_or_home_shard(_Other()) is False
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_steals_dstate_resource_claim_without_grok(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D/T-stopped claim holders without grok must not stall extra-gate.
+
+    Nested portals idle ``all_selectable_ready_tasks_deferred_by_resource_claim``
+    while 006/007 hold submodule claims from D-state/T-stopped daemons with
+    dead grok. Extra-gate may run off hash-home; official unstick is ordinary
+    dispatch after clearing the stuck claim, never CAS. Extra-gate aliases
+    still cannot bypass ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
+        PortalImplementationDaemon,
+        PortalTask,
+        task_identity_is_extra_gate,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon.process_command_line",
+        lambda _pid: (
+            "python -m ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_daemon"
+        ),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon.process_kernel_state",
+        lambda _pid: "D",
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon.process_has_live_grok_descendant",
+        lambda _pid: False,
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "lane" / "state.json",
+        strategy_path=repo / "lane" / "strategy.json",
+        events_path=repo / "lane" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## PCTDD-",
+        implement=True,
+        worktree_submodule_paths=("ipfs_datasets_py",),
+    )
+    extra_gate = PortalTask(
+        task_id="PCTDD-005",
+        title="Hash memo contracts",
+        status="todo",
+        completion="auto",
+        priority="P0",
+        track="pctdd-g021",
+        outputs=[
+            "ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/identity.py"
+        ],
+    )
+    ordinary = PortalTask(
+        task_id="PCTDD-008",
+        title="Ordinary board task",
+        status="todo",
+        completion="auto",
+        priority="P0",
+        track="pctdd-g021",
+        outputs=[
+            "ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/identity.py"
+        ],
+    )
+    assert task_identity_is_extra_gate(extra_gate) is True
+    assert task_identity_is_extra_gate(ordinary) is False
+    claim_path = daemon._implementation_resource_claim_path("ipfs_datasets_py")
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "kind": IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
+        "lease_id": "stuck-006",
+        "pid": os.getpid(),
+        "owner_script": "implementation_daemon.py",
+        "repo_root": str(repo.resolve()),
+        "state_dir": str((repo / "lane-2").resolve()),
+        "task_id": "PCTDD-006",
+        "resource_kind": "submodule",
+        "resource_path": "ipfs_datasets_py",
+    }
+    claim_path.write_text(json.dumps(payload), encoding="utf-8")
+    assert daemon._implementation_resource_claim_owner_is_active(payload) is True
+    assert daemon._resource_claim_owner_is_stuck_without_provider(payload) is True
+    active = daemon._active_implementation_resource_claims([extra_gate, ordinary])
+    assert "ipfs_datasets_py" in active
+    assert daemon._resource_claims_reserve_task(ordinary, active) is True
+    assert daemon._resource_claims_reserve_task(extra_gate, active) is False
+
+    ordinary_claims, ordinary_unavailable, ordinary_reason, _existing = (
+        daemon._acquire_implementation_resource_claims(
+            ordinary,
+            attempt=1,
+            started_at="2026-09-10T04:00:00+00:00",
+        )
+    )
+    assert ordinary_claims == []
+    assert ordinary_reason in {"lock_exists", "overlapping_claim_exists"}
+    assert ordinary_unavailable
+
+    extra_claims, extra_unavailable, extra_reason, _extra_existing = (
+        daemon._acquire_implementation_resource_claims(
+            extra_gate,
+            attempt=1,
+            started_at="2026-09-10T04:00:01+00:00",
+        )
+    )
+    assert extra_unavailable == ""
+    assert extra_reason == "acquired"
+    assert extra_claims
+    assert daemon._release_implementation_resource_claims(extra_claims)
+
+    claim_path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon.process_has_live_grok_descendant",
+        lambda _pid: True,
+    )
+    assert daemon._resource_claim_owner_is_stuck_without_provider(payload) is False
+    blocked_claims, blocked_unavailable, blocked_reason, _blocked_existing = (
+        daemon._acquire_implementation_resource_claims(
+            extra_gate,
+            attempt=2,
+            started_at="2026-09-10T04:00:02+00:00",
+        )
+    )
+    assert blocked_claims == []
+    assert blocked_reason in {"lock_exists", "overlapping_claim_exists"}
+    assert blocked_unavailable
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,
