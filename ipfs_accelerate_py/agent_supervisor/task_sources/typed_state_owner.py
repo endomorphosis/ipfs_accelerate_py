@@ -399,6 +399,7 @@ DATABASE_STATUS_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset({
     "whoami_metadata", "load_store_generation", "executor_control_snapshot",
     "executor_task_projection_page", "executor_task_projection_by_identity",
     "executor_retry_cooldown_page", "executor_retry_cooldown_by_task",
+    "executor_task_revision_history_page",
     COMPLETION_PROGRESS_SNAPSHOT_OPERATION,
     "completion.closeout.snapshot",
 })
@@ -6943,6 +6944,16 @@ class TypedStateOwnerGateway:
                                 )
                                 if grant.authority_profile == "dedicated_database_status":
                                     self._resolve_database_status_scope()
+                                    # History may retain rows for removed tasks. The
+                                    # current sealed population, rechecked under the
+                                    # owner lock, must admit this exact CID as well.
+                                    if (
+                                        operation.name == "executor_task_revision_history_page"
+                                        and parameters[0] not in self._database_status_binding["task_cids"]
+                                    ):
+                                        raise TypedStateOwnerAuthorizationError(
+                                            "task history is outside the sealed status population"
+                                        )
                                 result = self._execute(operation, parameters)
                         response = result
                     elif action == "legacy.merge_queue":
