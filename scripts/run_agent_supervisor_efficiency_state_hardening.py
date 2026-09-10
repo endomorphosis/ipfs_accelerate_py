@@ -46,7 +46,10 @@ if str(ROOT) not in sys.path:
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (  # noqa: E402
     content_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import hashing_lock  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import (  # noqa: E402
+    HashingResourceTimeout,
+    hashing_lock,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.shared_hashing import hash_descriptor  # noqa: E402
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (  # noqa: E402
     KNOWN_NON_WORKTREE_PHASES,
@@ -16874,18 +16877,40 @@ def _validate_sealed_receipt_executor_capability(
         ):
             raise ValueError("executor descriptor identity drifted")
         if full:
-            admitted = admit_retained_control_plane_interpreter(
-                descriptor=interpreter.descriptor,
-                argv0=interpreter.argv0,
-                expected_sha256=interpreter.sha256,
-            )
-            if admitted.identity != interpreter.identity:
-                raise ValueError("executor interpreter identity drifted")
-            verify_agent_supervisor_native_dependency_sealed_fd(native)
+            hash_timeout: BaseException | None = None
+            for _attempt in range(3):
+                try:
+                    admitted = admit_retained_control_plane_interpreter(
+                        descriptor=interpreter.descriptor,
+                        argv0=interpreter.argv0,
+                        expected_sha256=interpreter.sha256,
+                    )
+                    if admitted.identity != interpreter.identity:
+                        raise ValueError(
+                            "executor interpreter identity drifted"
+                        )
+                    verify_agent_supervisor_native_dependency_sealed_fd(native)
+                    hash_timeout = None
+                    break
+                except HashingResourceTimeout as exc:
+                    hash_timeout = exc
+                    time.sleep(1.0)
+            if hash_timeout is not None:
+                if boundary != "scope exit":
+                    raise OperatorError(
+                        f"sealed receipt-validation capability differs: {boundary}"
+                    ) from hash_timeout
+                # Descriptor identities already matched. Another board (DOEP)
+                # can hold the UID-global hash lock through this 60s budget;
+                # do not kill the exclusive owner on scope-exit rehash.
+                verify_agent_supervisor_native_dependency_sealed_fd(native)
     except (OSError, TypeError, ValueError) as exc:
-        raise OperatorError(
-            f"sealed receipt-validation capability differs: {boundary}"
-        ) from exc
+        if isinstance(exc, HashingResourceTimeout) and boundary == "scope exit":
+            verify_agent_supervisor_native_dependency_sealed_fd(native)
+        else:
+            raise OperatorError(
+                f"sealed receipt-validation capability differs: {boundary}"
+            ) from exc
     witness = json.loads(executor.authorization_witness_json)
     _assert_candidate_authorization_witness(
         witness,
