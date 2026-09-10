@@ -3875,6 +3875,62 @@ def test_portal_rearm_new_source_retains_once_per_source_and_settlement_budget(t
         daemon.close()
 
 
+@pytest.mark.parametrize("later_callback_proof", [True, False, None, "true"])
+def test_portal_rearm_same_source_admits_later_settlement_within_attempt_budget(
+    tmp_path: Path, later_callback_proof,
+) -> None:
+    class _BoundedProvider:
+        max_task_attempts = 4
+        callback_proof = True
+
+        def provider(self, _attempt: DatabaseTaskAttempt) -> dict[str, object]:
+            raise DatabasePortalBridgeError("closed bridge failure")
+
+        def zero_provider_failure_rearm_ready(self, attempt):
+            assert attempt.status == "failed"
+            assert attempt.committed_phase == "failed"
+            return self.callback_proof
+
+    holder = _BoundedProvider()
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:attempt-budget-recovery",
+        provider_fn=holder.provider,
+    )
+    source = {"source_head": "a" * 40, "source_tree": "b" * 40}
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        daemon.authority_mode = "quack"
+        first = daemon.reconcile_recoverable_portal_failure_rearms(
+            recovery_source_validator=lambda: source
+        )
+        assert len(first) == 1
+        second_pass = daemon.run_once()
+        assert second_pass["implementation_result"]["status"] == "blocked"
+        attempt = daemon.get_attempt(second_pass["attempt_id"])
+        before = daemon.task_source.get(attempt.task_cid)
+        holder.callback_proof = later_callback_proof
+        later = daemon.reconcile_recoverable_portal_failure_rearms(
+            recovery_source_validator=lambda: source
+        )
+        after = daemon.task_source.get(attempt.task_cid)
+        if later_callback_proof is True:
+            assert len(later) == 1
+            assert later[0]["accepted_recovery_source"] == source
+            assert later[0]["settlement_id"] != first[0]["settlement_id"]
+            assert after.status == "retrying"
+            assert after.revision == before.revision + 1
+        else:
+            assert later == []
+            assert after.status == "blocked"
+            assert after.revision == before.revision
+            assert after.body == before.body
+        assert daemon.get_attempt(attempt.attempt_id).status == "failed"
+    finally:
+        daemon.close()
+
+
 def test_production_protected_rearm_requires_native_fence_precondition(tmp_path):
     def provider(attempt):
         raise DatabasePortalBridgeDeferred("implementation_protected_path_mutated")
