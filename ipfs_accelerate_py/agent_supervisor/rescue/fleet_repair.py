@@ -338,6 +338,12 @@ contains the published callback-worktree retention guard. If absent, include a
 compatible tested backport in that qualification; an upstream main fix alone
 does not protect an older deployed runtime. Preserve executing providers and
 record deferred adoption explicitly when no qualified idle boundary exists.
+At the same necessary cutover, check both Quack attachment clients and owner
+readiness probe clients for the published pre-connect thread/memory limits.
+Older runtimes can otherwise create host-sized DuckDB worker pools inside a
+small CPU allocation, starving health queries and lane dispatch. Apply limits
+before LOAD/ATTACH, including disposable failed/retried probes; do not weaken
+authentication, owner bindings, receipt freshness or transport requirements.
 Preserve board-specific external ownership and service overrides. Updating
 the watchdog configuration and staging a validated runtime release are within
 the user's authorization. Do not repeatedly publish diagnostic-only changes
