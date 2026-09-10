@@ -989,6 +989,32 @@ def _artifact_records(
     return tuple(records)
 
 
+def _pinned_git_artifact_records(
+    root: Path,
+    *,
+    source_head: str,
+    control_paths: Sequence[str],
+) -> tuple[Mapping[str, object], ...]:
+    """Identity of protected controls at the sealed pin, ignoring worktree drift.
+
+    An already-admitted live wave executes the capsule FDs, not the worktree.
+    Control-plane successors on a descendant HEAD must not park portal rearm.
+    """
+
+    records: list[Mapping[str, object]] = []
+    for relative in control_paths:
+        admitted = _relative(relative, "control path")
+        tracked = _git(root, "show", f"{source_head}:{admitted}")
+        records.append(
+            {
+                "path": admitted,
+                "sha256": "sha256:" + hashlib.sha256(tracked).hexdigest(),
+                "size": len(tracked),
+            }
+        )
+    return tuple(records)
+
+
 def _pinned_scheduler_payload(
     root: Path,
     admission: ConfiguredBoardLiveCapsuleAdmission,
@@ -1444,11 +1470,19 @@ def verify_configured_board_accepted_source(
     )
     root = Path(repo_root).resolve(strict=True)
     current_head, current_tree = _source_generation(root)
-    expected_artifacts = _artifact_records(
-        root,
-        source_head=parsed.source_head,
-        control_paths=tuple(str(item["path"]) for item in parsed.control_artifacts),
-    )
+    control_paths = tuple(str(item["path"]) for item in parsed.control_artifacts)
+    if admitted_live_capsule_restart:
+        expected_artifacts = _pinned_git_artifact_records(
+            root,
+            source_head=parsed.source_head,
+            control_paths=control_paths,
+        )
+    else:
+        expected_artifacts = _artifact_records(
+            root,
+            source_head=parsed.source_head,
+            control_paths=control_paths,
+        )
     if expected_artifacts != parsed.control_artifacts:
         raise ConfiguredBoardLiveCapsuleError(
             "configured-board protected controls drifted"

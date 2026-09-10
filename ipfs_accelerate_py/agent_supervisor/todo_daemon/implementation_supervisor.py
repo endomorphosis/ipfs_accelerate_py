@@ -7390,6 +7390,7 @@ class PortalImplementationSupervisor:
             native_dependency_launch=self.config.native_dependency_launch,
             repo_root=self.config.repo_root,
             expected_board_namespace=self.board_namespace,
+            admitted_live_capsule_restart=True,
         )
         source_head = self._git_object_id(verified.source_head)
         source_tree = self._git_object_id(verified.source_tree)

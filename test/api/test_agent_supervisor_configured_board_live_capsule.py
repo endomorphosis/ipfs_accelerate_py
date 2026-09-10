@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import subprocess
@@ -1194,6 +1195,51 @@ def test_accepted_source_restart_allows_unreceipted_descendant(
     assert receipt["current_head"] != admission.source_head
     assert receipt["authority"] == "exact_capsule_source_plus_descendant_head"
     assert receipt["task_completion_authority"] is False
+
+
+def test_accepted_source_restart_allows_control_plane_successor_on_descendant(
+    tmp_path: Path,
+    quack_projection: _ProjectionFixture,
+) -> None:
+    projection_pin, extension_set_pin, _projection_home = quack_projection
+    root, raw_paths = _seed(tmp_path, extension_set_pin)
+    admission = _admission(
+        root, tuple(sorted(raw_paths)), projection_pin, extension_set_pin
+    )
+    control = root / "scripts/validate.py"
+    control.write_text(
+        control.read_text(encoding="utf-8") + "successor = True\n",
+        encoding="utf-8",
+    )
+    _commit_controls(root, "control-plane successor")
+
+    with pytest.raises(
+        capsule.ConfiguredBoardLiveCapsuleError,
+        match="control differs from accepted HEAD",
+    ):
+        capsule.verify_configured_board_accepted_source(
+            admission,
+            repo_root=root,
+        )
+
+    receipt = capsule.verify_configured_board_accepted_source(
+        admission,
+        repo_root=root,
+        admitted_live_capsule_restart=True,
+        transition_loader=lambda *_args: (_ for _ in ()).throw(
+            AssertionError("restart must not look up supervisor merge authority")
+        ),
+    )
+    assert receipt["kind"] == "admitted_live_capsule_restart"
+    assert receipt["source_head"] == admission.source_head
+    assert receipt["current_head"] != admission.source_head
+
+
+def test_portal_rearm_source_uses_admitted_live_capsule_restart() -> None:
+    source = inspect.getsource(
+        implementation.PortalImplementationSupervisor._sealed_portal_recovery_source
+    )
+    assert "admitted_live_capsule_restart=True" in source
 
 
 def test_accepted_source_restart_rejects_unrelated_head(
