@@ -208,140 +208,18 @@ _AGENT_NATIVE_DEPENDENCY_MAX_STRING_TABLE_BYTES = 16 * 1024 * 1024
 _AGENT_NATIVE_DEPENDENCY_MAX_NEEDED = 128
 _AGENT_NATIVE_DEPENDENCY_MEMFD_NAME = "ipfs-accelerate-duckdb"
 _AGENT_NATIVE_DEPENDENCY_SEALED_MODE = 0o500
-_AGENT_NATIVE_DEPENDENCY_PRELOAD_LOCK = threading.Lock()
-_AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED = False
-@dataclass(frozen=True, slots=True)
-class AgentSupervisorNativeDependencyPin:
-    """Path-free reviewed content and ABI identity for the DuckDB extension.
-
-    The ordered ``DT_NEEDED`` names are part of this identity, but the bytes of
-    the platform's default system libraries are not.  The protected launcher
-    must remove every ``LD_*`` variable; the default system loader and ABI
-    closure are then an explicit trusted-host boundary.
-    """
-
-    schema: str
-    dependency_id: str
-    module_name: str
-    public_alias: str
-    distribution_name: str
-    distribution_version: str
-    engine_version: str
-    extension_filename: str
-    python_cache_tag: str
-    python_soabi: str
-    platform_name: str
-    platform_machine: str
-    python_executable_sha256: str
-    payload_sha256: str
-    size_bytes: int
-    elf_class_bits: int
-    elf_endianness: str
-    elf_ident_version: int
-    elf_osabi: int
-    elf_abi_version: int
-    elf_object_type: int
-    elf_machine: int
-    elf_object_version: int
-    elf_flags: int
-    elf_dt_needed: tuple[str, ...]
-
-    def as_dict(self) -> dict[str, object]:
-        return {
-            "schema": self.schema,
-            "dependency_id": self.dependency_id,
-            "module_name": self.module_name,
-            "public_alias": self.public_alias,
-            "distribution_name": self.distribution_name,
-            "distribution_version": self.distribution_version,
-            "engine_version": self.engine_version,
-            "extension_filename": self.extension_filename,
-            "python_cache_tag": self.python_cache_tag,
-            "python_soabi": self.python_soabi,
-            "platform_name": self.platform_name,
-            "platform_machine": self.platform_machine,
-            "python_executable_sha256": self.python_executable_sha256,
-            "payload_sha256": self.payload_sha256,
-            "size_bytes": self.size_bytes,
-            "elf_class_bits": self.elf_class_bits,
-            "elf_endianness": self.elf_endianness,
-            "elf_ident_version": self.elf_ident_version,
-            "elf_osabi": self.elf_osabi,
-            "elf_abi_version": self.elf_abi_version,
-            "elf_object_type": self.elf_object_type,
-            "elf_machine": self.elf_machine,
-            "elf_object_version": self.elf_object_version,
-            "elf_flags": self.elf_flags,
-            "elf_dt_needed": list(self.elf_dt_needed),
-        }
-
-    def to_json(self) -> str:
-        return _agent_native_canonical_json(self.as_dict())
-
-
-@dataclass(frozen=True, slots=True)
-class AgentSupervisorNativeDependencyDescriptor:
-    """Parent-observed identity for one sealed fd propagated across exec."""
-
-    schema: str
-    descriptor: int
-    st_dev: int
-    st_ino: int
-    st_mode: int
-    st_uid: int
-    st_nlink: int
-    size_bytes: int
-    payload_sha256: str
-    seals: int
-
-    def as_dict(self) -> dict[str, object]:
-        return {
-            "schema": self.schema,
-            "descriptor": self.descriptor,
-            "st_dev": self.st_dev,
-            "st_ino": self.st_ino,
-            "st_mode": self.st_mode,
-            "st_uid": self.st_uid,
-            "st_nlink": self.st_nlink,
-            "size_bytes": self.size_bytes,
-            "payload_sha256": self.payload_sha256,
-            "seals": self.seals,
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class AgentSupervisorNativeDependencyLaunch:
-    """Explicit accepted-pin and sealed-fd propagation envelope.
-
-    ``accepted_authorization_id`` is only an equality binding to authority that
-    the caller has already authenticated.  Constructing or preloading this DTO
-    never creates that authority; the protected launcher must verify the signed
-    acceptance artifact before it spawns a process with this envelope.
-    """
-
-    schema: str
-    accepted_authorization_id: str
-    pin: AgentSupervisorNativeDependencyPin
-    descriptor: AgentSupervisorNativeDependencyDescriptor
-
-    def as_dict(self) -> dict[str, object]:
-        return {
-            "schema": self.schema,
-            "accepted_authorization_id": self.accepted_authorization_id,
-            "pin": self.pin.as_dict(),
-            "descriptor": self.descriptor.as_dict(),
-        }
-
-    def to_json(self) -> str:
-        return _agent_native_canonical_json(self.as_dict())
-
-    @property
-    def pass_fds(self) -> tuple[int, ...]:
-        return (self.descriptor.descriptor,)
-
-    @property
-    def bootstrap_arguments(self) -> tuple[str, str]:
-        return (str(self.descriptor.descriptor), self.to_json())
+# Use the route module's canonical DTOs across both compatibility APIs.
+# Duplicate dataclasses reject equal accepted pins and sealed launch envelopes
+# because their generated equality and isinstance checks require one type.
+AgentSupervisorNativeDependencyPin = (
+    _agent_implementation_route.AgentSupervisorNativeDependencyPin
+)
+AgentSupervisorNativeDependencyDescriptor = (
+    _agent_implementation_route.AgentSupervisorNativeDependencyDescriptor
+)
+AgentSupervisorNativeDependencyLaunch = (
+    _agent_implementation_route.AgentSupervisorNativeDependencyLaunch
+)
 
 
 def _agent_native_canonical_json(value: Mapping[str, object]) -> str:
@@ -1398,124 +1276,15 @@ def verify_agent_supervisor_native_dependency_sealed_fd(
     return executable
 
 
-def _agent_preload_supervisor_native_dependency_once(
-    launch: AgentSupervisorNativeDependencyLaunch,
-) -> object:
-    """Perform the single process-permitted native extension load."""
-
-    global _AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED
-
-    if not isinstance(launch, AgentSupervisorNativeDependencyLaunch):
-        raise ValueError(  # noqa: TRY004
-            "native dependency launch is invalid"
-        )
-    verified_launch = parse_agent_supervisor_native_dependency_launch(
-        launch.as_dict()
-    )
-    pin = verified_launch.pin
-    if pin.module_name in sys.modules or pin.public_alias in sys.modules:
-        raise ValueError("native dependency aliases are already present")
-    executable = verify_agent_supervisor_native_dependency_sealed_fd(
-        verified_launch
-    )
-    module: object | None = None
-    connection: object | None = None
-    try:
-        loader = importlib.machinery.ExtensionFileLoader(
-            _AGENT_NATIVE_DEPENDENCY_MODULE,
-            executable,
-        )
-        spec = importlib.util.spec_from_file_location(
-            _AGENT_NATIVE_DEPENDENCY_MODULE,
-            executable,
-            loader=loader,
-        )
-        if (
-            spec is None
-            or spec.loader is not loader
-            or spec.name != pin.module_name
-            or spec.origin != executable
-        ):
-            raise ValueError("native dependency extension spec is invalid")
-        # CPython extension module initialization cannot be reliably rolled
-        # back.  From this point onward the process is terminal for every
-        # second preload attempt, even when initialization or a later probe
-        # fails and the Python aliases can be removed.
-        _AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED = True
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[pin.module_name] = module
-        loader.exec_module(module)
-        if (
-            getattr(module, "__name__", None) != pin.module_name
-            or getattr(module, "__file__", None) != executable
-            or getattr(module, "__version__", None) != pin.distribution_version
-        ):
-            raise ValueError("native dependency module identity is invalid")
-        connect = getattr(module, "connect", None)
-        if not callable(connect):
-            raise ValueError(  # noqa: TRY004
-                "native dependency query API is unavailable"
-            )
-        connection = connect(":memory:")
-        execute = getattr(connection, "execute", None)
-        if not callable(execute):
-            raise ValueError(  # noqa: TRY004
-                "native dependency query API is unavailable"
-            )
-        engine_cursor = execute("SELECT version()")
-        engine_row = engine_cursor.fetchone()
-        query_cursor = execute("SELECT 42")
-        query_row = query_cursor.fetchone()
-        if engine_row != (pin.engine_version,) or query_row != (42,):
-            raise ValueError("native dependency in-memory probe failed")
-        verify_agent_supervisor_native_dependency_sealed_fd(verified_launch)
-        if sys.modules.get(pin.module_name) is not module:
-            raise ValueError("native dependency private alias changed")
-        sys.modules[pin.public_alias] = module
-        if sys.modules.get(pin.public_alias) is not module:
-            raise ValueError("native dependency public alias changed")
-        close = getattr(connection, "close", None)
-        if callable(close):
-            close()
-        connection = None
-    except Exception as exc:
-        close = getattr(connection, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception:  # noqa: BLE001, S110
-                pass
-        if module is not None:
-            for name in (pin.module_name, pin.public_alias):
-                if sys.modules.get(name) is module:
-                    sys.modules.pop(name, None)
-        raise ValueError("native dependency preload failed closed") from exc
-    return module
-
-
-def preload_agent_supervisor_native_dependency(
-    launch: AgentSupervisorNativeDependencyLaunch,
-) -> object:
-    """Load the verified DuckDB extension and expose its exact public alias.
-
-    This validates an already-authorized launch envelope; it does not verify or
-    create the external signed acceptance represented by its authorization ID.
-    Because CPython cannot safely unload an extension, any attempt that reaches
-    native module creation permanently denies every later preload in this
-    process, including after a failed identity or query probe.  This function
-    also refuses every ambient ``LD_*`` setting.  The external protected
-    launcher must remove those settings before exec, because code injected by
-    the process loader cannot be made safe after Python starts.
-    """
-
-    with _AGENT_NATIVE_DEPENDENCY_PRELOAD_LOCK:
-        if any(name.startswith("LD_") for name in os.environ):
-            raise ValueError(
-                "native dependency ambient loader environment is forbidden"
-            )
-        if _AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED:
-            raise ValueError("native dependency preload process is terminal")
-        return _agent_preload_supervisor_native_dependency_once(launch)
+# Preload and active-launch queries must share one process-wide lock and
+# irreversible initialization state. The route module owns that state for
+# both APIs, including nested supervisor launches.
+_agent_preload_supervisor_native_dependency_once = (
+    _agent_implementation_route._agent_preload_supervisor_native_dependency_once
+)
+preload_agent_supervisor_native_dependency = (
+    _agent_implementation_route.preload_agent_supervisor_native_dependency
+)
 
 
 def preload_agent_supervisor_native_dependency_from_bootstrap(
