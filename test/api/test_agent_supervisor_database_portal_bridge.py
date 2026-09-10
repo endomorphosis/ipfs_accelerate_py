@@ -9164,9 +9164,15 @@ def test_quack_sigterm_retains_owner_then_launch_fences_through_reconciliation(
         selected_program: DatabaseProgramConfig,
         *,
         owner_fence_held: bool = False,
+        managed_daemon_launch_lock_held: bool = False,
+        managed_daemon_cleanup: dict[str, object] | None = None,
         trigger: str = "supervisor_signal_shutdown",
     ) -> dict[str, object]:
         assert selected_program is program
+        assert managed_daemon_cleanup is not None
+        assert managed_daemon_cleanup["quiesced"] is True
+        assert managed_daemon_cleanup["provider_runner_fence"] == {"safe_to_restart": True}
+        assert managed_daemon_launch_lock_held
         assert owner_fence_held
         assert owner_fence_active
         assert trigger == "supervisor_signal_shutdown"
@@ -16749,3 +16755,43 @@ def test_incomplete_portal_is_not_predispatch_authority(tmp_path, alias):
     with pytest.raises(DatabasePortalBridgeDeferred, match="Portal task projection is not complete") as caught:
         bridge.run_provider(attempt)
     assert type(caught.value) is DatabasePortalBridgeDeferred
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize("alias", ["PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034", "OTHER-001"])
+def test_terminal_disposition_conflict_never_becomes_retry_authority(
+    tmp_path: Path, alias: str,
+) -> None:
+    """A bad disposition blocks the audit without advancing its verified cursor."""
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:terminal-conflict",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=False,
+    )
+    try:
+        receipts = _seed_terminal_repair_history(daemon, count=1)
+        conn = daemon._require_connection()
+        attempt_id = "attempt:terminal-history:0000"
+        conn.execute("UPDATE database_task_attempts SET task_alias = ? WHERE attempt_id = ?", [alias, attempt_id])
+        phase = next(p for p in daemon.phase_history(attempt_id) if p["phase"] == "failed")
+        body = dict(phase["body"])
+        body["database_disposition"] = "blocked_unknown_outcome"
+        conn.execute("UPDATE attempt_phases SET body_json = ? WHERE attempt_id = ? AND phase = 'failed'", [json.dumps(body), attempt_id])
+        before = daemon._database_portal_terminal_repair_cursor()
+        for _ in range(2):
+            outcomes = daemon._repair_database_portal_terminal_receipts(
+                bridge=_TerminalRepairReceiptAuthority(receipts),
+                trigger="terminal_conflict_regression",
+            )
+            assert len(outcomes) == 1
+            assert outcomes[0]["blocked"] is True
+            assert outcomes[0]["reconciled"] is False
+            assert outcomes[0]["reason"] == "terminal_reconciliation_receipt_repair_failed"
+            assert outcomes[0]["error"] == "terminal phase changed its actual database disposition"
+            assert daemon._database_portal_terminal_repair_cursor() == before
+    finally:
+        daemon.close()

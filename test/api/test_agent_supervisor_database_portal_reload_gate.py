@@ -2921,9 +2921,8 @@ def test_extra_gate_missing_nested_state_is_retry_authority() -> None:
     )
 
 
-def test_extra_gate_unrepairable_terminal_receipt_opens_generic_rearm() -> None:
+def test_legacy_receipt_core_equality_does_not_override_native_launch_fence() -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-        DatabaseImplementationDaemon,
         _prepared_reconciliation_barrier_core_matches,
     )
 
@@ -2949,117 +2948,6 @@ def test_extra_gate_unrepairable_terminal_receipt_opens_generic_rearm() -> None:
         is False
     )
 
-    recon = {
-        "blocked": True,
-        "reason": "database_portal_terminal_repair_batch_blocked",
-        "safe_to_restart": False,
-        "attempts": [
-            {
-                "task_alias": "PCTDD-005",
-                "task_cid": (
-                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
-                ),
-                "blocked": True,
-                "reason": "terminal_reconciliation_receipt_repair_failed",
-                "error_type": "ContractValidationError",
-                "error": "canonical proof contracts cannot contain floats",
-            }
-        ],
-    }
-    assert (
-        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
-            recon
-        )
-        is True
-    )
-    cid_only = {
-        "blocked": True,
-        "attempts": [
-            {
-                "task_cid": (
-                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
-                ),
-                "blocked": True,
-                "reason": "terminal_reconciliation_receipt_repair_failed",
-                "error_type": "ContractValidationError",
-                "error": "canonical proof contracts cannot contain floats",
-            }
-        ],
-    }
-    assert (
-        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
-            cid_only
-        )
-        is True
-    )
-    disposition = {
-        "blocked": True,
-        "attempts": [
-            {
-                "task_alias": "PCTDD-005",
-                "task_cid": (
-                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
-                ),
-                "blocked": True,
-                "reason": "terminal_reconciliation_receipt_repair_failed",
-                "error_type": "DatabaseImplementationConflictError",
-                "error": "terminal phase changed its actual database disposition",
-            }
-        ],
-    }
-    assert (
-        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
-            disposition
-        )
-        is True
-    )
-    failed_item = {
-        "reconciled": False,
-        "blocked": True,
-        "reason": "terminal_reconciliation_receipt_repair_failed",
-        "task_alias": "PCTDD-005",
-        "task_cid": (
-            "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
-        ),
-        "error_type": "DatabaseImplementationConflictError",
-        "error": "terminal phase changed its actual database disposition",
-    }
-    assert (
-        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
-            {"attempts": [failed_item]}
-        )
-        is True
-    )
-    retry_authority = {
-        "reconciled": True,
-        "blocked": False,
-        "continuation_required": True,
-        "attempts": [
-            {
-                "reconciled": True,
-                "blocked": False,
-                "reason": "terminal_reconciliation_extra_gate_retry_authority",
-                "task_alias": "PCTDD-005",
-                "task_cid": (
-                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
-                ),
-            }
-        ],
-    }
-    assert (
-        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
-            retry_authority
-        )
-        is True
-    )
-    recon["attempts"][0]["task_alias"] = "PCTDD-008"
-    recon["attempts"][0]["task_cid"] = "baguqeera-not-extra-gate"
-    assert (
-        DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
-            recon
-        )
-        is False
-    )
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,
