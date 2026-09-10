@@ -3754,7 +3754,7 @@ class DatabaseCoordinator:
         self._task_completion_for_identity_unlocked(
             connection,
             identity=identity,
-            required=True,
+            required=required,
             expected_statuses=tuple(sorted(allowed_statuses)),
         )
         return {
