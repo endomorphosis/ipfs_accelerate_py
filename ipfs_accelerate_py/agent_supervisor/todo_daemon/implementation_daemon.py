@@ -70091,10 +70091,10 @@ class DatabaseImplementationDaemon:
     def _portal_recovery_source_rearm_limit(self) -> int:
         """Return how many distinct settlements one sealed source may rearm.
 
-        Zero-provider parking used a lifetime of one rearm per source. A later
-        grok/codex attempt that actually ran and failed with remaining
-        ``max_task_attempts`` must still be able to retry on that same source.
-        Unbound daemons keep the original one-rearm lifetime.
+        This only bounds the allowance for distinct eligible settlements.
+        It does not establish callback closure or permit an executed attempt
+        to use zero-provider recovery. Unbound daemons retain the original
+        one-rearm lifetime.
         """
 
         portal = getattr(self._provider_fn, "__self__", None)
@@ -70201,8 +70201,8 @@ class DatabaseImplementationDaemon:
         Settlements keep ``automatic_retry_admitted=false``.  The operator
         rearm path only fires after a blocked→retrying CAS.  Four closed
         classes may perform that CAS once per task. A freshly verified sealed
-        repair source may admit one further, distinct settlement, once per
-        source head/tree; restarting the same source does not reset its budget:
+        repair source may admit further distinct eligible settlements within
+        its bounded allowance; restarting does not reset that source's budget:
 
         * the exact-Git-merge mismatch that parked a gitlink-recording
           follow-up after merge-train acceptance;
@@ -70232,6 +70232,13 @@ class DatabaseImplementationDaemon:
             task_cid = str(task.task_cid)
             if not self._task_is_in_lane(task, task_cid=task_cid):
                 continue
+            body = task.body if isinstance(getattr(task, "body", None), Mapping) else {}
+            control_receipt = body.get("completion_receipt")
+            if (
+                not isinstance(control_receipt, Mapping)
+                or control_receipt.get("task_cid") != task_cid
+            ):
+                continue
             rows = self._require_connection().execute(
                 "SELECT attempt_id FROM database_task_attempts "
                 "WHERE task_cid = ? AND status = 'failed' "
@@ -70247,7 +70254,12 @@ class DatabaseImplementationDaemon:
                     receipt = self._portal_failure_phase_receipt(attempt)
                 except Exception:
                     continue
-                if receipt is None:
+                # A historical non-dispatch proof cannot recover a newer
+                # control settlement. Check before CAS: coordination denial
+                # after that write cannot undo a task already made retrying.
+                # The status CAS below also fences changes to this exact task
+                # revision while source and native callback proof are checked.
+                if receipt is None or dict(receipt) != dict(control_receipt):
                     continue
                 try:
                     recoverable_reason = next(
@@ -70279,8 +70291,6 @@ class DatabaseImplementationDaemon:
                     matched = (attempt, receipt, recoverable_reason)
                     break
             if matched is None:
-                body = task.body if isinstance(getattr(task, "body", None), Mapping) else {}
-                control_receipt = body.get("completion_receipt")
                 if self._portal_claim_failure_is_live_owner_rearmable(control_receipt):
                     if str(control_receipt.get("task_cid") or "") != task_cid:
                         continue

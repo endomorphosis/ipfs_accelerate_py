@@ -147,6 +147,50 @@ class _Provider:
         return self.verified
 
 
+def test_historical_undispatched_failure_cannot_rearm_new_control_settlement(tmp_path):
+    class Provider:
+        max_task_attempts = 4
+        calls = []
+
+        def run(self, attempt):
+            self.calls.append(attempt.attempt_id)
+            reason = "portal_provider_failed" if len(self.calls) == 1 else "later_dispatched_failure"
+            raise DatabasePortalBridgeError(reason)
+
+        def zero_provider_failure_rearm_ready(self, attempt):
+            return attempt.attempt_id == self.calls[0]
+
+    provider = Provider()
+    daemon = _open_daemon(tmp_path, provider_fn=provider.run)
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        attempt = daemon.get_attempt(first["attempt_id"])
+        blocked = daemon.task_source.get(attempt.task_cid)
+        # Exercise the existing separate operator recovery path. It does not
+        # consume the automatic rearm budget for this historical settlement.
+        daemon.task_source.compare_and_set_status(
+            blocked.task_cid, expected_revision=blocked.revision, status="retrying",
+            receipt={"operation": "operator_control_plane_repair",
+                     "settlement_id": blocked.body["completion_receipt"]["settlement_id"]},
+        )
+        second = daemon.run_once()
+        assert second["implementation_result"]["status"] == "blocked"
+        before = daemon.task_source.get(attempt.task_cid)
+        assert before.body["completion_receipt"]["attempt_id"] == second["attempt_id"]
+        daemon.authority_mode = "quack"
+        assert daemon.reconcile_recoverable_portal_failure_rearms(
+            recovery_source_validator=lambda: {"source_head": "a" * 40, "source_tree": "b" * 40},
+        ) == []
+        after = daemon.task_source.get(attempt.task_cid)
+        assert after.status == "blocked"
+        assert after.revision == before.revision
+        assert after.body == before.body
+        assert daemon.get_attempt(second["attempt_id"]).status == "failed"
+    finally:
+        daemon.close()
+
+
 @pytest.mark.parametrize("verified", [False, None, "true", True])
 @pytest.mark.parametrize("reason", ["outer callback failed after Portal work", "portal_provider_failed"])
 def test_zero_count_failure_needs_explicit_callback_proof_before_cas(tmp_path, verified, reason):
