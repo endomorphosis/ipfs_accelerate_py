@@ -3579,6 +3579,36 @@ class QuackStateServer:
                 shard_id=shard_id,
             )
 
+    def bind_legacy_merge_queue_service(self, **policy: Any) -> None:
+        """Bind a preserved legacy queue from this exact retained owner only."""
+        with self._owner_transaction_lock:
+            with self._lock:
+                gateway = self._require_eaaef_owner_gateway()
+                gateway.bind_legacy_merge_queue_service(
+                    expected_identity=self._identity.to_dict(), **policy,
+                )
+
+    def provision_legacy_merge_recovery_schema(self, **migration: Any) -> Any:
+        """Explicit owner-local migration; never a client grant or wire action."""
+        with self._owner_transaction_lock:
+            with self._lock:
+                gateway = self._require_eaaef_owner_gateway()
+                return gateway.provision_legacy_merge_recovery_schema(
+                    expected_identity=self._identity.to_dict(), **migration,
+                )
+
+    def bind_legacy_merge_recovery_service(
+        self, *, repository_id: str, target_branch: str,
+    ) -> None:
+        """Bind already provisioned recovery state under the same owner fence."""
+        with self._owner_transaction_lock:
+            with self._lock:
+                gateway = self._require_eaaef_owner_gateway()
+                gateway.bind_legacy_merge_recovery_service(
+                    expected_identity=self._identity.to_dict(),
+                    repository_id=repository_id, target_branch=target_branch,
+                )
+
     def bind_eaaef_typed_owner_command_service(
         self,
         *,
