@@ -86804,6 +86804,7 @@ def _r21_owner_start_contention_observation(
     locks: list[dict[str, Any]] = []
     permission_observation: dict[str, Any] | None = None
     permission_receipt: dict[str, Any] | None = None
+    endpoint_recovery: dict[str, Any] | None = None
     try:
         owner_handle.assert_canonical_parent()
         directory_fd = owner_handle.directory_fileno()
@@ -86842,6 +86843,37 @@ def _r21_owner_start_contention_observation(
                         directory_fd,
                         owner_marker_path.name,
                     )
+                    # A prior native stop can be fenced after its grace period,
+                    # leaving dead typed sockets/token after marker recovery.
+                    # Retire only proven inert bootstrap files under all four
+                    # locks; the existing residual/permission gates still run.
+                    if marker_absent:
+                        from ipfs_accelerate_py.agent_supervisor.runtime.stale_owner_endpoints import (
+                            reclaim_stale_typed_owner_endpoints,
+                        )
+                        from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+                            TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME,
+                        )
+                        with _anchored_directory_descriptor(paths["owner"]) as state_fd:
+                            endpoint_names = (
+                                server.typed_command_socket_path().name,
+                                TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME,
+                                server.typed_command_token_path().name,
+                            )
+                            if any(not _r21_path_absent(state_fd, name) for name in endpoint_names):
+                                try:
+                                    endpoint_recovery = reclaim_stale_typed_owner_endpoints(
+                                        server=server, owner_handle=owner_handle,
+                                        state_directory_fd=state_fd,
+                                    )
+                                    _atomic_json(
+                                        paths["owner"] / "stale-typed-endpoints-recovery.json",
+                                        {**endpoint_recovery, "observed_at_ns": time.time_ns()},
+                                    )
+                                except Exception as exc:
+                                    raise OperatorError(
+                                        "R21 owner-start stale endpoint recovery refused"
+                                    ) from exc
                     if r23_permission_context is None:
                         database_observation = (
                             _r21_owner_start_file_observation(
@@ -87022,6 +87054,8 @@ def _r21_owner_start_contention_observation(
         observation["database_permission_receipt_cid"] = permission_receipt[
             "receipt_cid"
         ]
+    if endpoint_recovery is not None:
+        observation["stale_endpoint_recovery"] = endpoint_recovery
     observation["observation_cid"] = _identity(observation)
     return observation
 
