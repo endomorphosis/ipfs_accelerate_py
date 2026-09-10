@@ -2434,12 +2434,7 @@ class InProcessQuackTransport:
             try:
                 import duckdb
 
-                # Readiness must fit the owner's CPU/memory allocation even
-                # when a failed probe needs a fresh extension client.
-                client = duckdb.connect(
-                    ":memory:",
-                    config={"threads": 1, "memory_limit": DEFAULT_MEMORY_LIMIT},
-                )
+                client = duckdb.connect(":memory:")
                 try:
                     client.execute("LOAD quack")
                     for sql, params in query_attempts:

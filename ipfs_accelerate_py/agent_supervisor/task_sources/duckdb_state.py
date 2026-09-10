@@ -3339,9 +3339,7 @@ def _probe_quack_connection(connection: Any) -> None:
 def _attach_quack_once(uri: str, secret: str) -> tuple[Any, dict[str, Any]]:
     import duckdb
 
-    connection = duckdb.connect(
-        ":memory:", config={"threads": 1, "memory_limit": DEFAULT_MEMORY_LIMIT}
-    )
+    connection = duckdb.connect(":memory:")
     try:
         connection.execute("LOAD quack")
         try:
