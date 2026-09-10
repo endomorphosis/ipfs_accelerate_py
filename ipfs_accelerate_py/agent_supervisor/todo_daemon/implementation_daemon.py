@@ -97064,25 +97064,25 @@ class DatabaseImplementationDaemon:
         }
         excluded.update(self._automatic_claim_exclusions())
         excluded.update(self._current_control_claim_rejections())
-        if self.max_task_attempts > 0:
-            for task_cid in canonical_ready_task_cids:
-                candidate = self.task_source.get(task_cid)
-                if candidate is None:
-                    continue
-                candidate_status = str(
-                    candidate.status or ""
-                ).strip().lower()
-                if (
-                    candidate_status == "ready"
-                    and self._typed_authoritative_attempt_floor(candidate)
-                    >= self.max_task_attempts
-                ) or (
-                    candidate_status == "retrying"
-                    and not self._callback_no_effect_retry_claim_is_within_budget(
-                        candidate
-                    )
-                ):
-                    excluded.add(task_cid)
+        for task_cid in canonical_ready_task_cids:
+            candidate = self.task_source.get(task_cid)
+            if candidate is None:
+                continue
+            candidate_status = str(candidate.status or "").strip().lower()
+            # Disabling the attempt ceiling never disables callback authority.
+            # A retry receipt still needs its independently verified exact seed.
+            if (
+                self.max_task_attempts > 0
+                and candidate_status == "ready"
+                and self._typed_authoritative_attempt_floor(candidate)
+                >= self.max_task_attempts
+            ) or (
+                candidate_status == "retrying"
+                and not self._callback_no_effect_retry_claim_is_within_budget(
+                    candidate
+                )
+            ):
+                excluded.add(task_cid)
         local_projection = self.coordinator.coordination_registry_projection()
         excluded.update(
             str(row.get("task_cid") or "")
