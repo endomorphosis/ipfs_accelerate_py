@@ -14,6 +14,7 @@ from ..proof.formal_verification_contracts import content_identity
 from .control_plane_contracts import canonical_json_bytes
 
 SCHEMA = "ipfs_accelerate_py/agent-supervisor/retained-callback-cooldown-binding@1"
+REFRESH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/retained-callback-cooldown-binding@2"
 FIELD = "retained_callback_binding"
 SEED_FIELDS = frozenset(
     {
@@ -72,9 +73,7 @@ def build_binding(
     body = task.get("body")
     receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
     seed = (
-        receipt.get("post_merge_completion_recovery_seed")
-        if isinstance(receipt, Mapping)
-        else None
+        receipt.get("post_merge_completion_recovery_seed") if isinstance(receipt, Mapping) else None
     )
     if (
         task.get("status") != "retrying"
@@ -133,8 +132,7 @@ def build_binding(
         or set(receipt) != expected_fields
         or seed.get("schema")
         != "ipfs_accelerate_py/agent-supervisor/database-post-merge-completion-recovery-seed@2"
-        or seed_id
-        != "sha256:" + hashlib.sha256(canonical_json_bytes(seed_material)).hexdigest()
+        or seed_id != "sha256:" + hashlib.sha256(canonical_json_bytes(seed_material)).hexdigest()
         or seed.get("source_task_revision") != context["source_task_revision"]
         or seed.get("recovery_control_revision") != revision - 1
         or seed.get("terminal_reason") != SOURCE_REASON
@@ -155,8 +153,7 @@ def build_binding(
         )
         or receipt.get("callback_requalification_receipt_id")
         != seed.get("qualification_receipt_id")
-        or receipt.get("callback_reconciliation_evidence_id")
-        != seed.get("recovery_evidence_id")
+        or receipt.get("callback_reconciliation_evidence_id") != seed.get("recovery_evidence_id")
         or receipt.get("source_binding_id") != seed.get("queue_source_binding_id")
         or receipt.get("source_projection_immutable_digest")
         != seed.get("queue_source_projection_immutable_digest")
@@ -172,28 +169,57 @@ def build_binding(
         )
     ):
         raise Error("retained callback cooldown source receipt or seed changed")
-    if FIELD in json_extension(prior_queue):
-        raise Error("retained callback cooldown cannot recursively migrate")
-    queue = _validated_stored_retry_cooldown(prior_queue, task_cid=task["task_cid"])
-    extension = queue["extension"]
-    if FIELD in extension:
-        raise Error("retained callback cooldown cannot recursively migrate")
-    expected = {
-        **{k: middle[k] for k in IDENTITY},
-        "expected_task_revision": middle["control_expected_revision"],
-        "reason": middle["queue_reason"],
-        "delay_ms": middle["backoff_ms"],
-        "retry_not_before_ms": middle["retry_not_before_ms"],
-    }
-    if any(
-        type(extension.get(k)) is not type(v) or extension.get(k) != v
-        for k, v in expected.items()
-    ):
-        raise Error(
-            "retained callback cooldown prior queue differs from its historical retry"
-        )
+    if context.get("generation_refresh"):
+        queue = _validated_stored_retry_cooldown(prior_queue, task_cid=task["task_cid"])
+        old_binding = queue["extension"].get(FIELD)
+        if not isinstance(old_binding, Mapping):
+            raise Error("retained callback refresh lost prior forward binding")
+        old_revision = context["generation_predecessor"]["control_expected_revision"] + 1
+        old_history = {k: v for k, v in history.items() if k != "projection_cid"}
+        old_history["revisions"] = history["revisions"][:old_revision]
+        old_history["projection_cid"] = content_identity(old_history)
+        old_task = {
+            "task_cid": task["task_cid"],
+            "task_alias": task["task_alias"],
+            **old_history["revisions"][-1],
+        }
+        if (
+            old_binding
+            != build_binding(
+                task=old_task, history=old_history, prior_queue=old_binding["prior_queue"]
+            )
+            or old_binding["source_seed_id"] != context["source_seed"]["seed_id"]
+            or seed["qualified_target_commit"] == context["source_seed"]["qualified_target_commit"]
+            or seed["qualification_receipt_id"]
+            == context["source_seed"]["qualification_receipt_id"]
+            or any(queue["extension"][k] != old_binding["identity"][k] for k in IDENTITY)
+            or any(
+                latest[k] != old_binding["identity"][k] + 1
+                for k in ("attempt_number", "fencing_token", "fence_epoch")
+            )
+        ):
+            raise Error("retained callback refresh prior binding or generation changed")
+    else:
+        if FIELD in json_extension(prior_queue):
+            raise Error("retained callback cooldown cannot recursively migrate")
+        queue = _validated_stored_retry_cooldown(prior_queue, task_cid=task["task_cid"])
+        extension = queue["extension"]
+        if FIELD in extension:
+            raise Error("retained callback cooldown cannot recursively migrate")
+        expected = {
+            **{k: middle[k] for k in IDENTITY},
+            "expected_task_revision": middle["control_expected_revision"],
+            "reason": middle["queue_reason"],
+            "delay_ms": middle["backoff_ms"],
+            "retry_not_before_ms": middle["retry_not_before_ms"],
+        }
+        if any(
+            type(extension.get(k)) is not type(v) or extension.get(k) != v
+            for k, v in expected.items()
+        ):
+            raise Error("retained callback cooldown prior queue differs from its historical retry")
     material = {
-        "schema": SCHEMA,
+        "schema": REFRESH_SCHEMA if context.get("generation_refresh") else SCHEMA,
         "task_cid": task["task_cid"],
         "task_alias": task["task_alias"],
         "task_revision": revision,
@@ -217,30 +243,35 @@ def validate_binding(binding: Mapping[str, Any]) -> dict[str, Any]:
     try:
         value = dict(binding)
         binding_id = value.pop("binding_id")
-        if (
-            set(value)
-            != {
-                "schema",
-                "task_cid",
-                "task_alias",
-                "task_revision",
-                "source_receipt_cid",
-                "source_seed_id",
-                "source_receipt",
-                "task_body_cid",
-                "history_projection_cid",
-                "prior_queue",
-                "identity",
-            }
-            or value["schema"] != SCHEMA
-        ):
+        if set(value) != {
+            "schema",
+            "task_cid",
+            "task_alias",
+            "task_revision",
+            "source_receipt_cid",
+            "source_seed_id",
+            "source_receipt",
+            "task_body_cid",
+            "history_projection_cid",
+            "prior_queue",
+            "identity",
+        } or value["schema"] not in {SCHEMA, REFRESH_SCHEMA}:
             raise Error("retained callback cooldown binding schema changed")
         source = value["source_receipt"]
         seed = source["post_merge_completion_recovery_seed"]
         identity = value["identity"]
         prior = value["prior_queue"]
-        if FIELD in json_extension(prior):
+        if value["schema"] == SCHEMA and FIELD in json_extension(prior):
             raise Error("retained callback cooldown cannot recursively migrate")
+        if value["schema"] == REFRESH_SCHEMA:
+            previous = json_extension(prior).get(FIELD)
+            if (
+                not isinstance(previous, Mapping)
+                or previous.get("task_revision") != value["task_revision"] - 4
+                or value["task_revision"] > 24
+            ):
+                raise Error("retained callback cooldown refresh chain is unbounded")
+            validate_binding(previous)
         prior = _validated_stored_retry_cooldown(prior, task_cid=value["task_cid"])
         if (
             binding_id != content_identity(value)
@@ -254,7 +285,13 @@ def validate_binding(binding: Mapping[str, Any]) -> dict[str, Any]:
             or set(identity) != IDENTITY
             or any(
                 type(identity[k]) is not int
-                or identity[k] != source[k] + 2
+                or identity[k]
+                != source[k]
+                + (
+                    2
+                    if value["schema"] == SCHEMA
+                    else (value["task_revision"] - seed["source_task_revision"]) // 4
+                )
                 or identity[k] != prior["extension"][k] + 1
                 for k in ("attempt_number", "fencing_token", "fence_epoch")
             )
@@ -307,8 +344,7 @@ def require_claim_binding(
     if not (
         task["status"] == "retrying"
         and isinstance(seed, Mapping)
-        and seed.get("terminal_reason")
-        == "Portal completion source canonical task key mismatches"
+        and seed.get("terminal_reason") == "Portal completion source canonical task key mismatches"
         and seed.get("schema")
         == "ipfs_accelerate_py/agent-supervisor/database-post-merge-completion-recovery-seed@2"
     ):
@@ -333,22 +369,18 @@ def require_claim_binding(
         "schema": "ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1",
         "task_cid": task["task_cid"],
         "revisions": [
-            {"revision": int(r[0]), "status": str(r[1]), "body": json.loads(r[2])}
-            for r in rows
+            {"revision": int(r[0]), "status": str(r[1]), "body": json.loads(r[2])} for r in rows
         ],
     }
     history["projection_cid"] = content_identity(history)
-    expected = build_binding(
-        task=task, history=history, prior_queue=binding["prior_queue"]
-    )
+    expected = build_binding(task=task, history=history, prior_queue=binding["prior_queue"])
     if (
         expected != binding
         or next_receipt.get("post_merge_completion_recovery_seed") != seed
         or next_receipt.get("post_merge_completion_recovery_source_attempt_id")
         != seed["attempt_id"]
         or any(
-            type(next_receipt.get(k)) is not int
-            or next_receipt[k] <= binding["identity"][k]
+            type(next_receipt.get(k)) is not int or next_receipt[k] <= binding["identity"][k]
             for k in ("attempt_number", "fencing_token", "fence_epoch")
         )
         or any(
@@ -356,6 +388,4 @@ def require_claim_binding(
             for k in ("attempt_id", "claim_id", "lease_id")
         )
     ):
-        raise Error(
-            "retained callback reservation changed source or regressed its floor"
-        )
+        raise Error("retained callback reservation changed source or regressed its floor")

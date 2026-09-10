@@ -336,6 +336,7 @@ _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS: Final[
     frozenset[str]
 ] = frozenset(
     {
+        "Portal completion source canonical task key mismatches",
         DATABASE_POST_MERGE_COMPLETION_LINEAGE_FAILURE_REASON,
         DATABASE_POST_MERGE_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
         DATABASE_POST_MERGE_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
@@ -20665,6 +20666,20 @@ class DatabasePortalExecutionBridge:
             and status_receipt.get("attempt_execution_revision") == 1
         )
 
+    def _post_merge_completion_claim_receipt(
+        self, *, attempt, record, status_receipt, seed, recovery_control_revision
+    ):
+        from .retained_callback_suffix import IDENTITY, verified_consumer_claim
+        if (seed.get("recovery_control_revision") != recovery_control_revision
+                or status_receipt != record.body.get("completion_receipt")):
+            return None
+        return verified_consumer_claim(
+            self.task_source.task_revision_history_projection(attempt.task_cid),
+            task_cid=attempt.task_cid, task_alias=attempt.task_alias,
+            revision=record.revision, body=record.body, seed=seed,
+            identity={k: getattr(attempt, k) for k in IDENTITY},
+        )
+
     def _post_merge_completion_recovery_seed_from_record(
         self,
         *,
@@ -20883,6 +20898,13 @@ class DatabasePortalExecutionBridge:
                 "post-merge completion recovery seed failed claim verification: "
                 + claim_error
             )
+        if (value["terminal_reason"] == "Portal completion source canonical task key mismatches"
+                and self._post_merge_completion_claim_receipt(
+                    attempt=attempt, record=record, status_receipt=status_receipt,
+                    seed=seed, recovery_control_revision=recovery_control_revision) is None):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed failed claim verification"
+            )
         if self.merge_queue is None:
             raise DatabasePortalBridgeError(
                 "post-merge completion recovery seed has no merge queue"
@@ -20998,6 +21020,18 @@ class DatabasePortalExecutionBridge:
             "requalification": "requalification_receipt_id",
             "callback_integration": "callback_requalification_receipt_id",
         }[str(value["qualification_kind"])]
+        if (
+            value["qualification_kind"] == "callback_integration"
+            and isinstance(evidence, Mapping)
+            and evidence.get("schema") == expected_schema
+            and evidence.get("request_id") == value["request_id"]
+            and evidence.get("candidate_commit") == value["candidate_commit"]
+            and isinstance(qualification, Mapping)
+            and evidence.get(expected_target_field) != value["qualified_target_commit"]
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed target generation changed"
+            )
         if (
             not isinstance(evidence, Mapping)
             or evidence.get("schema") != expected_schema
@@ -21338,11 +21372,52 @@ class DatabasePortalExecutionBridge:
             summaries=(),
         )
 
+    def _require_retained_completion_key_seed(self, *, attempt: Any, record: Any) -> None:
+        """Fence historic receiver failures before any ordinary provider setup.
+
+        This is a denial guard, not seed admission. The normal full seed
+        verifier still proves original queue/claim/source/target authority.
+        """
+        projection = getattr(self.task_source, "task_revision_history_projection", None)
+        if not callable(projection):
+            return
+        from ..task_sources.intent_repository import TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+        from ..proof.formal_verification_contracts import content_identity
+        history = projection(str(attempt.task_cid))
+        material = dict(history) if isinstance(history, Mapping) else {}
+        identity = material.pop("projection_cid", None)
+        if (material.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+                or material.get("task_cid") != str(attempt.task_cid)
+                or not isinstance(material.get("revisions"), list)
+                or identity != content_identity(material)):
+            raise DatabasePortalBridgeError("retained completion dispatch history is malformed")
+        sources = []
+        for row in material["revisions"]:
+            body = row.get("body") if isinstance(row, Mapping) else None
+            terminal = body.get("completion_receipt") if isinstance(body, Mapping) else None
+            if (isinstance(terminal, Mapping)
+                    and terminal.get("operation") == "database_portal_terminal_failure"
+                    and terminal.get("reason") == "Portal completion source canonical task key mismatches"):
+                sources.append(terminal)
+        if not sources:
+            return
+        body = getattr(record, "body", None)
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        seed = receipt.get("post_merge_completion_recovery_seed") if isinstance(receipt, Mapping) else None
+        if not (isinstance(seed, Mapping)
+                and seed.get("terminal_reason") == "Portal completion source canonical task key mismatches"
+                and seed.get("task_cid") == str(attempt.task_cid)
+                and any(all(seed.get(k) == terminal.get(k) for k in
+                    ("attempt_id", "claim_id", "lease_id", "owner_session_id", "attempt_number", "fencing_token", "fence_epoch"))
+                    for terminal in sources)):
+            raise DatabasePortalBridgeError("retained callback recovery requires exact source seed before dispatch")
+
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
         inflight_deadline = _monotonic_seconds() + self.implementation_timeout
         record = self._record_for_attempt(self.task_source, attempt)
+        self._require_retained_completion_key_seed(attempt=attempt, record=record)
         execution_route_binding = self._execution_route_binding(
             attempt=attempt,
             record=record,
