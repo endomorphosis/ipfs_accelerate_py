@@ -55,4 +55,3 @@ def project_view(connection: Any, view: dict[str, Any]) -> int:
         connection.execute("ROLLBACK")
         raise
     return len(rows)
-
