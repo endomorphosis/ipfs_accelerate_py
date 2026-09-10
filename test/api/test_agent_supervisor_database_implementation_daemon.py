@@ -2316,6 +2316,58 @@ def test_recoverable_accepted_source_portal_failure_auto_rearms_blocked_task(
         daemon.close()
 
 
+def test_zero_provider_portal_provider_failed_auto_rearms_blocked_task(
+    tmp_path: Path,
+) -> None:
+    fail = {"enabled": True}
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        if fail["enabled"]:
+            raise DatabasePortalBridgeError("portal_provider_failed")
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-provider-failed-rearm",
+        provider_fn=provider,
+        effect_calls=effect_calls,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        first_result = first["implementation_result"]
+        assert first_result["portal_terminal_failure"] is True
+        assert first_result["status"] == "blocked"
+        assert first_result["settlement"]["provider_invocation_count"] == 0
+        assert first_result["settlement"]["effect_claim_count"] == 0
+        first_attempt = daemon.get_attempt(first["attempt_id"])
+        assert first_attempt is not None
+        task = daemon.task_source.get(first_attempt.task_cid)
+        assert task is not None
+        assert task.status == "blocked"
+
+        fail["enabled"] = False
+        second = daemon.run_once()
+        rearms = second.get("portal_failure_rearms") or []
+        assert len(rearms) == 1
+        assert rearms[0]["from_status"] == "blocked"
+        assert rearms[0]["to_status"] == "retrying"
+        assert second["implementation_result"]["status"] == "succeeded"
+        second_attempt = daemon.get_attempt(second["attempt_id"])
+        assert second_attempt is not None
+        assert second_attempt.attempt_number == first_attempt.attempt_number + 1
+        assert provider_calls == [
+            first_attempt.attempt_id,
+            second_attempt.attempt_id,
+        ]
+        assert effect_calls == [first_attempt.task_cid]
+    finally:
+        daemon.close()
+
+
 @pytest.mark.parametrize("reason", [
     "cross_attempt_lifecycle_worktree_process_active",
     "cross_attempt_lifecycle_process_inventory_unavailable",

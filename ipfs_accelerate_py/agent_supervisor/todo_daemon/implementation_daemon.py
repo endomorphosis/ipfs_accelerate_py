@@ -67947,6 +67947,9 @@ _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON = (
 _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON = (
     "implementation_protected_path_mutated"
 )
+_RECOVERABLE_ZERO_PROVIDER_PORTAL_FAILURE_REASON = (
+    "portal_provider_failed"
+)
 _LIVE_OWNER_PORTAL_CLAIM_FAILURE_REARM_REASON = (
     "live_owner_zero_provider_portal_claim_failure"
 )
@@ -70274,6 +70277,8 @@ class DatabaseImplementationDaemon:
         * the exact-Git-merge mismatch that parked a gitlink-recording
           follow-up after merge-train acceptance;
         * a protected-path failure with no recorded provider or effect;
+        * a grok/codex nonzero exit recorded as ``portal_provider_failed``
+          with no provider invocation or effect;
         * a live Quack owner seeing a zero-provider claim failure whose
           settlement lives on the control task (no lane-local sidecar).
         """
@@ -70318,6 +70323,7 @@ class DatabaseImplementationDaemon:
                             for candidate in (
                                 _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON,
                                 _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON,
+                                _RECOVERABLE_ZERO_PROVIDER_PORTAL_FAILURE_REASON,
                             )
                             if self._portal_failure_matches_recoverable_reason(
                                 receipt,
@@ -70326,7 +70332,7 @@ class DatabaseImplementationDaemon:
                             )
                             and (
                                 candidate
-                                != _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON
+                                == _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON
                                 or self.portal_claim_failure_receipt_is_zero_provider_rearmable(
                                     receipt
                                 )
