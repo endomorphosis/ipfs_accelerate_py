@@ -98456,6 +98456,9 @@ class DatabaseImplementationDaemon:
         projection, so control-plane loss cannot permanently stall the board.
         """
 
+        from ..task_sources.database_task_source import (
+            TaskSourceConflictError as DatabaseTaskSourceConflictError,
+        )
         from .database_portal_bridge import (
             DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
@@ -99584,6 +99587,23 @@ class DatabaseImplementationDaemon:
                         new_status="retrying",
                         receipt=rearm_receipt,
                     )
+                except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
+                    # A sibling may advance the exact control row after this
+                    # scan. Never retry the old receipt against its new revision
+                    # or claim in this tick; the next pass re-reads authority.
+                    outcomes.append(
+                        {
+                            "task_cid": str(task.task_cid),
+                            "task_alias": alias,
+                            "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                            "expected_revision": int(task.revision),
+                            "rearmed": False,
+                            "changed": False,
+                            "deferred": True,
+                            "reason": "database_unknown_outcome_rearm_conflict",
+                        }
+                    )
+                    return outcomes
                 except TimeoutError as exc:
                     if not (
                         self._task_alias_is_extra_gate(task)
@@ -108732,20 +108752,30 @@ class DatabaseImplementationDaemon:
             for item in unknown_outcome_rearms
             if not _read_only_terminal_candidate_quarantine(item)
             and item.get("reason")
-            != "database_portal_owner_mutation_fence_unavailable"
+            not in {
+                "database_portal_owner_mutation_fence_unavailable",
+                "database_unknown_outcome_rearm_conflict",
+            }
         ]
+        rearm_conflict = any(
+            item.get("reason") == "database_unknown_outcome_rearm_conflict"
+            for item in unknown_outcome_rearms
+        )
         reconciliation_write_count += len(actionable_unknown_outcome_rearms)
-        if actionable_unknown_outcome_rearms:
+        if actionable_unknown_outcome_rearms or rearm_conflict:
             # Rearm and provider/effect dispatch are separate durable passes.
             # This is mandatory even when an exact nested no-provider proof
             # resolves the prior ambiguity: the control receipt must be
             # independently observable before a fresh fenced claim exists.
             return {
-                "unchanged": False,
+                "unchanged": reconciliation_write_count == 0,
                 "write_count": reconciliation_write_count,
+                "deferred": rearm_conflict,
                 "active_task_id": "",
                 "selection_idle_reason": (
-                    "database_unknown_outcomes_rearmed"
+                    "database_unknown_outcome_rearm_conflict"
+                    if rearm_conflict
+                    else "database_unknown_outcomes_rearmed"
                     if any(
                         item.get("rearmed") is True
                         for item in unknown_outcome_rearms
