@@ -629,6 +629,48 @@ def test_false_terminal_blocked_unstall_reopens_isolate_merge_queue_gate() -> No
     assert tuple(row) == ("retrying", 1878)
 
 
+def test_false_terminal_blocked_unstall_reopens_deferral_budget_exhaust() -> None:
+    import duckdb
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        unstall_false_terminal_blocked_tasks,
+    )
+
+    connection = duckdb.connect(":memory:")
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL,
+            body_json VARCHAR
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            "cid-061",
+            "ASEH-061",
+            "blocked",
+            1902,
+            "2026-09-10T08:16:16Z",
+            '{"completion_receipt":{"operation":"database_portal_typed_deferral_budget_exhausted","reason":"inflight_process_deferral_budget_unstall"}}',
+        ],
+    )
+    result = unstall_false_terminal_blocked_tasks(
+        connection,
+        allow_projection_only=True,
+    )
+    assert [item["task_alias"] for item in result["unstalled"]] == ["ASEH-061"]
+    row = connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_alias = 'ASEH-061'"
+    ).fetchone()
+    assert tuple(row) == ("retrying", 1903)
+
+
 def test_orphan_unstall_keeps_a_claim_this_owner_just_made() -> None:
     import duckdb
     from datetime import datetime, timezone
