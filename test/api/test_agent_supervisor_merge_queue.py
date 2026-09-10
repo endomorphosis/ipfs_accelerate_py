@@ -1727,20 +1727,45 @@ def test_ignore_insert_skips_duplicate_primary_key_without_or_ignore(
     assert queue.status()["pending"] == 1
 
 
-def test_bloated_store_rebuild_preserves_live_rows(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_large_store_restart_preserves_database_rows_without_stage_receipts(
+    tmp_path: Path,
 ) -> None:
     queue_path = tmp_path / "queue"
     queue = MergeQueue(queue_path)
-    pending = _enqueue(queue, 0)
-    monkeypatch.setattr(merge_queue_module, "MERGE_QUEUE_BLOAT_REBUILD_BYTES", 1)
-    rebuilt = MergeQueue(queue_path)
-    stored = rebuilt.get(pending.request_id)
-    assert stored is not None
-    assert stored.task_id == pending.task_id
-    assert stored.commit_sha == pending.commit_sha
-    assert stored.status == "pending"
-    assert rebuilt.database_path.stat().st_size < 8 * 1024 * 1024
+    projected = _enqueue(queue, 0)
+    pending = _enqueue(queue, 1)
+    processing = _enqueue(queue, 2)
+    claimed = queue.claim_pending_request(processing.request_id, consumer_id="owner")
+    assert claimed is not None
+    completed = _enqueue(queue, 3)
+    completed_claim = queue.claim_pending_request(completed.request_id, consumer_id="owner")
+    assert completed_claim is not None
+    queue.complete(completed_claim)
+    # Stage receipts are optional projections (and terminal ones get pruned).
+    for request in (pending, claimed, completed_claim):
+        for directory in (queue.pending_dir, queue.processing_dir, queue.completed_dir):
+            (directory / f"{request.request_id}.json").unlink(missing_ok=True)
+    before = {request.request_id: queue.get(request.request_id)
+              for request in (projected, pending, claimed, completed_claim)}
+    # Cross the old 8 MiB rewrite threshold with incompressible bytes in a
+    # separate relation. A queue opener has no authority to discard it either.
+    payload = os.urandom(9 * 1024 * 1024)
+    with queue._connect() as connection:
+        connection.execute("CREATE TABLE migration_evidence (payload BLOB)")
+        connection.execute("INSERT INTO migration_evidence VALUES (?)", [payload])
+    assert queue.database_path.stat().st_size >= 8 * 1024 * 1024
+    inode = queue.database_path.stat().st_ino
+
+    restarted = MergeQueue(queue_path)
+
+    assert restarted.database_path.stat().st_ino == inode
+    assert {key: restarted.get(key) for key in before} == before
+    with restarted._connect() as connection:
+        assert connection.execute("SELECT payload FROM migration_evidence").fetchone()[0] == payload
+    assert restarted.owns_claim(claimed)
+    assert not restarted.owns_claim(replace(claimed, claim_generation=claimed.claim_generation + 1))
+    restarted.complete(claimed)
+    assert restarted.get(claimed.request_id).status == "completed"
 
 
 def test_queue_claim_pending_request_never_claims_a_fairer_foreign_request(
