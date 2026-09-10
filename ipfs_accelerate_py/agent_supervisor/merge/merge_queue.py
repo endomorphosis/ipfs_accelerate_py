@@ -28,7 +28,6 @@ from ..task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBRow,
     connect_duckdb_with_policy,
-    exclusive_file_lock,
     initialize_duckdb_database,
     open_duckdb_connection,
 )
@@ -104,34 +103,6 @@ _FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY = (
 )
 MAX_MERGE_QUEUE_DEFERRAL_SECONDS = 3600.0
 MAX_MERGE_QUEUE_RECORDED_DEFERRALS = 32
-# A healthy index of a few dozen receipts is well under 1 MiB. Larger files
-# are leftover row-group bloat; opening one under the 256 MB DuckDB cap
-# leaves no room for a startup write-commit and abort the lane.
-MERGE_QUEUE_BLOAT_REBUILD_BYTES = 8 * 1024 * 1024
-_MERGE_REQUEST_COPY_COLUMNS = (
-    "request_id",
-    "branch_name",
-    "task_id",
-    "priority",
-    "lane_id",
-    "enqueued_at",
-    "attempt",
-    "metadata_json",
-    "commit_sha",
-    "canonical_task_id",
-    "canonical_task_key",
-    "dedupe_key",
-    "status",
-    "claimed_at",
-    "consumer_id",
-    "failure_count",
-    "failure_reason",
-    "claim_token",
-    "claim_generation",
-    "retry_not_before",
-    "finished_at",
-    "updated_at",
-)
 _MERGE_QUEUE_SCHEMA_SQL = """
                 CREATE TABLE IF NOT EXISTS merge_requests (
                     request_id TEXT PRIMARY KEY,
@@ -1141,7 +1112,10 @@ class MergeQueue:
             directory.mkdir(parents=True, exist_ok=True)
         self._init_database()
         self._import_legacy_files()
-        self._compact_if_bloated()
+        # A lane constructor is not a stopped-owner maintenance boundary.
+        # Optional JSON stage projections cannot enumerate database-owned rows,
+        # and a byte-size threshold cannot authorize replacing a store or WAL.
+        # Preserve the full store for qualified owner migration/maintenance.
 
     def bind_target(
         self,
@@ -1333,106 +1307,6 @@ class MergeQueue:
         except Exception:
             return False
         return row is not None
-
-    def _stage_request_ids(self) -> list[str]:
-        request_ids: list[str] = []
-        seen: set[str] = set()
-        for directory in (
-            self.pending_dir,
-            self.processing_dir,
-            self.completed_dir,
-            self.failed_dir,
-            self.quarantine_dir,
-            self.cancelled_dir,
-        ):
-            if not directory.is_dir():
-                continue
-            for path in directory.glob("*.json"):
-                request_id = path.stem.strip()
-                if not request_id or request_id in seen:
-                    continue
-                seen.add(request_id)
-                request_ids.append(request_id)
-        return request_ids
-
-    def _compact_if_bloated(self) -> None:
-        try:
-            size = self.database_path.stat().st_size
-        except OSError:
-            return
-        if size < MERGE_QUEUE_BLOAT_REBUILD_BYTES:
-            return
-        self._rebuild_store_from_live_rows()
-
-    def _rebuild_store_from_live_rows(self) -> None:
-        """Rewrite a bloated DuckDB file from the live receipt-backed rows."""
-
-        request_ids = self._stage_request_ids()
-        if not request_ids:
-            return
-        columns = _MERGE_REQUEST_COPY_COLUMNS
-        select_sql = (
-            "SELECT "
-            + ", ".join(columns)
-            + " FROM merge_requests WHERE request_id = ?"
-        )
-        rows: list[tuple[Any, ...]] = []
-        meta_rows: list[tuple[Any, ...]] = []
-        with self._connect() as connection:
-            for request_id in request_ids:
-                row = connection.execute(select_sql, (request_id,)).fetchone()
-                if row is None:
-                    continue
-                rows.append(tuple(row[column] for column in columns))
-            try:
-                meta = connection.execute(
-                    "SELECT key, value FROM agent_supervisor_store_metadata"
-                ).fetchall()
-                meta_rows = [(row["key"], row["value"]) for row in meta]
-            except Exception:
-                meta_rows = []
-        if not rows:
-            return
-        rebuilt = self.database_path.with_name(f"{self.database_path.name}.rebuild")
-        if rebuilt.exists():
-            rebuilt.unlink()
-        initialize_duckdb_database(
-            rebuilt,
-            table_names=("merge_requests",),
-            schema_sql=_MERGE_QUEUE_SCHEMA_SQL,
-        )
-        placeholders = ", ".join("?" for _ in columns)
-        insert_sql = (
-            "INSERT INTO merge_requests ("
-            + ", ".join(columns)
-            + f") VALUES ({placeholders})"
-        )
-        with open_duckdb_connection(rebuilt) as connection:
-            connection.execute("BEGIN TRANSACTION")
-            for row in rows:
-                connection.execute(insert_sql, row)
-            for key, value in meta_rows:
-                connection.execute(
-                    """INSERT INTO agent_supervisor_store_metadata(key, value)
-                       VALUES (?, ?)
-                       ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
-                    (key, value),
-                )
-            connection.commit()
-            connection.execute("CHECKPOINT")
-        lock_path = self.database_path.with_name(f".{self.database_path.name}.lock")
-        with exclusive_file_lock(lock_path, timeout_seconds=60.0):
-            wal = Path(str(self.database_path) + ".wal")
-            os.replace(rebuilt, self.database_path)
-            try:
-                if wal.exists():
-                    wal.unlink()
-            except OSError:
-                pass
-            try:
-                os.chmod(self.database_path, 0o600)
-            except OSError:
-                pass
 
     def _insert(
         self,
