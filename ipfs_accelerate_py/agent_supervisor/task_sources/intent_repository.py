@@ -30,6 +30,7 @@ import os
 import re
 import threading
 import time
+import warnings
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -100,6 +101,181 @@ PLAN_HEAD_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/intent-plan-
 INTENT_STREAM_ID: Final[str] = "stream:intent"
 DEFAULT_OWNER_ID: Final[str] = "intent-repository:local"
 DEFAULT_SESSION_ID: Final[str] = "session:intent"
+
+COMPATIBILITY_ADAPTER_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/intent-compatibility-adapter@1"
+)
+COMPATIBILITY_CATALOG_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/aseh-compatibility-catalog@1"
+)
+ROLLBACK_PLAN_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/aseh-compatibility-rollback@1"
+)
+OWNER_RESTART_SNAPSHOT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/owner-restart-snapshot@1"
+)
+PRODUCTION_CUTOVER_TASK_ID: Final[str] = "ASEH-061"
+PRODUCTION_AUTHORITY_PATH: Final[tuple[str, str, str]] = (
+    "IntentRepository@1",
+    "TypedStateOwnerCommandGateway@1",
+    "QuackStateServer@1",
+)
+PRODUCTION_AUTHORITY_HOST: Final[str] = "QuackStateServer@1"
+PRODUCTION_AUTHORITY_OWNER: Final[str] = "TypedStateOwnerCommandGateway@1"
+PRODUCTION_AUTHORITY_SUBSTRATE: Final[str] = "IntentRepository@1"
+
+# Supported legacy APIs warn, then execute exactly one existing repository
+# mutation. They never open a second store or emit a second event.
+SUPPORTED_LEGACY_OPERATIONS: Final[Mapping[str, Mapping[str, str]]] = MappingProxyType(
+    {
+        "compare_and_set_status": MappingProxyType(
+            {
+                "caller": "DuckDBTaskSource.compare_and_set_status",
+                "replacement": "IntentRepository.cas_task_status",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "cas_status": MappingProxyType(
+            {
+                "caller": "DuckDBTaskSource.cas_status",
+                "replacement": "IntentRepository.cas_task_status",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "transition": MappingProxyType(
+            {
+                "caller": "TaskTransitionService.transition",
+                "replacement": "IntentRepository.cas_task_status",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "recover": MappingProxyType(
+            {
+                "caller": "SupervisorRecovery.rebuild",
+                "replacement": "IntentRepository.recover",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "reconcile_legacy_stale_unstall_projection_drift": MappingProxyType(
+            {
+                "caller": "QuackStateServer.start",
+                "replacement": "IntentRepository.reconcile_legacy_stale_unstall_projection_drift",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "unstall_stale_in_progress_tasks": MappingProxyType(
+            {
+                "caller": "QuackStateServer.start",
+                "replacement": "IntentRepository.unstall_stale_in_progress_tasks",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "record_evidence": MappingProxyType(
+            {
+                "caller": "DatabaseTaskSource.record_evidence",
+                "replacement": "IntentRepository.record_evidence",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "record_validation_result": MappingProxyType(
+            {
+                "caller": "DatabaseTaskSource.record_validation_result",
+                "replacement": "IntentRepository.record_validation_result",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "record_queue_backoff": MappingProxyType(
+            {
+                "caller": "DatabaseTaskSource.record_queue_backoff",
+                "replacement": "IntentRepository.record_queue_backoff",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "record_queue_retry": MappingProxyType(
+            {
+                "caller": "DatabaseTaskSource.record_queue_retry",
+                "replacement": "IntentRepository.record_queue_retry",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+    }
+)
+
+# Unsupported paths warn, then fail closed without writing.
+UNSUPPORTED_LEGACY_OPERATIONS: Final[Mapping[str, Mapping[str, str]]] = MappingProxyType(
+    {
+        "direct_sql": MappingProxyType(
+            {
+                "caller": "raw DuckDB SQL",
+                "replacement": "IntentRepository.cas_task_status via the typed Quack owner",
+                "reason": "independent SQL is a second writer",
+            }
+        ),
+        "markdown_board_write": MappingProxyType(
+            {
+                "caller": "markdown_task_board",
+                "replacement": "IntentRepository@1",
+                "reason": "markdown status is an observation and cannot mutate task state",
+            }
+        ),
+        "duckdb_task_source_independent_write": MappingProxyType(
+            {
+                "caller": "DuckDBTaskSource",
+                "replacement": "DatabaseTaskSource@1 / IntentRepository.cas_task_status",
+                "reason": "direct DuckDB projection writes are not production authority",
+            }
+        ),
+        "dual_write": MappingProxyType(
+            {
+                "caller": "compatibility dual-write",
+                "replacement": "single IntentRepository mutation on the bound owner connection",
+                "reason": "two writers for one fact is a hard failure",
+            }
+        ),
+        "independent_writer": MappingProxyType(
+            {
+                "caller": "disconnected wrapper",
+                "replacement": "bound IntentRepository on QuackStateServer",
+                "reason": "compatibility adapters cannot write independently",
+            }
+        ),
+        "silent_fallback": MappingProxyType(
+            {
+                "caller": "legacy silent fallback",
+                "replacement": "warn-then-route or warn-then-fail",
+                "reason": "silent legacy fallback is a hard failure",
+            }
+        ),
+        "transition_legacy": MappingProxyType(
+            {
+                "caller": "TaskTransitionService.transition_legacy",
+                "replacement": "IntentRepository.cas_task_status",
+                "reason": "the candidate legacy trap is not an admitted mutation",
+            }
+        ),
+        "plan_delta_waive_production_integration": MappingProxyType(
+            {
+                "caller": "plan delta",
+                "replacement": "owner-paused ASEH-061 cutover through IntentRepository",
+                "reason": "a plan delta cannot waive production integration",
+            }
+        ),
+    }
+)
+
+CALLER_REPLACEMENTS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "DuckDBTaskSource.compare_and_set_status": "IntentRepository.cas_task_status",
+        "DuckDBTaskSource.cas_status": "IntentRepository.cas_task_status",
+        "TaskTransitionService.transition": "IntentRepository.cas_task_status",
+        "TaskTransitionService.transition_legacy": "IntentRepository.cas_task_status",
+        "DatabaseTaskSource.compare_and_set_status": "IntentRepository.cas_task_status",
+        "markdown_task_board": "IntentRepository@1 (observation only; writes fail closed)",
+        "direct_sql": "typed Quack owner command over IntentRepository",
+        "SupervisorRecovery.rebuild": "IntentRepository.rebuild_owner_restart_projection",
+        "SupervisorRecovery.takeover": "IntentRepository.take_over_owner_session",
+    }
+)
 
 MAX_ID_BYTES: Final[int] = 512
 MAX_BODY_BYTES: Final[int] = 262_144
@@ -239,6 +415,18 @@ class DuckDBUnavailableError(IntentRepositoryError):
     """DuckDB is required but missing from the environment."""
 
 
+class IntentRepositoryCompatibilityWarning(RuntimeWarning):
+    """Emitted when a supported legacy API is routed through this repository."""
+
+
+class IntentRepositoryCompatibilityError(IntentRepositoryError):
+    """Unsupported independent write or compatibility bypass failed closed."""
+
+
+class IntentRepositoryUnsupportedPathError(IntentRepositoryCompatibilityError):
+    """A legacy path is not admitted and must not write."""
+
+
 # ---------------------------------------------------------------------------
 # Closed vocabularies
 # ---------------------------------------------------------------------------
@@ -289,6 +477,20 @@ def _require_duckdb() -> Any:
     except ImportError as exc:
         raise DuckDBUnavailableError("DuckDB is required for IntentRepository") from exc
     return duckdb
+
+
+def _legacy_task_key(value: Any) -> str:
+    """Resolve a DuckDBTaskSource-style task key to a repository identifier."""
+
+    if isinstance(value, Mapping):
+        for field_name in ("task_cid", "task_alias", "id"):
+            candidate = value.get(field_name)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        raise IntentRepositoryError("legacy CAS requires task_cid")
+    if not isinstance(value, str) or not value.strip():
+        raise IntentRepositoryError("legacy CAS requires task_cid")
+    return value.strip()
 
 
 def _utc_iso(moment: datetime | None = None) -> str:
@@ -759,6 +961,12 @@ class IntentRepository:
         evidence_freshness_seconds: int = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
         lock_timeout_seconds: float = 30.0,
         clock_ms: Any | None = None,
+        fencing_epoch: int = 1,
+        generation: int = 1,
+        repository_id: str = "",
+        tree_id: str = "",
+        authentication_subject_id: str = "",
+        authentication_binding_id: str = "",
     ) -> None:
         _require_duckdb()
         if bound_connection is not None:
@@ -819,6 +1027,25 @@ class IntentRepository:
         self._open = False
         self._closed = False
         self._quack_connection: Any | None = None
+        if (
+            isinstance(fencing_epoch, bool)
+            or not isinstance(fencing_epoch, int)
+            or fencing_epoch < 1
+        ):
+            raise IntentRepositoryBoundsError("fencing_epoch must be a positive integer")
+        if (
+            isinstance(generation, bool)
+            or not isinstance(generation, int)
+            or generation < 1
+        ):
+            raise IntentRepositoryBoundsError("generation must be a positive integer")
+        self._fencing_epoch = int(fencing_epoch)
+        self._owner_generation = int(generation)
+        self._repository_id = str(repository_id or "").strip()
+        self._tree_id = str(tree_id or "").strip()
+        self._authentication_subject_id = str(authentication_subject_id or "").strip()
+        self._authentication_binding_id = str(authentication_binding_id or "").strip()
+        self._legacy_route_count = 0
         if self._quack_transport:
             # Schema is owned by the Quack state-owner / trusted materializer.
             install_schema = False
@@ -874,6 +1101,26 @@ class IntentRepository:
         """Whether lifecycle belongs to an injected exclusive-owner connection."""
 
         return self._bound_connection is not None
+
+    @property
+    def uses_typed_quack_owner(self) -> bool:
+        """Whether mutations traverse the typed Quack owner (bound or transport)."""
+
+        return self.uses_bound_connection or self.uses_quack_transport
+
+    @property
+    def fencing_epoch(self) -> int:
+        return self._fencing_epoch
+
+    @property
+    def owner_generation(self) -> int:
+        return self._owner_generation
+
+    @property
+    def legacy_route_count(self) -> int:
+        """Number of supported legacy operations routed through this repository."""
+
+        return self._legacy_route_count
 
     def close(self) -> None:
         self._closed = True
@@ -5969,6 +6216,412 @@ class IntentRepository:
 
         return PlanRevisionRepository(self)
 
+    # -- ASEH-061 compatibility adapter -------------------------------------
+
+    def compatibility_catalog(self) -> Mapping[str, Any]:
+        """Machine-readable replacement, rollback, and fail-closed catalog."""
+
+        return MappingProxyType(
+            {
+                "schema": COMPATIBILITY_CATALOG_SCHEMA,
+                "task_id": PRODUCTION_CUTOVER_TASK_ID,
+                "production_authority_path": list(PRODUCTION_AUTHORITY_PATH),
+                "canonical_owner": PRODUCTION_AUTHORITY_OWNER,
+                "host": PRODUCTION_AUTHORITY_HOST,
+                "substrate": PRODUCTION_AUTHORITY_SUBSTRATE,
+                "independent_writer": False,
+                "public_api_deletion": False,
+                "plan_delta_cannot_waive_production_integration": True,
+                "uses_typed_quack_owner": self.uses_typed_quack_owner,
+                "supported_legacy_operations": {
+                    name: dict(record) for name, record in SUPPORTED_LEGACY_OPERATIONS.items()
+                },
+                "unsupported_legacy_operations": {
+                    name: dict(record) for name, record in UNSUPPORTED_LEGACY_OPERATIONS.items()
+                },
+                "caller_replacements": dict(CALLER_REPLACEMENTS),
+                "rollback": dict(self.rollback_plan()),
+            }
+        )
+
+    def rollback_plan(self) -> Mapping[str, Any]:
+        """Documented rollback: revert the adapter patch, keep this authority."""
+
+        return MappingProxyType(
+            {
+                "schema": ROLLBACK_PLAN_SCHEMA,
+                "task_id": PRODUCTION_CUTOVER_TASK_ID,
+                "restores_independent_writer": False,
+                "public_api_deletion": False,
+                "preserve_observed_effects_and_receipts": True,
+                "procedure": (
+                    "stop new claims and drain mutating leases",
+                    "pause the Quack owner",
+                    "discard or revert only the scoped compatibility-adapter patch",
+                    "restart with the same external credential handle",
+                    "reconcile through IntentRepository.recover and projection replay",
+                    "do not restore DuckDBTaskSource, markdown, or direct-SQL writers",
+                    "reopen claims only after event/materialized-state reconciliation",
+                ),
+            }
+        )
+
+    def caller_replacement(self, caller: str) -> str:
+        """Return the documented replacement for one production caller."""
+
+        text = str(caller or "").strip()
+        if not text:
+            raise IntentRepositoryUnsupportedPathError("caller replacement requires a caller")
+        replacement = CALLER_REPLACEMENTS.get(text)
+        if replacement is None:
+            raise IntentRepositoryUnsupportedPathError(
+                f"no admitted replacement for caller {text}"
+            )
+        return replacement
+
+    def _warn_legacy_api(
+        self,
+        operation: str,
+        *,
+        caller: str,
+        replacement: str,
+    ) -> None:
+        caller_text = str(caller or "").strip() or "unknown"
+        warnings.warn(
+            f"compatibility adapter routing {operation} from {caller_text}; "
+            f"use {replacement} through IntentRepository and the typed Quack owner",
+            IntentRepositoryCompatibilityWarning,
+            stacklevel=3,
+        )
+
+    def reject_unsupported_legacy_path(
+        self,
+        *,
+        operation: str,
+        caller: str = "",
+    ) -> None:
+        """Warn and refuse an unsupported independent-write path."""
+
+        op = str(operation or "").strip() or "unsupported"
+        record = UNSUPPORTED_LEGACY_OPERATIONS.get(op)
+        caller_text = str(caller or "").strip() or (
+            str(record["caller"]) if record is not None else "unknown"
+        )
+        replacement = (
+            str(record["replacement"])
+            if record is not None
+            else "IntentRepository.cas_task_status via the typed Quack owner"
+        )
+        reason = (
+            str(record["reason"]) if record is not None else "path is not an admitted mutation"
+        )
+        self._warn_legacy_api(op, caller=caller_text, replacement=replacement)
+        raise IntentRepositoryUnsupportedPathError(
+            f"unsupported compatibility path {op} from {caller_text} failed closed: {reason}"
+        )
+
+    def route_legacy_api(
+        self,
+        operation: str,
+        /,
+        *args: Any,
+        caller: str = "",
+        **kwargs: Any,
+    ) -> Any:
+        """Warn and dispatch one supported legacy API through this repository.
+
+        Unsupported operations warn then fail closed without writing.
+        """
+
+        op = str(operation or "").strip()
+        if op in UNSUPPORTED_LEGACY_OPERATIONS or op not in SUPPORTED_LEGACY_OPERATIONS:
+            self.reject_unsupported_legacy_path(operation=op, caller=caller)
+        record = SUPPORTED_LEGACY_OPERATIONS[op]
+        caller_text = str(caller or "").strip() or str(record["caller"])
+        self._warn_legacy_api(
+            op,
+            caller=caller_text,
+            replacement=str(record["replacement"]),
+        )
+        self._legacy_route_count += 1
+        kwargs.pop("caller", None)
+        if op in {"compare_and_set_status", "cas_status"}:
+            return self._legacy_compare_and_set_status(*args, **kwargs)
+        if op == "transition":
+            return self._legacy_transition(*args, **kwargs)
+        if op == "recover":
+            return self.recover()
+        if op == "reconcile_legacy_stale_unstall_projection_drift":
+            return self.reconcile_legacy_stale_unstall_projection_drift()
+        if op == "unstall_stale_in_progress_tasks":
+            return self.unstall_stale_in_progress_tasks(**kwargs)
+        if op == "record_evidence":
+            return self.record_evidence(**kwargs)
+        if op == "record_validation_result":
+            return self.record_validation_result(**kwargs)
+        if op == "record_queue_backoff":
+            return self.record_queue_backoff(**kwargs)
+        if op == "record_queue_retry":
+            return self.record_queue_retry(**kwargs)
+        self.reject_unsupported_legacy_path(operation=op, caller=caller_text)
+        raise IntentRepositoryUnsupportedPathError(
+            f"unsupported compatibility path {op} failed closed"
+        )
+
+    def apply_legacy_compare_and_set_status(
+        self,
+        task_cid_or_alias: str | Mapping[str, Any],
+        expected_revision: int,
+        status: str,
+        receipt: Mapping[str, Any] | None = None,
+        *,
+        caller: str = "DuckDBTaskSource.compare_and_set_status",
+        evidence_digests: Sequence[str] | None = None,
+        writer_id: str | None = None,
+        fencing_token: int | None = None,
+    ) -> IntentReceipt:
+        """DuckDBTaskSource-shaped CAS. Warns and delegates to cas_task_status."""
+
+        del writer_id, fencing_token
+        self._warn_legacy_api(
+            "compare_and_set_status",
+            caller=caller,
+            replacement="IntentRepository.cas_task_status",
+        )
+        self._legacy_route_count += 1
+        return self._legacy_compare_and_set_status(
+            task_cid_or_alias,
+            expected_revision,
+            status,
+            receipt,
+            evidence_digests=evidence_digests,
+        )
+
+    cas_status = apply_legacy_compare_and_set_status
+    compare_and_set_status = apply_legacy_compare_and_set_status
+
+    def apply_legacy_transition(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
+        caller: str = "TaskTransitionService.transition",
+    ) -> IntentReceipt:
+        """TaskTransitionService-shaped CAS. Warns and delegates to cas_task_status."""
+
+        self._warn_legacy_api(
+            "transition",
+            caller=caller,
+            replacement="IntentRepository.cas_task_status",
+        )
+        self._legacy_route_count += 1
+        return self.cas_task_status(
+            task_cid=task_cid,
+            expected_revision=expected_revision,
+            new_status=new_status,
+            receipt=receipt,
+            evidence_digests=evidence_digests,
+        )
+
+    def _legacy_compare_and_set_status(
+        self,
+        task_cid_or_alias: str | Mapping[str, Any],
+        expected_revision: int,
+        status: str,
+        receipt: Mapping[str, Any] | None = None,
+        *,
+        evidence_digests: Sequence[str] | None = None,
+    ) -> IntentReceipt:
+        return self.cas_task_status(
+            task_cid=_legacy_task_key(task_cid_or_alias),
+            expected_revision=expected_revision,
+            new_status=status,
+            receipt=receipt,
+            evidence_digests=evidence_digests,
+        )
+
+    def _legacy_transition(
+        self,
+        *args: Any,
+        task_cid: str = "",
+        expected_revision: int | None = None,
+        new_status: str = "",
+        status: str = "",
+        receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
+        **kwargs: Any,
+    ) -> IntentReceipt:
+        del kwargs
+        if args:
+            raise IntentRepositoryUnsupportedPathError(
+                "legacy transition requires keyword task_cid/expected_revision/new_status"
+            )
+        target = new_status or status
+        if expected_revision is None:
+            raise IntentRepositoryError("legacy transition requires expected_revision")
+        return self.cas_task_status(
+            task_cid=task_cid,
+            expected_revision=expected_revision,
+            new_status=target,
+            receipt=receipt,
+            evidence_digests=evidence_digests,
+        )
+
+    def export_owner_restart_snapshot(
+        self,
+        *,
+        repository_id: str = "",
+        tree_id: str = "",
+        generation: int | None = None,
+        owner_session_id: str = "",
+        fencing_epoch: int | None = None,
+        authenticated: bool = True,
+        authentication_subject_id: str = "",
+        authentication_binding_id: str = "",
+    ) -> dict[str, Any]:
+        """Export SupervisorRecovery-compatible owner projection from this store."""
+
+        snapshot = self.snapshot()
+        tasks = {
+            str(item["task_cid"]): {
+                "revision": int(item["revision"]),
+                "status": str(item["status"]),
+            }
+            for item in self.list_tasks(limit=MAX_PAGE_LIMIT)
+        }
+        watermark = int(snapshot.event_watermark)
+        last_event_id = ""
+        if watermark > 0:
+            events = self.list_events(after_global_sequence=watermark - 1, limit=1)
+            if events:
+                last_event_id = str(events[0].get("event_id") or "")
+        rid = str(repository_id or self._repository_id or f"repository:{self.owner_id}")
+        tid = str(tree_id or self._tree_id or snapshot.projection_cid)
+        cursor: dict[str, Any] = {
+            "stream_id": INTENT_STREAM_ID,
+            "position": watermark,
+            "last_event_id": last_event_id,
+            "snapshot_id": tid,
+        }
+        if watermark == 0:
+            cursor["last_event_id"] = ""
+        subject = str(authentication_subject_id or self._authentication_subject_id)
+        binding = str(authentication_binding_id or self._authentication_binding_id)
+        if authenticated and not (subject and binding):
+            subject = subject or f"supervisor:{self.owner_id}"
+            binding = binding or f"grant-binding:{self.session_id}"
+        payload = {
+            "schema": OWNER_RESTART_SNAPSHOT_SCHEMA,
+            "repository_id": rid,
+            "tree_id": tid,
+            "generation": int(generation or self._owner_generation),
+            "cursor": cursor,
+            "task_state": tasks,
+            "event_state": {
+                "head_event_id": last_event_id,
+                "event_count": watermark,
+                "projection_cid": snapshot.projection_cid,
+            },
+            "lease_state": {
+                "lease_id": f"lease:{owner_session_id or self.session_id}",
+                "owner_session_id": str(owner_session_id or self.session_id),
+                "fencing_epoch": int(fencing_epoch or self._fencing_epoch),
+                "claim_revision": 1,
+            },
+            "idempotency_state": {},
+            "reconciliation_state": {},
+            "owner_session_id": str(owner_session_id or self.session_id),
+            "fencing_epoch": int(fencing_epoch or self._fencing_epoch),
+            "authenticated": bool(authenticated),
+            "authentication_subject_id": subject,
+            "authentication_binding_id": binding,
+        }
+        return payload
+
+    def rebuild_owner_restart_projection(
+        self,
+        expected: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rebuild by proving projections match events; do not append a recovery event.
+
+        SupervisorRecovery requires the rebuilt snapshot identity to equal the
+        checkpoint. ``recover()`` always appends ``intent.recovery_applied`` and
+        would change the watermark, so rebuild is a fail-closed parity check
+        that returns the checkpoint body when live truth matches.
+        """
+
+        self.assert_projection_matches_events()
+        live = self.export_owner_restart_snapshot(
+            repository_id=str(expected.get("repository_id") or ""),
+            tree_id=str(expected.get("tree_id") or ""),
+            generation=int(expected.get("generation") or self._owner_generation),
+            owner_session_id=str(expected.get("owner_session_id") or self.session_id),
+            fencing_epoch=int(expected.get("fencing_epoch") or self._fencing_epoch),
+            authenticated=bool(expected.get("authenticated", True)),
+            authentication_subject_id=str(expected.get("authentication_subject_id") or ""),
+            authentication_binding_id=str(expected.get("authentication_binding_id") or ""),
+        )
+        expected_tasks = expected.get("task_state") or {}
+        if expected_tasks and live.get("task_state") != expected_tasks:
+            raise IntentRepositoryIntegrityError(
+                "restart rebuild did not reconstruct the checkpoint state root"
+            )
+        expected_count = (expected.get("event_state") or {}).get("event_count")
+        live_count = (live.get("event_state") or {}).get("event_count")
+        if expected_count is not None and int(expected_count) != int(live_count or 0):
+            raise IntentRepositoryIntegrityError(
+                "restart rebuild did not reconstruct the checkpoint state root"
+            )
+        return dict(expected)
+
+    def take_over_owner_session(
+        self,
+        expected: Mapping[str, Any],
+        owner: str,
+    ) -> dict[str, Any]:
+        """Advance in-memory owner identity after an authenticated takeover.
+
+        Task/event/idempotency truth stays in this repository. Takeover does
+        not open a second writer or rewrite materialized rows.
+        """
+
+        self.assert_projection_matches_events()
+        owner_text = str(owner or "").strip()
+        if not owner_text:
+            raise IntentRepositoryError("owner takeover requires owner_session_id")
+        previous_epoch = int(expected.get("fencing_epoch") or self._fencing_epoch)
+        self.session_id = _identifier(owner_text, noun="owner_session_id")
+        self._fencing_epoch = previous_epoch + 1
+        self._owner_generation = int(expected.get("generation") or self._owner_generation) + 1
+        return self.export_owner_restart_snapshot(
+            repository_id=str(expected.get("repository_id") or ""),
+            tree_id=str(expected.get("tree_id") or ""),
+            generation=self._owner_generation,
+            owner_session_id=self.session_id,
+            fencing_epoch=self._fencing_epoch,
+            authenticated=True,
+            authentication_subject_id=str(expected.get("authentication_subject_id") or ""),
+            authentication_binding_id=str(expected.get("authentication_binding_id") or ""),
+        )
+
+    def owner_restart_authenticated(self, snapshot: Mapping[str, Any]) -> bool:
+        """Verify the durable grant binding, never a rematerialized credential."""
+
+        subject = str(snapshot.get("authentication_subject_id") or "")
+        binding = str(snapshot.get("authentication_binding_id") or "")
+        expected_subject = self._authentication_subject_id or subject
+        expected_binding = self._authentication_binding_id or binding
+        return (
+            bool(snapshot.get("authenticated"))
+            and subject == expected_subject
+            and binding == expected_binding
+            and bool(subject)
+            and bool(binding)
+        )
+
 
 # ---------------------------------------------------------------------------
 # PlanRevisionRepository
@@ -6239,6 +6892,18 @@ __all__ = (
     "TASK_PROJECTION_SPEC_SCHEMA",
     "TASK_AUTHORITY_SPEC_SCHEMA",
     "TASK_REVISION_HISTORY_PROJECTION_SCHEMA",
+    "COMPATIBILITY_ADAPTER_SCHEMA",
+    "COMPATIBILITY_CATALOG_SCHEMA",
+    "ROLLBACK_PLAN_SCHEMA",
+    "OWNER_RESTART_SNAPSHOT_SCHEMA",
+    "PRODUCTION_CUTOVER_TASK_ID",
+    "PRODUCTION_AUTHORITY_PATH",
+    "PRODUCTION_AUTHORITY_HOST",
+    "PRODUCTION_AUTHORITY_OWNER",
+    "PRODUCTION_AUTHORITY_SUBSTRATE",
+    "SUPPORTED_LEGACY_OPERATIONS",
+    "UNSUPPORTED_LEGACY_OPERATIONS",
+    "CALLER_REPLACEMENTS",
     "MAX_PROJECTION_RECORDS",
     "MAX_TASK_PROJECTION_BYTES",
     "MAX_PLAN_PROJECTION_BYTES",
@@ -6252,6 +6917,9 @@ __all__ = (
     "IntentRepositoryIntegrityError",
     "IntentRepositoryBoundsError",
     "IntentRepositoryNotOpenError",
+    "IntentRepositoryCompatibilityWarning",
+    "IntentRepositoryCompatibilityError",
+    "IntentRepositoryUnsupportedPathError",
     "IntentCompletionError",
     "IntentEvidenceError",
     "DuckDBUnavailableError",
