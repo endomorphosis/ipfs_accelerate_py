@@ -13353,3 +13353,85 @@ def test_lgcvf_live_exited_root_fences_real_nondumpable_daemon_sidecar(
     assert fenced is True
     assert daemon.pid in stopped
     daemon.wait(timeout=5)
+
+
+def _source_candidate_fixture(tmp_path):
+    repo, config = _seed_configured_repo(tmp_path)
+    candidate = tmp_path / 'candidate'
+    _git(tmp_path, 'clone', '--shared', str(repo), str(candidate))
+    _git(candidate, '-c', 'protocol.file.allow=always', 'submodule', 'update', '--init')
+    return repo, config, candidate
+
+
+def test_source_candidate_qualification_keeps_original_owner_binding(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.runtime import source_qualification as q
+    repo, config, candidate = _source_candidate_fixture(tmp_path)
+    board = load_configured_board(config, repo_root=repo)
+    original = config.read_bytes()
+    (repo / 'README.md').write_text('active source writer\n')
+    native = q.scheduler.preflight_configured_board
+    observed = []
+    def checked(view):
+        assert view.database_program is board.database_program
+        assert view.payload == board.payload
+        observed.append(view.repo_root)
+        return native(view)
+    monkeypatch.setattr(q.scheduler, 'load_configured_board', lambda *_a, **_k: board)
+    monkeypatch.setattr(q.scheduler, 'preflight_configured_board', checked)
+    result = q.qualify_source_candidate(repo_root=repo, config_path=config, candidate_root=candidate)
+    assert result['valid'] is True
+    assert result['phase'] == 'source_only'
+    assert result['authorizes_launch'] is False
+    assert result['authorizes_recovery'] is False
+    assert result['authorizes_source_replacement'] is False
+    assert observed == [candidate]
+    assert config.read_bytes() == original
+    assert (repo / 'README.md').read_text() == 'active source writer\n'
+
+
+@pytest.mark.parametrize('change', ['different_config', 'dirty_source', 'symlink_root', 'same_root'])
+def test_source_candidate_qualification_rejects_unqualified_source(tmp_path, change):
+    from ipfs_accelerate_py.agent_supervisor.runtime import source_qualification as q
+    repo, config, candidate = _source_candidate_fixture(tmp_path)
+    if change == 'different_config':
+        (candidate / 'config/scheduler.json').write_text('{}')
+    elif change == 'dirty_source':
+        (candidate / 'README.md').write_text('unreviewed')
+    elif change == 'symlink_root':
+        link = tmp_path / 'linked-candidate'
+        link.symlink_to(candidate, target_is_directory=True)
+        candidate = link
+    else:
+        candidate = repo
+    with pytest.raises((ConfiguredBoardError, ValueError)):
+        q.qualify_source_candidate(repo_root=repo, config_path=config, candidate_root=candidate)
+
+
+@pytest.mark.parametrize('change', ['candidate', 'original_config'])
+def test_source_candidate_qualification_rechecks_after_native_preflight(tmp_path, monkeypatch, change):
+    from ipfs_accelerate_py.agent_supervisor.runtime import source_qualification as q
+    repo, config, candidate = _source_candidate_fixture(tmp_path)
+    native = q.scheduler.preflight_configured_board
+    def raced(view):
+        result = native(view)
+        target = candidate / 'README.md' if change == 'candidate' else config
+        target.write_text('racing writer')
+        return result
+    monkeypatch.setattr(q.scheduler, 'preflight_configured_board', raced)
+    with pytest.raises(ConfiguredBoardError, match='changed during qualification'):
+        q.qualify_source_candidate(repo_root=repo, config_path=config, candidate_root=candidate)
+
+
+def test_source_candidate_qualification_rejects_load_to_capture_race(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.runtime import source_qualification as q
+    repo, config, candidate = _source_candidate_fixture(tmp_path)
+    native = q.scheduler.load_configured_board
+    def raced(*args, **kwargs):
+        board = native(*args, **kwargs)
+        changed = config.read_bytes() + b"\n"
+        config.write_bytes(changed)
+        (candidate / 'config/scheduler.json').write_bytes(changed)
+        return board
+    monkeypatch.setattr(q.scheduler, 'load_configured_board', raced)
+    with pytest.raises(ConfiguredBoardError, match='changed since load'):
+        q.qualify_source_candidate(repo_root=repo, config_path=config, candidate_root=candidate)
