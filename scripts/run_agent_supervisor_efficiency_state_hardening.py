@@ -90861,6 +90861,8 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
             and bool(run_id)
             and worker_observed_at_ns is not None
             and worker_observed_at_ns <= observed.st_mtime_ns
+            and (observed.st_mtime_ns - worker_observed_at_ns)
+            <= 2_000_000_000
             and worker_observation_age_seconds is not None
             and 0.0 <= worker_observation_age_seconds <= 60.0
             and worker_observation_generation
