@@ -4137,7 +4137,7 @@ def test_missing_logical_completion_during_unsettled_enumeration_is_skipped(
 
 
 
-@pytest.mark.parametrize("case", [None, "other_task", "task_cid", "claim_id", "attempt_id", "reason"])
+@pytest.mark.parametrize("case", [None, "other_task", "recoverable", "task_cid", "claim_id", "attempt_id", "reason"])
 def test_missing_failed_settlement_completion_defers_only_exact_attempt(
     tmp_path: Path, monkeypatch, case,
 ) -> None:
@@ -4147,7 +4147,8 @@ def test_missing_failed_settlement_completion_defers_only_exact_attempt(
         calls.append(attempt.attempt_id)
         if case == "other_task" and len(calls) > 1:
             return {"status": "ok"}
-        raise DatabasePortalBridgeError("terminal bridge failure")
+        raise DatabasePortalBridgeError("Portal accepted-source transition is not the exact Git merge"
+                                       if case in ("recoverable", "other_task") else "terminal bridge failure")
     daemon = _open_daemon(tmp_path, provider_fn=failed_provider)
     try:
         daemon.materialize_population(_population(2 if case == "other_task" else 1))
@@ -4169,7 +4170,7 @@ def test_missing_failed_settlement_completion_defers_only_exact_attempt(
         claim = daemon.coordinator.get_task_claim(attempt.claim_id).to_dict()
         task = daemon.task_source.get(attempt.task_cid).to_dict()
         phases = daemon.phase_history(attempt.attempt_id)
-        if case not in (None, "other_task"):
+        if case not in (None, "other_task", "recoverable"):
             evidence = {"reason": "completion_missing", "task_cid": attempt.task_cid,
                         "claim_id": attempt.claim_id, "attempt_id": attempt.attempt_id}
             evidence[case] = "foreign"

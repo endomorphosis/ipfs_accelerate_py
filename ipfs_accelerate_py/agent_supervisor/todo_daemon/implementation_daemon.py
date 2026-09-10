@@ -70243,6 +70243,15 @@ class DatabaseImplementationDaemon:
             task_cid = str(task.task_cid)
             if not self._task_is_in_lane(task, task_cid=task_cid):
                 continue
+            if any(
+                item.get("task_cid") == task_cid
+                for item in getattr(self, "_portal_failure_reconciliation_deferrals", [])
+            ):
+                # This pass could not replay an exact failed settlement.
+                # Do not CAS its control task before the coordinator can
+                # verify the missing logical completion. Other tasks remain
+                # eligible under their existing independent authority.
+                continue
             body = task.body if isinstance(getattr(task, "body", None), Mapping) else {}
             control_receipt = body.get("completion_receipt")
             if (
