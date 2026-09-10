@@ -118,6 +118,15 @@ def admit_closed_initialization_failure(
         "unrecognized terminal reason",
     )
     require(failed_phase.get("phase") == "failed", "missing failed phase")
+    # Native phase_history binds attempt identity through its query; the row
+    # still carries the exact revision and fence. A matching error body from
+    # another phase or generation cannot support the terminal receipt.
+    for key in ("revision", "fencing_token", "fence_epoch"):
+        require(
+            type(failed_phase.get(key)) is int
+            and failed_phase[key] == attempt[key],
+            "foreign failed phase " + key,
+        )
     phase_body = failed_phase.get("body")
     require(isinstance(phase_body, Mapping), "missing failure body")
     require(

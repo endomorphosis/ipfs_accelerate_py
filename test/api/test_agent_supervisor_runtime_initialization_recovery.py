@@ -42,6 +42,9 @@ def context():
         },
         "failed_phase": {
             "phase": "failed",
+            "revision": 3,
+            "fencing_token": 638,
+            "fence_epoch": 638,
             "body": {
                 "portal_terminal_failure": True,
                 "portal_retryable_failure": False,
@@ -229,3 +232,12 @@ def test_native_callback_exception_keeps_unknown_intent(tmp_path):
         )
     finally:
         daemon.close()
+
+
+@pytest.mark.parametrize("field", ["revision", "fencing_token", "fence_epoch"])
+@pytest.mark.parametrize("value", [None, True, 999, "638"])
+def test_failed_phase_must_bind_exact_execution_revision_and_fence(field, value):
+    observed = context()
+    observed["failed_phase"][field] = value
+    with pytest.raises(RuntimeInitializationRecoveryRejected, match="failed phase"):
+        admit_closed_initialization_failure(**observed)
