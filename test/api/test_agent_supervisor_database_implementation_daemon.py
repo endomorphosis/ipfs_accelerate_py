@@ -4204,3 +4204,45 @@ def test_missing_failed_settlement_completion_defers_only_exact_attempt(
         ).fetchone()[0] == 0
     finally:
         daemon.close()
+
+
+
+def test_optional_prepared_lookup_still_rejects_disappeared_observed_completion(tmp_path: Path):
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import DatabaseCoordinationNotReadyError
+    daemon = _open_daemon(tmp_path)
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert daemon.coordinator.get_prepared_task_completion(attempt.task_cid) is None
+        claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        task = daemon.task_source.get(attempt.task_cid)
+        daemon.coordinator.prepare_task_completion(
+            claim, control_expected_revision=task.revision,
+            control_expected_status=task.status, evidence_digest="sha256:" + "a" * 64,
+            body={},
+        )
+        native = daemon.coordinator._require()
+        class DisappearingRow:
+            first = True
+            def execute(self, sql, params):
+                cursor = native.execute(sql, params)
+                wrapper = self
+                class Result:
+                    def fetchone(self):
+                        row = cursor.fetchone()
+                        if wrapper.first:
+                            wrapper.first = False
+                            native.execute("DELETE FROM task_completions WHERE task_cid = ?", [attempt.task_cid])
+                        return row
+                return Result()
+        with pytest.raises(DatabaseCoordinationNotReadyError) as caught:
+            daemon.coordinator._prepared_completion_unlocked(
+                DisappearingRow(), attempt.task_cid, required=False,
+            )
+        assert caught.value.evidence["reason"] == "completion_missing"
+        assert caught.value.evidence["task_cid"] == attempt.task_cid
+        assert caught.value.evidence["claim_id"] == attempt.claim_id
+        assert caught.value.evidence["attempt_id"] == attempt.attempt_id
+    finally:
+        daemon.close()

@@ -3754,7 +3754,10 @@ class DatabaseCoordinator:
         self._task_completion_for_identity_unlocked(
             connection,
             identity=identity,
-            required=required,
+            # Optional lookup permits an initially absent row, handled above.
+            # Once a row is observed, its exact logical identity must survive
+            # the validation read; absence here is an integrity failure.
+            required=True,
             expected_statuses=tuple(sorted(allowed_statuses)),
         )
         return {
