@@ -286,9 +286,10 @@ def _process_command_argv(pid: Any) -> tuple[str, ...] | None:
         )
     except UnicodeError:
         return None
-    if not argv or any(not item or "\0" in item for item in argv):
+    if not argv or not argv[0] or any("\0" in item for item in argv):
         return None
     return argv
+
 
 
 def _process_start_ticks(pid: Any) -> int | None:
@@ -661,7 +662,16 @@ def active_codex_exec_workers(
     if daemon_pid <= 1:
         return workers
     for item in descendant_processes(daemon_pid):
-        if _is_agent_worker_command(str(item.get("cmdline") or "")) or (
+        # Exact argument boundaries survive an empty/truncated ps display.
+        # This remains diagnostic recognition; sealed task-bound workers
+        # retain their existing independent receipt verification below.
+        argv = item.get("argv")
+        command_match = (
+            _is_agent_worker_argv(argv)
+            if argv is not None
+            else _is_agent_worker_command(str(item.get("cmdline") or ""))
+        )
+        if command_match or (
             _sealed_agent_worker_process(
                 item,
                 current_status,
@@ -677,7 +687,18 @@ def _is_agent_worker_command(cmdline: str) -> bool:
         tokens = shlex.split(cmdline)
     except ValueError:
         tokens = cmdline.split()
-    if not tokens:
+    return _is_agent_worker_argv(tokens)
+
+
+def _is_agent_worker_argv(tokens: object) -> bool:
+    """Recognize executable positions, without treating prompt text as code."""
+
+    if (
+        not isinstance(tokens, (tuple, list))
+        or not tokens
+        or not tokens[0]
+        or any(not isinstance(token, str) or "\0" in token for token in tokens)
+    ):
         return False
 
     executable = os.path.basename(tokens[0]).lower()
@@ -708,7 +729,7 @@ def _is_agent_worker_command(cmdline: str) -> bool:
         return os.path.basename(tokens[1]).lower() == "llm_merge_resolver_fallback.sh"
     if executable in _MERGE_RESOLVER_SCRIPTS:
         return True
-    if not executable.startswith("python"):
+    if _PYTHON_EXECUTABLE_RE.fullmatch(executable) is None:
         return False
 
     index = 1
@@ -719,11 +740,28 @@ def _is_agent_worker_command(cmdline: str) -> bool:
                 index + 1 < len(tokens)
                 and tokens[index + 1].lower() in _PYTHON_AGENT_WORKER_MODULES
             )
-        if token.startswith("-"):
+        if token in {"-c", "-"}:
+            return False
+        if token.startswith("-") and set(token[1:]) <= set("uBEsSOIPqbdv"):
             index += 1
             continue
+        if token in {"-W", "-X"}:
+            index += 2
+            continue
+        if token.startswith(("-W", "-X")) and len(token) > 2:
+            index += 1
+            continue
+        if token == "--":
+            index += 1
+            return (
+                index < len(tokens)
+                and os.path.basename(tokens[index]).lower() in _PYTHON_AGENT_WORKER_SCRIPTS
+            )
+        if token.startswith("-"):
+            return False
         return os.path.basename(token).lower() in _PYTHON_AGENT_WORKER_SCRIPTS
     return False
+
 
 
 def worktree_phase_worker_status(
