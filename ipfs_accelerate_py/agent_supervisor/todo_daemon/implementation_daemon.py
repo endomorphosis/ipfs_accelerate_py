@@ -72169,111 +72169,136 @@ class DatabaseImplementationDaemon:
             )
         outcomes: list[dict[str, Any]] = []
         now = self._now_ms()
+        from ..merge.database_coordination import DatabaseCoordinationNotReadyError
+
         for prepared in list_unsettled(limit=100, now_ms=now):
-            claim = self.coordinator.get_task_claim(
-                str(prepared.get("claim_id") or "")
-            )
-            if claim is None:
-                raise DatabaseImplementationAuthorityError(
-                    "prepared task completion has no claim history"
-                )
-            claim_state = str(
-                getattr(getattr(claim, "state", ""), "value", claim.state)
-                or ""
-            )
-            completion_status = str(
-                prepared.get("status") or ""
-            ).strip().lower()
-            if (
-                completion_status != "succeeded"
-                and claim_state == "accepted"
-                and int(claim.expires_at_ms) > now
-            ):
-                # A live attempt owns this barrier and will finish the ordinary
-                # protocol (including response-loss replay) itself.
-                continue
-            task = self.task_source.get(str(prepared.get("task_cid") or ""))
-            if task is None:
-                raise DatabaseImplementationAuthorityError(
-                    "prepared task completion has no control task"
-                )
-            task_observation = task.to_dict()
-            task_status = str(task.status or "").strip().lower()
-            if completion_status == "succeeded":
-                reconcile_promoted = getattr(
-                    self.coordinator,
-                    "reconcile_promoted_task_completion",
-                    None,
-                )
-                if not callable(reconcile_promoted):
-                    raise DatabaseImplementationAuthorityError(
-                        "coordinator cannot reconcile promoted task completion"
-                    )
-                outcome = dict(
-                    reconcile_promoted(
-                        str(prepared["task_cid"]),
-                        control_completion_receipt=task_observation,
-                        now_ms=now,
-                    )
-                )
-                self._commit_reconciled_attempt_terminal(
+            try:
+                outcome = self._reconcile_one_prepared_task_completion(
                     prepared,
-                    succeeded=True,
-                    reconciliation=outcome,
+                    now=now,
                 )
+            except DatabaseCoordinationNotReadyError as exc:
+                evidence = dict(getattr(exc, "evidence", {}) or {})
+                if str(evidence.get("reason") or "") != "completion_missing":
+                    raise
+                logger.warning(
+                    "Skipping unsettled completion with missing row task=%s claim=%s",
+                    evidence.get("task_cid"),
+                    evidence.get("claim_id"),
+                )
+                continue
+            if outcome is not None:
                 outcomes.append(outcome)
-                continue
-            if task_status in {"completed", "complete", "done"}:
-                recover = getattr(
-                    self.coordinator,
-                    "recover_prepared_task_completion",
-                    None,
-                )
-                if not callable(recover):
-                    raise DatabaseImplementationAuthorityError(
-                        "coordinator cannot recover prepared task completion"
-                    )
-                outcome = dict(
-                    recover(
-                        str(prepared["task_cid"]),
-                        control_completion_receipt=task_observation,
-                        now_ms=now,
-                    )
-                )
-                self._commit_reconciled_attempt_terminal(
-                    prepared,
-                    succeeded=True,
-                    reconciliation=outcome,
-                )
-            else:
-                abort = getattr(
-                    self.coordinator,
-                    "abort_prepared_task_completion",
-                    None,
-                )
-                if not callable(abort):
-                    raise DatabaseImplementationAuthorityError(
-                        "coordinator cannot abort prepared task completion"
-                    )
-                outcome = dict(
-                    abort(
-                        str(prepared["task_cid"]),
-                        control_task_observation=task_observation,
-                        reason="expired_before_control_completion",
-                        now_ms=now,
-                    )
-                )
-                self._commit_reconciled_attempt_terminal(
-                    prepared,
-                    succeeded=False,
-                    reconciliation=outcome,
-                )
-                self._requeue_control_after_expired_attempt(
-                    claim=claim,
-                    reconciliation=outcome,
-                )
-            outcomes.append(outcome)
         return outcomes
+
+    def _reconcile_one_prepared_task_completion(
+        self,
+        prepared: Mapping[str, Any],
+        *,
+        now: int,
+    ) -> dict[str, Any] | None:
+        claim = self.coordinator.get_task_claim(
+            str(prepared.get("claim_id") or "")
+        )
+        if claim is None:
+            raise DatabaseImplementationAuthorityError(
+                "prepared task completion has no claim history"
+            )
+        claim_state = str(
+            getattr(getattr(claim, "state", ""), "value", claim.state)
+            or ""
+        )
+        completion_status = str(
+            prepared.get("status") or ""
+        ).strip().lower()
+        if (
+            completion_status != "succeeded"
+            and claim_state == "accepted"
+            and int(claim.expires_at_ms) > now
+        ):
+            # A live attempt owns this barrier and will finish the ordinary
+            # protocol (including response-loss replay) itself.
+            return None
+        task = self.task_source.get(str(prepared.get("task_cid") or ""))
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "prepared task completion has no control task"
+            )
+        task_observation = task.to_dict()
+        task_status = str(task.status or "").strip().lower()
+        if completion_status == "succeeded":
+            reconcile_promoted = getattr(
+                self.coordinator,
+                "reconcile_promoted_task_completion",
+                None,
+            )
+            if not callable(reconcile_promoted):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator cannot reconcile promoted task completion"
+                )
+            outcome = dict(
+                reconcile_promoted(
+                    str(prepared["task_cid"]),
+                    control_completion_receipt=task_observation,
+                    now_ms=now,
+                )
+            )
+            self._commit_reconciled_attempt_terminal(
+                prepared,
+                succeeded=True,
+                reconciliation=outcome,
+            )
+            return outcome
+        if task_status in {"completed", "complete", "done"}:
+            recover = getattr(
+                self.coordinator,
+                "recover_prepared_task_completion",
+                None,
+            )
+            if not callable(recover):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator cannot recover prepared task completion"
+                )
+            outcome = dict(
+                recover(
+                    str(prepared["task_cid"]),
+                    control_completion_receipt=task_observation,
+                    now_ms=now,
+                )
+            )
+            self._commit_reconciled_attempt_terminal(
+                prepared,
+                succeeded=True,
+                reconciliation=outcome,
+            )
+            return outcome
+        abort = getattr(
+            self.coordinator,
+            "abort_prepared_task_completion",
+            None,
+        )
+        if not callable(abort):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator cannot abort prepared task completion"
+            )
+        outcome = dict(
+            abort(
+                str(prepared["task_cid"]),
+                control_task_observation=task_observation,
+                reason="expired_before_control_completion",
+                now_ms=now,
+            )
+        )
+        self._commit_reconciled_attempt_terminal(
+            prepared,
+            succeeded=False,
+            reconciliation=outcome,
+        )
+        self._requeue_control_after_expired_attempt(
+            claim=claim,
+            reconciliation=outcome,
+        )
+        return outcome
 
     def reconcile_expired_running_attempts(self) -> list[dict[str, Any]]:
         """Retire exact local attempts whose coordination authority expired.
@@ -73386,6 +73411,43 @@ class DatabaseImplementationDaemon:
                 # settlement. Other deferrals can prove active workers or
                 # unresolved effects; an unknown reason is not retry authority.
                 exc = DatabasePortalBridgeError(reason)
+            from ..merge.database_coordination import (
+                DatabaseCoordinationNotReadyError,
+            )
+
+            if isinstance(exc, DatabaseCoordinationNotReadyError):
+                evidence = dict(getattr(exc, "evidence", {}) or {})
+                if str(evidence.get("reason") or "") == "completion_missing":
+                    try:
+                        self.commit_phase(
+                            attempt
+                            if isinstance(attempt, DatabaseTaskAttempt)
+                            else self.get_attempt(
+                                str(
+                                    getattr(attempt, "attempt_id", "")
+                                    or attempt
+                                )
+                            )
+                            or attempt,
+                            ATTEMPT_PHASE_FAILED,
+                            body={
+                                "reason": "completion_missing",
+                                "claim_id": str(evidence.get("claim_id") or ""),
+                            },
+                        )
+                    except Exception:
+                        pass
+                    return {
+                        "resumed": False,
+                        "reason": "completion_missing",
+                        "attempt_id": str(
+                            getattr(attempt, "attempt_id", "") or ""
+                        ),
+                        "task_alias": str(
+                            getattr(attempt, "task_alias", "") or ""
+                        ),
+                        "status": "failed",
+                    }
             if not isinstance(exc, DatabasePortalBridgeError):
                 raise
             try:

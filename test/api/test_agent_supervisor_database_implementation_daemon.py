@@ -3996,3 +3996,57 @@ def test_production_protected_rearm_requires_native_fence_precondition(tmp_path)
         assert daemon.get_attempt(attempt.attempt_id).status == "failed"
     finally:
         daemon.close()
+
+
+def test_missing_logical_completion_is_skipped_instead_of_fail_closed(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinationNotReadyError,
+    )
+
+    class _Claim:
+        claim_id = "claim-missing"
+        expires_at_ms = 0
+        state = type("S", (), {"value": "expired"})()
+
+    class _Task:
+        status = "in_progress"
+
+        def to_dict(self) -> dict[str, str]:
+            return {"status": "in_progress"}
+
+    daemon = _open_daemon(tmp_path, session="session:missing-completion")
+    try:
+        daemon.materialize_population(_population(1))
+
+        def missing_abort(*_args: object, **_kwargs: object) -> dict[str, object]:
+            raise DatabaseCoordinationNotReadyError(
+                "task task:cid:001 has no logical completion to settle",
+                evidence={
+                    "task_cid": "task:cid:001",
+                    "claim_id": "claim-missing",
+                    "attempt_id": "attempt-missing",
+                    "reason": "completion_missing",
+                },
+            )
+
+        daemon.coordinator.list_unsettled_task_completions = (  # type: ignore[method-assign]
+            lambda **_kwargs: [
+                {
+                    "claim_id": "claim-missing",
+                    "task_cid": "task:cid:001",
+                    "status": "prepared",
+                }
+            ]
+        )
+        daemon.coordinator.get_task_claim = (  # type: ignore[method-assign]
+            lambda _claim_id: _Claim()
+        )
+        daemon.task_source.get = lambda _cid: _Task()  # type: ignore[method-assign]
+        daemon.coordinator.abort_prepared_task_completion = (  # type: ignore[method-assign]
+            missing_abort
+        )
+        assert daemon.reconcile_prepared_task_completions() == []
+    finally:
+        daemon.close()
