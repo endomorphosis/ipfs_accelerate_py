@@ -3223,6 +3223,8 @@ def _docker_cleanup_watchdog_main(
     if any(observation_values) and not observation_configured:
         return 2
     attempt_observer = None
+    if observation_configured and cleanup_binding_record is None:
+        return 2
     if observation_configured:
         try:
             from ipfs_accelerate_py.agent_supervisor.control.provider_attempt_store import (
@@ -3326,6 +3328,8 @@ def _docker_cleanup_watchdog_main(
     cleanup_started = False
     cleanup_succeeded = False
     cleanup_failed = False
+    cleanup_authority_unavailable = False
+    cleanup_terminal = None
     create_request_received = False
     create_worker_active = False
     create_environment: dict[str, str] | None = None
@@ -3781,6 +3785,7 @@ def _docker_cleanup_watchdog_main(
 
     def cleanup(*, settle_for_creation: bool) -> bool:
         nonlocal cleanup_started, cleanup_succeeded, cleanup_failed
+        nonlocal cleanup_authority_unavailable, cleanup_terminal
         if cleanup_started:
             return cleanup_succeeded
         try:
@@ -3798,6 +3803,17 @@ def _docker_cleanup_watchdog_main(
         }:
             cleanup_failed = True
             return False
+        if observation_configured and cleanup_binding_value is not None:
+            try:
+                cleanup_terminal = _admit_bound_cleanup_terminal(
+                    attempt_observer,
+                    binding_record=cleanup_binding_value,
+                    local_cas_owned=cas_owned(),
+                )
+            except ValueError:
+                cleanup_authority_unavailable = True
+                cleanup_failed = True
+                return False
         cleanup_started = True
         try:
             termination_fence = (
@@ -4132,6 +4148,8 @@ def _docker_cleanup_watchdog_main(
             while not cleanup(
                 settle_for_creation=settle_for_creation
             ):
+                if cleanup_authority_unavailable:
+                    return 125
                 settle_for_creation = True
                 time.sleep(0.25)
         elif cas_terminal() or durable_state == "terminal":
@@ -4139,6 +4157,8 @@ def _docker_cleanup_watchdog_main(
             while not cleanup(
                 settle_for_creation=settle_for_creation
             ):
+                if cleanup_authority_unavailable:
+                    return 125
                 settle_for_creation = True
                 time.sleep(0.25)
         else:
@@ -4150,6 +4170,8 @@ def _docker_cleanup_watchdog_main(
                 durable_state = durable_cas_state()
                 if cas_terminal() or durable_state == "terminal":
                     while not cleanup(settle_for_creation=True):
+                        if cleanup_authority_unavailable:
+                            return 125
                         time.sleep(0.25)
                     break
                 time.sleep(1.0)
@@ -4186,6 +4208,10 @@ def _docker_cleanup_watchdog_main(
                     binding_path=cleanup_binding_record,
                     binding_identity=cleanup_binding_identity,
                     binding_record=cleanup_binding_value,
+                    terminal_cleanup_store=(
+                        attempt_observer if cleanup_terminal is not None else None
+                    ),
+                    terminal_cleanup_reservation=cleanup_terminal,
                 ):
                     raise ValueError("Docker cleanup completion did not converge")
             except ValueError:
@@ -4633,6 +4659,9 @@ class _DockerContainerLease:
         self._abort_provider_start()
         if self.preserve_for_recovery:
             return
+        if self.effect_observation and self.cleanup_binding_record is None:
+            self.preserve_for_recovery = True
+            return
         journal: Mapping[str, object] | None = None
         if self.cleanup_binding_record is not None:
             try:
@@ -4667,6 +4696,29 @@ class _DockerContainerLease:
             # and its private Docker configuration from this point onward.
             self.preserve_for_recovery = True
             return
+        cleanup_store = None
+        cleanup_terminal = None
+        if self.effect_observation and self._cleanup_binding_value is not None:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.control.provider_attempt_store import (
+                    DurableProviderAttemptCAS,
+                )
+
+                cleanup_store = DurableProviderAttemptCAS(
+                    self.effect_observation["provider_attempt_store"],
+                    expected_directory_identity=self.effect_observation[
+                        "provider_attempt_store_identity"
+                    ],
+                    create_if_missing=False,
+                )
+                cleanup_terminal = _admit_bound_cleanup_terminal(
+                    cleanup_store,
+                    binding_record=self._cleanup_binding_value,
+                    local_cas_owned=self._cas_owned,
+                )
+            except (KeyError, OSError, ValueError):
+                self.preserve_for_recovery = True
+                return
         try:
             self._watchdog.wait(timeout=_DOCKER_CLEANUP_TIMEOUT_SECONDS + 2)
         except subprocess.TimeoutExpired:
@@ -4789,6 +4841,10 @@ class _DockerContainerLease:
                     binding_path=self.cleanup_binding_record,
                     binding_identity=self._cleanup_binding_identity,
                     binding_record=self._cleanup_binding_value,
+                    terminal_cleanup_store=(
+                        cleanup_store if cleanup_terminal is not None else None
+                    ),
+                    terminal_cleanup_reservation=cleanup_terminal,
                 )
             except ValueError:
                 self.preserve_for_recovery = True
@@ -17536,6 +17592,89 @@ def _recorded_codex_terminal_cleanup_evidence(
         "binding_record_id": str(admitted["record_id"]),
         "termination_fence_id": fence_id,
     }
+
+def _admit_bound_cleanup_terminal(
+    attempt_observer: object,
+    *,
+    binding_record: Mapping[str, object],
+    local_cas_owned: bool,
+) -> object | None:
+    """Join admitted private cleanup custody to its exact native terminal CAS.
+
+    Only an unclaimed, prepared local lease may retain pre-dispatch cleanup.
+    Markers, process exit and another lease's terminal state cannot replace
+    this join. The finalizer reobserves the returned reservation before every
+    existing intent/completion transition.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.control.provider_attempt_store import (
+        DurableProviderAttemptCAS,
+    )
+
+    observation = binding_record.get("effect_observation")
+    if (
+        not isinstance(attempt_observer, DurableProviderAttemptCAS)
+        or not isinstance(observation, Mapping)
+        or set(observation) != _DOCKER_EFFECT_OBSERVATION_FIELDS
+        or observation.get("provider_attempt_store")
+        != str(attempt_observer.directory)
+        or observation.get("provider_attempt_store_identity")
+        != attempt_observer.directory_identity
+    ):
+        raise ValueError("Docker cleanup native store binding is unavailable")
+    try:
+        terminal = attempt_observer.observe(str(observation["logical_attempt_id"]))
+    except (OSError, ValueError) as exc:
+        raise ValueError("Docker cleanup native terminal is unavailable") from exc
+    if (
+        terminal is not None
+        and terminal.logical_attempt_id != observation["logical_attempt_id"]
+    ):
+        raise ValueError("Docker cleanup native logical attempt changed")
+    launch = getattr(terminal, "effect_launch_receipt", None)
+    cleanup = launch.get("cleanup_receipt") if isinstance(launch, Mapping) else None
+    matches_local = bool(
+        isinstance(cleanup, Mapping)
+        and isinstance(launch, Mapping)
+        and launch.get("container_name") == binding_record.get("container_name")
+        and all(
+            cleanup.get(name) == binding_record.get(name)
+            for name in (
+                "lease_root", "docker_config", "cidfile", "prompt_path",
+                "provider_home", "watchdog_pid", "watchdog_start_ticks",
+            )
+        )
+    )
+    if (
+        not local_cas_owned
+        and binding_record.get("binding_state") == "prepared_no_dispatch"
+        and not binding_record.get("termination_fence")
+        and (
+            terminal is None
+            or getattr(terminal, "state", "") == "reserved"
+            or (isinstance(cleanup, Mapping) and not matches_local)
+        )
+    ):
+        # The local prepared lease never won this exact effect claim. This
+        # preserves old inert cleanup only and creates no native receipt.
+        return None
+    if not matches_local:
+        raise ValueError("Docker cleanup terminal belongs to another lease")
+    admitted = _admit_terminal_cleanup_authority(
+        launch_receipt=launch,
+        terminal_observer=attempt_observer,
+        terminal_reservation=terminal,
+    )
+    authority = admitted.terminal_cleanup_authority
+    fence = binding_record.get("termination_fence")
+    if (
+        authority.get("binding_path") != binding_record.get("binding_path")
+        or authority.get("binding_record_id") != binding_record.get("record_id")
+        or authority.get("termination_fence_id")
+        != (fence.get("fence_id", "") if isinstance(fence, Mapping) else "")
+    ):
+        raise ValueError("Docker cleanup terminal private binding changed")
+    return admitted
 
 def _observed_provider_attempt_cleanup_state(
     attempt_observer: object | None,
