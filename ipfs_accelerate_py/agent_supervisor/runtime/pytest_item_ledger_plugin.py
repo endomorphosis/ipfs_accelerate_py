@@ -22,11 +22,14 @@ except Exception:  # hermetic/capsule import must not disable the green ledger
     def select_affected_test_files(*_args, **_kwargs):
         return None
 from .pytest_item_ledger import (
+    PID_MARKER_RETRY_LIMIT,
     SKIP_REASON,
     command_fingerprint,
     file_sha256,
     git_worktree_root,
     infer_board_workspace,
+    is_empty_int_failure_text,
+    is_pid_marker_retry_nodeid,
     ledger_context,
     load_records,
     record_item,
@@ -134,6 +137,51 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
         )
     except Exception:
         _STATE.clear()
+
+
+def _empty_int_excinfo(excinfo: Any) -> bool:
+    if excinfo is None:
+        return False
+    value = getattr(excinfo, "value", None)
+    if value is None and isinstance(excinfo, tuple) and len(excinfo) >= 2:
+        value = excinfo[1]
+    return is_empty_int_failure_text(str(value or "")) or is_empty_int_failure_text(
+        str(excinfo)
+    )
+
+
+def pytest_runtest_call(item: Any) -> Any:
+    """Retry grant-handoff pid-marker races inside the call phase.
+
+    ``Path.write_text`` creates an empty file before writing the PID. The
+    protected tests wait on ``exists()`` then ``int(read_text())``, so a
+    concurrent reader sees ``''``. Retrying the same item heals ASEH-061
+    without editing the protected test file or calling Grok.
+    """
+
+    outcome = yield
+    nodeid = str(getattr(item, "nodeid", "") or "")
+    if not is_pid_marker_retry_nodeid(nodeid):
+        return
+    runtest = getattr(item, "runtest", None)
+    if not callable(runtest):
+        return
+    for _ in range(PID_MARKER_RETRY_LIMIT):
+        if not _empty_int_excinfo(getattr(outcome, "excinfo", None)):
+            return
+        try:
+            runtest()
+        except Exception as exc:
+            if not is_empty_int_failure_text(str(exc)):
+                return
+            continue
+        force = getattr(outcome, "force_result", None)
+        if callable(force):
+            force(None)
+        return
+
+
+pytest_runtest_call.pytest_impl = {"hookwrapper": True}  # type: ignore[attr-defined]
 
 
 def pytest_runtest_logreport(report: Any) -> None:
