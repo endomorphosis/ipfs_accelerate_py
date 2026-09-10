@@ -6891,18 +6891,22 @@ def test_extra_gate_claimable_retry_skips_invalid_provider_route_cooldown() -> N
     assert probe._provider_route_retry_cooldown_state(ordinary) == "invalid"
 
 
-def test_extra_gate_terminal_disposition_conflict_continues_ordinary_dispatch(
+@pytest.mark.parametrize("alias,cid", [
+    ("PCTDD-005", "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"),
+    ("PCTDD-006", "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a"),
+    ("PCTDD-007", "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq"),
+    ("PCTDD-034", "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada"),
+])
+@pytest.mark.parametrize("error_type,error", [
+    ("DatabaseImplementationConflictError", "terminal phase changed its actual database disposition"),
+    ("ContractValidationError", "canonical proof contracts cannot contain floats"),
+])
+def test_terminal_receipt_validation_failure_preserves_dispatch_fence(
+    alias: str, cid: str, error_type: str, error: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PCTDD-005 terminal-disposition leftover is retry authority.
-
-    Lane-0 was fail-closing the whole daemon pass on
-    database_portal_terminal_repair_batch_blocked after the extra-gate
-    helper already classified the leftover as retry authority. Ordinary
-    dispatch must continue. Extra-gate aliases still cannot bypass
-    safe_to_restart=False.
-    """
+    """Task identity cannot turn an invalid terminal receipt into retry authority."""
 
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor,
@@ -6936,21 +6940,13 @@ def test_extra_gate_terminal_disposition_conflict_continues_ordinary_dispatch(
                 "trigger": "database_daemon_startup",
                 "attempt_id": "attempt:f49b4e967c5c4fa7a358b4c2837094d4",
                 "claim_id": "claim:5bec03a98d4341498cbeb897e92d6a58",
-                "task_cid": (
-                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
-                ),
-                "task_alias": "PCTDD-005",
-                "error_type": "DatabaseImplementationConflictError",
-                "error": "terminal phase changed its actual database disposition",
+                "task_cid": cid,
+                "task_alias": alias,
+                "error_type": error_type,
+                "error": error,
             }
         ],
     }
-    assert (
-        daemon_module.DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
-            recon
-        )
-        is True
-    )
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,
@@ -6985,11 +6981,11 @@ def test_extra_gate_terminal_disposition_conflict_continues_ordinary_dispatch(
             lambda _recon: [],
         )
         result = daemon.run_once()
-        assert result.get("selection_idle_reason") != (
+        assert result.get("selection_idle_reason") == (
             "database_portal_reconciliation_blocked"
         )
-        assert result.get("claimed_task_cid") == "task:cid:001"
-        assert provider_calls == ["task:cid:001"]
+        assert result.get("claimed_task_cid") in (None, "")
+        assert provider_calls == []
     finally:
         daemon.close()
 
@@ -7268,19 +7264,11 @@ def test_extra_gate_may_claim_off_hash_home_shard() -> None:
 
 
 
-def test_extra_gate_retry_authority_rearms_during_continuation_required(
+def test_terminal_retry_label_cannot_skip_reconciliation_continuation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Historical audit continuation must not skip extra-gate rearm.
-
-    Lane-0 classified PCTDD-005 leftover as
-    terminal_reconciliation_extra_gate_retry_authority then returned
-    database_portal_reconciliation_completed because
-    continuation_required was True, so 005 stayed blocked. Official
-    unstick is rearm, never CAS. Extra-gate aliases still cannot bypass
-    safe_to_restart=False.
-    """
+    """Historical retry labels cannot authorize same-pass rearm."""
 
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor,
@@ -7318,12 +7306,6 @@ def test_extra_gate_retry_authority_rearms_during_continuation_required(
             }
         ],
     }
-    assert (
-        daemon_module.DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
-            recon
-        )
-        is True
-    )
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,
@@ -7363,9 +7345,9 @@ def test_extra_gate_retry_authority_rearms_during_continuation_required(
         )
         result = daemon.run_once()
         assert result.get("selection_idle_reason") == (
-            "database_unknown_outcomes_rearmed"
+            "database_portal_reconciliation_completed"
         )
-        assert result.get("unknown_outcome_rearms") == rearm_outcome
+        assert not result.get("unknown_outcome_rearms")
         assert result.get("claimed_task_cid") in (None, "")
     finally:
         daemon.close()

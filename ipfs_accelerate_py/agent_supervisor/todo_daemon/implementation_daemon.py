@@ -92885,82 +92885,6 @@ class DatabaseImplementationDaemon:
         return True
 
     @staticmethod
-    def _portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
-        reconciliation: Mapping[str, Any],
-    ) -> bool:
-        """True when extra-gate terminal receipt repair is retry authority.
-
-        Nested-state-changed landed recovery, including historical Portal
-        receipts whose nested_state carries observational floats, is not
-        completable landed work and not a tamper fail-close.  Generic rearm
-        continues.  Extra-gate aliases still cannot bypass
-        ``safe_to_restart=False``.
-        """
-
-        extra_gate = {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
-        from .database_portal_bridge import (
-            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
-            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
-        )
-
-        extra_gate_cids = {
-            str(item.get("task_cid") or "")
-            for item in (
-                *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
-                DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
-            )
-            if str(item.get("task_alias") or "") in extra_gate
-        }
-        retry_authority_outcomes = [
-            item
-            for item in (reconciliation.get("attempts") or ())
-            if isinstance(item, Mapping)
-            and item.get("reason")
-            == "terminal_reconciliation_extra_gate_retry_authority"
-        ]
-        if retry_authority_outcomes:
-            for item in retry_authority_outcomes:
-                alias = str(item.get("task_alias") or "")
-                cid = str(item.get("task_cid") or "")
-                if alias not in extra_gate and cid not in extra_gate_cids:
-                    return False
-            return True
-        blocked = [
-            item
-            for item in (reconciliation.get("attempts") or ())
-            if isinstance(item, Mapping) and item.get("blocked") is True
-        ]
-        if not blocked:
-            return False
-        for item in blocked:
-            alias = str(item.get("task_alias") or "")
-            cid = str(item.get("task_cid") or "")
-            if alias not in extra_gate and cid not in extra_gate_cids:
-                return False
-            if item.get("reason") != "terminal_reconciliation_receipt_repair_failed":
-                return False
-            error_type = str(item.get("error_type") or "")
-            error = str(item.get("error") or "")
-            if (
-                error_type == "ContractValidationError"
-                and error == "canonical proof contracts cannot contain floats"
-            ):
-                continue
-            if (
-                error_type == "DatabaseImplementationConflictError"
-                and error
-                == "terminal phase changed its actual database disposition"
-            ):
-                # Extra-gate nested-state-changed / post-grok unknown-outcome
-                # blocks keep a terminal link whose actual disposition no
-                # longer matches the intended census. That is retry/rearm
-                # authority, not a tamper fail-close. Official unstick is
-                # rearm, never CAS.
-                continue
-            return False
-        return True
-
-    @staticmethod
     def _retained_recovery_pair_is_exact_for_attempt(
         task: Any,
         attempt: "DatabaseTaskAttempt",
@@ -106657,31 +106581,7 @@ class DatabaseImplementationDaemon:
                     "error_type": type(exc).__name__,
                     "error": str(exc)[:512],
                 }
-                if self._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
-                    {"attempts": [failed_item]}
-                ):
-                    # Extra-gate nested-state-changed / post-grok unknown
-                    # leftover is retry authority, not a tamper fail-close.
-                    # Official unstick is rearm then ordinary dispatch.
-                    outcomes.append(
-                        {
-                            "reconciled": True,
-                            "blocked": False,
-                            "reason": (
-                                "terminal_reconciliation_extra_gate_"
-                                "retry_authority"
-                            ),
-                            "trigger": str(trigger),
-                            "attempt_id": attempt.attempt_id,
-                            "claim_id": attempt.claim_id,
-                            "task_cid": attempt.task_cid,
-                            "task_alias": str(attempt.task_alias or ""),
-                            "owner_session_id": attempt.owner_session_id,
-                            "error_type": type(exc).__name__,
-                            "error": str(exc)[:512],
-                        }
-                    )
-                    continue
+                # Invalid terminal evidence remains a recovery fence for every task.
                 outcomes.append(failed_item)
         page_blocked = any(item.get("blocked") is True for item in outcomes)
         if exact_attempt is None and not page_blocked and audit_rows:
@@ -108618,9 +108518,6 @@ class DatabaseImplementationDaemon:
                     self._portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
                         portal_startup_reconciliation
                     )
-                    or self._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
-                        portal_startup_reconciliation
-                    )
                     or self._portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
                         portal_startup_reconciliation
                     )
@@ -108849,9 +108746,6 @@ class DatabaseImplementationDaemon:
                 # the same pass.
                 extra_gate_retry_authority = (
                     self._portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
-                        portal_startup_reconciliation
-                    )
-                    or self._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
                         portal_startup_reconciliation
                     )
                     or self._portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
