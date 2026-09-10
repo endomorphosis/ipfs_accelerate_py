@@ -10469,15 +10469,26 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any] | None:
         """Bind an exact disposed-worktree clearance to current identities."""
 
+        class_codes = list(auto_plan.get("class_codes") or [])
+        deletion_clearance = (
+            class_codes == ["workspace_protected_deletion"]
+            and auto_plan.get("scopes") == ["workspace"]
+            and auto_plan.get("changes") == ["deleted"]
+        )
+        identity_thrash_clearance = (
+            class_codes == ["content_preserving_identity_thrash"]
+            and auto_plan.get("changes") == ["identity_changed"]
+            and set(auto_plan.get("scopes") or []).issubset(
+                {"workspace", "shared_checkout"}
+            )
+            and bool(auto_plan.get("scopes"))
+        )
         if (
             not isinstance(active, Mapping)
             or active.get("schema")
             != "implementation-protected-path-active-v1"
             or active.get("ephemeral_worktree") is not True
-            or auto_plan.get("class_codes")
-            != ["workspace_protected_deletion"]
-            or auto_plan.get("scopes") != ["workspace"]
-            or auto_plan.get("changes") != ["deleted"]
+            or not (deletion_clearance or identity_thrash_clearance)
         ):
             return None
         task_id = str(incident.get("task_id") or "")
@@ -10492,11 +10503,12 @@ class PortalImplementationDaemon:
             return None
         try:
             workspace.lstat()
+            workspace_exists = True
         except FileNotFoundError:
-            pass
+            workspace_exists = False
         except OSError:
             return None
-        else:
+        if deletion_clearance and workspace_exists:
             return None
         if (
             not task_id
@@ -10557,20 +10569,20 @@ class PortalImplementationDaemon:
                 self.repo_root,
                 relative,
             )
+            identities = (before_workspace, before_shared, current_shared)
             if not all(
                 isinstance(identity, Mapping)
                 and identity.get("state") == "present"
                 and identity.get("kind") == "regular_file"
-                and identity.get("links") == 1
                 and re.fullmatch(
                     r"[0-9a-f]{64}",
                     str(identity.get("sha256") or ""),
                 )
-                for identity in (
-                    before_workspace,
-                    before_shared,
-                    current_shared,
-                )
+                for identity in identities
+            ):
+                return None
+            if deletion_clearance and any(
+                identity.get("links") != 1 for identity in identities
             ):
                 return None
             if any(
@@ -10597,7 +10609,7 @@ class PortalImplementationDaemon:
             ),
             "protected_paths": list(configured),
             "mutated_paths": list(mutated_paths),
-            "class_codes": ["workspace_protected_deletion"],
+            "class_codes": list(class_codes),
             "shared_path_digests": shared_digests,
         }
         guard["guard_id"] = self._protected_path_recovery_object_digest(guard)
