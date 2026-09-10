@@ -171,6 +171,21 @@ def test_stop_signal_handlers_survive_external_sigterm_ignores_sigterm() -> None
     assert signal.getsignal(signal.SIGTERM) == prior
 
 
+def test_strip_control_plane_write_skips_git_worktree_under_pytest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import stat as stat_module
+
+    script = tmp_path / "scripts" / "run_agent_supervisor_efficiency_state_hardening.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("print(1)\n", encoding="utf-8")
+    script.chmod(0o664)
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "test_strip_control_plane_write_skips_git_worktree_under_pytest")
+    aseh_operator._strip_control_plane_group_other_write(tmp_path)
+    assert stat_module.S_IMODE(script.stat().st_mode) == 0o664
+
+
 def test_restore_control_plane_modes_undoes_umask_strip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
