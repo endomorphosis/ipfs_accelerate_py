@@ -4587,18 +4587,18 @@ class QuackStateServer:
         ):
             raise QuackStateServerReadyError("read-replica path is outside owner root")
         temporary_name = f".{replica.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-        source_descriptor: int | None = None
         target_descriptor: int | None = None
+        temporary_identity: tuple[int, int] | None = None
         started = time.monotonic()
         try:
             self._assert_database_namespace()
             self._connection.execute("CHECKPOINT")
             anchor = self._assert_database_namespace()
-            source_descriptor = os.open(
-                anchor.database_name,
-                os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
-                dir_fd=anchor.directory_descriptor,
-            )
+            # Closing ANY descriptor for this inode releases this process's
+            # POSIX locks, including DuckDB's live writer lock. Reuse the
+            # lifetime anchor; never open/close another canonical descriptor
+            # during refresh. Positional reads leave its offset untouched.
+            source_descriptor = anchor.database_descriptor
             before = os.fstat(source_descriptor)
             if (
                 anchor.database_identity is None
@@ -4623,14 +4623,17 @@ class QuackStateServer:
                 0o600,
                 dir_fd=anchor.directory_descriptor,
             )
+            created = os.fstat(target_descriptor)
+            temporary_identity = (created.st_dev, created.st_ino)
             digest = hashlib.sha256()
             copied = 0
             while copied < before.st_size:
                 if time.monotonic() - started > READ_REPLICA_COPY_TIMEOUT_SECONDS:
                     raise QuackStateServerReadyError("read-replica copy timed out")
-                chunk = os.read(
+                chunk = os.pread(
                     source_descriptor,
                     min(READ_REPLICA_COPY_CHUNK_BYTES, before.st_size - copied),
+                    copied,
                 )
                 if not chunk:
                     raise QuackStateServerReadyError(
@@ -4662,6 +4665,7 @@ class QuackStateServer:
                 src_dir_fd=anchor.directory_descriptor,
                 dst_dir_fd=anchor.directory_descriptor,
             )
+            temporary_identity = None
             os.fsync(anchor.directory_descriptor)
             self._assert_database_namespace()
             return f"sha256:{digest.hexdigest()}", copied
@@ -4672,14 +4676,16 @@ class QuackStateServer:
                 f"read-replica refresh failed: {type(exc).__name__}"
             ) from exc
         finally:
-            if source_descriptor is not None:
-                os.close(source_descriptor)
             if target_descriptor is not None:
                 os.close(target_descriptor)
-            try:
-                os.unlink(temporary_name, dir_fd=anchor.directory_descriptor)
-            except FileNotFoundError:
-                pass
+            if temporary_identity is not None:
+                try:
+                    pending = os.stat(temporary_name, dir_fd=anchor.directory_descriptor,
+                                      follow_symlinks=False)
+                    if (pending.st_dev, pending.st_ino) == temporary_identity:
+                        os.unlink(temporary_name, dir_fd=anchor.directory_descriptor)
+                except FileNotFoundError:
+                    pass
 
     def _wait_for_transport_endpoint_closed(self) -> None:
         """Independently observe endpoint closure before replacing a replica."""
