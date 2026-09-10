@@ -552,13 +552,23 @@ def _launch_preflight(policy: dict[str, Any]) -> str | None:
     return None
 
 
+def _launch_selection(job: dict[str, Any]) -> dict[str, Any]:
+    return {**_attempt_identity(job), "status": job.get("status"),
+            "next_attempt_at": job.get("next_attempt_at"),
+            "finished_at": job.get("finished_at")}
+
+
 def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
-                        *, attempt: dict[str, Any] | None = None) -> dict[str, Any]:
+                        *, selection: dict[str, Any] | None = None,
+                        attempt: dict[str, Any] | None = None) -> dict[str, Any]:
     """Retry a known pre-exec failure; never infer non-execution from job text."""
     with lock(path.parent / "queue.lock") as acquired:
         if not acquired:
             return {"status": "queue_busy"}
         job = read_json(path)
+        if (selection is None or selection.get("status") not in {"queued", "running"}
+                or _launch_selection(job) != selection):
+            return {"status": "completion_superseded"}
         if attempt is not None:
             if job.get("status") != "running" or _attempt_identity(job) != attempt:
                 return {"status": "completion_superseded"}
@@ -581,16 +591,25 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     policy = config["repair_worker"]
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
+    selection = _launch_selection(read_json(path))
+    if selection.get("status") not in {"queued", "running"}:
+        return {"status": "completion_superseded"}
     unit = "ipfs-taskboard-repair-job"
     # On worker restart, adopt the still-running bounded cgroup rather than
     # launching another coding process. The fixed unit name is also a mutex.
-    live = command({"argv": ["systemctl", "--user", "is-active", f"{unit}.service"]},
-                   cwd=policy["cwd"], timeout=10)
+    try:
+        live = command({"argv": ["systemctl", "--user", "is-active", f"{unit}.service"]},
+                       cwd="/", timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return {"status": "repair_job_liveness_unknown"}
     if live["stdout"].strip() in {"active", "activating", "deactivating"}:
         return {"status": "existing_repair_job_running"}
+    if (live["stdout"].strip() not in {"inactive", "failed"}
+            or live.get("returncode") not in {0, 3, 4}):
+        return {"status": "repair_job_liveness_unknown"}
     unavailable = _launch_preflight(policy)
     if unavailable:
-        return _defer_unstarted_job(path, policy, unavailable)
+        return _defer_unstarted_job(path, policy, unavailable, selection=selection)
     # A worker report cannot supply its own productive-repair baseline.
     from .fleet_watchdog import normalize_probe
     try:
@@ -605,6 +624,8 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         if hold_paths(board):
             return {"status": "operator_hold", "board_id": board["id"]}
         job = read_json(path)
+        if _launch_selection(job) != selection:
+            return {"status": "completion_superseded"}
         now = time.time()
         attempts = job.get("attempts", 0) + 1
         incident = job["latest_incident"]
@@ -621,6 +642,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         attempt = _attempt_identity(job)
         job.update(started_evidence=repair_evidence(initial), started_evidence_at=initial_at,
                    started_evidence_attempt=attempt)
+        claimed_selection = _launch_selection(job)
         write_json(path, job)
     prompt = directory / f"prompt-{stamp}.txt"
     prompt.write_text(repair_prompt(board, incident, config, report, prior_report))
@@ -642,7 +664,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         except OSError as exc:
             return _defer_unstarted_job(path, policy,
                                        f"launcher_spawn_failed:{type(exc).__name__}",
-                                       attempt=attempt)
+                                       attempt=attempt, selection=claimed_selection)
         try:
             returncode = process.wait(timeout=policy.get("timeout_seconds", 2400) + 90)
         except subprocess.TimeoutExpired:
