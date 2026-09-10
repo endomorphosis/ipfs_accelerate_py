@@ -4101,3 +4101,32 @@ def test_configured_runner_binds_post_merge_recovery_when_queue_is_target_bound(
         assert checkout_repository_id(repo) == daemon._merge_queue.target_repository_id
     finally:
         daemon.close()
+
+
+def test_closed_unaccepted_implementation_reason_consumes_protected_path_mutation() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        closed_unaccepted_implementation_reason,
+    )
+
+    events = [
+        {"type": "implementation_started", "task_id": "ASEH-061"},
+        {
+            "type": "implementation_finished",
+            "task_id": "ASEH-061",
+            "canonical_task_cid": "cid-061",
+            "error": "implementation_protected_path_mutated",
+        },
+    ]
+    assert (
+        closed_unaccepted_implementation_reason(
+            events, alias="ASEH-061", task_cid="cid-061"
+        )
+        == "implementation_protected_path_mutated"
+    )
+    assert (
+        closed_unaccepted_implementation_reason(
+            events, alias="ASEH-062", task_cid="cid-061"
+        )
+        == ""
+    )
+    assert closed_unaccepted_implementation_reason((), alias="ASEH-061") == ""
