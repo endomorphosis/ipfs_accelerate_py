@@ -123677,6 +123677,9 @@ class DatabaseImplementationDaemon:
                         evidence_source = (
                             "portal_pending_merge_claim_reclassified"
                         )
+                    elif grok_quota or reason == "grok_quota_exhausted":
+                        retry_reason = "grok_quota_exhausted"
+                        evidence_source = "grok_quota_exhausted_reclassified"
                     else:
                         retry_reason = "portal_candidate_retry"
                         evidence_source = (
@@ -123687,21 +123690,6 @@ class DatabaseImplementationDaemon:
                         reason=retry_reason,
                         backoff_ms=0,
                         evidence_source=evidence_source,
-                        reason=(
-                            "portal_checkout_contention_retry"
-                            if checkout_contention
-                            else "grok_quota_exhausted"
-                            if grok_quota or reason == "grok_quota_exhausted"
-                            else "portal_candidate_retry"
-                        ),
-                        backoff_ms=0,
-                        evidence_source=(
-                            "portal_checkout_contention_reclassified"
-                            if checkout_contention
-                            else "grok_quota_exhausted_reclassified"
-                            if grok_quota or reason == "grok_quota_exhausted"
-                            else "portal_provider_failed_reclassified"
-                        ),
                         coordination_evidence=coordination,
                         allow_blocked_recovery=True,
                     )
