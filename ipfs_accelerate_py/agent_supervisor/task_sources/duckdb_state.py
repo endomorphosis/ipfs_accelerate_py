@@ -2678,6 +2678,110 @@ def unstall_stale_in_progress_tasks(
     }
 
 
+FALSE_TERMINAL_BLOCKED_REASON_MARKERS = (
+    "isolate_merge_queue_to_task_projection",
+)
+
+
+def unstall_false_terminal_blocked_tasks(
+    connection: Any,
+    *,
+    now: datetime | None = None,
+    canonical_transition: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    allow_projection_only: bool = False,
+) -> dict[str, Any]:
+    """Unstall blocked rows whose terminal reason is a now-fixed supervisor bug.
+
+    ASEH-061 was blocked retryable-false after merged-worktree cleanup read
+    ``isolate_merge_queue_to_task_projection`` on a daemon that never set it.
+    Exclusive-owner board_unstall must reopen that gate so the remaining DAG
+    can run without recaiming the task.
+    """
+
+    clock = now or datetime.now(timezone.utc)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=timezone.utc)
+    try:
+        rows = connection.execute(
+            "SELECT task_cid, task_alias, status, revision, updated_at, body_json "
+            "FROM tasks WHERE status = 'blocked' "
+            "ORDER BY task_alias, task_cid"
+        ).fetchall()
+    except Exception:
+        rows = connection.execute(
+            "SELECT task_cid, task_alias, status, revision, updated_at "
+            "FROM tasks WHERE status = 'blocked' "
+            "ORDER BY task_alias, task_cid"
+        ).fetchall()
+    unstalled: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    pending: list[tuple[Any, ...]] = []
+    for row in rows:
+        values = _row_tuple(row)
+        task_cid, task_alias, status, revision, updated_at = values[:5]
+        blob = str(values[5] if len(values) > 5 else "")
+        if not any(marker in blob for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS):
+            skipped.append(
+                {
+                    "task_cid": str(task_cid),
+                    "task_alias": str(task_alias),
+                    "reason": "blocked_reason_not_false_terminal",
+                }
+            )
+            continue
+        pending.append((task_cid, task_alias, status, revision))
+    if pending and canonical_transition is None and allow_projection_only is not True:
+        raise DuckDBConnectionPolicyError(
+            "false-terminal blocked recovery requires the IntentRepository "
+            "transition authority; projection-only mutation is permitted only "
+            "by an explicit hermetic fixture"
+        )
+    index_sql: list[str] = []
+    if pending:
+        index_sql = _drop_task_status_indexes(connection)
+    try:
+        for task_cid, task_alias, status, revision in pending:
+            new_revision = int(revision) + 1
+            stamp = clock.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            transition_input = {
+                "task_cid": str(task_cid),
+                "task_alias": str(task_alias),
+                "previous_revision": int(revision),
+                "revision": new_revision,
+                "previous_status": str(status),
+                "status": "retrying",
+                "recorded_at": stamp,
+                "reason": "false_terminal_blocked_supervisor_bug",
+            }
+            if canonical_transition is None:
+                updated = connection.execute(
+                    "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
+                    "WHERE task_cid = ? AND revision = ? AND status = 'blocked' "
+                    "RETURNING revision",
+                    ["retrying", new_revision, stamp, str(task_cid), int(revision)],
+                ).fetchone()
+                if updated is None or int(_row_tuple(updated)[0]) != new_revision:
+                    raise DuckDBConnectionPolicyError(
+                        "false-terminal blocked recovery lost its exact task revision CAS"
+                    )
+                transition_result: Mapping[str, Any] = transition_input
+            else:
+                transition_result = canonical_transition(transition_input)
+                if not isinstance(transition_result, Mapping):
+                    raise DuckDBConnectionPolicyError(
+                        "canonical false-terminal blocked transition returned no typed result"
+                    )
+            unstalled.append({**transition_input, **dict(transition_result)})
+    finally:
+        if index_sql:
+            _restore_task_status_indexes(connection, index_sql)
+    return {
+        "unstalled": unstalled,
+        "skipped": skipped,
+        "status_indexes_rebuilt": list(index_sql),
+    }
+
+
 BOARD_UNSTALL_OWNER_OP = "board_unstall"
 BOARD_UNSTALL_BOUNCE_NAME = "board-unstall.bounce"
 OWNER_BOARD_UNSTALL_BOUNCE_MIN_AGE_SECONDS = 15.0
@@ -2711,10 +2815,21 @@ def apply_owner_command_payload(
             canonical_transition=canonical_transition,
             allow_projection_only=allow_projection_only,
         )
+        blocked = unstall_false_terminal_blocked_tasks(
+            connection,
+            canonical_transition=canonical_transition,
+            allow_projection_only=allow_projection_only,
+        )
+        merged = {
+            **result,
+            "false_terminal_blocked": blocked,
+            "unstalled": list(result.get("unstalled") or [])
+            + list(blocked.get("unstalled") or []),
+        }
         return {
             "ok": True,
-            "rowcount": len(result.get("unstalled") or []),
-            "board_unstall": result,
+            "rowcount": len(merged.get("unstalled") or []),
+            "board_unstall": merged,
         }
     sql = str(payload.get("sql") or "")
     normalized = " ".join(sql.strip().upper().split())
