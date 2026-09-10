@@ -2600,7 +2600,15 @@ class InProcessQuackTransport:
 
             deadline = time.monotonic() + QUACK_LIVE_QUERY_BIRTH_TIMEOUT_SECONDS
             while True:
-                client = duckdb.connect(":memory:")
+                # Readiness runs repeatedly while the exclusive owner is
+                # serving lanes. Bound each disposable client before loading
+                # the extension, including failed/retried probes: DuckDB's
+                # host-wide defaults can otherwise spawn hundreds of workers
+                # inside a supervisor's small CPU allocation.
+                client = duckdb.connect(
+                    ":memory:",
+                    config={"threads": 1, "memory_limit": DEFAULT_MEMORY_LIMIT},
+                )
                 try:
                     client.execute("LOAD quack")
                     for sql, params in query_attempts:
