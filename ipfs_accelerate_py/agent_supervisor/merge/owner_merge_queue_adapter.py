@@ -100,10 +100,8 @@ class OwnerMergeQueueAdapter:
     def get(self, request_id):
         return self._request("get", request_id=request_id)
 
-    def _snapshot(self, operation, *, limit, after_request_id):
-        result = self._client.call(
-            operation, limit=limit, after_request_id=after_request_id
-        )
+    def _snapshot(self, operation, *, limit, **arguments):
+        result = self._client.call(operation, limit=limit, **arguments)
         rows = json.loads(result["requests_json"])
         if not isinstance(rows, list) or len(rows) > limit:
             raise OwnerMergeQueueError(
@@ -120,6 +118,49 @@ class OwnerMergeQueueAdapter:
         return self._snapshot(
             "processing_requests", limit=limit, after_request_id=after_request_id
         )
+
+    def quarantined_requests(self, *, limit=32, after_request_id=None):
+        return self._snapshot(
+            "quarantined_requests", limit=limit, after_request_id=after_request_id
+        )
+
+    def completed_requests(
+        self,
+        *,
+        limit=32,
+        metadata_schema="",
+        require_completion_absent=False,
+        completion_schema="",
+        completion_reason="",
+        canonical_task_id="",
+        database_task_cid="",
+        reopen_schema="",
+        reopen_reason="",
+        before_request_id="",
+        ordered_by_request_id=False,
+    ):
+        return self._snapshot(
+            "completed_requests",
+            limit=limit,
+            metadata_schema=metadata_schema,
+            require_completion_absent=require_completion_absent,
+            completion_schema=completion_schema,
+            completion_reason=completion_reason,
+            canonical_task_id=canonical_task_id,
+            database_task_cid=database_task_cid,
+            reopen_schema=reopen_schema,
+            reopen_reason=reopen_reason,
+            before_request_id=before_request_id,
+            ordered_by_request_id=ordered_by_request_id,
+        )
+
+    def has_pending_for_task(self, task_id, *, commit_sha=None):
+        value = self._client.call(
+            "has_pending_for_task", task_id=task_id, commit_sha=commit_sha
+        )["has_pending"]
+        if type(value) is not bool:
+            raise OwnerMergeQueueError("queue response has no active task observation")
+        return value
 
     def dequeue(self, *, consumer_id=None):
         self._consumer(consumer_id)
