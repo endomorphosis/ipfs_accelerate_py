@@ -41,6 +41,7 @@ those three scopes. Its `call` method accepts these closed operations:
 | `enqueue` | `branch_name`, `task_id`, `priority`, `lane_id`, `commit_sha`, `canonical_task_id`, `canonical_task_key`, `metadata_json` | Preserve legacy task/commit/target deduplication; return the existing row or insert one bound request. |
 | `get` | `request_id` | Observe one row in the exact bound target. |
 | `claim` | `request_id` | Claim that exact eligible pending row under the existing capacity checks. |
+| `dequeue` | none | Atomically claim the fairest eligible pending row in the admitted target, using the granted consumer and owner capacity policy. |
 | `owns_claim` | `request_id`, `claim_token`, `claim_generation` | Observe the current consumer, token, generation and expiry fence. |
 | `complete` | claim coordinates plus `metadata_json` | Apply the existing claimed-row transition; no task or goal completion authority. |
 | `requeue`, `quarantine` | claim coordinates plus `reason`, `metadata_json` | Apply the existing retry or quarantine transition without deleting the row. |
@@ -56,6 +57,16 @@ Unbound legacy rows and other targets stay unchanged and inaccessible through
 this bound view. A stored dedupe key that conflicts with the row's target or
 computed identity causes denial; it is never repaired or rebound as a side
 effect. Transition metadata cannot alter the target binding.
+
+`dequeue` needs its own explicit `legacy.merge_queue.dequeue` grant; an existing
+exact-request `claim` grant does not permit it. It accepts no consumer, batch,
+policy or recovery overrides. It uses the native fairness, retry-delay,
+processing-capacity and worktree-byte checks, excludes queue-authored
+false-positive recovery rows, and never reaps expired claims. Selected row
+identities are checked before any claim update or commit. It returns the same
+single-request envelope as `claim`, including `null` when no work is eligible.
+This supplies consumer selection; native producer/consumer adapter wiring and
+owner migration still require qualification.
 
 ## Transaction and recovery boundaries
 
@@ -118,7 +129,7 @@ migration, not instructions to run a live migration from this staging change:
 
 1. Assemble a native source candidate preserving the current native history and
    the transaction-failure fix. Port the owner integration and the actual native
-   producer/merge-consumer calls; this module supplies exact-request operations,
+   producer/merge-consumer calls; this module supplies closed queue operations,
    not a drop-in replacement for every legacy queue method. Qualify those calls
    with real callback/merge evidence and the sealed current-root validator.
    Do not rewrite the sealed planning root or weaken source checks to make a

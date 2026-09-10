@@ -20,7 +20,7 @@ from .merge_queue import (
 )
 
 OPERATIONS = frozenset(
-    {"get", "enqueue", "claim", "owns_claim", "complete", "requeue", "quarantine"}
+    {"get", "enqueue", "claim", "dequeue", "owns_claim", "complete", "requeue", "quarantine"}
 )
 SERVICE_OPERATIONS = frozenset("legacy.merge_queue." + name for name in OPERATIONS)
 SCHEMA = "ipfs_accelerate_py/legacy-owner-merge-queue@1"
@@ -521,6 +521,10 @@ class _OwnerMergeQueueService:
             result = self._queue.enqueue(
                 **arguments, metadata=_metadata(args["metadata_json"])
             )
+        elif operation == "dequeue":
+            if args:
+                raise OwnerMergeQueueError("dequeue accepts no arguments")
+            result = self._queue.dequeue(consumer_id=consumer)
         elif operation in {"get", "claim"}:
             if set(args) != {"request_id"}:
                 raise OwnerMergeQueueError("request_id is required")

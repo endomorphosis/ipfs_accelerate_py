@@ -1822,6 +1822,12 @@ class MergeQueue:
                         continue
                     selected.append(row)
                     worktree_bytes += estimate
+                # Validate every selected representation before changing any
+                # claim. Owner-backed queues also verify preserved dedupe and
+                # target coordinates here; rejecting them after COMMIT would
+                # leave a processing row whose claimant received only an error.
+                for row in selected:
+                    self._request_from_row(row)
                 for row in selected:
                     claim_token = uuid.uuid4().hex
                     updated = connection.execute(
