@@ -59451,6 +59451,22 @@ class PortalImplementationDaemon:
         self._merge_lifecycle_events_cache_key = None
         self._merge_lifecycle_events_cache_data = []
 
+    def _portal_resume_has_live_implementation_worker(self) -> bool:
+        """True when a grok/codex runner is still live for this daemon."""
+
+        repo_path = str(self.repo_root.resolve())
+        process_lines = self._list_process_commands()
+        if repo_path:
+            return any(
+                repo_path in line
+                and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+                for line in process_lines
+            )
+        return any(
+            IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+            for line in process_lines
+        )
+
     def _implementation_process_active(self, event: dict[str, Any]) -> bool:
         worktree_path = str(event.get("worktree_path") or "")
         command = event.get("command") or []
@@ -67936,6 +67952,18 @@ _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON = (
 _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON = (
     "implementation_protected_path_mutated"
 )
+_RECOVERABLE_INCOMPLETE_PROJECTION_WITHOUT_WORKER_REASON = (
+    "portal_projection_incomplete_without_live_worker"
+)
+_PORTAL_TASK_PROJECTION_INCOMPLETE_REASON = (
+    "Portal task projection is not complete"
+)
+_RECOVERABLE_PORTAL_FAILURE_REARM_REASONS = frozenset(
+    {
+        _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON,
+        _RECOVERABLE_INCOMPLETE_PROJECTION_WITHOUT_WORKER_REASON,
+    }
+)
 _LIVE_OWNER_PORTAL_CLAIM_FAILURE_REARM_REASON = (
     "live_owner_zero_provider_portal_claim_failure"
 )
@@ -70307,6 +70335,7 @@ class DatabaseImplementationDaemon:
                             for candidate in (
                                 _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON,
                                 _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON,
+                                _RECOVERABLE_INCOMPLETE_PROJECTION_WITHOUT_WORKER_REASON,
                             )
                             if self._portal_failure_matches_recoverable_reason(
                                 receipt,
@@ -73364,7 +73393,19 @@ class DatabaseImplementationDaemon:
 
             if isinstance(exc, DatabasePortalBridgeDeferred):
                 reason = str(exc)
-                if reason != _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON:
+                if (
+                    reason == _PORTAL_TASK_PROJECTION_INCOMPLETE_REASON
+                    and not self._portal_resume_has_live_implementation_worker()
+                ):
+                    # Incomplete projection with no grok/codex child would
+                    # defer forever and pin in_progress, blocking rearm of
+                    # other recoverable tasks. Close the claim so the next
+                    # pass can open a fresh attempt.
+                    reason = (
+                        _RECOVERABLE_INCOMPLETE_PROJECTION_WITHOUT_WORKER_REASON
+                    )
+                    exc = DatabasePortalBridgeError(reason)
+                elif reason != _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON:
                     # Grok/Codex is still in flight. Keep the exact running
                     # attempt so the next pass can accept the same projection
                     # instead of failing it and racing a replacement claim.

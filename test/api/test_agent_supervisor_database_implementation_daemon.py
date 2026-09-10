@@ -12,6 +12,7 @@ not duplicate provider/effect work.
 
 from __future__ import annotations
 
+import inspect
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -3729,3 +3730,22 @@ def test_portal_rearm_new_source_retains_once_per_source_and_settlement_budget(t
         assert len(daemon.reconcile_recoverable_portal_failure_rearms(recovery_source_validator=lambda: other)) == 1
     finally:
         daemon.close()
+
+
+def test_incomplete_projection_without_live_worker_is_recoverable_rearm_reason() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as module
+
+    assert (
+        module._RECOVERABLE_INCOMPLETE_PROJECTION_WITHOUT_WORKER_REASON
+        in module._RECOVERABLE_PORTAL_FAILURE_REARM_REASONS
+    )
+    source = inspect.getsource(module.DatabaseImplementationDaemon._resume_attempt_without_process_crash)
+    assert "_portal_resume_has_live_implementation_worker" in source
+    assert "_PORTAL_TASK_PROJECTION_INCOMPLETE_REASON" in source
+    matcher = inspect.getsource(
+        module.DatabaseImplementationDaemon.reconcile_recoverable_portal_failure_rearms
+    )
+    assert (
+        "_RECOVERABLE_INCOMPLETE_PROJECTION_WITHOUT_WORKER_REASON"
+        in matcher
+    )
