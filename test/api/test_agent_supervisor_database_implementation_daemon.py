@@ -2403,6 +2403,7 @@ def test_zero_provider_portal_provider_failed_auto_rearms_blocked_task(
         provider_fn=provider,
         effect_calls=effect_calls,
     )
+    _bind_explicit_zero_provider_callback(daemon)
     try:
         daemon.materialize_population(_population(1))
         first = daemon.run_once()
@@ -2509,6 +2510,7 @@ def test_protected_path_deferral_settles_instead_of_pinning_running_claim(
         session="session:portal-protected-path",
         provider_fn=provider,
     )
+    _bind_explicit_zero_provider_callback(daemon)
     try:
         daemon.materialize_population(_population(1))
         first = daemon.run_once()
@@ -2533,6 +2535,24 @@ def test_protected_path_deferral_settles_instead_of_pinning_running_claim(
         daemon.close()
 
 
+def _bind_explicit_zero_provider_callback(daemon):
+    """Supply the native non-dispatch proof in these execution-store tests.
+
+    The separate bridge tests exercise the real immutable callback verifier.
+    Raising from this provider double alone is deliberately not that proof.
+    """
+    original = daemon._provider_fn
+
+    class VerifiedCallbackProvider:
+        def run(self, attempt):
+            return original(attempt)
+
+        def zero_provider_failure_rearm_ready(self, attempt):
+            return attempt.status == "failed" and attempt.committed_phase == "failed"
+
+    daemon._provider_fn = VerifiedCallbackProvider().run
+
+
 def test_live_owner_auto_rearms_zero_provider_portal_claim_failure(
     tmp_path: Path,
 ) -> None:
@@ -2552,6 +2572,7 @@ def test_live_owner_auto_rearms_zero_provider_portal_claim_failure(
         provider_fn=provider,
         effect_calls=effect_calls,
     )
+    _bind_explicit_zero_provider_callback(daemon)
     try:
         daemon.materialize_population(_population(1))
         first = daemon.run_once()
@@ -2604,6 +2625,7 @@ def test_verified_source_rearms_new_zero_provider_settlement_after_lifetime_budg
             DatabasePortalBridgeError("embedded-store claim without live owner")
         ),
     )
+    _bind_explicit_zero_provider_callback(daemon)
     try:
         daemon.materialize_population(_population(1))
         daemon.authority_mode = "quack"
@@ -3826,6 +3848,7 @@ def test_portal_rearm_new_source_retains_once_per_source_and_settlement_budget(t
         raise DatabasePortalBridgeError("closed bridge failure")
     daemon = _open_daemon(tmp_path, session="session:source-recovery", provider_fn=provider)
     source = {"source_head": "a" * 40, "source_tree": "b" * 40}
+    _bind_explicit_zero_provider_callback(daemon)
     try:
         daemon.materialize_population(_population(1))
         first = daemon.run_once()
