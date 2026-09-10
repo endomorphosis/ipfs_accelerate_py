@@ -989,9 +989,9 @@ def test_sealed_daemon_child_retries_ioexception() -> None:
     assert "IOException" in implementation_supervisor_module.RETRYABLE_READINESS_ERROR_TYPES
 
 
-def test_sealed_daemon_child_non_retryable_error_fail_closes() -> None:
+def test_sealed_daemon_child_non_retryable_error_fail_closes(caplog) -> None:
     def main(_argv: list[str]) -> int:
-        raise RuntimeError("pin invalid")
+        raise RuntimeError("pin invalid secret-token-never-log")
 
     with pytest.raises(RuntimeError, match="pin invalid"):
         _run_daemon_main_with_retryable_memory_backoff(
@@ -999,6 +999,10 @@ def test_sealed_daemon_child_non_retryable_error_fail_closes() -> None:
             [],
             sleep=lambda _delay: None,
         )
+
+    assert "type=RuntimeError function=main line=" in caplog.text
+    assert "secret-token-never-log" not in caplog.text
+    assert "pin invalid" not in caplog.text
 
 
 def test_sealed_daemon_child_systemexit_78_is_not_retried() -> None:

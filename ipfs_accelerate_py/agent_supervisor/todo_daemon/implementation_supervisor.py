@@ -1980,6 +1980,17 @@ def _run_daemon_main_with_retryable_memory_backoff(
             return int(main(list(argv)) or 0)
         except Exception as exc:
             if type(exc).__name__ not in RETRYABLE_READINESS_ERROR_TYPES:
+                # The sealed bootstrap deliberately suppresses exception text.
+                # Preserve a secret-free code location before it maps to exit 78.
+                trace = exc.__traceback__
+                while trace is not None and trace.tb_next is not None:
+                    trace = trace.tb_next
+                logger.error(
+                    "Sealed daemon child non-retryable failure type=%s function=%s line=%s",
+                    type(exc).__name__,
+                    trace.tb_frame.f_code.co_name if trace is not None else "unknown",
+                    trace.tb_lineno if trace is not None else 0,
+                )
                 raise
             delay = delays[min(attempt, len(delays) - 1)]
             attempt += 1
