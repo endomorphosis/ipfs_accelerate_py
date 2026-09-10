@@ -11075,6 +11075,41 @@ class PortalImplementationSupervisor:
             same_shard_ready_task_ids = list(
                 readiness.get("same_shard_ready_task_ids") or ()
             )
+            if not readiness.get("active_task_ids"):
+                blocked_recoverable_task_ids = list(
+                    readiness.get("blocked_recoverable_task_ids") or ()
+                )
+                # Recoverable blocked cards must rearm even when a later
+                # task is ready. Skipping them for ready_task_ids parks
+                # SAWM-008/013 forever behind SAWM-021+.
+                if (
+                    self._is_board_maintenance_leader()
+                    or blocked_recoverable_task_ids
+                ):
+                    rearm: dict[str, Any] = {
+                        "attempted": False,
+                        "reason": "non_leader",
+                        "rearm_count": 0,
+                    }
+                    if self._is_board_maintenance_leader():
+                        self._last_supervisor_maintenance_at = now_monotonic
+                        rearm = self._rearm_blocked_recoverable_portal_frontier()
+                    detail = {
+                        "blocked_recoverable_task_ids": (
+                            blocked_recoverable_task_ids
+                        ),
+                        "blocked_recoverable_portal_frontier_rearm": rearm,
+                        "task_source_revision": int(
+                            readiness.get("task_source_revision") or 0
+                        ),
+                    }
+                    self._set_loop_status_fields(_loop, detail)
+                    self._record_event(
+                        "idle_blocked_recoverable_portal_frontier",
+                        detail,
+                    )
+                    if not ready_task_ids:
+                        return SupervisorLoopDecision.keep_running()
             if ready_task_ids:
                 if same_shard_ready_task_ids:
                     heartbeat = self._database_pass_heartbeat_status(
@@ -11120,35 +11155,6 @@ class PortalImplementationSupervisor:
             # owner/fence reconciliation. A prior-child heartbeat cannot
             # expire that claim or authorize recycling its current successor.
             if readiness.get("active_task_ids"):
-                return SupervisorLoopDecision.keep_running()
-            blocked_recoverable_task_ids = list(
-                readiness.get("blocked_recoverable_task_ids") or ()
-            )
-            # Probe listing of blocked cards is best-effort and fail-open.
-            # An idle board with no ready/active work must still ask the
-            # live owner to rearm zero-provider portal settlements, or a
-            # missed probe parks the frontier indefinitely.
-            if self._is_board_maintenance_leader() or blocked_recoverable_task_ids:
-                rearm: dict[str, Any] = {
-                    "attempted": False,
-                    "reason": "non_leader",
-                    "rearm_count": 0,
-                }
-                if self._is_board_maintenance_leader():
-                    self._last_supervisor_maintenance_at = now_monotonic
-                    rearm = self._rearm_blocked_recoverable_portal_frontier()
-                detail = {
-                    "blocked_recoverable_task_ids": blocked_recoverable_task_ids,
-                    "blocked_recoverable_portal_frontier_rearm": rearm,
-                    "task_source_revision": int(
-                        readiness.get("task_source_revision") or 0
-                    ),
-                }
-                self._set_loop_status_fields(_loop, detail)
-                self._record_event(
-                    "idle_blocked_recoverable_portal_frontier",
-                    detail,
-                )
                 return SupervisorLoopDecision.keep_running()
 
         if not database_authority and (
