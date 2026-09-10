@@ -95872,6 +95872,8 @@ class DatabaseImplementationDaemon:
             != "database_portal_callback_no_effect_recovery"
         ):
             return True
+        # An admitted operation name or retry reason is not callback closure.
+        # Even legacy no-merge retry rows must supply the exact verified seed.
         seed = control.get("callback_no_effect_recovery_seed")
         if not isinstance(seed, Mapping) or self.max_task_attempts <= 0:
             return False

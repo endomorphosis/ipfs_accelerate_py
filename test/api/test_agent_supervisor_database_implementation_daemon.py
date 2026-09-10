@@ -6402,6 +6402,36 @@ def test_callback_no_effect_budget_uses_portal_generation_not_outer_claim(
         restarted.close()
 
 
+def test_unknown_callback_no_merge_retry_requires_independently_verified_seed(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        max_task_attempts=2,
+        session="session:no-merge-claimable",
+    )
+    try:
+        retrying = SimpleNamespace(
+            status="retrying",
+            body={
+                "completion_receipt": {
+                    "operation": "database_portal_callback_no_effect_recovery",
+                    "reason": "unknown_callback_no_merge_source_requeued",
+                    "retryable": True,
+                    "attempt_number": 2,
+                    "attempt_consumed": True,
+                    "provider_dispatched": True,
+                }
+            },
+        )
+        assert (
+            daemon._callback_no_effect_retry_claim_is_within_budget(retrying)
+            is False
+        )
+    finally:
+        daemon.close()
+
+
 def test_callback_no_effect_retry_cannot_cross_outer_successor_ceiling(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
