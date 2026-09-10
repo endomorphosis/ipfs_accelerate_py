@@ -89815,6 +89815,7 @@ def _run_supervisor_owner_impl(
         failure_event = threading.Event()
         failure: dict[str, Any] = {}
         monitor_thread: threading.Thread | None = None
+        observation_requests: Any = None
         scheduler: subprocess.Popen[Any] | None = None
         scheduler_start_time_ticks: int | None = None
         owner_started = False
@@ -90050,6 +90051,15 @@ def _run_supervisor_owner_impl(
                 shutdown_requested=shutdown_requested,
                 received_signal=received_signal,
             )
+            from ipfs_accelerate_py.agent_supervisor.runtime.owner_observation_request import (
+                OwnerObservationRequests, observation_scope,
+            )
+
+            observation_requests = OwnerObservationRequests(observation_scope(
+                program_id=PROGRAM, owner_identity=identity.to_dict(),
+                source_head=candidate_head, source_tree=candidate_tree,
+                launch_admission_id=_identity(launch_admission),
+            ))
             monitor_thread = threading.Thread(
                 target=_status_monitor_loop,
                 kwargs={
@@ -90058,6 +90068,7 @@ def _run_supervisor_owner_impl(
                     "previous": initial_health["samples"][-1],
                     "last_progress_at": last_progress_at, "stop": stop,
                     "failure": failure, "failure_event": failure_event,
+                    "observation_requests": observation_requests,
                 },
                 name="aseh-live-health-monitor", daemon=True,
             )
@@ -90078,6 +90089,12 @@ def _run_supervisor_owner_impl(
                     if owner_start_recovery is None
                     else owner_start_recovery["receipt_cid"]
                 ),
+                "observation_request": {
+                    "scope": observation_requests.scope,
+                    "authenticated_observation": False,
+                    "completion_authority": False,
+                    "mutation_authority": False,
+                },
                 "initial_health_receipt_cid": initial_health["receipt_cid"],
                 "live_owner_program": {
                     "store_id": identity.store_id,
@@ -90094,6 +90111,10 @@ def _run_supervisor_owner_impl(
             )
             _set_sealed_owner_terminal_phase(terminal_phase, "running")
             while scheduler.poll() is None:
+                observation_requests.poll(observer_available=(
+                    monitor_thread.is_alive() and not stop.is_set()
+                    and not failure_event.is_set()
+                ))
                 if shutdown_requested.is_set():
                     raise OperatorStopRequested(
                         int(received_signal.get("signum") or signal.SIGTERM)
@@ -90117,6 +90138,8 @@ def _run_supervisor_owner_impl(
                 guard_cleanup_error = exc
             try:
                 stop.set()
+                if observation_requests is not None:
+                    observation_requests.close()
                 if scheduler is not None:
                     _terminate_scheduler(
                         scheduler,
@@ -92200,6 +92223,7 @@ def _status_monitor_loop(
     stop: threading.Event,
     failure: dict[str, Any],
     failure_event: threading.Event,
+    observation_requests: Any = None,
 ) -> None:
     interval = min(
         30.0,
@@ -92215,6 +92239,8 @@ def _status_monitor_loop(
 
     def observe_once() -> None:
         nonlocal prior, last_progress_at, unhealthy_edges
+        if observation_requests is not None:
+            observation_requests.sample_started()
         current = _status_sample(board, paths, server, scheduler)
         if _authoritative_progress_between(prior, current):
             last_progress_at = float(current["observed_at"])
@@ -92450,6 +92476,42 @@ def _admit_receipt_for_current_owner(
             "live status receipt belongs to a different published replica"
         )
     return current
+
+
+def request_status_refresh(config_path: Path) -> tuple[int, dict[str, Any]]:
+    """Ask the exact retained owner to sample; this is never status admission."""
+    from ipfs_accelerate_py.agent_supervisor.runtime.owner_observation_request import (
+        request_observation,
+    )
+
+    board, _ = _load(config_path)
+    paths = _paths(board)
+    launch = _secure_runtime_json(
+        paths["evidence"] / "control-plane" / "owner-launch.json",
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    unsigned = dict(launch)
+    receipt_cid = unsigned.pop("receipt_cid", "")
+    if (launch.get("schema") != "ipfs_accelerate_py/agent-supervisor/aseh-owner-launch@1"
+            or receipt_cid != _identity(unsigned)):
+        raise OperatorError("observation request launch reference differs")
+    capability = launch.get("observation_request")
+    if (not isinstance(capability, dict)
+            or set(capability) != {"scope", "authenticated_observation",
+                                    "completion_authority", "mutation_authority"}
+            or any(capability.get(key) is not False for key in
+                   ("authenticated_observation", "completion_authority", "mutation_authority"))):
+        raise OperatorError("current owner has no observation request route")
+    scope = capability["scope"]
+    if (not isinstance(scope, dict) or scope.get("program_id") != PROGRAM
+            or scope.get("owner_identity") != launch.get("identity")
+            or scope.get("launch_admission_id") != _identity(launch.get("materialized_launch_admission"))):
+        raise OperatorError("observation request owner scope differs")
+    # The mutable launch reference grants no authority. The receiver compares
+    # its frozen scope and the client checks kernel peer PID/birth/UID. Even a
+    # successful acknowledgment still requires a later native status command.
+    result = request_observation(scope)
+    return (0 if result["accepted"] else 1), result
 
 
 def status(config_path: Path, *, require_ready: bool) -> tuple[int, dict[str, Any]]:
@@ -92738,6 +92800,7 @@ def main(argv: list[str] | None = None) -> int:
     run = commands.add_parser("run")
     run.add_argument("--implement", action=argparse.BooleanOptionalAction, default=True)
     run.add_argument("--duration-seconds", type=float, default=float("inf"))
+    commands.add_parser("request-status-refresh")
     show = commands.add_parser("status")
     show.add_argument("--require-ready", action="store_true")
     args = parser.parse_args(argv)
@@ -92798,6 +92861,8 @@ def main(argv: list[str] | None = None) -> int:
             code = 0
         elif args.command == "preflight":
             code, payload = preflight(args.config)
+        elif args.command == "request-status-refresh":
+            code, payload = request_status_refresh(args.config)
         elif args.command == "status":
             code, payload = status(args.config, require_ready=args.require_ready)
         else:
