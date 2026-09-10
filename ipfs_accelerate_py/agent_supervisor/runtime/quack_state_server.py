@@ -4657,8 +4657,24 @@ class QuackStateServer:
                 )
             os.fchmod(target_descriptor, 0o600)
             os.fsync(target_descriptor)
-            os.close(target_descriptor)
-            target_descriptor = None
+            # A failed/concurrent operation may replace the temporary directory
+            # entry. Keep our descriptor through promotion and refuse an entry
+            # that no longer names the complete regular file we created.
+            completed = os.fstat(target_descriptor)
+            pending = os.stat(
+                temporary_name,
+                dir_fd=anchor.directory_descriptor,
+                follow_symlinks=False,
+            )
+            if any(
+                not stat.S_ISREG(observed.st_mode)
+                or (observed.st_dev, observed.st_ino) != temporary_identity
+                or observed.st_size != copied
+                for observed in (completed, pending)
+            ):
+                raise QuackStateServerReadyError(
+                    "read-replica temporary entry changed before promotion"
+                )
             os.replace(
                 temporary_name,
                 replica.name,
@@ -4666,7 +4682,30 @@ class QuackStateServer:
                 dst_dir_fd=anchor.directory_descriptor,
             )
             temporary_identity = None
+            promoted = os.fstat(target_descriptor)
             os.fsync(anchor.directory_descriptor)
+            published = os.stat(
+                replica.name,
+                dir_fd=anchor.directory_descriptor,
+                follow_symlinks=False,
+            )
+            # Keep the same file bound across the final directory flush. A
+            # changed output must not produce a successful digest receipt.
+            for observed in (os.fstat(target_descriptor), published):
+                if (
+                    not stat.S_ISREG(observed.st_mode)
+                    or (observed.st_dev, observed.st_ino) != (created.st_dev, created.st_ino)
+                    or observed.st_size != copied
+                    or any(
+                        getattr(observed, name) != getattr(promoted, name)
+                        for name in stable_fields
+                    )
+                ):
+                    raise QuackStateServerReadyError(
+                        "read-replica changed during final directory sync"
+                    )
+            os.close(target_descriptor)
+            target_descriptor = None
             self._assert_database_namespace()
             return f"sha256:{digest.hexdigest()}", copied
         except QuackStateServerError:

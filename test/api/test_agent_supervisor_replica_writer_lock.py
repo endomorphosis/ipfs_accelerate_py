@@ -1,6 +1,7 @@
 """Replica refresh must retain the real DuckDB writer's kernel file lock."""
 import hashlib
 import os
+import stat
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -8,7 +9,9 @@ from types import SimpleNamespace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server as quack
-from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import QuackCapabilityStatus
+from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
+    QuackCapabilityStatus,
+)
 
 
 @pytest.fixture
@@ -45,7 +48,7 @@ else:
     sys.exit(0)
 """
     result = subprocess.run([sys.executable, "-c", code, str(database)],
-                            capture_output=True, text=True, timeout=15)
+                            capture_output=True, text=True, timeout=15, check=False)
     assert result.returncode == 69, (result.returncode, result.stderr)
 
 
@@ -127,3 +130,77 @@ def test_failed_copy_does_not_unlink_replacement_temp_inode(writer, monkeypatch)
         server._copy_authoritative_read_replica()
     assert temporary.read_bytes() == b"replacement belongs to another operation"
     assert_other_process_writer_blocked(database)
+
+
+@pytest.mark.parametrize("interference", ["foreign_regular", "symlink", "truncated_owned"])
+def test_promotion_requires_owned_complete_temp_entry(writer, monkeypatch, interference):
+    server, connection, database = writer
+    monkeypatch.setattr(quack.uuid, "uuid4", lambda: SimpleNamespace(hex="promotion"))
+    replica = server.read_replica_path()
+    replica.write_bytes(b"previous replica must survive")
+    temporary = database.parent / f".{replica.name}.{os.getpid()}.promotion.tmp"
+    displaced = temporary.with_suffix(".preserved")
+    foreign = database.parent / "foreign-work"
+    foreign.write_bytes(b"foreign work must survive")
+    original_fsync = os.fsync
+    fired = False
+
+    def interfere_after_sync(descriptor):
+        nonlocal fired
+        original_fsync(descriptor)
+        if fired:
+            return
+        fired = True
+        if interference == "truncated_owned":
+            os.ftruncate(descriptor, 1)
+        else:
+            temporary.rename(displaced)
+            if interference == "symlink":
+                temporary.symlink_to(foreign.name)
+            else:
+                temporary.write_bytes(b"foreign work must survive")
+
+    monkeypatch.setattr(quack.os, "fsync", interfere_after_sync)
+    with pytest.raises(quack.QuackStateServerReadyError):
+        server._copy_authoritative_read_replica()
+    assert fired
+    assert replica.read_bytes() == b"previous replica must survive"
+    assert foreign.read_bytes() == b"foreign work must survive"
+    if interference == "truncated_owned":
+        assert not temporary.exists()
+    else:
+        assert displaced.exists()
+        assert temporary.read_bytes() == b"foreign work must survive"
+        assert temporary.is_symlink() == (interference == "symlink")
+    assert_other_process_writer_blocked(database)
+    connection.execute("INSERT INTO values_to_copy VALUES (43)")
+    assert connection.execute("SELECT count(*) FROM values_to_copy").fetchone() == (2,)
+
+
+@pytest.mark.parametrize("interference", ["replacement", "same_size_rewrite"])
+def test_changed_replica_during_directory_sync_does_not_report_success(writer, monkeypatch, interference):
+    server, connection, database = writer
+    replica = server.read_replica_path()
+    original_fsync = os.fsync
+    fired = False
+
+    def interfere_during_directory_sync(descriptor):
+        nonlocal fired
+        original_fsync(descriptor)
+        if fired or not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            return
+        fired = True
+        if interference == "replacement":
+            replica.rename(replica.with_suffix(".preserved"))
+            replica.write_bytes(b"foreign replacement")
+        else:
+            with replica.open("r+b") as handle:
+                handle.write(b"changed!")
+
+    monkeypatch.setattr(quack.os, "fsync", interfere_during_directory_sync)
+    with pytest.raises(quack.QuackStateServerReadyError):
+        server._copy_authoritative_read_replica()
+    assert fired
+    assert_other_process_writer_blocked(database)
+    connection.execute("INSERT INTO values_to_copy VALUES (43)")
+    assert connection.execute("SELECT count(*) FROM values_to_copy").fetchone() == (2,)
