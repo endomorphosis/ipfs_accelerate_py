@@ -527,6 +527,7 @@ def _guidance_lines(
     contract_gap_paths: Sequence[str],
     failed_commands: Sequence[str],
     expected_outputs: Sequence[str],
+    task_owned_paths: Sequence[str] = (),
     validation_environment_guidance: str = "",
 ) -> list[str]:
     lines = [
@@ -557,8 +558,13 @@ def _guidance_lines(
     lines.append("Do **not** widen scope casually. Stay inside the task contract.")
     if expected_outputs:
         lines.append("")
-        lines.append("### Declared task outputs (exact edit authority)")
+        lines.append("### Declared task outputs (required deliverables)")
         for path in expected_outputs:
+            lines.append(f"- `{path}`")
+    if task_owned_paths:
+        lines.append("")
+        lines.append("### Declared task edit paths (all proposal gates still apply)")
+        for path in task_owned_paths:
             lines.append(f"- `{path}`")
     if missing_outputs:
         lines.append("")
@@ -871,6 +877,7 @@ def review_implementation_failure(
     task_id: str,
     attempt: int,
     expected_outputs: Sequence[str] = (),
+    task_owned_paths: Sequence[str] = (),
     validation_result: Mapping[str, Any] | None = None,
     changed_paths: Sequence[str] = (),
     workspace_path: Path | str | None = None,
@@ -911,7 +918,13 @@ def review_implementation_failure(
     scope = dict(scope_adjudication or {}) or _scope_projection(validation)
     justified = _normalized_paths(scope.get("justified_paths") or ())
     denied = _normalized_paths(scope.get("denied_paths") or ())
-    owned_paths = _normalized_paths((*expected, *justified, *ast_companions))
+    # The caller derives this from the same task scope as proposal admission.
+    # It is diagnostic input, never a scope grant from the failed candidate's
+    # validation payload. Keep required deliverables separate from edit paths.
+    declared_scope = _normalized_paths(task_owned_paths)
+    owned_paths = _normalized_paths(
+        (*expected, *declared_scope, *justified, *ast_companions)
+    )
     missing = _missing_expected_outputs(
         expected_outputs=expected,
         changed_paths=changed,
@@ -1052,6 +1065,7 @@ def review_implementation_failure(
             contract_gap_paths=contract_gap_paths,
             failed_commands=failed_commands,
             expected_outputs=expected,
+            task_owned_paths=declared_scope,
             validation_environment_guidance=environment_guidance,
         )
     )
