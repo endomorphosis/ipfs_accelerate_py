@@ -71297,6 +71297,20 @@ class PortalImplementationDaemon:
                 self._active_worktree_lifecycle = None
 
         if record.is_terminal:
+            if terminal_callback is not None:
+                # The terminal CAS may have survived a failed handoff callback.
+                # This record cannot reconstruct the callback's captured prior
+                # identity or prove its receipt was committed. Keep it for the
+                # caller's exact prepublication/receipt recovery path.
+                return {
+                    "finalized": False,
+                    "reason": "lifecycle_terminal_callback_recovery_required",
+                    "fence": record.fence,
+                    "state": record.state.value,
+                    "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                    "attempt_consumed": False,
+                    "provider_call_allowed": False,
+                }
             deleted = self.worktree_lifecycle.compare_and_delete(
                 record.workspace_path,
                 expected_fence=record.fence,
