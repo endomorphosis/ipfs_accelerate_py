@@ -124,3 +124,33 @@ def test_nullable_legacy_claim_state_remains_an_unresolved_native_fact(native):
     assert facts["relations"]["task_claims"]["rows"][0]["claim_id"] == "claim:unknown"
     assert facts["relations"]["task_claims"]["rows"][0]["state"] is None
     assert facts["completion_authority"] is False
+
+
+def test_native_status_reads_canonical_history_without_writer_authority(native):
+    client, connection, _ = native
+    connection.execute("INSERT INTO task_revisions VALUES (?, ?, ?, ?, ?)",
+                       ["task:typed-owner", 1, "blocked", "{\"original\":true}", "now"])
+    rows = client.execute_operation("executor_task_revision_history_page",
+                                    ["task:typed-owner", 1, 0]).fetchall()
+    assert rows == [("task:typed-owner", 1, "blocked", "{\"original\":true}")]
+    assert client.grant["allowed_command_operations"] == []
+    with pytest.raises(TypedStateOwnerError):
+        client.execute_operation("txn_cas_task_status", ["done", "now", "task:typed-owner", 0])
+
+
+@pytest.mark.parametrize("parameters", [
+    ["task:foreign", 1, 0], ["task:typed-owner", 0, 0],
+    ["task:typed-owner", 513, 0], ["task:typed-owner", 1, -1],
+])
+def test_native_history_rejects_foreign_identity_and_unbounded_pages(native, parameters):
+    client, _, _ = native
+    with pytest.raises(TypedStateOwnerError):
+        client.execute_operation("executor_task_revision_history_page", parameters)
+
+
+def test_native_history_rechecks_sealed_source(native):
+    client, connection, gateway = native
+    assert client.execute_operation("executor_task_revision_history_page", ["task:typed-owner", 1, 0]).fetchall() == []
+    connection.execute("UPDATE tasks SET plan_cid='plan:changed'")
+    with pytest.raises(TypedStateOwnerError):
+        client.execute_operation("executor_task_revision_history_page", ["task:typed-owner", 1, 0])
