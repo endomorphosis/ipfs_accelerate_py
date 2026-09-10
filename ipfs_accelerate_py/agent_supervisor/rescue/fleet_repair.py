@@ -286,7 +286,12 @@ explicit prohibition on automatically starting llama-server.
 STORAGE DIRECTION: Production supervisors default to DuckDB + Quack. Aggregate
 independent instances through DuckLake (the official DuckDB ducklake extension)
 using a DuckDB + Quack control plane;
-coordinate derived codebase AST/hash/state in a separate DuckDB + Quack instance.
+coordinate derived codebase AST/hash/state in a separate DuckDB + Quack instance,
+including vector embeddings, BM25 indexes, knowledge graphs, proof caches and
+certificates. Use the repository-scoped derived artifact registry with exact
+source tree/input hashes, producer revision and configuration digest. Stored
+artifact references remain unverified; proof/certificate registration cannot
+replace independent validation or authorize task completion.
 Reuse the existing federation, DuckLake projection and typed state-owner APIs.
 Preserve the existing semantic truth owner and exact cross-instance claims,
 leases, fences and receipt bindings. Do not silently fall back to independent

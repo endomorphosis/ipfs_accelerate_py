@@ -41,6 +41,8 @@ def test_native_owner_launches_are_separate_and_fail_closed(topology, tmp_path):
     assert not (tmp_path / "fleet").exists()
     assert result["aggregation"]["authoritative"] is False
     assert result["derived_coordination"]["semantic_truth_authority"] == "ipfs_datasets_py"
+    assert result["derived_coordination"]["artifact_kinds"] == list(fleet.ARTIFACT_KINDS)
+    assert result["derived_coordination"]["artifact_schema"] == fleet.ARTIFACT_SCHEMA
     assert result["runtime_qualified"] is False
 
 

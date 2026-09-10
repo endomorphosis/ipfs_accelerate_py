@@ -6849,7 +6849,9 @@ class TypedStateOwnerGateway:
                         if not isinstance(payload, dict):
                             raise TypedStateOwnerProtocolError("derived request must be an object")
                         operation = "derived.coordination." + (
-                            "write" if payload.get("operation") in {"ingest_snapshot", "record_reference"} else "read"
+                            "write" if payload.get("operation") in {
+                                "ingest_snapshot", "record_reference", "record_artifact"
+                            } else "read"
                         )
                         if operation not in grant.allowed_operations:
                             raise TypedStateOwnerAuthorizationError("derived operation is outside the client grant")

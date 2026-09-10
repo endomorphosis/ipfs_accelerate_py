@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -11,6 +12,9 @@ import pytest
 from test.api.causal_federation.test_typed_state_owner import _gateway, _install
 from ipfs_accelerate_py.agent_supervisor.analysis.derived_coordination import (
     DerivedCoordinationClient,
+)
+from ipfs_accelerate_py.agent_supervisor.analysis.derived_artifacts import (
+    ARTIFACT_KINDS, ARTIFACT_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TypedStateOwnerConnection,
@@ -210,6 +214,126 @@ def test_public_quack_facade_supports_derived_owner_calls(owner):
         assert result["completion_authority"] is False
     finally:
         client.close()
+
+
+def _artifact(kind="vector_embeddings", **changes):
+    return dict(tree_id="git:source-tree", artifact_kind=kind,
+                input_digest="sha256:" + "a" * 64,
+                producer_id="datasets:test-producer", producer_revision="git:pinned-producer",
+                parameters_digest="sha256:" + "b" * 64, **changes)
+
+
+@pytest.mark.parametrize("kind", ARTIFACT_KINDS)
+def test_artifacts_share_immutable_references_without_claiming_verification(owner, monkeypatch, kind):
+    gateway, _, attach = owner
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_SEMANTIC_TRUTH_AUTHORITY", "ipfs_datasets_py")
+    first, second = _public_client(attach), _public_client(attach)
+    try:
+        writer = DerivedCoordinationClient(first, repository_id="repo:one")
+        reader = DerivedCoordinationClient(second, repository_id="repo:one")
+        metadata = _artifact(kind)
+        recorded = writer.call("record_artifact", **metadata, artifact_cid="cid:test-artifact")
+        assert reader.call("lookup_artifact", **metadata)["result"] == recorded["result"]
+        assert writer.call("record_artifact", **metadata, artifact_cid="cid:test-artifact")["result"] == recorded["result"]
+        with pytest.raises(TypedStateOwnerError, match="operation_failed"):
+            writer.call("record_artifact", **metadata, artifact_cid="cid:different-content")
+        assert reader.call("lookup_artifact", **metadata)["result"] == recorded["result"]
+        assert recorded["result"]["artifact"]["schema"] == ARTIFACT_SCHEMA
+        assert recorded["result"]["artifact_verified"] is False
+        assert recorded["completion_authority"] is False
+        assert recorded["authority"] == "derived_evidence"
+        assert gateway._derived_coordination_service._ast is None
+        capabilities = reader.call("capabilities")["result"]
+        assert capabilities["artifact_kinds"] == list(ARTIFACT_KINDS)
+        assert capabilities["artifact_schema"] == ARTIFACT_SCHEMA
+    finally:
+        first.close()
+        second.close()
+
+
+def test_artifact_reuse_requires_exact_source_producer_inputs_and_configuration(owner):
+    _, _, attach = owner
+    client, other = attach(), attach("repo:two")
+    try:
+        api = DerivedCoordinationClient(client, repository_id="repo:one")
+        metadata = _artifact()
+        api.call("record_artifact", **metadata, artifact_cid="cid:test-artifact")
+        for field, value in dict(tree_id="git:changed", input_digest="sha256:" + "c" * 64,
+                                 producer_id="different-producer", producer_revision="git:new-producer",
+                                 parameters_digest="sha256:" + "d" * 64,
+                                 artifact_kind="proof_cache").items():
+            assert api.call("lookup_artifact", **{**metadata, field: value})["result"]["artifact"] is None
+        scoped = DerivedCoordinationClient(other, repository_id="repo:two")
+        assert scoped.call("lookup_artifact", **metadata)["result"]["artifact"] is None
+        assert scoped.call("list_artifacts", tree_id=metadata["tree_id"], artifact_kind=metadata["artifact_kind"])["result"]["artifacts"] == []
+        with pytest.raises(TypedStateOwnerError):
+            DerivedCoordinationClient(client, repository_id="repo:two").call("lookup_artifact", **metadata)
+    finally:
+        client.close()
+        other.close()
+
+
+@pytest.mark.parametrize("changes", [
+    {"verified": True}, {"sql": "DELETE FROM tasks"}, {"artifact_kind": "task_completion"},
+    {"input_digest": "unhashed"}, {"parameters_digest": "sha256:short"},
+    {"producer_revision": ""}, {"artifact_cid": " "}, {"artifact_cid": "cid:\ninvalid"},
+    {"artifact_cid": "x" * 257}, {"producer_id": {"nested": "object"}},
+])
+def test_artifact_native_boundary_rejects_unbound_or_unbounded_records(owner, changes):
+    _, _, attach = owner
+    client = attach()
+    try:
+        api = DerivedCoordinationClient(client, repository_id="repo:one")
+        with pytest.raises(TypedStateOwnerError):
+            api.call("record_artifact", **{**_artifact(), "artifact_cid": "cid:test", **changes})
+        assert api.call("lookup_artifact", **_artifact())["result"]["artifact"] is None
+    finally:
+        client.close()
+
+
+def test_artifact_pages_are_bounded_and_repository_scoped(owner):
+    _, _, attach = owner
+    client = attach()
+    try:
+        api = DerivedCoordinationClient(client, repository_id="repo:one")
+        expected = []
+        for index in range(67):
+            result = api.call("record_artifact", **{**_artifact(), "producer_revision": f"git:{index}"}, artifact_cid=f"cid:{index}")
+            expected.append(result["result"]["artifact"]["artifact_key"])
+        page = api.call("list_artifacts", tree_id="git:source-tree", artifact_kind="vector_embeddings")["result"]
+        assert len(page["artifacts"]) == 64
+        assert page["has_more"] is True
+        assert len(json.dumps(page).encode()) < 262144
+        rest = api.call("list_artifacts", tree_id="git:source-tree", artifact_kind="vector_embeddings", after=page["next_cursor"])["result"]
+        assert rest["has_more"] is False
+        assert rest["next_cursor"] == ""
+        assert [row["artifact_key"] for row in page["artifacts"] + rest["artifacts"]] == sorted(expected)
+        for changes in ({"limit": True}, {"limit": 0}, {"limit": 65}, {"after": "raw offset"}):
+            with pytest.raises(TypedStateOwnerError):
+                api.call("list_artifacts", tree_id="git:source-tree", artifact_kind="vector_embeddings", **changes)
+    finally:
+        client.close()
+
+
+def test_concurrent_artifact_publishers_cannot_replace_winning_publication(owner):
+    _, _, attach = owner
+
+    def publish(cid):
+        client = attach()
+        try:
+            api = DerivedCoordinationClient(client, repository_id="repo:one")
+            return api.call("record_artifact", **_artifact(), artifact_cid=cid)["result"]["artifact"]
+        except TypedStateOwnerError as error:
+            assert "operation_failed" in str(error)
+            return None
+        finally:
+            client.close()
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        result = list(pool.map(publish, ["cid:first", "cid:second"] * 2))
+    accepted = [record for record in result if record]
+    assert len(accepted) == 2
+    assert accepted[0] == accepted[1]
 
 
 def test_scoped_sessions_survive_idle_grant_expiry_without_replaying(owner, monkeypatch):

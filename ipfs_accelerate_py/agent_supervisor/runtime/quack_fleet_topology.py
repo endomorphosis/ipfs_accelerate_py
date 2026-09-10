@@ -14,6 +14,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from ..analysis.derived_artifacts import ARTIFACT_KINDS, ARTIFACT_SCHEMA
 from .multi_supervisor_runner import DatabaseProgramConfig
 
 SCHEMA = "ipfs_accelerate_py/agent-supervisor/quack-fleet-topology@1"
@@ -145,6 +146,7 @@ def compile_topology(
                             "control_instance": "aggregate_control", "sources": sorted(source_ids), "authoritative": False},
             "derived_coordination": {"instance": "derived_coordination", "source_authority": "git",
                                      "semantic_truth_authority": "ipfs_datasets_py", "payloads": ["ast_cid", "content_hash", "state_root_cid"],
+                                     "artifact_kinds": list(ARTIFACT_KINDS), "artifact_schema": ARTIFACT_SCHEMA,
                                      "completion_authority": False},
             "unavailable_sources": sorted(unavailable_sources), "runtime_qualified": False}
 

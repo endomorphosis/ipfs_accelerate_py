@@ -286,6 +286,41 @@ continues to prohibit an accelerator-local AST writer while permitting these
 explicitly unverified derived references. Git, ipfs_kit_py, and ipfs_datasets_py
 retain their existing source and semantic authority.
 
+The same owner exposes `record_artifact`, `lookup_artifact`, `list_artifacts`, and
+`capabilities` for `vector_embeddings`, `bm25_index`, `knowledge_graph`,
+`proof_cache`, and `certificate` references. An immutable cache identity includes
+the repository, source tree, artifact kind, SHA-256 input digest, producer ID and
+revision, and SHA-256 parameters digest. Changing the source, model or producer
+version, inputs, or configuration requires a different identity; publishing a
+different artifact CID under an existing identity is rejected. Concurrent
+supervisors use the same owner lock, and reads retain the admitted repository
+scope. Listings use keyset cursors and pages of at most 64 bounded references.
+
+For example, with a repository-scoped `DerivedCoordinationClient` named `client`:
+
+```python
+identity = dict(
+    tree_id=git_tree_id,
+    artifact_kind="vector_embeddings",
+    input_digest=source_input_sha256,
+    producer_id=embedding_model_id,
+    producer_revision=pinned_model_revision,
+    parameters_digest=embedding_configuration_sha256,
+)
+client.call("record_artifact", **identity, artifact_cid=materialized_index_cid)
+cached = client.call("lookup_artifact", **identity)["result"]["artifact"]
+```
+
+Producers must materialize their artifacts and consumers must verify their
+content and provenance. This registry does not generate embeddings, search an
+index, validate a proof, or certify a task. Every response explicitly retains
+`artifact_verified=false` and `completion_authority=false`, including proof and
+certificate references. The datasets-authoritative profile permits registration
+without constructing an accelerator-local AST writer. Compiled deployments
+advertise these capabilities; the dedicated owner health check verifies them
+through an authenticated Quack session. An incompatible capability report is
+reported for repair without repeatedly restarting an otherwise reachable owner.
+
 The aggregate owner can separately call `bind_fleet_observation_reads()` and
 publish `fleet-observation-read.token` with mode 0600. An independent reader
 uses `TypedStateOwnerConnection(..., fleet_observation_read=True)`; its exact

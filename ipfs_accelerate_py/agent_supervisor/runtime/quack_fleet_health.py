@@ -13,6 +13,7 @@ from typing import Any
 from ..rescue.live_board_probe import birth_matches, process_identity
 from ..task_sources.typed_state_owner import (
     TYPED_STATE_OWNER_SOCKET_FILENAME,
+    TypedStateOwnerRemoteError,
     compact_default_owner_socket_path,
 )
 from .quack_fleet_topology import ROLES, attach_typed_instance
@@ -40,9 +41,25 @@ def probe_owner(deployment: Mapping[str, Any], role: str) -> dict[str, Any]:
                     derived_repository_id="fleet:health" if not aggregate else "", fleet_observation_read=aggregate,
                     timeout_seconds=5)
         generation = client.load_generation()
+        verified_kinds = []
         if not aggregate:
             client.derived_coordination({"operation": "list_references",
                                          "repository_id": "fleet:health", "tree_id": "fleet:health"})
+            expected = deployment.get("derived_coordination", {})
+            if expected.get("artifact_kinds"):
+                try:
+                    capabilities = client.derived_coordination({"operation": "capabilities",
+                        "repository_id": "fleet:health"})["result"]
+                except TypedStateOwnerRemoteError as error:
+                    if error.error_code == "operation_failed" and error.error_type == "ValueError":
+                        return {"healthy": False, "reason": "derived_capability_mismatch", "restartable": False}
+                    raise
+                required = set(expected["artifact_kinds"])
+                if (capabilities.get("artifact_schema") != expected.get("artifact_schema")
+                    or not required.issubset(capabilities.get("artifact_kinds", []))
+                    or not {"record_artifact", "lookup_artifact", "list_artifacts"}.issubset(capabilities.get("operations", []))):
+                    return {"healthy": False, "reason": "derived_capability_mismatch", "restartable": False}
+                verified_kinds = sorted(required)
         after = json.loads((state / "quack-state-server.status.json").read_text())
         if (after.get("lifecycle") != "ready" or after.get("identity", {}).get("process_birth_id") != identity.get("process_birth_id")
             or not birth_matches(process_identity(birth.get("pid")), birth)
@@ -50,6 +67,7 @@ def probe_owner(deployment: Mapping[str, Any], role: str) -> dict[str, Any]:
             or generation.database_uuid != identity.get("database_uuid")):
             return {"healthy": False, "reason": "native_identity_changed_during_health_query"}
         return {"healthy": True, "reason": "authenticated_typed_generation_read",
+                "verified_artifact_kinds": verified_kinds,
                 "derived_service_verified": not aggregate, "generation": generation.generation,
                 "database_uuid": generation.database_uuid, "process_birth_id": identity["process_birth_id"]}
     except Exception as error:  # noqa: BLE001 - one failed native probe becomes bounded recovery evidence
@@ -62,7 +80,8 @@ def probe_owner(deployment: Mapping[str, Any], role: str) -> dict[str, Any]:
 def recovery_decision(previous: Mapping[str, Any], probe: Mapping[str, Any], *, now: float) -> dict[str, Any]:
     failures = 0 if probe.get("healthy") is True else int(previous.get("consecutive_failures", 0)) + 1
     restarts = [stamp for stamp in previous.get("restart_times", []) if 0 <= now - stamp <= 3600]
-    restart = failures >= 2 and len(restarts) < 3 and (not restarts or now - max(restarts) >= 300)
+    restart = (probe.get("restartable") is not False and failures >= 2
+               and len(restarts) < 3 and (not restarts or now - max(restarts) >= 300))
     return {"consecutive_failures": failures, "restart_times": restarts, "restart_requested": restart, "probe": dict(probe), "observed_at": now}
 
 

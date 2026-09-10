@@ -1,4 +1,4 @@
-"""Bounded derived AST/hash/state coordination on the native Quack owner.
+"""Bounded derived codebase and artifact coordination on the native Quack owner.
 
 This service stores disposable acceleration evidence and source references. Git,
 ipfs_kit_py and ipfs_datasets_py retain their respective semantic authority.
@@ -12,6 +12,11 @@ import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
+
+from .derived_artifacts import (
+    ARTIFACT_KINDS, ARTIFACT_OPERATIONS, ARTIFACT_SCHEMA,
+    MAX_PAGE_SIZE, DerivedArtifactRegistry,
+)
 
 SCHEMA = "ipfs_accelerate_py/agent-supervisor/derived-coordination@1"
 MAX_REQUEST_BYTES = 262144
@@ -58,6 +63,7 @@ class DerivedCoordinationService:
             "CREATE TABLE IF NOT EXISTS derived_coordination_ingests "
             "(snapshot_id VARCHAR PRIMARY KEY, input_digest VARCHAR NOT NULL, result_json VARCHAR NOT NULL)"
         )
+        self._artifacts = DerivedArtifactRegistry(connection)
 
     def _index(self):
         from .duckdb_ast_index import DuckDBASTIndex
@@ -80,6 +86,8 @@ class DerivedCoordinationService:
         repository_id = _text(payload.get("repository_id"), "repository_id")
         operation = payload.get("operation")
         allowed = {
+            "capabilities": set(),
+            **ARTIFACT_OPERATIONS,
             "record_reference": {"tree_id", "ast_cid", "content_hash", "state_root"},
             "list_references": {"tree_id"},
             "ingest_snapshot": {"tree_id", "files", "worktree_id"},
@@ -91,7 +99,15 @@ class DerivedCoordinationService:
             or set(payload) - {"operation", "repository_id"} - allowed[operation]
         ):
             raise ValueError("unknown derived operation or request field")
-        if operation == "record_reference":
+        if operation == "capabilities":
+            result = {
+                "operations": sorted(allowed), "artifact_kinds": list(ARTIFACT_KINDS),
+                "artifact_schema": ARTIFACT_SCHEMA, "artifact_page_limit": MAX_PAGE_SIZE,
+                "artifact_verified": False,
+            }
+        elif operation in ARTIFACT_OPERATIONS:
+            result = self._artifacts.execute(payload)
+        elif operation == "record_reference":
             record = {
                 key: _text(payload.get(key), key, 512) for key in allowed[operation]
             }
