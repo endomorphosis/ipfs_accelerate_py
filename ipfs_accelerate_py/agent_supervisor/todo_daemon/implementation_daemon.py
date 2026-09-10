@@ -59636,6 +59636,17 @@ class PortalImplementationDaemon:
             # preserve it rather than turning repository mismatch into lock
             # deletion authority.
             return True
+        state_dir = str(metadata.get("state_dir") or "").strip()
+        if state_dir:
+            try:
+                claimed_state = Path(state_dir).resolve(strict=False)
+            except (OSError, RuntimeError):
+                return False
+            if not claimed_state.exists():
+                # Live daemon PIDs outlive disposed attempt directories.
+                # Treating those leftover claims as active blocked ASEH-062
+                # with selectable_ready_count=0 / portal projection incomplete.
+                return False
         birth_liveness = self._implementation_task_claim_birth_liveness(
             metadata
         )
