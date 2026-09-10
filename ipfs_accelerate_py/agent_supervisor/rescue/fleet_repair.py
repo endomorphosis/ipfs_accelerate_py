@@ -253,7 +253,8 @@ and ordinary pushes needed for this task are authorized. Preserve the user's
 explicit prohibition on automatically starting llama-server.
 
 STORAGE DIRECTION: Production supervisors default to DuckDB + Quack. Aggregate
-independent instances through QuackLake using a DuckDB + Quack control plane;
+independent instances through DuckLake (the official DuckDB ducklake extension)
+using a DuckDB + Quack control plane;
 coordinate derived codebase AST/hash/state in a separate DuckDB + Quack instance.
 Reuse the existing federation, DuckLake projection and typed state-owner APIs.
 Preserve the existing semantic truth owner and exact cross-instance claims,
@@ -265,9 +266,12 @@ open_duckdb_connection with Quack preferred and file fallback permitted. Treat
 that as unfinished native migration: provision/admit the queue's real Quack
 owner and qualify its state/source transition before requiring the transport.
 Do not merely flip a global flag or describe DatabaseProgramConfig defaults as
-proof that every existing queue has migrated. External QuackLake catalog export
-also requires its actual endpoint/configuration; native aggregation alone is
-not a connected external catalog.
+proof that every existing queue has migrated. The user corrected QuackLake to
+DuckLake: https://duckdb.org/docs/lts/core_extensions/ducklake. No third-party
+QuackLake catalog, Cloudflare account, JWT or R2 credentials are required for
+local DuckLake aggregation. Use the bounded ducklake_fleet_export history worker
+with its dedicated catalog and Parquet directory; never open taskboard files for
+history export. DuckLake history is observational, not task completion authority.
 
 THIS JOB: board {board['id']}; board checkout {board['cwd']}; board config
 {board.get('config', '')}; watchdog configuration {config.get('_config_path', '')}.

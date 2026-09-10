@@ -14,16 +14,13 @@ The fleet topology binds existing boards to two independent native state owners:
   content-hash and state-root reference coordination. Git remains source-byte
   authority and `ipfs_datasets_py` remains semantic truth authority.
 
-This module implements native Quack federation and observation aggregation.
-[QuackLake](https://github.com/tobilg/quacklake) is a separate DuckLake catalog
-service; this local aggregation owner is not that product. Connecting a real
-QuackLake catalog requires a separate admitted endpoint and catalog connector.
-History aggregation never completes tasks, steals leases or substitutes for
-native acceptance.
-
-The optional [QuackLake catalog connector](quacklake_catalog.md) exports admitted
-fleet observations to an existing catalog. It runs separately from both native
-owners, so an unavailable catalog cannot block board scheduling or state reads.
+Fleet history uses the official DuckDB DuckLake extension. The
+[local DuckLake exporter](ducklake_fleet_history.md) reads authenticated aggregate
+observations through Quack and writes a dedicated DuckDB metadata catalog and
+Parquet directory. It runs separately from both native owners, so unavailable
+history cannot block board scheduling or state reads. No external catalog service
+or cloud credentials are required. History aggregation never completes tasks,
+steals leases or substitutes for native acceptance.
 
 Compile the actual installed fleet and render native user services:
 
@@ -100,12 +97,10 @@ python3 /absolute/immutable/release/scripts/ops/agent_supervisor/quack_fleet_agg
 The JSON written to `aggregate-view.json` is an export of that typed query, not
 source or completion authority. The CLI above queries the live control owner.
 
-DuckLake archival publication is still a separate optional integration: source
-event ranges must be admitted before its existing range-projection API can
-publish history. This change implements the native Quack aggregation boundary
-and durable observational history in the control owner; it does not claim that
-a QuackLake catalog is deployed or connected, or that DuckLake archival export
-is already running. History availability is never a scheduling prerequisite.
+The [DuckLake history worker](ducklake_fleet_history.md) archives sampled current
+observations by CID. This real catalog export is distinct from a complete source
+event-range projection, which still requires the existing range admission APIs.
+History availability is never a scheduling prerequisite.
 
 Native source reads have independent polling deadlines. A slow or unavailable
 source does not delay publishing completed reads or polling healthy sources

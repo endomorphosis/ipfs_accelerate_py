@@ -1,0 +1,17 @@
+[Unit]
+Description=Archive authenticated Quack fleet observations in local DuckLake
+ConditionPathExists=%h/.local/state/ipfs-quack-fleet/deployment.json
+ConditionPathExists=!%h/.local/state/ipfs-quack-fleet/HOLD
+ConditionPathExists=!%h/.local/state/ipfs-quack-fleet/OPERATOR_STOP
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -P %h/.local/lib/ipfs-quack-fleet/ducklake-export-current/scripts/ops/agent_supervisor/ducklake_fleet_export.py --history-root %h/.local/state/ipfs-quack-fleet/ducklake-history --deployment %h/.local/state/ipfs-quack-fleet/deployment.json --inventory %h/.config/ipfs-taskboard-watchdog/inventory.json --status-file %h/.local/state/ipfs-quack-fleet/ducklake-history-status.json
+TimeoutStartSec=90
+TimeoutStopSec=10
+KillMode=control-group
+MemoryMax=512M
+TasksMax=32
+Nice=10
+UMask=0077
+NoNewPrivileges=true

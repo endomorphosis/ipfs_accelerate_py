@@ -279,7 +279,7 @@ def test_native_view_invokes_live_read_only_cli_with_bounded_output(tmp_path, mo
         assert kwargs["stderr"] == subprocess.DEVNULL
         kwargs["stdout"].write(json.dumps(expected).encode())
         return SimpleNamespace(returncode=0)
-    monkeypatch.setattr(catalog.subprocess, "run", run)
+    monkeypatch.setattr(subprocess, "run", run)
     assert catalog.read_native_view(deployment, inventory) == expected
 
 
@@ -297,6 +297,6 @@ def test_native_view_output_limit_is_enforced_without_accepting_partial_json(tmp
         kwargs["stdout"].seek(16 * 1024 * 1024)
         kwargs["stdout"].write(b"x")
         return SimpleNamespace(returncode=0)
-    monkeypatch.setattr(catalog.subprocess, "run", oversized)
+    monkeypatch.setattr(subprocess, "run", oversized)
     with pytest.raises(ValueError, match="export limit"):
         catalog.read_native_view(deployment, tmp_path / "inventory.json")

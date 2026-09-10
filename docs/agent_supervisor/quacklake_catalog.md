@@ -1,5 +1,7 @@
 # QuackLake catalog export
 
+For the default local DuckLake deployment, use [DuckLake fleet history](ducklake_fleet_history.md). This optional cloud connector is not required.
+
 The connector targets [tobilg/quacklake](https://github.com/tobilg/quacklake), a
 DuckLake catalog served over Quack. Its catalog metadata runs in Cloudflare
 Durable Objects; table data lives in R2. The local fleet control plane remains a

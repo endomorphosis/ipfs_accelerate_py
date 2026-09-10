@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically archive Quack fleet observations in DuckLake
+
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=120
+AccuracySec=10
+Persistent=true
+Unit=ipfs-ducklake-fleet-export.service
+
+[Install]
+WantedBy=timers.target
