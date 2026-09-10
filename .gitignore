@@ -173,6 +173,12 @@ Thumbs.db
 /data/agent_supervisor/prompt_only_self_improvement_v3/live/
 /data/agent_supervisor/logic_governed_semantic_work_fabric/
 /data/aseh/
+# ASEH inventory and hermetic/historical/live/canary results are declared
+# source, same as other program inventory JSON. Root *.json would otherwise
+# hide new files from git status and from implementer `git add` without -f.
+# The daemon still force-adds declared ignored outputs at commit.
+!docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/*.json
+!benchmarks/agent_supervisor/efficiency_state_hardening/results/*.json
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/**
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/*.json
