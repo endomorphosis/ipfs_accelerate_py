@@ -1897,6 +1897,9 @@ def bind_database_portal_execution_from_args(
     external_agent_container_dispatcher_factory: (
         ExternalAgentContainerDispatcherFactory | None
     ) = None,
+    owner_merge_runtime: Any = None,
+    admitted_owner_merge_config_cid: str | None = None,
+    admitted_owner_merge_plan_cid: str | None = None,
 ) -> object | None:
     """Bind one admitted database execution path in production mode.
 
@@ -1971,7 +1974,41 @@ def bind_database_portal_execution_from_args(
         getattr(parsed, "merge_target_branch", "") or ""
     ).strip()
     recovery_queue: Any = None
-    if configured_merge_queue_dir is not None and configured_merge_target_branch:
+    from ..semantic_refactoring.residual_authority import SPAR_BOARD_NAMESPACE
+
+    owner_recovery_required = (
+        str(getattr(parsed, "board_namespace", "") or "") == SPAR_BOARD_NAMESPACE
+        or (
+            str(getattr(parsed, "authority_mode", "") or "") == "quack"
+            and configured_merge_queue_dir is not None
+            and bool(configured_merge_target_branch)
+        )
+    )
+    if owner_recovery_required and owner_merge_runtime is None:
+        raise RuntimeError(
+            "owner-backed merge recovery runtime is not admitted; "
+            "native migration and paired grants are required"
+        )
+    if owner_merge_runtime is not None:
+        from ..merge.owner_recovery_adapter import OwnerMergeRecoveryRuntime
+
+        if type(owner_merge_runtime) is not OwnerMergeRecoveryRuntime:
+            raise RuntimeError("native queue requires its exact admitted recovery runtime")
+        owner_merge_runtime.validate_factory_binding(
+            repository_root=repo_root,
+            attempt_root=attempt_root,
+            board_namespace=str(getattr(parsed, "board_namespace", "") or ""),
+            lane_id=str(getattr(parsed, "task_shard_index", "")),
+            target_branch=configured_merge_target_branch,
+            admitted_config_cid=admitted_owner_merge_config_cid,
+            admitted_plan_cid=admitted_owner_merge_plan_cid,
+        )
+        recovery_queue = owner_merge_runtime.queue
+    if (
+        recovery_queue is None
+        and configured_merge_queue_dir is not None
+        and configured_merge_target_branch
+    ):
         try:
             resolved_repo_root = Path(repo_root).resolve(strict=True)
             repository_check = subprocess.run(

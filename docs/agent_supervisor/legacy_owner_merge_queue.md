@@ -106,11 +106,13 @@ does not reuse pending pages: cooldown rows and expired processing claims still
 own work. Invalid preserved identities deny the observation, and admission is
 rechecked after every new reader, including a false active-task result.
 
-This adapter does not implement the native recovery, cancellation, recovery
-cursor storage or settlement authority methods. Those need their own admitted
-contracts before replacing every production queue factory. The owner does not
-write legacy JSON receipt paths; terminal methods return no local receipt path.
-The adapter's availability is not a live migration or a board acceptance gate.
+The paired [owner recovery runtime](owner_merge_recovery.md) now supplies durable
+cursor CAS, canonical train-consumer leases and preserved receipt versions.
+Owner-backed trains and the production recovery factory require that admitted
+pair. Cancellation, callback recovery and settlement authority still require
+their separate native contracts. The owner does not write legacy JSON receipt
+paths; terminal methods return no local receipt path. Adapter availability is
+not a live migration or a board acceptance gate.
 
 ## Transaction and recovery boundaries
 
