@@ -175,3 +175,41 @@ def test_client_refuses_wrong_receiver_before_request_send(monkeypatch, mismatch
         assert not server.pending.is_set()
     finally:
         server.close()
+
+
+@pytest.mark.parametrize("boundary", ["accept", "settimeout", "peer", "receive", "close"])
+def test_socket_io_failure_does_not_retire_owner_and_next_request_recovers(monkeypatch, boundary):
+    import errno
+    server = request.OwnerObservationRequests(scope())
+    original_listener = server.listener
+    original_peer, original_receive = request._peer, request._receive
+    class FailedConnection:
+        def __enter__(self): return self
+        def __exit__(self, *args):
+            if boundary == "close": raise OSError(errno.EIO, "private close detail")
+        def settimeout(self, seconds):
+            if boundary == "settimeout": raise OSError(errno.EBADF, "private descriptor detail")
+        def sendall(self, payload): pass
+    class FailedListener:
+        def accept(self):
+            if boundary == "accept": raise OSError(errno.EMFILE, "private resource detail")
+            return FailedConnection(), None
+    try:
+        server.listener = FailedListener()
+        def peer(connection):
+            if boundary == "peer": raise OSError(errno.ECONNABORTED, "private peer detail")
+            return os.getpid(), os.getuid()
+        def receive(connection):
+            if boundary == "receive": raise OSError(errno.EIO, "private receive detail")
+            return {}
+        monkeypatch.setattr(request, "_peer", peer)
+        monkeypatch.setattr(request, "_receive", receive)
+        server.poll(observer_available=True)
+        assert not server.pending.is_set()
+        server.listener = original_listener
+        monkeypatch.setattr(request, "_peer", original_peer)
+        monkeypatch.setattr(request, "_receive", original_receive)
+        assert exchange(server)["accepted"] is True
+    finally:
+        server.listener = original_listener
+        server.close()
