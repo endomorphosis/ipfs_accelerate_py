@@ -20086,6 +20086,19 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         """Clean merged worktrees while holding the checkout mutation lock."""
 
+        if self.config.database_program is not None:
+            # Compatibility backport of the canonical callback-retention gate.
+            # This runtime predates _canonical_completed_reconciliation_task
+            # and its mutation-boundary recheck. Neither ancestry, projections
+            # nor dead-owner lifecycle records can replace that proof. Retain
+            # all background candidates until that native API is qualified.
+            return {
+                "attempted": False,
+                "reason": "canonical_completion_cleanup_api_unavailable",
+                "removed_count": 0,
+                "skipped_count": 0,
+            }
+
         worktree_root = self.config.worktree_root
         if worktree_root is None:
             return {"attempted": False, "reason": "worktree_root_not_configured"}
