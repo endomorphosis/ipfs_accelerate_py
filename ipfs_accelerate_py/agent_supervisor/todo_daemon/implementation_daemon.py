@@ -55480,7 +55480,9 @@ class PortalImplementationDaemon:
     def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
         """Continuously drain inactive worktrees whose branches are already merged."""
 
-        if self.isolate_merge_queue_to_task_projection:
+        # Older sealed Portal constructors do not expose this flag. Absence
+        # cannot grant peer cleanup authority, and must not abort task startup.
+        if getattr(self, "isolate_merge_queue_to_task_projection", True) is not False:
             return {
                 "attempted": False,
                 "reason": "task_projection_has_no_peer_cleanup_authority",
