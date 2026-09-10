@@ -1,0 +1,551 @@
+"""Focused tests for exact configured-board DuckDB extension projections."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import stat
+import sys
+from pathlib import Path
+from types import ModuleType
+
+import pytest
+from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_projection import (
+    CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
+    CONFIGURED_BOARD_EXTENSION_PIN_SCHEMA,
+    CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV,
+    CONFIGURED_BOARD_EXTENSION_SET_PIN_SCHEMA,
+    ConfiguredBoardExtensionProjectionError,
+    build_configured_board_extension_set_pin,
+    configured_board_extension_set_id,
+    inspect_configured_board_extension_sources,
+    parse_configured_board_extension_pin,
+    parse_configured_board_extension_set_pin,
+    parse_configured_board_extension_set_pin_json,
+    project_configured_board_extension_home,
+    project_configured_board_extension_set_home,
+    seal_configured_board_extension_set_home,
+    verify_configured_board_extension_home,
+    verify_configured_board_extension_set_home,
+)
+
+PAYLOAD = b"synthetic-quack-extension-v1\x00\x01"
+INFO = b'{"extension":"quack","synthetic":true}\n'
+
+
+def _write_sources(
+    root: Path,
+    *,
+    payload: bytes = PAYLOAD,
+    info: bytes = INFO,
+) -> tuple[Path, Path]:
+    root.mkdir(parents=True, exist_ok=True)
+    extension = root / "quack.duckdb_extension"
+    metadata = root / "quack.duckdb_extension.info"
+    extension.write_bytes(payload)
+    metadata.write_bytes(info)
+    return extension, metadata
+
+
+def _inspect(extension: Path, metadata: Path):
+    return inspect_configured_board_extension_sources(
+        extension,
+        metadata,
+        name="quack",
+        engine_version="v1.5.5",
+        platform="linux_arm64",
+    )
+
+
+def _prepare_parent(path: Path) -> Path:
+    path.mkdir(mode=0o700)
+    os.chmod(path, 0o700)
+    return path
+
+
+def _restore_tree_permissions(root: Path) -> None:
+    """Leave pytest able to remove a projection whose custody is read-only."""
+
+    if not root.exists() or root.is_symlink():
+        return
+    os.chmod(root, 0o700)
+    for current, directories, files in os.walk(root):
+        current_path = Path(current)
+        os.chmod(current_path, 0o700)
+        for name in directories:
+            candidate = current_path / name
+            if not candidate.is_symlink():
+                os.chmod(candidate, 0o700)
+        for name in files:
+            candidate = current_path / name
+            if not candidate.is_symlink():
+                os.chmod(candidate, 0o600)
+
+
+def _mode(path: Path) -> int:
+    return stat.S_IMODE(os.lstat(path).st_mode)
+
+
+def _exact_set(tmp_path: Path):
+    sources: dict[str, tuple[Path, Path]] = {}
+    pins = {}
+    for name, payload in (("httpfs", b"httpfs-v1"), ("quack", PAYLOAD)):
+        root = tmp_path / "sources" / name
+        root.mkdir(parents=True)
+        extension = root / f"{name}.duckdb_extension"
+        info = root / f"{name}.duckdb_extension.info"
+        extension.write_bytes(payload)
+        info.write_bytes(f"metadata:{name}".encode())
+        sources[name] = (extension, info)
+        pins[name] = inspect_configured_board_extension_sources(
+            extension,
+            info,
+            name=name,
+            engine_version="v1.5.5",
+            platform="linux_arm64",
+        )
+    set_pin = build_configured_board_extension_set_pin(
+        pins,
+        versions={"httpfs": "httpfs-version", "quack": "quack-version"},
+    )
+    parent = _prepare_parent(tmp_path / "launch-set")
+    home = project_configured_board_extension_set_home(
+        pins,
+        sources=sources,
+        parent=parent,
+    )
+    return sources, pins, set_pin, home
+
+
+@pytest.fixture
+def image_cache():
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_cache import (
+        ConfiguredBoardExtensionImageCache,
+    )
+    cache = ConfiguredBoardExtensionImageCache(maximum=1)
+    try:
+        yield cache
+    finally:
+        cache._process_exit()
+
+
+def test_image_cache_reuses_exact_inode_after_each_client_closes(tmp_path, image_cache):
+    _sources, _pins, pin, home = _exact_set(tmp_path)
+    try:
+        identities = []
+        for _ in range(12):
+            lease = image_cache.borrow(pin, home)
+            with lease.load_guard():
+                paths = lease.install_paths
+                identities.append(tuple((str(p), p.stat().st_ino) for p in paths.values()))
+            lease.close()
+            lease.close()
+            with pytest.raises(ConfiguredBoardExtensionProjectionError, match="closed"):
+                lease.load_guard().__enter__()
+        assert all(identity == identities[0] for identity in identities)
+        image_cache.close()
+        assert all(not Path(p).exists() for p, _inode in identities[0])
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_image_cache_rechecks_regular_source_before_reuse(tmp_path, image_cache):
+    _sources, pins, pin, home = _exact_set(tmp_path)
+    lease = image_cache.borrow(pin, home)
+    lease.close()
+    path = home / pins["quack"].relative_directory / pins["quack"].extension_filename
+    try:
+        path.chmod(0o600)
+        path.write_bytes(b"changed source")
+        path.chmod(0o400)
+        with pytest.raises(ConfiguredBoardExtensionProjectionError):
+            image_cache.borrow(pin, home)
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_image_cache_rechecks_cached_image_custody(tmp_path, image_cache):
+    _sources, _pins, pin, home = _exact_set(tmp_path)
+    lease = image_cache.borrow(pin, home)
+    path = lease.install_paths["quack"]
+    lease.close()
+    try:
+        path.parent.chmod(0o700)
+        path.unlink()
+        path.symlink_to("/proc/self/fd/2147483647")
+        path.parent.chmod(0o500)
+        with pytest.raises(ConfiguredBoardExtensionProjectionError):
+            image_cache.borrow(pin, home)
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_image_cache_never_evicts_and_reloads_pinned_images(tmp_path, image_cache):
+    _sources, pins, pin, home = _exact_set(tmp_path)
+    other = build_configured_board_extension_set_pin(
+        pins, versions={"httpfs": "new-version", "quack": "quack-version"},
+    )
+    try:
+        lease = image_cache.borrow(pin, home)
+        with pytest.raises(ConfiguredBoardExtensionProjectionError, match="remain open"):
+            image_cache.close()
+        lease.close()
+        with pytest.raises(ConfiguredBoardExtensionProjectionError, match="bound exceeded"):
+            image_cache.borrow(other, home)
+        image_cache.borrow(pin, home).close()
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_image_cache_rejects_inherited_process_without_removing_parent_paths(
+    tmp_path, image_cache, monkeypatch,
+):
+    _sources, _pins, pin, home = _exact_set(tmp_path)
+    lease = image_cache.borrow(pin, home)
+    directory = lease.extension_directory
+    lease.close()
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(image_cache, "_pid", -1)
+            with pytest.raises(ConfiguredBoardExtensionProjectionError, match="exec after fork"):
+                image_cache.borrow(pin, home)
+            image_cache._process_exit()
+            assert directory.is_dir()
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_image_cache_serializes_concurrent_borrows(tmp_path, image_cache):
+    from concurrent.futures import ThreadPoolExecutor
+    _sources, _pins, pin, home = _exact_set(tmp_path)
+    def borrow():
+        lease = image_cache.borrow(pin, home)
+        try:
+            with lease.load_guard():
+                return str(lease.extension_directory)
+        finally:
+            lease.close()
+    try:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            paths = list(executor.map(lambda _: borrow(), range(12)))
+        assert len(set(paths)) == 1
+        assert image_cache._borrowers == 0
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_pin_is_path_independent_deterministic_and_round_trips(
+    tmp_path: Path,
+) -> None:
+    first_extension, first_info = _write_sources(tmp_path / "first")
+    second_extension, second_info = _write_sources(tmp_path / "second")
+
+    first = _inspect(first_extension, first_info)
+    second = _inspect(second_extension, second_info)
+
+    assert first == second
+    assert first.schema == CONFIGURED_BOARD_EXTENSION_PIN_SCHEMA
+    assert str(tmp_path) not in first.to_json()
+    assert parse_configured_board_extension_pin(first.as_dict()) == first
+    assert first.to_json() == json.dumps(
+        first.as_dict(),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
+    identity_body = first.as_dict()
+    identity_body.pop("projection_id")
+    expected_identity = "sha256:" + hashlib.sha256(
+        json.dumps(
+            identity_body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert first.projection_id == expected_identity
+
+
+def test_pin_parser_rejects_unknown_missing_and_textual_duplicate_fields(
+    tmp_path: Path,
+) -> None:
+    extension, metadata = _write_sources(tmp_path / "sources")
+    pin = _inspect(extension, metadata)
+
+    unknown = {**pin.as_dict(), "unreviewed": True}
+    missing = pin.as_dict()
+    missing.pop("info_sha256")
+    wrong_identity = {**pin.as_dict(), "projection_id": "sha256:" + "0" * 64}
+    for candidate in (unknown, missing, wrong_identity):
+        with pytest.raises(ConfiguredBoardExtensionProjectionError):
+            parse_configured_board_extension_pin(candidate)
+
+    # This API accepts exact dicts only, so textual duplicate JSON keys never
+    # reach a lossy JSON decoder or acquire a pin interpretation.
+    duplicate_json = '{"name":"quack","name":"foreign"}'
+    with pytest.raises(ConfiguredBoardExtensionProjectionError):
+        parse_configured_board_extension_pin(duplicate_json)
+
+
+def test_projection_has_exact_files_and_read_only_custody(tmp_path: Path) -> None:
+    extension, metadata = _write_sources(tmp_path / "sources")
+    pin = _inspect(extension, metadata)
+    parent = _prepare_parent(tmp_path / "launch")
+
+    home = project_configured_board_extension_home(
+        pin,
+        extension_path=extension,
+        info_path=metadata,
+        parent=parent,
+    )
+    try:
+        assert home.is_absolute()
+        assert home.name == pin.projection_id.removeprefix("sha256:")
+        assert verify_configured_board_extension_home(pin, home) == home
+        extension_copy = home / pin.relative_directory / pin.extension_filename
+        info_copy = extension_copy.with_name(f"{extension_copy.name}.info")
+        assert extension_copy.read_bytes() == PAYLOAD
+        assert info_copy.read_bytes() == INFO
+        assert _mode(extension_copy) == _mode(info_copy) == 0o400
+
+        expected_directories = {
+            home,
+            home / ".duckdb",
+            home / ".duckdb/extensions",
+            home / ".duckdb/extensions" / pin.engine_version,
+            home / pin.relative_directory,
+            home / ".python-user-base",
+            home / ".cache",
+        }
+        assert {
+            item for item in (home, *home.rglob("*")) if item.is_dir()
+        } == expected_directories
+        assert all(
+            _mode(item) == 0o500
+            for item in expected_directories - {home / ".cache"}
+        )
+        assert _mode(home / ".cache") == 0o700
+    finally:
+        _restore_tree_permissions(home)
+
+
+@pytest.mark.parametrize("mismatch", ("payload", "info"))
+def test_projection_rejects_sources_that_differ_from_pin(
+    tmp_path: Path,
+    mismatch: str,
+) -> None:
+    accepted_extension, accepted_info = _write_sources(tmp_path / "accepted")
+    pin = _inspect(accepted_extension, accepted_info)
+    candidate_extension, candidate_info = _write_sources(
+        tmp_path / "candidate",
+        payload=b"wrong-extension" if mismatch == "payload" else PAYLOAD,
+        info=b"wrong-info" if mismatch == "info" else INFO,
+    )
+    parent = _prepare_parent(tmp_path / "launch")
+
+    with pytest.raises(
+        ConfiguredBoardExtensionProjectionError,
+        match="differs from its accepted pin",
+    ):
+        project_configured_board_extension_home(
+            pin,
+            extension_path=candidate_extension,
+            info_path=candidate_info,
+            parent=parent,
+        )
+
+
+def test_source_inspection_rejects_symlinks_and_nonregular_nodes(
+    tmp_path: Path,
+) -> None:
+    extension, metadata = _write_sources(tmp_path / "real")
+    linked_extension = tmp_path / "linked.duckdb_extension"
+    linked_extension.symlink_to(extension)
+    nonregular_info = tmp_path / "info-directory"
+    nonregular_info.mkdir()
+
+    with pytest.raises(ConfiguredBoardExtensionProjectionError):
+        _inspect(linked_extension, metadata)
+    with pytest.raises(ConfiguredBoardExtensionProjectionError):
+        _inspect(extension, nonregular_info)
+
+
+def test_projected_byte_tamper_fails_verification_and_reprojection(
+    tmp_path: Path,
+) -> None:
+    extension, metadata = _write_sources(tmp_path / "sources")
+    pin = _inspect(extension, metadata)
+    parent = _prepare_parent(tmp_path / "launch")
+    home = project_configured_board_extension_home(
+        pin,
+        extension_path=extension,
+        info_path=metadata,
+        parent=parent,
+    )
+    projected = home / pin.relative_directory / pin.extension_filename
+    try:
+        os.chmod(projected, 0o600)
+        projected.write_bytes(b"tampered-projection")
+        with pytest.raises(
+            ConfiguredBoardExtensionProjectionError,
+            match="bytes drifted",
+        ):
+            verify_configured_board_extension_home(pin, home)
+        with pytest.raises(ConfiguredBoardExtensionProjectionError):
+            project_configured_board_extension_home(
+                pin,
+                extension_path=extension,
+                info_path=metadata,
+                parent=parent,
+            )
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_projection_is_idempotent_without_republishing(tmp_path: Path) -> None:
+    extension, metadata = _write_sources(tmp_path / "sources")
+    pin = _inspect(extension, metadata)
+    parent = _prepare_parent(tmp_path / "launch")
+    first = project_configured_board_extension_home(
+        pin,
+        extension_path=extension,
+        info_path=metadata,
+        parent=parent,
+    )
+    projected = first / pin.relative_directory / pin.extension_filename
+    first_home_inode = os.lstat(first).st_ino
+    first_payload_inode = os.lstat(projected).st_ino
+    try:
+        second = project_configured_board_extension_home(
+            pin,
+            extension_path=extension,
+            info_path=metadata,
+            parent=parent,
+        )
+        assert second == first
+        assert os.lstat(second).st_ino == first_home_inode
+        assert os.lstat(projected).st_ino == first_payload_inode
+        assert verify_configured_board_extension_home(pin, second) == second
+        homes = parent / "qualification-homes"
+        assert [item.name for item in homes.iterdir()] == [
+            pin.projection_id.removeprefix("sha256:")
+        ]
+    finally:
+        _restore_tree_permissions(first)
+
+
+def test_exact_httpfs_quack_set_projection_is_deterministic(tmp_path: Path) -> None:
+    sources: dict[str, tuple[Path, Path]] = {}
+    pins = {}
+    for name, payload in (("httpfs", b"httpfs-v1"), ("quack", PAYLOAD)):
+        root = tmp_path / "sources" / name
+        root.mkdir(parents=True)
+        extension = root / f"{name}.duckdb_extension"
+        info = root / f"{name}.duckdb_extension.info"
+        extension.write_bytes(payload)
+        info.write_bytes(f"metadata:{name}".encode())
+        sources[name] = (extension, info)
+        pins[name] = inspect_configured_board_extension_sources(
+            extension,
+            info,
+            name=name,
+            engine_version="v1.5.5",
+            platform="linux_arm64",
+        )
+    parent = _prepare_parent(tmp_path / "launch-set")
+    home = project_configured_board_extension_set_home(
+        pins,
+        sources=sources,
+        parent=parent,
+    )
+    try:
+        assert home.name == configured_board_extension_set_id(pins).removeprefix(
+            "sha256:"
+        )
+        assert verify_configured_board_extension_set_home(pins, home) == home
+        assert project_configured_board_extension_set_home(
+            pins,
+            sources=sources,
+            parent=parent,
+        ) == home
+        directory = home / pins["quack"].relative_directory
+        assert sorted(item.name for item in directory.iterdir()) == [
+            "httpfs.duckdb_extension",
+            "httpfs.duckdb_extension.info",
+            "quack.duckdb_extension",
+            "quack.duckdb_extension.info",
+        ]
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_exact_set_pin_json_is_closed_canonical_and_round_trips(
+    tmp_path: Path,
+) -> None:
+    _sources, _pins, set_pin, home = _exact_set(tmp_path)
+    try:
+        assert set_pin.schema == CONFIGURED_BOARD_EXTENSION_SET_PIN_SCHEMA
+        assert tuple(member.pin.name for member in set_pin.members) == (
+            "httpfs",
+            "quack",
+        )
+        assert parse_configured_board_extension_set_pin(set_pin.as_dict()) == set_pin
+        assert parse_configured_board_extension_set_pin_json(set_pin.to_json()) == set_pin
+
+        unknown = {**set_pin.as_dict(), "unreviewed": True}
+        with pytest.raises(ConfiguredBoardExtensionProjectionError):
+            parse_configured_board_extension_set_pin(unknown)
+        duplicate = set_pin.to_json().replace(
+            '"schema":',
+            '"schema":"duplicate","schema":',
+            1,
+        )
+        with pytest.raises(
+            ConfiguredBoardExtensionProjectionError,
+            match="duplicate keys",
+        ):
+            parse_configured_board_extension_set_pin_json(duplicate)
+        with pytest.raises(
+            ConfiguredBoardExtensionProjectionError,
+            match="not canonical",
+        ):
+            parse_configured_board_extension_set_pin_json(
+                json.dumps(set_pin.as_dict())
+            )
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_sealed_set_uses_exact_memfds_and_detects_load_path_tamper(
+    tmp_path: Path,
+) -> None:
+    _sources, _pins, set_pin, home = _exact_set(tmp_path)
+    sealed = seal_configured_board_extension_set_home(set_pin, home)
+    try:
+        sealed.verify()
+        assert set(sealed.install_paths) == {"httpfs", "quack"}
+        for path in sealed.install_paths.values():
+            assert path.is_symlink()
+            assert os.readlink(path).startswith("/proc/self/fd/")
+
+        quack_info = sealed.install_paths["quack"].with_name(
+            "quack.duckdb_extension.info"
+        )
+        with pytest.raises(
+            ConfiguredBoardExtensionProjectionError,
+            match="bytes drifted|custody changed",
+        ):
+            with sealed.load_guard():
+                os.chmod(quack_info, 0o600)
+                quack_info.write_bytes(b"tampered-during-load")
+    finally:
+        sealed.close()
+        _restore_tree_permissions(home)
+    assert not sealed.parent.exists()
+
+
+
+
