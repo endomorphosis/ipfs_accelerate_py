@@ -161,7 +161,8 @@ def native_owner(tmp_path):
 def _read(base, **changes):
     return observation.read_owner_status(database=base / "control.duckdb", state_dir=base,
         program_id=changes.get("program_id", "test-board"), configuration=changes.get("configuration", CONFIG),
-        expected_owner=changes.get("expected_owner", EXPECTED))
+        expected_owner=changes.get("expected_owner", EXPECTED),
+        expected_task_registry=changes.get("expected_task_registry", {"task:a": "TEST-001", "task:b": "TEST-002"}))
 
 
 def test_real_owner_reply_is_fresh_bound_and_read_only(native_owner):
@@ -177,13 +178,14 @@ def test_real_owner_reply_is_fresh_bound_and_read_only(native_owner):
     assert facts["task_revisions"] == {"TEST-001": 2, "TEST-002": 3}
     assert result["completion_authority"] is False
     assert result["source_transition_authority"] is False
+    assert result["source_context_only"] is True and result["source_verified"] is False
     assert SECRET not in json.dumps(result)
     control.send("state")
     assert control.recv() == before
     assert process.is_alive()
 
 
-@pytest.mark.parametrize("mismatch", ["program", "configuration", "owner", "owner_type", "birth", "source", "uid"])
+@pytest.mark.parametrize("mismatch", ["program", "configuration", "registry", "owner", "owner_type", "birth", "source", "uid"])
 def test_locator_does_not_authenticate_a_foreign_binding(native_owner, mismatch):
     base, _control, _process, scope = native_owner
     options = {}
@@ -191,6 +193,8 @@ def test_locator_does_not_authenticate_a_foreign_binding(native_owner, mismatch)
         options["program_id"] = "foreign"
     elif mismatch == "configuration":
         options["configuration"] = {"foreign": True}
+    elif mismatch == "registry":
+        options["expected_task_registry"] = {"task:a": "FOREIGN-001", "task:b": "TEST-002"}
     elif mismatch == "owner":
         options["expected_owner"] = {**EXPECTED, "generation": 2}
     elif mismatch == "owner_type":
@@ -244,6 +248,36 @@ def test_fifo_descriptor_is_bounded_and_never_authenticates(native_owner):
         _read(base)
     assert time.monotonic() - started < 1
     assert process.is_alive()
+
+
+def test_read_only_holder_with_both_conventional_locks_is_not_native_writer(tmp_path):
+    import duckdb
+    database = tmp_path / "control.duckdb"
+    writer = duckdb.connect(str(database))
+    writer.execute("CREATE TABLE preserved (value INTEGER)")
+    writer.execute("INSERT INTO preserved VALUES (7)")
+    writer.close()
+    descriptors = []
+    reader = duckdb.connect(str(database), read_only=True)
+    try:
+        for path in observation._locks(database):
+            fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            descriptors.append(fd)
+        identity = {**EXPECTED, "server_id": "server:test", "database_uuid": "database:test",
+                    "fence_epoch": 1, "process_birth_id": "birth:test"}
+        server = SimpleNamespace(config=SimpleNamespace(database_path=database, state_dir=tmp_path),
+            identity=SimpleNamespace(to_dict=lambda: identity), _connection=DuckDBConnection.wrap(reader),
+            lifecycle=SimpleNamespace(value="ready"), _lock=threading.RLock())
+        with pytest.raises(observation.OwnerObservationUnavailable):
+            observation.OwnerStatusObservation(server, program_id="test-board", configuration=CONFIG,
+                source_head="a" * 40, source_tree="b" * 40, task_registry={"task:a": "TEST-001"})
+        assert reader.execute("SELECT value FROM preserved").fetchone()[0] == 7
+        assert not (tmp_path / observation.DESCRIPTOR).exists()
+    finally:
+        reader.close()
+        for fd in descriptors:
+            os.close(fd)
 
 
 def test_client_rejects_wrong_kernel_peer(native_owner, monkeypatch):

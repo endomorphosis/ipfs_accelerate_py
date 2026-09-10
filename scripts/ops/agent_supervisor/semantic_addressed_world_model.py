@@ -20049,60 +20049,14 @@ class _SawmQuackTransport:
 
     @staticmethod
     def _copy_replica(source: Path, target: Path) -> Mapping[str, Any]:
-        source = source.resolve()
-        target = target.resolve()
-        if source == target or source.parent != target.parent:
-            raise OperatorError("Quack replica target is not a confined sibling")
-        temporary = target.with_name(
-            f".{target.name}.{os.getpid()}.{time.time_ns()}.tmp"
+        # Closing any canonical DB fd in the writer process releases its
+        # POSIX file lock. The accepted native helper copies in a credential-free
+        # child after refresh() has checkpointed the serialized writer.
+        helper = _load_script(
+            "scripts/ops/agent_supervisor/sawm_replica_copy.py",
+            "sawm_native_replica_copy",
         )
-        source_fd = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-        target_fd = -1
-        digest = hashlib.sha256()
-        size = 0
-        try:
-            source_stat = os.fstat(source_fd)
-            if not source_stat.st_size or source_stat.st_size > 8 * 1024**3:
-                raise OperatorError("canonical store exceeds the replica copy bound")
-            target_fd = os.open(
-                temporary,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-                0o600,
-            )
-            while True:
-                chunk = os.read(source_fd, 1024 * 1024)
-                if not chunk:
-                    break
-                digest.update(chunk)
-                size += len(chunk)
-                view = memoryview(chunk)
-                while view:
-                    written = os.write(target_fd, view)
-                    view = view[written:]
-            if size != source_stat.st_size:
-                raise OperatorError("canonical store changed during replica copy")
-            os.fsync(target_fd)
-            os.close(target_fd)
-            target_fd = -1
-            os.replace(temporary, target)
-            directory_fd = os.open(target.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
-            os.chmod(target, 0o600)
-            return {
-                "authority": "non_authoritative_read_replica",
-                "path": str(target),
-                "source_database_path": str(source),
-                "sha256": digest.hexdigest(),
-                "size_bytes": size,
-            }
-        finally:
-            os.close(source_fd)
-            if target_fd >= 0:
-                os.close(target_fd)
-            temporary.unlink(missing_ok=True)
+        return helper.copy_replica(source, target)
 
     def _stop_replica(self) -> None:
         connection = self._replica_connection
@@ -29900,6 +29854,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         config = _config(config_path)
         if args.command == "status":
             owner = config["quack_owner"]
+            population = _materializer().build_population(REPO_ROOT)
             return _emit(_owner_status_observation_runtime().read_owner_status(
                 database=(REPO_ROOT / owner["database_path"]).resolve(),
                 state_dir=(REPO_ROOT / owner["state_dir"]).resolve(),
@@ -29907,6 +29862,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 expected_owner={"store_id": str(owner["store_id"]),
                     "repository_id": str(owner["repository_id"]),
                     "generation": int(config["database_program"]["store_generation"])},
+                expected_task_registry={str(row["task_cid"]): str(row["task_id"])
+                    for row in population["taskboard"]},
             ))
         if args.command == "validate-dependencies":
             return _emit(_validator("scripts/validate_semantic_addressed_world_model_dependencies.py", "validate_dependencies"))

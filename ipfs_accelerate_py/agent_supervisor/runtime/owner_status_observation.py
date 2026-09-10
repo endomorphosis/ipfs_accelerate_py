@@ -156,13 +156,20 @@ def _custody(scope: Mapping[str, Any], database: Path) -> None:
         raise OwnerObservationUnavailable()
     wanted = {(os.major(i["device"]), os.minor(i["device"]), i["inode"]) for i in identities}
     held = set()
+    writer = False
+    store = scope["store_identity"]
+    store_lock = (os.major(store["device"]), os.minor(store["device"]), store["inode"])
     for line in _read_bounded(Path("/proc/locks"), 1024 * 1024).decode().splitlines():
         parts = line.split()
         if (len(parts) == 8 and parts[1:5] == ["FLOCK", "ADVISORY", "WRITE", str(pid)]
                 and parts[6:] == ["0", "EOF"]):
             major, minor, inode = parts[5].split(":")
             held.add((int(major, 16), int(minor, 16), int(inode)))
-    if not wanted <= held:
+        if (len(parts) == 8 and parts[1:5] == ["POSIX", "ADVISORY", "WRITE", str(pid)]
+                and parts[6:] == ["0", "EOF"]):
+            major, minor, inode = parts[5].split(":")
+            writer = (int(major, 16), int(minor, 16), int(inode)) == store_lock or writer
+    if not wanted <= held or not writer:
         raise OwnerObservationUnavailable()
     # The peer must also hold the exact canonical database, not only lock files.
     found = False
@@ -279,6 +286,7 @@ class OwnerStatusObservation:
         self.next_sample = 0.0
         self.listener = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         temporary = None
+        temporary_identity = None
         try:
             self.listener.bind(_address(self.scope))
             self.listener.listen(4)
@@ -286,6 +294,8 @@ class OwnerStatusObservation:
             descriptor = Path(server.config.state_dir) / DESCRIPTOR
             temporary = descriptor.with_name(f".{DESCRIPTOR}.{uuid.uuid4().hex}.tmp")
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            opened = os.fstat(fd)
+            temporary_identity = (opened.st_dev, opened.st_ino)
             try:
                 raw = _encoded(self.scope)
                 if os.write(fd, raw) != len(raw):
@@ -298,9 +308,11 @@ class OwnerStatusObservation:
             self.close()
             raise
         finally:
-            if temporary is not None:
+            if temporary is not None and temporary_identity is not None:
                 try:
-                    temporary.unlink(missing_ok=True)
+                    observed = temporary.lstat()
+                    if (observed.st_dev, observed.st_ino) == temporary_identity:
+                        temporary.unlink()
                 except OSError:
                     pass
 
@@ -399,7 +411,8 @@ class OwnerStatusObservation:
 
 
 def read_owner_status(*, database: Path, state_dir: Path, program_id: str,
-                      configuration: Mapping[str, Any], expected_owner: Mapping[str, Any]) -> dict[str, Any]:
+                      configuration: Mapping[str, Any], expected_owner: Mapping[str, Any],
+                      expected_task_registry: Mapping[str, str]) -> dict[str, Any]:
     """Read fresh facts; descriptors and old replies never establish authority."""
     try:
         if (not {"store_id", "repository_id", "generation"} <= set(expected_owner)
@@ -407,6 +420,7 @@ def read_owner_status(*, database: Path, state_dir: Path, program_id: str,
             raise OwnerObservationUnavailable()
         scope = _validated_scope(_decode(_read_bounded(state_dir / DESCRIPTOR, 8192)))
         if (scope["program_id"] != program_id or scope["configuration_cid"] != _digest(configuration)
+                or scope["task_registry_cid"] != _digest(expected_task_registry)
                 or _encoded({k: scope["owner_identity"].get(k) for k in expected_owner}) != _encoded(expected_owner)):
             raise OwnerObservationUnavailable()
         _custody(scope, database)
@@ -434,6 +448,7 @@ def read_owner_status(*, database: Path, state_dir: Path, program_id: str,
             raise OwnerObservationUnavailable()
         _validate_facts(reply["task_authority"])
         return {**reply, "owner_ready": True, "peer_authenticated_observation": True,
-                "owner_identity": scope["owner_identity"], "source_head": scope["source_head"], "source_tree": scope["source_tree"]}
+                "owner_identity": scope["owner_identity"], "source_head": scope["source_head"], "source_tree": scope["source_tree"],
+                "source_context_only": True, "source_verified": False}
     except Exception:
         raise OwnerObservationUnavailable() from None
