@@ -1918,6 +1918,42 @@ class QuackStateClient:
             self._store_generation = generation
             return generation
 
+    def derived_coordination(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Use the separately admitted derived service without exposing raw transport.
+
+        A request is sent once. Transport failure can leave a derived write's
+        outcome unknown, so this facade does not replay it automatically.
+        """
+        with self._lock:
+            adapter = self._require_adapter()
+            session = self._require_session()
+            if session.transport_mode is not TransportMode.QUACK:
+                raise QuackClientError("derived coordination requires typed Quack transport")
+            operation = getattr(adapter.raw, "derived_coordination", None)
+            if not callable(operation):
+                raise QuackClientError("attached owner has no typed derived service")
+            response = operation(payload)
+            if not isinstance(response, Mapping):
+                raise QuackClientIdentityError("invalid derived coordination response")
+            owner = response.get("owner_identity")
+            identity = session.store_identity
+            if (
+                not isinstance(owner, Mapping)
+                or identity is None
+                or owner.get("server_id") != session.server_id
+                or owner.get("store_id") != session.store_id
+                or owner.get("generation") != session.generation
+                or owner.get("fence_epoch") != session.fence_epoch
+                or owner.get("database_uuid") != identity.database_uuid
+                or owner.get("process_birth_id") != identity.server_birth_id
+                or owner.get("schema_revision") != identity.schema_revision
+                or response.get("schema") != "ipfs_accelerate_py/agent-supervisor/derived-coordination@1"
+                or response.get("authority") != "derived_evidence"
+                or response.get("completion_authority") is not False
+            ):
+                raise QuackClientIdentityError("derived response differs from the attached owner")
+            return response
+
     def completion_progress_snapshot(
         self,
         task_cids: Sequence[str],

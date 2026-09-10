@@ -40,13 +40,17 @@ def probe_owner(deployment: Mapping[str, Any], role: str) -> dict[str, Any]:
                     derived_repository_id="fleet:health" if not aggregate else "", fleet_observation_read=aggregate,
                     timeout_seconds=5)
         generation = client.load_generation()
+        if not aggregate:
+            client.derived_coordination({"operation": "list_references",
+                                         "repository_id": "fleet:health", "tree_id": "fleet:health"})
         after = json.loads((state / "quack-state-server.status.json").read_text())
         if (after.get("lifecycle") != "ready" or after.get("identity", {}).get("process_birth_id") != identity.get("process_birth_id")
             or not birth_matches(process_identity(birth.get("pid")), birth)
             or client.session.server_id != identity.get("server_id") or generation.generation != identity.get("generation")
             or generation.database_uuid != identity.get("database_uuid")):
             return {"healthy": False, "reason": "native_identity_changed_during_health_query"}
-        return {"healthy": True, "reason": "authenticated_typed_generation_read", "generation": generation.generation,
+        return {"healthy": True, "reason": "authenticated_typed_generation_read",
+                "derived_service_verified": not aggregate, "generation": generation.generation,
                 "database_uuid": generation.database_uuid, "process_birth_id": identity["process_birth_id"]}
     except Exception as error:  # noqa: BLE001 - one failed native probe becomes bounded recovery evidence
         return {"healthy": False, "reason": f"typed_gateway_unavailable:{type(error).__name__}"}

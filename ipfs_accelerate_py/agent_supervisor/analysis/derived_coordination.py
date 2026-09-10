@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -241,13 +241,30 @@ class DerivedCoordinationService:
 
 
 class DerivedCoordinationClient:
-    """Typed owner client facade with explicit repository scope and no fallback."""
+    """Typed owner facade with explicit repository scope and no fallback.
 
-    def __init__(self, connection: Any, *, repository_id: str):
+    Long-running supervisors should supply a connection factory. Each operation
+    then authenticates a fresh short-lived owner session and closes it after the
+    response, so idle clients do not retain expired grants. A supplied connection
+    remains caller-owned. Neither form retries a failed operation.
+    """
+
+    def __init__(self, connection: Any = None, *, repository_id: str,
+                 connection_factory: Callable[[], Any] | None = None):
+        if (connection is None) == (connection_factory is None):
+            raise ValueError("provide either a derived connection or a connection factory")
         self._connection = connection
+        self._connection_factory = connection_factory
         self.repository_id = _text(repository_id, "repository_id")
 
     def call(self, operation: str, **parameters: Any) -> Mapping[str, Any]:
-        return self._connection.derived_coordination(
-            {"operation": operation, "repository_id": self.repository_id, **parameters}
-        )
+        if "repository_id" in parameters:
+            raise ValueError("derived repository scope cannot be overridden")
+        payload = {"operation": operation, "repository_id": self.repository_id, **parameters}
+        if self._connection_factory is None:
+            return self._connection.derived_coordination(payload)
+        connection = self._connection_factory()
+        try:
+            return connection.derived_coordination(payload)
+        finally:
+            connection.close()

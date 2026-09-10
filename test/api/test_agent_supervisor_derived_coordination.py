@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -14,6 +15,10 @@ from ipfs_accelerate_py.agent_supervisor.analysis.derived_coordination import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TypedStateOwnerConnection,
     TypedStateOwnerError,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
+    QuackClientIdentityError,
+    QuackStateClient,
 )
 
 
@@ -181,3 +186,96 @@ def test_concurrent_native_clients_share_cache_and_preserve_repository_read_scop
             api.call("snapshot", snapshot_id=results[0]["snapshot"]["snapshot_id"])
     finally:
         client.close()
+
+
+def _public_client(attach):
+    client = QuackStateClient(owner_id="ast-client", store_id="control.duckdb",
+                              process_birth_id="birth:ast-client", connection_factory=lambda _endpoint: attach())
+    try:
+        client.attach("quack:127.0.0.1:12345")
+        return client
+    except BaseException:
+        client.close()
+        raise
+
+
+def test_public_quack_facade_supports_derived_owner_calls(owner):
+    _, _, attach = owner
+    client = _public_client(attach)
+    try:
+        api = DerivedCoordinationClient(client, repository_id="repo:one")
+        result = api.call("list_references", tree_id="tree:public")
+        assert result["result"]["references"] == []
+        assert result["owner_identity"]["server_id"] == client.session.server_id
+        assert result["completion_authority"] is False
+    finally:
+        client.close()
+
+
+def test_scoped_sessions_survive_idle_grant_expiry_without_replaying(owner, monkeypatch):
+    _, _, attach = owner
+    fixed = _public_client(attach)
+    opened = []
+    sessions = []
+
+    def factory():
+        client = _public_client(attach)
+        opened.append(client)
+        sessions.append(client.session.session_id)
+        return client
+
+    api = DerivedCoordinationClient(repository_id="repo:one", connection_factory=factory)
+    try:
+        first = api.call("list_references", tree_id="tree:idle")
+        later = time.time() + 121
+        monkeypatch.setattr(time, "time", lambda: later)
+        with pytest.raises(TypedStateOwnerError):
+            fixed.derived_coordination({"operation": "list_references", "repository_id": "repo:one", "tree_id": "tree:idle"})
+        second = api.call("list_references", tree_id="tree:idle")
+        assert first["result"] == second["result"]
+        assert len(opened) == 2
+        assert sessions[0] != sessions[1]
+        assert all(not client.attached for client in opened)
+    finally:
+        fixed.close()
+
+
+@pytest.mark.parametrize("field,value", [("database_uuid", "different"), ("generation", -1), ("process_birth_id", "different")])
+def test_public_derived_facade_rejects_changed_owner(owner, monkeypatch, field, value):
+    _, _, attach = owner
+    raw = attach()
+    client = QuackStateClient(owner_id="ast-client", store_id="control.duckdb",
+                              process_birth_id="birth:ast-client", connection_factory=lambda _endpoint: raw)
+    try:
+        client.attach("quack:127.0.0.1:12345")
+        original = raw.derived_coordination
+
+        def changed(payload):
+            response = original(payload)
+            return {**response, "owner_identity": {**response["owner_identity"], field: value}}
+
+        monkeypatch.setattr(raw, "derived_coordination", changed)
+        with pytest.raises(QuackClientIdentityError):
+            client.derived_coordination({"operation": "list_references", "repository_id": "repo:one", "tree_id": "tree:identity"})
+    finally:
+        client.close()
+
+
+def test_scoped_derived_write_closes_on_unknown_outcome_without_replay():
+    calls = []
+
+    class BrokenConnection:
+        def derived_coordination(self, payload):
+            calls.append(payload)
+            raise TimeoutError("outcome unknown")
+
+        def close(self):
+            calls.append("closed")
+
+    api = DerivedCoordinationClient(repository_id="repo:one", connection_factory=BrokenConnection)
+    with pytest.raises(TimeoutError):
+        api.call("record_reference", tree_id="tree:one", ast_cid="cid:ast", content_hash="sha256:source", state_root="cid:state")
+    assert len(calls) == 2 and calls[-1] == "closed"
+    with pytest.raises(ValueError, match="scope"):
+        api.call("list_references", tree_id="tree:one", repository_id="repo:other")
+    assert len(calls) == 2
