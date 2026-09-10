@@ -2728,6 +2728,56 @@ def test_later_epoch_005_unknown_block_opens_generic_rearm() -> None:
         receipt,
         no_provider_evidence=None,
     ) is False
+    dispatch_unknown = dict(receipt)
+    dispatch_unknown["reason"] = "provider_dispatch_outcome_unknown"
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        task,
+        dispatch_unknown,
+        no_provider_evidence=None,
+    ) is True
+    unpinned = SimpleNamespace(
+        task_cid="baguqeeraunpinned-extra-gate-034",
+        task_alias="PCTDD-034",
+        status="blocked",
+        revision=99,
+        body={},
+    )
+    unpinned_receipt = {
+        "operation": "database_unknown_outcome_blocked",
+        "reason": "extra_gate_incomplete_projection_dead_runner",
+        "forced_block": True,
+        "authority_outcome": "unknown",
+        "retry_exhausted": True,
+    }
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        unpinned,
+        unpinned_receipt,
+        no_provider_evidence=None,
+    ) is True
+    assert daemon._extra_gate_dead_runner_block_opens_generic_rearm(
+        unpinned,
+        unpinned_receipt,
+    ) is True
+    retry_exhausted = dict(unpinned_receipt)
+    retry_exhausted["operation"] = "database_retry_exhausted"
+    retry_exhausted["reason"] = "portal_provider_failed"
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        unpinned,
+        retry_exhausted,
+        no_provider_evidence=None,
+    ) is True
+    ordinary = SimpleNamespace(
+        task_cid="baguqeeraordinary",
+        task_alias="PCTDD-001",
+        status="blocked",
+        revision=99,
+        body={},
+    )
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        ordinary,
+        unpinned_receipt,
+        no_provider_evidence=None,
+    ) is False
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,
@@ -2976,6 +3026,65 @@ def test_restarting_stale_or_exited_preserves_extra_gate_via_supervisor_pid(
             {"daemon_pid": 2681548},
         )
         is True
+    )
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_stop_tracks_preserves_extra_gate_grok_on_sigint(tmp_path, monkeypatch) -> None:
+    """SIGINT finally-stop_tracks killed extra-gate grok.
+
+    Fleet-ensure SIGINT'd master; stop_tracks fenced every lane tree
+    with zero preserving extra-gate lines. Extra-gate aliases still
+    cannot bypass ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        SupervisorTrack,
+        stop_tracks,
+    )
+
+    terminate_calls: list[int] = []
+    lines: list[str] = []
+    state_dir = tmp_path / "state" / "lane-3"
+    state_dir.mkdir(parents=True)
+    daemon_pid_path = state_dir / "daemon.pid"
+    daemon_pid_path.write_text("2889716\n", encoding="utf-8")
+    track = SupervisorTrack(
+        name="parallel-content-sealing-proof-carrying-tdd-v1-3",
+        script_path=tmp_path / "script.py",
+        log_path=state_dir / "run.log",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        daemon_pid_path=daemon_pid_path,
+    )
+    process = SimpleNamespace(pid=2811015)
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner._restarting_track_must_preserve_extra_gate_grok",
+        lambda proc, fields: True,
+    )
+
+    def _fail_terminate(proc, *, grace_seconds):
+        terminate_calls.append(int(getattr(proc, "pid", 0) or 0))
+        return True, (int(getattr(proc, "pid", 0) or 0),)
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner._terminate_managed_process",
+        _fail_terminate,
+    )
+    payload = stop_tracks(
+        [track],
+        {track.name: process},  # type: ignore[dict-item]
+        repo_root=tmp_path,
+        grace_seconds=0.1,
+        output=lines.append,
+    )
+    assert terminate_calls == []
+    assert payload["stopped_count"] == 0
+    assert payload["all_trees_fenced"] is True
+    assert any(
+        "preserving extra-gate grok descendants for" in line
+        and track.name in line
+        for line in lines
     )
     _extra_gate_cannot_bypass_safe_to_restart()
 
