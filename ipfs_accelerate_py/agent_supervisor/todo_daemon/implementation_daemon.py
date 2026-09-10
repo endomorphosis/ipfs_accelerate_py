@@ -1343,7 +1343,7 @@ MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES = 24_000_000
 MAX_DECLARED_IGNORED_OUTPUT_FILES = 256
 MAX_DECLARED_OUTPUT_SCAN_FILES = 4_096
 MAX_RETAINED_WORKSPACE_FINGERPRINT_ENTRIES = 200_000
-MAX_RETAINED_WORKSPACE_FINGERPRINT_BYTES = 512 * 1024 * 1024
+MAX_RETAINED_WORKSPACE_FINGERPRINT_BYTES = 4 * 1024 * 1024 * 1024
 VERIFICATION_DEFERRED_RETAINED_CANDIDATE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "verification-deferred-retained-candidate@1"
@@ -52161,6 +52161,8 @@ class PortalImplementationDaemon:
         turn receipt publication into unbounded I/O.
         """
 
+        if workspace_path.is_symlink():
+            raise RuntimeError("retained workspace is not a directory")
         try:
             workspace = workspace_path.resolve(strict=True)
         except (OSError, RuntimeError) as exc:
@@ -52168,62 +52170,15 @@ class PortalImplementationDaemon:
         if not workspace.is_dir() or workspace.is_symlink():
             raise RuntimeError("retained workspace is not a directory")
 
-        digest = hashlib.sha256()
-        entry_count = 0
-        content_bytes = 0
-        try:
-            for root, directories, files in os.walk(
-                workspace,
-                topdown=True,
-                followlinks=False,
-            ):
-                directories.sort()
-                files.sort()
-                root_path = Path(root)
-                for name in (*directories, *files):
-                    candidate = root_path / name
-                    relative = candidate.relative_to(workspace).as_posix()
-                    item_stat = candidate.lstat()
-                    entry_count += 1
-                    if entry_count > MAX_RETAINED_WORKSPACE_FINGERPRINT_ENTRIES:
-                        raise RuntimeError(
-                            "retained workspace exceeds fingerprint entry budget"
-                        )
-                    digest.update(
-                        relative.encode("utf-8", errors="surrogateescape")
-                    )
-                    digest.update(b"\0")
-                    digest.update(str(item_stat.st_mode).encode("ascii"))
-                    digest.update(b"\0")
-                    if candidate.is_symlink():
-                        target = os.readlink(candidate).encode(
-                            "utf-8", errors="surrogateescape"
-                        )
-                        content_bytes += len(target)
-                        digest.update(b"L")
-                        digest.update(target)
-                    elif candidate.is_dir():
-                        digest.update(b"D")
-                    elif candidate.is_file():
-                        content_bytes += int(item_stat.st_size)
-                        if (
-                            content_bytes
-                            > MAX_RETAINED_WORKSPACE_FINGERPRINT_BYTES
-                        ):
-                            raise RuntimeError(
-                                "retained workspace exceeds fingerprint byte budget"
-                            )
-                        digest.update(b"F")
-                        with candidate.open("rb") as handle:
-                            while chunk := handle.read(1024 * 1024):
-                                digest.update(chunk)
-                    else:
-                        raise RuntimeError(
-                            "retained workspace contains an unsupported special file"
-                        )
-                    digest.update(b"\0")
-        except (OSError, UnicodeError) as exc:
-            raise RuntimeError("retained workspace fingerprint failed") from exc
+        from ipfs_accelerate_py.agent_supervisor.verification.retained_workspace import (
+            fingerprint_retained_tree,
+        )
+
+        fingerprint = fingerprint_retained_tree(
+            workspace,
+            max_bytes=MAX_RETAINED_WORKSPACE_FINGERPRINT_BYTES,
+            max_entries=MAX_RETAINED_WORKSPACE_FINGERPRINT_ENTRIES,
+        )
 
         def git_bytes(arguments: Sequence[str]) -> bytes:
             try:
@@ -52286,9 +52241,9 @@ class PortalImplementationDaemon:
             "head": head,
             "baseline_commit": baseline,
             "branch": branch,
-            "entry_count": entry_count,
-            "content_bytes": content_bytes,
-            "content_digest": "sha256:" + digest.hexdigest(),
+            "entry_count": fingerprint["entry_count"],
+            "content_bytes": fingerprint["content_bytes"],
+            "content_digest": fingerprint["content_digest"],
             "index_digest": "sha256:" + hashlib.sha256(index).hexdigest(),
             "index_bytes": len(index),
             "status_digest": "sha256:" + hashlib.sha256(status).hexdigest(),
