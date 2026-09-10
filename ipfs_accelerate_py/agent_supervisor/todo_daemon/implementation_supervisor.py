@@ -17044,6 +17044,26 @@ class PortalImplementationSupervisor:
                     payload=skip,
                 )
                 continue
+            # A terminal process lifecycle and merged baseline do not settle
+            # an unknown canonical callback. Ask the existing native verifier.
+            completion_proof = self._canonical_completed_reconciliation_task(
+                branch=branch,
+            )
+            if completion_proof.get("applicable") is True:
+                # This older runtime predates the guarded pool mutation API.
+                # Preserve the candidate until that runtime is qualified;
+                # exact task/queue completion cleanup remains available.
+                skipped.append({
+                    "path": str(path), "branch": branch,
+                    "reason": (
+                        "canonical_cleanup_requires_guarded_runtime"
+                        if completion_proof.get("verified") is True
+                        else "canonical_completion_required_for_cleanup"
+                    ),
+                    "completion_proof": completion_proof,
+                })
+                continue
+
             dirty = self._git_status_short(path) if path.exists() else []
             if not path.exists():
                 skipped.append(
