@@ -5451,6 +5451,8 @@ class DatabasePortalExecutionBridge:
     def _current_protected_path_digests(
         self,
         protected_paths: Sequence[str],
+        *,
+        allow_additional_hardlinks: bool = False,
     ) -> dict[str, str]:
         """Bind protected content to the current shared checkout without links."""
 
@@ -5497,7 +5499,13 @@ class DatabasePortalExecutionBridge:
                         raise DatabasePortalBridgeError(
                             "protected-path recovery refuses submodule paths"
                         )
-                if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                nlink = int(metadata.st_nlink)
+                nlink_ok = (
+                    nlink >= 1
+                    if allow_additional_hardlinks
+                    else nlink == 1
+                )
+                if not stat.S_ISREG(metadata.st_mode) or not nlink_ok:
                     raise DatabasePortalBridgeError(
                         "protected-path recovery requires singly linked regular files"
                     )
@@ -5747,7 +5755,20 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "protected paths differed before ephemeral workspace disposal"
             )
-        current_digests = self._current_protected_path_digests(protected_paths)
+        raw_mutations = incident.get("mutations")
+        allow_additional_hardlinks = (
+            isinstance(raw_mutations, list)
+            and bool(raw_mutations)
+            and all(
+                isinstance(item, Mapping)
+                and str(item.get("change") or "") == "identity_changed"
+                for item in raw_mutations
+            )
+        )
+        current_digests = self._current_protected_path_digests(
+            protected_paths,
+            allow_additional_hardlinks=allow_additional_hardlinks,
+        )
         if current_digests != shared_digests:
             raise DatabasePortalBridgeError(
                 "shared protected content changed since the active snapshot"
@@ -5766,10 +5787,27 @@ class DatabasePortalExecutionBridge:
                     "protected-path incident has malformed mutation evidence"
                 )
             relative = str(mutation.get("path") or "")
-            if (
+            if relative not in protected_paths:
+                raise DatabasePortalBridgeError(
+                    "protected-path incident is not a pure workspace disposal"
+                )
+            if mutation.get("change") == "identity_changed":
+                before = mutation.get("before")
+                after = mutation.get("after")
+                if (
+                    not isinstance(before, Mapping)
+                    or not isinstance(after, Mapping)
+                    or not before.get("sha256")
+                    or before.get("sha256") != after.get("sha256")
+                    or mutation.get("scope")
+                    not in {"workspace", "shared_checkout"}
+                ):
+                    raise DatabasePortalBridgeError(
+                        "protected-path incident is not a pure workspace disposal"
+                    )
+            elif (
                 mutation.get("scope") != "workspace"
                 or mutation.get("change") != "deleted"
-                or relative not in protected_paths
                 or mutation.get("after") != {"state": "missing"}
                 or mutation.get("before") != workspace_identities.get(relative)
             ):
@@ -5802,15 +5840,29 @@ class DatabasePortalExecutionBridge:
                 "protected-path incident has no unique durable mutation event"
             )
         event = mutation_events[0]
+        scopes = sorted(
+            {str(item.get("scope") or "") for item in mutations}
+        )
+        changes = sorted(
+            {str(item.get("change") or "") for item in mutations}
+        )
+        if changes == ["deleted"] and scopes == ["workspace"]:
+            class_codes = ["workspace_protected_deletion"]
+        elif changes == ["identity_changed"]:
+            class_codes = ["content_preserving_identity_thrash"]
+        else:
+            raise DatabasePortalBridgeError(
+                "protected-path incident is not a pure workspace disposal"
+            )
         clearance_basis = {
             "kind": "auto-clear-protected-path-stall",
             "task_id": alias,
             "attempt": int(portal_attempt),
             "workspace_path": normalized_workspace,
             "mutated_paths": sorted(mutated_paths),
-            "scopes": ["workspace"],
-            "changes": ["deleted"],
-            "class_codes": ["workspace_protected_deletion"],
+            "scopes": scopes,
+            "changes": changes,
+            "class_codes": class_codes,
             "latched_at": str(incident.get("latched_at") or ""),
         }
         clearance_id = _sha256_bytes(_canonical_json(clearance_basis))
