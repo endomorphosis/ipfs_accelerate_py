@@ -1,21 +1,33 @@
 import pytest
-
 from test.api.test_agent_supervisor_database_implementation_daemon import (
     _open_daemon,
     _population,
 )
 
 
-@pytest.mark.parametrize("alias", ["DQP-T001", "PCTDD-006"])
+@pytest.mark.parametrize(
+    "alias,task_cid",
+    [
+        ("DQP-T001", "task:cid:001"),
+        ("PCTDD-006", "task:cid:001"),
+        # Exercise pinned identities as well as aliases: recovery policy must
+        # not become weaker when the task CID matches a historical pin.
+        ("PCTDD-005", "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"),
+        ("PCTDD-006", "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a"),
+        ("PCTDD-007", "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq"),
+        ("PCTDD-034", "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada"),
+    ],
+)
 def test_unknown_callback_requires_evidence_even_after_predecessor_changes(
-    tmp_path, alias
+    tmp_path, alias, task_cid
 ):
     seed = _open_daemon(tmp_path, session="stable-session", max_task_attempts=2)
     try:
         population = _population(1)
         population["tasks"][0]["task_id"] = alias
+        population["tasks"][0]["task_cid"] = task_cid
         seed.materialize_population(population)
-        task = seed.task_source.get("task:cid:001")
+        task = seed.task_source.get(task_cid)
         receipt = seed._retry_budget_receipt(
             task,
             attempts_used=2,
@@ -39,9 +51,9 @@ def test_unknown_callback_requires_evidence_even_after_predecessor_changes(
         seed.close()
     successor = _open_daemon(tmp_path, session="stable-session", max_task_attempts=2)
     try:
-        before = successor.task_source.get("task:cid:001")
+        before = successor.task_source.get(task_cid)
         results = successor.reconcile_blocked_unknown_outcome_tasks()
-        after = successor.task_source.get("task:cid:001")
+        after = successor.task_source.get(task_cid)
         assert (after.status, after.revision, after.body) == (
             before.status,
             before.revision,
@@ -107,16 +119,29 @@ def test_unresolved_native_recovery_barrier_prevents_other_task_rearm(
         successor.close()
 
 
-@pytest.mark.parametrize("alias", ["DQP-T001", "PCTDD-006"])
+@pytest.mark.parametrize(
+    "alias,task_cid",
+    [
+        ("DQP-T001", "task:cid:001"),
+        ("PCTDD-006", "task:cid:001"),
+        # Exercise pinned identities as well as aliases: recovery policy must
+        # not become weaker when the task CID matches a historical pin.
+        ("PCTDD-005", "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"),
+        ("PCTDD-006", "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a"),
+        ("PCTDD-007", "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq"),
+        ("PCTDD-034", "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada"),
+    ],
+)
 def test_failed_terminal_recovery_keeps_candidate_quarantined(
-    tmp_path, monkeypatch, alias
+    tmp_path, monkeypatch, alias, task_cid
 ):
     seed = _open_daemon(tmp_path, session="predecessor", max_task_attempts=2)
     try:
         population = _population(1)
         population["tasks"][0]["task_id"] = alias
+        population["tasks"][0]["task_cid"] = task_cid
         seed.materialize_population(population)
-        task = seed.task_source.get("task:cid:001")
+        task = seed.task_source.get(task_cid)
         receipt = seed._retry_budget_receipt(
             task,
             attempts_used=1,
@@ -139,7 +164,7 @@ def test_failed_terminal_recovery_keeps_candidate_quarantined(
     successor = _open_daemon(tmp_path, session="successor", max_task_attempts=2)
     try:
         candidate = {
-            "task_cid": "task:cid:001",
+            "task_cid": task_cid,
             "task_alias": alias,
             "recovered": False,
             "error": "receipt_stale",
@@ -147,9 +172,9 @@ def test_failed_terminal_recovery_keeps_candidate_quarantined(
         monkeypatch.setattr(
             successor, "reconcile_blocked_terminal_landed_tasks", lambda: [candidate]
         )
-        before = successor.task_source.get("task:cid:001")
+        before = successor.task_source.get(task_cid)
         results = successor.reconcile_blocked_unknown_outcome_tasks()
-        after = successor.task_source.get("task:cid:001")
+        after = successor.task_source.get(task_cid)
         assert (after.status, after.revision, after.body) == (
             before.status,
             before.revision,

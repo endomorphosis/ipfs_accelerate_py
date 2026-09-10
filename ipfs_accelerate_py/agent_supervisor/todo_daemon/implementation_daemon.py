@@ -61579,146 +61579,15 @@ class PortalImplementationDaemon:
     def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
         """Continuously drain inactive worktrees whose branches are already merged."""
 
-        max_cleanups = max(0, int(self.merged_worktree_cleanup_max))
-        if max_cleanups <= 0:
-            return {"attempted": False, "reason": "merged_worktree_cleanup_disabled"}
-
-        prune = subprocess.run(
-            ["git", "worktree", "prune"],
-            cwd=self.repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        try:
-            root_resolved = self.worktree_root.resolve()
-        except OSError:
-            root_resolved = self.worktree_root
-        try:
-            active_worktree = PortalTaskState.load(self.state_path).active_worktree_path
-        except Exception:
-            active_worktree = ""
-        active_resolved: Path | None = None
-        if active_worktree:
-            try:
-                active_resolved = Path(active_worktree).resolve()
-            except OSError:
-                active_resolved = Path(active_worktree)
-
-        process_lines = self._list_process_commands()
-        target_branch = self._main_branch_name()
-        removed: list[dict[str, Any]] = []
-        skipped: list[dict[str, Any]] = []
-
-        for entry in self._git_worktree_entries():
-            if len(removed) >= max_cleanups:
-                break
-            path_text = str(entry.get("worktree") or "")
-            if not path_text:
-                continue
-            worktree_path = Path(path_text)
-            try:
-                worktree_resolved = worktree_path.resolve()
-                worktree_resolved.relative_to(root_resolved)
-            except (OSError, ValueError):
-                continue
-
-            branch_name = str(entry.get("branch") or "").removeprefix("refs/heads/")
-            detail = {"worktree_path": str(worktree_path), "branch": branch_name}
-            # A reboot or interrupted ``git worktree add`` can leave a locked
-            # administrative entry after the checkout directory has vanished.
-            # ``subprocess.run(..., cwd=worktree_path)`` raises before Git can
-            # return a status in that case, which used to crash and recycle the
-            # implementation daemon indefinitely.  Missing registered paths
-            # are not safe to delete or reuse here; leave their Git metadata
-            # for an explicit reconciliation pass and keep dispatch alive.
-            if not worktree_path.is_dir():
-                skipped.append({**detail, "reason": "worktree_missing"})
-                continue
-            if active_resolved is not None and worktree_resolved == active_resolved:
-                skipped.append({**detail, "reason": "active_state_worktree"})
-                continue
-            if any(str(worktree_resolved) in line for line in process_lines):
-                skipped.append({**detail, "reason": "active_process"})
-                continue
-            # Fenced ownership check must run before ancestry-based cleanup so a
-            # preparing/active claim whose tip still matches the merge target is
-            # never deleted by a peer lane (ASI-171).
-            lifecycle_auth = self._authorize_worktree_cleanup(
-                worktree_path,
-                branch_name,
-            )
-            if not lifecycle_auth.get("allowed", False):
-                skipped.append(
-                    {
-                        **detail,
-                        "reason": f"lifecycle_{lifecycle_auth.get('reason') or 'fenced'}",
-                        "lifecycle": lifecycle_auth,
-                    }
-                )
-                continue
-            if not self._managed_cleanup_branch(branch_name):
-                skipped.append({**detail, "reason": "unmanaged_branch"})
-                continue
-            if not self._git_ref_exists(branch_name):
-                skipped.append({**detail, "reason": "branch_missing"})
-                continue
-            if not self._git_ref_is_ancestor(branch_name, target_branch):
-                skipped.append({**detail, "reason": "branch_not_merged"})
-                continue
-
-            try:
-                status = subprocess.run(
-                    ["git", "status", "--porcelain", "--untracked-files=all"],
-                    cwd=worktree_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-            except FileNotFoundError:
-                # The directory can disappear after the is_dir() observation.
-                # Treat that race exactly like an already-missing checkout.
-                skipped.append({**detail, "reason": "worktree_missing"})
-                continue
-            if status.returncode != 0:
-                skipped.append(
-                    {
-                        **detail,
-                        "reason": "status_failed",
-                        "returncode": status.returncode,
-                        "stderr": status.stderr[-4000:],
-                    }
-                )
-                continue
-            if status.stdout.strip():
-                skipped.append(
-                    {
-                        **detail,
-                        "reason": "dirty_worktree",
-                        "status_short": status.stdout.splitlines()[:20],
-                    }
-                )
-                continue
-
-            cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
-            removed.append({**detail, "cleanup_result": cleanup_result})
-
-        result = {
-            "attempted": True,
-            "worktree_root": str(self.worktree_root),
-            "target_branch": target_branch,
-            "max_cleanups": max_cleanups,
-            "prune_returncode": prune.returncode,
-            "prune_stdout": prune.stdout[-4000:],
-            "prune_stderr": prune.stderr[-4000:],
-            "removed_count": sum(1 for item in removed if item["cleanup_result"].get("cleaned", False)),
-            "skipped_count": len(skipped),
-            "removed": removed,
-            "skipped": skipped[:50],
+        # This older runtime has no task-projection isolation flag or native
+        # canonical peer completion proof. Fail closed for all background
+        # candidates; exact task/merge-queue cleanup remains separate.
+        return {
+            "attempted": False,
+            "reason": "canonical_peer_cleanup_api_unavailable",
+            "removed_count": 0,
         }
-        if removed:
-            self._record_event("merged_worktree_cleanup", result)
-        return result
+
 
     def _cleanup_merged_worktree(
         self,
@@ -66052,69 +65921,17 @@ class PortalImplementationDaemon:
             expected_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
         )
 
-    def _resource_claim_owner_is_stuck_without_provider(
-        self,
-        metadata: Mapping[str, Any],
-    ) -> bool:
-        """True when the claim pid is dead, D/T-stopped, and grok is absent.
-
-        Extra-gate may run off hash-home. A D-state or T-stopped holder with
-        no live grok descendant must not serialize extra-gate forever.
-        Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
-        """
-
-        try:
-            pid = int(metadata.get("pid") or 0)
-        except (TypeError, ValueError):
-            return True
-        if pid <= 1:
-            return True
-        if not process_is_running(pid):
-            return True
-        state = process_kernel_state(pid)
-        if state not in _STUCK_KERNEL_STATES:
-            return False
-        try:
-            runner_pid = int(
-                metadata.get("runner_pid")
-                or metadata.get("provider_runner_pid")
-                or 0
-            )
-        except (TypeError, ValueError):
-            runner_pid = 0
-        if runner_pid <= 1:
-            runner = metadata.get("provider_runner")
-            if isinstance(runner, Mapping):
-                try:
-                    runner_pid = int(runner.get("pid") or 0)
-                except (TypeError, ValueError):
-                    runner_pid = 0
-        if runner_pid > 1:
-            try:
-                runner_live = bool(process_is_running(runner_pid))
-            except Exception:
-                runner_live = False
-            if runner_live:
-                runner_state = process_kernel_state(runner_pid)
-                if runner_state not in _STUCK_KERNEL_STATES:
-                    return False
-        return not process_has_live_grok_descendant(pid)
 
     def _resource_claims_reserve_task(
         self,
         task: PortalTask,
         active_resource_claims: Mapping[str, Mapping[str, Any]],
     ) -> bool:
-        extra_gate = task_identity_is_extra_gate(task)
         task_paths = self._task_implementation_resource_paths(task)
         for claimed_path, existing in active_resource_claims.items():
             if not any(
                 self._resource_paths_overlap(resource_path, claimed_path)
                 for resource_path in task_paths
-            ):
-                continue
-            if extra_gate and self._resource_claim_owner_is_stuck_without_provider(
-                existing
             ):
                 continue
             return True
@@ -68761,27 +68578,14 @@ class PortalImplementationDaemon:
         self,
         lock_path: Path,
         metadata: dict[str, Any],
-        *,
-        extra_gate: bool = False,
     ) -> tuple[bool, str, dict[str, Any] | None]:
         """Publish one repo-shared submodule resource claim."""
-
-        def owner_active(existing: dict[str, Any]) -> bool:
-            if not self._implementation_resource_claim_owner_is_active(
-                existing
-            ):
-                return False
-            if extra_gate and self._resource_claim_owner_is_stuck_without_provider(
-                existing
-            ):
-                return False
-            return True
 
         with serialized_lock_update(lock_path):
             lock_fd, reason, existing = self._try_acquire_lock(
                 lock_path,
                 lock_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
-                owner_active=owner_active,
+                owner_active=self._implementation_resource_claim_owner_is_active,
             )
             if lock_fd is None:
                 return False, reason, existing
@@ -68822,7 +68626,6 @@ class PortalImplementationDaemon:
         )
         if not resource_paths:
             return [], "", "acquired", None
-        extra_gate = task_identity_is_extra_gate(task)
         acquired: list[tuple[Path, dict[str, Any]]] = []
         coordination_path = self._implementation_resource_claim_coordination_path()
         # ``flock`` is process-scoped on some supported platforms, so pair the
@@ -68831,34 +68634,18 @@ class PortalImplementationDaemon:
             with serialized_lock_update(coordination_path):
                 active_claims = self._active_implementation_resource_claims((task,))
                 for resource_path in resource_paths:
-                    for claimed_path, existing in list(active_claims.items()):
+                    for claimed_path, existing in active_claims.items():
                         # Preserve the established exact-lock result vocabulary;
                         # the per-path O_EXCL path below returns ``lock_exists``.
                         if resource_path == claimed_path:
                             continue
-                        if not self._resource_paths_overlap(
-                            resource_path, claimed_path
-                        ):
-                            continue
-                        if extra_gate and self._resource_claim_owner_is_stuck_without_provider(
-                            existing
-                        ):
-                            stuck_path = self._implementation_resource_claim_path(
-                                claimed_path
+                        if self._resource_paths_overlap(resource_path, claimed_path):
+                            return (
+                                [],
+                                resource_path,
+                                "overlapping_claim_exists",
+                                existing,
                             )
-                            self._clear_stale_lock(
-                                stuck_path,
-                                lock_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
-                                metadata=dict(existing),
-                            )
-                            active_claims.pop(claimed_path, None)
-                            continue
-                        return (
-                            [],
-                            resource_path,
-                            "overlapping_claim_exists",
-                            existing,
-                        )
                 try:
                     for resource_path in resource_paths:
                         claim_path = self._implementation_resource_claim_path(
@@ -68874,7 +68661,6 @@ class PortalImplementationDaemon:
                             self._try_acquire_implementation_resource_claim(
                                 claim_path,
                                 metadata,
-                                extra_gate=extra_gate,
                             )
                         )
                         if claimed:
@@ -91823,45 +91609,12 @@ class DatabaseImplementationDaemon:
         if reason in {
             "extra_gate_incomplete_projection_dead_runner",
             "extra_gate_incomplete_projection_needs_provider",
-            "provider_dispatch_outcome_unknown",
         }:
             return True
         return (
             "has no attribute '_extra_gate_incomplete_projection_needs_provider'"
             in reason
         )
-
-    def _nested_extra_gate_is_resource_claim_keep(
-        self,
-        attempt: Any,
-        nested: Mapping[str, Any] | None = None,
-    ) -> bool:
-        """True when extra-gate restart must KEEP a sibling resource-claim wait.
-
-        Lane-0 KEEP-deferred PCTDD-005 was finalized as
-        ``provider_dispatch_outcome_unknown`` on reconcile after recycle, so
-        005 went DuckDB blocked while 034 grok still held the submodule.
-        Official unstick is preserve-for-resume, never CAS. Extra-gate
-        aliases still cannot bypass ``safe_to_restart=False``.
-        """
-
-        if not self._task_alias_is_extra_gate(attempt):
-            return False
-        reasons: list[str] = []
-        if isinstance(nested, Mapping):
-            reasons.append(str(nested.get("reason") or ""))
-            reasons.append(str(nested.get("selection_idle_reason") or ""))
-            nested_state = nested.get("nested_state")
-            if isinstance(nested_state, Mapping):
-                reasons.append(str(nested_state.get("reason") or ""))
-                reasons.append(
-                    str(nested_state.get("selection_idle_reason") or "")
-                )
-            portal = nested.get("portal_reconciliation")
-            if isinstance(portal, Mapping):
-                reasons.append(str(portal.get("reason") or ""))
-                reasons.append(str(portal.get("selection_idle_reason") or ""))
-        return any("resource_claim" in reason for reason in reasons)
 
     def _extra_gate_attempt_belongs_to_this_process(self, attempt: Any) -> bool:
         """True when this process owns the extra-gate running attempt.
@@ -92931,9 +92684,7 @@ class DatabaseImplementationDaemon:
         Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
         """
 
-        if no_provider_evidence is not None and not self._task_alias_is_extra_gate(
-            task
-        ):
+        if no_provider_evidence is not None:
             return False
         if (
             str(getattr(task, "status", "") or "").strip().lower() != "blocked"
@@ -95329,11 +95080,10 @@ class DatabaseImplementationDaemon:
             if len(outcomes) >= 128:
                 break
             receipt = dict(task.body.get("completion_receipt") or {})
-            if self._task_alias_is_extra_gate(task) or self._extra_gate_retry_receipt_is_claimable(task, receipt):
+            if self._extra_gate_retry_receipt_is_claimable(task, receipt):
                 # Official extra-gate rearm is current claim authority.
                 # Leftover no-provider fence fields are audit and must not
-                # occupy every later pass as recovery_required, including
-                # while the extra-gate is still blocked after grok death.
+                # occupy every later pass as recovery_required.
                 continue
             profile_present = bool(
                 receipt.get("operation")
@@ -96675,16 +96425,6 @@ class DatabaseImplementationDaemon:
 
         outcomes: list[dict[str, Any]] = []
         for saga in self._unresolved_database_no_provider_rearm_sagas():
-            if self._task_alias_is_extra_gate(
-                SimpleNamespace(
-                    task_cid=str(saga.get("task_cid") or ""),
-                    task_alias="",
-                )
-            ):
-                # Extra-gate leftover no-provider sagas are audit. Official
-                # unstick is unknown-outcome rearm → retrying, never CAS.
-                # Extra-gate aliases still cannot bypass safe_to_restart=False.
-                continue
             if not str(saga.get("saga_id") or ""):
                 outcomes.append(
                     {
@@ -97505,12 +97245,6 @@ class DatabaseImplementationDaemon:
                     }
                 )
                 continue
-            if self._task_alias_is_extra_gate(task):
-                # Extra-gate nested-state-changed leftover is retry
-                # authority, not completable landed work and not a tamper
-                # fail-close. Official unstick is rearm, never CAS.
-                # Leave this candidate to generic no-provider rearm.
-                continue
             quiesced_stale_dispatch_release_candidate = bool(
                 receipt.get("retry_exhausted") is True
                 and _database_portal_quiesced_stale_dispatch_release_budget_matches(
@@ -97572,10 +97306,6 @@ class DatabaseImplementationDaemon:
                 continue
             except Exception as exc:
                 _reraise_database_execution_storage_art_fatal(exc)
-                if self._task_alias_is_extra_gate(task):
-                    # Malformed/stale extra-gate landed leftover is retry
-                    # authority. Do not quarantine generic rearm.
-                    continue
                 outcomes.append(
                     {
                         "task_cid": str(task.task_cid),
@@ -98987,21 +98717,10 @@ class DatabaseImplementationDaemon:
         landed_recoveries = self.reconcile_blocked_terminal_landed_tasks()
         # A failed terminal recovery is still quarantined. Diagnostic shape
         # only controls reporting; it never grants generic retry authority.
-        # Extra-gate nested-state-changed leftovers stay retry/rearm
-        # authority and must not be quarantined from generic rearm.
         terminal_candidate_cids = {
             str(item.get("task_cid") or "")
             for item in landed_recoveries
             if str(item.get("task_cid") or "")
-            and str(item.get("task_alias") or "")
-            not in {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
-            and str(item.get("task_cid") or "")
-            not in {
-                "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
-                "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a",
-                "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq",
-                "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
-            }
         }
         shared_recoveries = self._reconcile_shared_no_provider_rearm_fences()
         if shared_recoveries:
@@ -99148,17 +98867,7 @@ class DatabaseImplementationDaemon:
                 # operator repair may resolve this typed interrupted-after-
                 # effect terminal.
                 # An unknown callback is not proof that no effect occurred.
-                # Extra-gate later-epoch unknown blocks still open generic
-                # rearm when nested evidence is None (never CAS).
-                if not (
-                    self._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
-                        task,
-                        receipt,
-                        no_provider_evidence=no_provider_evidence,
-                    )
-                    or stale_in_progress
-                ):
-                    continue
+                continue
             unknown_block = receipt.get("forced_block") is True and (
                 operation == "database_unknown_outcome_blocked"
                 or reason in DATABASE_UNKNOWN_OUTCOME_BLOCK_REASONS
@@ -99168,16 +98877,10 @@ class DatabaseImplementationDaemon:
                 operation == "database_retry_exhausted"
                 and reason == "portal_provider_failed"
             )
-            extra_gate_dead_runner_rearm = (
-                self._extra_gate_dead_runner_block_opens_generic_rearm(
-                    task, receipt
-                )
-            )
             if (
                 not unknown_block
                 and not provider_exhausted
                 and not stale_in_progress
-                and not extra_gate_dead_runner_rearm
             ):
                 continue
             blocking_session = str(receipt.get("owner_session_id") or "")
@@ -99200,7 +98903,6 @@ class DatabaseImplementationDaemon:
                     no_provider_evidence=no_provider_evidence,
                 )
                 or stale_in_progress
-                or extra_gate_dead_runner_rearm
             )
             if (
                 reserved_claim_forbidden
@@ -99335,10 +99037,7 @@ class DatabaseImplementationDaemon:
                 rearm_receipt["previous_block_process_instance_id"] = str(
                     receipt.get("process_instance_id") or ""
                 )
-            if (
-                no_provider_evidence is not None
-                and not self._task_alias_is_extra_gate(task)
-            ):
+            if no_provider_evidence is not None:
                 barrier = getattr(
                     self.coordinator,
                     "execute_with_terminal_task_claim_barrier",
@@ -105460,10 +105159,12 @@ class DatabaseImplementationDaemon:
             from .database_portal_bridge import (
                 DatabasePortalBridgeDeferred,
                 DatabasePortalBridgeError,
-                DatabasePortalProviderRouteDeferred,
             )
 
-            if isinstance(exc, DatabasePortalProviderRouteDeferred):
+            if isinstance(exc, DatabasePortalBridgeDeferred):
+                # Grok/Codex is still in flight. Keep the exact running
+                # attempt so the next pass can accept the same projection
+                # instead of failing it and racing a replacement claim.
                 try:
                     self._renew_attempt_lease(
                         attempt
@@ -105483,97 +105184,6 @@ class DatabaseImplementationDaemon:
                     "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
                     "task_alias": str(getattr(attempt, "task_alias", "") or ""),
                     "status": "running",
-                }
-            if isinstance(exc, DatabasePortalBridgeDeferred):
-                in_flight = True
-                try:
-                    in_flight = self._extra_gate_incomplete_projection_is_in_flight(
-                        attempt
-                    )
-                except Exception:
-                    in_flight = True
-                if (
-                    not in_flight
-                    and self._task_alias_is_extra_gate(attempt)
-                    and "resource_claim" in str(exc)
-                ):
-                    # Sibling extra-gate grok still holds the submodule.
-                    # Keep 034/006/007 instead of dead_runner-close/rearm.
-                    in_flight = True
-                if in_flight:
-                    # Grok/Codex is still in flight. Keep the exact running
-                    # attempt so the next pass can accept the same projection
-                    # instead of failing it and racing a replacement claim.
-                    try:
-                        self._renew_attempt_lease(
-                            attempt
-                            if isinstance(attempt, DatabaseTaskAttempt)
-                            else self.get_attempt(
-                                str(getattr(attempt, "attempt_id", "") or attempt)
-                            )
-                            or attempt
-                        )
-                    except Exception as renew_exc:
-                        _reraise_database_execution_storage_art_fatal(renew_exc)
-                        pass
-                    return {
-                        "resumed": True,
-                        "deferred": True,
-                        "reason": str(exc),
-                        "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
-                        "task_alias": str(getattr(attempt, "task_alias", "") or ""),
-                        "status": "running",
-                    }
-                current = None
-                retry_receipt: dict[str, Any] = {}
-                try:
-                    if isinstance(attempt, DatabaseTaskAttempt):
-                        current = self.get_attempt(attempt.attempt_id) or attempt
-                    else:
-                        current = self.get_attempt(
-                            str(getattr(attempt, "attempt_id", "") or attempt)
-                        )
-                    if current is None:
-                        current = attempt
-                    failed, retry_receipt = self._finalize_failed_attempt(
-                        current,
-                        reason="extra_gate_incomplete_projection_dead_runner",
-                        force_block=False,
-                        unknown_authority=False,
-                    )
-                except Exception as fail_exc:
-                    _reraise_database_execution_storage_art_fatal(fail_exc)
-                    return {
-                        "resumed": True,
-                        "deferred": False,
-                        "portal_retryable_failure": True,
-                        "reason": "extra_gate_incomplete_projection_dead_runner",
-                        "fail_error": str(fail_exc),
-                        "attempt_id": str(
-                            getattr(attempt, "attempt_id", "") or ""
-                        ),
-                        "task_alias": str(
-                            getattr(attempt, "task_alias", "") or ""
-                        ),
-                        "status": "failure_reconciliation_pending",
-                    }
-                retry_exhausted = bool(retry_receipt.get("retry_exhausted"))
-                return {
-                    "resumed": True,
-                    "deferred": False,
-                    "portal_retryable_failure": not retry_exhausted,
-                    "retry_exhausted": retry_exhausted,
-                    "retry_budget": retry_receipt,
-                    "reason": "extra_gate_incomplete_projection_dead_runner",
-                    "attempt_id": str(
-                        getattr(failed or attempt, "attempt_id", "") or ""
-                    ),
-                    "task_alias": str(
-                        getattr(failed or attempt, "task_alias", "") or ""
-                    ),
-                    "status": (
-                        "retry_exhausted" if retry_exhausted else "failed"
-                    ),
                 }
             failed = None
             current = None
@@ -108439,9 +108049,6 @@ class DatabaseImplementationDaemon:
                 preserve_for_resume = bool(
                     nested.get("terminal_provider_evidence")
                     or durable_provider_result is not None
-                    or self._nested_extra_gate_is_resource_claim_keep(
-                        current, nested
-                    )
                 ) and not (
                     effect_unknown
                     or committed_provider_result_missing

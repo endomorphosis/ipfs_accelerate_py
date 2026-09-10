@@ -4072,17 +4072,13 @@ def test_extra_gate_rearm_with_leftover_no_provider_fence_is_claimable() -> None
     assert daemon._automatic_claim_forbidden_current(task) is True
 
 
-def test_blocked_extra_gate_leftover_no_provider_saga_does_not_fence_rearm() -> None:
-    """PCTDD-007 stayed blocked after grok death because leftover saga fenced rearm.
-
-    Master restarting-exited killed extra-gate grok; lane-3 then idled
-    ``database_no_provider_rearm_recovery_fenced``. Official unstick is
-    rearm → retrying. Extra-gate aliases still cannot bypass
-    ``safe_to_restart=False``.
-    """
+def test_blocked_extra_gate_unresolved_saga_remains_fenced() -> None:
+    """A reserved task name never makes an unresolved recovery saga audit-only."""
 
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         DatabaseImplementationDaemon,
+        DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+        DATABASE_RETRY_BUDGET_SCHEMA,
     )
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor,
@@ -4099,7 +4095,10 @@ def test_blocked_extra_gate_leftover_no_provider_saga_does_not_fence_rearm() -> 
             },
         )
     )
-    assert daemon._reconcile_database_no_provider_rearm_sagas() == []
+    pending = daemon._reconcile_database_no_provider_rearm_sagas()
+    assert len(pending) == 1
+    assert pending[0]["recovery_required"] is True
+    assert pending[0]["rearmed"] is False
     blocked = SimpleNamespace(
         task_cid="baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq",
         task_alias="PCTDD-007",
@@ -4107,14 +4106,18 @@ def test_blocked_extra_gate_leftover_no_provider_saga_does_not_fence_rearm() -> 
         body={
             "completion_receipt": {
                 "no_provider_rearm_fence": {"saga_id": "sha256:" + "b" * 64},
-                "operation": "database_unknown_outcome_blocked",
+                "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                "schema": DATABASE_RETRY_BUDGET_SCHEMA,
             }
         },
     )
     daemon._task_source = SimpleNamespace(  # type: ignore[attr-defined]
         list_tasks=lambda limit=32: SimpleNamespace(tasks=[blocked])
     )
-    assert daemon._reconcile_shared_no_provider_rearm_fences() == []
+    pending = daemon._reconcile_shared_no_provider_rearm_fences()
+    assert len(pending) == 1
+    assert pending[0]["recovery_required"] is True
+    assert pending[0]["rearmed"] is False
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,
