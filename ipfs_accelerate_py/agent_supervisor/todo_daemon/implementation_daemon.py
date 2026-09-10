@@ -61487,146 +61487,15 @@ class PortalImplementationDaemon:
     def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
         """Continuously drain inactive worktrees whose branches are already merged."""
 
-        max_cleanups = max(0, int(self.merged_worktree_cleanup_max))
-        if max_cleanups <= 0:
-            return {"attempted": False, "reason": "merged_worktree_cleanup_disabled"}
-
-        prune = subprocess.run(
-            ["git", "worktree", "prune"],
-            cwd=self.repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        try:
-            root_resolved = self.worktree_root.resolve()
-        except OSError:
-            root_resolved = self.worktree_root
-        try:
-            active_worktree = PortalTaskState.load(self.state_path).active_worktree_path
-        except Exception:
-            active_worktree = ""
-        active_resolved: Path | None = None
-        if active_worktree:
-            try:
-                active_resolved = Path(active_worktree).resolve()
-            except OSError:
-                active_resolved = Path(active_worktree)
-
-        process_lines = self._list_process_commands()
-        target_branch = self._main_branch_name()
-        removed: list[dict[str, Any]] = []
-        skipped: list[dict[str, Any]] = []
-
-        for entry in self._git_worktree_entries():
-            if len(removed) >= max_cleanups:
-                break
-            path_text = str(entry.get("worktree") or "")
-            if not path_text:
-                continue
-            worktree_path = Path(path_text)
-            try:
-                worktree_resolved = worktree_path.resolve()
-                worktree_resolved.relative_to(root_resolved)
-            except (OSError, ValueError):
-                continue
-
-            branch_name = str(entry.get("branch") or "").removeprefix("refs/heads/")
-            detail = {"worktree_path": str(worktree_path), "branch": branch_name}
-            # A reboot or interrupted ``git worktree add`` can leave a locked
-            # administrative entry after the checkout directory has vanished.
-            # ``subprocess.run(..., cwd=worktree_path)`` raises before Git can
-            # return a status in that case, which used to crash and recycle the
-            # implementation daemon indefinitely.  Missing registered paths
-            # are not safe to delete or reuse here; leave their Git metadata
-            # for an explicit reconciliation pass and keep dispatch alive.
-            if not worktree_path.is_dir():
-                skipped.append({**detail, "reason": "worktree_missing"})
-                continue
-            if active_resolved is not None and worktree_resolved == active_resolved:
-                skipped.append({**detail, "reason": "active_state_worktree"})
-                continue
-            if any(str(worktree_resolved) in line for line in process_lines):
-                skipped.append({**detail, "reason": "active_process"})
-                continue
-            # Fenced ownership check must run before ancestry-based cleanup so a
-            # preparing/active claim whose tip still matches the merge target is
-            # never deleted by a peer lane (ASI-171).
-            lifecycle_auth = self._authorize_worktree_cleanup(
-                worktree_path,
-                branch_name,
-            )
-            if not lifecycle_auth.get("allowed", False):
-                skipped.append(
-                    {
-                        **detail,
-                        "reason": f"lifecycle_{lifecycle_auth.get('reason') or 'fenced'}",
-                        "lifecycle": lifecycle_auth,
-                    }
-                )
-                continue
-            if not self._managed_cleanup_branch(branch_name):
-                skipped.append({**detail, "reason": "unmanaged_branch"})
-                continue
-            if not self._git_ref_exists(branch_name):
-                skipped.append({**detail, "reason": "branch_missing"})
-                continue
-            if not self._git_ref_is_ancestor(branch_name, target_branch):
-                skipped.append({**detail, "reason": "branch_not_merged"})
-                continue
-
-            try:
-                status = subprocess.run(
-                    ["git", "status", "--porcelain", "--untracked-files=all"],
-                    cwd=worktree_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-            except FileNotFoundError:
-                # The directory can disappear after the is_dir() observation.
-                # Treat that race exactly like an already-missing checkout.
-                skipped.append({**detail, "reason": "worktree_missing"})
-                continue
-            if status.returncode != 0:
-                skipped.append(
-                    {
-                        **detail,
-                        "reason": "status_failed",
-                        "returncode": status.returncode,
-                        "stderr": status.stderr[-4000:],
-                    }
-                )
-                continue
-            if status.stdout.strip():
-                skipped.append(
-                    {
-                        **detail,
-                        "reason": "dirty_worktree",
-                        "status_short": status.stdout.splitlines()[:20],
-                    }
-                )
-                continue
-
-            cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
-            removed.append({**detail, "cleanup_result": cleanup_result})
-
-        result = {
-            "attempted": True,
-            "worktree_root": str(self.worktree_root),
-            "target_branch": target_branch,
-            "max_cleanups": max_cleanups,
-            "prune_returncode": prune.returncode,
-            "prune_stdout": prune.stdout[-4000:],
-            "prune_stderr": prune.stderr[-4000:],
-            "removed_count": sum(1 for item in removed if item["cleanup_result"].get("cleaned", False)),
-            "skipped_count": len(skipped),
-            "removed": removed,
-            "skipped": skipped[:50],
+        # This older runtime has no task-projection isolation flag or native
+        # canonical peer completion proof. Fail closed for all background
+        # candidates; exact task/merge-queue cleanup remains separate.
+        return {
+            "attempted": False,
+            "reason": "canonical_peer_cleanup_api_unavailable",
+            "removed_count": 0,
         }
-        if removed:
-            self._record_event("merged_worktree_cleanup", result)
-        return result
+
 
     def _cleanup_merged_worktree(
         self,
