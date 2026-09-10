@@ -1093,7 +1093,39 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _qualification_argv(argv: Sequence[str]) -> bool:
+    """True when the board qualification writer, not 013 --write/--check, was invoked."""
+
+    for token in argv:
+        if token in {
+            "--cohort",
+            "--minimum-tasks",
+            "--output",
+            "--qualification-output",
+            "--allow-honest-nonpromotion",
+            "--allow-not-admitted",
+            "--require-shadow-receipt",
+        } or token.startswith(
+            (
+                "--cohort=",
+                "--minimum-tasks=",
+                "--output=",
+                "--qualification-output=",
+                "--require-shadow-receipt=",
+            )
+        ):
+            return True
+    return False
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    args_list = list(argv) if argv is not None else sys.argv[1:]
+    if _qualification_argv(args_list):
+        from ipfs_accelerate_py.agent_supervisor.validation.paired_qualification_cli import (
+            main as qualification_main,
+        )
+
+        return qualification_main(args_list)
     args = _build_parser().parse_args(argv)
     if args.write:
         write_sealed_artifacts()
