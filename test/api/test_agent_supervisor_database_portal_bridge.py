@@ -14690,6 +14690,15 @@ def test_callback_integration_source_accepts_only_exact_settled_quarantine(
         is None
     )
 
+_VRIF_CALLBACK_REPORT_JSON = (
+    "docs/architecture/residual_intelligence_inventory/final_release_report.json"
+)
+_VRIF_CALLBACK_REPORT_MARKDOWN = (
+    "docs/architecture/residual_intelligence_inventory/final_release_report.md"
+)
+_VRIF_CALLBACK_REPORT_TEST = "test/api/residual_intelligence/test_release_report.py"
+
+
 def _run_vrif_callback_hygiene_requalification(
     tmp_path: Path,
     mutate: object,
@@ -16471,6 +16480,14 @@ def test_priority_checkout_deferral_retains_cursor_and_retries_publicly(
     bridge._post_merge_recovery_evidence = recovery_evidence
 
     class Authority:
+        @staticmethod
+        def recover_blocked_false_completed_merge(*_args, **_kwargs):
+            pytest.fail("priority replay must not enter false-completion recovery")
+
+        @staticmethod
+        def preauthorize_false_completed_merge_recovery(*_args, **_kwargs):
+            pytest.fail("priority replay must not request false-completion authority")
+
         @staticmethod
         def _database_portal_evidence_digest(_value: object) -> str:
             return "sha256:" + "d" * 64
@@ -21073,3 +21090,49 @@ def test_closed_unaccepted_implementation_reason_consumes_protected_path_mutatio
         == ""
     )
     assert closed_unaccepted_implementation_reason((), alias="ASEH-061") == ""
+
+
+def test_empty_recovery_tick_visits_all_cursor_stages_without_mutation(tmp_path, monkeypatch):
+    pages = []
+
+    def page(name):
+        def read(**kwargs):
+            pages.append(name)
+            assert kwargs["limit"] > 0
+            return ()
+        return read
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("an empty recovery scan has no mutation authority")
+
+    class Train:
+        def __init__(self, **kwargs):
+            pass
+
+        def run_under_consumer_lease(self, callback):
+            return True, callback()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.merge.merge_train.MergeTrain", Train)
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.repository_root = tmp_path
+    bridge.merge_target_branch = "main"
+    bridge.merge_queue = SimpleNamespace(
+        max_attempts=3,
+        completed_requests=page("completed"),
+        pending_requests=page("pending"),
+        processing_requests=page("processing"),
+        quarantined_requests=page("quarantined"),
+    )
+    bridge._load_post_merge_recovery_cursors = bridge._empty_post_merge_recovery_cursors
+    bridge._save_post_merge_recovery_cursors = forbidden
+    authority = SimpleNamespace(
+        _database_portal_evidence_digest=forbidden,
+        recover_blocked_post_merge_declared_outputs=forbidden,
+        preauthorize_post_merge_declared_output_recovery=forbidden,
+        recover_blocked_false_completed_merge=forbidden,
+        preauthorize_false_completed_merge_recovery=forbidden,
+        post_merge_completion_recovery_task_cids=lambda: (),
+    )
+    assert bridge.recover_post_merge_declared_outputs(authority) is None
+    assert pages == ["completed", "completed", "pending", "processing", "pending", "quarantined", "processing"]

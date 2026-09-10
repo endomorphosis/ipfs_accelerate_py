@@ -4139,7 +4139,6 @@ class _DockerContainerLease:
         prompt_path: Path,
         engine_endpoint: str,
         write_fd: int,
-        watchdog: subprocess.Popen[bytes],
         control_socket: socket.socket,
         watchdog: _DetachedDockerCleanupWatchdog,
         provider: str,
