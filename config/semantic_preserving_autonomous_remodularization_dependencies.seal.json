@@ -2,7 +2,7 @@
   "bootstrap_runtime_file_sha256": {
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py": "411a10323b0eeb9129159a49366c06e63f002f95e498ddc24c906302d62c4cad",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "3d8c16ff20838068bc2f2223a0930b28b46d696c77ce4c8e5ee922a734b24b74",
-    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": "ab136165a2a08ab4d394f70ba5579b367a4a423123ffe2aa62707fd344dbcd39",
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": "5293f1aed4be0c524dd8fd82948e5c302a102e83097191332768cc31afeaecd6",
     "ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py": "8ec4d49f2f6937f04e4dfd8b36f47b0aca34413b8226db6ff59e3bfc028caa14",
     "ipfs_accelerate_py/agent_supervisor/semantic_state/durable_state.py": "0ec3b29ef6e6de35b93e40b2553f4a26bb092f3cdf8f7f19720b6ee125ce7600",
     "ipfs_accelerate_py/agent_supervisor/semantic_state/kit_source_forest.py": "2637a4717f3604c5201b5759ee34b3bc6e50048abeb98ca90d2046374e046cc4",
@@ -499,7 +499,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:e3342d16a1e245eddc4a473facaf91da7d3a8890ef418c0888f34c56e84e6ef1",
+  "seal_cid": "sha256:d0dc8a3a50cbc49887288c58f83662dad37a93302fa6321a833df6dfdf0d11a9",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",
