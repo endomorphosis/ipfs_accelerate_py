@@ -82,6 +82,16 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 _FAILED_NODE_RE = re.compile(
     r"FAILED\s+(\S+::\S+)",
 )
+_EMPTY_PID_INT_RE = re.compile(
+    r"invalid literal for int\(\) with base 10: ['\"]['\"]"
+)
+_PID_MARKER_FLAKE_NODE_NAMES = frozenset(
+    {
+        "test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree",
+        "test_aseh_scheduler_group_fence_survives_leader_exit",
+        "test_launch_delivery_failure_fences_forked_dedicated_group",
+    }
+)
 _MATERIALIZE_ALIASES = ("materialize", "write", "generate")
 
 
@@ -186,6 +196,38 @@ def _failed_test_files(nodeids: Sequence[str]) -> tuple[str, ...]:
         if path:
             files.append(path)
     return tuple(dict.fromkeys(files))
+
+
+def _is_pid_marker_empty_int_failure(
+    validation_result: Mapping[str, Any],
+    failed_nodes: Sequence[str],
+) -> bool:
+    """True when the only failures are empty pid-marker int() races.
+
+    ``Path.write_text`` truncates before writing. Protected grant-handoff
+    tests wait on exists() then int(read_text()), so a concurrent reader
+    sees ``''``. Revalidate without Grok; do not spend the provider pass.
+    """
+
+    if not failed_nodes:
+        return False
+    names = {str(node).rsplit("::", 1)[-1] for node in failed_nodes}
+    if not names or not names.issubset(_PID_MARKER_FLAKE_NODE_NAMES):
+        return False
+    review = _failure_review_projection(validation_result)
+    blob = _ANSI_RE.sub(
+        "",
+        "\n".join(
+            (
+                str(validation_result.get("failure_head") or ""),
+                str(validation_result.get("stdout") or ""),
+                str(validation_result.get("stderr") or ""),
+                str(review.get("failure_head") or ""),
+                "\n".join(str(node) for node in failed_nodes),
+            )
+        ),
+    )
+    return bool(_EMPTY_PID_INT_RE.search(blob))
 
 
 def _failed_tests_outside_declared_outputs(
@@ -541,6 +583,16 @@ def plan_automatic_implementation_rescue(
     failed_nodes = _failed_test_nodeids(result)
     failed_files = _failed_test_files(failed_nodes)
     if _failed_tests_outside_declared_outputs(failed_files, expected):
+        if _is_pid_marker_empty_int_failure(result, failed_nodes):
+            return AutoRescuePlan(
+                action=AutoRescueAction.STAGE_AND_REVALIDATE,
+                reason="retry_pid_marker_empty_int_flake",
+                finding_codes=finding_codes,
+                reason_codes=reason_codes,
+                failed_commands=failed_commands,
+                expected_outputs=expected,
+                missing_expected_outputs=missing,
+            )
         return AutoRescuePlan(
             action=AutoRescueAction.NONE,
             reason="failed_tests_outside_declared_outputs",

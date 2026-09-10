@@ -21,6 +21,20 @@ from typing import Any, Iterable, Mapping
 
 LEDGER_SCHEMA = "ipfs_accelerate_py/agent-supervisor/pytest-item-ledger@1"
 SKIP_REASON = "pytest-item-ledger reuse"
+# Path.write_text truncates before writing. Grant-handoff tests wait on
+# exists() then int(read_text()), so an empty marker raises ValueError and
+# fails ASEH-061 even though the child PID lands a millisecond later.
+PID_MARKER_RETRY_LIMIT = 2
+PID_MARKER_RETRY_NODE_NAMES = frozenset(
+    {
+        "test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree",
+        "test_aseh_scheduler_group_fence_survives_leader_exit",
+        "test_launch_delivery_failure_fences_forked_dedicated_group",
+    }
+)
+_EMPTY_INT_RE = re.compile(
+    r"invalid literal for int\(\) with base 10: ['\"]['\"]"
+)
 WORKSPACE_LEDGER_NAME = ".aseh-pytest-item-ledger.jsonl"
 WORKSPACE_LEDGER_ALIASES = (
     WORKSPACE_LEDGER_NAME,
@@ -370,6 +384,18 @@ def reusable_nodeids(
             continue
         reusable.add(nodeid)
     return frozenset(reusable)
+
+
+def nodeid_name(nodeid: str) -> str:
+    return str(nodeid or "").rsplit("::", 1)[-1]
+
+
+def is_pid_marker_retry_nodeid(nodeid: str) -> bool:
+    return nodeid_name(nodeid) in PID_MARKER_RETRY_NODE_NAMES
+
+
+def is_empty_int_failure_text(text: str) -> bool:
+    return bool(_EMPTY_INT_RE.search(str(text or "")))
 
 
 def ledger_context(workspace: Path) -> dict[str, Any] | None:

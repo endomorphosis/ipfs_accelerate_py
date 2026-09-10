@@ -456,6 +456,39 @@ def test_plan_skips_provider_rescue_when_failures_are_outside_declared_outputs()
     assert plan.reason == "failed_tests_outside_declared_outputs"
 
 
+def test_plan_revalidates_pid_marker_empty_int_flake_without_grok() -> None:
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "error": "validation_command_failed",
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": ["validation_command_failed"],
+            },
+            "failed_tests": [
+                "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+                "::test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree"
+            ],
+            "failure_head": (
+                "FAILED test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+                "::test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree"
+                " - ValueError: invalid literal for int() with base 10: ''"
+            ),
+        },
+        expected_outputs=(
+            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+            "test/api/agent_supervisor/efficiency_state_hardening/"
+            "test_compatibility_migration.py",
+        ),
+        expected_outputs_present_on_disk=True,
+        stage_rescue_used=True,
+        materialize_rescue_used=True,
+    )
+    assert plan.action is AutoRescueAction.STAGE_AND_REVALIDATE
+    assert plan.reason == "retry_pid_marker_empty_int_flake"
+
+
 def test_plan_still_rescues_when_a_declared_output_test_failed() -> None:
     plan = plan_automatic_implementation_rescue(
         validation_result={

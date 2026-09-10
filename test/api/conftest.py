@@ -111,6 +111,7 @@ else:
         _aseh_board_pytest_plugin.pytest_collection_modifyitems
     )
     pytest_runtest_logreport = _aseh_board_pytest_plugin.pytest_runtest_logreport
+    pytest_runtest_call = _aseh_board_pytest_plugin.pytest_runtest_call
 
 
 _CONTROL_PLANE_MODE_SNAPSHOT: dict[Path, int] = {}

@@ -14,6 +14,8 @@ from ipfs_accelerate_py.agent_supervisor.runtime.pytest_item_ledger import (
     file_sha256,
     git_worktree_root,
     infer_board_workspace,
+    is_empty_int_failure_text,
+    is_pid_marker_retry_nodeid,
     ledger_context,
     load_records,
     pytest_item_ledger_dir,
@@ -338,6 +340,67 @@ def test_ivp_selection_skips_unrelated_test_file(tmp_path: Path) -> None:
     assert affected is not None
     assert "test/test_hit.py" in affected
     assert "test/test_miss.py" not in affected
+
+
+def test_pid_marker_retry_helpers_match_empty_int_and_nodeids() -> None:
+    node = (
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+        "::test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree"
+    )
+    assert is_pid_marker_retry_nodeid(node)
+    assert is_pid_marker_retry_nodeid(
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+        "::test_aseh_scheduler_group_fence_survives_leader_exit"
+    )
+    assert not is_pid_marker_retry_nodeid(
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+        "::test_aseh_r45_receipt_id_reuses_memoized_validation_contracts"
+    )
+    assert is_empty_int_failure_text(
+        "ValueError: invalid literal for int() with base 10: ''"
+    )
+    assert is_empty_int_failure_text(
+        'FAILED test_foo - ValueError: invalid literal for int() with base 10: ""'
+    )
+    assert not is_empty_int_failure_text(
+        "ValueError: invalid literal for int() with base 10: '12'"
+    )
+
+
+def test_pid_marker_plugin_retries_empty_int_then_passes() -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.runtime import pytest_item_ledger_plugin
+
+    calls = {"n": 0}
+
+    def runtest() -> None:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ValueError("invalid literal for int() with base 10: ''")
+
+    forced: list[object] = []
+    outcome = SimpleNamespace(
+        excinfo=SimpleNamespace(
+            value=ValueError("invalid literal for int() with base 10: ''")
+        ),
+        force_result=forced.append,
+    )
+    item = SimpleNamespace(
+        nodeid=(
+            "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+            "::test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree"
+        ),
+        runtest=runtest,
+    )
+    gen = pytest_item_ledger_plugin.pytest_runtest_call(item)
+    gen.send(None)
+    try:
+        gen.send(outcome)
+    except StopIteration:
+        pass
+    assert calls["n"] == 2
+    assert forced == [None]
 
 
 def test_ivp_selection_mentions_dirty_non_python(tmp_path: Path) -> None:
