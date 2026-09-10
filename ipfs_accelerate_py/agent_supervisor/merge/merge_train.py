@@ -1109,6 +1109,22 @@ class MergeTrain:
         self.repo_root = Path(repo_root).resolve()
         self.queue = queue
         self.target_branch = str(target_branch or "main")
+        self._owner_recovery_runtime = None
+        from .owner_merge_queue_adapter import OwnerMergeQueueAdapter
+
+        if isinstance(queue, OwnerMergeQueueAdapter):
+            from .owner_recovery_adapter import OwnerMergeRecoveryRuntime
+
+            runtime = queue.recovery_runtime
+            if type(runtime) is not OwnerMergeRecoveryRuntime:
+                raise ValueError(
+                    "owner queue requires its admitted recovery runtime before train startup"
+                )
+            runtime.validate_train(
+                queue, repository_root=self.repo_root, target_branch=self.target_branch,
+                owner_id=owner_id, state_dir=state_dir,
+            )
+            self._owner_recovery_runtime = runtime
         queue_repository_id = str(
             getattr(queue, "target_repository_id", "") or ""
         ).strip()
@@ -1202,26 +1218,35 @@ class MergeTrain:
         self.decision_runtime_cancellation = decision_runtime_cancellation
         self._last_merge_runtime_decision: Any = None
         self._last_merge_effect_observation: Any = None
-        queue_dir = Path(
-            getattr(queue, "queue_dir", self.repo_root / ".merge-queue")
-        ).resolve()
-        self.state_dir = Path(state_dir) if state_dir is not None else queue_dir / "train"
+        runtime = self._owner_recovery_runtime
+        if runtime is not None:
+            # Only scratch worktrees and revalidated caches remain local.
+            # The exact owner supplies the canonical consumer lease, cursor,
+            # and immutable receipt history; do not synthesize a queue_dir.
+            self.state_dir = runtime.local_state_dir
+            self.receipt_dir = None
+            self.consumer_lock_path = None
+            self.distributed_publication_ledger_path = None
+            self.owner_id = runtime.consumer_id
+        else:
+            queue_dir = Path(
+                getattr(queue, "queue_dir", self.repo_root / ".merge-queue")
+            ).resolve()
+            self.state_dir = Path(state_dir) if state_dir is not None else queue_dir / "train"
+            self.receipt_dir = self.state_dir / "receipts"
+            self.receipt_dir.mkdir(parents=True, exist_ok=True)
+            # Legacy exclusion remains canonical per queue, not per scratch dir.
+            canonical_consumer_dir = queue_dir / "train"
+            canonical_consumer_dir.mkdir(parents=True, exist_ok=True)
+            self.consumer_lock_path = canonical_consumer_dir / "consumer.lock"
+            self.distributed_publication_ledger_path = (
+                self.state_dir / "distributed-publications.json"
+            )
+            self.owner_id = owner_id or f"merge-train:{os.getpid()}:{uuid.uuid4().hex}"
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_dir = self.state_dir / "worktrees"
-        self.receipt_dir = self.state_dir / "receipts"
         self.worktree_dir.mkdir(parents=True, exist_ok=True)
-        self.receipt_dir.mkdir(parents=True, exist_ok=True)
-        # Abandoned-claim recovery is queue-wide authority.  Its exclusion
-        # lock must therefore be canonical for the queue and cannot follow a
-        # caller-selected receipt/worktree state directory.
-        canonical_consumer_dir = queue_dir / "train"
-        canonical_consumer_dir.mkdir(parents=True, exist_ok=True)
-        self.consumer_lock_path = canonical_consumer_dir / "consumer.lock"
-        self.distributed_publication_ledger_path = (
-            self.state_dir / "distributed-publications.json"
-        )
         self.git_timeout_seconds = max(1.0, float(git_timeout_seconds))
-        self.owner_id = owner_id or f"merge-train:{os.getpid()}:{uuid.uuid4().hex}"
         if (
             distributed_repository_id is not None
             and repository_id is not None
@@ -1382,8 +1407,13 @@ class MergeTrain:
 
     @contextmanager
     def _consumer_lease(self) -> Iterator[bool]:
-        """Try to acquire the process-safe, crash-releasing consumer lease."""
+        """Acquire canonical exclusion; owner custody survives unknown callbacks."""
 
+        runtime = getattr(self, "_owner_recovery_runtime", None)
+        if runtime is not None:
+            with runtime.consumer_lease() as acquired:
+                yield acquired
+            return
         fd = os.open(self.consumer_lock_path, os.O_RDWR | os.O_CREAT, 0o600)
         acquired = False
         try:
@@ -2277,6 +2307,25 @@ class MergeTrain:
     def _read_distributed_publication_ledger(
         self,
     ) -> tuple[dict[str, Any], str]:
+        runtime = getattr(self, "_owner_recovery_runtime", None)
+        if runtime is not None:
+            value = runtime.read_optional_receipt("distributed-publications")
+            if value is None:
+                return {
+                    "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
+                    "publications": {}, "tasks": {},
+                }, ""
+            if (
+                value.get("schema") != DISTRIBUTED_LANE_ADMISSION_SCHEMA
+                or not isinstance(value.get("publications"), Mapping)
+                or not isinstance(value.get("tasks"), Mapping)
+            ):
+                raise ValueError("owner distributed publication ledger is malformed")
+            return {
+                "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
+                "publications": dict(value["publications"]),
+                "tasks": dict(value["tasks"]),
+            }, ""
         try:
             value = json.loads(
                 self.distributed_publication_ledger_path.read_text(
@@ -2768,10 +2817,11 @@ class MergeTrain:
             "fencing_epoch": fencing_epoch,
             "fencing_token": fencing_token,
         }
-        self._atomic_json(
-            self.distributed_publication_ledger_path,
-            ledger,
-        )
+        runtime = getattr(self, "_owner_recovery_runtime", None)
+        if runtime is not None:
+            runtime.write_receipt("distributed-publications", ledger)
+        else:
+            self._atomic_json(self.distributed_publication_ledger_path, ledger)
         admission = {
             "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
             "status": "admitted",
@@ -3180,9 +3230,12 @@ class MergeTrain:
 
     def _write_acceptance_receipt(
         self, payload: Mapping[str, Any]
-    ) -> Path:
+    ) -> Path | str:
         receipt_id = str(payload.get("receipt_id") or "")
         digest = receipt_id.split(":", 1)[-1]
+        runtime = getattr(self, "_owner_recovery_runtime", None)
+        if runtime is not None:
+            return runtime.write_receipt(f"acceptance-{digest}", payload)
         path = self.receipt_dir / f"acceptance-{digest}.json"
         self._atomic_json(path, payload)
         return path
@@ -4140,7 +4193,13 @@ class MergeTrain:
             "owner_id": self.owner_id,
             "target_branch": self.target_branch,
             "state_dir": str(self.state_dir),
-            "consumer_lock_path": str(self.consumer_lock_path),
+            "consumer_lock_path": (
+                str(self.consumer_lock_path) if self.consumer_lock_path is not None else None
+            ),
+            "owner_recovery": (
+                self._owner_recovery_runtime.diagnostics()
+                if self._owner_recovery_runtime is not None else None
+            ),
             "proof_gate_enabled": self.formal_verification_policy is not None,
             "proof_policy_id": (
                 self.formal_verification_policy.policy_id
@@ -4162,8 +4221,9 @@ class MergeTrain:
             "distributed_post_merge_evidence_required": (
                 self.distributed_post_merge_evidence_required
             ),
-            "distributed_publication_ledger_path": str(
-                self.distributed_publication_ledger_path
+            "distributed_publication_ledger_path": (
+                str(self.distributed_publication_ledger_path)
+                if self.distributed_publication_ledger_path is not None else None
             ),
             "acceptance_requirement_id": PARALLEL_ACCEPTANCE_EVIDENCE_ID,
             "throughput": dict(self._last_throughput),
@@ -6661,10 +6721,15 @@ class MergeTrain:
         return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
 
     def _receipt_path(self, key: str) -> Path:
+        if getattr(self, "_owner_recovery_runtime", None) is not None:
+            raise ValueError("owner train receipts have no filesystem path")
         safe = "".join(character for character in key if character.isalnum() or character in "-_")
         return self.receipt_dir / f"{safe[:180]}.json"
 
     def _read_receipt(self, key: str) -> dict[str, Any]:
+        runtime = getattr(self, "_owner_recovery_runtime", None)
+        if runtime is not None:
+            return runtime.read_receipt(key)
         try:
             payload = json.loads(self._receipt_path(key).read_text(encoding="utf-8"))
             return dict(payload) if isinstance(payload, dict) else {}
@@ -6672,6 +6737,10 @@ class MergeTrain:
             return {}
 
     def _write_receipt(self, key: str, payload: Mapping[str, Any]) -> None:
+        runtime = getattr(self, "_owner_recovery_runtime", None)
+        if runtime is not None:
+            runtime.write_receipt(key, payload)
+            return
         path = self._receipt_path(key)
         tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
         try:

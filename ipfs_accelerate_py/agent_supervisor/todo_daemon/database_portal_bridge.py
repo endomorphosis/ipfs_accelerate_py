@@ -3354,6 +3354,14 @@ class DatabasePortalExecutionBridge:
         ):
             raise ValueError("implementation_protected_paths must be unique")
         self.merge_queue = merge_queue
+        from ..merge.owner_merge_queue_adapter import OwnerMergeQueueAdapter
+
+        if isinstance(merge_queue, OwnerMergeQueueAdapter):
+            runtime = merge_queue.recovery_runtime
+            if runtime is None or runtime.attempt_root != self.attempt_root:
+                raise ValueError(
+                    "owner merge queue requires this lane's admitted recovery runtime"
+                )
         self.merge_target_branch = str(merge_target_branch or "").strip()
         if self.merge_queue is not None:
             from ..merge.checkout_lock import checkout_repository_id
@@ -3427,10 +3435,17 @@ class DatabasePortalExecutionBridge:
         return {stage: "" for stage in _POST_MERGE_RECOVERY_CURSOR_STAGES}
 
     def _load_post_merge_recovery_cursors(self) -> dict[str, str]:
-        """Load non-authoritative keyset progress, resetting invalid state."""
+        """Read owner cursor CAS state, or the explicit legacy file contract."""
 
         if self.merge_queue is None:
             return self._empty_post_merge_recovery_cursors()
+        from ..merge.owner_merge_queue_adapter import OwnerMergeQueueAdapter
+
+        if isinstance(self.merge_queue, OwnerMergeQueueAdapter):
+            runtime = self.merge_queue.recovery_runtime
+            if runtime is None:
+                raise DatabasePortalBridgeError("owner recovery cursor runtime is not admitted")
+            return runtime.load_cursors()
         path = self._post_merge_recovery_cursor_path()
         try:
             if path.stat().st_size > _MAX_POST_MERGE_RECOVERY_CURSOR_BYTES:
@@ -3481,6 +3496,14 @@ class DatabasePortalExecutionBridge:
             return
         from ..proof.formal_verification_contracts import content_identity
 
+        from ..merge.owner_merge_queue_adapter import OwnerMergeQueueAdapter
+
+        if isinstance(self.merge_queue, OwnerMergeQueueAdapter):
+            runtime = self.merge_queue.recovery_runtime
+            if runtime is None:
+                raise DatabasePortalBridgeError("owner recovery cursor runtime is not admitted")
+            runtime.save_cursors(cursors)
+            return
         normalized = {
             stage: str(cursors.get(stage) or "")
             for stage in _POST_MERGE_RECOVERY_CURSOR_STAGES
