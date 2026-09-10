@@ -863,6 +863,50 @@ def test_daemon_normalize_failure_ignores_hostile_colliding_dict_key(
     )
 
 
+def test_daemon_normalize_failure_total_fallback_avoids_key_hooks_and_private_kind(
+    monkeypatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    class CollidingKey:
+        armed = False
+
+        def __hash__(self):
+            return hash("kind")
+
+        def __eq__(self, _other):
+            if self.armed:
+                raise AssertionError("failure fallback executed a key hook")
+            return False
+
+    key = CollidingKey()
+    failure = {key: "decoy"}
+    failure.update(kind="PRIVATE_KIND" * 10_000, returncode=47)
+    key.armed = True
+
+    def unavailable(*_args, **_kwargs):
+        raise RuntimeError("projector unavailable")
+
+    for name in (
+        "_normalize_implementation_failure_unchecked",
+        "_normalize_implementation_failure_legacy",
+        "_project_implementation_failure",
+    ):
+        monkeypatch.setattr(
+            PortalImplementationDaemon, name, staticmethod(unavailable), raising=False
+        )
+
+    result = PortalImplementationDaemon._normalize_implementation_failure(failure)
+    assert result == {
+        "kind": "implementation_failure",
+        "returncode": 47,
+        "reason": "failure_evidence_unavailable",
+    }
+    assert len(json.dumps(result).encode()) < 256
+
+
 def test_daemon_normalize_failure_final_envelope_refreshes_tail_ledger() -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         PortalImplementationDaemon,

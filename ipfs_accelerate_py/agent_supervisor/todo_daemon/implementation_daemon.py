@@ -88659,6 +88659,14 @@ class PortalImplementationDaemon:
     def _normalize_implementation_failure_unchecked(
         failure: Mapping[str, Any],
     ) -> dict[str, Any]:
+        return PortalImplementationDaemon._project_implementation_failure(failure)
+
+    @staticmethod
+    def _project_implementation_failure(
+        failure: Mapping[str, Any],
+        *,
+        emergency: bool = False,
+    ) -> dict[str, Any]:
         """Return bounded, durable evidence for an implementation failure.
 
         This method sits on the error path, so it must be total: malformed or
@@ -88957,7 +88965,7 @@ class PortalImplementationDaemon:
             *,
             path: str,
             item_limit: int = 192,
-            max_items: int = 3,
+            max_items: int = 1 if emergency else 3,
             render_item: Callable[[Any], Any] | None = None,
         ) -> list[str]:
             source, scan_truncated = sequence_items(value)
@@ -89225,11 +89233,23 @@ class PortalImplementationDaemon:
             ):
                 candidate = get(validation, key)
                 if key == "failure_head":
-                    candidate = (
-                        PortalImplementationDaemon._sanitize_retry_failure_head(
-                            candidate
+                    try:
+                        candidate = (
+                            PortalImplementationDaemon._sanitize_retry_failure_head(
+                                candidate
+                            )
                         )
-                    )
+                    except BaseException:
+                        # Sanitizer failure must never expose the raw prose.
+                        raw = raw_text(candidate)
+                        candidate = (
+                            (
+                                f"[failure-head-omitted original_bytes={len(raw)} "
+                                f"sha256={hashlib.sha256(raw).hexdigest()}]"
+                            )
+                            if raw
+                            else ""
+                        )
                 rendered = text(
                     candidate,
                     path=f"validation.{key}",
@@ -89746,24 +89766,23 @@ class PortalImplementationDaemon:
                 ._normalize_implementation_failure_unchecked(failure)
             )
         except BaseException:
-            # Preserve compatibility for ordinary Mapping implementations,
-            # while keeping the final hostile-input fallback exact-container
-            # only so error reporting cannot execute user-controlled hooks.
+            # The emergency path retains the same privacy and byte bounds as
+            # the normal projection, with smaller diagnostic sequences. The
+            # legacy projector can return raw private or unbounded fields.
             try:
                 return (
                     PortalImplementationDaemon
-                    ._normalize_implementation_failure_legacy(failure)
+                    ._project_implementation_failure(failure, emergency=True)
                 )
             except BaseException:
-                source = failure if type(failure) is dict else {}
-                kind = dict.get(source, "kind")
-                returncode = dict.get(source, "returncode")
+                returncode = None
+                if type(failure) is dict:
+                    for key, value in dict.items(failure):
+                        if type(key) is str and key == "returncode":
+                            returncode = value
+                            break
                 return {
-                    "kind": (
-                        kind
-                        if type(kind) is str and kind
-                        else "implementation_failure"
-                    ),
+                    "kind": "implementation_failure",
                     "returncode": (
                         returncode
                         if type(returncode) is int
