@@ -23697,6 +23697,22 @@ def _git_guard_ptrace_delivery_signal(
     return stop_signal
 
 
+def _git_guard_run_observer(observer: Callable[[], None] | None) -> None:
+    """Run a Git-guard test observer without leaking ProcessLookupError.
+
+    Grant-handoff partial-prepare tests kill the tracee from the observer.
+    If that PID is already gone, ``Popen.kill`` raises ProcessLookupError
+    and the OperatorError match never fires.
+    """
+
+    if observer is None:
+        return
+    try:
+        observer()
+    except ProcessLookupError:
+        return
+
+
 def _git_guard_fail_traced_stop(
     trace: _GitGuardSyscallTrace,
     *,
@@ -23708,8 +23724,7 @@ def _git_guard_fail_traced_stop(
     failure = OperatorError(message)
     try:
         _git_guard_trace_capture_locks(trace)
-        if observer is not None:
-            observer()
+        _git_guard_run_observer(observer)
     except BaseException as exc:
         failure.add_note(
             "candidate Git unadmitted-stop capture also failed: "
@@ -23717,8 +23732,7 @@ def _git_guard_fail_traced_stop(
         )
     try:
         _git_guard_force_retire_trace(trace)
-        if observer is not None:
-            observer()
+        _git_guard_run_observer(observer)
     except BaseException as exc:
         failure.add_note(
             "candidate Git unadmitted-stop retirement also failed: "
@@ -23735,8 +23749,7 @@ def _git_guard_trace_advance(
     """Advance one kernel-attributed syscall/exit stop without losing it."""
 
     if not trace.active:
-        if observer is not None:
-            observer()
+        _git_guard_run_observer(observer)
         return
     try:
         waited_pid, status = os.waitpid(
@@ -23748,8 +23761,7 @@ def _git_guard_trace_advance(
             "candidate Git traced child wait authority was lost"
         ) from exc
     if waited_pid == 0:
-        if observer is not None:
-            observer()
+        _git_guard_run_observer(observer)
         return
     if waited_pid != trace.process.pid:
         raise OperatorError("candidate Git traced child PID differs")
@@ -23757,8 +23769,7 @@ def _git_guard_trace_advance(
         trace.process.returncode = os.waitstatus_to_exitcode(status)
         trace.active = False
         trace.stopped = False
-        if observer is not None:
-            observer()
+        _git_guard_run_observer(observer)
         return
     if not os.WIFSTOPPED(status):
         raise OperatorError("candidate Git traced child state differs")
@@ -23784,8 +23795,7 @@ def _git_guard_trace_advance(
             observer=observer,
         )
     _git_guard_trace_capture_locks(trace)
-    if observer is not None:
-        observer()
+    _git_guard_run_observer(observer)
     _git_guard_ptrace_call(
         _PTRACE_SYSCALL,
         trace.process.pid,
@@ -23910,8 +23920,7 @@ def _git_guard_detach_trace(
     if not trace.active:
         if require_live:
             raise OperatorError("candidate Git traced child exited early")
-        if observer is not None:
-            observer()
+        _git_guard_run_observer(observer)
         return
     if not trace.stopped:
         deadline = time.monotonic() + 10.0
@@ -23933,8 +23942,7 @@ def _git_guard_detach_trace(
                     )
                     try:
                         _git_guard_force_retire_trace(trace)
-                        if observer is not None:
-                            observer()
+                        _git_guard_run_observer(observer)
                     except BaseException as exc:
                         failure.add_note(
                             "candidate Git detach-deadline retirement also "
@@ -23980,8 +23988,7 @@ def _git_guard_detach_trace(
                 )
             if event != 0 or trace.pending_signal != 0:
                 _git_guard_trace_capture_locks(trace)
-                if observer is not None:
-                    observer()
+                _git_guard_run_observer(observer)
                 _git_guard_ptrace_call(
                     _PTRACE_SYSCALL,
                     trace.process.pid,
@@ -23994,16 +24001,14 @@ def _git_guard_detach_trace(
             # The only remaining stop is a TRACESYSGOOD syscall boundary.
             break
     if not trace.active:
-        if observer is not None:
-            observer()
+        _git_guard_run_observer(observer)
         if require_live:
             raise OperatorError("candidate Git traced child exited early")
         return
     capture_error: BaseException | None = None
     try:
         _git_guard_trace_capture_locks(trace)
-        if observer is not None:
-            observer()
+        _git_guard_run_observer(observer)
     except BaseException as exc:
         capture_error = exc
     try:
@@ -24016,8 +24021,7 @@ def _git_guard_detach_trace(
     except BaseException as detach_error:
         try:
             _git_guard_force_retire_trace(trace)
-            if observer is not None:
-                observer()
+            _git_guard_run_observer(observer)
         except BaseException as retirement_error:
             detach_error.add_note(
                 "candidate Git failed-detach retirement also failed: "
@@ -24352,8 +24356,8 @@ def _git_guard_read_line(
     while b"\n" not in payload and len(payload) <= 1024:
         if trace is not None:
             _git_guard_trace_advance(trace, observer=observer)
-        elif observer is not None:
-            observer()
+        else:
+            _git_guard_run_observer(observer)
         remaining = deadline - time.monotonic()
         if remaining <= 0.0:
             break
@@ -24378,8 +24382,8 @@ def _git_guard_read_line(
         payload.extend(chunk)
         if trace is not None:
             _git_guard_trace_advance(trace, observer=observer)
-        elif observer is not None:
-            observer()
+        else:
+            _git_guard_run_observer(observer)
     observed = bytes(payload)
     if observed != expected:
         raise OperatorError("candidate Git guard protocol differs")

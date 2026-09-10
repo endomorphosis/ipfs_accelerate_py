@@ -171,6 +171,14 @@ def test_stop_signal_handlers_survive_external_sigterm_ignores_sigterm() -> None
     assert signal.getsignal(signal.SIGTERM) == prior
 
 
+def test_git_guard_run_observer_swallows_process_lookup_error() -> None:
+    def boom() -> None:
+        raise ProcessLookupError(3, "No such process")
+
+    aseh_operator._git_guard_run_observer(boom)
+    aseh_operator._git_guard_run_observer(None)
+
+
 def test_strip_control_plane_write_skips_git_worktree_under_pytest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

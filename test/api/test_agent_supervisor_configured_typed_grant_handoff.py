@@ -280,6 +280,20 @@ def _assert_process_not_executable(pid: int) -> None:
         time.sleep(0.01)
 
 
+def _wait_nonempty_child_marker(path: Path, *, timeout: float = 5.0) -> int:
+    # Path.write_text truncates before writing; wait until the pid is visible.
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            text = ""
+        if text:
+            return int(text)
+        time.sleep(0.01)
+    raise AssertionError(f"child marker {path} stayed empty")
+
+
 def test_aseh_scheduler_group_fence_survives_leader_exit(
     tmp_path: Path,
 ) -> None:
@@ -293,7 +307,10 @@ def test_aseh_scheduler_group_fence_survives_leader_exit(
                 "import os,signal,time,pathlib; child=os.fork(); "
                 f"marker=pathlib.Path({str(child_marker)!r}); "
                 f"release=pathlib.Path({str(release)!r}); "
-                "(marker.write_text(str(os.getpid())) if child==0 else None); "
+                "tmp=marker.with_name(marker.name+'.tmp'); "
+                "(tmp.write_text(str(os.getpid()), encoding='utf-8') "
+                "if child==0 else None); "
+                "(os.replace(tmp, marker) if child==0 else None); "
                 "signal.signal(signal.SIGTERM,signal.SIG_IGN); "
                 "(time.sleep(60) if child==0 else "
                 "exec('while not release.exists():\\n time.sleep(.01)'))"
@@ -303,13 +320,9 @@ def test_aseh_scheduler_group_fence_survives_leader_exit(
     )
     try:
         start_time_ticks = aseh_operator._dedicated_process_group_birth(process)
-        deadline = time.monotonic() + 5.0
-        while not child_marker.exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert child_marker.exists()
+        child_pid = _wait_nonempty_child_marker(child_marker)
         release.write_text("release\n", encoding="utf-8")
         process.wait(timeout=5.0)
-        child_pid = int(child_marker.read_text(encoding="utf-8"))
 
         aseh_operator._terminate_scheduler(process, start_time_ticks)
 
@@ -331,7 +344,10 @@ def test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree(
             (
                 "import os,signal,time,pathlib; child=os.fork(); "
                 f"marker=pathlib.Path({str(child_marker)!r}); "
-                "(marker.write_text(str(os.getpid())) if child==0 else None); "
+                "tmp=marker.with_name(marker.name+'.tmp'); "
+                "(tmp.write_text(str(os.getpid()), encoding='utf-8') "
+                "if child==0 else None); "
+                "(os.replace(tmp, marker) if child==0 else None); "
                 "signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(60)"
             ),
         ),
@@ -339,11 +355,7 @@ def test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree(
     )
     try:
         start_time_ticks = aseh_operator._dedicated_process_group_birth(process)
-        deadline = time.monotonic() + 5.0
-        while not child_marker.exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert child_marker.exists()
-        child_pid = int(child_marker.read_text(encoding="utf-8"))
+        child_pid = _wait_nonempty_child_marker(child_marker)
         started = time.monotonic()
 
         aseh_operator._terminate_dedicated_process_group(
