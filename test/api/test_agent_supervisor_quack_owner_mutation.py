@@ -640,6 +640,72 @@ def test_authenticated_bundle_is_atomic_and_exact_replay_is_idempotent(tmp_path:
         assert source.projection_matches_events() is True
 
 
+def test_retained_results_do_not_exhaust_mutation_inbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server, _identity, token, _database = _server(tmp_path)
+    monkeypatch.setattr(quack_server_module, "MUTATION_MAX_DIRECTORY_ENTRIES", 2)
+    inbox = server.mutation_inbox_path()
+    inbox.mkdir(parents=True, exist_ok=True)
+    retained = {}
+    for number in range(4):
+        path = inbox / f"{number:032x}.done.json"
+        retained[path] = b"retained evidence; not authority"
+        path.write_bytes(retained[path])
+    request = _transition_request(server, token, session_id="lane:retention", owner_id="retention")
+    try:
+        _publish(server, request)
+        assert server.service_mutation_inbox() == 1
+        first = _done(server, request)
+        assert first["ok"] is True
+        _publish(server, request)
+        assert server.service_mutation_inbox() == 1
+        assert _done(server, request) == first
+        # A replay left claimed before a crash must still be reconciled even
+        # when retained results occupy the beginning of the directory.
+        _publish(server, request)
+        pending = inbox / f"{request['request_id']}.request.json"
+        processing = inbox / f"{request['request_id']}.processing.json"
+        pending.rename(processing)
+        os.utime(processing, (0, 0))
+        assert server.service_mutation_inbox() == 0
+        assert not processing.exists()
+        assert _done(server, request) == first
+        assert all(path.read_bytes() == body for path, body in retained.items())
+        assert server._connection.execute(
+            "SELECT COUNT(*) FROM task_revisions "
+            "WHERE task_cid = 'task:test' AND revision = 2"
+        ).fetchone()[0] == 1
+    finally:
+        server.stop()
+
+
+@pytest.mark.parametrize("kind", ["request", "processing", "unknown", "symlink"])
+def test_mutation_inbox_still_bounds_unsettled_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str,
+) -> None:
+    server, _identity, _token, _database = _server(tmp_path)
+    monkeypatch.setattr(quack_server_module, "MUTATION_MAX_DIRECTORY_ENTRIES", 2)
+    inbox = server.mutation_inbox_path()
+    inbox.mkdir(parents=True, exist_ok=True)
+    for number in range(3):
+        suffix = "done" if kind == "symlink" else kind
+        path = inbox / f"{number:032x}.{suffix}.json"
+        if kind == "symlink":
+            path.symlink_to(tmp_path / "absent")
+        else:
+            path.write_text("{}")
+    try:
+        with pytest.raises(
+            quack_server_module.QuackStateServerMutationError,
+            match="inbox_population_exceeded",
+        ):
+            server.service_mutation_inbox()
+        assert len(list(inbox.iterdir())) == 3
+    finally:
+        server.stop()
+
+
 def test_two_remote_bundles_have_one_winner_and_typed_loser(tmp_path: Path) -> None:
     server, _identity, token, database = _server(tmp_path)
     first = _transition_request(server, token, session_id="lane:one", owner_id="one")

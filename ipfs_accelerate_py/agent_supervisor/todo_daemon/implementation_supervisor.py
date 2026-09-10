@@ -17316,34 +17316,28 @@ class PortalImplementationSupervisor:
             r"^b[a-z2-7]{40,127}\.(request|processing|done|cancelled)\.json$"
         )
         active: list[str] = []
-        entries: list[os.DirEntry[str]] = []
         try:
             with os.scandir(inbox) as iterator:
                 for entry in iterator:
-                    entries.append(entry)
-                    if len(entries) > MUTATION_MAX_DIRECTORY_ENTRIES:
-                        raise RuntimeError(
-                            "Quack mutation inbox population exceeds its bound"
-                        )
+                    match = allowed_name.fullmatch(entry.name)
+                    entry_metadata = entry.stat(follow_symlinks=False)
+                    if (
+                        match is None
+                        or stat.S_ISLNK(entry_metadata.st_mode)
+                        or not stat.S_ISREG(entry_metadata.st_mode)
+                        or entry_metadata.st_uid != os.getuid()
+                    ):
+                        raise RuntimeError("Quack mutation inbox entry is not admitted")
+                    # Retained results are checked, preserved, and excluded
+                    # from the pending-work budget. They confer no authority.
+                    if match.group(1) in {"request", "processing"}:
+                        active.append(entry.name)
+                        if len(active) > MUTATION_MAX_DIRECTORY_ENTRIES:
+                            raise RuntimeError(
+                                "Quack mutation inbox population exceeds its bound"
+                            )
         except OSError as exc:
             raise RuntimeError("Quack mutation inbox cannot be observed") from exc
-        for entry in entries:
-            match = allowed_name.fullmatch(entry.name)
-            try:
-                entry_metadata = entry.stat(follow_symlinks=False)
-            except OSError as exc:
-                raise RuntimeError(
-                    "Quack mutation inbox changed during its barrier"
-                ) from exc
-            if (
-                match is None
-                or stat.S_ISLNK(entry_metadata.st_mode)
-                or not stat.S_ISREG(entry_metadata.st_mode)
-                or entry_metadata.st_uid != os.getuid()
-            ):
-                raise RuntimeError("Quack mutation inbox entry is not admitted")
-            if match.group(1) in {"request", "processing"}:
-                active.append(entry.name)
         active.sort()
         if active:
             raise RuntimeError(

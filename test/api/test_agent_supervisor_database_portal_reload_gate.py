@@ -1379,6 +1379,32 @@ def test_outer_owner_receipt_and_task_cas_share_fence_and_transaction(
     ]
 
 
+@pytest.mark.parametrize("suffix", ["done", "cancelled"])
+def test_outer_owner_barrier_retains_results_beyond_pending_budget(tmp_path, monkeypatch, suffix):
+    from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server
+
+    repo = tmp_path / "repo"
+    inbox = repo / "state" / "quack-owner" / "mutations"
+    inbox.mkdir(parents=True, mode=0o700)
+    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(repo))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "state/control.duckdb")
+    monkeypatch.setattr(quack_state_server, "MUTATION_MAX_DIRECTORY_ENTRIES", 2)
+    for letter in "abcd":
+        (inbox / ("b" + letter * 40 + f".{suffix}.json")).write_text("retained")
+    barrier = PortalImplementationSupervisor._database_portal_mutation_inbox_barrier("state/control.duckdb")
+    assert barrier["active_request_count"] == barrier["active_processing_count"] == 0
+    assert len(list(inbox.iterdir())) == 4
+    active = inbox / ("b" + "z" * 40 + ".processing.json")
+    active.write_text("{}")
+    with pytest.raises(RuntimeError, match="unsettled owner mutation"):
+        PortalImplementationSupervisor._database_portal_mutation_inbox_barrier("state/control.duckdb")
+    active.unlink()
+    unsafe = inbox / ("b" + "z" * 40 + ".done.json")
+    unsafe.symlink_to(tmp_path / "absent")
+    with pytest.raises(RuntimeError, match="entry is not admitted"):
+        PortalImplementationSupervisor._database_portal_mutation_inbox_barrier("state/control.duckdb")
+
+
 @pytest.mark.parametrize("active_suffix", ["request", "processing"])
 def test_outer_owner_receipt_barrier_rejects_unsettled_quack_mutation(
     tmp_path,
