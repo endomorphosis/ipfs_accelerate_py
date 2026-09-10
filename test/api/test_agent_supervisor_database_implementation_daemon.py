@@ -3730,3 +3730,19 @@ def test_portal_rearm_new_source_retains_once_per_source_and_settlement_budget(t
         assert len(daemon.reconcile_recoverable_portal_failure_rearms(recovery_source_validator=lambda: other)) == 1
     finally:
         daemon.close()
+
+
+def test_production_protected_rearm_requires_native_fence_precondition(tmp_path):
+    def provider(attempt):
+        raise DatabasePortalBridgeDeferred("implementation_protected_path_mutated")
+    daemon = _open_daemon(tmp_path, session="session:protected-fence", provider_fn=provider)
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        attempt = daemon.get_attempt(first["attempt_id"])
+        daemon.require_real_execution = True
+        assert daemon.reconcile_recoverable_portal_failure_rearms() == []
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        assert daemon.get_attempt(attempt.attempt_id).status == "failed"
+    finally:
+        daemon.close()

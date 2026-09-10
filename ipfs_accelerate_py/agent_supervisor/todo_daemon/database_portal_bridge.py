@@ -8754,6 +8754,43 @@ class DatabasePortalExecutionBridge:
                 )
         return result
 
+    def protected_path_failure_rearm_ready(self, attempt: Any) -> bool:
+        """Keep a settled callback blocked until its native fences are cleared.
+
+        This is only a rearm precondition. The database owner still verifies
+        the failure receipt, source qualification, retry budget and status CAS.
+        Never clear a predecessor fence or infer effect freedom here.
+        """
+        try:
+            paths = self._paths(attempt)
+            before = self._seal_attempt_directory(
+                paths, attempt_id=str(attempt.attempt_id), create=False,
+            )
+            binding = self._strict_binding(paths.binding)
+            for field in ("attempt_id", "claim_id", "task_cid", "task_alias"):
+                if binding.get(field) != str(getattr(attempt, field)):
+                    return False
+            self._verify_projection(paths, binding)
+            for name in (
+                "implementation-protected-path-active.json",
+                "implementation-protected-path-incident.json",
+            ):
+                try:
+                    (paths.root / name).lstat()
+                except FileNotFoundError:
+                    continue
+                return False
+            return (
+                self._strict_binding(paths.binding) == binding
+                and self._seal_attempt_directory(
+                    paths, attempt_id=str(attempt.attempt_id), create=False,
+                ) == before
+            )
+        except Exception:
+            # Missing/malformed bindings and filesystem uncertainty do not
+            # grant a retry over preserved callback evidence.
+            return False
+
     def _recover_superseded_attempt_lifecycle(
         self,
         *,

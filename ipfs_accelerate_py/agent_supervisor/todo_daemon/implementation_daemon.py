@@ -70353,6 +70353,19 @@ class DatabaseImplementationDaemon:
             if matched is None:
                 continue
             attempt, receipt, reason = matched
+            if reason == _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON:
+                bridge = getattr(self._provider_fn, "__self__", None)
+                rearm_ready = getattr(
+                    bridge, "protected_path_failure_rearm_ready", None,
+                )
+                if callable(rearm_ready):
+                    if attempt is None or not rearm_ready(attempt):
+                        continue
+                elif self.require_real_execution:
+                    # A live lane can still own the predecessor dispatch
+                    # intent after its provider exits. Do not create a new
+                    # attempt that can never acquire that retained intent.
+                    continue
             accepted_source = (
                 dict(recovery_source_validator())
                 if recovery_source_validator is not None else None

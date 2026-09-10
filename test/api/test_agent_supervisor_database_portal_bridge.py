@@ -6762,3 +6762,28 @@ def test_configured_production_runner_binds_real_portal_bridge(
         assert daemon.markdown_status_write_count == 0
     finally:
         daemon.close()
+
+
+@pytest.mark.parametrize("fence", [
+    "implementation-protected-path-active.json",
+    "implementation-protected-path-incident.json",
+])
+def test_protected_failure_rearm_waits_for_native_fence_clearance(tmp_path, fence):
+    bridge = _bridge_for_projection(tmp_path)
+    attempt = _attempt()
+    paths, binding = bridge._ensure_attempt_projection(attempt, _record())
+    assert bridge.protected_path_failure_rearm_ready(attempt)
+    marker = paths.root / fence
+    marker.write_text("preserved incident")
+    assert not bridge.protected_path_failure_rearm_ready(attempt)
+    assert marker.read_text() == "preserved incident"
+    marker.unlink()  # Simulate separate native clearance in this test fixture.
+    assert bridge.protected_path_failure_rearm_ready(attempt)
+    paths.binding.write_text("{}")
+    assert not bridge.protected_path_failure_rearm_ready(attempt)
+
+
+def test_protected_failure_rearm_missing_binding_is_not_clearance(tmp_path):
+    bridge = _bridge_for_projection(tmp_path)
+    assert not bridge.protected_path_failure_rearm_ready(_attempt())
+    assert not bridge._paths(_attempt()).root.exists()
