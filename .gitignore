@@ -179,6 +179,7 @@ Thumbs.db
 # The daemon still force-adds declared ignored outputs at commit.
 !docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/*.json
 !benchmarks/agent_supervisor/efficiency_state_hardening/results/*.json
+!ipfs_accelerate_py/agent_supervisor/control/schemas/*.json
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/**
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/*.json
