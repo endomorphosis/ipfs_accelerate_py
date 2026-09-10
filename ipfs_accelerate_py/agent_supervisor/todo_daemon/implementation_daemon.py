@@ -55480,6 +55480,12 @@ class PortalImplementationDaemon:
     def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
         """Continuously drain inactive worktrees whose branches are already merged."""
 
+        if self.isolate_merge_queue_to_task_projection:
+            return {
+                "attempted": False,
+                "reason": "task_projection_has_no_peer_cleanup_authority",
+                "removed_count": 0,
+            }
         max_cleanups = max(0, int(self.merged_worktree_cleanup_max))
         if max_cleanups <= 0:
             return {"attempted": False, "reason": "merged_worktree_cleanup_disabled"}

@@ -15774,6 +15774,17 @@ class PortalImplementationSupervisor:
     def _cleanup_backlogged_worktrees_locked(self) -> dict[str, Any]:
         """Clean merged worktrees while holding the checkout mutation lock."""
 
+        program = self.config.database_program
+        if program is not None and program.authority_mode != AUTHORITY_MODE_LEGACY_MARKDOWN:
+            # This runtime lacks the canonical completion recheck under a
+            # guarded pool mutation. Retain callback workspaces AND missing
+            # registrations/refs until that path is qualified. Exact task
+            # completion cleanup remains owned by the existing merge queue.
+            return {
+                "attempted": False,
+                "reason": "canonical_cleanup_requires_guarded_runtime",
+                "removed_count": 0,
+            }
         worktree_root = self.config.worktree_root
         if worktree_root is None:
             return {"attempted": False, "reason": "worktree_root_not_configured"}

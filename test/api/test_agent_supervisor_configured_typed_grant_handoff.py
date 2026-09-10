@@ -2629,6 +2629,66 @@ def _aseh_health_fixture(
     }, sample
 
 
+@pytest.mark.parametrize("verify_cached", [False, True])
+@pytest.mark.parametrize("unsafe_mode", [False, True])
+def test_aseh_replica_size_refresh_is_retryable_only_with_safe_file_identity(
+    tmp_path: Path, verify_cached: bool, unsafe_mode: bool,
+) -> None:
+    replica = tmp_path / "replica.duckdb"
+    replica.write_bytes(b"new owner-published replica")
+    replica.chmod(0o644 if unsafe_mode else 0o600)
+    binding = {"path": str(replica), "size_bytes": 1, "sha256": "sha256:old"}
+    expected = (
+        "published replica file identity is unsafe" if unsafe_mode else
+        "published replica bytes differ from owner status" if verify_cached else
+        "published replica changed during shadow copy"
+    )
+    with pytest.raises(aseh_operator.OperatorError, match=expected):
+        if verify_cached:
+            aseh_operator._published_replica_bytes_still_match(binding)
+        else:
+            aseh_operator._copy_published_replica(binding, tmp_path / "copy.duckdb")
+    assert not (tmp_path / "copy.duckdb").exists()
+
+
+def test_aseh_successful_retry_dates_the_new_query_without_refreshing_old_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board, paths, sample = _aseh_health_fixture(
+        tmp_path, observed_at=100.0, lane_mtime_ns=100_000_000_000,
+    )
+    board.resolved_database_program = lambda: SimpleNamespace(
+        quack_endpoint="quack:127.0.0.1:45123"
+    )
+    clock = [100.0]
+    calls = []
+
+    def query(*_args: object, **_kwargs: object) -> dict[str, object]:
+        calls.append(clock[0])
+        if len(calls) == 1:
+            clock[0] += 40
+            raise aseh_operator.OperatorError(
+                "published replica changed during shadow copy"
+            )
+        clock[0] += 2
+        return {"available": True}
+
+    monkeypatch.setattr(aseh_operator, "time", SimpleNamespace(
+        time=lambda: clock[0], monotonic_ns=lambda: int(clock[0] * 1e9),
+        sleep=lambda _seconds: None,
+    ))
+    monkeypatch.setattr(aseh_operator, "_broker_status_query", query)
+    monkeypatch.setattr(aseh_operator, "_lane_status_observations", lambda *_a, **_k: [])
+    observed = aseh_operator._status_sample(
+        board, paths, SimpleNamespace(status=lambda: sample["owner_status"]),
+        SimpleNamespace(pid=os.getpid(), poll=lambda: None),
+    )
+    assert observed["authority"]["available"] is True
+    assert calls == [100.0, 140.0]
+    assert observed["observed_at"] == 140.0
+    assert observed["monotonic_ns"] == 142_000_000_000
+
+
 def test_aseh_status_sample_rejects_replica_generation_change_during_query(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
