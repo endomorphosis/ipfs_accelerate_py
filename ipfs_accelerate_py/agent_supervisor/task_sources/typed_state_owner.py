@@ -443,6 +443,10 @@ _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
         "derived.coordination.read",
         "derived.coordination.write",
+        *("legacy.merge_recovery." + operation for operation in (
+            "describe_scope", "load_cursors", "cas_cursors", "acquire_consumer_lease",
+            "renew_consumer_lease", "release_consumer_lease", "get_receipt", "publish_receipt"
+        )),
         *("legacy.merge_queue." + operation for operation in (
             "get", "enqueue", "claim", "dequeue", "owns_claim", "complete", "requeue", "quarantine",
             "pending_requests", "processing_requests", "defer",
@@ -1091,6 +1095,7 @@ class OwnerClientGrant:
             "task_id",
             "task_cid",
             "reviewed_preflight_cid",
+            "recovery_scope_cid",
             "subscription_id",
             "consumer_id",
             "event_id",
@@ -5377,6 +5382,7 @@ class TypedStateOwnerGateway:
         self._database_status_binding: dict[str, Any] = {}
         self._database_closeout_profile: Any = None
         self._legacy_merge_queue_service: Any | None = None
+        self._legacy_merge_recovery_service: Any | None = None
         self._derived_coordination_service: Any | None = None
         self._derived_bootstrap_token_digest: bytes | None = None
         self._fleet_read_bootstrap_token_digest: bytes | None = None
@@ -5445,6 +5451,37 @@ class TypedStateOwnerGateway:
                 max_queue_size=max_queue_size, max_processing=max_processing,
                 max_attempts=max_attempts, max_worktree_bytes=max_worktree_bytes,
                 worktree_usage=worktree_usage,
+            )
+
+    def provision_legacy_merge_recovery_schema(
+        self, *, expected_identity, repository_id, target_branch, migration_id,
+        scope_bindings, receipt_imports=(), cursor_imports=(),
+    ):
+        """Explicit native owner migration, never a worker/bootstrap operation."""
+        from ..merge.owner_recovery_runtime import provision_legacy_merge_recovery_schema
+
+        with self._transaction_lock:
+            self._require_live_server_binding()
+            return provision_legacy_merge_recovery_schema(
+                self, expected_identity=expected_identity, repository_id=repository_id,
+                target_branch=target_branch, migration_id=migration_id,
+                scope_bindings=scope_bindings, receipt_imports=receipt_imports,
+                cursor_imports=cursor_imports,
+            )
+
+    def bind_legacy_merge_recovery_service(
+        self, *, expected_identity, repository_id, target_branch,
+    ) -> None:
+        """Bind only the explicitly provisioned owner recovery relations."""
+        from ..merge.owner_recovery_runtime import _OwnerRecoveryRuntimeService
+
+        with self._transaction_lock:
+            self._require_live_server_binding()
+            if self._legacy_merge_recovery_service is not None:
+                raise TypedStateOwnerAuthorizationError("legacy recovery is already bound")
+            self._legacy_merge_recovery_service = _OwnerRecoveryRuntimeService(
+                self, expected_identity=expected_identity, repository_id=repository_id,
+                target_branch=target_branch,
             )
 
     def _bind_eaaef_typed_owner_command_service_from_server(
@@ -6972,6 +7009,28 @@ class TypedStateOwnerGateway:
                             raise TypedStateOwnerProtocolError("legacy queue owner is busy")
                         try:
                             grant = self._require_active_grant(grant, peer_identity=peer_identity)
+                            result = service.execute(payload, grant=grant, session_id=session_id,
+                                                     peer_identity=peer_identity)
+                        finally:
+                            self._transaction_lock.release()
+                        response = {"ok": True, "result": result}
+                    elif action == "legacy.merge_recovery":
+                        self._reject_unknown(
+                            request, {"schema", "action", "request_id", "payload"},
+                            "legacy merge recovery request",
+                        )
+                        service = self._legacy_merge_recovery_service
+                        if transaction_active or service is None:
+                            raise TypedStateOwnerAuthorizationError("legacy recovery service is unavailable")
+                        payload = request.get("payload")
+                        if not isinstance(payload, dict):
+                            raise TypedStateOwnerProtocolError("recovery request must be an object")
+                        if not self._transaction_lock.acquire(timeout=5):
+                            raise TypedStateOwnerProtocolError("legacy recovery owner is busy")
+                        try:
+                            grant = self._require_active_grant(
+                                grant, peer_identity=peer_identity, session_id=session_id,
+                            )
                             result = service.execute(payload, grant=grant, session_id=session_id,
                                                      peer_identity=peer_identity)
                         finally:
@@ -13024,6 +13083,26 @@ class TypedStateOwnerConnection:
                 or result.get("completion_authority") is not False):
             raise TypedStateOwnerProtocolError("queue response differs from admitted operation")
         return MappingProxyType(result)
+
+    def legacy_merge_recovery(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Invoke the separately scoped owner recovery service without SQL/files."""
+        from ..merge.owner_recovery_runtime import SCHEMA, OwnerRecoveryRuntimeError, _json_object
+
+        if self._active:
+            raise TypedStateOwnerAuthorizationError("recovery cannot join a task transaction")
+        result = self._request("legacy.merge_recovery", payload=dict(payload)).get("result")
+        fields = ("repository_id", "target_branch", "consumer_id", "recovery_scope_cid")
+        if (not isinstance(result, dict) or result.get("schema") != SCHEMA
+                or result.get("owner_identity") != dict(self.identity)
+                or result.get("operation") != payload.get("operation")
+                or any(result.get(key) != payload.get(key) for key in fields)
+                or result.get("completion_authority") is not False):
+            raise TypedStateOwnerProtocolError("recovery response differs from admitted operation")
+        try:
+            decoded = _json_object(result.get("result_json"))
+        except OwnerRecoveryRuntimeError as exc:
+            raise TypedStateOwnerProtocolError("recovery response JSON is invalid") from exc
+        return MappingProxyType({**result, "result": decoded})
 
     def derived_coordination(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         """Perform a bounded operation on a separately admitted derived owner."""

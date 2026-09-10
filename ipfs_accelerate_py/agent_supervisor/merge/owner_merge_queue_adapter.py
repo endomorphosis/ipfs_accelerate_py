@@ -21,6 +21,15 @@ class OwnerMergeQueueAdapter:
         self.target_repository_id = client.repository_id
         self.target_branch = client.target_branch
         self.require_target_binding = True
+        self.recovery_runtime = None
+
+    def bind_recovery_runtime(self, runtime):
+        from .owner_recovery_adapter import OwnerMergeRecoveryRuntime
+        if type(runtime) is not OwnerMergeRecoveryRuntime or runtime.queue is not self:
+            raise OwnerMergeQueueError("recovery runtime is not bound to this queue adapter")
+        if self.recovery_runtime is not None and self.recovery_runtime is not runtime:
+            raise OwnerMergeQueueError("queue recovery runtime is already bound")
+        self.recovery_runtime = runtime
 
     def bind_target(self, target_repository_id, target_branch, *, required=True):
         if type(required) is not bool or (
