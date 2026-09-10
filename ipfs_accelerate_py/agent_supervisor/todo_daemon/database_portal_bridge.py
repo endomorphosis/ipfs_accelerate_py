@@ -186,6 +186,49 @@ def is_protected_checkout_setup_block(reason: str) -> bool:
         return False
     return any(token in normalized for token in PROTECTED_CHECKOUT_SETUP_BLOCK_REASONS)
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset({"completed", "complete", "done"})
+CLOSED_UNACCEPTED_IMPLEMENTATION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "implementation_protected_path_mutated",
+        "workspace_protected_path_mutated",
+    }
+)
+
+
+def closed_unaccepted_implementation_reason(
+    events: Sequence[Mapping[str, Any]],
+    *,
+    alias: str,
+    task_cid: str = "",
+) -> str:
+    """Return a finished-but-rejected attempt reason, else empty.
+
+    ASEH-061 skip-Grok pytest can pass while Grok still mutates the launch
+    script. That writes ``implementation_finished`` with
+    ``implementation_protected_path_mutated`` and leaves markdown Status
+    non-terminal. Treating that as a 300s deferral loops the same dead
+    attempt instead of opening a new claim.
+    """
+
+    wanted_alias = str(alias or "").strip()
+    wanted_cid = str(task_cid or "").strip()
+    for event in reversed(tuple(events or ())):
+        if not isinstance(event, Mapping):
+            continue
+        if event.get("type") != "implementation_finished":
+            continue
+        task_id = str(event.get("task_id") or event.get("task_alias") or "").strip()
+        if wanted_alias and task_id and task_id != wanted_alias:
+            continue
+        cid = str(
+            event.get("canonical_task_cid") or event.get("task_cid") or ""
+        ).strip()
+        if wanted_cid and cid and cid != wanted_cid:
+            continue
+        err = str(event.get("error") or event.get("reason") or "").strip()
+        if err in CLOSED_UNACCEPTED_IMPLEMENTATION_REASONS:
+            return err
+        return ""
+    return ""
 _MUTABLE_PROJECTION_LINE = re.compile(r"(?mi)^-\s*status\s*:\s*.*$")
 _OPERATIONAL_PROJECTION_LINE = re.compile(
     r"(?mi)^-\s*completion\s+receipt\s*:\s*.*$"
@@ -7724,6 +7767,17 @@ class DatabasePortalExecutionBridge:
         alias = str(binding.get("task_alias") or "")
         projection_text = self._verify_projection(paths, binding)
         if _projection_status(projection_text) not in _TERMINAL_STATUSES:
+            try:
+                events = self._verified_event_chain(paths)
+            except DatabasePortalBridgeError:
+                events = ()
+            closed = closed_unaccepted_implementation_reason(
+                events,
+                alias=alias,
+                task_cid=str(getattr(attempt, "task_cid", "") or ""),
+            )
+            if closed:
+                raise DatabasePortalBridgeError(closed)
             raise DatabasePortalBridgeDeferred("Portal task projection is not complete")
         durable_summary = self._verified_terminal_implementation_summary(
             paths,
@@ -8561,6 +8615,17 @@ class DatabasePortalExecutionBridge:
         )
         summaries: list[Mapping[str, Any]] = []
         projection = self._verify_projection(paths, binding)
+        try:
+            existing_events = self._verified_event_chain(paths)
+        except DatabasePortalBridgeError:
+            existing_events = ()
+        closed = closed_unaccepted_implementation_reason(
+            existing_events,
+            alias=str(binding.get("task_alias") or ""),
+            task_cid=str(getattr(attempt, "task_cid", "") or ""),
+        )
+        if closed:
+            raise DatabasePortalBridgeError(closed)
         if _projection_status(projection) in _TERMINAL_STATUSES:
             replayed_summary = self._verified_terminal_implementation_summary(
                 paths,
@@ -9783,6 +9848,8 @@ __all__ = (
     "database_portal_authoritative_repository_tree_id",
     "database_portal_consumed_no_progress_fingerprint",
     "is_protected_checkout_setup_block",
+    "closed_unaccepted_implementation_reason",
+    "CLOSED_UNACCEPTED_IMPLEMENTATION_REASONS",
     "database_portal_task_contract_digest",
     "verify_database_portal_attempt_projection",
 )
