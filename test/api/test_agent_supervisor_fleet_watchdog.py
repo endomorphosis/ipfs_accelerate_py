@@ -209,6 +209,38 @@ def test_operator_hold_keeps_observation_fresh_without_recovery(tmp_path):
     assert [call["argv"] for call in runner.calls] == [["probe"], ["probe"]]
 
 
+def test_launch_custody_queues_repair_without_starting_owner(tmp_path):
+    hold = tmp_path / "watchdog.hold"
+    hold.write_text("Existing cron owns relaunch")
+    board = _board(tmp_path, hold_files=[str(hold)], launch_only_hold_files=[str(hold)],
+                   failure_grace_seconds=0)
+    runner = Runner(_observation(health="stopped", recovery_action="ensure"))
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert state["last_action"] == "repair"
+    assert state["launch_only_holds"] == [str(hold)]
+    assert [call["argv"][0] for call in runner.calls] == ["probe", "repair"]
+    assert hold.read_text() == "Existing cron owns relaunch"
+
+
+@pytest.mark.parametrize("name", ["HOLD", "OPERATOR_STOP", "watchdog.disabled"])
+def test_full_stop_cannot_be_scoped_to_launch_only(tmp_path, name):
+    hold = tmp_path / name
+    hold.touch()
+    board = _board(tmp_path, hold_files=[str(hold)], launch_only_hold_files=[str(hold)],
+                   failure_grace_seconds=0)
+    runner = Runner(_observation(health="stopped", recovery_action="ensure"))
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert state["health"] == "operator_hold"
+    assert [call["argv"][0] for call in runner.calls] == ["probe"]
+
+
+def test_symlink_launch_marker_remains_a_full_hold(tmp_path):
+    marker = tmp_path / "launch.hold"
+    marker.symlink_to(tmp_path / "absent")
+    board = _board(tmp_path, hold_files=[str(marker)], launch_only_hold_files=[str(marker)])
+    assert fleet.repair_hold_paths(board) == [str(marker)]
+
+
 @pytest.mark.parametrize("token", ["unchanged", None])
 def test_idle_heartbeat_without_work_progress_eventually_stalls(tmp_path, token):
     board = _board(tmp_path)

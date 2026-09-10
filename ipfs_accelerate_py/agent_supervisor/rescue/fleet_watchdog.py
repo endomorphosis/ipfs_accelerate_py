@@ -33,6 +33,21 @@ def hold_paths(board: dict[str, Any]) -> list[str]:
     return [str(path) for path in board.get("hold_files", []) if os.path.lexists(path)]
 
 
+def repair_hold_paths(board: dict[str, Any]) -> list[str]:
+    """Keep full stops while permitting repair under explicit launch custody.
+
+    Scope comes from operator configuration, never from interpreting marker
+    text. The marker stays in place and still forbids watchdog ensure/start.
+    Reserved full-stop markers and symlinks cannot become launch-only holds.
+    """
+    holds = hold_paths(board)
+    scoped = board.get("launch_only_hold_files", [])
+    if not isinstance(scoped, list) or any(not isinstance(p, str) for p in scoped):
+        return holds
+    return [p for p in holds if p not in scoped or Path(p).is_symlink()
+            or Path(p).name in {"HOLD", "OPERATOR_STOP", "watchdog.disabled"}]
+
+
 def read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -190,7 +205,8 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         return ""
     # An inconclusive probe cannot authorize relaunching an already-live owner.
     recovery = state["observation"].get("recovery_action")
-    if recovery == "ensure" and board.get("ensure") and state.get("attempts", 0) < board.get("max_ensure_attempts", 2):
+    if (recovery == "ensure" and board.get("ensure") and not hold_paths(board)
+            and state.get("attempts", 0) < board.get("max_ensure_attempts", 2)):
         return "ensure"
     return "repair"
 
@@ -216,11 +232,12 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         # owner still needs fresh health and progress evidence during a hold.
         state["observed_health"] = state["health"]
         holds = hold_paths(board)
-        if holds:
+        if repair_hold_paths(board):
             state.update(health="operator_hold", holds=holds, planned_action="")
             write_json(path, state)
             return state
         state.pop("holds", None)
+        state["launch_only_holds"] = holds
         action = select_action(state, board, now)
         state["planned_action"] = action
         write_json(path, state)
@@ -236,10 +253,17 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             return state
         # A slow status command must not race an operator's newly placed hold.
         holds = hold_paths(board)
-        if holds:
+        if repair_hold_paths(board):
             state.update(health="operator_hold", holds=holds, planned_action="")
             write_json(path, state)
             return state
+        if holds and action == "ensure":
+            # A launch-custody marker may have arrived after action selection.
+            action = "repair"
+            state["planned_action"] = action
+            state["launch_only_holds"] = holds
+            incident["action"] = action
+            write_json(incident_path, incident)
         attempts = state.get("attempts", 0) + 1
         # Record intent and backoff BEFORE side effects: interrupted watchdogs
         # must not repeatedly relaunch work or burn provider retry budgets.

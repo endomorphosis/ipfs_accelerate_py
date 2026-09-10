@@ -188,7 +188,8 @@ Environment=OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
         # Preserve publication manifests and operator tuning on runtime upgrades.
         for board in boards:
             for key in ("publication", "stall_seconds", "blocked_grace_seconds", "failure_grace_seconds",
-                        "cooldown_seconds", "max_backoff_seconds", "max_ensure_attempts"):
+                        "cooldown_seconds", "max_backoff_seconds", "max_ensure_attempts",
+                        "launch_only_hold_files"):
                 if key in prior.get(board["id"], {}):
                     board[key] = prior[board["id"]][key]
         shutil.copy2(config_path, config_path.with_suffix(".json.previous"))

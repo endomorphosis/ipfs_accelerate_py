@@ -75,6 +75,20 @@ def test_unknown_board_cannot_create_job(tmp_path):
         enqueue(config(tmp_path), incident)
 
 
+def test_repair_queue_preserves_explicit_cron_launch_custody(tmp_path):
+    cfg = config(tmp_path)
+    hold = tmp_path / "watchdog.hold"
+    hold.write_text("cron owns relaunch")
+    board = cfg["boards"][0]
+    board.update(hold_files=[str(hold)], launch_only_hold_files=[str(hold)])
+    write_json(tmp_path / "repairs/spar/job.json", {"status": "queued"})
+    assert next_job(cfg, time.time())[0]["id"] == "spar"
+    prompt = repair_prompt(board, {}, cfg, tmp_path / "report.json")
+    assert str(hold) in prompt
+    assert "Do not start an alternative service" in prompt
+    assert hold.exists()
+
+
 def test_repair_prompt_preserves_authority_and_llama_stop(tmp_path):
     cfg = config(tmp_path)
     prompt = repair_prompt(cfg["boards"][0], {"board_id": "spar"}, cfg, tmp_path / "report.json")

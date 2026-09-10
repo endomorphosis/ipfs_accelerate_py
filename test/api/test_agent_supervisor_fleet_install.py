@@ -82,7 +82,7 @@ def test_upgrade_preserves_holds_backoff_and_restarts_only_fleet_services(inputs
     config = json.loads(config_path.read_text())
     board = config["boards"][0]
     hold = str(board_root / "custom.hold")
-    board.update(hold_files=[hold], cooldown_seconds=777, max_backoff_seconds=999,
+    board.update(hold_files=[hold], launch_only_hold_files=[hold], cooldown_seconds=777, max_backoff_seconds=999,
                  max_ensure_attempts=4, publication={"board_id": "spar"})
     config["poll_seconds"] = 75
     config["repair_worker"]["retry_seconds"] = 1000
@@ -93,6 +93,7 @@ def test_upgrade_preserves_holds_backoff_and_restarts_only_fleet_services(inputs
     current = json.loads(config_path.read_text())
     assert hold in current["boards"][0]["hold_files"]
     assert current["boards"][0]["cooldown_seconds"] == 777
+    assert current["boards"][0]["launch_only_hold_files"] == [hold]
     assert current["boards"][0]["max_ensure_attempts"] == 4
     assert current["boards"][0]["publication"] == {"board_id": "spar"}
     assert current["repair_worker"]["retry_seconds"] == 1000

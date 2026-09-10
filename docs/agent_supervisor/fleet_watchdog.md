@@ -66,6 +66,10 @@ Two user services run continuously:
   before and after probing, and never publish a board or change native task
   budgets. Configured source integrity must pass before recovery or publication
   can be verified, even when native health temporarily reports healthy.
+  Continuation reads prioritize the previous report's pending action, blockers,
+  root cause and source commits within bounded field budgets. Large deployment
+  transcripts cannot push the pending action out of the next job's context;
+  the original report path remains available for verification.
 
 For a known stopped-owner condition, the watchdog invokes only the board's
 configured native ensure command. Otherwise it enqueues a repair. The coding
@@ -81,11 +85,22 @@ existing authentication. They retain the configured model choice. See the
 No local model service is started; the existing llama-server mask is retained.
 
 `OPERATOR_STOP`, `HOLD`, `watchdog.hold`, and `watchdog.disabled` files configured
-for a board prevent both ensure and coding-repair dispatch. Existing live
+for a board prevent both ensure and coding-repair dispatch by default. Existing live
 workers are never killed merely because such a hold exists. A dangling symlink
 at a configured hold path still counts as a stop marker. Read-only probes
 continue during holds: `health` reports `operator_hold`, while `observed_health`
-and the observation contain the current underlying condition. To pause the whole
+and the observation contain the current underlying condition.
+
+An operator can explicitly list a custodial marker in the board configuration's
+`launch_only_hold_files` when its purpose is to reserve relaunch for an existing
+native operator, such as cron. The file stays in `hold_files` and on disk;
+watchdog ensure/start remains forbidden, while coding repair can proceed through
+native source qualification and drain gates. The repair prompt retains that
+custody restriction. Full `HOLD`, `OPERATOR_STOP`, `watchdog.disabled`, and symlink
+markers cannot be narrowed this way. This setting grants no task completion,
+callback replay, or source admission authority. Runtime upgrades preserve it.
+
+To pause the whole
 fleet, stop both services; a currently running repair job has its own unit:
 
 ```sh
