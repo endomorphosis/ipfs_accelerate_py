@@ -70226,14 +70226,13 @@ class DatabaseImplementationDaemon:
     def portal_claim_failure_receipt_is_zero_provider_rearmable(
         receipt: Mapping[str, Any] | None,
     ) -> bool:
-        """Return whether a control settlement is the zero-provider portal class."""
+        """Select zero-count candidates; native callback proof is also required."""
 
         if not isinstance(receipt, Mapping):
             return False
-        try:
-            provider_count = int(receipt.get("provider_invocation_count") or 0)
-            effect_count = int(receipt.get("effect_claim_count") or 0)
-        except (TypeError, ValueError):
+        provider_count = receipt.get("provider_invocation_count")
+        effect_count = receipt.get("effect_claim_count")
+        if type(provider_count) is not int or type(effect_count) is not int:
             return False
         return (
             str(receipt.get("operation") or "")
@@ -70253,8 +70252,8 @@ class DatabaseImplementationDaemon:
         """Admit one live-owner rearm of a zero-provider portal claim failure.
 
         Embedded authority keeps the operator CAS gate.  A live Quack owner
-        may rearm a blocked frontier task whose settlement proves the provider
-        never ran, so a later healthy owner is not permanently fenced out.
+        may select a blocked frontier task with zero outer receipts. The
+        separate native callback precondition must still prove non-dispatch.
         """
 
         if str(self.authority_mode or "").strip().lower() != "quack":
@@ -70263,24 +70262,52 @@ class DatabaseImplementationDaemon:
             receipt
         )
 
+    def _portal_zero_provider_callback_rearm_ready(
+        self, attempt: DatabaseTaskAttempt | None,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> bool:
+        """Require a native callback proof; missing receipt rows prove nothing."""
+        if (
+            attempt is None
+            or attempt.status != "failed"
+            or attempt.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            return False
+        bridge = getattr(self._provider_fn, "__self__", None)
+        verify = getattr(bridge, "zero_provider_failure_rearm_ready", None)
+        if not callable(verify):
+            return False
+        try:
+            if (
+                not isinstance(receipt, Mapping)
+                or self._portal_failure_phase_receipt(attempt) != dict(receipt)
+            ):
+                return False
+            return verify(attempt) is True
+        except Exception:
+            return False
+
     def reconcile_recoverable_portal_failure_rearms(
         self, *, recovery_source_validator: Callable[[], Mapping[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         """Unblock recoverable ``terminal_portal_bridge_error`` settlements.
 
         Settlements keep ``automatic_retry_admitted=false``.  The operator
-        rearm path only fires after a blocked→retrying CAS.  Three closed
+        rearm path only fires after a blocked→retrying CAS.  Four closed
         classes may perform that CAS once per task. A freshly verified sealed
         repair source may admit one further, distinct settlement, once per
         source head/tree; restarting the same source does not reset its budget:
 
         * the exact-Git-merge mismatch that parked a gitlink-recording
           follow-up after merge-train acceptance;
-        * a protected-path failure with no recorded provider or effect;
-        * a grok/codex nonzero exit recorded as ``portal_provider_failed``
-          with no provider invocation or effect;
-        * a live Quack owner seeing a zero-provider claim failure whose
-          settlement lives on the control task (no lane-local sidecar).
+        * a protected-path failure with no outer receipt and an exact
+          undispatched native callback;
+        * a ``portal_provider_failed`` result with the same exact proof;
+        * a live Quack owner seeing the same proved non-dispatch class,
+          bound to the exact local failed phase and control settlement.
+
+        Zero outer receipt counts and a missing execution sidecar do not
+        establish non-dispatch. A source change cannot bypass that proof.
         """
 
         if recovery_source_validator is not None and self.authority_mode != "quack":
@@ -70352,13 +70379,18 @@ class DatabaseImplementationDaemon:
                     if str(control_receipt.get("task_cid") or "") != task_cid:
                         continue
                     matched = (
-                        None,
+                        self.get_attempt(str(control_receipt.get("attempt_id") or "")),
                         dict(control_receipt),
                         _LIVE_OWNER_PORTAL_CLAIM_FAILURE_REARM_REASON,
                     )
             if matched is None:
                 continue
             attempt, receipt, reason = matched
+            if (
+                reason != _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON
+                and not self._portal_zero_provider_callback_rearm_ready(attempt, receipt)
+            ):
+                continue
             if reason == _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON:
                 bridge = getattr(self._provider_fn, "__self__", None)
                 rearm_ready = getattr(
