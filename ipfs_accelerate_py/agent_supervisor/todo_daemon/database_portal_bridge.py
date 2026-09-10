@@ -9965,6 +9965,27 @@ class DatabasePortalExecutionBridge:
                     )
         candidate_count = len(direct_candidates) + len(reconciled_pairs)
         if candidate_count == 0:
+            # A completed projection may follow a failed/queued merge whose
+            # parent commit already landed.  That is not a legacy no-source
+            # completion: retain the attempt until native merge reconciliation
+            # supplies the exact accepted transition.  Never downgrade it to
+            # an execution-receipt@1 merely because no valid pair was found.
+            if any(
+                event.get("type") == "implementation_finished"
+                and str(event.get("task_id") or "") == task_alias
+                and (
+                    event.get("implementation_commit")
+                    or event.get("merge_result")
+                    or (
+                        isinstance(event.get("board_completion"), Mapping)
+                        and event["board_completion"].get("pending_merge")
+                    )
+                )
+                for event in event_records
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "Portal accepted-source transition is unsettled"
+                )
             return None
         if candidate_count != 1:
             raise DatabasePortalBridgeError(
