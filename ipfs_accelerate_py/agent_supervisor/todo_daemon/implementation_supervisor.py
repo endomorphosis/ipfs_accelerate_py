@@ -14004,6 +14004,45 @@ class PortalImplementationSupervisor:
             return None
         return nested_state
 
+    def _watchdog_database_activity_blocks_recovery(
+        self,
+        child: Any,
+        loop: SupervisorLoop,
+    ) -> bool:
+        """Require resolved database custody before maintenance or recycling."""
+
+        try:
+            for probe in (
+                self._managed_database_pool_reload_activity,
+                self._active_managed_database_nonterminal_claim,
+                self._active_managed_database_portal_callback,
+            ):
+                activity = probe(child)
+                if activity:
+                    unresolved = activity.get("activity_verification") == "unresolved"
+                    self._set_loop_status_fields(
+                        loop,
+                        {
+                            "watchdog_database_quiescence_unresolved": unresolved,
+                            "watchdog_database_recovery_deferred_reason": (
+                                "live_database_pool_custody_unresolved"
+                                if unresolved else "active_database_custody"
+                            ),
+                        },
+                    )
+                    return True
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            self._set_loop_status_fields(
+                loop,
+                {
+                    "watchdog_database_quiescence_unresolved": True,
+                    "watchdog_database_evidence_error": type(exc).__name__[:128],
+                    "watchdog_database_recovery_deferred_reason": "database_custody_read_failed",
+                },
+            )
+            return True
+        return False
+
     def _supervisor_loop_watchdog_decision(
         self,
         _loop: SupervisorLoop,
@@ -14107,10 +14146,9 @@ class PortalImplementationSupervisor:
                 _child
             )
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
-            # Watchdog attribution is a fail-open liveness hint.  Filesystem
-            # or decoding failure must fall through to ordinary stale-attempt
-            # recovery rather than extending a callback lease.
-            database_evidence_error = f"{type(exc).__name__}: {exc}"
+            # An attribution failure cannot prove callback quiescence. Keep
+            # the child intact and retry custody observation on the next tick.
+            database_evidence_error = type(exc).__name__[:128]
         self._set_loop_status_fields(
             _loop,
             {
@@ -14126,13 +14164,18 @@ class PortalImplementationSupervisor:
                 "watchdog_database_provider_active": False,
                 "watchdog_database_validation_active": False,
                 "watchdog_database_evidence_error": database_evidence_error,
+                "watchdog_database_quiescence_unresolved": bool(database_evidence_error),
+                "watchdog_database_recovery_deferred_reason": (
+                    "database_custody_read_failed" if database_evidence_error else ""
+                ),
             },
         )
         if database_evidence is None:
             self._watchdog_attribution_deferral_key = ""
             self._watchdog_attribution_deferral_started_monotonic = None
-            if not database_evidence_error:
-                self._watchdog_attribution_exhausted_key = ""
+            if database_evidence_error:
+                return SupervisorLoopDecision.keep_running()
+            self._watchdog_attribution_exhausted_key = ""
         else:
             database_activity, nested_state = database_evidence
             projected_task_identity = (
@@ -14210,9 +14253,9 @@ class PortalImplementationSupervisor:
                     # task while a newer fenced callback runs in its private
                     # attempt state.  Require both exact nested custody and a
                     # live provider/validation descendant before deferring.
-                    # The monotonic window cannot exceed the existing
-                    # implementation timeout, so SupervisorLoop retains the
-                    # hard liveness bound.
+                    # Bound this attribution window by the implementation
+                    # timeout. Its expiry does not release callback custody;
+                    # the independent recovery guards below still apply.
                     self._set_loop_status_fields(
                         _loop,
                         {
@@ -14290,24 +14333,7 @@ class PortalImplementationSupervisor:
             # the duration of that scan.
             return SupervisorLoopDecision.keep_running()
 
-        database_pool_activity = self._active_managed_database_pool_lease(
-            _child
-        )
-        database_nonterminal_activity = (
-            None
-            if database_pool_activity
-            else self._active_managed_database_nonterminal_claim(_child)
-        )
-        database_callback_activity = (
-            None
-            if database_pool_activity or database_nonterminal_activity
-            else self._active_managed_database_portal_callback(_child)
-        )
-        if (
-            database_pool_activity
-            or database_nonterminal_activity
-            or database_callback_activity
-        ):
+        if self._watchdog_database_activity_blocks_recovery(_child, _loop):
             return SupervisorLoopDecision.keep_running()
 
         self._last_supervisor_maintenance_at = now_monotonic
@@ -14343,24 +14369,7 @@ class PortalImplementationSupervisor:
         # Maintenance can overlap the lifecycle/pool handoff itself.  Re-read
         # every exact database activity proof before acting on a stale root
         # result so a newly entered synchronous callback is not recycled.
-        database_pool_activity = self._active_managed_database_pool_lease(
-            _child
-        )
-        database_nonterminal_activity = (
-            None
-            if database_pool_activity
-            else self._active_managed_database_nonterminal_claim(_child)
-        )
-        database_callback_activity = (
-            None
-            if database_pool_activity or database_nonterminal_activity
-            else self._active_managed_database_portal_callback(_child)
-        )
-        if (
-            database_pool_activity
-            or database_nonterminal_activity
-            or database_callback_activity
-        ):
+        if self._watchdog_database_activity_blocks_recovery(_child, _loop):
             return SupervisorLoopDecision.keep_running()
 
         main_checkout_repair = dict(result.get("main_checkout_repair") or {})
