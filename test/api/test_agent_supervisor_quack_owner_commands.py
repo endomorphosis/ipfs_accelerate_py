@@ -130,6 +130,7 @@ def test_request_authentication_binds_generation_freshness_and_hmac() -> None:
 
 
 def test_submit_round_trips_bound_typed_result(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
     inbox = tmp_path / "mutations"
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "token_value_123")
@@ -303,6 +304,7 @@ def test_stable_request_id_rejects_stale_failure_for_prior_publication(
 
 
 def test_submit_rejects_forged_owner_response(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
     inbox = tmp_path / "mutations"
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "token_value_123")
@@ -363,6 +365,7 @@ def test_submit_rejects_unsafe_owner_response_file(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
     inbox = tmp_path / "mutations"
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "token_value_123")

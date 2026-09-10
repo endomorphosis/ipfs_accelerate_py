@@ -67,6 +67,10 @@ SPENDING_LIMIT_MESSAGE = (
     "https://grok.com/?_s=usage or upgrade at https://grok.com/supergrok."
 )
 
+BALANCE_EXHAUSTED_MESSAGE = (
+    "API error (status 402 Payment Required): "
+    "Grok Build usage balance exhausted"
+)
 
 @dataclass(frozen=True)
 class _AuthorizedRepository:
@@ -79,7 +83,6 @@ class _AuthorizedRepository:
     source_head: str
     source_tree: str
 
-
 @pytest.fixture(autouse=True)
 def _isolated_lifecycle_registry(
     tmp_path: Path,
@@ -91,7 +94,6 @@ def _isolated_lifecycle_registry(
         tmp_path / "root-registry",
     )
 
-
 def _canonical(value: dict[str, Any]) -> bytes:
     return json.dumps(
         value,
@@ -101,10 +103,8 @@ def _canonical(value: dict[str, Any]) -> bytes:
         allow_nan=False,
     ).encode("utf-8")
 
-
 def _sign(key: Ed25519PrivateKey, payload: dict[str, Any]) -> str:
     return base64.b64encode(key.sign(_canonical(payload))).decode("ascii")
-
 
 def _git(repo: Path, *args: str) -> str:
     completed = subprocess.run(
@@ -116,7 +116,6 @@ def _git(repo: Path, *args: str) -> str:
     )
     assert completed.returncode == 0, completed.stderr
     return completed.stdout.strip()
-
 
 def _authorized_repo(
     tmp_path: Path,
@@ -312,7 +311,6 @@ def _authorized_repo(
         source_tree=source_tree,
     )
 
-
 def _test_control_plane_capsule(
     tmp_path: Path,
     *,
@@ -363,7 +361,6 @@ def _test_control_plane_capsule(
         capsule_root=root,
     )
 
-
 def _high_plan(repo: Path):
     authorization = llm_router.load_agent_implementation_route_authorization(
         repo_root=repo,
@@ -379,7 +376,6 @@ def _high_plan(repo: Path):
         fallback_reasoning_effort="high",
         authorization=authorization,
     )
-
 
 def _signed_high_plan(
     tmp_path: Path,
@@ -485,7 +481,6 @@ def _signed_high_plan(
     )
     return fixture.repo, bound, invocation
 
-
 def _receipt(stderr: str, *, overflow: bool = False):
     size = 128 * 1024 + 1 if overflow else len(stderr.encode())
     return llm_router.build_agent_implementation_failure_receipt(
@@ -496,7 +491,6 @@ def _receipt(stderr: str, *, overflow: bool = False):
         evidence_size=size,
         evidence_overflow=overflow,
     )
-
 
 def _native_quota_home(
     repo: Path,
@@ -567,7 +561,6 @@ def _native_quota_home(
     assert receipt["primary_model"] == "grok-4.5"
     return home, session_id
 
-
 def test_route_resolver_accepts_only_complete_canonical_tuples() -> None:
     legacy = llm_router.resolve_agent_implementation_route(
         default_route="legacy"
@@ -604,7 +597,6 @@ def test_route_resolver_accepts_only_complete_canonical_tuples() -> None:
     assert first.failure_receipt_nonce != second.failure_receipt_nonce
     assert re.fullmatch(r"[0-9a-f]{64}", first.failure_receipt_nonce)
     assert re.fullmatch(r"[0-9a-f]{64}", second.failure_receipt_nonce)
-
 
 def test_quota_high_route_denies_auth_and_requires_independent_quota() -> None:
     legacy = llm_router.resolve_agent_implementation_route(
@@ -655,7 +647,6 @@ def test_quota_high_route_denies_auth_and_requires_independent_quota() -> None:
     assert quota_decision.requires_independent_quota_verification is True
     assert quota_decision.reason_code == "independent_quota_verification_required"
 
-
 def test_scoped_high_route_binds_artifact_source_and_full_plan(
     tmp_path: Path,
 ) -> None:
@@ -679,7 +670,6 @@ def test_scoped_high_route_binds_artifact_source_and_full_plan(
     assert environment[
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_HEAD"
     ] == plan.authorization.source_head
-
 
 def test_vgo_scope_loads_exact_reviewed_terra_high_authority(
     tmp_path: Path,
@@ -720,6 +710,44 @@ def test_vgo_scope_loads_exact_reviewed_terra_high_authority(
     assert route.fallback_model_id == "gpt-5.6-terra"
     assert route.fallback_reasoning_effort == "high"
 
+def test_vgo_scope_loads_exact_reviewed_terra_high_authority_aseh(
+    tmp_path: Path,
+) -> None:
+    fixture = _authorized_repo(
+        tmp_path,
+        board_namespace=VGO_BOARD_NAMESPACE,
+        authorization_path=VGO_AUTHORIZATION_PATH,
+        lifecycle_root_pin_path=VGO_LIFECYCLE_ROOT_PIN_PATH,
+        lifecycle_witness_path=VGO_LIFECYCLE_WITNESS_PATH,
+    )
+
+    authorization = llm_router.load_agent_implementation_route_authorization(
+        repo_root=fixture.repo,
+        artifact_path=VGO_AUTHORIZATION_PATH.as_posix(),
+        board_namespace=VGO_BOARD_NAMESPACE,
+    )
+    route = llm_router.resolve_agent_implementation_route(
+        primary_provider_id="grok_cli",
+        primary_model_id="grok-4.6",
+        fallback_provider_id="codex",
+        fallback_model_id="gpt-5.6-terra",
+        fallback_trigger="primary_quota_or_auth_unavailable",
+        fallback_reasoning_effort="high",
+        authorization=authorization,
+    )
+
+    assert authorization.artifact_path == VGO_AUTHORIZATION_PATH.as_posix()
+    assert authorization.board_namespace == VGO_BOARD_NAMESPACE
+    assert (
+        authorization.lifecycle_root_pin_path
+        == VGO_LIFECYCLE_ROOT_PIN_PATH.as_posix()
+    )
+    assert authorization.reviewer_witness_path.startswith(
+        llm_router._VGO_AGENT_LIFECYCLE_WITNESS_PREFIX
+    )
+    assert route.route_id == ROUTE_ID
+    assert route.fallback_model_id == "gpt-5.6-terra"
+    assert route.fallback_reasoning_effort == "high"
 
 def test_route_authorization_scope_rejects_cross_scope_and_unknown_pairs(
     tmp_path: Path,
@@ -749,7 +777,6 @@ def test_route_authorization_scope_rejects_cross_scope_and_unknown_pairs(
                 artifact_path=artifact_path,
                 board_namespace=namespace,
             )
-
 
 def test_vgo_historical_snapshot_accepts_exact_scope_and_denies_cross_scope_replay(
     tmp_path: Path,
@@ -838,7 +865,6 @@ def test_vgo_historical_snapshot_accepts_exact_scope_and_denies_cross_scope_repl
             **historical_inputs,
         )
 
-
 @pytest.mark.parametrize("drift", ("root_pin", "witness"))
 def test_vgo_scope_rejects_noncanonical_lifecycle_paths(
     tmp_path: Path,
@@ -871,7 +897,6 @@ def test_vgo_scope_rejects_noncanonical_lifecycle_paths(
             artifact_path=VGO_AUTHORIZATION_PATH.as_posix(),
             board_namespace=VGO_BOARD_NAMESPACE,
         )
-
 
 def test_exact_auth_authorizes_but_mixed_or_overflowed_evidence_denies(
     tmp_path: Path,
@@ -910,6 +935,42 @@ def test_exact_auth_authorizes_but_mixed_or_overflowed_evidence_denies(
         )
         assert denied.authorized is False
 
+def test_exact_auth_authorizes_but_mixed_or_overflowed_evidence_denies_aseh(
+    tmp_path: Path,
+) -> None:
+    repo, plan, invocation = _signed_high_plan(tmp_path)
+    exact = _receipt("Error: Not signed in")
+    decision = llm_router.decide_agent_implementation_fallback(
+        plan,
+        repo_root=repo,
+        failure_receipt=exact,
+        expected_nonce="a" * 64,
+        expected_model="grok-4.6",
+        expected_probe_returncode=41,
+        expected_invocation_binding=invocation.signed_payload(),
+        now_ms=invocation.issued_at_ms,
+        max_age_ms=60_000,
+    )
+    assert decision.authorized is True
+    assert decision.verifier_status == "not_required_exact_auth"
+
+    for receipt in (
+        _receipt("Not signed in\nHTTP 429"),
+        _receipt("HTTP 403\nNot signed in"),
+        _receipt("Error: Not signed in", overflow=True),
+    ):
+        denied = llm_router.decide_agent_implementation_fallback(
+            plan,
+            repo_root=repo,
+            failure_receipt=receipt,
+            expected_nonce="a" * 64,
+            expected_model="grok-4.6",
+            expected_probe_returncode=41,
+            expected_invocation_binding=invocation.signed_payload(),
+            now_ms=invocation.issued_at_ms,
+            max_age_ms=60_000,
+        )
+        assert denied.authorized is False
 
 def test_native_quota_evidence_is_opaque_and_bound_to_receipt(
     tmp_path: Path,
@@ -1010,6 +1071,103 @@ def test_native_quota_evidence_is_opaque_and_bound_to_receipt(
         )
         assert denied.authorized is False
 
+def test_native_quota_evidence_is_opaque_and_bound_to_receipt_aseh(
+    tmp_path: Path,
+) -> None:
+    repo, plan, invocation = _signed_high_plan(tmp_path)
+    receipt = llm_router.build_agent_implementation_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="a" * 64,
+        model="grok-4.6",
+        probe_returncode=41,
+        observed_at_ms=invocation.issued_at_ms,
+    )
+    verifier_root = tmp_path / "verifier"
+    verifier_workspace = verifier_root / "workspace"
+    verifier_workspace.mkdir(parents=True, mode=0o700)
+    home, session_id = _native_quota_home(
+        repo,
+        receipt=receipt,
+        verifier_workspace=verifier_workspace,
+    )
+    verifier_prompt = verifier_root / "prompt.txt"
+    verifier_prompt.write_text(
+        "Reply with exactly the single word OK.\n",
+        encoding="utf-8",
+    )
+    verifier_prompt.chmod(0o600)
+    grok = tmp_path / "grok"
+    grok.write_text("#!/bin/sh\nexit 41\n", encoding="utf-8")
+    grok.chmod(0o700)
+    verifier_command = [
+        str(grok.resolve()),
+        "--model",
+        "grok-4.6",
+        "--max-turns",
+        "1",
+        "--cwd",
+        str(verifier_workspace.resolve()),
+        "--permission-mode",
+        "dontAsk",
+        "--output-format",
+        "streaming-json",
+        "--no-plan",
+        "--no-subagents",
+        "--disable-web-search",
+        "--no-memory",
+        "--verbatim",
+        "--tools",
+        "",
+        "--prompt-file",
+        str(verifier_prompt.resolve()),
+        "--session-id",
+        session_id,
+        "--disallowed-tools",
+        llm_router.AGENT_IMPLEMENTATION_QUOTA_VERIFIER_DISALLOWED_TOOLS,
+    ]
+    evidence = _validate_quota_evidence_in_accepted_child(
+        grok_home=home,
+        expected_session_id=session_id,
+        verifier_returncode=41,
+        failure_receipt=receipt,
+        invocation_binding=invocation,
+        verifier_command=verifier_command,
+        verifier_workspace=verifier_workspace,
+        verifier_prompt_path=verifier_prompt,
+        observed_at_ms=invocation.issued_at_ms,
+    )
+    assert isinstance(evidence, llm_router.AgentImplementationQuotaEvidence)
+    authorized = llm_router.decide_agent_implementation_fallback(
+        plan,
+        repo_root=repo,
+        failure_receipt=receipt,
+        expected_nonce="a" * 64,
+        expected_model="grok-4.6",
+        expected_probe_returncode=41,
+        independent_quota_evidence=evidence,
+        expected_invocation_binding=invocation.signed_payload(),
+        now_ms=invocation.issued_at_ms,
+        max_age_ms=60_000,
+    )
+    assert authorized.authorized is True
+    assert authorized.verifier_status == "confirmed_quota"
+
+    forged_mapping = evidence.audit_dict()
+    forged_copy = replace(evidence, verifier_result="spending_limit_exhausted")
+    for forged in (forged_mapping, forged_copy):
+        denied = llm_router.decide_agent_implementation_fallback(
+            plan,
+            repo_root=repo,
+            failure_receipt=receipt,
+            expected_nonce="a" * 64,
+            expected_model="grok-4.6",
+            expected_probe_returncode=41,
+            independent_quota_evidence=forged,
+            expected_invocation_binding=invocation.signed_payload(),
+            now_ms=invocation.issued_at_ms,
+            max_age_ms=60_000,
+        )
+        assert denied.authorized is False
 
 @pytest.mark.parametrize("record_name", ("updates.jsonl", "summary.json"))
 @pytest.mark.parametrize("mutation", ("growth", "swap"))
@@ -1058,7 +1216,6 @@ def test_native_quota_evidence_rejects_concurrent_file_drift(
     )
     assert mutated is True
 
-
 @pytest.mark.parametrize("drift", ("blob", "symlink", "wrong_tree"))
 def test_authorization_loader_rejects_artifact_or_source_drift(
     tmp_path: Path,
@@ -1089,7 +1246,6 @@ def test_authorization_loader_rejects_artifact_or_source_drift(
             artifact_path=AUTHORIZATION_PATH.as_posix(),
             board_namespace=BOARD_NAMESPACE,
         )
-
 
 def test_scoped_route_hardens_and_reloads_real_worktree_under_umask_0002(
     tmp_path: Path,
@@ -1148,7 +1304,6 @@ def test_scoped_route_hardens_and_reloads_real_worktree_under_umask_0002(
     )
     assert independently_reloaded.as_dict() == authorization.as_dict()
 
-
 def test_scoped_route_refuses_wrong_digest_before_changing_workspace_mode(
     tmp_path: Path,
 ) -> None:
@@ -1183,7 +1338,6 @@ def test_scoped_route_refuses_wrong_digest_before_changing_workspace_mode(
 
     assert artifact.stat().st_mode & 0o777 == 0o664
 
-
 def test_copied_authorization_in_unrelated_repository_denies(
     tmp_path: Path,
 ) -> None:
@@ -1215,7 +1369,6 @@ def test_copied_authorization_in_unrelated_repository_denies(
             artifact_path=AUTHORIZATION_PATH.as_posix(),
             board_namespace=BOARD_NAMESPACE,
         )
-
 
 def test_authorization_loader_denies_head_drift_during_validation(
     tmp_path: Path,
@@ -1254,7 +1407,6 @@ def test_authorization_loader_denies_head_drift_during_validation(
             board_namespace=BOARD_NAMESPACE,
         )
 
-
 def test_generic_side_effecting_router_fallback_remains_denied() -> None:
     assert (
         llm_router.llm_fallback_compatible(
@@ -1262,4 +1414,99 @@ def test_generic_side_effecting_router_fallback_remains_denied() -> None:
             {"router_provider": "codex_cli"},
         )
         is False
+    )
+
+def test_native_quota_evidence_accepts_bounded_legacy_direct_layout(
+    tmp_path: Path,
+) -> None:
+    receipt = _receipt("Grok Build usage balance exhausted")
+    home, session_id = _native_quota_home(tmp_path, receipt=receipt)
+
+    evidence = llm_router.validate_agent_implementation_quota_evidence(
+        grok_home=home,
+        expected_session_id=session_id,
+        verifier_returncode=41,
+        failure_receipt=receipt,
+    )
+
+    assert isinstance(evidence, llm_router.AgentImplementationQuotaEvidence)
+    assert evidence.verifier_result == "usage_pool_exhausted"
+
+@pytest.mark.parametrize(
+    "invalid_state",
+    (
+        "ambiguous_legacy_layout",
+        "transcript_symlink",
+        "namespace_escape",
+        "workspace_parent_traversal",
+        "wrong_workspace",
+        "wrong_session",
+    ),
+)
+def test_native_quota_workspace_layout_rejects_invalid_identity_or_path(
+    tmp_path: Path,
+    invalid_state: str,
+) -> None:
+    receipt = _receipt("Grok Build usage balance exhausted")
+    verifier_workspace = tmp_path / "verifier workspace"
+    verifier_workspace.mkdir(mode=0o700)
+    home, session_id = _native_quota_home(
+        tmp_path,
+        receipt=receipt,
+        verifier_workspace=verifier_workspace,
+    )
+    namespace = quote(
+        str(verifier_workspace.resolve(strict=True)),
+        safe="!'()*-._~",
+    )
+    session = home / "sessions" / namespace / session_id
+    validation_workspace = verifier_workspace
+
+    if invalid_state == "ambiguous_legacy_layout":
+        _native_quota_home(tmp_path, receipt=receipt)
+    elif invalid_state == "transcript_symlink":
+        transcript = session / "updates.jsonl"
+        saved = transcript.with_suffix(".saved")
+        transcript.rename(saved)
+        transcript.symlink_to(saved.name)
+    elif invalid_state == "namespace_escape":
+        namespace_directory = session.parent
+        escaped = tmp_path / "escaped-session-namespace"
+        namespace_directory.rename(escaped)
+        namespace_directory.symlink_to(escaped, target_is_directory=True)
+    elif invalid_state == "workspace_parent_traversal":
+        validation_workspace = (
+            verifier_workspace.parent
+            / "unused"
+            / ".."
+            / verifier_workspace.name
+        )
+    elif invalid_state == "wrong_workspace":
+        validation_workspace = tmp_path / "other-workspace"
+        validation_workspace.mkdir(mode=0o700)
+    else:
+        wrong_session_id = "7afec563-2424-4fd6-a743-650e86700986"
+        transcript = session / "updates.jsonl"
+        events = [
+            json.loads(line)
+            for line in transcript.read_text(encoding="utf-8").splitlines()
+        ]
+        for event in events:
+            event["params"]["sessionId"] = wrong_session_id
+        transcript.write_text(
+            "".join(
+                json.dumps(event, sort_keys=True) + "\n" for event in events
+            ),
+            encoding="utf-8",
+        )
+
+    assert (
+        llm_router.validate_agent_implementation_quota_evidence(
+            grok_home=home,
+            expected_session_id=session_id,
+            verifier_returncode=41,
+            failure_receipt=receipt,
+            verifier_workspace=validation_workspace,
+        )
+        is None
     )

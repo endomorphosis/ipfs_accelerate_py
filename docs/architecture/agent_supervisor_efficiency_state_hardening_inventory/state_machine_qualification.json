@@ -1,0 +1,46 @@
+{
+  "schema": "aseh/state-machine-qualification@1",
+  "task_id": "ASEH-045",
+  "truth_state": "bounded_hermetic_qualification",
+  "authority": {
+    "transition_table": "ipfs_accelerate_py/agent-supervisor/state-transition-table@1",
+    "mutation_authority": "IntentRepository",
+    "claim": "tests are independent evidence producers and do not mutate production state"
+  },
+  "bounds": {
+    "model_tasks": 1,
+    "max_trace_length": 2
+  },
+  "coverage": {
+    "states": ["discovered", "admitted", "ready", "claimed", "dispatched", "provider_starting", "provider_running", "provider_completed", "provider_outcome_unknown", "validating", "validation_failed", "validation_succeeded", "rescue_pending", "retry_pending", "merge_pending", "merging", "reconciliation_pending", "terminal_succeeded", "terminal_failed", "quarantined", "compensated"],
+    "events": ["claim", "dispatch", "provider_start", "provider_completion", "provider_timeout", "provider_connection_loss", "validation_start", "validation_result", "rescue", "retry", "merge", "merge_conflict", "reconciliation", "terminalization", "owner_loss", "owner_restart", "lease_expiry", "fence_takeover", "confirmation_grant", "confirmation_expiry", "policy_change", "state_recovery"],
+    "invariants": ["single_authoritative_owner", "revision_cas", "idempotency_key_for_effects", "fresh_lease_and_fence", "unknown_outcome_reconciliation", "single_terminalization", "current_validation_before_merge", "external_effect_preservation", "deterministic_owner_restart", "event_materialized_state_reconciliation", "receipt_required_success", "failed_validation_cannot_merge_to_success", "nonretroactive_policy_changes"]
+  },
+  "seeded_violations": {
+    "single_authoritative_owner": {"transition_id": "claim_ready", "mutation": "remove single_authoritative_owner", "minimal_trace": ["claim_ready"]},
+    "revision_cas": {"transition_id": "claim_ready", "mutation": "remove revision_cas_matches", "minimal_trace": ["claim_ready"]},
+    "idempotency_key_for_effects": {"transition_id": "dispatch_claimed", "mutation": "remove idempotency_key_bound", "minimal_trace": ["dispatch_claimed"]},
+    "fresh_lease_and_fence": {"transition_id": "merge_start", "mutation": "remove fresh_lease_and_fence", "minimal_trace": ["merge_start"]},
+    "unknown_outcome_reconciliation": {"transition_id": "reconcile_unknown", "mutation": "change reconciliation to retry", "minimal_trace": ["reconcile_unknown"]},
+    "single_terminalization": {"transition_id": "terminal_succeeded", "mutation": "remove single_terminalization", "minimal_trace": ["terminal_succeeded"]},
+    "current_validation_before_merge": {"transition_id": "merge_start", "mutation": "remove current_validation_evidence", "minimal_trace": ["merge_start"]},
+    "external_effect_preservation": {"transition_id": "provider_timeout", "mutation": "remove external_effect_preserved", "minimal_trace": ["provider_timeout"]},
+    "deterministic_owner_restart": {"transition_id": "owner_restart_reconciles", "mutation": "remove durable_state_reconstructed", "minimal_trace": ["owner_restart_reconciles"]},
+    "event_materialized_state_reconciliation": {"transition_id": "claim_ready", "mutation": "remove transition_service_only", "minimal_trace": ["claim_ready"]},
+    "receipt_required_success": {"transition_id": "terminal_succeeded", "mutation": "remove success_receipt_present", "minimal_trace": ["terminal_succeeded"]},
+    "failed_validation_cannot_merge_to_success": {"transition_id": "terminal_succeeded", "mutation": "use validation_failed source", "minimal_trace": ["terminal_succeeded"]},
+    "nonretroactive_policy_changes": {"transition_id": "policy_change_ready", "mutation": "remove policy_change_is_nonretroactive", "minimal_trace": ["policy_change_ready"]}
+  },
+  "crash_matrix": {
+    "faults": ["process_crash", "kill_escalation", "partial_event_write", "partial_checkpoint_write", "stale_lease", "corrupt_cache", "duplicate_event", "provider_loss", "disk_full", "slow_disk", "interrupted_validation", "interrupted_merge", "restart_during_refill"],
+    "properties": ["durable_state_reconstruction", "duplicate_crash_delivery_is_idempotent", "owner_takeover_advances_fence_once", "unknown_effect_and_idempotency_truth_are_preserved"]
+  },
+  "datasets_formal_vectors": {
+    "mode": "consume_when_installed",
+    "discovery_paths": ["ipfs_datasets_py/data/agent_supervisor/formal_vectors", "ipfs_datasets_py/tests/fixtures/agent_supervisor/formal_vectors"],
+    "unavailable_behavior": "absence records no vector claim and does not replace the local bounded corpus"
+  },
+  "validation": [
+    "python3 -m pytest -q test/api/agent_supervisor/efficiency_state_hardening/test_state_machine_properties.py test/api/agent_supervisor/efficiency_state_hardening/test_state_machine_crash_matrix.py"
+  ]
+}

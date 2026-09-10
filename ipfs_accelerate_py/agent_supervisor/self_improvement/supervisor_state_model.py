@@ -1644,6 +1644,453 @@ def check_supervisor_state_model(
     )
 
 
+STATE_TRANSITION_TABLE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/state-transition-table@1"
+)
+STATE_TRANSITION_TABLE_VERSION: Final = 1
+STATE_TRANSITION_TABLE_PATH: Final = (
+    Path(__file__).resolve().parents[1] / "control" / "schemas" / "state_transition_table.json"
+)
+
+# This is deliberately a closed vocabulary.  Adding a state or event requires
+# an explicit transition-table revision rather than an accidental permissive
+# fallback in a legacy adapter.
+CANONICAL_SUPERVISOR_STATES: Final = (
+    "discovered",
+    "admitted",
+    "ready",
+    "claimed",
+    "dispatched",
+    "provider_starting",
+    "provider_running",
+    "provider_completed",
+    "provider_outcome_unknown",
+    "validating",
+    "validation_failed",
+    "validation_succeeded",
+    "rescue_pending",
+    "retry_pending",
+    "merge_pending",
+    "merging",
+    "reconciliation_pending",
+    "terminal_succeeded",
+    "terminal_failed",
+    "quarantined",
+    "compensated",
+)
+CANONICAL_SUPERVISOR_EVENTS: Final = (
+    "claim",
+    "dispatch",
+    "provider_start",
+    "provider_completion",
+    "provider_timeout",
+    "provider_connection_loss",
+    "validation_start",
+    "validation_result",
+    "rescue",
+    "retry",
+    "merge",
+    "merge_conflict",
+    "reconciliation",
+    "terminalization",
+    "owner_loss",
+    "owner_restart",
+    "lease_expiry",
+    "fence_takeover",
+    "confirmation_grant",
+    "confirmation_expiry",
+    "policy_change",
+    "state_recovery",
+)
+CANONICAL_TERMINAL_STATES: Final = (
+    "terminal_succeeded",
+    "terminal_failed",
+    "quarantined",
+    "compensated",
+)
+REQUIRED_STATE_TRANSITION_INVARIANTS: Final = (
+    "single_authoritative_owner",
+    "revision_cas",
+    "idempotency_key_for_effects",
+    "fresh_lease_and_fence",
+    "unknown_outcome_reconciliation",
+    "single_terminalization",
+    "current_validation_before_merge",
+    "external_effect_preservation",
+    "deterministic_owner_restart",
+    "event_materialized_state_reconciliation",
+    "receipt_required_success",
+    "failed_validation_cannot_merge_to_success",
+    "nonretroactive_policy_changes",
+)
+REQUIRED_LEGACY_STATUSES: Final = (
+    "todo",
+    "unstarted",
+    "queued",
+    "proposed",
+    "admitted",
+    "pending",
+    "ready",
+    "retrying",
+    "claimed",
+    "in_progress",
+    "running",
+    "processing",
+    "blocked",
+    "on_hold",
+    "completed",
+    "complete",
+    "done",
+    "skipped",
+    "failed",
+    "rejected",
+    "cancelled",
+    "quarantined",
+)
+
+
+class StateTransitionTableError(ModelValidationError):
+    """A descriptive control-plane transition contract is malformed or unsafe."""
+
+
+def _closed_object(value: Any, field_name: str, keys: set[str]) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise StateTransitionTableError(f"{field_name} must be an object")
+    unexpected = set(value) - keys
+    if unexpected:
+        raise StateTransitionTableError(
+            f"{field_name} contains unknown fields: {sorted(map(str, unexpected))!r}"
+        )
+    return value
+
+
+def _transition_tokens(values: Any, field_name: str, *, required: bool = False) -> tuple[str, ...]:
+    result = _strings(values, field_name, required=required)
+    if any(not re.fullmatch(r"[a-z][a-z0-9_]*", value) for value in result):
+        raise StateTransitionTableError(f"{field_name} must contain lowercase identifier tokens")
+    return result
+
+
+@dataclass(frozen=True)
+class StateTransition:
+    """One table row with declarative guards, not a mutation command.
+
+    Guard strings name facts that the later transactional transition service
+    must verify.  This model intentionally does not evaluate or persist them.
+    """
+
+    transition_id: str
+    event: str
+    source_states: tuple[str, ...]
+    target_state: str
+    guards: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        transition_id = str(self.transition_id).strip()
+        event = str(self.event).strip()
+        target = str(self.target_state).strip()
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", transition_id):
+            raise StateTransitionTableError("transition id must be a lowercase identifier token")
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", event):
+            raise StateTransitionTableError("transition event must be a lowercase identifier token")
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", target):
+            raise StateTransitionTableError("transition target_state must be a lowercase identifier token")
+        object.__setattr__(self, "transition_id", transition_id)
+        object.__setattr__(self, "event", event)
+        object.__setattr__(self, "source_states", _transition_tokens(self.source_states, "source_states", required=True))
+        object.__setattr__(self, "target_state", target)
+        object.__setattr__(self, "guards", _transition_tokens(self.guards, "guards", required=True))
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "StateTransition":
+        item = _closed_object(
+            value,
+            "transition",
+            {"id", "event", "source_states", "target_state", "guards"},
+        )
+        return cls(
+            transition_id=item.get("id", ""),
+            event=item.get("event", ""),
+            source_states=tuple(item.get("source_states") or ()),
+            target_state=item.get("target_state", ""),
+            guards=tuple(item.get("guards") or ()),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.transition_id,
+            "event": self.event,
+            "source_states": list(self.source_states),
+            "target_state": self.target_state,
+            "guards": list(self.guards),
+        }
+
+
+@dataclass(frozen=True)
+class StateTransitionTable:
+    """Validated, read-only transition-table projection.
+
+    The table is a candidate contract for the existing ``IntentRepository``;
+    loading or resolving it never mutates state and therefore cannot introduce
+    a second authoritative writer.
+    """
+
+    states: tuple[str, ...]
+    events: tuple[str, ...]
+    terminal_states: tuple[str, ...]
+    transitions: tuple[StateTransition, ...]
+    legacy_status_mappings: Mapping[str, str]
+    invariants: tuple[str, ...]
+    authority: Mapping[str, Any]
+    policy_time_semantics: Mapping[str, Any]
+    schema: str = STATE_TRANSITION_TABLE_SCHEMA
+    version: int = STATE_TRANSITION_TABLE_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema != STATE_TRANSITION_TABLE_SCHEMA:
+            raise StateTransitionTableError("unsupported state transition table schema")
+        if self.version != STATE_TRANSITION_TABLE_VERSION:
+            raise StateTransitionTableError("unsupported state transition table version")
+        states = _transition_tokens(self.states, "states", required=True)
+        events = _transition_tokens(self.events, "events", required=True)
+        terminal_states = _transition_tokens(
+            self.terminal_states, "terminal_states", required=True
+        )
+        invariants = _transition_tokens(self.invariants, "invariants", required=True)
+        if set(states) != set(CANONICAL_SUPERVISOR_STATES):
+            raise StateTransitionTableError("states must exactly cover the canonical state vocabulary")
+        if set(events) != set(CANONICAL_SUPERVISOR_EVENTS):
+            raise StateTransitionTableError("events must exactly cover the canonical event vocabulary")
+        if set(terminal_states) != set(CANONICAL_TERMINAL_STATES):
+            raise StateTransitionTableError("terminal_states must exactly cover canonical terminal states")
+        if not set(invariants) >= set(REQUIRED_STATE_TRANSITION_INVARIANTS):
+            raise StateTransitionTableError("invariants do not cover every required safety invariant")
+
+        rows = tuple(
+            item if isinstance(item, StateTransition) else StateTransition.from_dict(item)
+            for item in self.transitions
+        )
+        if not rows:
+            raise StateTransitionTableError("transitions must not be empty")
+        ids = [row.transition_id for row in rows]
+        if len(ids) != len(set(ids)):
+            raise StateTransitionTableError("transition ids must be unique")
+        for row in rows:
+            if "transition_service_only" not in row.guards:
+                raise StateTransitionTableError(
+                    f"transition {row.transition_id} bypasses the transition service"
+                )
+            if "revision_cas_matches" not in row.guards:
+                raise StateTransitionTableError(
+                    f"transition {row.transition_id} lacks a revision/CAS guard"
+                )
+            if row.event not in events:
+                raise StateTransitionTableError(f"transition {row.transition_id} uses an unknown event")
+            if not set(row.source_states) <= set(states) or row.target_state not in states:
+                raise StateTransitionTableError(f"transition {row.transition_id} uses an unknown state")
+            if set(row.source_states) & set(terminal_states):
+                raise StateTransitionTableError(f"transition {row.transition_id} leaves a terminal state")
+            if row.target_state in terminal_states and row.event != "terminalization":
+                raise StateTransitionTableError("only terminalization may enter a terminal state")
+            if row.event == "terminalization" and row.target_state not in terminal_states:
+                raise StateTransitionTableError("terminalization must enter a terminal state")
+            if row.target_state in terminal_states and "single_terminalization" not in row.guards:
+                raise StateTransitionTableError(
+                    "terminalization requires a single-terminalization guard"
+                )
+            if row.event == "policy_change":
+                if set(row.source_states) != {row.target_state} or "policy_change_is_nonretroactive" not in row.guards:
+                    raise StateTransitionTableError("policy changes must be non-retroactive state-preserving rows")
+            elif "policy_authorized_at_event_time" not in row.guards:
+                raise StateTransitionTableError(
+                    f"transition {row.transition_id} lacks an event-time policy guard"
+                )
+
+        covered_events = {row.event for row in rows}
+        if covered_events != set(events):
+            missing = sorted(set(events) - covered_events)
+            extra = sorted(covered_events - set(events))
+            raise StateTransitionTableError(f"transition event coverage mismatch: missing={missing!r}, extra={extra!r}")
+        participating_states = {row.target_state for row in rows} | {
+            source for row in rows for source in row.source_states
+        }
+        if participating_states != set(states):
+            raise StateTransitionTableError("transitions do not cover every canonical state")
+        self._validate_semantic_guards(rows)
+
+        mappings = self._normalize_legacy_status_mappings(self.legacy_status_mappings, states)
+        authority = _strict_mapping(self.authority, "authority")
+        if authority != {"mode": "descriptive_only", "mutation_authority": "IntentRepository"}:
+            raise StateTransitionTableError("authority must name IntentRepository as the sole mutation authority")
+        policy_time = _strict_mapping(self.policy_time_semantics, "policy_time_semantics")
+        if policy_time != {
+            "dispatch_guard": "policy_authorized_at_event_time",
+            "policy_change_guard": "policy_change_is_nonretroactive",
+        }:
+            raise StateTransitionTableError("policy_time_semantics must preserve event-time authorization")
+
+        object.__setattr__(self, "states", states)
+        object.__setattr__(self, "events", events)
+        object.__setattr__(self, "terminal_states", terminal_states)
+        object.__setattr__(self, "transitions", tuple(sorted(rows, key=lambda row: row.transition_id)))
+        object.__setattr__(self, "legacy_status_mappings", mappings)
+        object.__setattr__(self, "invariants", invariants)
+        object.__setattr__(self, "authority", authority)
+        object.__setattr__(self, "policy_time_semantics", policy_time)
+
+    @staticmethod
+    def _normalize_legacy_status_mappings(
+        value: Mapping[str, str], states: tuple[str, ...]
+    ) -> dict[str, str]:
+        if not isinstance(value, Mapping):
+            raise StateTransitionTableError("legacy_status_mappings must be an object")
+        mappings = {str(key).strip().lower(): str(target).strip() for key, target in value.items()}
+        if set(mappings) != set(REQUIRED_LEGACY_STATUSES):
+            raise StateTransitionTableError("legacy_status_mappings must explicitly cover every known legacy status")
+        if any(not re.fullmatch(r"[a-z][a-z0-9_]*", status) for status in mappings):
+            raise StateTransitionTableError("legacy status mapping keys must be lowercase identifier tokens")
+        if not set(mappings.values()) <= set(states):
+            raise StateTransitionTableError("legacy status mapping contains an unknown canonical state")
+        return {status: mappings[status] for status in sorted(mappings)}
+
+    @staticmethod
+    def _validate_semantic_guards(rows: tuple[StateTransition, ...]) -> None:
+        unknown_outcome_rows = [
+            row for row in rows if "provider_outcome_unknown" in row.source_states
+        ]
+        if any(row.event == "retry" for row in unknown_outcome_rows):
+            raise StateTransitionTableError(
+                "unknown provider outcomes cannot retry before reconciliation"
+            )
+        if any(
+            row.event != "reconciliation" or row.target_state != "reconciliation_pending"
+            for row in unknown_outcome_rows
+        ):
+            raise StateTransitionTableError(
+                "unknown provider outcomes cannot leave reconciliation before observation"
+            )
+        required = {
+            "timeout_to_unknown": ("provider_timeout", "provider_outcome_unknown"),
+            "connection_loss_to_unknown": ("provider_connection_loss", "provider_outcome_unknown"),
+            "unknown_to_reconciliation": ("reconciliation", "reconciliation_pending"),
+        }
+        for label, (event, target) in required.items():
+            if not any(row.event == event and row.target_state == target for row in rows):
+                raise StateTransitionTableError(f"{label} transition is required")
+        if not unknown_outcome_rows or not all(
+            "reconciliation_observation_required" in row.guards for row in unknown_outcome_rows
+        ):
+            raise StateTransitionTableError("unknown provider outcomes require reconciliation observations")
+        if any(
+            "validation_failed" in row.source_states
+            and (row.event == "merge" or row.target_state == "terminal_succeeded")
+            for row in rows
+        ):
+            raise StateTransitionTableError("failed validation cannot merge to success")
+        success_rows = [row for row in rows if row.target_state == "terminal_succeeded"]
+        if not success_rows or not all(
+            {"current_validation_evidence", "success_receipt_present", "single_terminalization"}
+            <= set(row.guards)
+            for row in success_rows
+        ):
+            raise StateTransitionTableError("terminal success requires current validation and receipt")
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "StateTransitionTable":
+        payload = _closed_object(
+            value,
+            "state transition table",
+            {
+                "schema",
+                "version",
+                "states",
+                "events",
+                "terminal_states",
+                "transitions",
+                "legacy_status_mappings",
+                "invariants",
+                "authority",
+                "policy_time_semantics",
+            },
+        )
+        return cls(
+            schema=payload.get("schema", ""),
+            version=payload.get("version", 0),
+            states=tuple(payload.get("states") or ()),
+            events=tuple(payload.get("events") or ()),
+            terminal_states=tuple(payload.get("terminal_states") or ()),
+            transitions=tuple(payload.get("transitions") or ()),
+            legacy_status_mappings=payload.get("legacy_status_mappings") or {},
+            invariants=tuple(payload.get("invariants") or ()),
+            authority=payload.get("authority") or {},
+            policy_time_semantics=payload.get("policy_time_semantics") or {},
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "version": self.version,
+            "states": list(self.states),
+            "events": list(self.events),
+            "terminal_states": list(self.terminal_states),
+            "transitions": [row.to_dict() for row in self.transitions],
+            "legacy_status_mappings": dict(self.legacy_status_mappings),
+            "invariants": list(self.invariants),
+            "authority": dict(self.authority),
+            "policy_time_semantics": dict(self.policy_time_semantics),
+        }
+
+    def map_legacy_status(self, status: str) -> str:
+        """Project one known legacy observation without granting write authority."""
+
+        normalized = str(status).strip().lower()
+        try:
+            return self.legacy_status_mappings[normalized]
+        except KeyError as exc:
+            raise StateTransitionTableError(f"unmapped legacy status: {status!r}") from exc
+
+    def transitions_for(self, event: str, source_state: str) -> tuple[StateTransition, ...]:
+        """Return canonically ordered candidate rows for an event/state pair."""
+
+        return tuple(
+            row
+            for row in self.transitions
+            if row.event == event and source_state in row.source_states
+        )
+
+    def resolve(
+        self, event: str, source_state: str, *, satisfied_guards: Iterable[str] = ()
+    ) -> StateTransition:
+        """Resolve exactly one declarative row against verified guard names."""
+
+        satisfied = set(_transition_tokens(satisfied_guards, "satisfied_guards"))
+        candidates = self.transitions_for(event, source_state)
+        matching = tuple(row for row in candidates if set(row.guards) <= satisfied)
+        if len(matching) != 1:
+            raise StateTransitionTableError(
+                f"transition resolution requires exactly one row; found {len(matching)}"
+            )
+        return matching[0]
+
+
+def load_state_transition_table(path: str | Path | None = None) -> StateTransitionTable:
+    """Load the bundled candidate table and validate it before exposing it."""
+
+    table_path = Path(path) if path is not None else STATE_TRANSITION_TABLE_PATH
+    try:
+        with table_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise StateTransitionTableError(f"unable to load state transition table: {table_path}") from exc
+    return StateTransitionTable.from_dict(payload)
+
+
+def validate_state_transition_table(value: Mapping[str, Any]) -> StateTransitionTable:
+    """Validate an in-memory table; useful to schema and property-test callers."""
+
+    return StateTransitionTable.from_dict(value)
+
+
 # Descriptive compatibility aliases used by callers in the formal-plan layer.
 SupervisorStateTransition = TransitionRule
 SupervisorStateSchema = SupervisorTransitionSchema
@@ -1667,10 +2114,21 @@ __all__ = [
     "DEFAULT_MAX_MODEL_CHECK_OUTPUT_BYTES",
     "SAFETY_PROPERTIES",
     "LIVENESS_PROPERTIES",
+    "STATE_TRANSITION_TABLE_SCHEMA",
+    "STATE_TRANSITION_TABLE_VERSION",
+    "STATE_TRANSITION_TABLE_PATH",
+    "CANONICAL_SUPERVISOR_STATES",
+    "CANONICAL_SUPERVISOR_EVENTS",
+    "CANONICAL_TERMINAL_STATES",
+    "REQUIRED_STATE_TRANSITION_INVARIANTS",
+    "REQUIRED_LEGACY_STATUSES",
     "ModelValidationError",
+    "StateTransitionTableError",
     "ModelCheckerTool",
     "ModelCheckStatus",
     "TransitionRule",
+    "StateTransition",
+    "StateTransitionTable",
     "SupervisorStateTransition",
     "DEFAULT_SUPERVISOR_TRANSITIONS",
     "SupervisorTransitionSchema",
@@ -1691,4 +2149,6 @@ __all__ = [
     "generate_tla_model",
     "check_supervisor_state_model",
     "run_model_checker",
+    "load_state_transition_table",
+    "validate_state_transition_table",
 ]

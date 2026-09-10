@@ -5,10 +5,15 @@ tokens with ``ContextCompiler``. Exact target/edit/test spans are never
 compressed. Substitutable capsules may replace unchanged dependency code only
 when admission allows it, with visible caveats. Budget failures recommend
 escalation instead of silent truncation. Capsule facts remain datasets-owned.
+
+Accelerate admits freshness, reuse, and executor context. It verifies Datasets
+semantic identity and Kit bytes/root without reminting Datasets CIDs or treating
+durable storage as semantic proof.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Mapping, Sequence
 
@@ -45,15 +50,27 @@ from ipfs_accelerate_py.agent_supervisor.semantic_state.wire import cid_for_payl
 CONTEXT_PACK_INTERFACE = "ContextPack@1"
 CONTEXT_PACK_RESULT_SCHEMA = "ipfs-accelerate.context-pack-result@1"
 CONTEXT_COVERAGE_POLICY_SCHEMA = "ipfs-accelerate.context-coverage-policy@1"
+CONTEXT_PACK_FRESHNESS_INTERFACE = "ContextPackFreshnessAdmission@1"
+CONTEXT_PACK_FRESHNESS_SCHEMA = "ipfs-accelerate.context-pack-freshness-admission@1"
 TOKEN_ESTIMATOR_VERSION = "context-compiler-calibrated_utf8@1"
+DATASETS_CONTEXT_PACK_AUTHORITY = "ipfs_datasets_py.proof_context.context_pack"
+KIT_CONTEXT_PACK_STORE_AUTHORITY = "ipfs_kit_py.proof_context.state_store"
 
-_REQUIRED_SOURCE_KINDS = frozenset(
-    {
-        "target_source",
-        "surrounding_source",
-        "test_source",
-    }
+EXACT_FRESHNESS_FIELDS: tuple[str, ...] = (
+    "tree",
+    "objective",
+    "policy",
+    "interface",
+    "toolchain",
+    "environment",
 )
+REQUIRED_SOURCE_KINDS: tuple[str, ...] = (
+    "target_source",
+    "surrounding_source",
+    "test_source",
+)
+
+_REQUIRED_SOURCE_KINDS = frozenset(REQUIRED_SOURCE_KINDS)
 _NEVER_COMPRESS = frozenset(
     {
         "target_source",
@@ -63,8 +80,43 @@ _NEVER_COMPRESS = frozenset(
 )
 
 
+def _dedupe_sorted(values: Sequence[Any], name: str) -> tuple[str, ...]:
+    seen: list[str] = []
+    for item in values:
+        text = _text(item, name)
+        if text not in seen:
+            seen.append(text)
+    return _unique_sorted_texts(seen, name)
+
+
 class ContextPackError(HarnessError):
     """Closed context-pack or coverage-policy violation."""
+
+    reason_code = "invalid"
+
+
+class StaleIdentityError(ContextPackError):
+    """Exact tree/objective/policy/interface/toolchain/environment mismatch."""
+
+    reason_code = "stale_identity"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        stale_fields: Sequence[str] = (),
+        reason_codes: Sequence[str] = (),
+    ) -> None:
+        super().__init__(message)
+        self.stale_fields = _dedupe_sorted(stale_fields, "stale_fields")
+        codes = list(reason_codes) or [f"stale:{field}" for field in self.stale_fields]
+        self.reason_codes = _dedupe_sorted(codes, "reason_codes")
+
+
+class ContextPackAuthorityUnavailable(ContextPackError):
+    """Installed Datasets or Kit ContextPack authority is missing."""
+
+    reason_code = "unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -865,16 +917,565 @@ def project_admission_to_reference(
     )
 
 
+# ---------------------------------------------------------------------------
+# Freshness admission: Datasets identity + Kit bytes/root (ASEH-033)
+# ---------------------------------------------------------------------------
+
+
+def _identity_tuple(values: Any, name: str) -> tuple[str, ...]:
+    if values is None:
+        return ()
+    if isinstance(values, str):
+        return _dedupe_sorted((values,), name)
+    if not isinstance(values, (list, tuple)):
+        raise ContextPackError(f"{name} must be a list")
+    return _dedupe_sorted(list(values), name)
+
+
+def _require_git_oid(value: Any, name: str) -> str:
+    text = _text(value, name)
+    if len(text) not in {40, 64} or any(
+        char not in "0123456789abcdef" for char in text
+    ):
+        raise ContextPackError(f"{name} must be a lowercase git object id")
+    return text
+
+
+def _require_mapping(value: Any, name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping) or isinstance(value, (str, bytes)):
+        raise ContextPackError(f"{name} must be an object")
+    return value
+
+
+def load_datasets_context_pack_authority() -> Any:
+    """Load the installed Datasets ContextPack authority. Never remints CIDs."""
+
+    try:
+        from ipfs_datasets_py.proof_context.context_pack import (
+            DatasetsContextPackAuthority,
+            get_authority,
+        )
+    except ImportError as exc:
+        raise ContextPackAuthorityUnavailable(
+            "datasets ContextPack authority is unavailable; "
+            "accelerator must not remint semantic identity"
+        ) from exc
+    authority = get_authority()
+    if not isinstance(authority, DatasetsContextPackAuthority):
+        raise ContextPackError("installed Datasets authority type is not admitted")
+    if getattr(authority, "producer", None) != DATASETS_CONTEXT_PACK_AUTHORITY:
+        raise ContextPackError("ownership drift: Datasets is not the sole builder")
+    return authority
+
+
+def load_kit_context_pack_store() -> Any:
+    """Load the installed Kit ContextPack store module. Never bypasses bytes."""
+
+    try:
+        from ipfs_kit_py.proof_context import state_store as kit_store
+    except ImportError as exc:
+        raise ContextPackAuthorityUnavailable(
+            "kit ContextPack store is unavailable; "
+            "accelerator must not invent durable bytes or roots"
+        ) from exc
+    if getattr(kit_store, "CONTEXT_PACK_NAMESPACE", None) != "ContextPack":
+        raise ContextPackError("kit ContextPack namespace mismatch")
+    return kit_store
+
+
+def encode_context_pack_envelope(envelope: Mapping[str, Any]) -> bytes:
+    """Canonical JSON encoding of a Datasets envelope for Kit byte storage."""
+
+    closed = _require_mapping(envelope, "envelope")
+    try:
+        return json.dumps(
+            dict(closed),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ContextPackError("ContextPack envelope is not JSON-serializable") from exc
+
+
+def interface_identities_of(envelope: Mapping[str, Any]) -> tuple[str, ...]:
+    """Exact interface/schema identities bound into a Datasets envelope."""
+
+    closed = _require_mapping(envelope, "envelope")
+    identity = _require_mapping(closed.get("identity"), "identity")
+    bindings = _require_mapping(
+        closed.get("freshness_bindings"), "freshness_bindings"
+    )
+    values = [
+        _text(closed.get("interface"), "interface"),
+        _text(
+            identity.get("schema_and_interface_version"),
+            "identity.schema_and_interface_version",
+        ),
+        _text(closed.get("schema"), "schema"),
+    ]
+    values.extend(
+        _identity_tuple(bindings.get("schema_identities"), "schema_identities")
+    )
+    return _dedupe_sorted(values, "interface_identities")
+
+
+@dataclass(frozen=True)
+class CurrentPackIdentity:
+    """Exact current-tree identities that a reusable pack must bind."""
+
+    tree: str
+    objective_identity: str
+    objective_revision: str
+    policy_identity: str
+    interface_identities: tuple[str, ...]
+    toolchain_identities: tuple[str, ...]
+    environment_requirements: tuple[str, ...]
+    required_source_cids: Mapping[str, str] = field(default_factory=dict)
+    identity_kind: str = "live"
+    evidence_kind: str = "real"
+    execution_mode: str = "live"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "tree", _require_git_oid(self.tree, "tree"))
+        object.__setattr__(
+            self,
+            "objective_identity",
+            _text(self.objective_identity, "objective_identity"),
+        )
+        object.__setattr__(
+            self,
+            "objective_revision",
+            _text(self.objective_revision, "objective_revision"),
+        )
+        object.__setattr__(
+            self,
+            "policy_identity",
+            validate_opaque_cid(self.policy_identity, "policy_identity"),
+        )
+        object.__setattr__(
+            self,
+            "interface_identities",
+            _identity_tuple(self.interface_identities, "interface_identities"),
+        )
+        if not self.interface_identities:
+            raise ContextPackError("interface_identities must be nonempty")
+        object.__setattr__(
+            self,
+            "toolchain_identities",
+            _identity_tuple(self.toolchain_identities, "toolchain_identities"),
+        )
+        object.__setattr__(
+            self,
+            "environment_requirements",
+            _identity_tuple(
+                self.environment_requirements, "environment_requirements"
+            ),
+        )
+        sources = _require_mapping(
+            self.required_source_cids, "required_source_cids"
+        )
+        cleaned: dict[str, str] = {}
+        for kind, cid in sources.items():
+            name = _text(kind, "required source kind")
+            cleaned[name] = validate_opaque_cid(cid, f"required_source_cids.{name}")
+        object.__setattr__(
+            self,
+            "required_source_cids",
+            {key: cleaned[key] for key in sorted(cleaned)},
+        )
+        object.__setattr__(
+            self, "identity_kind", _text(self.identity_kind, "identity_kind")
+        )
+        object.__setattr__(
+            self, "evidence_kind", _text(self.evidence_kind, "evidence_kind")
+        )
+        object.__setattr__(
+            self, "execution_mode", _text(self.execution_mode, "execution_mode")
+        )
+
+    @classmethod
+    def from_envelope(cls, envelope: Mapping[str, Any]) -> "CurrentPackIdentity":
+        """Derive current-world identities from an already-verified envelope."""
+
+        closed = _require_mapping(envelope, "envelope")
+        identity = _require_mapping(closed.get("identity"), "identity")
+        bindings = _require_mapping(
+            closed.get("freshness_bindings"), "freshness_bindings"
+        )
+        sources = _require_mapping(
+            closed.get("required_source_cids"), "required_source_cids"
+        )
+        return cls(
+            tree=_text(identity.get("tree"), "identity.tree"),
+            objective_identity=_text(
+                identity.get("objective_identity"), "identity.objective_identity"
+            ),
+            objective_revision=_text(
+                identity.get("objective_revision"), "identity.objective_revision"
+            ),
+            policy_identity=_text(
+                identity.get("policy_identity"), "identity.policy_identity"
+            ),
+            interface_identities=interface_identities_of(closed),
+            toolchain_identities=_identity_tuple(
+                bindings.get("toolchain_identities"), "toolchain_identities"
+            ),
+            environment_requirements=_identity_tuple(
+                bindings.get("environment_requirements"), "environment_requirements"
+            ),
+            required_source_cids=dict(sources),
+            identity_kind=_text(closed.get("identity_kind"), "identity_kind"),
+            evidence_kind=_text(closed.get("evidence_kind"), "evidence_kind"),
+            execution_mode=_text(closed.get("execution_mode"), "execution_mode"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tree": self.tree,
+            "objective_identity": self.objective_identity,
+            "objective_revision": self.objective_revision,
+            "policy_identity": self.policy_identity,
+            "interface_identities": list(self.interface_identities),
+            "toolchain_identities": list(self.toolchain_identities),
+            "environment_requirements": list(self.environment_requirements),
+            "required_source_cids": dict(self.required_source_cids),
+            "identity_kind": self.identity_kind,
+            "evidence_kind": self.evidence_kind,
+            "execution_mode": self.execution_mode,
+        }
+
+
+@dataclass(frozen=True)
+class FreshnessVerdict:
+    """Exact freshness comparison against current-tree identities."""
+
+    fresh: bool
+    stale_fields: tuple[str, ...]
+    pack_cid: str
+    identity_kind: str
+    masquerade_reasons: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": CONTEXT_PACK_FRESHNESS_SCHEMA,
+            "interface": CONTEXT_PACK_FRESHNESS_INTERFACE,
+            "fresh": self.fresh,
+            "stale_fields": list(self.stale_fields),
+            "pack_cid": self.pack_cid,
+            "identity_kind": self.identity_kind,
+            "masquerade_reasons": list(self.masquerade_reasons),
+        }
+
+
+def verify_datasets_semantic_identity(
+    envelope: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Re-verify Datasets identity. Accelerate never remints ``pack_cid``."""
+
+    claimed = envelope.get("pack_cid") if isinstance(envelope, Mapping) else None
+    authority = load_datasets_context_pack_authority()
+    try:
+        validated = authority.validate_envelope(envelope)
+    except Exception as exc:
+        raise ContextPackError(
+            f"datasets semantic identity rejected the envelope; "
+            f"storage is not semantic proof: {exc}"
+        ) from exc
+    pack_cid = _text(validated.get("pack_cid"), "pack_cid")
+    if claimed is None or _text(claimed, "pack_cid") != pack_cid:
+        raise ContextPackError(
+            "datasets pack_cid remint is forbidden; claimed identity must stand"
+        )
+    if validated.get("producer") != DATASETS_CONTEXT_PACK_AUTHORITY:
+        raise ContextPackError("ownership drift: producer is not Datasets")
+    if validated.get("interface") in {"SupervisorContextPack@1", "SupervisorContextPack"}:
+        raise ContextPackError("ownership drift: competing ContextPack type")
+    return validated
+
+
+def decode_context_pack_envelope(data: bytes) -> dict[str, Any]:
+    """Parse Kit-stored bytes and verify the Datasets envelope identity."""
+
+    if type(data) is not bytes or not data:
+        raise ContextPackError("ContextPack bytes must be nonempty")
+    try:
+        payload = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContextPackError(
+            "stored bytes are not a ContextPack envelope; storage is not semantic proof"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise ContextPackError("ContextPack envelope must be an object")
+    return verify_datasets_semantic_identity(payload)
+
+
+def kit_context_pack_store_of(store: Any) -> Any:
+    """Return the Kit ContextPack namespace from a store or parent port."""
+
+    if store is None:
+        raise ContextPackError("kit ContextPack store is required")
+    if hasattr(store, "get_immutable") and hasattr(store, "current_root"):
+        return store
+    nested = getattr(store, "context_pack", None)
+    if nested is not None and hasattr(nested, "get_immutable"):
+        return nested
+    raise ContextPackError("kit ContextPack store is required")
+
+
+def verify_kit_bytes(
+    store: Any,
+    data: bytes,
+    *,
+    claimed_cid: str | None = None,
+) -> str:
+    """Recompute Kit CID of exact bytes. Storage is not semantic admission."""
+
+    pack_store = kit_context_pack_store_of(store)
+    if type(data) is not bytes or not data:
+        raise ContextPackError("kit ContextPack bytes must be nonempty")
+    actual = _text(pack_store.cid_for(data), "kit_cid")
+    if claimed_cid is not None and validate_opaque_cid(claimed_cid, "kit_cid") != actual:
+        raise ContextPackError("kit CID does not equal recomputed bytes CID")
+    return actual
+
+
+def load_verified_kit_bytes(
+    store: Any,
+    *,
+    kit_cid: str,
+    kind: Any,
+) -> bytes:
+    """Immutable Kit get: stored bytes must match the durable CID."""
+
+    pack_store = kit_context_pack_store_of(store)
+    kit_mod = load_kit_context_pack_store()
+    try:
+        from ipfs_kit_py.proof_seal_store.contracts import ArtifactKind, ArtifactReference
+    except ImportError as exc:
+        raise ContextPackAuthorityUnavailable(
+            "kit artifact contracts are unavailable"
+        ) from exc
+    closed_kind = kind
+    try:
+        if not isinstance(closed_kind, ArtifactKind):
+            closed_kind = ArtifactKind(kind)
+        reference = ArtifactReference(
+            cid=validate_opaque_cid(kit_cid, "kit_cid"),
+            kind=closed_kind,
+        )
+        data = pack_store.get_immutable(reference)
+    except ContextPackError:
+        raise
+    except Exception as exc:
+        raise ContextPackError(f"kit immutable get failed closed: {exc}") from exc
+    actual = pack_store.cid_for(data)
+    if actual != reference.cid:
+        raise ContextPackError("stored bytes do not match kit CID")
+    if kit_mod.cid_for_bytes(data) != reference.cid:
+        raise ContextPackError("kit CID verification bypass is forbidden")
+    return data
+
+
+def verify_kit_current_root(store: Any, kit_cid: str) -> Any:
+    """Require ``kit_cid`` to be the published current ContextPack root."""
+
+    pack_store = kit_context_pack_store_of(store)
+    pointer = pack_store.current_root()
+    expected = validate_opaque_cid(kit_cid, "kit_cid")
+    if pointer is None:
+        raise StaleIdentityError(
+            "no current ContextPack root",
+            stale_fields=("tree",),
+            reason_codes=("stale:current_root",),
+        )
+    if pointer.seal_cid != expected:
+        raise StaleIdentityError(
+            "pack is not the current kit root",
+            stale_fields=("tree",),
+            reason_codes=("stale:current_root",),
+        )
+    return pointer
+
+
+def evaluate_exact_freshness(
+    envelope: Mapping[str, Any],
+    current: CurrentPackIdentity,
+) -> FreshnessVerdict:
+    """Compare Datasets-bound identities to the current tree exactly."""
+
+    if not isinstance(current, CurrentPackIdentity):
+        raise ContextPackError("current identity must be a CurrentPackIdentity")
+    closed = _require_mapping(envelope, "envelope")
+    identity = _require_mapping(closed.get("identity"), "identity")
+    bindings = _require_mapping(
+        closed.get("freshness_bindings"), "freshness_bindings"
+    )
+    pack_cid = validate_opaque_cid(closed.get("pack_cid"), "pack_cid")
+    stale: list[str] = []
+    masquerade: list[str] = []
+
+    pack_tree = _text(identity.get("tree"), "identity.tree")
+    scanned = _text(closed.get("scanned_tree_oid"), "scanned_tree_oid")
+    if pack_tree != current.tree or scanned != current.tree:
+        stale.append("tree")
+
+    if _text(identity.get("objective_identity"), "objective_identity") != (
+        current.objective_identity
+    ) or _text(identity.get("objective_revision"), "objective_revision") != (
+        current.objective_revision
+    ):
+        stale.append("objective")
+
+    if (
+        validate_opaque_cid(identity.get("policy_identity"), "policy_identity")
+        != current.policy_identity
+    ):
+        stale.append("policy")
+
+    if interface_identities_of(closed) != current.interface_identities:
+        stale.append("interface")
+
+    if (
+        _identity_tuple(bindings.get("toolchain_identities"), "toolchain_identities")
+        != current.toolchain_identities
+    ):
+        stale.append("toolchain")
+
+    if (
+        _identity_tuple(
+            bindings.get("environment_requirements"), "environment_requirements"
+        )
+        != current.environment_requirements
+    ):
+        stale.append("environment")
+
+    identity_kind = _text(closed.get("identity_kind"), "identity_kind")
+    evidence_kind = _text(closed.get("evidence_kind"), "evidence_kind")
+    execution_mode = _text(closed.get("execution_mode"), "execution_mode")
+    if identity_kind != current.identity_kind:
+        if identity_kind == "fixture" and current.identity_kind == "live":
+            masquerade.append("fixture_as_live")
+        elif identity_kind == "synthetic" and current.identity_kind == "live":
+            masquerade.append("synthetic_as_live")
+        else:
+            masquerade.append("identity_kind_mismatch")
+    if evidence_kind != current.evidence_kind:
+        masquerade.append("evidence_kind_mismatch")
+    if execution_mode != current.execution_mode:
+        masquerade.append("execution_mode_mismatch")
+
+    stale_fields = _dedupe_sorted(stale, "stale_fields")
+    masquerade_reasons = _dedupe_sorted(masquerade, "masquerade_reasons")
+    fresh = not stale_fields and not masquerade_reasons
+    return FreshnessVerdict(
+        fresh=fresh,
+        stale_fields=stale_fields,
+        pack_cid=pack_cid,
+        identity_kind=identity_kind,
+        masquerade_reasons=masquerade_reasons,
+    )
+
+
+def require_exact_freshness(
+    envelope: Mapping[str, Any],
+    current: CurrentPackIdentity,
+) -> FreshnessVerdict:
+    """Fail closed on any exact-identity mismatch."""
+
+    verdict = evaluate_exact_freshness(envelope, current)
+    if verdict.fresh:
+        return verdict
+    reasons = [f"stale:{field}" for field in verdict.stale_fields]
+    reasons.extend(verdict.masquerade_reasons)
+    raise StaleIdentityError(
+        "ContextPack identity is stale for the current tree",
+        stale_fields=verdict.stale_fields,
+        reason_codes=reasons,
+    )
+
+
+def required_sources_of(envelope: Mapping[str, Any]) -> dict[str, str]:
+    sources = _require_mapping(
+        envelope.get("required_source_cids"), "required_source_cids"
+    )
+    cleaned: dict[str, str] = {}
+    for kind in REQUIRED_SOURCE_KINDS:
+        cleaned[kind] = validate_opaque_cid(
+            sources.get(kind), f"required_source_cids.{kind}"
+        )
+    extra = sorted(set(sources) - set(REQUIRED_SOURCE_KINDS))
+    if extra:
+        raise ContextPackError(f"unknown required source kind {extra[0]}")
+    return cleaned
+
+
+def pack_is_adequate(
+    envelope: Mapping[str, Any],
+    current: CurrentPackIdentity,
+) -> bool:
+    """Adequate packs cover current required sources and do not omit them."""
+
+    sources = required_sources_of(envelope)
+    if current.required_source_cids and dict(current.required_source_cids) != sources:
+        return False
+    questions = envelope.get("questions") if isinstance(envelope, Mapping) else None
+    if isinstance(questions, Mapping):
+        missing = questions.get("missing_evidence") or ()
+        if missing:
+            return False
+    return True
+
+
+def pack_minimality_key(envelope: Mapping[str, Any], byte_length: int) -> tuple[Any, ...]:
+    """Deterministic minimality order: fewer capsules, then fewer bytes, then CID."""
+
+    closed = _require_mapping(envelope, "envelope")
+    capsules = closed.get("capsule_cids") or ()
+    if not isinstance(capsules, (list, tuple)):
+        raise ContextPackError("capsule_cids must be a list")
+    pack_cid = validate_opaque_cid(closed.get("pack_cid"), "pack_cid")
+    if type(byte_length) is not int or isinstance(byte_length, bool) or byte_length < 0:
+        raise ContextPackError("byte_length must be a nonnegative integer")
+    return (len(tuple(capsules)), byte_length, pack_cid)
+
+
 __all__ = [
     "CONTEXT_COVERAGE_POLICY_SCHEMA",
+    "CONTEXT_PACK_FRESHNESS_INTERFACE",
+    "CONTEXT_PACK_FRESHNESS_SCHEMA",
     "CONTEXT_PACK_INTERFACE",
     "CONTEXT_PACK_RESULT_SCHEMA",
+    "DATASETS_CONTEXT_PACK_AUTHORITY",
+    "EXACT_FRESHNESS_FIELDS",
+    "KIT_CONTEXT_PACK_STORE_AUTHORITY",
+    "REQUIRED_SOURCE_KINDS",
     "TOKEN_ESTIMATOR_VERSION",
     "ContextCoveragePolicy",
+    "ContextPackAuthorityUnavailable",
     "ContextPackError",
     "ContextPackResult",
     "ContextPacker",
     "ContextTokenEstimate",
+    "CurrentPackIdentity",
+    "FreshnessVerdict",
+    "StaleIdentityError",
+    "decode_context_pack_envelope",
+    "encode_context_pack_envelope",
+    "evaluate_exact_freshness",
+    "interface_identities_of",
+    "kit_context_pack_store_of",
+    "load_datasets_context_pack_authority",
+    "load_kit_context_pack_store",
+    "load_verified_kit_bytes",
     "pack_context",
+    "pack_is_adequate",
+    "pack_minimality_key",
     "project_admission_to_reference",
+    "require_exact_freshness",
+    "required_sources_of",
+    "verify_datasets_semantic_identity",
+    "verify_kit_bytes",
+    "verify_kit_current_root",
 ]

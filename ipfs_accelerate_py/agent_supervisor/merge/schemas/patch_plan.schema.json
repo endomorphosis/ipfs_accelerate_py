@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ipfs-accelerate.example/schemas/aseh/patch-plan@1",
+  "title": "ASEH PatchPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "plan_id", "base_tree", "semantic_intent", "files", "symbols", "preconditions", "postconditions", "invariants", "tests", "proofs", "scope", "patch_digest", "plan_digest"],
+  "properties": {
+    "schema": {"const": "aseh/patch-plan@1"},
+    "plan_id": {"type": "string", "minLength": 1},
+    "base_tree": {"type": "string", "minLength": 1},
+    "semantic_intent": {"type": "string", "minLength": 1},
+    "files": {"$ref": "#/$defs/nonemptyStringArray"},
+    "symbols": {"$ref": "#/$defs/nonemptyStringArray"},
+    "preconditions": {"$ref": "#/$defs/nonemptyStringArray"},
+    "postconditions": {"$ref": "#/$defs/nonemptyStringArray"},
+    "invariants": {"$ref": "#/$defs/nonemptyStringArray"},
+    "tests": {"$ref": "#/$defs/nonemptyStringArray"},
+    "proofs": {"$ref": "#/$defs/nonemptyStringArray"},
+    "scope": {"type": "object", "additionalProperties": false, "required": ["allowed_paths"], "properties": {"allowed_paths": {"$ref": "#/$defs/nonemptyStringArray"}}},
+    "patch_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "plan_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  },
+  "$defs": {"nonemptyStringArray": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}
+}

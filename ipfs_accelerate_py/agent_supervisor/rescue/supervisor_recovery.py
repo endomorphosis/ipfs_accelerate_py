@@ -754,6 +754,272 @@ class RepairReceipt:
         )
 
 
+OWNER_RESTART_SNAPSHOT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/owner-restart-snapshot@1"
+)
+OWNER_RESTART_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/owner-restart-receipt@1"
+)
+
+
+def _owner_restart_mapping(value: Any, name: str) -> dict[str, Any]:
+    """Canonicalize one authoritative projection without retaining secrets."""
+
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{name} must be a mapping")
+    try:
+        canonical = json.loads(_canonical_bytes(value))
+    except RecoveryIntegrityError:
+        raise
+    if not isinstance(canonical, dict):
+        raise TypeError(f"{name} must be a JSON object")
+
+    # A restart record identifies an already-issued authority binding; it must
+    # never turn that record into a credential cache.  In particular, a lost
+    # owner must reconnect through the normal owner/grant path, not recover a
+    # password, bearer, or private key from a checkpoint.
+    forbidden = {
+        "access_token",
+        "api_key",
+        "authorization",
+        "bearer",
+        "credential",
+        "credentials",
+        "password",
+        "private_key",
+        "refresh_token",
+        "secret",
+        "token_secret",
+    }
+
+    def reject_credentials(member: Any) -> None:
+        if isinstance(member, Mapping):
+            for key, nested in member.items():
+                if str(key).strip().lower() in forbidden:
+                    raise RecoveryIntegrityError(
+                        "owner restart snapshots cannot persist credential material"
+                    )
+                reject_credentials(nested)
+        elif isinstance(member, list):
+            for nested in member:
+                reject_credentials(nested)
+
+    reject_credentials(canonical)
+    return canonical
+
+
+@dataclass(frozen=True)
+class OwnerRestartSnapshot:
+    """One exact owner-independent projection used to resume a supervisor.
+
+    The six state partitions intentionally mirror the authoritative owner
+    boundary.  ``authentication_*`` values are non-secret identities of a
+    grant/session binding only; an actual credential is deliberately neither
+    accepted nor persisted here.
+    """
+
+    repository_id: str
+    tree_id: str
+    generation: int
+    cursor: EventCursor
+    task_state: Mapping[str, Any]
+    event_state: Mapping[str, Any]
+    lease_state: Mapping[str, Any]
+    idempotency_state: Mapping[str, Any]
+    reconciliation_state: Mapping[str, Any]
+    owner_session_id: str
+    fencing_epoch: int
+    authenticated: bool
+    authentication_subject_id: str = ""
+    authentication_binding_id: str = ""
+    state_root: str = ""
+    snapshot_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in ("repository_id", "tree_id", "owner_session_id"):
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
+        if isinstance(self.generation, bool) or not isinstance(self.generation, int) or self.generation < 1:
+            raise ValueError("generation must be a positive integer")
+        if not isinstance(self.cursor, EventCursor):
+            raise TypeError("cursor must be an EventCursor")
+        if isinstance(self.fencing_epoch, bool) or not isinstance(self.fencing_epoch, int) or self.fencing_epoch < 1:
+            raise ValueError("fencing_epoch must be a positive integer")
+        if not isinstance(self.authenticated, bool):
+            raise TypeError("authenticated must be a boolean")
+        for name in (
+            "task_state",
+            "event_state",
+            "lease_state",
+            "idempotency_state",
+            "reconciliation_state",
+        ):
+            object.__setattr__(self, name, _owner_restart_mapping(getattr(self, name), name))
+        for name in ("authentication_subject_id", "authentication_binding_id"):
+            value = str(getattr(self, name) or "").strip()
+            object.__setattr__(self, name, value)
+        if self.authenticated and not (
+            self.authentication_subject_id and self.authentication_binding_id
+        ):
+            raise RecoveryIntegrityError(
+                "an authenticated restart snapshot requires authority binding identities"
+            )
+        body = self.to_dict(include_ids=False)
+        expected_root = _content_id("owner-restart-state", body)
+        if self.state_root and self.state_root != expected_root:
+            raise RecoveryIntegrityError("owner restart state root mismatch")
+        object.__setattr__(self, "state_root", expected_root)
+        expected_snapshot_id = _content_id("owner-restart-snapshot", self.to_dict(include_ids=False))
+        if self.snapshot_id and self.snapshot_id != expected_snapshot_id:
+            raise RecoveryIntegrityError("owner restart snapshot identity mismatch")
+        object.__setattr__(self, "snapshot_id", expected_snapshot_id)
+
+    def to_dict(self, *, include_ids: bool = True) -> dict[str, Any]:
+        value = {
+            "schema": OWNER_RESTART_SNAPSHOT_SCHEMA,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "generation": self.generation,
+            "cursor": self.cursor.to_record(),
+            "task_state": dict(self.task_state),
+            "event_state": dict(self.event_state),
+            "lease_state": dict(self.lease_state),
+            "idempotency_state": dict(self.idempotency_state),
+            "reconciliation_state": dict(self.reconciliation_state),
+            "owner_session_id": self.owner_session_id,
+            "fencing_epoch": self.fencing_epoch,
+            "authenticated": self.authenticated,
+            "authentication_subject_id": self.authentication_subject_id,
+            "authentication_binding_id": self.authentication_binding_id,
+        }
+        if include_ids:
+            value["state_root"] = self.state_root
+            value["snapshot_id"] = self.snapshot_id
+        return value
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "OwnerRestartSnapshot":
+        allowed = {
+            "schema", "repository_id", "tree_id", "generation", "cursor",
+            "task_state", "event_state", "lease_state", "idempotency_state",
+            "reconciliation_state", "owner_session_id", "fencing_epoch", "authenticated",
+            "authentication_subject_id", "authentication_binding_id", "state_root", "snapshot_id",
+        }
+        if value.get("schema") != OWNER_RESTART_SNAPSHOT_SCHEMA:
+            raise RecoveryIntegrityError("unsupported owner restart snapshot schema")
+        if set(value).difference(allowed):
+            raise RecoveryIntegrityError("owner restart snapshot contains unknown fields")
+        return cls(
+            repository_id=str(value.get("repository_id") or ""),
+            tree_id=str(value.get("tree_id") or ""),
+            generation=value.get("generation"),  # type: ignore[arg-type]
+            cursor=EventCursor.from_dict(value.get("cursor") or {}),
+            task_state=value.get("task_state") or {},
+            event_state=value.get("event_state") or {},
+            lease_state=value.get("lease_state") or {},
+            idempotency_state=value.get("idempotency_state") or {},
+            reconciliation_state=value.get("reconciliation_state") or {},
+            owner_session_id=str(value.get("owner_session_id") or ""),
+            fencing_epoch=value.get("fencing_epoch"),  # type: ignore[arg-type]
+            authenticated=value.get("authenticated"),
+            authentication_subject_id=str(value.get("authentication_subject_id") or ""),
+            authentication_binding_id=str(value.get("authentication_binding_id") or ""),
+            state_root=str(value.get("state_root") or ""),
+            snapshot_id=str(value.get("snapshot_id") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class OwnerRestartReceipt:
+    """Persisted proof that restart used the existing owner authority safely."""
+
+    incident_id: str
+    repository_id: str
+    tree_id: str
+    checkpoint_id: str
+    recovery_receipt_id: str
+    previous_snapshot_id: str
+    resulting_snapshot_id: str
+    previous_state_root: str
+    resulting_state_root: str
+    previous_fencing_epoch: int
+    resulting_fencing_epoch: int
+    owner_session_id: str
+    takeover: bool
+    authenticated: bool
+    receipt_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "incident_id", "repository_id", "tree_id", "checkpoint_id", "recovery_receipt_id",
+            "previous_snapshot_id", "resulting_snapshot_id", "previous_state_root",
+            "resulting_state_root", "owner_session_id",
+        ):
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
+        for name in ("previous_fencing_epoch", "resulting_fencing_epoch"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if not isinstance(self.takeover, bool) or not isinstance(self.authenticated, bool):
+            raise TypeError("takeover and authenticated must be booleans")
+        if self.takeover:
+            if self.resulting_fencing_epoch <= self.previous_fencing_epoch:
+                raise RecoveryIntegrityError("owner takeover did not advance its fencing epoch")
+        elif (
+            self.resulting_fencing_epoch != self.previous_fencing_epoch
+            or self.resulting_state_root != self.previous_state_root
+            or self.resulting_snapshot_id != self.previous_snapshot_id
+        ):
+            raise RecoveryIntegrityError("ordinary restart changed authoritative state")
+        expected = _content_id("owner-restart-receipt", self.to_dict(include_id=False))
+        if self.receipt_id and self.receipt_id != expected:
+            raise RecoveryIntegrityError("owner restart receipt identity mismatch")
+        object.__setattr__(self, "receipt_id", expected)
+
+    def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
+        value = {
+            "schema": OWNER_RESTART_RECEIPT_SCHEMA,
+            "incident_id": self.incident_id,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "checkpoint_id": self.checkpoint_id,
+            "recovery_receipt_id": self.recovery_receipt_id,
+            "previous_snapshot_id": self.previous_snapshot_id,
+            "resulting_snapshot_id": self.resulting_snapshot_id,
+            "previous_state_root": self.previous_state_root,
+            "resulting_state_root": self.resulting_state_root,
+            "previous_fencing_epoch": self.previous_fencing_epoch,
+            "resulting_fencing_epoch": self.resulting_fencing_epoch,
+            "owner_session_id": self.owner_session_id,
+            "takeover": self.takeover,
+            "authenticated": self.authenticated,
+        }
+        if include_id:
+            value["receipt_id"] = self.receipt_id
+        return value
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "OwnerRestartReceipt":
+        if value.get("schema") != OWNER_RESTART_RECEIPT_SCHEMA:
+            raise RecoveryIntegrityError("unsupported owner restart receipt schema")
+        return cls(
+            incident_id=str(value.get("incident_id") or ""),
+            repository_id=str(value.get("repository_id") or ""),
+            tree_id=str(value.get("tree_id") or ""),
+            checkpoint_id=str(value.get("checkpoint_id") or ""),
+            recovery_receipt_id=str(value.get("recovery_receipt_id") or ""),
+            previous_snapshot_id=str(value.get("previous_snapshot_id") or ""),
+            resulting_snapshot_id=str(value.get("resulting_snapshot_id") or ""),
+            previous_state_root=str(value.get("previous_state_root") or ""),
+            resulting_state_root=str(value.get("resulting_state_root") or ""),
+            previous_fencing_epoch=value.get("previous_fencing_epoch"),  # type: ignore[arg-type]
+            resulting_fencing_epoch=value.get("resulting_fencing_epoch"),  # type: ignore[arg-type]
+            owner_session_id=str(value.get("owner_session_id") or ""),
+            takeover=value.get("takeover"),
+            authenticated=value.get("authenticated"),
+            receipt_id=str(value.get("receipt_id") or ""),
+        )
+
+
 class FaultInjector:
     """Deterministic opt-in fault points for recovery fixtures.
 
@@ -848,6 +1114,286 @@ class SupervisorRecovery:
         )
         self.checkpoints.save(checkpoint)
         return checkpoint
+
+    def checkpoint_owner_restart(
+        self,
+        snapshot: OwnerRestartSnapshot,
+        *,
+        accepted_merged_tree_evidence: Sequence[str] = (),
+        proof_index_id: str = "",
+        cas_invalidation_id: str = "",
+    ) -> RecoveryCheckpoint:
+        """Durably bind an owner-independent state root to one event cursor.
+
+        This is deliberately only a checkpoint adapter.  It does not write to
+        an owner database, issue grants, or copy credentials; callers must use
+        the existing typed owner and transition service to obtain ``snapshot``.
+        """
+
+        if not isinstance(snapshot, OwnerRestartSnapshot):
+            raise TypeError("snapshot must be an OwnerRestartSnapshot")
+        return self.checkpoint(
+            repository_id=snapshot.repository_id,
+            tree_id=snapshot.tree_id,
+            generation=snapshot.generation,
+            state=snapshot.to_dict(),
+            cursor=snapshot.cursor,
+            accepted_merged_tree_evidence=accepted_merged_tree_evidence,
+            semantic_roots={"owner_restart_state": snapshot.state_root},
+            proof_index_id=proof_index_id,
+            cas_invalidation_id=cas_invalidation_id,
+            fencing_epoch=snapshot.fencing_epoch,
+        )
+
+    def _owner_restart_receipt_path(self, incident_id: str) -> Path:
+        digest = hashlib.sha256(incident_id.encode("utf-8")).hexdigest()
+        return self.receipts_dir / f"owner-restart-{digest}.json"
+
+    def _owner_restart_receipt(self, incident_id: str) -> OwnerRestartReceipt | None:
+        path = self._owner_restart_receipt_path(incident_id)
+        try:
+            raw = path.read_bytes()
+            if len(raw) > self.policy.max_receipt_bytes:
+                raise RecoveryIntegrityError("owner restart receipt exceeds byte bound")
+            value = json.loads(raw)
+            if not isinstance(value, Mapping):
+                raise RecoveryIntegrityError("owner restart receipt must be an object")
+            return OwnerRestartReceipt.from_dict(value)
+        except FileNotFoundError:
+            return None
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RecoveryIntegrityError("owner restart receipt is malformed") from exc
+
+    def _store_owner_restart_receipt(self, receipt: OwnerRestartReceipt) -> None:
+        payload = _canonical_bytes(receipt.to_dict()) + b"\n"
+        if len(payload) > self.policy.max_receipt_bytes:
+            raise RecoveryBoundExceeded("owner restart receipt exceeds byte bound")
+        _atomic_write(self._owner_restart_receipt_path(receipt.incident_id), payload)
+
+    @staticmethod
+    def _owner_restart_snapshot(checkpoint: RecoveryCheckpoint) -> OwnerRestartSnapshot:
+        try:
+            snapshot = OwnerRestartSnapshot.from_dict(checkpoint.state)
+        except (TypeError, ValueError, RecoveryError) as exc:
+            raise RecoveryIntegrityError("checkpoint is not an owner restart snapshot") from exc
+        if (
+            snapshot.repository_id != checkpoint.repository_id
+            or snapshot.tree_id != checkpoint.tree_id
+            or snapshot.generation != checkpoint.generation
+            or snapshot.cursor != checkpoint.cursor
+            or snapshot.fencing_epoch != checkpoint.fencing_epoch
+            or checkpoint.semantic_roots.get("owner_restart_state") != snapshot.state_root
+        ):
+            raise RecoveryIntegrityError("owner restart checkpoint bindings mismatch")
+        return snapshot
+
+    @staticmethod
+    def _coerce_owner_restart_snapshot(value: OwnerRestartSnapshot | Mapping[str, Any]) -> OwnerRestartSnapshot:
+        if isinstance(value, OwnerRestartSnapshot):
+            return value
+        if isinstance(value, Mapping):
+            return OwnerRestartSnapshot.from_dict(value)
+        raise TypeError("owner restart authority must return an OwnerRestartSnapshot")
+
+    @staticmethod
+    def _assert_takeover_preserves_authoritative_truth(
+        previous: OwnerRestartSnapshot,
+        resulting: OwnerRestartSnapshot,
+        *,
+        owner_session_id: str,
+        current_fencing_token: int,
+    ) -> None:
+        if (
+            resulting.repository_id != previous.repository_id
+            or resulting.tree_id != previous.tree_id
+            or resulting.generation <= previous.generation
+            or resulting.cursor != previous.cursor
+            or resulting.owner_session_id != owner_session_id
+            or resulting.fencing_epoch != current_fencing_token
+            or resulting.fencing_epoch <= previous.fencing_epoch
+        ):
+            raise RecoveryIntegrityError("owner takeover bindings are not monotonic")
+        # A new owner may replace its lease/session and advance the fence, but
+        # it may not rewrite task truth, event truth, idempotency seals, or an
+        # unknown-outcome/reconciliation record while taking over.
+        for name in (
+            "task_state",
+            "event_state",
+            "idempotency_state",
+            "reconciliation_state",
+            "authentication_subject_id",
+            "authentication_binding_id",
+        ):
+            if getattr(resulting, name) != getattr(previous, name):
+                raise RecoveryIntegrityError(f"owner takeover rewrote {name}")
+        mutable_lease_fields = {
+            "lease_id",
+            "owner_session_id",
+            "fencing_epoch",
+            "fencing_token",
+            "fence_epoch",
+            "claim_revision",
+            "expires_at",
+            "status",
+        }
+        for name in set(previous.lease_state).union(resulting.lease_state):
+            if name not in mutable_lease_fields and (
+                previous.lease_state.get(name) != resulting.lease_state.get(name)
+            ):
+                raise RecoveryIntegrityError(f"owner takeover rewrote lease {name}")
+        if "owner_session_id" in resulting.lease_state and (
+            resulting.lease_state["owner_session_id"] != owner_session_id
+        ):
+            raise RecoveryIntegrityError("owner takeover lease owner mismatch")
+        if "fencing_epoch" in resulting.lease_state and (
+            resulting.lease_state["fencing_epoch"] != current_fencing_token
+        ):
+            raise RecoveryIntegrityError("owner takeover lease fencing epoch mismatch")
+        for name in ("fencing_token", "fence_epoch", "claim_revision"):
+            if name in previous.lease_state and name in resulting.lease_state:
+                before = previous.lease_state[name]
+                after = resulting.lease_state[name]
+                if (
+                    isinstance(before, bool)
+                    or isinstance(after, bool)
+                    or not isinstance(before, int)
+                    or not isinstance(after, int)
+                    or after <= before
+                ):
+                    raise RecoveryIntegrityError(f"owner takeover did not advance lease {name}")
+
+    @_serialize_incident
+    def recover_owner_restart(
+        self,
+        *,
+        incident_id: str,
+        fault: RecoveryFault | str,
+        repository_id: str,
+        tree_id: str,
+        owner_session_id: str,
+        rebuild: Callable[[OwnerRestartSnapshot], OwnerRestartSnapshot | Mapping[str, Any]],
+        verify_authenticated: Callable[[OwnerRestartSnapshot], bool],
+        owner_lost: bool = False,
+        takeover: Callable[[OwnerRestartSnapshot, str], OwnerRestartSnapshot | Mapping[str, Any]] | None = None,
+        current_fencing_token: int | None = None,
+        process_tree_id: str = "process-tree:none",
+        event_log_path: Path | str | None = None,
+    ) -> OwnerRestartReceipt:
+        """Resume through an existing owner authority, preserving every truth partition.
+
+        ``rebuild`` and ``takeover`` are adapters to the already-authorized
+        Quack/typed-owner and transition-service calls.  They are intentionally
+        the only integration points: this recovery layer has no database or
+        credential parameters and therefore cannot repair state out-of-band.
+        """
+
+        incident_id = _required_text(incident_id, "incident_id")
+        repository_id = _required_text(repository_id, "repository_id")
+        tree_id = _required_text(tree_id, "tree_id")
+        owner_session_id = _required_text(owner_session_id, "owner_session_id")
+        if not callable(rebuild) or not callable(verify_authenticated):
+            raise TypeError("owner restart recovery requires rebuild and authentication verification")
+        checkpoint = self.checkpoints.load_last_valid()
+        if checkpoint is None:
+            raise RecoveryIntegrityError("owner restart recovery requires a valid checkpoint")
+        previous = self._owner_restart_snapshot(checkpoint)
+        if previous.repository_id != repository_id or previous.tree_id != tree_id:
+            raise RecoveryIntegrityError("owner restart checkpoint repository/tree mismatch")
+
+        existing = self._owner_restart_receipt(incident_id)
+        if existing is not None:
+            current = self.checkpoints.load_last_valid()
+            if current is None:
+                raise RecoveryIntegrityError("owner restart receipt has no durable checkpoint")
+            current_snapshot = self._owner_restart_snapshot(current)
+            if (
+                existing.repository_id != repository_id
+                or existing.tree_id != tree_id
+                or existing.owner_session_id != owner_session_id
+                or existing.resulting_snapshot_id != current_snapshot.snapshot_id
+                or existing.resulting_state_root != current_snapshot.state_root
+                or existing.resulting_fencing_epoch != current_snapshot.fencing_epoch
+                or verify_authenticated(current_snapshot) is not True
+            ):
+                raise RecoveryIntegrityError("owner restart receipt replay bindings mismatch")
+            return existing
+
+        rebuilt = self._coerce_owner_restart_snapshot(rebuild(previous))
+        if rebuilt.snapshot_id != previous.snapshot_id or rebuilt.state_root != previous.state_root:
+            raise RecoveryIntegrityError("restart rebuild did not reconstruct the checkpoint state root")
+        if owner_lost:
+            if takeover is None:
+                raise RecoveryIntegrityError("owner loss requires an authoritative takeover")
+            if (
+                isinstance(current_fencing_token, bool)
+                or not isinstance(current_fencing_token, int)
+                or current_fencing_token <= previous.fencing_epoch
+            ):
+                raise RecoveryIntegrityError("owner takeover requires an advanced fencing token")
+            recovery = self.recover(
+                # ``recover_owner_restart`` holds the public incident lock.
+                # Give the nested generic receipt a distinct lock/receipt
+                # identity so POSIX flock cannot self-deadlock on restart.
+                incident_id=f"owner-restart-base:{incident_id}",
+                fault=fault,
+                repository_id=repository_id,
+                tree_id=tree_id,
+                event_log_path=event_log_path,
+                current_fencing_token=current_fencing_token,
+                observed_fencing_token=previous.fencing_epoch,
+                process_tree_id=process_tree_id,
+            )
+            resulting = self._coerce_owner_restart_snapshot(takeover(rebuilt, owner_session_id))
+            self._assert_takeover_preserves_authoritative_truth(
+                previous,
+                resulting,
+                owner_session_id=owner_session_id,
+                current_fencing_token=current_fencing_token,
+            )
+        else:
+            if owner_session_id != previous.owner_session_id:
+                raise RecoveryIntegrityError("a different owner requires a fenced takeover")
+            if current_fencing_token not in (None, previous.fencing_epoch):
+                raise RecoveryIntegrityError("ordinary restart used a stale or advanced fence")
+            recovery = self.recover(
+                incident_id=f"owner-restart-base:{incident_id}",
+                fault=fault,
+                repository_id=repository_id,
+                tree_id=tree_id,
+                event_log_path=event_log_path,
+                process_tree_id=process_tree_id,
+            )
+            resulting = rebuilt
+
+        if recovery.failed_closed:
+            raise RecoveryIntegrityError("base recovery did not restore a safe checkpoint")
+        if resulting.authenticated is not True or verify_authenticated(resulting) is not True:
+            raise RecoveryIntegrityError("restarted owner is not authenticated")
+        if resulting.snapshot_id != previous.snapshot_id:
+            self.checkpoint_owner_restart(
+                resulting,
+                accepted_merged_tree_evidence=checkpoint.accepted_merged_tree_evidence,
+                proof_index_id=checkpoint.proof_index_id,
+                cas_invalidation_id=checkpoint.cas_invalidation_id,
+            )
+        receipt = OwnerRestartReceipt(
+            incident_id=incident_id,
+            repository_id=repository_id,
+            tree_id=tree_id,
+            checkpoint_id=checkpoint.checkpoint_id,
+            recovery_receipt_id=recovery.receipt_id,
+            previous_snapshot_id=previous.snapshot_id,
+            resulting_snapshot_id=resulting.snapshot_id,
+            previous_state_root=previous.state_root,
+            resulting_state_root=resulting.state_root,
+            previous_fencing_epoch=previous.fencing_epoch,
+            resulting_fencing_epoch=resulting.fencing_epoch,
+            owner_session_id=resulting.owner_session_id,
+            takeover=owner_lost,
+            authenticated=True,
+        )
+        self._store_owner_restart_receipt(receipt)
+        return receipt
 
     def _receipt_path(self, incident_id: str) -> Path:
         digest = hashlib.sha256(incident_id.encode("utf-8")).hexdigest()
@@ -2625,6 +3171,8 @@ __all__ = [
     "BoundRecoveryAction",
     "BoundedProgrammaticRecovery",
     "FaultInjector",
+    "OWNER_RESTART_RECEIPT_SCHEMA",
+    "OWNER_RESTART_SNAPSHOT_SCHEMA",
     "PROGRAMMATIC_RECOVERY_ACTION_CATALOG",
     "PROGRAMMATIC_RECOVERY_CATALOG_CID",
     "PROGRAMMATIC_RECOVERY_RECEIPT_SCHEMA",
@@ -2651,6 +3199,8 @@ __all__ = [
     "RecoveryFault",
     "RecoveryIntegrityError",
     "RecoveryPolicy",
+    "OwnerRestartReceipt",
+    "OwnerRestartSnapshot",
     "RepairReceipt",
     "SupervisorRecovery",
     "recover_programmatically",

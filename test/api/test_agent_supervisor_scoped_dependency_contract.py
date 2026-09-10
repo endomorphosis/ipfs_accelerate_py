@@ -315,6 +315,83 @@ def test_v2_selects_one_exact_task_bound_target(
     ]
 
 
+def test_v2_auto_repairs_undeclared_same_board_pytest_task(
+    tmp_path: Path,
+) -> None:
+    _project, _command, _authority, entries = _write_v2_project(
+        tmp_path,
+        target_states=("present", "present"),
+    )
+    new_target = "tests/unit/logic/gui_optimizer/test_v2_new.py"
+    new_output = f"project/{new_target}"
+    target_path = tmp_path / "project" / new_target
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text("# new board task\n", encoding="utf-8")
+    command = f"cd project && python3 -m pytest {new_target} -q"
+    task_authority = {
+        "board_namespace": "v2-board",
+        "canonical_task_cid": "canonical-task-new",
+        "declared_outputs": [new_output],
+    }
+    payloads: list[dict[str, object]] = []
+
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [command],
+        task_authority=task_authority,
+        probe_runner=_passing_probe(payloads),
+    )
+
+    assert receipt["passed"] is True
+    assert payloads[0]["projects"][0]["requirements"] == entries[0][
+        "requirements"
+    ]
+
+
+def test_v2_does_not_auto_repair_foreign_board_or_command_drift(
+    tmp_path: Path,
+) -> None:
+    _project, command, task_authority, _entries = _write_v2_project(
+        tmp_path,
+        target_states=("present", "present"),
+    )
+    foreign_target = "tests/unit/logic/gui_optimizer/test_v2_foreign.py"
+    foreign_path = tmp_path / "project" / foreign_target
+    foreign_path.parent.mkdir(parents=True, exist_ok=True)
+    foreign_path.write_text("# foreign board\n", encoding="utf-8")
+    foreign_command = f"cd project && python3 -m pytest {foreign_target} -q"
+    foreign_authority = {
+        "board_namespace": "other-board",
+        "canonical_task_cid": "canonical-task-foreign",
+        "declared_outputs": [f"project/{foreign_target}"],
+    }
+    foreign = preflight_validation_project_dependencies(
+        tmp_path,
+        [foreign_command],
+        task_authority=foreign_authority,
+        probe_runner=lambda *_args, **_kwargs: pytest.fail(
+            "foreign board must fail before probing"
+        ),
+    )
+    assert foreign["passed"] is False
+    assert foreign["projects"][0]["contract_error_reason"] == (
+        "v2_validation_command_not_declared"
+    )
+
+    drifted = preflight_validation_project_dependencies(
+        tmp_path,
+        [command + " --maxfail=1"],
+        task_authority=task_authority,
+        probe_runner=lambda *_args, **_kwargs: pytest.fail(
+            "command digest drift must fail before probing"
+        ),
+    )
+    assert drifted["passed"] is False
+    assert drifted["projects"][0]["contract_error_reason"] == (
+        "v2_validation_command_not_declared"
+    )
+
+
 def test_v2_authenticated_prior_seed_may_materialize_absent_target(
     tmp_path: Path,
 ) -> None:

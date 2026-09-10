@@ -1,0 +1,101 @@
+{
+  "acceptance_input_identity": "baguqeerab25koaihkalsqboozoahhtjcp2nr3sc2upa3jw3sanuwxocz2pcq",
+  "acceptance_input_identity_method": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts.content_identity",
+  "authority": false,
+  "goal_id": "ASEH-G010",
+  "identity": "baguqeeraf6tws27cpczkyf2ffwbyewugrltdrxzvypnjxlxjjluh4vfdxhxa",
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "protected_inputs": [
+    {
+      "path": "docs/architecture/agent_supervisor_efficiency_state_hardening.requirements.json",
+      "role": "protected_requirements",
+      "sha256": "sha256:734a1c016bbb4e3e896c612c95a7144d6a8846b921784e75a41d90a5f2568e96"
+    },
+    {
+      "path": "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
+      "role": "scheduler_policy",
+      "sha256": "sha256:db7fd1e20636722cb1921ba4a76e6403b6d97ffa3ae52d06f396e566d968558d"
+    },
+    {
+      "path": "docs/architecture/AGENT_SUPERVISOR_EFFICIENCY_AND_STATE_HARDENING_PLAN.md",
+      "role": "program_plan",
+      "sha256": "sha256:76f626497d9c17099c3d6091cc715f4810ec18bce53e621684c7832f32180a0a"
+    },
+    {
+      "path": "docs/architecture/agent_supervisor_efficiency_state_hardening.objectives.md",
+      "role": "objective_heap",
+      "sha256": "sha256:0287d75b74e1a2d16c959a3f1b0875e598272f8147793de629cf792d64276bec"
+    },
+    {
+      "path": "docs/architecture/agent_supervisor_efficiency_state_hardening.todo.md",
+      "role": "bootstrap_task_board",
+      "sha256": "sha256:16d95123ce06d49b9b6e8d9fd2c2621815e56a008b52a384985e4e6924a470ef"
+    },
+    {
+      "path": "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/bootstrap_baseline.json",
+      "role": "bootstrap_baseline",
+      "sha256": "sha256:94b3f83c1556b3106b73bc1c26dd928d8121ed6a6fe54b88a43cf0c7566c595a"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+      "role": "content_identity_implementation",
+      "sha256": "sha256:85cbcf37d61e373eabfbdd4a291b85f4e5f2a275c6587b45fa1dc26a5d9803bd"
+    }
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-sealed-input-manifest@1",
+  "sealed_at": "2026-08-23T18:54:50Z",
+  "sealed_outputs": [
+    {
+      "identity": "baguqeeraoiwpuyij56u66q36u6utp7fdggl3avccrsfsdrouhoife7jajmpq",
+      "path": "benchmarks/agent_supervisor/efficiency_state_hardening/environment_identity.json",
+      "role": "environment_identity",
+      "sha256": "sha256:a37b0e8a54b83d6b8dba81499dd5ba7c502a4aee8e59c31302b87a723e2d5e75"
+    },
+    {
+      "identity": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+      "path": "benchmarks/agent_supervisor/efficiency_state_hardening/price_snapshot.json",
+      "role": "price_snapshot",
+      "sha256": "sha256:e6ff6b34ba4987c35f20388e8652d0ac449c95fc24cfc6abd371b8da9c653aa5"
+    },
+    {
+      "identity": "baguqeera5wehcqr5rbuwrcgskjdhpt7d4oz32ks7oalbqa5iimevjpjstrha",
+      "path": "benchmarks/agent_supervisor/efficiency_state_hardening/provider_model_config.json",
+      "role": "provider_and_model_configuration",
+      "sha256": "sha256:761e38b348d787f0f5d641dcec03b23abee539d79b73cb3b53e27dd6fa9f03a7"
+    },
+    {
+      "path": "test/api/agent_supervisor/efficiency_state_hardening/test_sealed_baseline.py",
+      "role": "focused_validator",
+      "sha256": "sha256:9a3b3c021c64444cf5898a436e944f0ef3cbb50da1db65d385f1e145446b81c7"
+    }
+  ],
+  "task_corpus_identity": "baguqeeramctclplnvantlfkl34n4hcmde3epsf5tpenvmo6ljhdplu3hmlia",
+  "task_corpus_identity_method": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts.content_identity",
+  "task_id": "ASEH-001",
+  "unavailable_inputs": [
+    {
+      "name": "hermetic_vectors",
+      "path": "benchmarks/agent_supervisor/efficiency_state_hardening/hermetic_vectors.jsonl",
+      "reason": "not_sealed_until_ASEH-013",
+      "status": "unavailable"
+    },
+    {
+      "name": "historical_vectors",
+      "path": "benchmarks/agent_supervisor/efficiency_state_hardening/historical_vectors.jsonl",
+      "reason": "not_sealed_until_ASEH-014",
+      "status": "unavailable"
+    },
+    {
+      "name": "live_cohort_manifest",
+      "path": "benchmarks/agent_supervisor/efficiency_state_hardening/live_cohort_manifest.json",
+      "reason": "not_sealed_until_ASEH-015",
+      "status": "unavailable"
+    },
+    {
+      "name": "paired_harness",
+      "path": "benchmarks/agent_supervisor/efficiency_state_hardening/paired_harness.py",
+      "reason": "not_sealed_until_ASEH-013",
+      "status": "unavailable"
+    }
+  ]
+}

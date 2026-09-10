@@ -75,6 +75,12 @@ RESPONSIVE_REPLAN_DECISION_SCHEMA: Final = (
 DIAGNOSTIC_RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/retry-diagnostic-receipt@1"
 DELTA_PLAN_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/delta-plan-snapshot@1"
 DELTA_REPLAN_DECISION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/delta-replan-decision@1"
+AFFECTED_SUFFIX_TASK_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/affected-suffix-task@1"
+)
+AFFECTED_SUFFIX_REPLAN_DECISION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/affected-suffix-replan-decision@1"
+)
 VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/verifier-backed-repair-closure@1"
 )
@@ -2785,6 +2791,34 @@ class FormalReplanner:
             cancelled=cancelled,
         )
 
+    def replan_affected_suffix(
+        self,
+        plan: DeltaPlan | Mapping[str, Any],
+        observation: BranchFailureObservation | Mapping[str, Any],
+        regenerated_tasks: Iterable[AffectedSuffixTask | Mapping[str, Any]] = (),
+        *,
+        failure_memory: PlanFailureMemory | None = None,
+        limits: DeltaReplanLimits | Mapping[str, Any] | None = None,
+        observed_at_milliseconds: int = 1,
+        now_milliseconds: int | None = None,
+        deadline_milliseconds: int | None = None,
+        cancelled: Any = None,
+    ) -> AffectedSuffixReplanDecision:
+        """Regenerate a checked affected suffix without admitting the result."""
+
+        return AffectedSuffixReplanner(
+            failure_memory=failure_memory,
+            limits=limits,
+        ).replan(
+            plan,
+            observation,
+            regenerated_tasks,
+            observed_at_milliseconds=observed_at_milliseconds,
+            now_milliseconds=now_milliseconds,
+            deadline_milliseconds=deadline_milliseconds,
+            cancelled=cancelled,
+        )
+
     def generate_repairs(
         self,
         source: Mapping[str, Any],
@@ -3965,12 +3999,552 @@ class FormalDeltaReplanner:
         )
 
 
+class AffectedSuffixWorkKind(str, Enum):
+    """The bounded kinds of work that may be regenerated after a failure.
+
+    ``FINAL_VALIDATION`` is deliberately distinct from ordinary test work.  A
+    replanner may reserve it as a leaf, but may never mark it accepted or use
+    it as evidence that a regenerated plan is complete.
+    """
+
+    TASK = "task"
+    PROOF = "proof"
+    TEST = "test"
+    RETRIEVAL = "retrieval"
+    FINAL_VALIDATION = "final_validation"
+
+
+def _delta_pairs(value: Iterable[Any], name: str) -> tuple[tuple[str, str], ...]:
+    """Normalize a bounded, deterministic mapping represented as ID pairs."""
+
+    if isinstance(value, (str, bytes, bytearray)):
+        raise ReplannerValidationError(f"{name} must be an array of identifier pairs")
+    result: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, Sequence) or isinstance(item, (str, bytes, bytearray)):
+            raise ReplannerValidationError(f"{name} entries must be identifier pairs")
+        if len(item) != 2:
+            raise ReplannerValidationError(f"{name} entries must have exactly two identifiers")
+        source = _delta_identifier(item[0], name)
+        target = _delta_identifier(item[1], name)
+        if source in seen:
+            raise ReplannerValidationError(f"{name} source identifiers must be unique")
+        seen.add(source)
+        result.append((source, target))
+    return tuple(sorted(result))
+
+
+@dataclass(frozen=True)
+class AffectedSuffixTask:
+    """A proposed replacement for failed work, with an explicit semantic key.
+
+    ``DeltaPlanStep`` intentionally remains a small compatibility projection.
+    This wrapper adds the information needed to safely deduplicate newly
+    generated work without guessing semantic equivalence from task labels.  A
+    caller must supply a reviewed ``semantic_key``; equal strings alone are
+    not sufficient because the immutable step contract is also included in
+    :attr:`coalescing_id`.
+    """
+
+    step: DeltaPlanStep
+    work_kind: AffectedSuffixWorkKind
+    semantic_key: str
+    replaces_step_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.step, DeltaPlanStep):
+            if not isinstance(self.step, Mapping):
+                raise ReplannerValidationError("affected suffix task step must be DeltaPlanStep")
+            object.__setattr__(self, "step", DeltaPlanStep.from_dict(self.step))
+        object.__setattr__(self, "work_kind", AffectedSuffixWorkKind(self.work_kind))
+        object.__setattr__(
+            self,
+            "semantic_key",
+            _delta_identifier(self.semantic_key, "semantic_key"),
+        )
+        object.__setattr__(
+            self,
+            "replaces_step_ids",
+            _delta_identifiers(self.replaces_step_ids, "replaces_step_ids"),
+        )
+        if self.work_kind is AffectedSuffixWorkKind.FINAL_VALIDATION:
+            if self.replaces_step_ids:
+                raise ReplannerValidationError("final validation cannot replace failed work")
+        elif not self.replaces_step_ids:
+            raise ReplannerValidationError("regenerated work must replace at least one failed step")
+        # Regeneration is proposal-only.  In particular a test or proof task
+        # cannot manufacture its own acceptance/evidence before it executes.
+        if self.step.accepted or self.step.evidence_ids:
+            raise ReplannerValidationError(
+                "regenerated and final-validation tasks must be unaccepted and unevidenced"
+            )
+
+    @property
+    def task_id(self) -> str:
+        return self.step.step_id
+
+    @property
+    def semantic_id(self) -> str:
+        """Stable semantic identity, deliberately independent of task/branch IDs."""
+
+        return content_identity(
+            {
+                "work_kind": self.work_kind.value,
+                "semantic_key": self.semantic_key,
+                "obligation_ids": list(self.step.obligation_ids),
+                "alternative_ids": list(self.step.alternative_ids),
+                "constraint_ids": list(self.step.constraint_ids),
+                "validation_signature_ids": list(self.step.validation_signature_ids),
+                "capability_ids": list(self.step.capability_ids),
+                "conflict_scope_ids": list(self.step.conflict_scope_ids),
+                "resource_ids": list(self.step.resource_ids),
+            }
+        )
+
+    @property
+    def coalescing_id(self) -> str:
+        """Identity for safe sharing of equivalent work with equal prerequisites."""
+
+        return content_identity(
+            {
+                "semantic_id": self.semantic_id,
+                "dependency_ids": list(self.step.dependency_ids),
+            }
+        )
+
+    def with_dependencies(self, dependency_ids: Iterable[str]) -> "AffectedSuffixTask":
+        return replace(self, step=replace(self.step, dependency_ids=tuple(dependency_ids)))
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": AFFECTED_SUFFIX_TASK_SCHEMA,
+            "replanner_version": FORMAL_REPLANNER_VERSION,
+            "step": self.step.to_dict(),
+            "work_kind": self.work_kind.value,
+            "semantic_key": self.semantic_key,
+            "replaces_step_ids": list(self.replaces_step_ids),
+        }
+        if include_identity:
+            payload["semantic_id"] = self.semantic_id
+            payload["coalescing_id"] = self.coalescing_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AffectedSuffixTask":
+        expected = {
+            "schema",
+            "replanner_version",
+            "step",
+            "work_kind",
+            "semantic_key",
+            "replaces_step_ids",
+            "semantic_id",
+            "coalescing_id",
+        }
+        if not isinstance(payload, Mapping) or set(payload) != expected:
+            raise ReplannerValidationError("affected suffix task must use the closed schema")
+        if (
+            payload.get("schema") != AFFECTED_SUFFIX_TASK_SCHEMA
+            or payload.get("replanner_version") != FORMAL_REPLANNER_VERSION
+        ):
+            raise ReplannerValidationError("affected suffix task version is unsupported")
+        result = cls(
+            step=DeltaPlanStep.from_dict(payload.get("step") or {}),
+            work_kind=payload.get("work_kind", ""),
+            semantic_key=payload.get("semantic_key", ""),
+            replaces_step_ids=tuple(payload.get("replaces_step_ids") or ()),
+        )
+        if (
+            payload.get("semantic_id") != result.semantic_id
+            or payload.get("coalescing_id") != result.coalescing_id
+        ):
+            raise ReplannerValidationError("affected suffix task identity does not match content")
+        return result
+
+
+@dataclass(frozen=True)
+class AffectedSuffixReplanDecision:
+    """A non-authoritative regeneration of precisely one invalidated suffix.
+
+    The embedded :class:`DeltaReplanDecision` establishes the affected set;
+    this receipt then binds every replacement, deterministic coalescing edge,
+    and an unspent final-validation reservation.  It does not admit or accept
+    the resulting plan.
+    """
+
+    delta_decision: DeltaReplanDecision
+    resulting_plan: DeltaPlan
+    regenerated_tasks: tuple[AffectedSuffixTask, ...]
+    replacement_step_ids: tuple[tuple[str, str], ...]
+    coalesced_task_ids: tuple[tuple[str, str], ...]
+    coalesced_tasks: tuple[AffectedSuffixTask, ...] = ()
+    final_validation_step_id: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.delta_decision, DeltaReplanDecision):
+            if not isinstance(self.delta_decision, Mapping):
+                raise ReplannerValidationError("delta_decision must be DeltaReplanDecision")
+            object.__setattr__(self, "delta_decision", DeltaReplanDecision.from_dict(self.delta_decision))
+        if not isinstance(self.resulting_plan, DeltaPlan):
+            if not isinstance(self.resulting_plan, Mapping):
+                raise ReplannerValidationError("resulting_plan must be DeltaPlan")
+            object.__setattr__(self, "resulting_plan", DeltaPlan.from_dict(self.resulting_plan))
+        tasks = tuple(
+            item if isinstance(item, AffectedSuffixTask) else AffectedSuffixTask.from_dict(item)
+            for item in self.regenerated_tasks
+        )
+        if len({item.task_id for item in tasks}) != len(tasks):
+            raise ReplannerValidationError("regenerated task identities must be unique")
+        object.__setattr__(self, "regenerated_tasks", tuple(sorted(tasks, key=lambda item: item.task_id)))
+        object.__setattr__(self, "replacement_step_ids", _delta_pairs(self.replacement_step_ids, "replacement_step_ids"))
+        object.__setattr__(self, "coalesced_task_ids", _delta_pairs(self.coalesced_task_ids, "coalesced_task_ids"))
+        coalesced_tasks = tuple(
+            item if isinstance(item, AffectedSuffixTask) else AffectedSuffixTask.from_dict(item)
+            for item in self.coalesced_tasks
+        )
+        if len({item.task_id for item in coalesced_tasks}) != len(coalesced_tasks):
+            raise ReplannerValidationError("coalesced task identities must be unique")
+        object.__setattr__(
+            self,
+            "coalesced_tasks",
+            tuple(sorted(coalesced_tasks, key=lambda item: item.task_id)),
+        )
+        final_id = str(self.final_validation_step_id or "").strip()
+        if final_id:
+            final_id = _delta_identifier(final_id, "final_validation_step_id")
+        object.__setattr__(self, "final_validation_step_id", final_id)
+
+        base = self.delta_decision
+        if not base.changed:
+            if (
+                self.resulting_plan != base.resulting_plan
+                or self.regenerated_tasks
+                or self.replacement_step_ids
+                or self.coalesced_task_ids
+                or self.coalesced_tasks
+                or self.final_validation_step_id
+            ):
+                raise ReplannerValidationError("an unchanged delta decision cannot regenerate work")
+            return
+        invalidated = set(base.invalidated_step_ids)
+        preserved = {item.step_id: item for item in base.resulting_plan.steps if item.step_id not in invalidated}
+        result_by_id = {item.step_id: item for item in self.resulting_plan.steps}
+        if any(result_by_id.get(step_id) != step for step_id, step in preserved.items()):
+            raise ReplannerValidationError("accepted unaffected prefix must be preserved byte-for-byte")
+        task_by_id = {item.task_id: item for item in self.regenerated_tasks}
+        if any(
+            step_id in result_by_id and step_id not in task_by_id
+            for step_id in invalidated
+        ):
+            raise ReplannerValidationError("invalidated source steps must be replaced, not retained")
+        if set(task_by_id).difference(result_by_id):
+            raise ReplannerValidationError("every regenerated task must be in the resulting plan")
+        if any(result_by_id[task_id] != task.step for task_id, task in task_by_id.items()):
+            raise ReplannerValidationError("resulting plan differs from its regenerated task projection")
+        replacement = dict(self.replacement_step_ids)
+        if set(replacement) != invalidated or any(target not in task_by_id for target in replacement.values()):
+            raise ReplannerValidationError("every invalidated source step requires one retained replacement")
+        if any(source not in task_by_id[target].replaces_step_ids for source, target in replacement.items()):
+            raise ReplannerValidationError("replacement mapping is inconsistent with regenerated task coverage")
+        coalesced = dict(self.coalesced_task_ids)
+        if set(coalesced).intersection(task_by_id):
+            raise ReplannerValidationError("coalesced tasks must not remain as independent work")
+        if any(source == target or target not in task_by_id for source, target in coalesced.items()):
+            raise ReplannerValidationError("coalescing targets must be retained distinct tasks")
+        coalesced_by_id = {item.task_id: item for item in self.coalesced_tasks}
+        if set(coalesced_by_id) != set(coalesced):
+            raise ReplannerValidationError("coalescing records must retain every discarded task")
+        for source, target in coalesced.items():
+            discarded = coalesced_by_id[source]
+            retained = task_by_id[target]
+            if (
+                discarded.work_kind is AffectedSuffixWorkKind.FINAL_VALIDATION
+                or discarded.coalescing_id != retained.coalescing_id
+            ):
+                raise ReplannerValidationError("coalescing requires identical semantic work and prerequisites")
+            if any(replacement.get(step_id) != target for step_id in discarded.replaces_step_ids):
+                raise ReplannerValidationError("discarded work must map to its coalesced replacement")
+        for task in task_by_id.values():
+            if task.work_kind is not AffectedSuffixWorkKind.FINAL_VALIDATION and task.step.accepted:
+                raise ReplannerValidationError("regeneration cannot self-accept work")
+
+        finals = [item for item in task_by_id.values() if item.work_kind is AffectedSuffixWorkKind.FINAL_VALIDATION]
+        if len(finals) != 1 or not self.final_validation_step_id or finals[0].task_id != self.final_validation_step_id:
+            raise ReplannerValidationError("a changed suffix replan requires exactly one final validation reserve")
+        final = finals[0]
+        if final.step.accepted or final.step.evidence_ids:
+            raise ReplannerValidationError("final validation reserve cannot be spent or accepted")
+        reverse: dict[str, set[str]] = {item.step_id: set() for item in self.resulting_plan.steps}
+        for item in self.resulting_plan.steps:
+            for dependency_id in item.dependency_ids:
+                reverse[dependency_id].add(item.step_id)
+        if reverse[final.task_id]:
+            raise ReplannerValidationError("final validation must be a deterministic leaf")
+        expected_validation_dependencies = tuple(
+            sorted(
+                step_id
+                for step_id, dependants in reverse.items()
+                if step_id != final.task_id
+                and not (dependants - {final.task_id})
+            )
+        )
+        if final.step.dependency_ids != expected_validation_dependencies:
+            raise ReplannerValidationError(
+                "final validation must depend on every pre-validation leaf"
+            )
+
+    @property
+    def changed(self) -> bool:
+        return self.delta_decision.changed
+
+    @property
+    def plan_id(self) -> str:
+        return self.resulting_plan.plan_id
+
+    @property
+    def decision_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    @property
+    def validation_reserved(self) -> bool:
+        return bool(self.final_validation_step_id)
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": AFFECTED_SUFFIX_REPLAN_DECISION_SCHEMA,
+            "replanner_version": FORMAL_REPLANNER_VERSION,
+            "delta_decision": self.delta_decision.to_dict(),
+            "resulting_plan": self.resulting_plan.to_dict(),
+            "regenerated_tasks": [item.to_dict() for item in self.regenerated_tasks],
+            "replacement_step_ids": [list(item) for item in self.replacement_step_ids],
+            "coalesced_task_ids": [list(item) for item in self.coalesced_task_ids],
+            "coalesced_tasks": [item.to_dict() for item in self.coalesced_tasks],
+            "final_validation_step_id": self.final_validation_step_id,
+        }
+        if include_identity:
+            payload["decision_id"] = self.decision_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AffectedSuffixReplanDecision":
+        expected = {
+            "schema", "replanner_version", "decision_id", "delta_decision", "resulting_plan",
+            "regenerated_tasks", "replacement_step_ids", "coalesced_task_ids",
+            "coalesced_tasks",
+            "final_validation_step_id",
+        }
+        if not isinstance(payload, Mapping) or set(payload) != expected:
+            raise ReplannerValidationError("affected suffix decision must use the closed schema")
+        if (
+            payload.get("schema") != AFFECTED_SUFFIX_REPLAN_DECISION_SCHEMA
+            or payload.get("replanner_version") != FORMAL_REPLANNER_VERSION
+        ):
+            raise ReplannerValidationError("affected suffix decision version is unsupported")
+        result = cls(
+            delta_decision=DeltaReplanDecision.from_dict(payload.get("delta_decision") or {}),
+            resulting_plan=DeltaPlan.from_dict(payload.get("resulting_plan") or {}),
+            regenerated_tasks=tuple(
+                AffectedSuffixTask.from_dict(item) for item in payload.get("regenerated_tasks") or ()
+            ),
+            replacement_step_ids=tuple(payload.get("replacement_step_ids") or ()),
+            coalesced_task_ids=tuple(payload.get("coalesced_task_ids") or ()),
+            coalesced_tasks=tuple(
+                AffectedSuffixTask.from_dict(item) for item in payload.get("coalesced_tasks") or ()
+            ),
+            final_validation_step_id=payload.get("final_validation_step_id", ""),
+        )
+        if payload.get("decision_id") != result.decision_id:
+            raise ReplannerValidationError("affected suffix decision identity does not match content")
+        return result
+
+
+class AffectedSuffixReplanner:
+    """Regenerate only a failed dependency suffix and reserve final validation.
+
+    This class composes, rather than replaces, :class:`FormalDeltaReplanner`.
+    Thus retry/backoff and the exact affected suffix remain governed by the
+    existing failure-memory contract.
+    """
+
+    def __init__(
+        self,
+        *,
+        failure_memory: PlanFailureMemory | None = None,
+        limits: DeltaReplanLimits | Mapping[str, Any] | None = None,
+    ) -> None:
+        self._delta_replanner = FormalDeltaReplanner(
+            failure_memory=failure_memory,
+            limits=limits,
+        )
+
+    @staticmethod
+    def _coalesce(
+        tasks: tuple[AffectedSuffixTask, ...],
+    ) -> tuple[
+        tuple[AffectedSuffixTask, ...],
+        tuple[tuple[str, str], ...],
+        tuple[AffectedSuffixTask, ...],
+    ]:
+        """Choose the lexical representative for each exact safe work key."""
+
+        representatives: dict[str, AffectedSuffixTask] = {}
+        coalesced: list[tuple[str, str]] = []
+        discarded: list[AffectedSuffixTask] = []
+        for task in sorted(tasks, key=lambda item: item.task_id):
+            if task.work_kind is AffectedSuffixWorkKind.FINAL_VALIDATION:
+                continue
+            prior = representatives.get(task.coalescing_id)
+            if prior is None:
+                representatives[task.coalescing_id] = task
+            else:
+                coalesced.append((task.task_id, prior.task_id))
+                discarded.append(task)
+        aliases = dict(coalesced)
+        retained = [
+            task for task in tasks
+            if task.task_id not in aliases
+        ]
+        rewritten: list[AffectedSuffixTask] = []
+        for task in retained:
+            dependencies = tuple(sorted({aliases.get(item, item) for item in task.step.dependency_ids}))
+            if task.task_id in dependencies:
+                raise ReplannerValidationError("coalescing would create a self dependency")
+            rewritten.append(task.with_dependencies(dependencies))
+        return (
+            tuple(sorted(rewritten, key=lambda item: item.task_id)),
+            tuple(sorted(coalesced)),
+            tuple(sorted(discarded, key=lambda item: item.task_id)),
+        )
+
+    def replan(
+        self,
+        plan: DeltaPlan | Mapping[str, Any],
+        observation: BranchFailureObservation | Mapping[str, Any],
+        regenerated_tasks: Iterable[AffectedSuffixTask | Mapping[str, Any]] = (),
+        *,
+        observed_at_milliseconds: int = 1,
+        now_milliseconds: int | None = None,
+        deadline_milliseconds: int | None = None,
+        cancelled: Any = None,
+    ) -> AffectedSuffixReplanDecision:
+        base_plan = plan if isinstance(plan, DeltaPlan) else DeltaPlan.from_dict(plan)
+        delta = self._delta_replanner.replan(
+            base_plan,
+            observation,
+            observed_at_milliseconds=observed_at_milliseconds,
+            now_milliseconds=now_milliseconds,
+            deadline_milliseconds=deadline_milliseconds,
+            cancelled=cancelled,
+        )
+        supplied = tuple(
+            item if isinstance(item, AffectedSuffixTask) else AffectedSuffixTask.from_dict(item)
+            for item in regenerated_tasks
+        )
+        if not delta.changed:
+            if supplied:
+                raise ReplannerValidationError("work may be regenerated only after an active suffix invalidation")
+            return AffectedSuffixReplanDecision(
+                delta_decision=delta,
+                resulting_plan=delta.resulting_plan,
+                regenerated_tasks=(),
+                replacement_step_ids=(),
+                coalesced_task_ids=(),
+                coalesced_tasks=(),
+            )
+        if not supplied:
+            raise ReplannerValidationError("active suffix invalidation requires regenerated tasks")
+        if len({item.task_id for item in supplied}) != len(supplied):
+            raise ReplannerValidationError("regenerated task identities must be unique")
+        invalidated = set(delta.invalidated_step_ids)
+        preserved_ids = {item.step_id for item in base_plan.steps}.difference(invalidated)
+        if any(item.task_id in preserved_ids for item in supplied):
+            raise ReplannerValidationError("regeneration cannot replace an unaffected accepted step")
+        final_tasks = [item for item in supplied if item.work_kind is AffectedSuffixWorkKind.FINAL_VALIDATION]
+        if len(final_tasks) != 1:
+            raise ReplannerValidationError("active suffix invalidation requires exactly one final validation task")
+        regular = tuple(item for item in supplied if item.work_kind is not AffectedSuffixWorkKind.FINAL_VALIDATION)
+        if set().union(*(set(item.replaces_step_ids) for item in regular)) != invalidated:
+            raise ReplannerValidationError("regenerated work must cover exactly the affected suffix")
+        if any(set(item.replaces_step_ids).difference(invalidated) for item in regular):
+            raise ReplannerValidationError("regeneration may replace only invalidated source steps")
+        retained, coalesced, discarded = self._coalesce(regular)
+        aliases = dict(coalesced)
+        replacement: dict[str, str] = {}
+        for task in regular:
+            target = aliases.get(task.task_id, task.task_id)
+            for source in task.replaces_step_ids:
+                existing = replacement.get(source)
+                if existing is not None and existing != target:
+                    raise ReplannerValidationError("an invalidated step cannot have competing replacements")
+                replacement[source] = target
+        retained_ids = {item.task_id for item in retained}
+        final = final_tasks[0]
+        # A final validation task always validates the complete rebuilt plan.
+        # Its prerequisites are derived here rather than trusted from a caller.
+        provisional = [
+            item for item in base_plan.steps if item.step_id not in invalidated
+        ] + [item.step for item in retained]
+        reverse: dict[str, set[str]] = {item.step_id: set() for item in provisional}
+        for step in provisional:
+            for dependency_id in step.dependency_ids:
+                if dependency_id not in reverse:
+                    raise ReplannerValidationError("regenerated work has a dangling dependency")
+                reverse[dependency_id].add(step.step_id)
+        validation_dependencies = tuple(sorted(step_id for step_id, dependants in reverse.items() if not dependants))
+        final = final.with_dependencies(validation_dependencies)
+        if final.task_id in retained_ids or final.task_id in {item.step_id for item in provisional}:
+            raise ReplannerValidationError("final validation step identity collides with plan work")
+        final_dependencies = set(final.step.dependency_ids)
+        if final_dependencies.intersection(invalidated):
+            raise ReplannerValidationError("final validation cannot depend on invalidated source work")
+        resulting = DeltaPlan(scope=base_plan.scope, steps=tuple(provisional + [final.step]))
+        return AffectedSuffixReplanDecision(
+            delta_decision=delta,
+            resulting_plan=resulting,
+            regenerated_tasks=tuple(list(retained) + [final]),
+            replacement_step_ids=tuple(replacement.items()),
+            coalesced_task_ids=coalesced,
+            coalesced_tasks=discarded,
+            final_validation_step_id=final.task_id,
+        )
+
+
+def replan_affected_suffix(
+    plan: DeltaPlan | Mapping[str, Any],
+    observation: BranchFailureObservation | Mapping[str, Any],
+    regenerated_tasks: Iterable[AffectedSuffixTask | Mapping[str, Any]] = (),
+    *,
+    failure_memory: PlanFailureMemory | None = None,
+    limits: DeltaReplanLimits | Mapping[str, Any] | None = None,
+    observed_at_milliseconds: int = 1,
+    now_milliseconds: int | None = None,
+    deadline_milliseconds: int | None = None,
+    cancelled: Any = None,
+) -> AffectedSuffixReplanDecision:
+    """Functional entry point for bounded suffix regeneration and reservation."""
+
+    return AffectedSuffixReplanner(
+        failure_memory=failure_memory,
+        limits=limits,
+    ).replan(
+        plan,
+        observation,
+        regenerated_tasks,
+        observed_at_milliseconds=observed_at_milliseconds,
+        now_milliseconds=now_milliseconds,
+        deadline_milliseconds=deadline_milliseconds,
+        cancelled=cancelled,
+    )
+
+
 CounterexampleDeltaReplanner = FormalDeltaReplanner
 DeltaReplanner = FormalDeltaReplanner
 DeltaReplanResult = DeltaReplanDecision
 DeltaReplanBudget = DeltaReplanLimits
 DeltaPlanNode = DeltaPlanStep
 FormalPlanReplanner = FormalReplanner
+AffectedSuffixPlanReplanner = AffectedSuffixReplanner
 
 
 def replan_plan_delta(
@@ -4183,6 +4757,8 @@ def replan_critique(
 
 
 __all__ = [
+    "AFFECTED_SUFFIX_REPLAN_DECISION_SCHEMA",
+    "AFFECTED_SUFFIX_TASK_SCHEMA",
     "BOUNDED_REFINEMENT_EVIDENCE_ID",
     "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID",
     "CODEX_REPAIR_PACKET_SCHEMA",
@@ -4199,6 +4775,11 @@ __all__ = [
     "RESPONSIVE_REPLAN_SIGNAL_KINDS",
     "VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA",
     "CodexRepairPacket",
+    "AffectedSuffixPlanReplanner",
+    "AffectedSuffixReplanDecision",
+    "AffectedSuffixReplanner",
+    "AffectedSuffixTask",
+    "AffectedSuffixWorkKind",
     "CounterexampleDeltaReplanner",
     "DeltaPlan",
     "DeltaPlanNode",
@@ -4237,6 +4818,7 @@ __all__ = [
     "evaluate_verifier_backed_closure",
     "generate_plan_repairs",
     "replan_plan_delta",
+    "replan_affected_suffix",
     "replan_if_changed",
     "replan_critique",
     "replan_for_signal",

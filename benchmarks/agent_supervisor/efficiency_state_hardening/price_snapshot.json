@@ -1,0 +1,36 @@
+{
+  "authority": false,
+  "availability": "unavailable",
+  "availability_reason": "no_provider_published_unit_price_table_was_observed_at_seal",
+  "captured_at": "2026-08-23T18:54:50Z",
+  "currency": "USD",
+  "estimates_overwrite_measurements": false,
+  "goal_id": "ASEH-G010",
+  "identity": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+  "prices": [
+    {
+      "cached_input": "unavailable",
+      "input": "unavailable",
+      "model_id": "grok-4.6",
+      "output": "unavailable",
+      "provider_id": "grok_cli",
+      "reasoning": "unavailable",
+      "slot": "primary"
+    },
+    {
+      "cached_input": "unavailable",
+      "input": "unavailable",
+      "model_id": "gpt-5.6-terra",
+      "output": "unavailable",
+      "provider_id": "codex",
+      "reasoning": "unavailable",
+      "slot": "fallback"
+    }
+  ],
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-price-snapshot@1",
+  "task_id": "ASEH-001",
+  "timestamp_timezone": "UTC",
+  "unit": "usd_per_million_tokens",
+  "unknown_cost_recorded_as_zero": false
+}

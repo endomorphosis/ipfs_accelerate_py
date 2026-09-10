@@ -1,0 +1,72 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-bootstrap-baseline@1",
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "captured_at": "2026-08-23T18:54:50Z",
+  "baseline_kind": "exact_accelerator_main_with_selected_sibling_authority_snapshots",
+  "repositories": {
+    "ipfs_accelerate_py": {
+      "commit": "755f45475cc2d13dacd8b330036c1d597afeddde",
+      "tree": "729da9f8293ecfa046a0136381a3d3808f9ed140",
+      "selected_ref": "origin/main",
+      "remote": "https://github.com/endomorphosis/ipfs_accelerate_py",
+      "role": "supervisor_state_execution_and_admission_authority",
+      "baseline_gitlinks": {
+        "ipfs_datasets_py": "66a02063496fd200f2372b3083e376f1978c6be1",
+        "ipfs_kit_py": "2564aea1ae35061f2165872aff91e8a40801ab7e"
+      }
+    },
+    "ipfs_datasets_py": {
+      "commit": "209dbe2765593fbc6efe8e9281c34f2e8f6e37a6",
+      "tree": "95f54df34585d0b736706fd90c83f55954489ad9",
+      "selected_ref": "origin/integration/datasets-ui-capability-recovery-20260823",
+      "selection_kind": "exact_campaign_authority_snapshot_not_sibling_main",
+      "origin_main_commit_at_capture": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "origin_main_tree_at_capture": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+      "origin_main_is_ancestor_of_selected_snapshot": true,
+      "remote": "https://github.com/endomorphosis/ipfs_datasets_py",
+      "role": "semantic_identity_ir_context_and_formal_obligation_authority"
+    },
+    "ipfs_kit_py": {
+      "commit": "ba5508d940fb5b23a6d0d9b2084f5195cd26a671",
+      "tree": "7c71efa93c4e4124d12fa05515868df3a5344b2e",
+      "selected_ref": "origin/feat/pcce-009-proof-context-v01",
+      "selection_kind": "exact_campaign_authority_snapshot_not_sibling_main",
+      "origin_main_commit_at_capture": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "origin_main_tree_at_capture": "93070c709af29095fdff11f3e2698543449c08ef",
+      "origin_main_is_ancestor_of_selected_snapshot": true,
+      "remote": "https://github.com/endomorphosis/ipfs_kit_py",
+      "role": "durable_bytes_cid_current_root_cas_wal_and_recovery_authority"
+    }
+  },
+  "host_capability_observation": {
+    "python": "3.12.3",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "machine": "aarch64",
+    "duckdb": "1.5.5",
+    "quack_profile": "agent-supervisor-duckdb-quack-1.5",
+    "quack_status": "compatible",
+    "quack_extension_version": "c154811",
+    "quack_extension_fingerprint": "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b",
+    "ducklake_extension_version": "d8a1881e",
+    "ducklake_installed": true,
+    "capability_is_authority": false
+  },
+  "inspected_checkout_dispositions": {
+    "accelerate_outer_checkout": "dirty_divergent_recovery_branch_not_used_as_baseline",
+    "datasets_outer_checkout": "dirty_and_behind_origin_main_not_used_as_baseline",
+    "kit_outer_checkout": "behind_origin_main_not_used_as_baseline",
+    "aseh_worktree": "isolated_branch_from_exact_accelerate_snapshot_with_uncommitted_bootstrap_control_changes_and_pending_exact_sibling_gitlink_updates"
+  },
+  "bootstrap_forest_binding": {
+    "status": "pending_committed_bootstrap_identity",
+    "commit": "unavailable_until_bootstrap_commit",
+    "tree": "unavailable_until_bootstrap_commit",
+    "claim_is_runtime_or_completion_evidence": false
+  },
+  "claims": {
+    "measurement_complete": false,
+    "production_qualified": false,
+    "promotion_authorized": false,
+    "board_completion_is_production_readiness": false
+  }
+}

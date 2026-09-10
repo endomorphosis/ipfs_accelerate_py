@@ -1,0 +1,626 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/aseh-promotion-decision@1",
+  "title": "ASEH promotion or honest non-promotion decision",
+  "description": "Closed ASEH-074 evaluation of paired populations, safety, quality, efficiency, audit overhead, and missing evidence. Emits exactly one mandated disposition. Decision evaluation cannot mutate a policy pointer, treat missing measurements as zero, treat hermetic evidence as live, lower thresholds, ignore safety violations, or self-authorize promotion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "interface",
+    "identity",
+    "program_id",
+    "task_id",
+    "objective_id",
+    "plan_revision",
+    "policy_identity",
+    "authority",
+    "policy_pointer_mutated",
+    "self_authorized",
+    "promotion_authorized",
+    "production_qualified",
+    "hermetic_sufficient_for_production_promotion",
+    "historical_sufficient_for_production_promotion",
+    "thresholds_lowered",
+    "missing_measurement_recorded_as_zero",
+    "cas_protected_promotion",
+    "eligible_for_operator_authorization",
+    "disposition",
+    "disposition_kind",
+    "closed_dispositions",
+    "evaluation_order",
+    "reasons",
+    "populations",
+    "live_cohort",
+    "safety",
+    "quality",
+    "efficiency",
+    "audit_overhead",
+    "thresholds",
+    "hard_gates",
+    "missing_evidence",
+    "explicit_unavailable_fields",
+    "evidence_paths",
+    "validator_command",
+    "nonclaims"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ipfs_accelerate_py/agent-supervisor/aseh-promotion-decision@1"
+    },
+    "schema_version": { "const": 1 },
+    "interface": { "const": "AsehPromotionDecision@1" },
+    "identity": { "$ref": "#/$defs/cid" },
+    "program_id": {
+      "const": "agent-supervisor-efficiency-and-state-hardening-v1"
+    },
+    "task_id": { "const": "ASEH-074" },
+    "objective_id": { "const": "ASEH-G080" },
+    "plan_revision": { "const": "ASEH-PLAN-R1" },
+    "policy_identity": {
+      "const": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1"
+    },
+    "authority": { "const": false },
+    "policy_pointer_mutated": { "const": false },
+    "self_authorized": { "const": false },
+    "promotion_authorized": { "const": false },
+    "production_qualified": { "const": false },
+    "hermetic_sufficient_for_production_promotion": { "const": false },
+    "historical_sufficient_for_production_promotion": { "const": false },
+    "thresholds_lowered": { "const": false },
+    "missing_measurement_recorded_as_zero": { "const": false },
+    "cas_protected_promotion": { "const": true },
+    "eligible_for_operator_authorization": { "type": "boolean" },
+    "disposition": { "$ref": "#/$defs/disposition" },
+    "disposition_kind": { "$ref": "#/$defs/dispositionKind" },
+    "closed_dispositions": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/disposition" }
+    },
+    "evaluation_order": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/dispositionKind" }
+    },
+    "reasons": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/nfcString" }
+    },
+    "populations": { "$ref": "#/$defs/populations" },
+    "live_cohort": { "$ref": "#/$defs/liveCohort" },
+    "safety": { "$ref": "#/$defs/safety" },
+    "quality": { "$ref": "#/$defs/quality" },
+    "efficiency": { "$ref": "#/$defs/efficiency" },
+    "audit_overhead": { "$ref": "#/$defs/auditOverhead" },
+    "thresholds": { "$ref": "#/$defs/thresholds" },
+    "hard_gates": { "$ref": "#/$defs/hardGates" },
+    "missing_evidence": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/fieldPath" }
+    },
+    "explicit_unavailable_fields": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/fieldPath" }
+    },
+    "evidence_paths": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/relativePath" }
+    },
+    "validator_command": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/nfcString" }
+    },
+    "nonclaims": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/nfcString" }
+    }
+  },
+  "$defs": {
+    "cid": {
+      "type": "string",
+      "minLength": 21,
+      "maxLength": 128,
+      "pattern": "^b[a-z2-7]{20,}$"
+    },
+    "gitOid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "nfcString": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[^\\u0000]+$"
+    },
+    "fieldPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[a-z][a-z0-9_.]*$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 256,
+      "pattern": "^[a-z0-9_./-]+\\.(json|md)$"
+    },
+    "boundedInt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000000000000
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "count",
+        "tokens",
+        "bytes",
+        "seconds_millionths",
+        "microusd",
+        "compute_units",
+        "ratio_millionths",
+        "percent"
+      ]
+    },
+    "reasonCode": {
+      "type": "string",
+      "enum": [
+        "not_reported",
+        "sensor_absent",
+        "provider_omitted",
+        "collection_failed",
+        "permission_denied",
+        "hardware_absent",
+        "not_applicable",
+        "not_yet_measured",
+        "fixture_only",
+        "deadline_elapsed",
+        "not_sealed",
+        "not_admitted"
+      ]
+    },
+    "disposition": {
+      "type": "string",
+      "enum": [
+        "non_promoted_unmeasured",
+        "non_promoted_safety_or_quality",
+        "non_promoted_efficiency",
+        "promotion_eligible_operator_authorization_required"
+      ]
+    },
+    "dispositionKind": {
+      "type": "string",
+      "enum": [
+        "unmeasured",
+        "safety_or_quality",
+        "efficiency",
+        "eligible_operator_authorization_required"
+      ]
+    },
+    "cohortId": {
+      "type": "string",
+      "enum": ["hermetic", "historical", "live-shadow", "canary"]
+    },
+    "populationKey": {
+      "type": "string",
+      "enum": ["hermetic", "historical", "live_shadow", "canary"]
+    },
+    "unavailableEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truth_state", "reason_code"],
+      "properties": {
+        "truth_state": { "const": "unavailable" },
+        "reason_code": { "$ref": "#/$defs/reasonCode" }
+      }
+    },
+    "measuredQuantity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truth_state", "value", "unit", "sensor_id"],
+      "properties": {
+        "truth_state": { "const": "measured" },
+        "value": { "$ref": "#/$defs/boundedInt" },
+        "unit": { "$ref": "#/$defs/unit" },
+        "sensor_id": { "$ref": "#/$defs/nfcString" }
+      }
+    },
+    "quantityObservation": {
+      "oneOf": [
+        { "$ref": "#/$defs/measuredQuantity" },
+        { "$ref": "#/$defs/unavailableEvidence" }
+      ]
+    },
+    "booleanTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "observed"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "observed": { "$ref": "#/$defs/quantityObservation" }
+      }
+    },
+    "percentTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_percent", "observed"],
+      "properties": {
+        "required_percent": { "$ref": "#/$defs/boundedInt" },
+        "observed": { "$ref": "#/$defs/quantityObservation" }
+      }
+    },
+    "population": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cohort",
+        "task_id",
+        "path",
+        "schema",
+        "identity",
+        "results_identity",
+        "admitted",
+        "disposition",
+        "pair_count",
+        "minimum_tasks",
+        "live",
+        "qualification",
+        "production_qualified",
+        "hermetic_sufficient_for_production_promotion",
+        "canary_admitted",
+        "reasons",
+        "repository_commit",
+        "repository_tree",
+        "explicit_unavailable_fields"
+      ],
+      "properties": {
+        "cohort": { "$ref": "#/$defs/cohortId" },
+        "task_id": { "$ref": "#/$defs/nfcString" },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "schema": { "$ref": "#/$defs/nfcString" },
+        "identity": { "$ref": "#/$defs/cid" },
+        "results_identity": { "$ref": "#/$defs/cid" },
+        "admitted": { "type": "boolean" },
+        "disposition": { "$ref": "#/$defs/nfcString" },
+        "pair_count": { "$ref": "#/$defs/quantityObservation" },
+        "minimum_tasks": { "$ref": "#/$defs/boundedInt" },
+        "live": { "type": "boolean" },
+        "qualification": { "type": "boolean" },
+        "production_qualified": { "type": "boolean" },
+        "hermetic_sufficient_for_production_promotion": { "const": false },
+        "canary_admitted": { "type": "boolean" },
+        "reasons": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nfcString" }
+        },
+        "repository_commit": { "$ref": "#/$defs/gitOid" },
+        "repository_tree": { "$ref": "#/$defs/gitOid" },
+        "explicit_unavailable_fields": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/fieldPath" }
+        }
+      }
+    },
+    "populations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hermetic", "historical", "live_shadow", "canary"],
+      "properties": {
+        "hermetic": { "$ref": "#/$defs/population" },
+        "historical": { "$ref": "#/$defs/population" },
+        "live_shadow": { "$ref": "#/$defs/population" },
+        "canary": { "$ref": "#/$defs/population" }
+      }
+    },
+    "liveCohort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema",
+        "identity",
+        "task_id",
+        "count",
+        "minimum",
+        "live",
+        "qualification",
+        "disposition",
+        "reasons",
+        "enrollment_deadline",
+        "shadow_admitted",
+        "canary_admitted",
+        "fixtures_satisfy_live",
+        "simulation_satisfies_live",
+        "hermetic_sufficient_for_production_promotion",
+        "historical_sufficient_for_production_promotion"
+      ],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "schema": { "$ref": "#/$defs/nfcString" },
+        "identity": { "$ref": "#/$defs/cid" },
+        "task_id": { "const": "ASEH-015" },
+        "count": { "$ref": "#/$defs/boundedInt" },
+        "minimum": { "const": 10 },
+        "live": { "type": "boolean" },
+        "qualification": { "type": "boolean" },
+        "disposition": { "$ref": "#/$defs/nfcString" },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nfcString" }
+        },
+        "enrollment_deadline": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "shadow_admitted": { "type": "boolean" },
+        "canary_admitted": { "type": "boolean" },
+        "fixtures_satisfy_live": { "const": false },
+        "simulation_satisfies_live": { "const": false },
+        "hermetic_sufficient_for_production_promotion": { "const": false },
+        "historical_sufficient_for_production_promotion": { "const": false }
+      }
+    },
+    "cohortSafety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escaped_critical_seeded_defects",
+        "simulated_as_live_outcomes",
+        "live_cohort"
+      ],
+      "properties": {
+        "escaped_critical_seeded_defects": {
+          "$ref": "#/$defs/quantityObservation"
+        },
+        "simulated_as_live_outcomes": {
+          "$ref": "#/$defs/quantityObservation"
+        },
+        "live_cohort": { "$ref": "#/$defs/quantityObservation" }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "live_cohort_present",
+        "hard_gate_violation",
+        "usable_for_production_promotion",
+        "hermetic",
+        "historical",
+        "live_shadow",
+        "canary"
+      ],
+      "properties": {
+        "live_cohort_present": { "type": "boolean" },
+        "hard_gate_violation": { "type": "boolean" },
+        "usable_for_production_promotion": { "const": false },
+        "hermetic": { "$ref": "#/$defs/cohortSafety" },
+        "historical": { "$ref": "#/$defs/cohortSafety" },
+        "live_shadow": { "$ref": "#/$defs/cohortSafety" },
+        "canary": { "$ref": "#/$defs/cohortSafety" }
+      }
+    },
+    "cohortQuality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escaped_selected_test_false_negatives",
+        "observed_selected_test_false_negatives"
+      ],
+      "properties": {
+        "escaped_selected_test_false_negatives": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nfcString" }
+        },
+        "observed_selected_test_false_negatives": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nfcString" }
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted_patch_quality_statistically_meaningful_degradation",
+        "usable_for_production_promotion",
+        "hermetic",
+        "historical",
+        "live_shadow",
+        "canary"
+      ],
+      "properties": {
+        "accepted_patch_quality_statistically_meaningful_degradation": {
+          "$ref": "#/$defs/quantityObservation"
+        },
+        "usable_for_production_promotion": { "const": false },
+        "hermetic": { "$ref": "#/$defs/cohortQuality" },
+        "historical": { "$ref": "#/$defs/cohortQuality" },
+        "live_shadow": { "$ref": "#/$defs/cohortQuality" },
+        "canary": { "$ref": "#/$defs/cohortQuality" }
+      }
+    },
+    "efficiency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "thresholds_evaluated",
+        "usable_for_production_promotion",
+        "median_live_input_token_reduction_percent",
+        "total_weighted_provider_cost_reduction_percent",
+        "frontier_model_call_reduction_percent",
+        "retry_token_reduction_percent",
+        "low_risk_deterministic_or_small_model_share_percent",
+        "eligible_context_pack_reuse_percent",
+        "manual_recovery_rate_strictly_less_than_percent",
+        "overall_wall_time_maximum_regression_percent",
+        "net_savings_after_audit_and_verification_overhead_positive"
+      ],
+      "properties": {
+        "thresholds_evaluated": { "type": "boolean" },
+        "usable_for_production_promotion": { "const": false },
+        "median_live_input_token_reduction_percent": {
+          "$ref": "#/$defs/percentTarget"
+        },
+        "total_weighted_provider_cost_reduction_percent": {
+          "$ref": "#/$defs/percentTarget"
+        },
+        "frontier_model_call_reduction_percent": {
+          "$ref": "#/$defs/percentTarget"
+        },
+        "retry_token_reduction_percent": { "$ref": "#/$defs/percentTarget" },
+        "low_risk_deterministic_or_small_model_share_percent": {
+          "$ref": "#/$defs/percentTarget"
+        },
+        "eligible_context_pack_reuse_percent": {
+          "$ref": "#/$defs/percentTarget"
+        },
+        "manual_recovery_rate_strictly_less_than_percent": {
+          "$ref": "#/$defs/percentTarget"
+        },
+        "overall_wall_time_maximum_regression_percent": {
+          "$ref": "#/$defs/percentTarget"
+        },
+        "net_savings_after_audit_and_verification_overhead_positive": {
+          "$ref": "#/$defs/booleanTarget"
+        }
+      }
+    },
+    "measuredAuditOverhead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "truth_state",
+        "value",
+        "unit",
+        "sensor_id",
+        "includes_audit_in_quality_adjusted_cost"
+      ],
+      "properties": {
+        "truth_state": { "const": "measured" },
+        "value": { "$ref": "#/$defs/boundedInt" },
+        "unit": { "const": "microusd" },
+        "sensor_id": { "$ref": "#/$defs/nfcString" },
+        "includes_audit_in_quality_adjusted_cost": { "type": "boolean" }
+      }
+    },
+    "auditObservation": {
+      "oneOf": [
+        { "$ref": "#/$defs/measuredAuditOverhead" },
+        { "$ref": "#/$defs/unavailableEvidence" }
+      ]
+    },
+    "auditOverhead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "included_in_efficiency_evaluation",
+        "usable_for_production_promotion",
+        "hermetic",
+        "historical",
+        "live_shadow",
+        "canary",
+        "live"
+      ],
+      "properties": {
+        "included_in_efficiency_evaluation": { "const": true },
+        "usable_for_production_promotion": { "const": false },
+        "hermetic": { "$ref": "#/$defs/auditObservation" },
+        "historical": { "$ref": "#/$defs/auditObservation" },
+        "live_shadow": { "$ref": "#/$defs/auditObservation" },
+        "canary": { "$ref": "#/$defs/auditObservation" },
+        "live": { "$ref": "#/$defs/auditObservation" }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "field",
+        "median_live_input_token_reduction_percent",
+        "total_weighted_provider_cost_reduction_percent",
+        "frontier_model_call_reduction_percent",
+        "retry_token_reduction_percent",
+        "low_risk_deterministic_or_small_model_share_percent",
+        "eligible_context_pack_reuse_percent",
+        "manual_recovery_rate_strictly_less_than_percent",
+        "accepted_patch_quality_statistically_meaningful_degradation",
+        "overall_wall_time_maximum_regression_percent",
+        "net_savings_after_audit_and_verification_overhead_positive"
+      ],
+      "properties": {
+        "source": {
+          "const": "docs/architecture/agent_supervisor_efficiency_state_hardening.requirements.json"
+        },
+        "field": { "const": "qualification.minimum_targets" },
+        "median_live_input_token_reduction_percent": { "const": 30 },
+        "total_weighted_provider_cost_reduction_percent": { "const": 20 },
+        "frontier_model_call_reduction_percent": { "const": 40 },
+        "retry_token_reduction_percent": { "const": 25 },
+        "low_risk_deterministic_or_small_model_share_percent": { "const": 60 },
+        "eligible_context_pack_reuse_percent": { "const": 50 },
+        "manual_recovery_rate_strictly_less_than_percent": { "const": 2 },
+        "accepted_patch_quality_statistically_meaningful_degradation": {
+          "const": false
+        },
+        "overall_wall_time_maximum_regression_percent": { "const": 10 },
+        "net_savings_after_audit_and_verification_overhead_positive": {
+          "const": true
+        }
+      }
+    },
+    "hardGates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_zero",
+        "live_promotion_corpus",
+        "usable_for_production_promotion"
+      ],
+      "properties": {
+        "required_zero": {
+          "type": "array",
+          "minItems": 14,
+          "maxItems": 14,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nfcString" }
+        },
+        "live_promotion_corpus": { "$ref": "#/$defs/unavailableEvidence" },
+        "usable_for_production_promotion": { "const": false }
+      }
+    }
+  }
+}

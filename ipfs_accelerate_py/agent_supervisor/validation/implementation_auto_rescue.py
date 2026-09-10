@@ -15,6 +15,12 @@ cases can instead be healed on the **same attempt**:
 
 This module is pure planning. The implementation daemon owns workspace
 mutations, provider invocation, and revalidation.
+
+Qualification board commands (``--output`` / ``--qualification-output``) are
+already writers. When they fail because a sealed prior-task executable does
+not yet understand those flags, or because the implementer recaimed that
+executable, auto-rescue must materialize declared receipts and skip Grok
+instead of looping extra-path restore.
 """
 
 from __future__ import annotations
@@ -117,7 +123,28 @@ _HOST_EVIDENCE_MATERIALIZE_TEXT = (
 )
 
 _VALIDATE_TOKEN_RE = re.compile(r"(?i)(?<![A-Za-z0-9_])validate(?![A-Za-z0-9_])")
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+_FAILED_NODE_RE = re.compile(
+    r"FAILED\s+(\S+::\S+)",
+)
+_EMPTY_PID_INT_RE = re.compile(
+    r"invalid literal for int\(\) with base 10: ['\"]['\"]"
+)
+_PID_MARKER_FLAKE_NODE_NAMES = frozenset(
+    {
+        "test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree",
+        "test_aseh_scheduler_group_fence_survives_leader_exit",
+        "test_launch_delivery_failure_fences_forked_dedicated_group",
+    }
+)
 _MATERIALIZE_ALIASES = ("materialize", "write", "generate")
+_OUTPUT_FLAG_RE = re.compile(
+    r"(?i)(?:^|\s)(--output|--qualification-output)(?:=|\s|$)"
+)
+_UNRECOGNIZED_ARGS_RE = re.compile(
+    r"unrecognized arguments|the following arguments are required",
+    re.IGNORECASE,
+)
 
 
 class AutoRescueAction(str, Enum):
@@ -197,6 +224,99 @@ class AutoRescuePlan:
         }
 
 
+def _failed_test_nodeids(validation_result: Mapping[str, Any]) -> tuple[str, ...]:
+    review = _failure_review_projection(validation_result)
+    collected = list(_as_str_tuple(validation_result.get("failed_tests") or ()))
+    collected.extend(_as_str_tuple(review.get("failed_tests") or ()))
+    blob = _ANSI_RE.sub(
+        "",
+        "\n".join(
+            (
+                str(validation_result.get("failure_head") or ""),
+                str(validation_result.get("stdout") or ""),
+                str(validation_result.get("stderr") or ""),
+                str(review.get("failure_head") or ""),
+            )
+        ),
+    )
+    for match in _FAILED_NODE_RE.finditer(blob):
+        collected.append(match.group(1))
+    return tuple(dict.fromkeys(item for item in collected if item))
+
+
+def _failed_test_files(nodeids: Sequence[str]) -> tuple[str, ...]:
+    files: list[str] = []
+    for node in nodeids:
+        path = str(node).replace("\\", "/").split("::", 1)[0].lstrip("./")
+        if path:
+            files.append(path)
+    return tuple(dict.fromkeys(files))
+
+
+def _is_pid_marker_empty_int_failure(
+    validation_result: Mapping[str, Any],
+    failed_nodes: Sequence[str],
+) -> bool:
+    """True when the only failures are empty pid-marker int() races.
+
+    ``Path.write_text`` truncates before writing. Protected grant-handoff
+    tests wait on exists() then int(read_text()), so a concurrent reader
+    sees ``''``. Revalidate without Grok; do not spend the provider pass.
+    """
+
+    if not failed_nodes:
+        return False
+    names = {str(node).rsplit("::", 1)[-1] for node in failed_nodes}
+    if not names or not names.issubset(_PID_MARKER_FLAKE_NODE_NAMES):
+        return False
+    review = _failure_review_projection(validation_result)
+    blob = _ANSI_RE.sub(
+        "",
+        "\n".join(
+            (
+                str(validation_result.get("failure_head") or ""),
+                str(validation_result.get("stdout") or ""),
+                str(validation_result.get("stderr") or ""),
+                str(review.get("failure_head") or ""),
+                "\n".join(str(node) for node in failed_nodes),
+            )
+        ),
+    )
+    return bool(_EMPTY_PID_INT_RE.search(blob))
+
+
+def _failed_tests_outside_declared_outputs(
+    failed_files: Sequence[str],
+    expected_outputs: Sequence[str],
+) -> bool:
+    """True when every failing test file is outside the task's declared outputs.
+
+    ASEH-061 cannot edit ``test_agent_supervisor_configured_typed_grant_handoff.py``
+    (implementation-protected). Looping Grok on those failures wastes the
+    rescue pass that should repair declared outputs such as
+    ``test_compatibility_migration.py``.
+    """
+
+    if not failed_files:
+        return False
+    expected = {
+        str(item).replace("\\", "/").lstrip("./")
+        for item in expected_outputs
+        if str(item).strip()
+    }
+    if not expected:
+        return False
+    for test_file in failed_files:
+        if test_file in expected:
+            return False
+        if any(
+            test_file.startswith(item.rstrip("/") + "/") or item.startswith(test_file)
+            for item in expected
+        ):
+            return False
+    return True
+
+
 def _as_str_tuple(values: Any) -> tuple[str, ...]:
     if values is None:
         return ()
@@ -240,7 +360,12 @@ def derive_materialize_commands(
     derived: list[str] = []
     for raw in validation_commands:
         command = str(raw or "").strip()
-        if not command or not _VALIDATE_TOKEN_RE.search(command):
+        if not command:
+            continue
+        # Board qualification CLIs are already writers (`--output`).
+        if _OUTPUT_FLAG_RE.search(command) and command not in derived:
+            derived.append(command)
+        if not _VALIDATE_TOKEN_RE.search(command):
             continue
         for alias in _MATERIALIZE_ALIASES:
             candidate = _VALIDATE_TOKEN_RE.sub(alias, command, count=1)
@@ -263,6 +388,106 @@ def derive_materialize_commands(
                         derived.append(text)
                 break
     return tuple(derived)
+
+
+def _failure_blob(validation_result: Mapping[str, Any]) -> str:
+    review = _failure_review_projection(validation_result)
+    return _ANSI_RE.sub(
+        "",
+        "\n".join(
+            (
+                str(validation_result.get("failure_head") or ""),
+                str(validation_result.get("stdout") or ""),
+                str(validation_result.get("stderr") or ""),
+                str(review.get("failure_head") or ""),
+                str(review.get("stderr") or ""),
+            )
+        ),
+    )
+
+
+def _unrecognized_args_on_undeclared_executable(
+    validation_result: Mapping[str, Any],
+    expected_outputs: Sequence[str],
+    failed_commands: Sequence[str],
+) -> bool:
+    """True when a sealed prior-task executable rejected qualification flags.
+
+    ASEH-070..073 validate ``paired_harness.py`` (ASEH-013's declared output).
+    Looping Grok to recaim that file cannot satisfy write_scope.
+    """
+
+    if not _UNRECOGNIZED_ARGS_RE.search(_failure_blob(validation_result)):
+        return False
+    expected = {
+        str(item).replace("\\", "/").lstrip("./")
+        for item in expected_outputs
+        if str(item).strip()
+    }
+    output_flags = {"--output", "--qualification-output"}
+    invoked: list[str] = []
+    for command in failed_commands:
+        try:
+            argv = shlex.split(str(command or ""))
+        except ValueError:
+            argv = str(command or "").split()
+        skip_next = False
+        for index, token in enumerate(argv):
+            if skip_next:
+                skip_next = False
+                continue
+            if token in output_flags:
+                skip_next = True
+                continue
+            if token.startswith("--output=") or token.startswith("--qualification-output="):
+                continue
+            normalized = str(token).replace("\\", "/").lstrip("./")
+            if normalized.endswith(".py"):
+                invoked.append(normalized)
+    if not invoked:
+        return bool(expected)
+    if not expected:
+        return True
+    for script in invoked:
+        if script in expected:
+            return False
+        if any(
+            script.endswith("/" + item) or item.endswith("/" + script)
+            for item in expected
+        ):
+            return False
+    return True
+
+
+def _extra_path_recaim_of_undeclared_outputs(
+    finding_codes: Sequence[str],
+    reason_codes: Sequence[str],
+    denied_paths: Sequence[str],
+    expected_outputs: Sequence[str],
+) -> bool:
+    """True when the implementer mutated paths outside declared outputs."""
+
+    if not denied_paths:
+        return False
+    if not (
+        "path_outside_scope" in finding_codes
+        or "scope_expansion_denied" in reason_codes
+        or "full_diff_path_outside_scope" in finding_codes
+    ):
+        return False
+    expected = {
+        str(item).replace("\\", "/").lstrip("./")
+        for item in expected_outputs
+        if str(item).strip()
+    }
+    for path in denied_paths:
+        normalized = str(path).replace("\\", "/").lstrip("./")
+        if normalized in expected:
+            continue
+        if is_undeclared_helper_path(normalized, expected_outputs):
+            continue
+        return True
+    return False
 
 
 def plan_automatic_implementation_rescue(
@@ -512,10 +737,23 @@ def plan_automatic_implementation_rescue(
             max_provider_rescue_passes=0,
         )
 
+    writer_failed = _unrecognized_args_on_undeclared_executable(
+        result,
+        expected,
+        failed_commands or declared_validation_commands,
+    )
+    extra_path_recaim = _extra_path_recaim_of_undeclared_outputs(
+        finding_codes,
+        reason_codes,
+        denied_paths,
+        expected,
+    )
     incomplete = bool(
         missing
         or "incomplete_expected_outputs" in reason_codes
         or "expected_output_ignored_or_unstaged" in finding_codes
+        or writer_failed
+        or extra_path_recaim
     )
     proposal_failed = (
         str(result.get("reason") or "")
@@ -532,6 +770,8 @@ def plan_automatic_implementation_rescue(
         and bool(materialize_commands)
         and (
             bool(missing)
+            or writer_failed
+            or extra_path_recaim
             or (
                 incomplete
                 and not expected_outputs_present_on_disk
@@ -607,6 +847,43 @@ def plan_automatic_implementation_rescue(
         or proposal_failed
         or set(reason_codes) & INLINE_PROVIDER_RESCUE_REASON_CODES
     )
+    failed_nodes = _failed_test_nodeids(result)
+    failed_files = _failed_test_files(failed_nodes)
+    if _failed_tests_outside_declared_outputs(failed_files, expected):
+        if _is_pid_marker_empty_int_failure(result, failed_nodes):
+            return AutoRescuePlan(
+                action=AutoRescueAction.STAGE_AND_REVALIDATE,
+                reason="retry_pid_marker_empty_int_flake",
+                finding_codes=finding_codes,
+                reason_codes=reason_codes,
+                failed_commands=failed_commands,
+                expected_outputs=expected,
+                missing_expected_outputs=missing,
+            )
+        return AutoRescuePlan(
+            action=AutoRescueAction.NONE,
+            reason="failed_tests_outside_declared_outputs",
+            finding_codes=finding_codes,
+            reason_codes=reason_codes,
+            failed_commands=failed_commands,
+            expected_outputs=expected,
+            missing_expected_outputs=missing,
+        )
+    if writer_failed or extra_path_recaim:
+        return AutoRescuePlan(
+            action=AutoRescueAction.NONE,
+            reason=(
+                "sealed_executable_missing_qualification_flags"
+                if writer_failed
+                else "extra_path_recaim_skip_grok"
+            ),
+            finding_codes=finding_codes,
+            reason_codes=reason_codes,
+            failed_commands=failed_commands,
+            expected_outputs=expected,
+            materialize_commands=materialize_commands,
+            missing_expected_outputs=missing,
+        )
     if (
         allow_provider_rescue
         and provider_rescue_passes_used < 1

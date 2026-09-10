@@ -687,22 +687,52 @@ def repair_jsonl_event_log(path: Path) -> dict[str, Any]:
 
     result["valid_count"] = len(valid_events)
     result["invalid_count"] = len(invalid_lines)
-    if not invalid_lines:
-        return result
+    if invalid_lines:
+        quarantine_path = unique_backup_path(path, "invalid-jsonl")
+        quarantine_path.write_text("\n".join(invalid_lines) + "\n", encoding="utf-8")
+        path.write_text(
+            "".join(json.dumps(event, ensure_ascii=False) + "\n" for event in valid_events),
+            encoding="utf-8",
+        )
+        result.update(
+            {
+                "repaired": True,
+                "reason": "malformed_jsonl",
+                "quarantine_path": str(quarantine_path),
+            }
+        )
 
-    quarantine_path = unique_backup_path(path, "invalid-jsonl")
-    quarantine_path.write_text("\n".join(invalid_lines) + "\n", encoding="utf-8")
-    path.write_text(
-        "".join(json.dumps(event, ensure_ascii=False) + "\n" for event in valid_events),
-        encoding="utf-8",
-    )
-    result.update(
-        {
-            "repaired": True,
-            "reason": "malformed_jsonl",
-            "quarantine_path": str(quarantine_path),
-        }
-    )
+    try:
+        _scan_event_log(path)
+    except CursorReplayError as exc:
+        gap_quarantine = unique_backup_path(path, "sequence-gap")
+        for source in list(_source_paths(path)):
+            if source == path:
+                continue
+            try:
+                source.rename(unique_backup_path(source, "sequence-gap"))
+            except OSError:
+                continue
+        if path.exists() and not path.is_dir():
+            path.rename(gap_quarantine)
+        path.write_text("", encoding="utf-8")
+        manifest_path = _event_manifest_path(path)
+        if manifest_path.exists():
+            try:
+                manifest_path.rename(unique_backup_path(manifest_path, "sequence-gap"))
+            except OSError:
+                try:
+                    manifest_path.unlink()
+                except OSError:
+                    pass
+        result.update(
+            {
+                "repaired": True,
+                "reason": "sequence_gap",
+                "error": str(exc),
+                "quarantine_path": str(gap_quarantine),
+            }
+        )
     return result
 
 

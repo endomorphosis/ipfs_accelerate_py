@@ -8,6 +8,7 @@ process-family cleanup without copying brittle shell functions.
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import shlex
@@ -478,11 +479,13 @@ def _process_relationship_snapshot() -> Dict[int, Tuple[int, int]]:
     return relationships
 
 
-def _process_identity_snapshot() -> ProcessIdentitySnapshot:
+def _process_identity_snapshot(
+    *,
+    proc_root: Path = Path("/proc"),
+) -> ProcessIdentitySnapshot:
     """Observe Linux process identities without conflating failure and empty."""
 
     processes: Dict[int, ProcessIdentityRecord] = {}
-    proc_root = Path("/proc")
     try:
         entries = tuple(proc_root.iterdir())
     except OSError as exc:
@@ -505,10 +508,17 @@ def _process_identity_snapshot() -> ProcessIdentitySnapshot:
                 int(fields[3]),
                 fields[19],
             )
-        except FileNotFoundError:
-            # The PID exited between directory enumeration and the stat read.
-            continue
-        except (OSError, UnicodeError, ValueError, IndexError) as exc:
+        except OSError as exc:
+            if exc.errno in {errno.ENOENT, errno.ESRCH}:
+                # The enumerated PID exited before open (ENOENT) or after its
+                # procfs file was opened but before it was read (ESRCH).  Both
+                # prove that exact process generation can no longer execute;
+                # unrelated I/O failures must still make the census unknown.
+                continue
+            return ProcessIdentitySnapshot.unavailable(
+                f"{entry.name}: {type(exc).__name__}: {exc}"
+            )
+        except (UnicodeError, ValueError, IndexError) as exc:
             return ProcessIdentitySnapshot.unavailable(
                 f"{entry.name}: {type(exc).__name__}: {exc}"
             )
@@ -1449,4 +1459,3 @@ def _expand_snapshot_by_owned_sessions(
             if process_id == session and session not in {0, 1, caller_session}:
                 owned_sessions.add(session)
     return expanded
-

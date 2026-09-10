@@ -68,7 +68,10 @@ from .deterministic_doctor_transforms import (
     DoctorTransformAuthorityError,
     DoctorTransformError,
     DoctorTransformUnsupportedError,
+    ExactTransformRequest,
+    ExactTransformResult,
     build_default_doctor_operator_registry,
+    render_exact_transform,
 )
 
 # ---------------------------------------------------------------------------
@@ -1273,6 +1276,18 @@ class DeterministicDoctorSynthesizer:
             and receipt.source_write_count == 0
         )
 
+    @staticmethod
+    def synthesize_exact(request: ExactTransformRequest) -> ExactTransformResult:
+        """Render one scope-bound exact transform without proof/write authority.
+
+        This intentionally has no dependency on a doctor registry or authority
+        roots: the request itself binds one allowed path and its before hash,
+        and the transform layer returns a typed no-body rejection on any
+        grammar mismatch.
+        """
+
+        return render_exact_transform(request)
+
     def synthesize(self, request: DoctorSynthesisRequest) -> DoctorSynthesisReceipt:
         """Render a proof-admitted proposal into a candidate analytical overlay."""
 
@@ -2030,6 +2045,12 @@ def materialize_proof_admitted_overlay(
     return synth.synthesize(request)
 
 
+def materialize_exact_transform(request: ExactTransformRequest) -> ExactTransformResult:
+    """Convenience entry point for the bounded ASEH-054 exact allowlist."""
+
+    return render_exact_transform(request)
+
+
 __all__ = (
     "CONTRACT_VERSION",
     "DETERMINISTIC_DOCTOR_SYNTHESIZER_CAPABILITY_VERSION",
@@ -2053,6 +2074,9 @@ __all__ = (
     "DoctorSynthesisRequest",
     "DoctorSynthesisUnsupportedError",
     "DoctorRepairDisposition",
+    "ExactTransformRequest",
+    "ExactTransformResult",
     "create_deterministic_doctor_synthesizer",
+    "materialize_exact_transform",
     "materialize_proof_admitted_overlay",
 )

@@ -39,6 +39,13 @@ if not _CHILD_PROBE_MODE:
         validation_command_repository_root,
     )
     from .validation_runtime import (
+        VALIDATION_PYTHON_ENV,
+        VALIDATION_PYTHON_INTERPRETER_SHA256_ENV,
+        VALIDATION_PYTHON_INTERPRETER_STAT_ENV,
+        VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
+        VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
+        VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+        ValidationRuntimeError,
         build_validation_environment,
         sealed_validation_python_runner,
         validation_environment_for_runner,
@@ -134,7 +141,6 @@ DEPENDENCY_PROBE_TIMEOUT_SECONDS = 30.0
 PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
     "test",
     "testing",
-    "dev",
 )
 PYTEST_COMMAND_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])pytest(?=$|[\s;&|])")
 _LOWER_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
@@ -1699,10 +1705,158 @@ def _command_is_exact_v3_scoped_pytest_target(
         tokens = shlex.split(str(command), posix=True)
     except ValueError:
         return False
-    expected = ["python", "-m", "pytest", "-q", target]
+    board_commands = (
+        ["python", "-m", "pytest", "-q", target],
+        ["python3", "-m", "pytest", "-q", target],
+    )
     if relative_root:
-        expected = ["cd", relative_root, "&&", *expected]
-    return tokens == expected
+        board_commands = tuple(
+            ["cd", relative_root, "&&", *expected]
+            for expected in board_commands
+        )
+    return tokens in board_commands
+
+def _scoped_pytest_target_from_command(
+    command: str,
+    *,
+    relative_root: str,
+) -> str | None:
+    """Return the sole pytest file target from an admitted command grammar."""
+
+    try:
+        tokens = shlex.split(str(command), posix=True)
+    except ValueError:
+        return None
+    if relative_root and tokens[:3] == ["cd", relative_root, "&&"]:
+        tokens = tokens[3:]
+    if tokens[:3] not in (["python3", "-m", "pytest"], ["python", "-m", "pytest"]):
+        return None
+    rest = tokens[3:]
+    paths = [
+        token
+        for token in rest
+        if token.endswith(".py") and not token.startswith("-")
+    ]
+    if len(paths) != 1:
+        return None
+    flags = [token for token in rest if token != paths[0]]
+    if flags not in ([], ["-q"]):
+        return None
+    try:
+        return _require_safe_scoped_pytest_target(paths[0])
+    except _ScopedDependencyContractError:
+        return None
+
+
+def _scoped_v2_undeclared_board_target(
+    parsed_targets: Sequence[Mapping[str, Any]],
+    *,
+    relative_root: str,
+    validation_command: str,
+    validation_command_sha256: str,
+    runtime_board_namespace: str,
+    runtime_task_cid: str,
+    runtime_declared_outputs: Sequence[str],
+    mixed_declared_output_roots: bool,
+    project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
+) -> dict[str, Any] | None:
+    """Reuse a reviewed extra for a new same-board pytest task.
+
+    Command-digest drift on an existing task row still fails closed.  A
+    sibling board task whose pytest file is a declared output can inherit
+    the shortest pytest-bearing requirement list already admitted for that
+    board instead of blocking provider dispatch forever.
+    """
+
+    if any(
+        str(entry.get("canonical_task_cid") or "") == runtime_task_cid
+        for entry in parsed_targets
+    ):
+        return None
+    target = _scoped_pytest_target_from_command(
+        validation_command,
+        relative_root=relative_root,
+    )
+    if target is None:
+        return None
+    declared_output: str | None = None
+    for output in runtime_declared_outputs:
+        try:
+            if mixed_declared_output_roots:
+                admitted = _require_v3_scoped_declared_output(
+                    output,
+                    target=target,
+                )
+            elif output in {
+                _expected_scoped_declared_output(relative_root, target),
+                target,
+            }:
+                admitted = _expected_scoped_declared_output(
+                    relative_root,
+                    target,
+                )
+            else:
+                continue
+        except _ScopedDependencyContractError:
+            continue
+        declared_output = admitted
+        break
+    if declared_output is None:
+        return None
+    same_board = [
+        entry
+        for entry in parsed_targets
+        if str(entry.get("board_namespace") or "") == runtime_board_namespace
+    ]
+    pytest_lists = [
+        list(entry.get("requirements") or [])
+        for entry in same_board
+        if any(
+            re.match(r"(?i)^pytest(?:$|\[|\s|[<>=!~;@])", str(requirement))
+            for requirement in (entry.get("requirements") or [])
+        )
+    ]
+    if not pytest_lists:
+        return None
+    pytest_lists.sort(key=len)
+    requirements = pytest_lists[0]
+    try:
+        _require_scoped_requirements(requirements)
+    except _ScopedDependencyContractError:
+        return None
+    candidate = project_root / target
+    try:
+        candidate.lstat()
+    except FileNotFoundError:
+        baseline_state = "declared-output-absent"
+        baseline_sha256 = ""
+    else:
+        try:
+            _target_file, target_payload = _read_bounded_contained_regular_file(
+                project_root,
+                candidate,
+                maximum_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
+                expected_containment_root_snapshot=(
+                    expected_project_root_snapshot
+                ),
+            )
+        except Exception:
+            return None
+        baseline_state = "present"
+        baseline_sha256 = hashlib.sha256(target_payload).hexdigest()
+    return {
+        "target": target,
+        "validation_command_sha256": validation_command_sha256,
+        "requirements": requirements,
+        "board_namespace": runtime_board_namespace,
+        "canonical_task_cid": runtime_task_cid,
+        "declared_output": declared_output,
+        "baseline_state": baseline_state,
+        "baseline_sha256": baseline_sha256,
+        "auto_repaired_undeclared_command": True,
+    }
+
 
 def _scoped_v2_selected_target(
     contract: Mapping[str, Any],
@@ -1710,6 +1864,8 @@ def _scoped_v2_selected_target(
     relative_root: str,
     validation_commands: Sequence[str],
     task_authority: Mapping[str, Any] | None,
+    project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
 ) -> dict[str, Any]:
     """Validate all task-bound entries and select one exact command."""
 
@@ -2011,7 +2167,23 @@ def _scoped_v2_selected_target(
         )
     ]
     if len(selected) != 1:
-        raise _ScopedDependencyContractError("v2_validation_command_not_declared")
+        repaired = _scoped_v2_undeclared_board_target(
+            parsed_targets,
+            relative_root=relative_root,
+            validation_command=validation_command,
+            validation_command_sha256=validation_command_sha256,
+            runtime_board_namespace=runtime_board_namespace,
+            runtime_task_cid=runtime_task_cid,
+            runtime_declared_outputs=runtime_declared_outputs,
+            mixed_declared_output_roots=mixed_declared_output_roots,
+            project_root=project_root,
+            expected_project_root_snapshot=expected_project_root_snapshot,
+        )
+        if repaired is None:
+            raise _ScopedDependencyContractError(
+                "v2_validation_command_not_declared"
+            )
+        selected = [repaired]
     result = selected[0]
     if (
         mixed_declared_output_roots
@@ -2214,6 +2386,8 @@ def _scoped_setup_extra_dependencies(
                 relative_root=relative_root,
                 validation_commands=validation_commands,
                 task_authority=task_authority,
+                project_root=project_root,
+                expected_project_root_snapshot=expected_project_root_snapshot,
             )
         except _ScopedDependencyContractError as exc:
             if (
@@ -2613,11 +2787,13 @@ def _pytest_validation_dependencies(
     list[dict[str, Any]],
     str,
 ]:
-    """Select ``test``, then ``testing``, then ``dev`` for pytest commands.
+    """Select ``test``, then ``testing`` for pytest commands.
 
     The runner distribution itself is always required.  At most one declared
     extra is selected so similarly named extras cannot silently combine into a
-    larger, environment-dependent contract.
+    larger, environment-dependent contract.  Kitchen-sink extras such as
+    ``dev`` (linters, SSH, browsers) are not a pytest dispatch gate; they
+    stall sealed overlays that cannot grow those packages.
     """
 
     requirements = ["pytest"]
@@ -3073,6 +3249,14 @@ def _bounded_static_project(
     requirement_marker_extras = [
         scoped_validation_extra if scoped_contract_selected else ""
     ] * len(dependencies)
+    if pytest_invoked and not scoped_contract_selected:
+        # Pytest dispatch is gated on the runner and an explicit test extra,
+        # not the full runtime closure.  Sealed validation overlays cannot
+        # grow unused runtime packages (hypercorn, paramiko, aiofiles) just
+        # to start a declared unit test; those fail later as retryable
+        # declared_validation_failed instead of stalling preflight forever.
+        dependencies = []
+        requirement_marker_extras = []
     if scoped_contract_selected:
         validation_dependencies: list[str] = []
         validation_marker_extras: list[str] = []
@@ -4207,12 +4391,60 @@ def _active_module_source_bytes() -> bytes:
     return Path(module_path).resolve(strict=True).read_bytes()
 
 
+def _environment_without_ephemeral_validation_python(
+    environment: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """Drop inherited sealed-launcher Python so a real interpreter can probe."""
+
+    source = os.environ if environment is None else environment
+    cleaned: dict[str, object] = {
+        str(key): value for key, value in source.items()
+    }
+    for key in (
+        VALIDATION_PYTHON_ENV,
+        "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE",
+        VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
+        VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
+        VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+        VALIDATION_PYTHON_INTERPRETER_SHA256_ENV,
+        VALIDATION_PYTHON_INTERPRETER_STAT_ENV,
+    ):
+        cleaned.pop(key, None)
+    for key, value in list(cleaned.items()):
+        text = str(value)
+        if (
+            text.startswith("/proc/")
+            or text.startswith("/memfd:")
+            or "/proc/self/fd/" in text
+        ):
+            cleaned.pop(key, None)
+    return cleaned
+
+
 def _run_dependency_probe(
     payload: Mapping[str, Any],
     *,
     environment: Mapping[str, object] | None = None,
 ) -> dict[str, Any]:
     """Run the metadata-only probe through the approved sealed interpreter."""
+
+    try:
+        return _run_dependency_probe_once(payload, environment=environment)
+    except ValidationRuntimeError:
+        return _run_dependency_probe_once(
+            payload,
+            environment=_environment_without_ephemeral_validation_python(
+                environment
+            ),
+        )
+
+
+def _run_dependency_probe_once(
+    payload: Mapping[str, Any],
+    *,
+    environment: Mapping[str, object] | None = None,
+) -> dict[str, Any]:
+    """Run one sealed probe attempt against ``environment``."""
 
     validation_environment = build_validation_environment(environment)
     validation_environment = validation_environment_for_runner(

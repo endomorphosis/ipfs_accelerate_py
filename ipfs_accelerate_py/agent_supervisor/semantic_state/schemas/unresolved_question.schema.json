@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/unresolved-question@1",
+  "title": "Unresolved question",
+  "description": "Closed escalation question. It requests an executor but grants neither invocation nor decision authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "question_id",
+    "exact_question",
+    "why_prior_deterministic_stages_could_not_resolve",
+    "evidence_available",
+    "evidence_missing",
+    "candidate_decisions_answer_could_change",
+    "minimum_model_capability",
+    "context_budget",
+    "response_schema",
+    "deadline",
+    "cost_budget"
+  ],
+  "properties": {
+    "question_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "exact_question": {"$ref": "#/$defs/questionText"},
+    "why_prior_deterministic_stages_could_not_resolve": {"$ref": "#/$defs/reasonText"},
+    "evidence_available": {"$ref": "#/$defs/availableEvidence"},
+    "evidence_missing": {"$ref": "#/$defs/missingEvidence"},
+    "candidate_decisions_answer_could_change": {"$ref": "#/$defs/decisionImpacts"},
+    "minimum_model_capability": {
+      "enum": ["local_small_specialist_model", "local_or_remote_medium_model", "remote_strong_or_frontier_model", "human_decision"]
+    },
+    "context_budget": {"type": "integer", "minimum": 1, "maximum": 262144},
+    "response_schema": {"$ref": "#/$defs/responseSchema"},
+    "deadline": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "cost_budget": {"type": "integer", "minimum": 1, "maximum": 1000000000000}
+  },
+  "$defs": {
+    "questionText": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[^\\u0000]+$"},
+    "reasonText": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^[^\\u0000]+$"},
+    "evidenceText": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[^\\u0000]+$"},
+    "availableEvidence": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/evidenceText"}},
+    "missingEvidence": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/evidenceText"}},
+    "decisionImpacts": {"type": "array", "minItems": 2, "maxItems": 5, "uniqueItems": true, "items": {"enum": ["deterministic_only", "small_local_model", "medium_model", "frontier_model", "human_review_required"]}},
+    "responseValue": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\u0000]+$"},
+    "responseSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "enum"],
+      "properties": {
+        "type": {"const": "string"},
+        "enum": {"type": "array", "minItems": 2, "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/responseValue"}}
+      }
+    }
+  }
+}

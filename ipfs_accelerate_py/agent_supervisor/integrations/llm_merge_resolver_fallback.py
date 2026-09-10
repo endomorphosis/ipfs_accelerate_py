@@ -202,7 +202,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        return grok_cli_runner.main(command[3:])
+        runner_prefix = [
+            sys.executable,
+            "-B",
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        ]
+        if command[: len(runner_prefix)] != runner_prefix:
+            print(
+                "canonical merge-resolver runner identity drifted",
+                file=sys.stderr,
+            )
+            return 2
+        return grok_cli_runner.main(command[len(runner_prefix) :])
     finally:
         if lock_handle is not None:
             lock_handle.close()

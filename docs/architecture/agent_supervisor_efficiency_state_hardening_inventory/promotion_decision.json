@@ -1,0 +1,500 @@
+{
+  "audit_overhead": {
+    "canary": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    },
+    "hermetic": {
+      "includes_audit_in_quality_adjusted_cost": true,
+      "sensor_id": "aseh-070-hermetic-qualification",
+      "truth_state": "measured",
+      "unit": "microusd",
+      "value": 10170
+    },
+    "historical": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    },
+    "included_in_efficiency_evaluation": true,
+    "live": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    },
+    "live_shadow": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    },
+    "usable_for_production_promotion": false
+  },
+  "authority": false,
+  "cas_protected_promotion": true,
+  "closed_dispositions": [
+    "non_promoted_unmeasured",
+    "non_promoted_safety_or_quality",
+    "non_promoted_efficiency",
+    "promotion_eligible_operator_authorization_required"
+  ],
+  "disposition": "non_promoted_unmeasured",
+  "disposition_kind": "unmeasured",
+  "efficiency": {
+    "eligible_context_pack_reuse_percent": {
+      "observed": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "required_percent": 50
+    },
+    "frontier_model_call_reduction_percent": {
+      "observed": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "required_percent": 40
+    },
+    "low_risk_deterministic_or_small_model_share_percent": {
+      "observed": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "required_percent": 60
+    },
+    "manual_recovery_rate_strictly_less_than_percent": {
+      "observed": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "required_percent": 2
+    },
+    "median_live_input_token_reduction_percent": {
+      "observed": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "required_percent": 30
+    },
+    "net_savings_after_audit_and_verification_overhead_positive": {
+      "observed": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "required": true
+    },
+    "overall_wall_time_maximum_regression_percent": {
+      "observed": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "required_percent": 10
+    },
+    "retry_token_reduction_percent": {
+      "observed": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "required_percent": 25
+    },
+    "thresholds_evaluated": false,
+    "total_weighted_provider_cost_reduction_percent": {
+      "observed": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "required_percent": 20
+    },
+    "usable_for_production_promotion": false
+  },
+  "eligible_for_operator_authorization": false,
+  "evaluation_order": [
+    "unmeasured",
+    "safety_or_quality",
+    "efficiency",
+    "eligible_operator_authorization_required"
+  ],
+  "evidence_paths": [
+    "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/hermetic_qualification.json",
+    "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/historical_qualification.json",
+    "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/live_shadow_qualification.json",
+    "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/canary_qualification.json",
+    "benchmarks/agent_supervisor/efficiency_state_hardening/live_cohort_manifest.json"
+  ],
+  "explicit_unavailable_fields": [
+    "populations.hermetic.safety.live_cohort",
+    "populations.historical.pair_count",
+    "populations.historical.audit_overhead",
+    "populations.historical.safety.escaped_critical_seeded_defects",
+    "populations.historical.safety.live_cohort",
+    "populations.historical.safety.simulated_as_live_outcomes",
+    "populations.live_shadow.pair_count",
+    "populations.live_shadow.audit_overhead",
+    "populations.live_shadow.safety.escaped_critical_seeded_defects",
+    "populations.live_shadow.safety.live_cohort",
+    "populations.live_shadow.safety.simulated_as_live_outcomes",
+    "populations.canary.pair_count",
+    "populations.canary.audit_overhead",
+    "populations.canary.safety.escaped_critical_seeded_defects",
+    "populations.canary.safety.live_cohort",
+    "populations.canary.safety.simulated_as_live_outcomes",
+    "live_cohort",
+    "efficiency.median_live_input_token_reduction_percent",
+    "efficiency.total_weighted_provider_cost_reduction_percent",
+    "efficiency.frontier_model_call_reduction_percent",
+    "efficiency.retry_token_reduction_percent",
+    "efficiency.low_risk_deterministic_or_small_model_share_percent",
+    "efficiency.eligible_context_pack_reuse_percent",
+    "efficiency.manual_recovery_rate_strictly_less_than_percent",
+    "efficiency.overall_wall_time_maximum_regression_percent",
+    "efficiency.net_savings_after_audit_and_verification_overhead_positive",
+    "audit_overhead.live",
+    "hard_gates.live_promotion_corpus",
+    "quality.accepted_patch_quality_statistically_meaningful_degradation"
+  ],
+  "hard_gates": {
+    "live_promotion_corpus": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    },
+    "required_zero": [
+      "false_completions",
+      "unauthorized_mutations",
+      "simulated_as_live_outcomes",
+      "stale_authoritative_cache_admissions",
+      "confirmation_replays",
+      "path_or_scope_escapes",
+      "hidden_validation_reductions",
+      "controlled_critical_omissions_accepted",
+      "escaped_critical_seeded_defects",
+      "self_authorized_policy_promotions",
+      "selected_test_false_negatives_on_promotion_corpus",
+      "double_terminalization",
+      "double_execution_of_an_idempotent_effect",
+      "stale_fence_completion"
+    ],
+    "usable_for_production_promotion": false
+  },
+  "hermetic_sufficient_for_production_promotion": false,
+  "historical_sufficient_for_production_promotion": false,
+  "identity": "baguqeerasbt75apwn2fj7urqpuesz44sfyxlzvhsl7kddfvbche3jx74wwoa",
+  "interface": "AsehPromotionDecision@1",
+  "live_cohort": {
+    "canary_admitted": false,
+    "count": 0,
+    "disposition": "insufficient_evidence",
+    "enrollment_deadline": "2026-10-02T00:00:00Z",
+    "fixtures_satisfy_live": false,
+    "hermetic_sufficient_for_production_promotion": false,
+    "historical_sufficient_for_production_promotion": false,
+    "identity": "baguqeeravfnlaoq2pekmjrq6poy77ifcojvjwzzzapb4o2ysp4oqq2essqlq",
+    "live": false,
+    "minimum": 10,
+    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/live_cohort_manifest.json",
+    "qualification": false,
+    "reasons": [
+      "insufficient_distinct_live_tasks",
+      "not_yet_measured"
+    ],
+    "schema": "ipfs_accelerate_py/agent-supervisor/aseh-live-cohort-manifest@1",
+    "shadow_admitted": false,
+    "simulation_satisfies_live": false,
+    "task_id": "ASEH-015"
+  },
+  "missing_evidence": [
+    "populations.hermetic.safety.live_cohort",
+    "populations.historical.pair_count",
+    "populations.historical.audit_overhead",
+    "populations.historical.safety.escaped_critical_seeded_defects",
+    "populations.historical.safety.live_cohort",
+    "populations.historical.safety.simulated_as_live_outcomes",
+    "populations.live_shadow.pair_count",
+    "populations.live_shadow.audit_overhead",
+    "populations.live_shadow.safety.escaped_critical_seeded_defects",
+    "populations.live_shadow.safety.live_cohort",
+    "populations.live_shadow.safety.simulated_as_live_outcomes",
+    "populations.canary.pair_count",
+    "populations.canary.audit_overhead",
+    "populations.canary.safety.escaped_critical_seeded_defects",
+    "populations.canary.safety.live_cohort",
+    "populations.canary.safety.simulated_as_live_outcomes",
+    "live_cohort",
+    "efficiency.median_live_input_token_reduction_percent",
+    "efficiency.total_weighted_provider_cost_reduction_percent",
+    "efficiency.frontier_model_call_reduction_percent",
+    "efficiency.retry_token_reduction_percent",
+    "efficiency.low_risk_deterministic_or_small_model_share_percent",
+    "efficiency.eligible_context_pack_reuse_percent",
+    "efficiency.manual_recovery_rate_strictly_less_than_percent",
+    "efficiency.overall_wall_time_maximum_regression_percent",
+    "efficiency.net_savings_after_audit_and_verification_overhead_positive",
+    "audit_overhead.live",
+    "hard_gates.live_promotion_corpus",
+    "quality.accepted_patch_quality_statistically_meaningful_degradation"
+  ],
+  "missing_measurement_recorded_as_zero": false,
+  "nonclaims": [
+    "This receipt does not mutate a policy pointer.",
+    "This receipt does not authorize promotion.",
+    "Hermetic evidence is not live and cannot satisfy production promotion.",
+    "Missing measurements are unavailable, never numeric zero."
+  ],
+  "objective_id": "ASEH-G080",
+  "plan_revision": "ASEH-PLAN-R1",
+  "policy_identity": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1",
+  "policy_pointer_mutated": false,
+  "populations": {
+    "canary": {
+      "admitted": true,
+      "canary_admitted": false,
+      "cohort": "canary",
+      "disposition": "not_admitted",
+      "explicit_unavailable_fields": [
+        "audit_overhead",
+        "pair_count",
+        "safety.escaped_critical_seeded_defects",
+        "safety.live_cohort",
+        "safety.simulated_as_live_outcomes"
+      ],
+      "hermetic_sufficient_for_production_promotion": false,
+      "identity": "baguqeeracxauns6v57mqdsvdlwowbp7lb7npjnrp2swzyvjc66qtugh2326q",
+      "live": false,
+      "minimum_tasks": 1,
+      "pair_count": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "path": "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/canary_qualification.json",
+      "production_qualified": false,
+      "qualification": false,
+      "reasons": [
+        "shadow_not_qualified",
+        "zero_candidate_mutation"
+      ],
+      "repository_commit": "fadcbe90c776698871e380fb7285c03fbdf5977f",
+      "repository_tree": "d879202f67a9ff9b799fd7f2bffde78141c963ec",
+      "results_identity": "baguqeerafrpcbygly43e3wappb267ydavuu2wr2w5llnoxjdg4umci7ls4ma",
+      "schema": "ipfs_accelerate_py/agent-supervisor/aseh-canary-qualification@1",
+      "task_id": "ASEH-073"
+    },
+    "hermetic": {
+      "admitted": true,
+      "canary_admitted": false,
+      "cohort": "hermetic",
+      "disposition": "evidence_qualified",
+      "explicit_unavailable_fields": [
+        "safety.live_cohort"
+      ],
+      "hermetic_sufficient_for_production_promotion": false,
+      "identity": "baguqeerac2yhgc6xsaraj3qesohdrjaeamahvszfxhmpppqmku4us64jg7la",
+      "live": false,
+      "minimum_tasks": 60,
+      "pair_count": {
+        "sensor_id": "aseh-070-hermetic-qualification",
+        "truth_state": "measured",
+        "unit": "count",
+        "value": 72
+      },
+      "path": "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/hermetic_qualification.json",
+      "production_qualified": false,
+      "qualification": true,
+      "reasons": [],
+      "repository_commit": "1d77c3ba0f5498fb0b7615391c58811683301d25",
+      "repository_tree": "9f8c1b41450a8309f3b7e23dc5932dee62f48b7c",
+      "results_identity": "baguqeera6autmu7rn6zmncawqyu2r2jxwbogbqsp64e7qtlf7uv3lsemdhaq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/aseh-hermetic-qualification@1",
+      "task_id": "ASEH-070"
+    },
+    "historical": {
+      "admitted": true,
+      "canary_admitted": false,
+      "cohort": "historical",
+      "disposition": "insufficient_evidence",
+      "explicit_unavailable_fields": [
+        "audit_overhead",
+        "pair_count",
+        "safety.escaped_critical_seeded_defects",
+        "safety.live_cohort",
+        "safety.simulated_as_live_outcomes"
+      ],
+      "hermetic_sufficient_for_production_promotion": false,
+      "identity": "baguqeerapg33ogpph2dvwddl6kox3g4mnedkul5uz6gs22boaccmwk2efnhq",
+      "live": false,
+      "minimum_tasks": 20,
+      "pair_count": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "path": "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/historical_qualification.json",
+      "production_qualified": false,
+      "qualification": false,
+      "reasons": [
+        "historical_corpus_unavailable_on_current_tree",
+        "honest_nonpromotion"
+      ],
+      "repository_commit": "a044c001b2d69b11534d8c1def717484c1c12c4f",
+      "repository_tree": "9d0aab8a8b1269e6158ce129e844ff0a853e1430",
+      "results_identity": "baguqeeraq6frm25lorenss5l2i6od4tijcpwdv64ryec5qtfg5l3fgjaz4ja",
+      "schema": "ipfs_accelerate_py/agent-supervisor/aseh-historical-qualification@1",
+      "task_id": "ASEH-071"
+    },
+    "live_shadow": {
+      "admitted": true,
+      "canary_admitted": false,
+      "cohort": "live-shadow",
+      "disposition": "insufficient_evidence",
+      "explicit_unavailable_fields": [
+        "audit_overhead",
+        "pair_count",
+        "safety.escaped_critical_seeded_defects",
+        "safety.live_cohort",
+        "safety.simulated_as_live_outcomes"
+      ],
+      "hermetic_sufficient_for_production_promotion": false,
+      "identity": "baguqeeraibewzfqvkoz4zlb2msemwv5psamvadeslrb6ghn3ybdmueudzc7a",
+      "live": false,
+      "minimum_tasks": 10,
+      "pair_count": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "path": "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/live_shadow_qualification.json",
+      "production_qualified": false,
+      "qualification": false,
+      "reasons": [
+        "live-shadow_corpus_unavailable_on_current_tree",
+        "honest_nonpromotion"
+      ],
+      "repository_commit": "5b44a281738d4aa1946de3967a29775e8c04448f",
+      "repository_tree": "e131452f1feeef0335c38b75f0c1c3b89a3a03f5",
+      "results_identity": "baguqeeraxs7fq7hcwqqf7rajpgblzm2q625auyriwvbbomwsfkdmspqqbg7q",
+      "schema": "ipfs_accelerate_py/agent-supervisor/aseh-live-shadow-qualification@1",
+      "task_id": "ASEH-072"
+    }
+  },
+  "production_qualified": false,
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "promotion_authorized": false,
+  "quality": {
+    "accepted_patch_quality_statistically_meaningful_degradation": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    },
+    "canary": {
+      "escaped_selected_test_false_negatives": [],
+      "observed_selected_test_false_negatives": []
+    },
+    "hermetic": {
+      "escaped_selected_test_false_negatives": [],
+      "observed_selected_test_false_negatives": [
+        "aseh-h26"
+      ]
+    },
+    "historical": {
+      "escaped_selected_test_false_negatives": [],
+      "observed_selected_test_false_negatives": []
+    },
+    "live_shadow": {
+      "escaped_selected_test_false_negatives": [],
+      "observed_selected_test_false_negatives": []
+    },
+    "usable_for_production_promotion": false
+  },
+  "reasons": [
+    "absent_live_cohort",
+    "historical_replay_insufficient_evidence",
+    "live_shadow_insufficient_evidence",
+    "canary_not_admitted",
+    "historical_audit_overhead_unmeasured",
+    "live_audit_overhead_unmeasured",
+    "live_safety_unmeasured",
+    "live_efficiency_unmeasured"
+  ],
+  "safety": {
+    "canary": {
+      "escaped_critical_seeded_defects": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "live_cohort": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "simulated_as_live_outcomes": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      }
+    },
+    "hard_gate_violation": false,
+    "hermetic": {
+      "escaped_critical_seeded_defects": {
+        "sensor_id": "aseh-070-hermetic-qualification",
+        "truth_state": "measured",
+        "unit": "count",
+        "value": 0
+      },
+      "live_cohort": {
+        "reason_code": "fixture_only",
+        "truth_state": "unavailable"
+      },
+      "simulated_as_live_outcomes": {
+        "sensor_id": "aseh-070-hermetic-qualification",
+        "truth_state": "measured",
+        "unit": "count",
+        "value": 0
+      }
+    },
+    "historical": {
+      "escaped_critical_seeded_defects": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "live_cohort": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "simulated_as_live_outcomes": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      }
+    },
+    "live_cohort_present": false,
+    "live_shadow": {
+      "escaped_critical_seeded_defects": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "live_cohort": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      },
+      "simulated_as_live_outcomes": {
+        "reason_code": "not_yet_measured",
+        "truth_state": "unavailable"
+      }
+    },
+    "usable_for_production_promotion": false
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-promotion-decision@1",
+  "schema_version": 1,
+  "self_authorized": false,
+  "task_id": "ASEH-074",
+  "thresholds": {
+    "accepted_patch_quality_statistically_meaningful_degradation": false,
+    "eligible_context_pack_reuse_percent": 50,
+    "field": "qualification.minimum_targets",
+    "frontier_model_call_reduction_percent": 40,
+    "low_risk_deterministic_or_small_model_share_percent": 60,
+    "manual_recovery_rate_strictly_less_than_percent": 2,
+    "median_live_input_token_reduction_percent": 30,
+    "net_savings_after_audit_and_verification_overhead_positive": true,
+    "overall_wall_time_maximum_regression_percent": 10,
+    "retry_token_reduction_percent": 25,
+    "source": "docs/architecture/agent_supervisor_efficiency_state_hardening.requirements.json",
+    "total_weighted_provider_cost_reduction_percent": 20
+  },
+  "thresholds_lowered": false,
+  "validator_command": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/api/agent_supervisor/efficiency_state_hardening/test_promotion_decision.py"
+  ]
+}

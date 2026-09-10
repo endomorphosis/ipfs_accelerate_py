@@ -1,0 +1,97 @@
+{
+  "admitted": true,
+  "allow_honest_nonpromotion": true,
+  "allow_not_admitted": false,
+  "arms": [
+    "direct_minimal_orchestration_baseline",
+    "sealed_current_supervisor_baseline",
+    "candidate_optimized_supervisor"
+  ],
+  "audit_overhead": {
+    "reason_code": "not_yet_measured",
+    "truth_state": "unavailable"
+  },
+  "authority": false,
+  "behavior_coverage": {},
+  "canary_admitted": false,
+  "cohort": "historical",
+  "controls": {},
+  "disposition": "insufficient_evidence",
+  "equal_control_fields": [
+    "repository_revision",
+    "objective",
+    "task_inputs",
+    "acceptance_tests",
+    "available_providers_and_models",
+    "price_accounting",
+    "resource_limits",
+    "maximum_retries",
+    "human_intervention_policy"
+  ],
+  "escaped_seeds": [],
+  "explicit_unavailable_fields": [
+    "audit_overhead",
+    "pair_count",
+    "safety.escaped_critical_seeded_defects",
+    "safety.live_cohort",
+    "safety.simulated_as_live_outcomes"
+  ],
+  "hermetic_sufficient_for_production_promotion": false,
+  "identity": "baguqeerapg33ogpph2dvwddl6kox3g4mnedkul5uz6gs22boaccmwk2efnhq",
+  "interface": "AsehPairedQualification@1",
+  "live": false,
+  "minimum_tasks": 20,
+  "objective_id": "ASEH-G080",
+  "pair_count": {
+    "reason_code": "not_yet_measured",
+    "truth_state": "unavailable"
+  },
+  "policy_identity": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1",
+  "population_kind": "historical_exact_tree_replay",
+  "production_qualified": false,
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "promotion_authorized": false,
+  "qualification": false,
+  "quality": {
+    "escaped_selected_test_false_negatives": [],
+    "observed_selected_test_false_negatives": []
+  },
+  "reasons": [
+    "historical_corpus_unavailable_on_current_tree",
+    "honest_nonpromotion"
+  ],
+  "repository_commit": "a044c001b2d69b11534d8c1def717484c1c12c4f",
+  "repository_tree": "9d0aab8a8b1269e6158ce129e844ff0a853e1430",
+  "results_identity": "baguqeeraq6frm25lorenss5l2i6od4tijcpwdv64ryec5qtfg5l3fgjaz4ja",
+  "safety": {
+    "escaped_critical_seeded_defects": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    },
+    "live_cohort": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    },
+    "simulated_as_live_outcomes": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    }
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-historical-qualification@1",
+  "schema_version": 1,
+  "statistics": {},
+  "task_id": "ASEH-071",
+  "validator_command": [
+    "python3",
+    "benchmarks/agent_supervisor/efficiency_state_hardening/paired_harness.py",
+    "--cohort",
+    "historical",
+    "--minimum-tasks",
+    "20",
+    "--output",
+    "benchmarks/agent_supervisor/efficiency_state_hardening/results/historical.json",
+    "--qualification-output",
+    "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/historical_qualification.json",
+    "--allow-honest-nonpromotion"
+  ]
+}

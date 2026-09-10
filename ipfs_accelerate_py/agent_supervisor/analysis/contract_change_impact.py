@@ -44,6 +44,9 @@ from .change_propagation_contracts import (
     ChangePropagationAuthorityError,
     ChangePropagationBoundsError,
     ChangePropagationError,
+    ContractClauseDelta,
+    DeltaDisposition,
+    DeltaKind,
     GraphEdgeKind,
     GraphNodeRef,
     GraphProvenance,
@@ -1267,6 +1270,78 @@ def compute_impact_closure_result(
 ContractChangeImpact = ContractChangeImpactAnalyzer
 
 
+def program_contract_deltas_from_ast_report(
+    report: Any,
+    *,
+    roots: PropagationAuthorityRoots | Mapping[str, Any],
+    change_set_id: str,
+    consumer_domain: str = "domain:python-callers",
+) -> tuple[ProgramContractDelta, ...]:
+    """Project exact AST contract observations into conservative graph deltas.
+
+    ``ASTSymbolChangeReport`` intentionally does not claim semantic meaning for
+    a changed signature or invariant.  This adapter therefore emits
+    :class:`DeltaDisposition.UNKNOWN` for signature/interface changes and
+    :class:`DeltaDisposition.BEHAVIORAL` for invariant-only changes.  Callers
+    must still run the reverse-cone analysis; this helper merely prevents a
+    model-produced interpretation from skipping the AST stage.
+    """
+
+    # Avoid an eager import cycle and accept the public report structurally so
+    # this module remains usable by existing typed graph callers.
+    changes = getattr(report, "changed_contracts", None)
+    if changes is None or not bool(getattr(report, "ast_completed", False)):
+        raise ContractChangeImpactError(
+            "contract impact requires a completed AST/symbol change report"
+        )
+    authority_roots = (
+        roots
+        if isinstance(roots, PropagationAuthorityRoots)
+        else (
+            PropagationAuthorityRoots.from_dict(roots)
+            if "schema" in roots
+            else PropagationAuthorityRoots(**dict(roots))
+        )
+    )
+    deltas: list[ProgramContractDelta] = []
+    for index, change in enumerate(changes):
+        before_ref = str(getattr(change, "before_contract_ref", "") or "")
+        after_ref = str(getattr(change, "after_contract_ref", "") or "")
+        # ProgramContractDelta requires both references.  Added/removed
+        # symbols remain an explicit AST cone fact and cannot be forged into a
+        # before/after contract comparison here.
+        if not before_ref or not after_ref:
+            continue
+        invariant_changed = bool(getattr(change, "invariant_changed", False))
+        kind = DeltaKind.EFFECT_CHANGE if invariant_changed else DeltaKind.GENERIC_CHANGE
+        disposition = (
+            DeltaDisposition.BEHAVIORAL if invariant_changed else DeltaDisposition.UNKNOWN
+        )
+        symbol_id = str(getattr(change, "symbol_id", "") or "")
+        clause = ContractClauseDelta(
+            clause_id=f"ast-contract:{index}:{symbol_id}",
+            kind=kind,
+            disposition=disposition,
+            subject_symbol_id=symbol_id,
+            consumer_domain=consumer_domain,
+            before_contract_ref=before_ref,
+            after_contract_ref=after_ref,
+            reason="exact_ast_contract_observation",
+        )
+        deltas.append(
+            ProgramContractDelta(
+                roots=authority_roots,
+                change_set_id=f"{change_set_id}:{index}",
+                subject_symbol_id=symbol_id,
+                before_contract_ref=before_ref,
+                after_contract_ref=after_ref,
+                clauses=(clause,),
+                evidence_refs=tuple(sorted(getattr(change, "provenance_refs", ()) or ())),
+            )
+        )
+    return tuple(deltas)
+
+
 __all__ = [
     "CONTRACT_CHANGE_IMPACT_SCHEMA",
     "CONTRACT_CHANGE_IMPACT_VERSION",
@@ -1287,6 +1362,7 @@ __all__ = [
     "compute_impact_closure_result",
     "compute_sccs",
     "resolve_seed_nodes",
+    "program_contract_deltas_from_ast_report",
     # Re-export canonical receipt types so consumers import one module.
     "ImpactClosureReceipt",
     "ImpactConsumer",

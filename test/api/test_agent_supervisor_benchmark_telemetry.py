@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.runtime.benchmark_telemetry import (
     BENCHMARK_CAUSAL_SPAN_INTERFACE,
     BENCHMARK_RESOURCE_MEASUREMENT_INTERFACE,
+    MAX_INTEGER,
     AttributionRole,
     BenchmarkCausalSpan,
     BenchmarkHardwareProfile,
@@ -19,7 +21,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.benchmark_telemetry import (
     SampleStatus,
     SpanKind,
     TelemetrySample,
+    UNIT_IDENTITY,
     UnavailableReason,
+    _identity_digest,
     build_resource_measurement,
     build_span_joined_measurement,
     certify_measurement_from_source_spans,
@@ -602,6 +606,29 @@ def test_token_ledger_projection_includes_cancelled_and_bindings() -> None:
         omitted["provider_native_input_tokens"].reason_code
         == "provider-omitted"
     )
+
+
+def test_identity_digest_fits_measured_integer_bound() -> None:
+    """uint64 SHA prefixes must fold into TelemetrySample.measured bounds."""
+
+    overflowed = False
+    for index in range(10_000):
+        text = f"provider:{index}"
+        raw = int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "big")
+        folded = _identity_digest(text)
+        assert 0 <= folded <= MAX_INTEGER
+        sample = TelemetrySample.measured(
+            "provider_id_identity",
+            value=folded,
+            unit=UNIT_IDENTITY,
+            sensor_id="sensor:test-identity",
+        )
+        assert sample.value == folded
+        if raw > MAX_INTEGER:
+            overflowed = True
+            assert folded == raw % (MAX_INTEGER + 1)
+            break
+    assert overflowed
 
 
 def test_span_joined_measurement_covers_required_dimensions() -> None:

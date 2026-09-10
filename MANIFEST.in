@@ -8,6 +8,7 @@ include WEBGPU_WEBNN_MIGRATION_PLAN.md
 
 recursive-include ipfs_accelerate_py *.py
 include ipfs_accelerate_py/agent_supervisor/semantic_state/schemas/*.json
+recursive-include ipfs_accelerate_py/agent_supervisor/task_sources/sql *.sql
 include scripts/__init__.py
 recursive-include scripts/shared *.py
 recursive-include mcp *.py

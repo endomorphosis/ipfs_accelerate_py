@@ -81,6 +81,60 @@ def _open(
     return coordinator, clock
 
 
+def test_open_rebuilds_stale_ready_index_before_updates(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "coordination.duckdb"
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:index-recovery",
+            task_id="INDEX-RECOVERY",
+        )
+    finally:
+        coordinator.close()
+
+    import duckdb
+
+    raw = duckdb.connect(str(database_path))
+    try:
+        raw.execute("DROP INDEX coordination_tasks_ready_idx")
+        raw.execute(
+            "CREATE INDEX coordination_tasks_ready_idx "
+            "ON coordination_tasks(task_id)"
+        )
+    finally:
+        raw.close()
+
+    reopened = open_database_coordinator(database_path)
+    try:
+        selected = reopened.claim_ready_task(
+            owner_session_id="session:index-recovery"
+        )
+        assert selected is not None
+        assert selected.task_cid == "task:index-recovery"
+    finally:
+        reopened.close()
+
+    observed = duckdb.connect(str(database_path), read_only=True)
+    try:
+        index_sql = observed.execute(
+            "SELECT sql FROM duckdb_indexes() "
+            "WHERE index_name = 'coordination_tasks_ready_idx'"
+        ).fetchone()
+        task_row = observed.execute(
+            "SELECT task_cid, task_id, ready FROM coordination_tasks"
+        ).fetchone()
+    finally:
+        observed.close()
+    assert index_sql is not None
+    assert index_sql[0] == (
+        "CREATE INDEX coordination_tasks_ready_idx ON "
+        "coordination_tasks(ready, registered_at_ms, task_cid);"
+    )
+    assert task_row == ("task:index-recovery", "INDEX-RECOVERY", True)
+
+
 def _completed_control_task(
     prepared: dict[str, object],
     *,
@@ -2247,6 +2301,25 @@ def test_released_same_key_retry_creates_new_claim(tmp_path: Path) -> None:
             idempotency_key="released-response",
         )
         coordinator.release(claim.as_fenced_lease(), reason="abandoned")
+        released = coordinator.get_task_claim(claim.claim_id)
+        assert released is not None
+        verified = coordinator.protect_task_claim(
+            released,
+            expected_task_cid=claim.task_cid,
+            expected_attempt_id=claim.attempt_id,
+            expected_owner_session_id=claim.owner_session_id,
+            expected_fencing_token=claim.fencing_token,
+            expected_fence_epoch=claim.fence_epoch,
+            expected_attempt_status=AttemptStatus.RELEASED,
+            expected_lease_state=LeaseState.RELEASED,
+        )
+        assert verified.state is LeaseState.RELEASED
+        with pytest.raises(ValueError, match="requires a released attempt"):
+            coordinator.protect_task_claim(
+                released,
+                expected_attempt_status=AttemptStatus.RUNNING,
+                expected_lease_state=LeaseState.RELEASED,
+            )
 
         replacement = coordinator.claim_task(
             task_cid=claim.task_cid,
@@ -2257,6 +2330,12 @@ def test_released_same_key_retry_creates_new_claim(tmp_path: Path) -> None:
         assert replacement.attempt_id != claim.attempt_id
         assert replacement.attempt_number == claim.attempt_number + 1
         assert replacement.fencing_token > claim.fencing_token
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.protect_task_claim(
+                released,
+                expected_attempt_status=AttemptStatus.RELEASED,
+                expected_lease_state=LeaseState.RELEASED,
+            )
     finally:
         coordinator.close()
 

@@ -24,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     append_jsonl_event,
     event_log_manifest,
     read_jsonl_event_sources,
+    repair_jsonl_event_log,
     rotate_event_log_if_needed,
 )
 from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contracts import (
@@ -265,3 +266,23 @@ def test_event_log_bounds_streaming_rotation_and_recovery_manifest(
     recovered = event_log_manifest(path)
     assert recovered["generation"] == 0
     assert sum(item["event_count"] for item in recovered["files"]) == 8
+
+
+def test_event_log_repair_quarantines_sequence_gap(tmp_path: Path) -> None:
+    path = tmp_path / "supervisor_events.jsonl"
+    append_jsonl_event(path, "first", {"n": 1})
+    append_jsonl_event(path, "second", {"n": 2})
+    append_jsonl_event(path, "third", {"n": 3})
+    lines = path.read_text(encoding="utf-8").splitlines()
+    path.write_text(lines[0] + "\n" + lines[2] + "\n", encoding="utf-8")
+    manifest_path = path.with_name(f"{path.name}.manifest.json")
+    if manifest_path.exists():
+        manifest_path.unlink()
+
+    result = repair_jsonl_event_log(path)
+    assert result["repaired"] is True
+    assert result["reason"] == "sequence_gap"
+    assert path.read_text(encoding="utf-8") == ""
+    append_jsonl_event(path, "recovered", {"ok": True})
+    events = read_jsonl_event_sources([path])
+    assert events[-1]["type"] == "recovered"

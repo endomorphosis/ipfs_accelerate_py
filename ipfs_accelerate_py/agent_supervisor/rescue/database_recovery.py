@@ -54,6 +54,9 @@ RECOVERY_ACTION_SCHEMA: Final[str] = (
 RECONCILIATION_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/reconciliation-receipt@1"
 )
+RECOVERY_DECISION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/recovery-decision@1"
+)
 RECOVERY_EVENT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/recovery-event@1"
 )
@@ -204,8 +207,14 @@ class SubjectKind(str, Enum):
 class SubjectStatus(str, Enum):
     OPEN = "open"
     RECOVERING = "recovering"
+    PROVIDER_OUTCOME_UNKNOWN = "provider_outcome_unknown"
+    RECONCILIATION_PENDING = "reconciliation_pending"
+    RETRY_PENDING = "retry_pending"
     RECONCILED = "reconciled"
     QUARANTINED = "quarantined"
+    COMPENSATED = "compensated"
+    TERMINAL_SUCCEEDED = "terminal_succeeded"
+    TERMINAL_FAILED = "terminal_failed"
     RESCUED = "rescued"
     CLOSED = "closed"
 
@@ -214,6 +223,8 @@ class ActionKind(str, Enum):
     REPLAY = "replay"
     RECONCILE = "reconcile"
     RETRY = "retry"
+    COMPENSATE = "compensate"
+    TERMINALIZE = "terminalize"
     QUARANTINE = "quarantine"
     RESCUE = "rescue"
     FENCE_STALE_CLAIM = "fence_stale_claim"
@@ -308,6 +319,102 @@ def _bounded_mapping(
             f"{name} exceeds the {max_bytes}-byte bound"
         )
     return raw
+
+
+_UNKNOWN_OUTCOME_EVIDENCE_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "provider_available",
+        "effect_observed",
+        "effect_absent",
+        "receipt_observed",
+        "idempotency_observed",
+        "idempotency_key",
+        "completion_observed",
+        "completion_succeeded",
+        "compensation_observed",
+        "effect_idempotent",
+    }
+)
+_UNKNOWN_OUTCOME_DECISIONS: Final[frozenset[str]] = frozenset(
+    {
+        "reconciliation_pending",
+        "retry_pending",
+        "compensated",
+        "quarantined",
+        "terminal_succeeded",
+        "terminal_failed",
+    }
+)
+
+
+def _provider_outcome_decision(evidence: Mapping[str, Any]) -> str:
+    """Classify observed truth without inferring a missing provider effect."""
+
+    if (
+        not isinstance(evidence, Mapping)
+        or frozenset(evidence) != _UNKNOWN_OUTCOME_EVIDENCE_FIELDS
+    ):
+        raise DatabaseRecoveryError("provider outcome evidence fields are invalid")
+    normalized = dict(evidence)
+    for name in _UNKNOWN_OUTCOME_EVIDENCE_FIELDS - {"idempotency_key"}:
+        if not isinstance(normalized[name], bool):
+            raise DatabaseRecoveryError(
+                f"provider outcome evidence {name} is invalid"
+            )
+    key = _text(normalized["idempotency_key"], "idempotency_key", required=False)
+    if bool(normalized["idempotency_observed"]) != bool(key):
+        raise DatabaseRecoveryError(
+            "idempotency observation and idempotency key must agree"
+        )
+    if normalized["effect_observed"] and normalized["effect_absent"]:
+        raise DatabaseRecoveryError("provider effect evidence is contradictory")
+    if normalized["completion_observed"] and not normalized["effect_observed"]:
+        raise DatabaseRecoveryError("completion cannot be observed without an effect")
+    if normalized["compensation_observed"] and not normalized["effect_observed"]:
+        raise DatabaseRecoveryError("compensation cannot be observed without an effect")
+    if normalized["completion_succeeded"] and not normalized["completion_observed"]:
+        raise DatabaseRecoveryError("completion success requires an observed completion")
+
+    settled = (
+        normalized["effect_observed"]
+        and normalized["receipt_observed"]
+        and normalized["idempotency_observed"]
+    )
+    if normalized["completion_observed"] and settled:
+        return (
+            "terminal_succeeded"
+            if normalized["completion_succeeded"]
+            else "terminal_failed"
+        )
+    if normalized["compensation_observed"] and settled:
+        return "compensated"
+    # An unavailable provider does not establish that an effect is absent.
+    if not normalized["provider_available"]:
+        return "reconciliation_pending"
+    # Non-idempotent effects stay quarantined unless a separate compensation or
+    # terminal receipt settles them.  Retrying requires observed absence too.
+    if (
+        normalized["effect_absent"]
+        and normalized["receipt_observed"]
+        and normalized["idempotency_observed"]
+        and normalized["effect_idempotent"]
+    ):
+        return "retry_pending"
+    return "quarantined"
+
+
+def _unknown_outcome_action_kind(decision: str) -> ActionKind:
+    if decision == "retry_pending":
+        return ActionKind.RETRY
+    if decision == "compensated":
+        return ActionKind.COMPENSATE
+    if decision in {"terminal_succeeded", "terminal_failed"}:
+        return ActionKind.TERMINALIZE
+    if decision == "quarantined":
+        return ActionKind.QUARANTINE
+    if decision == "reconciliation_pending":
+        return ActionKind.RECONCILE
+    raise DatabaseRecoveryError("provider outcome decision is invalid")
 
 
 def _row_mapping(row: Any) -> dict[str, Any]:
@@ -906,6 +1013,138 @@ class DatabaseRecovery:
             ).fetchone()
         return None if row is None else self._subject_from_row(row)
 
+    def mark_provider_outcome_unknown(
+        self,
+        *,
+        subject_id: str,
+        reason: str,
+        observation: Mapping[str, Any] | None = None,
+    ) -> RecoverySubject:
+        """Freeze a possibly effected provider attempt for reconciliation.
+
+        This does not infer an external effect from a timeout or connection
+        loss.  It only records that a started provider operation cannot yet be
+        settled and blocks direct retry/terminal actions until evidence is
+        classified through :meth:`reconcile_provider_outcome_unknown`.
+        """
+
+        sid = _text(subject_id, "subject_id")
+        reason_text = _text(reason, "reason")
+        observation_body = _bounded_mapping(
+            observation, name="unknown outcome observation"
+        )
+        if "json_receipt_path" in observation_body or "queue_file" in observation_body:
+            raise DatabaseRecoveryError(
+                "JSON receipt or queue file alone cannot establish an unknown outcome"
+            )
+        now = self._now_ms()
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                row = connection.execute(
+                    "SELECT * FROM recovery_subjects WHERE subject_id = ?", [sid]
+                ).fetchone()
+                if row is None:
+                    raise DatabaseRecoveryConflictError(f"unknown subject {sid}")
+                subject = self._subject_from_row(row)
+                if subject.status in {
+                    SubjectStatus.TERMINAL_SUCCEEDED,
+                    SubjectStatus.TERMINAL_FAILED,
+                    SubjectStatus.COMPENSATED,
+                    SubjectStatus.QUARANTINED,
+                }:
+                    raise DatabaseRecoveryConflictError(
+                        "a settled provider outcome cannot become unknown"
+                    )
+                previous = dict(subject.body).get("provider_outcome_unknown")
+                exact_observation = {
+                    "reason": reason_text,
+                    "observation": observation_body,
+                }
+                if subject.status in {
+                    SubjectStatus.PROVIDER_OUTCOME_UNKNOWN,
+                    SubjectStatus.RECONCILIATION_PENDING,
+                }:
+                    if previous != exact_observation:
+                        raise DatabaseRecoveryConflictError(
+                            "provider outcome unknown observation changed"
+                        )
+                    self._commit_if_idle(connection)
+                    return subject
+                updated_body = {
+                    **dict(subject.body),
+                    "provider_outcome_unknown": exact_observation,
+                }
+                connection.execute(
+                    """
+                    UPDATE recovery_subjects
+                    SET status = ?, updated_at_ms = ?, body_json = ?
+                    WHERE subject_id = ?
+                    """,
+                    [
+                        SubjectStatus.PROVIDER_OUTCOME_UNKNOWN.value,
+                        now,
+                        _canonical_json(updated_body),
+                        subject.subject_id,
+                    ],
+                )
+                self._record_event(
+                    connection,
+                    subject_id=subject.subject_id,
+                    event_type="provider_outcome_unknown",
+                    body=exact_observation,
+                    now_ms=now,
+                )
+                updated = connection.execute(
+                    "SELECT * FROM recovery_subjects WHERE subject_id = ?",
+                    [subject.subject_id],
+                ).fetchone()
+                self._commit_if_idle(connection)
+                return self._subject_from_row(updated)
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+
+    # Keep the public wording aligned with both the task state and provider
+    # adapter terminology used elsewhere in the supervisor.
+    record_provider_outcome_unknown = mark_provider_outcome_unknown
+
+    def reconcile_provider_outcome_unknown(
+        self,
+        *,
+        subject_id: str,
+        evidence: Mapping[str, Any],
+        idempotency_key: str = "",
+        reason: str = "provider_outcome_reconciliation",
+    ) -> RecoveryAction:
+        """Choose and apply the only recovery transition admitted by evidence."""
+
+        sid = _text(subject_id, "subject_id")
+        evidence_body = _bounded_mapping(evidence, name="provider outcome evidence")
+        decision = _provider_outcome_decision(evidence_body)
+        action_kind = _unknown_outcome_action_kind(decision)
+        return self.decide_and_apply(
+            subject_id=sid,
+            action_kind=action_kind,
+            reason=_text(reason, "reason"),
+            idempotency_key=idempotency_key,
+            body={
+                "provider_outcome_reconciliation": {
+                    "schema": RECOVERY_DECISION_SCHEMA,
+                    "evidence": evidence_body,
+                    "decision": decision,
+                }
+            },
+            result={
+                "decision": decision,
+                "evidence": evidence_body,
+                "replayed_event_count": 0,
+            },
+        )
+
+    reconcile_unknown_provider_outcome = reconcile_provider_outcome_unknown
+
     # -- decide / apply ------------------------------------------------------
 
     def decide_action(
@@ -996,6 +1235,39 @@ class DatabaseRecovery:
                     raise DatabaseRecoveryExhaustedError(
                         f"subject {sid} is quarantined; only rescue is admitted"
                     )
+                reconciliation = payload.get("provider_outcome_reconciliation")
+                requires_reconciliation = subject.status in {
+                    SubjectStatus.PROVIDER_OUTCOME_UNKNOWN,
+                    SubjectStatus.RECONCILIATION_PENDING,
+                }
+                if requires_reconciliation or reconciliation is not None:
+                    if not isinstance(reconciliation, Mapping) or set(reconciliation) != {
+                        "schema",
+                        "evidence",
+                        "decision",
+                    }:
+                        raise DatabaseRecoveryError(
+                            "provider outcome reconciliation context is invalid"
+                        )
+                    if reconciliation.get("schema") != RECOVERY_DECISION_SCHEMA:
+                        raise DatabaseRecoveryError(
+                            "provider outcome reconciliation schema is invalid"
+                        )
+                    evidence = reconciliation.get("evidence")
+                    decision = reconciliation.get("decision")
+                    if not isinstance(evidence, Mapping) or not isinstance(decision, str):
+                        raise DatabaseRecoveryError(
+                            "provider outcome reconciliation evidence is invalid"
+                        )
+                    expected_decision = _provider_outcome_decision(evidence)
+                    if (
+                        decision not in _UNKNOWN_OUTCOME_DECISIONS
+                        or decision != expected_decision
+                        or kind is not _unknown_outcome_action_kind(decision)
+                    ):
+                        raise DatabaseRecoveryConflictError(
+                            "provider outcome reconciliation chose an inadmissible transition"
+                        )
 
                 action_id = _new_id("recovery-action")
                 connection.execute(
@@ -1141,6 +1413,12 @@ class DatabaseRecovery:
                 subject_status = subject.status
                 retry_count = subject.retry_count
                 action_status = ActionStatus.APPLIED
+                reconciliation = current.body.get("provider_outcome_reconciliation")
+                reconciliation_decision = (
+                    reconciliation.get("decision")
+                    if isinstance(reconciliation, Mapping)
+                    else ""
+                )
 
                 if current.action_kind is ActionKind.RETRY:
                     if subject.retry_count >= subject.max_retries:
@@ -1151,10 +1429,23 @@ class DatabaseRecovery:
                         if retry_count >= subject.max_retries:
                             action_status = ActionStatus.EXHAUSTED
                             subject_status = SubjectStatus.QUARANTINED
+                        elif reconciliation_decision == "retry_pending":
+                            subject_status = SubjectStatus.RETRY_PENDING
                         else:
                             subject_status = SubjectStatus.OPEN
                 elif current.action_kind is ActionKind.QUARANTINE:
                     subject_status = SubjectStatus.QUARANTINED
+                elif current.action_kind is ActionKind.COMPENSATE:
+                    subject_status = SubjectStatus.COMPENSATED
+                elif current.action_kind is ActionKind.TERMINALIZE:
+                    if reconciliation_decision == "terminal_succeeded":
+                        subject_status = SubjectStatus.TERMINAL_SUCCEEDED
+                    elif reconciliation_decision == "terminal_failed":
+                        subject_status = SubjectStatus.TERMINAL_FAILED
+                    else:
+                        raise DatabaseRecoveryConflictError(
+                            "terminalization requires an observed provider outcome"
+                        )
                 elif current.action_kind is ActionKind.RESCUE:
                     subject_status = SubjectStatus.RESCUED
                 elif current.action_kind in {
@@ -1164,7 +1455,11 @@ class DatabaseRecovery:
                     ActionKind.INTERRUPT_VALIDATION,
                     ActionKind.INTERRUPT_MERGE,
                 }:
-                    subject_status = SubjectStatus.RECONCILED
+                    subject_status = (
+                        SubjectStatus.RECONCILIATION_PENDING
+                        if reconciliation_decision == "reconciliation_pending"
+                        else SubjectStatus.RECONCILED
+                    )
                 else:
                     subject_status = SubjectStatus.CLOSED
 
@@ -1524,6 +1819,7 @@ __all__ = [
     "DATABASE_RECOVERY_SCHEMA",
     "RECOVERY_ACTION_SCHEMA",
     "RECONCILIATION_RECEIPT_SCHEMA",
+    "RECOVERY_DECISION_SCHEMA",
     "DEFAULT_MAX_RETRIES",
     "SubjectKind",
     "SubjectStatus",

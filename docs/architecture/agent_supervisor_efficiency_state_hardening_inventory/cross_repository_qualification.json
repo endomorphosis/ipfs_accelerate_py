@@ -1,0 +1,219 @@
+{
+  "authority": false,
+  "authority_boundaries": {
+    "ipfs_accelerate_py": {
+      "must_not_own": [
+        "reminting_datasets_semantic_identities"
+      ],
+      "owns": [
+        "supervisor_state",
+        "execution_admission",
+        "provider_and_model_routing",
+        "task_claims_leases_and_fencing",
+        "retries_validation_repair_and_reconciliation",
+        "terminalization_and_promotion_decisions",
+        "context_pack_freshness_and_executor_selection",
+        "proof_and_test_reuse_admission_for_current_tree"
+      ],
+      "package": "ipfs_accelerate_py",
+      "producer": "ipfs_accelerate_py.agent_supervisor.semantic_state.context_pack_selector"
+    },
+    "ipfs_datasets_py": {
+      "must_not_own": [
+        "durable_byte_storage",
+        "supervisor_execution_authority"
+      ],
+      "owns": [
+        "semantic_identity",
+        "canonical_ir_and_schema_semantics",
+        "minimal_semantic_context_pack_construction",
+        "formal_obligations",
+        "semantic_dependency_descriptions",
+        "source_lineage",
+        "proof_relationships"
+      ],
+      "package": "ipfs_datasets_py",
+      "producer": "ipfs_datasets_py.proof_context.context_pack"
+    },
+    "ipfs_kit_py": {
+      "must_not_own": [
+        "semantic_correctness",
+        "proof_admission",
+        "execution_reuse_admission"
+      ],
+      "owns": [
+        "durable_byte_storage",
+        "cid_verification",
+        "immutable_blocks",
+        "current_root_cas",
+        "wal_and_recovery",
+        "retention",
+        "optional_replication"
+      ],
+      "package": "ipfs_kit_py",
+      "producer": "ipfs_kit_py.proof_context.state_store"
+    }
+  },
+  "authority_requirement": "independent contract qualification only; does not promote package or policy pointers",
+  "cid_profile": {
+    "algorithm": "cidv1_base32_sha2_256",
+    "forbidden_forms": [
+      "cidv0_multihash",
+      "uuid_literal",
+      "placeholder_identity",
+      "untyped_digest",
+      "sha1_digest",
+      "mock_cid",
+      "fake_cid"
+    ],
+    "identity_field": "qualification_fingerprint",
+    "producer": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts.content_identity"
+  },
+  "contract_rules": [
+    "Do not copy large implementations across repositories.",
+    "Use stable contracts and immutable package or artifact boundaries.",
+    "Tests must not import another repository's uninstalled source-tree tests directory.",
+    "Shared fixtures must be stable package data, schemas, or immutable vectors."
+  ],
+  "current_head_policy": {
+    "allowed_accelerate_dirty_paths": [
+      "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/cross_repository_qualification.json",
+      "test/api/agent_supervisor/efficiency_state_hardening/test_cross_repository_contracts.py"
+    ],
+    "binding": "live_peeled_head_must_be_commit_and_tree",
+    "cid_inequality_invalidates": true,
+    "dirty_head_invalidates": true,
+    "editable_sibling_leakage_invalidates": true,
+    "mock_capability_invalidates": true,
+    "planning_commit_must_be_ancestor": true,
+    "source_tree_test_import_invalidates": true,
+    "status": "measured_at_validation",
+    "unbound_head_invalidates": true
+  },
+  "forbidden_test_imports": [
+    "ipfs_datasets_py.tests",
+    "ipfs_kit_py.tests",
+    "test.api.agent_supervisor.efficiency_state_hardening.test_",
+    "test.api.test_agent_supervisor_",
+    "tests.proof_context",
+    "tests.test_context_pack_store"
+  ],
+  "installation": {
+    "editable": false,
+    "mode": "independent_package_trees_without_sibling_tests",
+    "packages": {
+      "ipfs_accelerate_py": {
+        "source_package": "ipfs_accelerate_py",
+        "tests_directory": "test"
+      },
+      "ipfs_datasets_py": {
+        "source_package": "ipfs_datasets_py/ipfs_datasets_py",
+        "tests_directory": "ipfs_datasets_py/tests"
+      },
+      "ipfs_kit_py": {
+        "source_package": "ipfs_kit_py/ipfs_kit_py",
+        "tests_directory": "ipfs_kit_py/tests"
+      }
+    },
+    "path": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin",
+    "python": "/usr/bin/python3.12",
+    "sibling_source_tree_tests": false
+  },
+  "nonclaims": [
+    "This qualification does not promote package or policy pointers.",
+    "Installed-package contract success is not production qualification, live measurement, or promotion authority.",
+    "Kit durability proves exact stored bytes only; it is not semantic correctness or proof or test reuse admission.",
+    "Datasets semantic identity is never reminted by Accelerate or Kit.",
+    "A mock, fake, simulated, or placeholder CID or capability cannot satisfy a current-head vector."
+  ],
+  "objective_id": "ASEH-G070",
+  "package_promotion": false,
+  "plan_revision": "ASEH-PLAN-R1",
+  "planning_ancestors": {
+    "ipfs_accelerate_py": {
+      "commit": "755f45475cc2d13dacd8b330036c1d597afeddde",
+      "tree": "729da9f8293ecfa046a0136381a3d3808f9ed140"
+    },
+    "ipfs_datasets_py": {
+      "commit": "209dbe2765593fbc6efe8e9281c34f2e8f6e37a6",
+      "tree": "95f54df34585d0b736706fd90c83f55954489ad9"
+    },
+    "ipfs_kit_py": {
+      "commit": "ba5508d940fb5b23a6d0d9b2084f5195cd26a671",
+      "tree": "7c71efa93c4e4124d12fa05515868df3a5344b2e"
+    }
+  },
+  "policy_promotion": false,
+  "production_qualified": false,
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "qualification": true,
+  "qualification_fingerprint": {
+    "installation": "independent_non_editable_current_head_package_trees",
+    "plan_revision": "ASEH-PLAN-R1",
+    "repositories": [
+      "ipfs_accelerate_py",
+      "ipfs_datasets_py",
+      "ipfs_kit_py"
+    ],
+    "schema": "ipfs_accelerate_py/agent-supervisor/aseh-cross-repository-qualification@1",
+    "task_id": "ASEH-062",
+    "vectors": [
+      "authority_boundaries",
+      "canonical_bytes_and_cid_equality",
+      "independent_current_head_installation",
+      "missing_dependencies",
+      "no_sibling_source_tree_test_imports",
+      "numeric_bounds",
+      "stale_identities",
+      "unknown_fields"
+    ]
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-cross-repository-qualification@1",
+  "task_id": "ASEH-062",
+  "truth_state": "current_head_installed_package_contract_qualification",
+  "validation": [
+    "python3 -m pytest -q test/api/agent_supervisor/efficiency_state_hardening/test_cross_repository_contracts.py"
+  ],
+  "vectors": [
+    {
+      "expect": "accept",
+      "id": "canonical_bytes_and_cid_equality",
+      "proof": "Datasets and Kit CIDv1 of the same raw bytes are equal, Kit get returns those exact bytes, and Accelerate verifies both identities without reminting pack_cid."
+    },
+    {
+      "expect": "reject",
+      "id": "unknown_fields",
+      "proof": "Closed Datasets envelopes, Kit store records, and installed Kit contract vectors reject unknown fields."
+    },
+    {
+      "expect": "reject",
+      "id": "numeric_bounds",
+      "proof": "Datasets JSON-unsafe integer bounds and Kit negative generation or byte_length fail closed."
+    },
+    {
+      "expect": "reject",
+      "id": "stale_identities",
+      "proof": "Exact tree, objective, policy, interface, toolchain, and environment mismatches are rejected and cannot be reused."
+    },
+    {
+      "expect": "reject",
+      "id": "missing_dependencies",
+      "proof": "Unresolved dependency CIDs, unnamed missing references, incomplete packs, and independently installed packages that lack a required sibling authority fail closed."
+    },
+    {
+      "expect": "accept",
+      "id": "authority_boundaries",
+      "proof": "Independent Datasets, Kit, and Accelerate installs prove each repository's owns and must_not_own boundary."
+    },
+    {
+      "expect": "reject",
+      "id": "no_sibling_source_tree_test_imports",
+      "proof": "Isolated installs exclude sibling tests/ trees; production modules and this suite do not import uninstalled source-tree tests."
+    },
+    {
+      "expect": "accept",
+      "id": "independent_current_head_installation",
+      "proof": "Each current-head package tree is copied independently into a non-editable site-packages without sibling tests, at peelable commits/trees that have the planning snapshots as ancestors."
+    }
+  ]
+}

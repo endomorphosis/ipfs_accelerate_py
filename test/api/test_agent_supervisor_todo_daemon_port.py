@@ -10866,13 +10866,30 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
         )
     )
     loop._last_worker_status = {
+        "worker_metrics_available": True,
+        "worker_metrics_unavailable_reason": "",
+        "worker_census_method": "linux-procfs-descendant-census@1",
+        "worker_root_pid": 99,
+        "worker_root_start_time_ticks": 123,
+        "worker_root_boot_id": "boot-id",
+        "worker_root_identity_source": "supervised_child_identity",
+        "worker_observed_at_ns": time.time_ns(),
+        "worker_observation_generation": "run-1:99:123:boot-id",
         "phase": "implementing",
+        "phase_available": True,
+        "phase_known": True,
+        "phase_known_non_worktree": False,
+        "required": True,
         "phase_age_seconds": 45.0,
         "active_worker_pids": [1234, 5678],
         "active_worker_count": 2,
+        "descendant_pids": [1234, 5678, 7777, 8888],
         "descendant_count": 4,
+        "stall_evidence_available": True,
+        "stall_evidence_unavailable_reason": "",
         "stalled_without_active_worker": False,
     }
+    loop.last_run_id = "run-1"
 
     loop._write_status(
         "running",
@@ -10885,13 +10902,31 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
     assert status["worker_phase"] == "implementing"
     assert status["worker_phase_age_seconds"] == 45.0
     assert status["worker_descendant_count"] == 4
+    assert status["worker_descendant_pids"] == [1234, 5678, 7777, 8888]
     assert status["stalled_without_active_worker"] is False
+    assert status["worker_metrics_available"] is True
+    assert status["worker_root_pid"] == 99
 
     loop._write_status("stopped")
     stopped = json.loads((state_dir / "supervisor_status.json").read_text(encoding="utf-8"))
-    assert stopped["active_worker_count"] == 0
-    assert stopped["active_worker_pids"] == []
-    assert stopped["worker_descendant_count"] == 0
+    assert stopped["worker_metrics_available"] is False
+    assert stopped["worker_metrics_unavailable_reason"] == "no_live_child"
+    assert stopped["active_worker_count"] is None
+    assert stopped["active_worker_pids"] is None
+    assert stopped["worker_descendant_count"] is None
+    assert stopped["worker_descendant_pids"] is None
+    assert stopped["worker_observed_at_ns"] is None
+    assert stopped["worker_observation_generation"] == ""
+    assert stopped["worker_phase"] == ""
+    assert stopped["worker_phase_available"] is False
+    assert stopped["worker_phase_guarded"] is None
+    assert stopped["worker_phase_age_seconds"] is None
+    assert stopped["stalled_without_active_worker"] is None
+    assert stopped["last_worker_observation"]["active_worker_count"] == 2
+    assert (
+        stopped["last_worker_observation"]["worker_observation_generation"]
+        == "run-1:99:123:boot-id"
+    )
 
 
 def test_supervisor_loop_accepts_fresh_child_log_when_semantic_heartbeat_is_stale(
@@ -11308,16 +11343,22 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
     }
     assert len(transitions) == 4
     stopped = json.loads(supervisor_status_path.read_text(encoding="utf-8"))
-    assert stopped["status"] == "stopped"
+    assert stopped["status"] == "stopping"
     assert stopped["supervisor_pid"] == os.getpid()
-    assert stopped["supervisor_pid_alive"] is False
+    assert stopped["supervisor_pid_alive"] is True
+    assert stopped["supervisor_exit_pending"] is True
     assert stopped["daemon_pid"] is None
     assert stopped["daemon_pid_alive"] is False
-    assert stopped["active_worker_count"] == 0
-    assert stopped["active_worker_pids"] == []
-    assert stopped["worker_descendant_count"] == 0
+    assert stopped["active_worker_count"] is None
+    assert stopped["active_worker_pids"] is None
+    assert stopped["worker_descendant_count"] is None
+    assert stopped["worker_descendant_pids"] is None
+    assert stopped["stalled_without_active_worker"] is None
+    assert stopped["worker_metrics_available"] is False
+    assert stopped["last_worker_observation"]["active_worker_count"] == 1
     assert stopped["stop_signal"] == signal.SIGTERM
-    assert stopped["last_exit_code"] == 128 + signal.SIGTERM
+    assert stopped["requested_exit_code"] == 128 + signal.SIGTERM
+    assert "last_exit_code" not in stopped
     assert stopped["last_recycle_reason"] == "supervisor_signal_shutdown"
     assert stopped["managed_daemon_cleanup"]["terminated"] is True
     assert (
@@ -12099,6 +12140,101 @@ def test_implementation_daemon_run_once_cleans_already_merged_worktree(tmp_path)
     assert branch_exists.returncode != 0
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(event["type"] == "merged_worktree_cleanup" for event in events)
+
+
+def test_implementation_daemon_repairs_locked_missing_merged_worktree_registration(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/accel-locked-missing-attempt-1"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("merged payload\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "add merged payload")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch_name)
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "locked-missing"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    _git(
+        repo,
+        "worktree",
+        "lock",
+        "--reason",
+        "initializing",
+        str(worktree_path),
+    )
+    shutil.rmtree(worktree_path)
+    listing_before = _git(repo, "worktree", "list", "--porcelain")
+    assert f"worktree {worktree_path}" in listing_before.splitlines()
+    assert "locked initializing" in listing_before.splitlines()
+
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Completed merged-worktree cleanup fixture
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: feature.txt
+- Validation: test -f feature.txt
+- Acceptance: The fixture branch is already merged.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=worktree_root,
+        merged_worktree_cleanup_max=5,
+    )
+    original_locked_cleanup = daemon._cleanup_already_merged_worktrees_locked
+    checkout_lock_observed: list[bool] = []
+
+    def observe_checkout_lock(**kwargs):
+        checkout_lock_observed.append(daemon._repo_merge_lock_path().exists())
+        return original_locked_cleanup(**kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_already_merged_worktrees_locked",
+        observe_checkout_lock,
+    )
+
+    result = daemon.run_once()
+
+    cleanup = result["merged_worktree_cleanup"]
+    assert checkout_lock_observed == [True]
+    assert cleanup["removed_count"] == 1
+    assert cleanup["removed"][0]["cleanup_result"]["cleaned"] is True
+    stale_cleanup = cleanup["removed"][0]["cleanup_result"][
+        "stale_registration_cleanup"
+    ]
+    assert stale_cleanup == {
+        "attempted": True,
+        "removed": True,
+        "registered_after": False,
+    }
+    listing_after = _git(repo, "worktree", "list", "--porcelain")
+    assert f"worktree {worktree_path}" not in listing_after.splitlines()
 
 
 def test_implementation_daemon_fences_preparing_worktree_from_peer_merged_cleanup(
@@ -12911,6 +13047,64 @@ def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path)
     assert state.task_statuses["ACCEL-001"] == "completed"
     assert state.task_statuses["ACCEL-002"] == "merge-queued"
     assert state.task_statuses["ACCEL-003"] == "ready"
+
+
+def test_database_deterministic_reconciliation_ignores_stale_merge_completion(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Revalidate an earlier integrated candidate
+
+- Status: completed
+- Completion: artifact
+- Priority: P0
+- Track: ops
+- Depends on:
+- Outputs:
+- Validation: python -c 'raise SystemExit(0)'
+- Acceptance: Current-tree validation must run before completion.
+- Database deterministic reconciliation schema: ipfs_accelerate_py/agent-supervisor/false-completion-reconciliation-projection@1
+""",
+        encoding="utf-8",
+    )
+    queue = MergeQueue(repo / "merge-queue")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        merge_queue=queue,
+    )
+    [task] = parse_task_file(todo_path, "## ACCEL-")
+    request = queue.enqueue(
+        branch_name="implementation/accel-001",
+        task_id=task.task_id,
+        canonical_task_id=daemon._canonical_ref(task),
+        commit_sha="a" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == request.request_id
+    queue.complete(claimed)
+    daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
+    daemon._successfully_merged_task_ids = lambda: {task.task_id}  # type: ignore[method-assign]
+
+    result = daemon.run_once()
+    [projected] = parse_task_file(todo_path, "## ACCEL-")
+    state = TodoTaskState.load(daemon.state_path)
+
+    assert result["shared_completed_task_ids"] == []
+    assert result["deterministic_reconciliation_task_ids"] == [task.task_id]
+    assert result["merged_status_repair"] == {}
+    assert projected.status == "completed"
+    assert state.task_statuses[task.task_id] == "ready"
+    assert state.completed_task_ids == []
 
 
 def test_bundle_runtime_taskboard_preserves_reviewed_shard_digest_on_shared_completion(
@@ -29826,6 +30020,16 @@ def test_implementation_supervisor_tolerates_worktree_removed_during_cleanup(
         "_git_ref_is_ancestor",
         lambda _repo, _ancestor, _descendant: True,
     )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_ref_commit",
+        lambda _repo, _ref: "abc123",
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_ref_exists",
+        lambda _repo, _ref: True,
+    )
 
     def remove_then_report_dirty(_path: Path) -> list[str]:
         worktree_path.rmdir()
@@ -29840,8 +30044,96 @@ def test_implementation_supervisor_tolerates_worktree_removed_during_cleanup(
 
     result = supervisor.cleanup_backlogged_worktrees()
 
-    assert result["removed_count"] == 0
-    assert result["skipped_reason_counts"]["worktree_removed_concurrently"] == 1
+    assert result["removed_count"] == 1
+    assert result["removed"][0]["reason"] == "orphaned_registration_removed"
+
+
+def test_implementation_supervisor_repairs_locked_missing_merged_registration_under_checkout_lock(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/supervisor-locked-missing"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("merged payload\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "add merged payload")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch_name)
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "locked-missing"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    _git(
+        repo,
+        "worktree",
+        "lock",
+        "--reason",
+        "initializing",
+        str(worktree_path),
+    )
+    shutil.rmtree(worktree_path)
+    listing_before = _git(repo, "worktree", "list", "--porcelain")
+    assert f"worktree {worktree_path}" in listing_before.splitlines()
+    assert "locked initializing" in listing_before.splitlines()
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="main",
+        )
+    )
+    monkeypatch.setattr(supervisor, "_list_process_commands", lambda: [])
+    original_cleanup = supervisor._cleanup_missing_worktree_registration_locked
+    mismatched = original_cleanup(
+        path=worktree_path,
+        branch=branch_name,
+        head=_git(repo, "rev-parse", "main^1"),
+        target_ref="main",
+    )
+    assert mismatched["removed"] is False
+    assert mismatched["reason"] == (
+        "registered_head_or_branch_not_exactly_merged"
+    )
+    assert f"worktree {worktree_path}" in _git(
+        repo, "worktree", "list", "--porcelain"
+    ).splitlines()
+    checkout_lock_observed: list[bool] = []
+
+    def observe_checkout_lock(**kwargs):
+        checkout_lock_observed.append(supervisor._repo_merge_lock_path().exists())
+        return original_cleanup(**kwargs)
+
+    monkeypatch.setattr(
+        supervisor,
+        "_cleanup_missing_worktree_registration_locked",
+        observe_checkout_lock,
+    )
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert checkout_lock_observed == [True]
+    assert result["removed_count"] == 1
+    assert result["removed"][0]["reason"] == "orphaned_registration_removed"
+    assert result["removed"][0]["registered_after"] is False
+    assert result["removed"][0]["branch_delete"]["deleted"] is True
+    assert not supervisor._repo_merge_lock_path().exists()
+    listing_after = _git(repo, "worktree", "list", "--porcelain")
+    assert f"worktree {worktree_path}" not in listing_after.splitlines()
 
 
 def test_implementation_supervisor_keeps_peer_lane_active_worktree(tmp_path):

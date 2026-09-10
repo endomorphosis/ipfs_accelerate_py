@@ -1,0 +1,60 @@
+{
+  "allow_honest_nonpromotion": false,
+  "allow_not_admitted": true,
+  "arms": [
+    "direct_minimal_orchestration_baseline",
+    "sealed_current_supervisor_baseline",
+    "candidate_optimized_supervisor"
+  ],
+  "audit_overhead": {
+    "reason_code": "not_yet_measured",
+    "truth_state": "unavailable"
+  },
+  "authority": false,
+  "cohort": "canary",
+  "controls": {},
+  "disposition": "not_admitted",
+  "equal_control_fields": [
+    "repository_revision",
+    "objective",
+    "task_inputs",
+    "acceptance_tests",
+    "available_providers_and_models",
+    "price_accounting",
+    "resource_limits",
+    "maximum_retries",
+    "human_intervention_policy"
+  ],
+  "explicit_unavailable_fields": [
+    "audit_overhead"
+  ],
+  "fixture_count": 0,
+  "hermetic_sufficient_for_production_promotion": false,
+  "identity": "baguqeerafrpcbygly43e3wappb267ydavuu2wr2w5llnoxjdg4umci7ls4ma",
+  "interface": "AsehPairedCampaignResults@1",
+  "live": false,
+  "minimum_tasks": 1,
+  "pair_count": 0,
+  "population_kind": "new_live_shadow_canary",
+  "promotion_without_paired_campaign": false,
+  "reasons": [
+    "shadow_not_qualified",
+    "zero_candidate_mutation"
+  ],
+  "required_statistics": [
+    "median_difference",
+    "mean_difference",
+    "per_task_ratios",
+    "bootstrap_confidence_intervals",
+    "distribution_by_task_class",
+    "outlier_analysis",
+    "quality_adjusted_cost",
+    "accepted_patch_rate",
+    "time_to_terminal_outcome"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-canary-campaign-results@1",
+  "schema_version": 1,
+  "statistics": {},
+  "task_id": "ASEH-073",
+  "vectors_identity": "unavailable"
+}

@@ -224,6 +224,15 @@ from .worktrees import (
     pid_is_alive,
     python_identifier_worktree_basename,
 )
+from dataclasses import dataclass, field, replace
+from typing import Any, Mapping, Sequence
+from ..control.plan_execution_store import MAX_PLAN_BOUND_WAVE_TRANSFERS, PLAN_BOUND_MERGE_AUTHORIZATION_SCHEMA, PLAN_BOUND_MERGE_ENQUEUE_INTENT_SCHEMA, PLAN_BOUND_MERGE_QUEUE_RECEIPT_SCHEMA, PLAN_BOUND_MERGE_RECOVERY_BIRTH_SCHEMA, PLAN_BOUND_MERGE_TERMINAL_FAILURE_SCHEMA, PLAN_BOUND_PROPOSAL_HANDOFF_SCHEMA, ConfiguredBoardExecutionSlices, PlanBoundExecutionLease, PlanBoundProcessBirth, PlanBoundProposalDisposition, ProductionParallelPlanAdapter, _load_plan_bound_execution_lease_locked, _load_plan_bound_merge_terminal_failure_locked, _load_plan_bound_process_birth_chain_locked, _load_plan_bound_proposal_disposition_locked, _load_plan_bound_wave_diff_barrier_locked, _load_plan_revision_store_binding_locked, _publish_plan_bound_execution_lease_locked, _publish_plan_bound_merge_terminal_failure_locked, _publish_plan_bound_proposal_disposition_locked, _secure_store_active, _secure_store_cas, _secure_store_continuation
+from ..runtime.multi_supervisor_runner import AUTHORITY_MODE_LEGACY_MARKDOWN, DATABASE_PROGRAM_JSON_ENV, DatabaseProgramConfig, DatabaseProgramConfigError, FAILOVER_FAIL_CLOSED, STATE_LIVE_SCHEMA_REVISION_ENV, STATE_GRANT_BROKER_SECRET_FD_ENV, STATE_GRANT_BROKER_SOCKET_ENV, STATE_OWNER_SOCKET_ENV, STATE_STORE_LIVE_GENERATION_ENV, TASK_SOURCE_LEGACY_MARKDOWN, TRUSTED_DUCKDB_HOME_ENV, _trusted_duckdb_runtime_environment, provider_subprocess_environment
+from ..runtime.process_security import state_authority_pass_fds
+from .database_portal_bridge import DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+from .implementation_daemon import DEFAULT_TRACKS, IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME, IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME, IMPLEMENTATION_RUNNER_PROCESS_PATTERN, PROVIDER_EXTERNAL_ISOLATION_ENV, TASK_HEADER_PREFIX, PortalImplementationDaemon, PortalTask, PortalTaskState, ReconciliationLifecycleBlockedError, _prepare_provider_route_receipt, _provider_state_boundary_required, _provider_filesystem_boundary_receipt_path, _require_packaged_provider_fallback_runner, _uses_packaged_provider_fallback_runner, _validated_provider_route_receipt, _validated_provider_filesystem_boundary_receipt, consume_stale_active_attempt, load_json_dict, normalize_status, normalize_focus_tracks, normalize_implementation_protected_paths, normalize_relative_path_list, parse_task_file, parse_timestamp, process_command_line, process_is_running, state_file_repair_reason, utc_now, write_json_atomic, write_text_atomic, validate_external_provider_isolation_config
+from .supervisor_runtime import SUPERVISED_CHILD_IDENTITY_PATH_ENV, SUPERVISED_CHILD_OWNER_SCOPE_ENV, OwnerLiveness, ProcessBirthIdentity, RestartPolicy, load_supervised_child_identity, launch_process_child, owner_liveness, read_process_birth, read_process_command_argv, supervised_child_identity_liveness, supervised_child_identity_path, terminate_direct_child_process, write_supervised_child_identity
+from .worktrees import WORKTREE_POOL_SCHEMA, pid_is_alive, python_identifier_worktree_basename
 
 REPO_ROOT = Path.cwd()
 
@@ -1623,6 +1632,9 @@ def _managed_daemon_child_environment(
         STATE_STORE_LIVE_GENERATION_ENV,
         STATE_LIVE_SCHEMA_REVISION_ENV,
         LEGACY_BOARD_UNSTALL_POLICY_ENV,
+        STATE_GRANT_BROKER_SOCKET_ENV,
+        STATE_GRANT_BROKER_SECRET_FD_ENV,
+        STATE_OWNER_SOCKET_ENV,
     ):
         value = str(os.environ.get(name, "") or "").strip()
         if value:
@@ -5929,17 +5941,11 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                         raise PlanBoundDispatchError(
                             "proposal handoff changed before merge authorization"
                         )
-                    barrier_payload = _secure_store_cas(store, barrier_cid)
-                    if (
-                        barrier_payload.get("revision_cid")
-                        != current.revision_cid
-                        or barrier_payload.get("slice_manifest_cid")
-                        != current.slice_manifest_cid
-                        or barrier_payload.get("decision") != "released"
-                    ):
-                        raise PlanBoundDispatchError(
-                            "merge authorization lost its released wave barrier"
-                        )
+                    _require_current_released_wave_diff_barrier_locked(
+                        store,
+                        execution_lease=current,
+                        barrier_cid=barrier_cid,
+                    )
                     claim_path = Path(current.canonical_claim_path)
                     lifecycle_path = Path(current.workspace_lifecycle_path)
                     with serialized_lock_update(claim_path):
@@ -8930,6 +8936,7 @@ class PortalSupervisorConfig:
     board_namespace: str = ""
     state_prefix: str = "portal"
     accepted_launch_argv: tuple[str, ...] | None = None
+    accepted_launch_argv: tuple[str, ...] = field(default_factory=tuple)
     database_program: DatabaseProgramConfig | None = None
     database_owner_session_id: str = ""
     state_owner_bootstrap_fd: int = -1
@@ -9465,12 +9472,14 @@ class AdoptedManagedDaemonProcess:
         raise RuntimeError(
             "adopted managed daemons must be terminated through the "
             "supervisor ownership fence"
+            "adopted daemon requires the durable ownership fence"
         )
 
     def kill(self) -> None:
         raise RuntimeError(
             "adopted managed daemons must be killed through the "
             "supervisor ownership fence"
+            "adopted daemon requires the durable ownership fence"
         )
 
     def wait(self, timeout: float | None = None) -> int:
@@ -9793,6 +9802,11 @@ class PortalImplementationSupervisor:
             raise PlanBoundDispatchError(
                 "sealed plan-bound supervisors may be replaced only by their owner"
             )
+        accepted_argv = (
+            list(self.config.accepted_launch_argv)
+            if self.config.accepted_launch_argv
+            else list(sys.argv[1:])
+        )
         supervisor_script_path = self.config.supervisor_script_path
         accepted_reload_argv = self.config.control_plane_reload_argv
         # Direct config construction predates explicit launch-policy capture;
@@ -9842,21 +9856,18 @@ class PortalImplementationSupervisor:
                 sys.executable,
                 str(script_path.resolve()),
                 *reload_argv,
+                *accepted_argv,
             ]
         else:
-            module_name = (
-                __spec__.name
-                if __spec__ is not None and __spec__.name
-                else (
-                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-                    "implementation_supervisor"
-                )
-            )
             arguments = [
                 sys.executable,
                 "-m",
                 module_name,
                 *reload_argv,
+                "-c",
+                ORDINARY_IMPLEMENTATION_SUPERVISOR_BOOTSTRAP,
+                IMPLEMENTATION_SUPERVISOR_MODULE_SENTINEL,
+                *accepted_argv,
             ]
         if state_authority_credentials_present():
             environment = os.environ.copy()
@@ -9950,28 +9961,87 @@ class PortalImplementationSupervisor:
         cleanup: Mapping[str, Any],
         interrupted_reconciliation: Mapping[str, Any],
     ) -> None:
-        """Replace the last running heartbeat with a terminal signal status."""
+        """Publish an observed signal-stop state without inventing a census."""
 
         status_path = self._supervisor_status_path()
         payload = load_json_dict(status_path) or {}
+        worker_keys = {
+            key
+            for key in payload
+            if (
+                key.startswith("worker_")
+                or key.startswith("active_worker_")
+                or key == "stalled_without_active_worker"
+            )
+        }
+        prior_worker_observation = {
+            key: payload[key] for key in sorted(worker_keys)
+        }
+        if not prior_worker_observation and isinstance(
+            payload.get("last_worker_observation"),
+            Mapping,
+        ):
+            prior_worker_observation = dict(
+                payload["last_worker_observation"]
+            )
+        quiesced = bool(
+            cleanup.get("quiesced") is True
+            and cleanup.get("remaining_pid") is None
+        )
+        unresolved_pid = cleanup.get("remaining_pid")
+        if type(unresolved_pid) is not int or unresolved_pid <= 1:
+            unresolved_pid = cleanup.get("pid")
+        if type(unresolved_pid) is not int or unresolved_pid <= 1:
+            unresolved_pid = payload.get("daemon_pid")
+        if type(unresolved_pid) is not int or unresolved_pid <= 1:
+            unresolved_pid = None
         payload.update(
             {
                 "schema": (
                     "ipfs_accelerate_py.agent_supervisor."
                     "todo_implementation_supervisor.supervisor"
                 ),
-                "status": "stopped",
+                "status": "stopping",
                 "updated_at": utc_now(),
                 "supervisor_pid": os.getpid(),
-                "supervisor_pid_alive": False,
-                "daemon_pid": None,
-                "daemon_pid_alive": False,
-                "active_worker_count": 0,
-                "active_worker_pids": [],
-                "worker_descendant_count": 0,
-                "stalled_without_active_worker": False,
+                "supervisor_pid_alive": True,
+                "supervisor_exit_pending": True,
+                "daemon_pid": None if quiesced else unresolved_pid,
+                "daemon_pid_alive": False if quiesced else None,
+                "worker_metrics_available": False,
+                "worker_metrics_unavailable_reason": (
+                    "shutdown_worker_census_not_observed"
+                    if quiesced
+                    else "shutdown_cleanup_unproven"
+                ),
+                "worker_census_method": "",
+                "worker_root_pid": None,
+                "worker_root_start_time_ticks": None,
+                "worker_root_boot_id": "",
+                "worker_root_identity_source": "",
+                "worker_observed_at_ns": None,
+                "worker_observation_generation": "",
+                "active_worker_count": None,
+                "active_worker_pids": None,
+                "worker_descendant_count": None,
+                "worker_descendant_pids": None,
+                "worker_phase": "",
+                "worker_phase_available": False,
+                "worker_phase_known": None,
+                "worker_phase_known_non_worktree": None,
+                "worker_phase_guarded": None,
+                "worker_phase_age_seconds": None,
+                "worker_absence_age_seconds": None,
+                "worker_stall_evidence_available": False,
+                "worker_stall_evidence_unavailable_reason": (
+                    "worker_metrics_unavailable"
+                ),
+                "stalled_without_active_worker": None,
+                "last_worker_observation": (
+                    prior_worker_observation or None
+                ),
                 "stop_signal": int(stop_signal),
-                "last_exit_code": 128 + int(stop_signal),
+                "requested_exit_code": 128 + int(stop_signal),
                 "last_recycle_reason": "supervisor_signal_shutdown",
                 "managed_daemon_cleanup": dict(cleanup),
                 "interrupted_implementation_reconciliation": dict(
@@ -9979,6 +10049,7 @@ class PortalImplementationSupervisor:
                 ),
             }
         )
+        payload.pop("last_exit_code", None)
         write_json_atomic(status_path, payload)
 
     def _supervisor_maintenance_timeout_seconds(self) -> float:
@@ -11715,6 +11786,7 @@ class PortalImplementationSupervisor:
         update_maintenance_phase,
         *,
         include_refill: bool = True,
+        worker_status: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self.config.manual_completion_authority_revalidation_only:
             return {
@@ -11729,6 +11801,7 @@ class PortalImplementationSupervisor:
                 update_maintenance_phase,
                 include_refill=include_refill,
                 implementation_maintenance_lease=None,
+                worker_status=worker_status,
             )
         lease, lease_guard = self._acquire_implementation_maintenance_lease()
         if lease is None:
@@ -11819,6 +11892,7 @@ class PortalImplementationSupervisor:
                 update_maintenance_phase,
                 include_refill=include_refill,
                 implementation_maintenance_lease=lease,
+                worker_status=worker_status,
             )
             if second.get("_completed_recovery_archive_required") is True:
                 return {
@@ -11847,6 +11921,7 @@ class PortalImplementationSupervisor:
         *,
         include_refill: bool = True,
         implementation_maintenance_lease: Mapping[str, Any] | None = None,
+        worker_status: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         interrupted_implementation_reconciliation: dict[str, Any] = {
             "reconciled": False,
@@ -12005,7 +12080,11 @@ class PortalImplementationSupervisor:
         )
         state = PortalTaskState.load(self.config.state_path)
         now_ts = time.time()
-        stuck, reason = self.is_stuck(state, now_ts=now_ts)
+        stuck, reason = self.is_stuck(
+            state,
+            now_ts=now_ts,
+            worker_status=worker_status,
+        )
         if stuck:
             update_maintenance_phase("stuck_recovery")
             try:
@@ -12444,6 +12523,17 @@ class PortalImplementationSupervisor:
                     )
                 except OSError:
                     logger.exception("Could not record terminal supervisor status")
+            retained_interpreter = getattr(
+                self,
+                "_plan_bound_loop_retained_interpreter",
+                None,
+            )
+            if retained_interpreter is not None:
+                try:
+                    os.close(retained_interpreter.descriptor)
+                except OSError:
+                    pass
+                delattr(self, "_plan_bound_loop_retained_interpreter")
             if handlers_installed:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
@@ -12636,7 +12726,42 @@ class PortalImplementationSupervisor:
         return True
 
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
-        command = tuple(self._build_daemon_command())
+        child_executable: str | None = None
+        if self.config.plan_bound_dispatch:
+            from ..runtime.multi_supervisor_runner import (
+                admit_sealed_native_dependency_environment,
+                retain_control_plane_interpreter,
+                sealed_native_dependency_environment,
+            )
+
+            native_dependency, system_directories = (
+                admit_sealed_native_dependency_environment(os.environ)
+            )
+            retained_interpreter = getattr(
+                self,
+                "_plan_bound_loop_retained_interpreter",
+                None,
+            )
+            if retained_interpreter is None:
+                retained_interpreter = retain_control_plane_interpreter(
+                    sys.executable
+                )
+                self._plan_bound_loop_retained_interpreter = (
+                    retained_interpreter
+                )
+            command = tuple(
+                self._build_daemon_command(
+                    retained_interpreter=retained_interpreter,
+                    native_dependency=native_dependency,
+                    system_dependency_directories_json=system_directories,
+                )
+            )
+            child_executable = retained_interpreter.executable_path
+        else:
+            native_dependency = None
+            system_directories = ""
+            retained_interpreter = None
+            command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
         proof_rollout_status_fields = self._proof_rollout_status_fields()
         autonomous_unstall_status = self._autonomous_unstall_status()
@@ -12693,6 +12818,40 @@ class PortalImplementationSupervisor:
                 ),
             }
         )
+        native_pass_fds: tuple[int, ...] = ()
+        if self.config.plan_bound_dispatch:
+            child_environment = {
+                str(name): str(value)
+                for name, value in child_environment.items()
+                if not str(name).startswith(
+                    ("PYTHON", "PYTEST", "LD_", "DYLD_")
+                )
+                and str(name) != "GLIBC_TUNABLES"
+            }
+            child_environment.update(
+                {
+                    "PATH": "/usr/bin:/bin",
+                    "LC_ALL": "C.UTF-8",
+                    "LANG": "C.UTF-8",
+                    "TZ": "UTC",
+                }
+            )
+            assert native_dependency is not None
+            child_environment.update(
+                sealed_native_dependency_environment(
+                    native_dependency,
+                    system_dependency_directories_json=system_directories,
+                )
+            )
+            native_pass_fds = (native_dependency.descriptor.descriptor,)
+        else:
+            from ..runtime.multi_supervisor_runner import (
+                apply_sealed_native_dependency_to_child_environment,
+            )
+
+            native_pass_fds = apply_sealed_native_dependency_to_child_environment(
+                child_environment
+            )
         spec = ManagedDaemonSpec(
             name=f"{prefix}-implementation-daemon",
             schema="ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor",
@@ -12747,6 +12906,25 @@ class PortalImplementationSupervisor:
                 if live_context is None
                 else self._verify_lgcvf_live_supervisor_loop_child_launch
             ),
+            child_pass_fds=tuple(
+                sorted(
+                    {
+                        *state_authority_pass_fds(child_environment),
+                        *native_pass_fds,
+                        *(
+                            (
+                                self.config.accepted_control_plane_descriptor,
+                                retained_interpreter.descriptor,
+                            )
+                            if self.config.plan_bound_dispatch
+                            else ()
+                        ),
+                    }
+                )
+            ),
+            child_executable=child_executable,
+            child_start_new_session=not self.config.plan_bound_dispatch,
+            child_process_group=(0 if self.config.plan_bound_dispatch else None),
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
                 fast_restart_backoff_seconds=min(2.0, max(0.0, float(self.config.check_interval))),
@@ -14317,6 +14495,14 @@ class PortalImplementationSupervisor:
                 },
             )
         stuck, reason = self.is_stuck(state, now_ts=now_ts)
+        worker_status = dict(
+            getattr(_loop, "_last_worker_status", {}) or {}
+        )
+        stuck, reason = self.is_stuck(
+            state,
+            now_ts=time.time(),
+            worker_status=worker_status,
+        )
         if state.active_task_id and not stuck:
             return SupervisorLoopDecision.keep_running()
         if (
@@ -14346,7 +14532,10 @@ class PortalImplementationSupervisor:
         )
         failed = False
         try:
-            result = self._run_once_with_maintenance(update_maintenance_phase)
+            result = self._run_once_with_maintenance(
+                update_maintenance_phase,
+                worker_status=worker_status,
+            )
         except Exception as exc:
             failed = True
             message = f"{type(exc).__name__}: {exc}"
@@ -21603,17 +21792,21 @@ class PortalImplementationSupervisor:
     def _cleanup_backlogged_worktrees_locked(self) -> dict[str, Any]:
         """Clean merged worktrees while holding the checkout mutation lock."""
 
+        program = self.config.database_program
+        if program is not None and program.authority_mode != AUTHORITY_MODE_LEGACY_MARKDOWN:
+            # This runtime lacks the canonical completion recheck under a
+            # guarded pool mutation. Retain callback workspaces AND missing
+            # registrations/refs until that path is qualified. Exact task
+            # completion cleanup remains owned by the existing merge queue.
+            return {
+                "attempted": False,
+                "reason": "canonical_cleanup_requires_guarded_runtime",
+                "removed_count": 0,
+            }
         worktree_root = self.config.worktree_root
         if worktree_root is None:
             return {"attempted": False, "reason": "worktree_root_not_configured"}
         repo_root = self.config.repo_root
-        prune = subprocess.run(
-            ["git", "worktree", "prune"],
-            cwd=repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
         records = self._git_worktree_records(repo_root)
         try:
             root_resolved = worktree_root.resolve()
@@ -21662,9 +21855,30 @@ class PortalImplementationSupervisor:
                         "reason": "worktree_removed_concurrently",
                     }
                 )
+            active_skip = self._active_worktree_skip_detail(
+                path_resolved,
+                active_worktree_owners,
+            )
+            if active_skip is not None:
+                skipped.append({"path": str(path), **active_skip})
                 continue
             if any(str(path_resolved) in line for line in process_lines):
                 skipped.append({"path": str(path), "reason": "active_process"})
+                continue
+
+            branch = str(record.get("branch") or "").removeprefix("refs/heads/")
+            head = str(record.get("HEAD") or "")
+            if not path_resolved.exists():
+                orphan_cleanup = self._cleanup_missing_worktree_registration_locked(
+                    path=path_resolved,
+                    branch=branch,
+                    head=head,
+                    target_ref=target_ref,
+                )
+                if orphan_cleanup.get("removed") is True:
+                    removed.append(orphan_cleanup)
+                else:
+                    skipped.append(orphan_cleanup)
                 continue
             cached_entry = self._worktree_scan_cache_entry(
                 scan_cache,
@@ -21722,13 +21936,16 @@ class PortalImplementationSupervisor:
             dirty = self._git_status_short(path) if path.exists() else []
             observed_status = list(dirty)
             if not path.exists():
-                skipped.append(
-                    {
-                        "path": str(path),
-                        "branch": branch,
-                        "reason": "worktree_removed_concurrently",
-                    }
+                orphan_cleanup = self._cleanup_missing_worktree_registration_locked(
+                    path=path_resolved,
+                    branch=branch,
+                    head=head,
+                    target_ref=target_ref,
                 )
+                if orphan_cleanup.get("removed") is True:
+                    removed.append(orphan_cleanup)
+                else:
+                    skipped.append(orphan_cleanup)
                 continue
             dirty_redundancy: dict[str, Any] = {}
             if dirty:
@@ -21908,9 +22125,8 @@ class PortalImplementationSupervisor:
             "worktree_root": str(worktree_root),
             "target_ref": target_ref,
             "target_signature": target_signature,
-            "prune_returncode": prune.returncode,
-            "prune_stdout": prune.stdout[-4000:],
-            "prune_stderr": prune.stderr[-4000:],
+            "prune_attempted": False,
+            "prune_returncode": None,
             "removed_count": sum(1 for item in removed if item.get("removed")),
             "skipped_count": len(skipped),
             "skipped_reason_counts": skip_summary["reason_counts"],
@@ -25666,8 +25882,13 @@ class PortalImplementationSupervisor:
         *,
         now_ts: float,
         ignore_progress_until_ts: float | None = None,
+        worker_status: Mapping[str, Any] | None = None,
     ) -> tuple[bool, str]:
-        worktree_phase_stall_reason = self._worktree_phase_without_worker_reason(state, now_ts=now_ts)
+        worktree_phase_stall_reason = self._worktree_phase_without_worker_reason(
+            state,
+            now_ts=now_ts,
+            worker_status=worker_status,
+        )
         if worktree_phase_stall_reason:
             return True, worktree_phase_stall_reason
         log_stall_reason = self._implementation_log_stall_reason(state, now_ts=now_ts)
@@ -25704,21 +25925,38 @@ class PortalImplementationSupervisor:
             return True, f"unresolved merge failure on active task {state.active_task_id}: {detail}"
         return False, ""
 
-    def _worktree_phase_without_worker_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
+    def _worktree_phase_without_worker_reason(
+        self,
+        state: PortalTaskState,
+        *,
+        now_ts: float,
+        worker_status: Mapping[str, Any] | None = None,
+    ) -> str:
         if not state.active_task_id:
             return ""
         threshold = max(30.0, float(self.config.implementation_log_stall_seconds))
-        worker_status = worktree_phase_worker_status(
-            {
-                "active_phase": state.active_phase,
-                "active_phase_started_at": state.active_phase_started_at,
-            },
-            self._read_managed_daemon_pid(),
-            threshold,
-            now=datetime.fromtimestamp(now_ts, tz=timezone.utc),
+        observed_workers = (
+            dict(worker_status)
+            if worker_status is not None
+            else worktree_phase_worker_status(
+                {
+                    "active_phase": state.active_phase,
+                    "active_phase_started_at": state.active_phase_started_at,
+                },
+                self._read_managed_daemon_pid(),
+                threshold,
+                now=datetime.fromtimestamp(now_ts, tz=timezone.utc),
+            )
         )
-        phase = str(worker_status.get("phase") or "")
-        if not worker_status.get("required"):
+        if (
+            worker_status is not None
+            and observed_workers.get("worker_metrics_available") is not True
+        ):
+            return ""
+        phase = str(observed_workers.get("phase") or "")
+        if state.active_phase and phase != state.active_phase:
+            return ""
+        if not observed_workers.get("required"):
             self._worktree_worker_phase = ""
             self._last_worktree_worker_seen_monotonic = None
         elif phase != self._worktree_worker_phase:
@@ -25726,22 +25964,22 @@ class PortalImplementationSupervisor:
             self._last_worktree_worker_seen_monotonic = None
 
         now_monotonic = time.monotonic()
-        if int(worker_status.get("active_worker_count") or 0) > 0:
+        if int(observed_workers.get("active_worker_count") or 0) > 0:
             self._last_worktree_worker_seen_monotonic = now_monotonic
-            worker_status["worker_absence_age_seconds"] = 0.0
-            worker_status["stalled_without_active_worker"] = False
+            observed_workers["worker_absence_age_seconds"] = 0.0
+            observed_workers["stalled_without_active_worker"] = False
         elif self._last_worktree_worker_seen_monotonic is not None:
             absence_age = max(
                 0.0,
                 now_monotonic - self._last_worktree_worker_seen_monotonic,
             )
-            worker_status["worker_absence_age_seconds"] = round(absence_age, 3)
-            worker_status["stalled_without_active_worker"] = bool(
+            observed_workers["worker_absence_age_seconds"] = round(absence_age, 3)
+            observed_workers["stalled_without_active_worker"] = bool(
                 threshold > 0 and absence_age >= threshold
             )
         else:
-            worker_status["worker_absence_age_seconds"] = None
-        if not worker_status.get("stalled_without_active_worker"):
+            observed_workers["worker_absence_age_seconds"] = None
+        if observed_workers.get("stalled_without_active_worker") is not True:
             return ""
         self._record_event(
             "worktree_phase_without_worker",
@@ -25749,12 +25987,12 @@ class PortalImplementationSupervisor:
                 "active_task_id": state.active_task_id,
                 "active_phase": state.active_phase,
                 "active_phase_detail": state.active_phase_detail,
-                "worker_status": worker_status,
+                "worker_status": observed_workers,
             },
         )
-        stall_age = worker_status.get("worker_absence_age_seconds")
+        stall_age = observed_workers.get("worker_absence_age_seconds")
         if stall_age is None:
-            stall_age = worker_status.get("phase_age_seconds")
+            stall_age = observed_workers.get("phase_age_seconds")
         return (
             f"{state.active_phase} stalled for active task {state.active_task_id}: "
             f"no active worker for {stall_age}s"
@@ -26054,6 +26292,103 @@ class PortalImplementationSupervisor:
                     ),
                 )
             raise
+        self.ensure_managed_daemon_pid_file()
+        retained_interpreter = None
+        native_dependency = None
+        try:
+            if self.config.plan_bound_dispatch:
+                from ..runtime.multi_supervisor_runner import (
+                    admit_sealed_native_dependency_environment,
+                    retain_control_plane_interpreter,
+                    sealed_native_dependency_environment,
+                )
+
+                native_dependency, system_directories = (
+                    admit_sealed_native_dependency_environment(os.environ)
+                )
+                retained_interpreter = retain_control_plane_interpreter(
+                    sys.executable
+                )
+                command = self._build_daemon_command(
+                    retained_interpreter=retained_interpreter,
+                    native_dependency=native_dependency,
+                    system_dependency_directories_json=system_directories,
+                )
+            else:
+                command = self._build_daemon_command()
+            managed_environment = _managed_daemon_child_environment(
+                database_program=self.config.database_program,
+                repo_root=self.config.repo_root,
+            )
+            if self.config.plan_bound_dispatch:
+                env = {
+                    str(name): str(value)
+                    for name, value in managed_environment.items()
+                    if not str(name).startswith(
+                        ("PYTHON", "PYTEST", "LD_", "DYLD_")
+                    )
+                    and str(name) != "GLIBC_TUNABLES"
+                }
+                env.update(
+                    {
+                        "PATH": "/usr/bin:/bin",
+                        "LC_ALL": "C.UTF-8",
+                        "LANG": "C.UTF-8",
+                        "TZ": "UTC",
+                    }
+                )
+                assert native_dependency is not None
+                env.update(
+                    sealed_native_dependency_environment(
+                        native_dependency,
+                        system_dependency_directories_json=system_directories,
+                    )
+                )
+                pass_fds = tuple(
+                    sorted(
+                        {
+                            *state_authority_pass_fds(env),
+                            self.config.accepted_control_plane_descriptor,
+                            retained_interpreter.descriptor,
+                            native_dependency.descriptor.descriptor,
+                        }
+                    )
+                )
+            else:
+                from ..runtime.multi_supervisor_runner import (
+                    apply_sealed_native_dependency_to_child_environment,
+                )
+
+                env = os.environ.copy()
+                env.update(managed_environment)
+                native_pass_fds = (
+                    apply_sealed_native_dependency_to_child_environment(env)
+                )
+                pass_fds = tuple(
+                    sorted(
+                        {
+                            *state_authority_pass_fds(env),
+                            *native_pass_fds,
+                        }
+                    )
+                )
+            process = launch_process_child(
+                command,
+                cwd=self.config.repo_root,
+                text=True,
+                env=env,
+                inherit_environment=False,
+                start_new_session=False,
+                pass_fds=pass_fds,
+                executable=(
+                    retained_interpreter.executable_path
+                    if retained_interpreter is not None
+                    else None
+                ),
+            )
+        finally:
+            if retained_interpreter is not None:
+                os.close(retained_interpreter.descriptor)
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
         return process
 
@@ -26587,18 +26922,27 @@ class PortalImplementationSupervisor:
             daemon_entrypoint = (
                 str(Path(daemon_script_path).resolve(strict=False))
                 if daemon_script_path is not None
-                else (
-                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-                    "implementation_daemon"
-                )
+                else IMPLEMENTATION_DAEMON_MODULE_SENTINEL
             )
-            return {
+            scope = {
                 "repo_root": str(self.config.repo_root.resolve(strict=False)),
                 "state_dir": str(self.config.state_dir.resolve(strict=False)),
                 "state_prefix": str(self.config.state_prefix),
                 "todo_path": str(self.config.todo_path.resolve(strict=False)),
                 "daemon_entrypoint": daemon_entrypoint,
             }
+            if self.config.plan_bound_dispatch:
+                scope.update(
+                    {
+                        "lifecycle_session_id": str(os.getsid(0)),
+                        "process_group_policy": (
+                            "dedicated_group_inherited_session"
+                        ),
+                    }
+                )
+            else:
+                scope["process_group_policy"] = "dedicated_session"
+            return scope
 
     def _managed_daemon_command_belongs_to_scope(
             self,
@@ -26609,13 +26953,20 @@ class PortalImplementationSupervisor:
             daemon_token = (
                 str(daemon_script_path)
                 if daemon_script_path is not None
-                else (
-                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-                    "implementation_daemon"
-                )
+                else IMPLEMENTATION_DAEMON_MODULE_SENTINEL
             )
             if daemon_token not in tokens:
                 return False
+            if daemon_script_path is None and not self.config.plan_bound_dispatch:
+                expected_prefix = (
+                    sys.executable,
+                    "-P",
+                    "-c",
+                    ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP,
+                    IMPLEMENTATION_DAEMON_MODULE_SENTINEL,
+                )
+                if tokens[: len(expected_prefix)] != expected_prefix:
+                    return False
 
             def exact_option(option: str, expected: str) -> bool:
                 values = [
@@ -26745,6 +27096,28 @@ class PortalImplementationSupervisor:
                     "fenced": False,
                     "reason": "managed_daemon_command_identity_mismatch",
                 }
+            if self.config.plan_bound_dispatch:
+                try:
+                    observed_group = os.getpgid(int(pid))
+                    observed_session = os.getsid(int(pid))
+                    supervisor_session = os.getsid(0)
+                except OSError:
+                    return {
+                        "fenced": False,
+                        "reason": "managed_daemon_kernel_scope_unknown",
+                    }
+                if (
+                    observed_group != int(pid)
+                    or observed_session != supervisor_session
+                    or identity.owner_scope.get("lifecycle_session_id")
+                    != str(supervisor_session)
+                    or identity.owner_scope.get("process_group_policy")
+                    != "dedicated_group_inherited_session"
+                ):
+                    return {
+                        "fenced": False,
+                        "reason": "managed_daemon_kernel_scope_mismatch",
+                    }
             # Re-read birth identity immediately before entering the existing
             # freeze/rescan/kill fence. A reused numeric PID is never signalled.
             if supervised_child_identity_liveness(identity) is not OwnerLiveness.ALIVE:
@@ -26762,10 +27135,19 @@ class PortalImplementationSupervisor:
                     identity.process_birth.start_time_ticks
                 ),
             )
-            gone = (
-                supervised_child_identity_liveness(identity)
-                is OwnerLiveness.DEAD
-            )
+            gone = False
+            # ``terminate_pid_tree(require_gone=True)`` proves its captured
+            # tree and group are empty, but retain an independent immutable
+            # birth observation as the marker-removal gate.  A procfs sample
+            # may briefly see the killed leader until it is reaped.
+            for _observation in range(3):
+                gone = (
+                    supervised_child_identity_liveness(identity)
+                    is OwnerLiveness.DEAD
+                )
+                if gone:
+                    break
+                time.sleep(0)
             return {
                 "fenced": bool(fenced and gone),
                 "reason": (
@@ -26776,7 +27158,13 @@ class PortalImplementationSupervisor:
             }
 
 
-    def _build_daemon_command(self) -> list[str]:
+    def _build_daemon_command(
+        self,
+        *,
+        retained_interpreter: Any | None = None,
+        native_dependency: Any | None = None,
+        system_dependency_directories_json: str = "",
+    ) -> list[str]:
             self._validated_plan_bound_slice()
             live_context = self.config.configured_board_live_context
             if live_context is not None:
@@ -26860,8 +27248,9 @@ class PortalImplementationSupervisor:
                 command = [
                     sys.executable,
                     "-P",
-                    "-m",
-                    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+                    "-c",
+                    ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP,
+                    IMPLEMENTATION_DAEMON_MODULE_SENTINEL,
                 ]
             else:
                 command = [sys.executable, str(daemon_script_path)]
@@ -27058,12 +27447,17 @@ class PortalImplementationSupervisor:
             if self.config.plan_bound_dispatch:
                 command.append("--once")
                 from ..runtime.multi_supervisor_runner import (
+                    admit_sealed_native_dependency_environment,
                     build_sealed_control_plane_module_command,
                 )
 
                 if self.config.accepted_control_plane_pin is None:
                     raise PlanBoundDispatchError(
                         "plan-bound daemon launch lacks its sealed control plane"
+                    )
+                if native_dependency is None:
+                    native_dependency, system_dependency_directories_json = (
+                        admit_sealed_native_dependency_environment(os.environ)
                     )
                 command = build_sealed_control_plane_module_command(
                     python_executable=sys.executable,
@@ -27092,6 +27486,14 @@ class PortalImplementationSupervisor:
                         "implementation_daemon"
                     ),
                     argv=command[4:],
+                    retained_interpreter=retained_interpreter,
+                    native_dependency_launch=native_dependency,
+                    accepted_native_authorization_id=(
+                        native_dependency.accepted_authorization_id
+                    ),
+                    system_dependency_directories_json=(
+                        system_dependency_directories_json
+                    ),
                 )
             return command
 
@@ -27764,6 +28166,29 @@ class PortalImplementationSupervisor:
         if option_values("--board-namespace") != {self.board_namespace}:
             return False
 
+        program = self.config.database_program
+        if program is not None:
+            expected_program_options = {
+                "--task-source-kind": program.task_source_kind,
+                "--authority-mode": program.authority_mode,
+                "--state-failover-policy": program.failover_policy,
+                "--quack-endpoint": program.quack_endpoint,
+                "--state-store-id": program.store_id,
+                "--state-store-generation": program.store_generation,
+                "--state-schema-revision": program.schema_revision,
+                "--event-store-path": program.event_store_path,
+                "--runtime-registry-path": program.runtime_registry_path,
+                "--export-profile": program.export_profile,
+            }
+            for option, expected in expected_program_options.items():
+                expected_values = [expected] if expected else []
+                if option_value_list(option) != expected_values:
+                    return False
+            if (
+                "--explicit-legacy-task-source" in tokens
+            ) != program.explicit_legacy:
+                return False
+
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids
         ):
@@ -27850,6 +28275,13 @@ class PortalImplementationSupervisor:
         return True
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
+        from ..control.control_contracts import CursorReplayError
+
+        try:
+            append_jsonl_event(self.config.events_path, event_type, payload)
+            return
+        except CursorReplayError:
+            repair_jsonl_event_log(self.config.events_path)
         append_jsonl_event(self.config.events_path, event_type, payload)
 
     @staticmethod
@@ -27863,6 +28295,186 @@ class PortalImplementationSupervisor:
             return max(0.0, now_ts - parsed.timestamp())
         except ValueError:
             return float("inf")
+
+    def _cleanup_missing_worktree_registration_locked(
+        self,
+        *,
+        path: Path,
+        branch: str,
+        head: str,
+        target_ref: str,
+    ) -> dict[str, Any]:
+        """Remove one absent, merged Git registration under the checkout lock."""
+
+        detail: dict[str, Any] = {
+            "path": str(path),
+            "branch": branch,
+            "head": head,
+            "orphaned_registration": True,
+        }
+        if path.exists():
+            return {**detail, "removed": False, "reason": "worktree_reappeared"}
+        resolved_head = (
+            self._git_ref_commit(self.config.repo_root, head) if head else ""
+        )
+        head_merged = bool(resolved_head) and resolved_head == head and self._git_ref_is_ancestor(
+            self.config.repo_root,
+            head,
+            target_ref,
+        )
+        branch_exists = bool(branch) and self._git_ref_exists(
+            self.config.repo_root,
+            branch,
+        )
+        branch_head = (
+            self._git_ref_commit(self.config.repo_root, branch)
+            if branch_exists
+            else ""
+        )
+        branch_merged = branch_exists and self._git_ref_is_ancestor(
+            self.config.repo_root,
+            branch,
+            target_ref,
+        )
+        if not head_merged or (
+            branch_exists and (branch_head != head or not branch_merged)
+        ):
+            return {
+                **detail,
+                "removed": False,
+                "reason": "registered_head_or_branch_not_exactly_merged",
+                "resolved_head": resolved_head,
+                "branch_exists": branch_exists,
+                "branch_head": branch_head,
+                "head_merged": head_merged,
+                "branch_merged": branch_merged,
+            }
+
+        lifecycle_store = WorktreeLifecycleStore(self.config.repo_root)
+        try:
+            lifecycle = lifecycle_store.authorize_cleanup(
+                workspace_path=path,
+                branch=branch,
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            return {
+                **detail,
+                "removed": False,
+                "reason": "lifecycle_authority_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        lifecycle_payload = lifecycle.to_dict()
+        if not lifecycle.allowed:
+            return {
+                **detail,
+                "removed": False,
+                "reason": f"lifecycle_{lifecycle.reason or 'fenced'}",
+                "lifecycle": lifecycle_payload,
+            }
+
+        remove = subprocess.run(
+            ["git", "worktree", "remove", "--force", "--force", str(path)],
+            cwd=self.config.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        verify = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=self.config.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        registered_after: bool | None = None
+        if verify.returncode == 0:
+            expected = path.resolve(strict=False)
+            registered_after = any(
+                Path(line.split(" ", 1)[1]).resolve(strict=False) == expected
+                for line in verify.stdout.splitlines()
+                if line.startswith("worktree ") and line.split(" ", 1)[1]
+            )
+        removed = registered_after is False and not path.exists()
+        lifecycle_finalize: dict[str, Any] = {}
+        if removed and lifecycle.record is not None:
+            try:
+                terminal = lifecycle.record
+                if not terminal.is_terminal:
+                    terminal = lifecycle_store.mark_terminal(
+                        terminal.workspace_path,
+                        lease_id=terminal.lease_id,
+                        expected_fence=terminal.fence,
+                        reason="orphaned_registration_removed",
+                    )
+                deleted = lifecycle_store.compare_and_delete(
+                    terminal.workspace_path,
+                    expected_fence=terminal.fence,
+                    lease_id=terminal.lease_id,
+                )
+                lifecycle_finalize = {
+                    "attempted": True,
+                    "finalized": deleted,
+                    "fence": terminal.fence,
+                    "reason": (
+                        "orphaned_registration_removed"
+                        if deleted
+                        else "lifecycle_compare_delete_race"
+                    ),
+                }
+            except (OSError, RuntimeError, ValueError) as exc:
+                lifecycle_finalize = {
+                    "attempted": True,
+                    "finalized": False,
+                    "reason": "lifecycle_finalize_failed",
+                    "error_type": type(exc).__name__,
+                }
+        branch_delete: dict[str, Any] = {}
+        if (
+            removed
+            and self._worktree_branch_can_delete_after_merge(branch)
+            and branch_merged
+        ):
+            delete = subprocess.run(
+                ["git", "branch", "-D", branch],
+                cwd=self.config.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            branch_delete = {
+                "attempted": True,
+                "deleted": delete.returncode == 0,
+                "returncode": delete.returncode,
+                "stdout": delete.stdout[-4000:],
+                "stderr": delete.stderr[-4000:],
+            }
+        return {
+            **detail,
+            "removed": removed,
+            "reason": (
+                "orphaned_registration_removed"
+                if removed
+                else (
+                    "worktree_registry_unverifiable"
+                    if registered_after is None
+                    else "worktree_registration_persisted"
+                )
+            ),
+            "returncode": remove.returncode,
+            "stdout": remove.stdout[-4000:],
+            "stderr": remove.stderr[-4000:],
+            "verification_returncode": verify.returncode,
+            "verification_stderr": verify.stderr[-4000:],
+            "registered_after": registered_after,
+            "resolved_head": resolved_head,
+            "branch_exists": branch_exists,
+            "branch_head": branch_head,
+            "branch_merged": branch_merged,
+            "head_merged": head_merged,
+            "branch_delete": branch_delete,
+            "lifecycle": lifecycle_payload,
+            "lifecycle_finalize": lifecycle_finalize,
+        }
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -28822,6 +29434,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         except (OSError, ValueError) as exc:
             parser.error(f"LGCVF live supervisor binding is invalid: {exc}")
     parsed._control_plane_reload_argv = tuple(incoming)
+    accepted_argv = list(sys.argv[1:] if argv is None else argv)
+    parsed = parser.parse_args(accepted_argv)
+    parsed._accepted_launch_argv = tuple(str(item) for item in accepted_argv)
     return parsed
 
 
@@ -29179,6 +29794,10 @@ def main(argv: list[str] | None = None) -> int:
     harden_state_authority_process()
     capture_state_authority_credentials()
     args = parse_args(argv)
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    if args_list[:1] == [PLAN_BOUND_DAEMON_CHILD_MARKER]:
+        return _run_plan_bound_daemon_child(args_list[1:])
+    args = parse_args(args_list)
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -29223,3 +29842,67 @@ if __name__ == "__main__":
 
 TodoSupervisorConfig = PortalSupervisorConfig
 TodoImplementationSupervisor = PortalImplementationSupervisor
+
+def _require_current_released_wave_diff_barrier_locked(
+    store: PlanRevisionStore,
+    *,
+    execution_lease: PlanBoundExecutionLease,
+    barrier_cid: str,
+) -> tuple[str, Any]:
+    """Admit only the exact canonical typed release for the current wave."""
+
+    observed = _load_plan_bound_wave_diff_barrier_locked(
+        store,
+        revision_cid=execution_lease.revision_cid,
+        slice_manifest_cid=execution_lease.slice_manifest_cid,
+    )
+    if (
+        observed is None
+        or observed[0] != barrier_cid
+        or observed[1].decision != "released"
+    ):
+        raise PlanBoundDispatchError(
+            "merge authorization lost its canonical released wave barrier"
+        )
+    return observed
+
+IMPLEMENTATION_DAEMON_MODULE_SENTINEL = (
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+)
+
+IMPLEMENTATION_SUPERVISOR_MODULE_SENTINEL = (
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
+)
+
+ORDINARY_IMPLEMENTATION_SUPERVISOR_BOOTSTRAP = (
+    "import sys;"
+    f"_EXPECTED_SUPERVISOR_MODULE={IMPLEMENTATION_SUPERVISOR_MODULE_SENTINEL!r};"
+    "sys.argv[1:2] == [_EXPECTED_SUPERVISOR_MODULE] or sys.exit(78);"
+    "sys.argv.pop(1);"
+    "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+    "import harden_state_authority_process;"
+    "harden_state_authority_process();"
+    "from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner "
+    "import preload_sealed_native_dependency_from_environment;"
+    "preload_sealed_native_dependency_from_environment();"
+    "from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor "
+    "import main as implementation_supervisor_main;"
+    "raise SystemExit(implementation_supervisor_main())"
+)
+
+ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP = (
+    "import sys;"
+    f"_EXPECTED_DAEMON_MODULE={IMPLEMENTATION_DAEMON_MODULE_SENTINEL!r};"
+    "sys.argv[1:2] == [_EXPECTED_DAEMON_MODULE] or sys.exit(78);"
+    "sys.argv.pop(1);"
+    "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+    "import harden_state_authority_process;"
+    "harden_state_authority_process();"
+    "from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner "
+    "import preload_sealed_native_dependency_from_environment;"
+    "preload_sealed_native_dependency_from_environment();"
+    "from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon "
+    "import main as implementation_daemon_main;"
+    "raise SystemExit(implementation_daemon_main("
+    "native_dependency_preloaded=True))"
+)

@@ -14,8 +14,10 @@ decision.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
+from collections import defaultdict
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
@@ -1850,7 +1852,429 @@ GraphValidationError = SemanticGraphError
 MandatoryDependencyClosure = MandatoryClosure
 
 
+# ---------------------------------------------------------------------------
+# ASEH-050: exact-source AST/symbol change analysis
+# ---------------------------------------------------------------------------
+
+# This intentionally small layer is the deterministic entry point used before
+# any model route.  The program graph remains the canonical cross-language
+# graph; this layer only emits exact Python source observations and explicitly
+# names every gap it cannot resolve.  In particular, it never treats a dynamic
+# call/import as evidence that a reverse cone is closed.
+AST_SYMBOL_CHANGE_ANALYSIS_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/ast-symbol-change-analysis@1"
+)
+
+_DOCUMENTATION_SUFFIXES = frozenset({".md", ".mdx", ".rst", ".txt", ".adoc"})
+_SAFE_BUILTIN_CALLS = frozenset(
+    {
+        "bool", "bytes", "dict", "enumerate", "float", "frozenset", "int",
+        "isinstance", "len", "list", "max", "min", "next", "range", "set",
+        "sorted", "str", "sum", "tuple", "type", "zip",
+    }
+)
+_DYNAMIC_CALLS = frozenset({"eval", "exec", "getattr", "globals", "locals", "vars", "__import__"})
+
+
+class ASTSymbolAnalysisError(SemanticGraphError):
+    """A source-diff analysis input is malformed or non-deterministic."""
+
+
+class ModelAnalysisBeforeASTError(ASTSymbolAnalysisError):
+    """A model route was requested before a completed AST/symbol receipt."""
+
+
+class SourceChangeKind(str, Enum):
+    """Closed deterministic source-diff classifications."""
+
+    DOCUMENTATION_ONLY = "documentation_only"
+    FORMATTING_ONLY = "formatting_only"
+    SEMANTIC = "semantic"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, order=True)
+class SourceFileProvenance:
+    """Exact path and byte digest for one inspected source version."""
+
+    path: str
+    content_sha256: str
+
+    @classmethod
+    def from_source(cls, path: str, source: str) -> "SourceFileProvenance":
+        if not isinstance(path, str) or not path or path.startswith("/") or ".." in path.split("/"):
+            raise ASTSymbolAnalysisError("source path must be a relative, non-escaping path")
+        if not isinstance(source, str):
+            raise ASTSymbolAnalysisError("source must be text")
+        return cls(path=path, content_sha256=hashlib.sha256(source.encode("utf-8")).hexdigest())
+
+    @property
+    def evidence_ref(self) -> str:
+        return f"source:{self.path}:sha256:{self.content_sha256}"
+
+
+@dataclass(frozen=True, order=True)
+class ASTSymbol:
+    """A definition with exact file/span provenance and a structural contract."""
+
+    symbol_id: str
+    qualified_name: str
+    kind: str
+    provenance: SourceFileProvenance
+    line: int
+    end_line: int
+    semantic_digest: str = ""
+    contract_digest: str = ""
+    invariant_digests: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, order=True)
+class ChangedContract:
+    """An observed contract/invariant change; not an authorization decision."""
+
+    symbol_id: str
+    before_contract_ref: str
+    after_contract_ref: str
+    change_kinds: tuple[str, ...]
+    invariant_changed: bool
+    provenance_refs: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ASTFileAnalysis:
+    """Parsed source facts.  ``uncertainty_refs`` are coverage blockers."""
+
+    provenance: SourceFileProvenance
+    symbols: tuple[ASTSymbol, ...] = ()
+    references: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    uncertainty_refs: tuple[str, ...] = ()
+    ast_digest: str = ""
+    semantic_ast_digest: str = ""
+
+
+@dataclass(frozen=True)
+class DependencyCone:
+    """A deterministic cone plus explicit uncertainty candidates."""
+
+    root_symbol_ids: tuple[str, ...]
+    symbol_ids: tuple[str, ...]
+    complete: bool
+    uncertainty_refs: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ASTSymbolChangeReport:
+    """Result of the required AST/symbol stage before any model analysis."""
+
+    before_files: tuple[SourceFileProvenance, ...]
+    after_files: tuple[SourceFileProvenance, ...]
+    classification: SourceChangeKind
+    changed_symbol_ids: tuple[str, ...]
+    changed_contracts: tuple[ChangedContract, ...]
+    dependency_cone: DependencyCone
+    reverse_dependency_cone: DependencyCone
+    uncertainty_refs: tuple[str, ...]
+    model_invocation_count: int = 0
+    schema: str = AST_SYMBOL_CHANGE_ANALYSIS_SCHEMA
+
+    @property
+    def ast_completed(self) -> bool:
+        return True
+
+    @property
+    def documentation_only(self) -> bool:
+        return self.classification is SourceChangeKind.DOCUMENTATION_ONLY
+
+    @property
+    def formatting_only(self) -> bool:
+        return self.classification is SourceChangeKind.FORMATTING_ONLY
+
+    @property
+    def impact_complete(self) -> bool:
+        return self.dependency_cone.complete and self.reverse_dependency_cone.complete
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _attribute_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _attribute_name(node.value)
+        return f"{prefix}.{node.attr}" if prefix else node.attr
+    return ""
+
+
+def _without_docstrings(tree: ast.AST) -> ast.AST:
+    """Return a copy whose module/class/function docstrings cannot imply code impact."""
+
+    class _Strip(ast.NodeTransformer):
+        def _strip_body(self, node: ast.AST) -> ast.AST:
+            body = getattr(node, "body", None)
+            if isinstance(body, list) and body and isinstance(body[0], ast.Expr):
+                value = body[0].value
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    node.body = body[1:]
+            return self.generic_visit(node)
+
+        visit_Module = _strip_body
+        visit_ClassDef = _strip_body
+        visit_FunctionDef = _strip_body
+        visit_AsyncFunctionDef = _strip_body
+
+    return _Strip().visit(ast.fix_missing_locations(ast.parse(ast.unparse(tree))))
+
+
+class _ASTFactsVisitor(ast.NodeVisitor):
+    def __init__(self, provenance: SourceFileProvenance) -> None:
+        self.provenance = provenance
+        self.scope: list[str] = []
+        self.symbols: list[ASTSymbol] = []
+        self.references: dict[str, set[str]] = defaultdict(set)
+        self.uncertainties: set[str] = set()
+
+    def _qualified(self, name: str) -> str:
+        return ".".join((*self.scope, name)) if self.scope else name
+
+    def _contract(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, tuple[str, ...]]:
+        signature = ast.dump(node.args, include_attributes=False)
+        result = ast.dump(node.returns, include_attributes=False) if node.returns else ""
+        decorators = ",".join(ast.dump(item, include_attributes=False) for item in node.decorator_list)
+        invariants = tuple(sorted(_sha256_text(ast.dump(item, include_attributes=False)) for item in ast.walk(node) if isinstance(item, ast.Assert)))
+        return _sha256_text("|".join((signature, result, decorators))), invariants
+
+    def _add_symbol(self, node: ast.AST, name: str, kind: str, contract: str = "", invariants: tuple[str, ...] = ()) -> None:
+        qualified = self._qualified(name)
+        symbol_id = f"symbol:{self.provenance.path}:{qualified}"
+        # Reparse only the bounded definition node so a docstring edit does
+        # not fabricate a semantic symbol change.
+        semantic_node = _without_docstrings(ast.parse(ast.unparse(node))).body[0]
+        self.symbols.append(ASTSymbol(
+            symbol_id=symbol_id, qualified_name=qualified, kind=kind,
+            provenance=self.provenance, line=getattr(node, "lineno", 1),
+            end_line=getattr(node, "end_lineno", getattr(node, "lineno", 1)),
+            semantic_digest=_sha256_text(ast.dump(semantic_node, include_attributes=False)),
+            contract_digest=contract, invariant_digests=invariants,
+        ))
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._add_symbol(node, node.name, "class")
+        self.scope.append(node.name)
+        self.generic_visit(node)
+        self.scope.pop()
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        contract, invariants = self._contract(node)
+        self._add_symbol(node, node.name, "function", contract, invariants)
+        self.scope.append(node.name)
+        self.generic_visit(node)
+        self.scope.pop()
+
+    visit_FunctionDef = _visit_function
+    visit_AsyncFunctionDef = _visit_function
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        current = ".".join(self.scope) if self.scope else "<module>"
+        if any(item.name == "*" for item in node.names):
+            self.uncertainties.add(f"dynamic_import:{self.provenance.path}:{node.lineno}")
+        for item in node.names:
+            if item.name != "*":
+                self.references[current].add(item.asname or item.name)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        name = _attribute_name(node.func)
+        current = ".".join(self.scope) if self.scope else "<module>"
+        if name:
+            self.references[current].add(name)
+        if name in _DYNAMIC_CALLS or name.endswith(".import_module"):
+            self.uncertainties.add(f"dynamic_dispatch:{self.provenance.path}:{node.lineno}:{name}")
+        if name == "getattr" and len(node.args) > 1 and not isinstance(node.args[1], ast.Constant):
+            self.uncertainties.add(f"dynamic_attribute:{self.provenance.path}:{node.lineno}")
+        self.generic_visit(node)
+
+
+class ASTSymbolAnalyzer:
+    """Parse exact Python text and preserve unsupported/dynamic gaps explicitly."""
+
+    def analyze_file(self, path: str, source: str) -> ASTFileAnalysis:
+        provenance = SourceFileProvenance.from_source(path, source)
+        if path.rsplit(".", 1)[-1].casefold() != "py":
+            return ASTFileAnalysis(provenance=provenance)
+        try:
+            tree = ast.parse(source, filename=path, type_comments=True)
+        except SyntaxError as exc:
+            return ASTFileAnalysis(
+                provenance=provenance,
+                uncertainty_refs=(f"syntax_error:{path}:{exc.lineno or 0}",),
+            )
+        visitor = _ASTFactsVisitor(provenance)
+        visitor.visit(tree)
+        semantic_tree = _without_docstrings(tree)
+        return ASTFileAnalysis(
+            provenance=provenance,
+            symbols=tuple(sorted(visitor.symbols)),
+            references={key: tuple(sorted(value)) for key, value in sorted(visitor.references.items())},
+            uncertainty_refs=tuple(sorted(visitor.uncertainties)),
+            ast_digest=_sha256_text(ast.dump(tree, include_attributes=False)),
+            semantic_ast_digest=_sha256_text(ast.dump(semantic_tree, include_attributes=False)),
+        )
+
+    def analyze_change(
+        self,
+        before_sources: Mapping[str, str],
+        after_sources: Mapping[str, str],
+    ) -> ASTSymbolChangeReport:
+        if not isinstance(before_sources, Mapping) or not isinstance(after_sources, Mapping):
+            raise ASTSymbolAnalysisError("before_sources and after_sources must be path-to-text mappings")
+        before = {str(path): self.analyze_file(str(path), source) for path, source in before_sources.items()}
+        after = {str(path): self.analyze_file(str(path), source) for path, source in after_sources.items()}
+        changed_paths = tuple(sorted(path for path in set(before) | set(after) if before.get(path) is None or after.get(path) is None or before[path].provenance.content_sha256 != after[path].provenance.content_sha256))
+        before_symbols = {item.symbol_id: item for value in before.values() for item in value.symbols}
+        after_symbols = {item.symbol_id: item for value in after.values() for item in value.symbols}
+        changed_symbols, contracts = _changed_symbols_and_contracts(before_symbols, after_symbols)
+        uncertainty = set(item for value in (*before.values(), *after.values()) for item in value.uncertainty_refs)
+        non_docs = [path for path in changed_paths if not _is_documentation_path(path)]
+        if changed_paths and not non_docs:
+            classification = SourceChangeKind.DOCUMENTATION_ONLY
+        elif changed_paths and not changed_symbols and all(
+            before.get(path) is not None and after.get(path) is not None
+            and before[path].ast_digest == after[path].ast_digest for path in non_docs
+        ):
+            classification = SourceChangeKind.FORMATTING_ONLY
+        elif changed_paths and not changed_symbols and all(
+            before.get(path) is not None and after.get(path) is not None
+            and before[path].semantic_ast_digest == after[path].semantic_ast_digest for path in non_docs
+        ):
+            classification = SourceChangeKind.DOCUMENTATION_ONLY
+        elif changed_paths and not uncertainty:
+            classification = SourceChangeKind.SEMANTIC
+        else:
+            classification = SourceChangeKind.UNKNOWN
+        all_symbols = {**before_symbols, **after_symbols}
+        forward, reverse, graph_uncertainty = _dependency_cones(
+            tuple(sorted(changed_symbols)), all_symbols, (*before.values(), *after.values())
+        )
+        uncertainty.update(graph_uncertainty)
+        complete = not uncertainty and classification is not SourceChangeKind.UNKNOWN
+        return ASTSymbolChangeReport(
+            before_files=tuple(sorted(value.provenance for value in before.values() if value.provenance.path in changed_paths)),
+            after_files=tuple(sorted(value.provenance for value in after.values() if value.provenance.path in changed_paths)),
+            classification=classification,
+            changed_symbol_ids=tuple(sorted(changed_symbols)),
+            changed_contracts=contracts,
+            dependency_cone=DependencyCone(tuple(sorted(changed_symbols)), forward, complete, tuple(sorted(uncertainty))),
+            reverse_dependency_cone=DependencyCone(tuple(sorted(changed_symbols)), reverse, complete, tuple(sorted(uncertainty))),
+            uncertainty_refs=tuple(sorted(uncertainty)),
+        )
+
+
+def _is_documentation_path(path: str) -> bool:
+    return "." in path and ("." + path.rsplit(".", 1)[1].casefold()) in _DOCUMENTATION_SUFFIXES
+
+
+def _changed_symbols_and_contracts(
+    before: Mapping[str, ASTSymbol], after: Mapping[str, ASTSymbol]
+) -> tuple[set[str], tuple[ChangedContract, ...]]:
+    changed: set[str] = set()
+    contracts: list[ChangedContract] = []
+    for symbol_id in sorted(set(before) | set(after)):
+        old, new = before.get(symbol_id), after.get(symbol_id)
+        if old is None or new is None:
+            changed.add(symbol_id)
+            continue
+        if (
+            old.semantic_digest != new.semantic_digest
+            or old.contract_digest != new.contract_digest
+            or old.invariant_digests != new.invariant_digests
+        ):
+            changed.add(symbol_id)
+            kinds: list[str] = []
+            if old.contract_digest != new.contract_digest:
+                kinds.append("signature_or_interface")
+            if old.invariant_digests != new.invariant_digests:
+                kinds.append("invariant")
+            contracts.append(ChangedContract(
+                symbol_id=symbol_id,
+                before_contract_ref=f"contract:sha256:{old.contract_digest}" if old.contract_digest else "",
+                after_contract_ref=f"contract:sha256:{new.contract_digest}" if new.contract_digest else "",
+                change_kinds=tuple(kinds), invariant_changed=old.invariant_digests != new.invariant_digests,
+                provenance_refs=(old.provenance.evidence_ref, new.provenance.evidence_ref),
+            ))
+    return changed, tuple(contracts)
+
+
+def _dependency_cones(
+    roots: tuple[str, ...],
+    symbols: Mapping[str, ASTSymbol],
+    analyses: Sequence[ASTFileAnalysis],
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    """Return direct dependency and reverse dependency cones without guessing resolution."""
+
+    by_name: dict[str, set[str]] = defaultdict(set)
+    for item in symbols.values():
+        by_name[item.qualified_name].add(item.symbol_id)
+        by_name[item.qualified_name.rsplit(".", 1)[-1]].add(item.symbol_id)
+    edges: dict[str, set[str]] = defaultdict(set)
+    uncertainty: set[str] = set()
+    for analysis in analyses:
+        file_symbols = {item.qualified_name: item.symbol_id for item in analysis.symbols}
+        for source_name, refs in analysis.references.items():
+            source_id = file_symbols.get(source_name)
+            if not source_id:
+                continue
+            for reference in refs:
+                targets = by_name.get(reference, set())
+                if len(targets) == 1:
+                    edges[source_id].update(targets)
+                elif reference not in _SAFE_BUILTIN_CALLS:
+                    uncertainty.add(f"unresolved_reference:{analysis.provenance.path}:{source_name}:{reference}")
+    reverse: dict[str, set[str]] = defaultdict(set)
+    for source, targets in edges.items():
+        for target in targets:
+            reverse[target].add(source)
+
+    def walk(adjacency: Mapping[str, set[str]]) -> tuple[str, ...]:
+        seen = set(roots)
+        queue = deque(sorted(roots))
+        while queue:
+            current = queue.popleft()
+            for neighbor in sorted(adjacency.get(current, ())):
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    queue.append(neighbor)
+        return tuple(sorted(seen))
+
+    return walk(edges), walk(reverse), tuple(sorted(uncertainty))
+
+
+def analyze_ast_symbol_change(
+    before_sources: Mapping[str, str], after_sources: Mapping[str, str]
+) -> ASTSymbolChangeReport:
+    """Run the mandatory deterministic AST/symbol stage with no model capability."""
+
+    return ASTSymbolAnalyzer().analyze_change(before_sources, after_sources)
+
+
+def require_ast_before_model(report: ASTSymbolChangeReport) -> None:
+    """Reject model analysis unless this exact deterministic stage has completed."""
+
+    if not isinstance(report, ASTSymbolChangeReport) or not report.ast_completed:
+        raise ModelAnalysisBeforeASTError("model analysis requires a completed AST/symbol receipt")
+    if report.model_invocation_count != 0:
+        raise ModelAnalysisBeforeASTError("AST/symbol analysis must record zero model invocations")
+
+
 __all__ = [
+    "ASTFileAnalysis",
+    "ASTSymbol",
+    "ASTSymbolAnalysisError",
+    "ASTSymbolAnalyzer",
+    "ASTSymbolChangeReport",
+    "AST_SYMBOL_CHANGE_ANALYSIS_SCHEMA",
+    "ChangedContract",
     "DEFAULT_MAX_ANNOTATIONS",
     "DEFAULT_MAX_CLOSURE_DEPTH",
     "DEFAULT_MAX_CLOSURE_EDGES",
@@ -1861,6 +2285,7 @@ __all__ = [
     "SEMANTIC_DEPENDENCY_NODE_SCHEMA",
     "ClosureBounds",
     "CrossRootEdgeError",
+    "DependencyCone",
     "DependencyEdge",
     "DependencyEdgeKind",
     "DependencyGraph",
@@ -1869,6 +2294,7 @@ __all__ = [
     "GraphValidationError",
     "MandatoryClosure",
     "MandatoryDependencyClosure",
+    "ModelAnalysisBeforeASTError",
     "SemanticAuthority",
     "SemanticDependencyGraph",
     "SemanticDependencyEdge",
@@ -1881,7 +2307,10 @@ __all__ = [
     "SemanticNodeKind",
     "SemanticProvenance",
     "SemanticTrust",
+    "SourceChangeKind",
+    "SourceFileProvenance",
     "UnsafeDependencyCycleError",
+    "analyze_ast_symbol_change",
     "build_semantic_dependency_graph",
     "canonical_semantic_json",
     "compute_mandatory_closure",
@@ -1889,4 +2318,5 @@ __all__ = [
     "nodes_and_edges_from_normalized_ir",
     "nodes_and_edges_from_program_behavior",
     "nodes_from_normalized_ir",
+    "require_ast_before_model",
 ]

@@ -214,13 +214,10 @@ def test_direct_codex_command_has_a_fail_closed_external_boundary(
     if vendor is not None:
         host_codex, host_companion = vendor
         assert (
-            f"type=bind,src={host_codex},"
-            "dst=/usr/local/bin/codex,readonly"
+            f"type=bind,src={host_codex.parent},"
+            "dst=/usr/local/bin,readonly"
         ) in mounts
-        assert (
-            f"type=bind,src={host_companion},"
-            "dst=/usr/local/bin/codex-code-mode-host,readonly"
-        ) in mounts
+        assert host_codex.parent == host_companion.parent
     assert not any("/proc" in item for item in mounts)
     assert not any("docker.sock" in item for item in mounts)
     assert not any("/unsafe/host/codex" in item for item in command)
@@ -1003,6 +1000,8 @@ def test_sealed_isolation_survives_profile_gate_and_daemon_handoffs(
         provider_environment
     )
     assert multi_runner_module.REPOSITORY_ROOT_ENV not in provider_environment
+    for name in multi_runner_module._PLAN_BOUND_LIFECYCLE_ENV_NAMES:
+        assert name not in provider_environment
 
 
 def test_trusted_duckdb_home_is_profile_bound_and_removed_from_provider(
@@ -1907,13 +1906,14 @@ def test_isolation_bind_mounts_newer_host_codex_vendor_pair(
     )
     mounts = _mounts(command)
     assert (
-        f"type=bind,src={host_codex.resolve()},"
-        "dst=/usr/local/bin/codex,readonly"
+        f"type=bind,src={vendor_bin.resolve()},"
+        "dst=/usr/local/bin,readonly"
     ) in mounts
-    assert (
-        f"type=bind,src={host_companion.resolve()},"
-        "dst=/usr/local/bin/codex-code-mode-host,readonly"
-    ) in mounts
+    assert not any("dst=/usr/local/bin/codex," in mount for mount in mounts)
+    assert not any(
+        "dst=/usr/local/bin/codex-code-mode-host," in mount
+        for mount in mounts
+    )
     assert config.container_executable in command
     assert "features.code_mode=false" not in command
 

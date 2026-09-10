@@ -12,6 +12,10 @@ Supported routes (closed):
 * ``frontier_model``
 * ``human_review_required``
 
+Stage order is owned by ``semantic_state.routing`` (ModelRouting@1). This
+module is an adapter: it projects verification facts onto that ladder and
+must not mint a second router family.
+
 Fail-closed precedence (normative):
 
 1. Unresolved authority/policy, unmodeled high-risk effects, scope crossings,
@@ -44,6 +48,14 @@ from types import MappingProxyType
 from typing import Any, Final
 
 from ..core.multiformats_identity import cid_for_dag_json
+from ..semantic_state.routing import (
+    CANONICAL_ROUTING_AUTHORITY,
+    RECEIPT_TO_HUMAN_LADDER,
+    DeterministicEvidenceState,
+    LadderDecision,
+    LadderEvidence,
+    evaluate_receipt_to_human_ladder,
+)
 from .contracts import (
     MAX_COLLECTION_ITEMS,
     MAX_RESOURCE_QUANTITY,
@@ -223,7 +235,6 @@ CAP_LOCAL_EXECUTION: Final[str] = "local_execution"
 CAP_MULTI_FILE_SYNTHESIS: Final[str] = "multi_file_synthesis"
 CAP_FRONTIER_REASONING: Final[str] = "frontier_reasoning"
 CAP_HUMAN_JUDGMENT: Final[str] = "human_judgment"
-
 
 class ModelRouteError(VerificationContractError):
     """Fail-closed error while selecting a provider-neutral model route."""
@@ -528,6 +539,8 @@ class ModelRoutePolicy:
                 name,
                 _nonneg_int(getattr(self, name), field_name=name),
             )
+        if self.schema != MODEL_ROUTE_POLICY_SCHEMA:
+            raise ModelRoutePolicyError("model route policy has unsupported schema")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -969,6 +982,20 @@ def _tier_available(
     if tier is ModelRoute.HUMAN_REVIEW_REQUIRED:
         return True
     for item in inventory:
+        # The capability tiers encode execution placement as well as scale:
+        # small is local-only, medium may be local or remote, and frontier is
+        # remote-only.  A larger or differently placed available capability
+        # must never satisfy the smaller tier's requirement.
+        if (
+            tier is ModelRoute.SMALL_LOCAL_MODEL
+            and item.locality is not CapabilityLocality.LOCAL
+        ):
+            continue
+        if (
+            tier is ModelRoute.FRONTIER_MODEL
+            and item.locality is not CapabilityLocality.REMOTE
+        ):
+            continue
         if (
             item.available
             and item.capability_tier is tier
@@ -1315,6 +1342,143 @@ def apply_availability(
     )
 
 
+CANONICAL_LADDER_AUTHORITY: Final[str] = CANONICAL_ROUTING_AUTHORITY
+
+
+def ladder_evidence_from_verification(
+    facts: ModelRouteFacts,
+    *,
+    required_route: ModelRoute,
+    inventory: Sequence[AvailableModelCapability],
+    policy: ModelRoutePolicy,
+) -> LadderEvidence:
+    """Project verification facts onto the canonical ModelRouting@1 ladder.
+
+    This adapter does not own stage order. ``required_route`` is the
+    capability class selected by the existing table *before* availability;
+    the ladder then records typed skip reasons when that tier is missing
+    instead of jumping to a larger available model.
+    """
+
+    facts = ModelRouteFacts.from_value(facts)
+    required_route = _route_enum(required_route, field_name="required_route")
+    if not isinstance(policy, ModelRoutePolicy):
+        raise ModelRouteError("policy must be a ModelRoutePolicy")
+    unavailable = DeterministicEvidenceState.UNAVAILABLE.value
+    ineligible = DeterministicEvidenceState.INELIGIBLE.value
+    resolves = DeterministicEvidenceState.RESOLVES.value
+    small_available = _tier_available(
+        inventory,
+        ModelRoute.SMALL_LOCAL_MODEL,
+        context_token_estimate=facts.context_token_estimate,
+    )
+    medium_available = _tier_available(
+        inventory,
+        ModelRoute.MEDIUM_MODEL,
+        context_token_estimate=facts.context_token_estimate,
+    )
+    frontier_available = _tier_available(
+        inventory,
+        ModelRoute.FRONTIER_MODEL,
+        context_token_estimate=facts.context_token_estimate,
+    )
+    if required_route is ModelRoute.HUMAN_REVIEW_REQUIRED:
+        return LadderEvidence(
+            cached_receipt=ineligible,
+            ast_symbol_impact=ineligible,
+            schema_type_static=ineligible,
+            selected_tests=ineligible,
+            incremental_prover=ineligible,
+            small_model_required=False,
+            medium_model_required=False,
+            frontier_model_required=False,
+            small_model_available=small_available,
+            medium_model_available=medium_available,
+            frontier_model_available=frontier_available,
+            human_review_required=True,
+        )
+    if required_route is ModelRoute.DETERMINISTIC_ONLY:
+        return LadderEvidence(
+            cached_receipt=unavailable,
+            ast_symbol_impact=unavailable,
+            schema_type_static=resolves,
+            selected_tests=unavailable,
+            incremental_prover=unavailable,
+            small_model_required=False,
+            medium_model_required=False,
+            frontier_model_required=False,
+            small_model_available=small_available,
+            medium_model_available=medium_available,
+            frontier_model_available=frontier_available,
+            human_review_required=False,
+        )
+    return LadderEvidence(
+        cached_receipt=unavailable,
+        ast_symbol_impact=unavailable,
+        schema_type_static=unavailable,
+        selected_tests=unavailable,
+        incremental_prover=unavailable,
+        small_model_required=required_route is ModelRoute.SMALL_LOCAL_MODEL,
+        medium_model_required=required_route is ModelRoute.MEDIUM_MODEL,
+        frontier_model_required=required_route is ModelRoute.FRONTIER_MODEL,
+        small_model_available=small_available,
+        medium_model_available=medium_available,
+        frontier_model_available=frontier_available,
+        human_review_required=False,
+    )
+
+
+def evaluate_ladder_for_model_route(
+    facts: ModelRouteFacts | Mapping[str, Any],
+    *,
+    prior_attempts: Sequence[Any] = (),
+    available_models: Sequence[Any] = (),
+    policy: Any,
+) -> LadderDecision:
+    """Traverse the canonical ladder for a verification model-route decision."""
+
+    normalized_facts = ModelRouteFacts.from_value(facts)
+    normalized_attempts = _normalize_prior_attempts(prior_attempts)
+    inventory = _normalize_inventory(available_models)
+    normalized_policy = ModelRoutePolicy.from_value(policy)
+    required, _reasons = select_required_route(
+        normalized_facts, normalized_attempts, normalized_policy
+    )
+    return evaluate_receipt_to_human_ladder(
+        ladder_evidence_from_verification(
+            normalized_facts,
+            required_route=required,
+            inventory=inventory,
+            policy=normalized_policy,
+        )
+    )
+
+
+def _assert_ladder_agrees_with_decision(
+    *,
+    facts: ModelRouteFacts,
+    required_route: ModelRoute,
+    inventory: Sequence[AvailableModelCapability],
+    policy: ModelRoutePolicy,
+    decision: ModelRouteDecision,
+) -> LadderDecision:
+    ladder = evaluate_receipt_to_human_ladder(
+        ladder_evidence_from_verification(
+            facts,
+            required_route=required_route,
+            inventory=inventory,
+            policy=policy,
+        )
+    )
+    if ladder.selected_route != decision.route.value:
+        raise ModelRouteError(
+            "canonical receipt-to-human ladder selected "
+            f"{ladder.selected_route} at {ladder.selected_stage}, "
+            f"but the capability table selected {decision.route.value}"
+        )
+    return ladder
+
+
 def decide_model_route(
     facts: ModelRouteFacts | Mapping[str, Any],
     *,
@@ -1339,6 +1503,13 @@ def decide_model_route(
         policy=normalized_policy,
     )
     _assert_provider_neutral_decision(decision)
+    _assert_ladder_agrees_with_decision(
+        facts=normalized_facts,
+        required_route=required,
+        inventory=inventory,
+        policy=normalized_policy,
+        decision=decision,
+    )
     return decision
 
 
@@ -1501,7 +1672,7 @@ def default_inventory(
             AvailableModelCapability(
                 capability_tier=ModelRoute.FRONTIER_MODEL,
                 context_limit_tokens=context_limit_tokens,
-                locality=CapabilityLocality.ANY,
+                locality=CapabilityLocality.REMOTE,
                 available=True,
             )
         )
@@ -1521,6 +1692,9 @@ def policy_cid_for(label: str) -> str:
 
 __all__ = [
     "AVAILABLE_MODEL_CAPABILITY_SCHEMA",
+    "CANONICAL_LADDER_AUTHORITY",
+    "CANONICAL_ROUTING_AUTHORITY",
+    "RECEIPT_TO_HUMAN_LADDER",
     "CAP_BOUNDED_CONTEXT",
     "CAP_FRONTIER_REASONING",
     "CAP_HUMAN_JUDGMENT",
@@ -1569,6 +1743,9 @@ __all__ = [
     "decide_model_route",
     "default_inventory",
     "derive_model_route_facts",
+    "evaluate_ladder_for_model_route",
+    "evaluate_receipt_to_human_ladder",
+    "ladder_evidence_from_verification",
     "policy_cid_for",
     "select_required_route",
 ]

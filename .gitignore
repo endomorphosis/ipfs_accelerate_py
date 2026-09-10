@@ -20,6 +20,7 @@ state/*
 !docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/
 !docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/*.json
 !test/fixtures/agent_supervisor_prompt_entrypoints/manifest.json
+!test/api/agent_supervisor/efficiency_state_hardening/fixtures/*.json
 !data/agent_supervisor/prompt_only_self_improvement_v3/convergence/*.json
 .venv-test
 *result.json*
@@ -178,6 +179,14 @@ Thumbs.db
 /data/agent_supervisor/ipfs_datasets_logic_family_parser_v2/
 /data/agent_supervisor/prompt_only_self_improvement_v3/live/
 /data/agent_supervisor/logic_governed_semantic_work_fabric/
+/data/aseh/
+# ASEH inventory and hermetic/historical/live/canary results are declared
+# source, same as other program inventory JSON. Root *.json would otherwise
+# hide new files from git status and from implementer `git add` without -f.
+# The daemon still force-adds declared ignored outputs at commit.
+!docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/*.json
+!benchmarks/agent_supervisor/efficiency_state_hardening/results/*.json
+!ipfs_accelerate_py/agent_supervisor/control/schemas/*.json
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/**
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/*.json

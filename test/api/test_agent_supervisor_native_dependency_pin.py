@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
+import shutil
 import stat
 import struct
 import subprocess
@@ -18,27 +20,34 @@ from typing import Any, ClassVar
 import pytest
 
 from ipfs_accelerate_py import llm_router
+from ipfs_accelerate_py import agent_implementation_route
 
 AUTHORIZATION_ID = (
     "sha256:039bdbbff886311847200cfdb4d99a498b8836f11e49b139f3dce5d1f398c4ff"
 )
 REAL_DUCKDB_PAYLOAD_SHA256 = (
-    "sha256:c378b8f61040764fdc904cf7c0643a005d547f491ab9303e6bd13c33aa353f2a"
+    "sha256:60ba180312ca4d6fcf14ebded76efcc1775485e69dcf89ec8f45653a5892a5ef"
 )
 REAL_DUCKDB_DEPENDENCY_ID = (
-    "sha256:bf982f675cc4c4fa212066d706cd387c9821b3b69f5f8cc7c07169bc347b88b5"
+    "sha256:d188aa384c68b59420bace9dfe1f8e06254865f73b4f6739f5254bcbc94c71a9"
 )
 REAL_PYTHON_EXECUTABLE_SHA256 = (
     "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
 )
-REAL_DUCKDB_SIZE = 54_278_072
+REAL_DUCKDB_SIZE = 54_541_064
 REAL_DUCKDB_NEEDED = (
     "libdl.so.2",
+    "libpthread.so.0",
     "libstdc++.so.6",
     "libm.so.6",
     "libgcc_s.so.1",
-    "libpthread.so.0",
     "libc.so.6",
+)
+REQUIRE_LIVE_NATIVE_ENV = (
+    "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_NATIVE_DEPENDENCY_VALIDATION"
+)
+LIVE_NATIVE_SOURCE_ENV = (
+    "IPFS_ACCELERATE_AGENT_LIVE_NATIVE_DEPENDENCY_SOURCE"
 )
 
 
@@ -282,9 +291,14 @@ def _install_fake_loader(monkeypatch: pytest.MonkeyPatch) -> None:
     # no native initialization occurred in a prior test.  Reset only the
     # private test-process sentinel; production exposes no reset path.
     monkeypatch.setattr(
-        llm_router,
+        agent_implementation_route,
         "_AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED",
         False,
+    )
+    monkeypatch.setattr(
+        agent_implementation_route,
+        "_AGENT_NATIVE_DEPENDENCY_ACTIVE_LAUNCH",
+        None,
     )
     monkeypatch.setattr(
         llm_router.importlib.machinery,
@@ -603,7 +617,7 @@ def test_preload_denies_ambient_loader_environment_before_loader_creation(
         with pytest.raises(ValueError, match="ambient loader environment"):
             llm_router.preload_agent_supervisor_native_dependency(launch)
         assert _FakeExtensionLoader.calls == []
-        assert not llm_router._AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED
+        assert not agent_implementation_route._AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED
     finally:
         os.close(launch.descriptor.descriptor)
 
@@ -660,9 +674,11 @@ def test_preload_failure_makes_process_terminal_without_a_second_loader_call(
 
 _ISOLATED_PRELOAD = r"""
 import json
+import os
 import sys
 
-native_fd, launch_json, trusted_root = sys.argv[1:]
+native_fd, launch_json, trusted_root, qualification_home = sys.argv[1:]
+os.environ['HOME'] = qualification_home
 sys.path.insert(0, trusted_root)
 from ipfs_accelerate_py.llm_router import (
     preload_agent_supervisor_native_dependency_from_bootstrap,
@@ -672,12 +688,17 @@ module = preload_agent_supervisor_native_dependency_from_bootstrap(
     native_fd,
     launch_json,
 )
+connection = module.connect(':memory:')
+connection.execute('LOAD httpfs')
+connection.execute('LOAD quack')
 print(json.dumps({
     "module": module.__name__,
     "origin": module.__file__,
     "version": module.__version__,
     "aliases_identical": sys.modules["_duckdb"] is sys.modules["duckdb"],
-    "query": module.connect(":memory:").execute("SELECT 42").fetchone()[0],
+    "query": connection.execute("SELECT 42").fetchone()[0],
+    "extensions": connection.execute("SELECT extension_name, install_path FROM duckdb_extensions() WHERE extension_name IN ('httpfs','quack') ORDER BY extension_name").fetchall(),
+    "quack_functions": [row[0] for row in connection.execute("SELECT DISTINCT function_name FROM duckdb_functions() WHERE function_name IN ('quack_query','quack_serve') ORDER BY function_name").fetchall()],
 }, sort_keys=True))
 """
 
@@ -685,26 +706,52 @@ print(json.dumps({
 def test_real_aarch64_duckdb_loads_from_sealed_fd_under_isolated_python(
     tmp_path: Path,
 ) -> None:
-    if sys.platform != "linux" or not hasattr(os, "uname"):
-        pytest.skip("Linux memfd integration only")
-    if os.uname().machine != "aarch64" or sys.implementation.cache_tag != "cpython-312":
-        pytest.skip("reviewed native fixture is CPython 3.12 aarch64")
-    installed = importlib.util.find_spec("_duckdb")
-    if installed is None or installed.origin is None:
+    require_live = os.environ.get(REQUIRE_LIVE_NATIVE_ENV) == "1"
+    explicit_source = str(os.environ.get(LIVE_NATIVE_SOURCE_ENV) or "")
+    if require_live:
+        assert explicit_source, (
+            f"{LIVE_NATIVE_SOURCE_ENV} is required by the live native gate"
+        )
+        assert sys.platform == "linux" and hasattr(os, "uname")
+        assert os.uname().machine == "aarch64"
+        assert sys.implementation.cache_tag == "cpython-312"
+        source = Path(explicit_source)
+    else:
+        if sys.platform != "linux" or not hasattr(os, "uname"):
+            pytest.skip("Linux memfd integration only")
+        if (
+            os.uname().machine != "aarch64"
+            or sys.implementation.cache_tag != "cpython-312"
+        ):
+            pytest.skip("reviewed native fixture is CPython 3.12 aarch64")
+        installed = importlib.util.find_spec("_duckdb")
+        if installed is None or installed.origin is None:
+            pytest.skip("reviewed DuckDB fixture is unavailable")
+        source = Path(installed.origin)
+    try:
+        lexical = os.lstat(source)
+        canonical = source.resolve(strict=True)
+    except OSError:
+        if require_live:
+            pytest.fail("required reviewed DuckDB source is unavailable")
         pytest.skip("reviewed DuckDB fixture is unavailable")
-    source = Path(installed.origin)
     if (
-        source.name != "_duckdb.cpython-312-aarch64-linux-gnu.so"
-        or not source.is_file()
-        or source.stat().st_size != REAL_DUCKDB_SIZE
+        source != source.absolute()
+        or canonical != source
+        or not stat.S_ISREG(lexical.st_mode)
+        or lexical.st_nlink != 1
+        or source.name != "_duckdb.cpython-312-aarch64-linux-gnu.so"
+        or lexical.st_size != REAL_DUCKDB_SIZE
         or not Path("/usr/bin/python3.12").is_file()
     ):
+        if require_live:
+            pytest.fail("required reviewed DuckDB/Python source identity differs")
         pytest.skip("reviewed DuckDB/Python fixture is unavailable")
 
     pin = llm_router.inspect_agent_supervisor_native_dependency_source(
         source,
-        distribution_version="1.5.2",
-        engine_version="v1.5.2",
+        distribution_version="1.5.5",
+        engine_version="v1.5.5",
     )
     assert stat.S_IMODE(source.stat().st_mode) == 0o775
     assert pin.dependency_id == REAL_DUCKDB_DEPENDENCY_ID
@@ -718,6 +765,31 @@ def test_real_aarch64_duckdb_loads_from_sealed_fd_under_isolated_python(
     assert pin.elf_dt_needed == REAL_DUCKDB_NEEDED
 
     launch = _seal(source, pin)
+    qualification_home = tmp_path / "qualification-home"
+    extension_home = (
+        qualification_home
+        / ".duckdb/extensions/v1.5.5/linux_arm64"
+    )
+    extension_home.mkdir(parents=True)
+    extension_hashes = {
+        "httpfs.duckdb_extension": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9",
+        "httpfs.duckdb_extension.info": "69f35648f184abd1ffe5a455e1b378eaa287dfe24f0fa04deb475826128c93bd",
+        "quack.duckdb_extension": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08",
+        "quack.duckdb_extension.info": "14ee8ddb246c590db9f8b1d090566ef159cf8a9175b3b0b7069d54435815bd89",
+    }
+    installed_extensions = Path(
+        "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64"
+    )
+    for name, expected_digest in extension_hashes.items():
+        installed_extension = installed_extensions / name
+        if not installed_extension.is_file():
+            if require_live:
+                pytest.fail("required reviewed DuckDB extension is unavailable")
+            pytest.skip("reviewed DuckDB extensions are unavailable")
+        target = extension_home / name
+        shutil.copyfile(installed_extension, target)
+        target.chmod(0o400)
+        assert hashlib.sha256(target.read_bytes()).hexdigest() == expected_digest
     hostile = tmp_path / "hostile"
     hostile.mkdir()
     marker = tmp_path / "hostile-imported"
@@ -748,11 +820,12 @@ def test_real_aarch64_duckdb_loads_from_sealed_fd_under_isolated_python(
         denied = subprocess.run(
             [
                 "/usr/bin/python3.12",
-                "-I",
+                "-I", "-S",
                 "-c",
                 _ISOLATED_PRELOAD,
                 *launch.bootstrap_arguments,
                 str(repository_root),
+                str(qualification_home),
             ],
             cwd=hostile,
             env=hostile_loader_environment,
@@ -772,11 +845,12 @@ def test_real_aarch64_duckdb_loads_from_sealed_fd_under_isolated_python(
         completed = subprocess.run(
             [
                 "/usr/bin/python3.12",
-                "-I",
+                "-I", "-S",
                 "-c",
                 _ISOLATED_PRELOAD,
                 *launch.bootstrap_arguments,
                 str(repository_root),
+                str(qualification_home),
             ],
             cwd=hostile,
             env=sanitized_environment,
@@ -795,6 +869,11 @@ def test_real_aarch64_duckdb_loads_from_sealed_fd_under_isolated_python(
         "module": "_duckdb",
         "origin": f"/proc/self/fd/{launch.descriptor.descriptor}",
         "query": 42,
-        "version": "1.5.2",
+        "extensions": [
+            ["httpfs", str(extension_home / "httpfs.duckdb_extension")],
+            ["quack", str(extension_home / "quack.duckdb_extension")],
+        ],
+        "quack_functions": ["quack_query", "quack_serve"],
+        "version": "1.5.5",
     }
     assert not marker.exists()

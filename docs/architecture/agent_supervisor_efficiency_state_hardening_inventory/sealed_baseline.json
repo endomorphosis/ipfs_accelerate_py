@@ -1,0 +1,246 @@
+{
+  "acceptance_tests": {
+    "hermetic_acceptance_vectors": {
+      "reason": "not_sealed_until_ASEH-013",
+      "status": "unavailable"
+    },
+    "historical_acceptance_vectors": {
+      "reason": "not_sealed_until_ASEH-014",
+      "status": "unavailable"
+    },
+    "identity": "baguqeerab25koaihkalsqboozoahhtjcp2nr3sc2upa3jw3sanuwxocz2pcq",
+    "live_acceptance_vectors": {
+      "reason": "not_sealed_until_ASEH-015",
+      "status": "unavailable"
+    },
+    "path": "test/api/agent_supervisor/efficiency_state_hardening/test_sealed_baseline.py",
+    "sha256": "sha256:9a3b3c021c64444cf5898a436e944f0ef3cbb50da1db65d385f1e145446b81c7",
+    "validation_command": [
+      "python3",
+      "-m",
+      "pytest",
+      "-q",
+      "test/api/agent_supervisor/efficiency_state_hardening/test_sealed_baseline.py"
+    ]
+  },
+  "authority": false,
+  "benchmark_code_digest": {
+    "algorithm": "sha256",
+    "digest": "baguqeera3cvih67yz43j3bg5kfh6xjyelnkv3ankfysirsaxbrxyb4s5ko6q",
+    "files": [
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+        "sha256": "sha256:85cbcf37d61e373eabfbdd4a291b85f4e5f2a275c6587b45fa1dc26a5d9803bd"
+      },
+      {
+        "path": "test/api/agent_supervisor/efficiency_state_hardening/test_sealed_baseline.py",
+        "sha256": "sha256:9a3b3c021c64444cf5898a436e944f0ef3cbb50da1db65d385f1e145446b81c7"
+      }
+    ],
+    "paired_harness": {
+      "path": "benchmarks/agent_supervisor/efficiency_state_hardening/paired_harness.py",
+      "reason": "not_sealed_until_ASEH-013",
+      "status": "unavailable"
+    },
+    "schema": "ipfs_accelerate_py/agent-supervisor/aseh-benchmark-code-digest@1",
+    "status": "sealed_available_benchmark_contract_code"
+  },
+  "bootstrap_forest": {
+    "claim_is_runtime_or_completion_evidence": false,
+    "commit": "unavailable",
+    "planning_commit_is_required_ancestor": true,
+    "reason": "bootstrap_forest_not_independently_peeled_in_this_seal",
+    "status": "unavailable",
+    "tree": "unavailable"
+  },
+  "candidate_behavior_permitted": false,
+  "claims": {
+    "board_completion_is_production_readiness": false,
+    "measurement_complete": false,
+    "observed_capability_is_qualification": false,
+    "production_qualified": false,
+    "promotion_authorized": false
+  },
+  "cost_accounting_method": {
+    "estimates_overwrite_measurements": false,
+    "fields": [
+      "provider_reported_charge_where_available",
+      "clearly_labeled_token_based_estimated_charge",
+      "price_snapshot_identity_and_timestamp",
+      "local_compute_units_without_unknown_cost_as_zero",
+      "audit_and_verification_overhead",
+      "cost_per_accepted_patch",
+      "cost_per_completed_task"
+    ],
+    "labeled_token_based_estimates_permitted": true,
+    "provider_reported_charge_preferred": true,
+    "schema": "ipfs_accelerate_py/agent-supervisor/aseh-cost-accounting-method@1",
+    "unknown_cost_recorded_as_zero": false
+  },
+  "environment_identity": {
+    "identity": "baguqeeraoiwpuyij56u66q36u6utp7fdggl3avccrsfsdrouhoife7jajmpq",
+    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/environment_identity.json",
+    "sha256": "sha256:a37b0e8a54b83d6b8dba81499dd5ba7c502a4aee8e59c31302b87a723e2d5e75"
+  },
+  "goal_id": "ASEH-G010",
+  "identity": "baguqeeradvsnp72gwufah7zjmapvp7msarsyndadzpmwl22mjtkzvroo57ga",
+  "implementation_envelope_tree_id": {
+    "authority": false,
+    "claim_is_current_head": false,
+    "source": "implementation_task_envelope.tree_id",
+    "value": "7c03c4ded2a80d50fb72130591a521d415386c97"
+  },
+  "plan_revision": "ASEH-PLAN-R1",
+  "price_snapshot": {
+    "captured_at": "2026-08-23T18:54:50Z",
+    "identity": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/price_snapshot.json",
+    "sha256": "sha256:e6ff6b34ba4987c35f20388e8652d0ac449c95fc24cfc6abd371b8da9c653aa5"
+  },
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "provider_and_model_configuration": {
+    "identity": "baguqeera5wehcqr5rbuwrcgskjdhpt7d4oz32ks7oalbqa5iimevjpjstrha",
+    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/provider_model_config.json",
+    "sha256": "sha256:761e38b348d787f0f5d641dcec03b23abee539d79b73cb3b53e27dd6fa9f03a7"
+  },
+  "qualification": false,
+  "repositories": {
+    "ipfs_accelerate_py": {
+      "baseline_gitlinks": {
+        "ipfs_datasets_py": "66a02063496fd200f2372b3083e376f1978c6be1",
+        "ipfs_kit_py": "2564aea1ae35061f2165872aff91e8a40801ab7e"
+      },
+      "campaign_gitlinks": {
+        "ipfs_datasets_py": "209dbe2765593fbc6efe8e9281c34f2e8f6e37a6",
+        "ipfs_kit_py": "ba5508d940fb5b23a6d0d9b2084f5195cd26a671"
+      },
+      "planning_commit": "755f45475cc2d13dacd8b330036c1d597afeddde",
+      "planning_tree": "729da9f8293ecfa046a0136381a3d3808f9ed140",
+      "remote": "https://github.com/endomorphosis/ipfs_accelerate_py",
+      "role": "supervisor_state_execution_and_admission_authority",
+      "selected_ref": "origin/main"
+    },
+    "ipfs_datasets_py": {
+      "commit": "209dbe2765593fbc6efe8e9281c34f2e8f6e37a6",
+      "gitlink_at_accelerator_planning_tree": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "origin_main_commit_at_capture": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "origin_main_is_ancestor_of_selected_snapshot": true,
+      "origin_main_tree_at_capture": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+      "remote": "https://github.com/endomorphosis/ipfs_datasets_py",
+      "role": "semantic_identity_ir_context_and_formal_obligation_authority",
+      "selected_ref": "origin/integration/datasets-ui-capability-recovery-20260823",
+      "selection_kind": "exact_campaign_authority_snapshot_not_sibling_main",
+      "tree": "95f54df34585d0b736706fd90c83f55954489ad9"
+    },
+    "ipfs_kit_py": {
+      "commit": "ba5508d940fb5b23a6d0d9b2084f5195cd26a671",
+      "gitlink_at_accelerator_planning_tree": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "origin_main_commit_at_capture": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "origin_main_is_ancestor_of_selected_snapshot": true,
+      "origin_main_tree_at_capture": "93070c709af29095fdff11f3e2698543449c08ef",
+      "remote": "https://github.com/endomorphosis/ipfs_kit_py",
+      "role": "durable_bytes_cid_current_root_cas_wal_and_recovery_authority",
+      "selected_ref": "origin/feat/pcce-009-proof-context-v01",
+      "selection_kind": "exact_campaign_authority_snapshot_not_sibling_main",
+      "tree": "7c71efa93c4e4124d12fa05515868df3a5344b2e"
+    }
+  },
+  "resource_limits": {
+    "implementation_log_stall_seconds": 1200,
+    "implementation_max_timeout_seconds": 21600,
+    "implementation_retry_budget": 4,
+    "implementation_timeout_seconds": 14400,
+    "max_concurrency": 4,
+    "max_lanes": 4,
+    "max_restarts": 8,
+    "max_task_attempts": 4,
+    "merge_retry_budget": 4,
+    "poll_interval_seconds": 5,
+    "source": "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
+    "source_sha256": "sha256:db7fd1e20636722cb1921ba4a76e6403b6d97ffa3ae52d06f396e566d968558d",
+    "stale_seconds": 1800,
+    "validation_retry_budget": 4
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-sealed-baseline@1",
+  "sealed_at": "2026-08-23T18:54:50Z",
+  "sealed_input_manifest": {
+    "identity": "baguqeeraf6tws27cpczkyf2ffwbyewugrltdrxzvypnjxlxjjluh4vfdxhxa",
+    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/sealed_input_manifest.json",
+    "sha256": "sha256:54aa873ea3a2789b248b24c874c2b6ffcb6003cc548662cd7e5a6d665710073e"
+  },
+  "supervisor_policy": {
+    "identity": "baguqeerarxf76z2xnfby7572hcg3zmml6j6h6dw5zcvn7adnzmxvsuzh4hwa",
+    "path": "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
+    "plan_revision": "ASEH-PLAN-R1",
+    "requirements_digest": "sha256:734a1c016bbb4e3e896c612c95a7144d6a8846b921784e75a41d90a5f2568e96",
+    "requirements_path": "docs/architecture/agent_supervisor_efficiency_state_hardening.requirements.json",
+    "scheduler_digest": "sha256:db7fd1e20636722cb1921ba4a76e6403b6d97ffa3ae52d06f396e566d968558d",
+    "schema": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1"
+  },
+  "task_corpus": {
+    "availability": "sealed_board_identities_only",
+    "board_path": "docs/architecture/agent_supervisor_efficiency_state_hardening.todo.md",
+    "board_sha256": "sha256:16d95123ce06d49b9b6e8d9fd2c2621815e56a008b52a384985e4e6924a470ef",
+    "hermetic_development_corpus": {
+      "minimum": 60,
+      "reason": "not_sealed_until_ASEH-013",
+      "status": "unavailable"
+    },
+    "historical_replay_corpus": {
+      "minimum": 20,
+      "reason": "not_sealed_until_ASEH-014",
+      "status": "unavailable"
+    },
+    "identity": "baguqeeramctclplnvantlfkl34n4hcmde3epsf5tpenvmo6ljhdplu3hmlia",
+    "live_shadow_canary_cohort": {
+      "minimum": 10,
+      "reason": "not_sealed_until_ASEH-015",
+      "status": "unavailable"
+    },
+    "plan_revision": "ASEH-PLAN-R1",
+    "task_count": 40,
+    "task_ids": [
+      "ASEH-000",
+      "ASEH-001",
+      "ASEH-010",
+      "ASEH-011",
+      "ASEH-012",
+      "ASEH-013",
+      "ASEH-014",
+      "ASEH-015",
+      "ASEH-020",
+      "ASEH-021",
+      "ASEH-022",
+      "ASEH-023",
+      "ASEH-024",
+      "ASEH-030",
+      "ASEH-031",
+      "ASEH-032",
+      "ASEH-033",
+      "ASEH-034",
+      "ASEH-035",
+      "ASEH-040",
+      "ASEH-041",
+      "ASEH-042",
+      "ASEH-043",
+      "ASEH-044",
+      "ASEH-045",
+      "ASEH-050",
+      "ASEH-051",
+      "ASEH-052",
+      "ASEH-053",
+      "ASEH-054",
+      "ASEH-055",
+      "ASEH-060",
+      "ASEH-061",
+      "ASEH-062",
+      "ASEH-070",
+      "ASEH-071",
+      "ASEH-072",
+      "ASEH-073",
+      "ASEH-074",
+      "ASEH-075"
+    ]
+  },
+  "task_id": "ASEH-001"
+}

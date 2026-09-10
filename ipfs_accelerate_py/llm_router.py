@@ -5049,6 +5049,87 @@ def _host_cli_binary(name: str) -> Optional[str]:
     return None
 
 
+def _codex_vendor_pair_from_bin_dir(
+    bindir: Path,
+) -> Optional[tuple[Path, Path]]:
+    """Return one resolved Codex/code-mode-host pair from a common bin dir."""
+
+    try:
+        codex = (bindir / "codex").resolve(strict=True)
+        companion = (bindir / "codex-code-mode-host").resolve(strict=True)
+    except OSError:
+        return None
+    if (
+        not codex.is_file()
+        or not companion.is_file()
+        or not os.access(codex, os.X_OK)
+        or not os.access(companion, os.X_OK)
+        or codex.parent != companion.parent
+    ):
+        return None
+    return codex, companion
+
+
+def find_codex_vendor_binaries() -> Optional[tuple[Path, Path]]:
+    """Locate the matching native Codex pair without importing a supervisor.
+
+    Provider runners call this lightweight router-owned discovery path while
+    validating an inert Docker create. Keeping the lookup here avoids a
+    runtime-to-daemon reverse import and its import-time control-plane seal.
+    """
+
+    roots: list[Path] = []
+    located = _host_cli_binary("codex")
+    if located:
+        path = Path(located)
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError:
+            resolved = path
+        pair = _codex_vendor_pair_from_bin_dir(resolved.parent)
+        if pair is not None:
+            return pair
+        if resolved.name in {"codex.js", "codex"}:
+            roots.append(resolved.parent.parent)
+    roots.extend(
+        (
+            Path("/usr/local/lib/node_modules/@openai/codex"),
+            _operator_home_dir()
+            / ".npm-global"
+            / "lib"
+            / "node_modules"
+            / "@openai"
+            / "codex",
+            _operator_home_dir()
+            / ".local"
+            / "lib"
+            / "node_modules"
+            / "@openai"
+            / "codex",
+        )
+    )
+    seen: set[Path] = set()
+    for root in roots:
+        try:
+            key = root.resolve()
+        except OSError:
+            key = root
+        if key in seen or not root.is_dir():
+            continue
+        seen.add(key)
+        try:
+            matches = sorted(
+                root.glob("node_modules/@openai/codex-linux-*/vendor/*/bin")
+            )
+        except OSError:
+            continue
+        for bindir in matches:
+            pair = _codex_vendor_pair_from_bin_dir(bindir)
+            if pair is not None:
+                return pair
+    return None
+
+
 def _grok_cli_auth_path() -> Path:
     configured_home = os.getenv("GROK_HOME", "").strip()
     if configured_home:

@@ -23,6 +23,17 @@ from math import isqrt
 from types import MappingProxyType
 from typing import Any, Final
 
+from ..semantic_state.unresolved_question import (
+    MinimumModelCapability,
+    UnresolvedQuestion,
+)
+from ..verification.contracts import ModelRoute, ModelRouteDecision
+from .cognitive_budget import (
+    BudgetExhaustion,
+    BudgetReservation,
+    CognitiveCost,
+    ObjectiveCognitiveBudgetLedger,
+)
 from ..proof.formal_verification_contracts import (
     CONTRACT_VERSION,
     canonical_json_bytes,
@@ -37,6 +48,7 @@ from .contracts import (
     MAX_SEQUENCE_ITEMS,
     AuthorityClass,
     AutonomyContractError,
+    BudgetPurpose,
     MetaAction,
     PolicyObservation,
     PrivacyClass,
@@ -62,6 +74,10 @@ SHADOW_ROUTE_SELECTION_SCHEMA: Final[str] = (
 )
 ROUTE_POLICY_SNAPSHOT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/autonomy/route-policy-snapshot@1"
+)
+MODEL_ESCALATION_ADMISSION_INTERFACE: Final[str] = "ModelEscalationAdmission@1"
+MODEL_ESCALATION_ADMISSION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/autonomy/model-escalation-admission@1"
 )
 
 BASIS_POINTS: Final[int] = 10_000
@@ -129,9 +145,250 @@ _REMOTE_MODEL_ACTIONS: Final[frozenset[MetaAction]] = frozenset(
     }
 )
 
+_QUESTION_CAPABILITY_FOR_ROUTE: Final[Mapping[ModelRoute, MinimumModelCapability]] = (
+    MappingProxyType(
+        {
+            ModelRoute.SMALL_LOCAL_MODEL: MinimumModelCapability.LOCAL_SMALL_SPECIALIST,
+            ModelRoute.MEDIUM_MODEL: MinimumModelCapability.LOCAL_OR_REMOTE_MEDIUM,
+            ModelRoute.FRONTIER_MODEL: MinimumModelCapability.REMOTE_STRONG_OR_FRONTIER,
+            ModelRoute.HUMAN_REVIEW_REQUIRED: MinimumModelCapability.HUMAN_DECISION,
+        }
+    )
+)
+
 
 class ShadowRoutePolicyError(AutonomyContractError):
     """Raised when a shadow route-policy input or transition is unsafe."""
+
+
+class ModelEscalationPolicyError(AutonomyContractError):
+    """Raised when escalation admission is malformed or internally unsafe."""
+
+
+class EscalationDisposition(str, Enum):
+    """Closed outcome of an executor admission attempt."""
+
+    ADMITTED = "admitted"
+    DENIED = "denied"
+
+
+@dataclass(frozen=True, slots=True)
+class ModelEscalationAdmission:
+    """A typed, reservation-bound admission result.
+
+    This is an invocation precondition only.  It neither dispatches an
+    executor nor grants authority to a model or human answer.  In particular,
+    ``admitted`` means only that a caller may start the already selected route
+    while the returned reservation remains current.
+    """
+
+    decision: ModelRouteDecision
+    disposition: EscalationDisposition
+    question_id: str = ""
+    reservation: BudgetReservation | None = None
+    exhaustion: BudgetExhaustion | None = None
+    reason_codes: tuple[str, ...] = ()
+    schema: str = MODEL_ESCALATION_ADMISSION_SCHEMA
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.decision, ModelRouteDecision):
+            raise ModelEscalationPolicyError("decision must be a ModelRouteDecision")
+        object.__setattr__(
+            self,
+            "disposition",
+            _enum(self.disposition, EscalationDisposition, "disposition"),
+        )
+        object.__setattr__(
+            self,
+            "question_id",
+            _identifier(self.question_id, "question_id", required=False),
+        )
+        codes = self.reason_codes or ()
+        if isinstance(codes, (str, bytes)) or not isinstance(codes, Sequence):
+            raise ModelEscalationPolicyError("reason_codes must be a sequence")
+        object.__setattr__(
+            self,
+            "reason_codes",
+            tuple(_identifier(code, "reason_codes") for code in codes),
+        )
+        if self.schema != MODEL_ESCALATION_ADMISSION_SCHEMA:
+            raise ModelEscalationPolicyError("model escalation admission has unsupported schema")
+        if self.disposition is EscalationDisposition.ADMITTED:
+            if self.reservation is None or self.exhaustion is not None or not self.question_id:
+                raise ModelEscalationPolicyError(
+                    "an admitted escalation requires one question and one reservation"
+                )
+        elif self.reservation is not None:
+            raise ModelEscalationPolicyError("a denied escalation cannot carry a reservation")
+
+    @property
+    def admitted(self) -> bool:
+        return self.disposition is EscalationDisposition.ADMITTED
+
+    @property
+    def requires_human_review(self) -> bool:
+        return self.decision.route is ModelRoute.HUMAN_REVIEW_REQUIRED
+
+
+def _escalation_denied(
+    decision: ModelRouteDecision,
+    *reason_codes: str,
+    question_id: str = "",
+    exhaustion: BudgetExhaustion | None = None,
+) -> ModelEscalationAdmission:
+    return ModelEscalationAdmission(
+        decision=decision,
+        disposition=EscalationDisposition.DENIED,
+        question_id=question_id,
+        exhaustion=exhaustion,
+        reason_codes=tuple(dict.fromkeys(reason_codes)),
+    )
+
+
+def _question_from_value(
+    value: UnresolvedQuestion | Mapping[str, Any] | None,
+) -> UnresolvedQuestion | None:
+    if value is None:
+        return None
+    if isinstance(value, UnresolvedQuestion):
+        return value
+    if not isinstance(value, Mapping):
+        raise ModelEscalationPolicyError(
+            "unresolved_question must be a closed question mapping"
+        )
+    try:
+        return UnresolvedQuestion.from_dict(value)
+    except Exception as exc:
+        raise ModelEscalationPolicyError(
+            "unresolved_question is not a valid closed record"
+        ) from exc
+
+
+def _bounded_nonnegative(value: Any, name: str) -> int:
+    return _int(value, name, minimum=0)
+
+
+def _expected_question_capability(route: ModelRoute) -> MinimumModelCapability:
+    try:
+        return _QUESTION_CAPABILITY_FOR_ROUTE[route]
+    except KeyError as exc:
+        raise ModelEscalationPolicyError("route is not an escalation executor") from exc
+
+
+def admit_model_escalation(
+    decision: ModelRouteDecision,
+    *,
+    unresolved_question: UnresolvedQuestion | Mapping[str, Any] | None,
+    budget_ledger: ObjectiveCognitiveBudgetLedger,
+    idempotency_key: str,
+    action_id: str,
+    expected_output_tokens: int,
+    expected_provider_spend_micros: int,
+    expected_wall_time_ms: int,
+    expires_at_ms: int = 0,
+) -> ModelEscalationAdmission:
+    """Reserve a selected executor only when its typed question permits it.
+
+    The caller must have already run the deterministic ladder and selected a
+    capability route.  Availability does not appear in this admission table:
+    it cannot justify changing a route.  A failed check returns a closed
+    denial, and no reservation is created except for the typed exhaustion
+    record returned by the existing budget authority.
+    """
+
+    if not isinstance(decision, ModelRouteDecision):
+        raise ModelEscalationPolicyError("decision must be a ModelRouteDecision")
+    if not isinstance(budget_ledger, ObjectiveCognitiveBudgetLedger):
+        raise ModelEscalationPolicyError(
+            "budget_ledger must be an ObjectiveCognitiveBudgetLedger"
+        )
+    output_tokens = _bounded_nonnegative(expected_output_tokens, "expected_output_tokens")
+    provider_spend = _bounded_nonnegative(
+        expected_provider_spend_micros, "expected_provider_spend_micros"
+    )
+    wall_time = _bounded_nonnegative(expected_wall_time_ms, "expected_wall_time_ms")
+    expiry = _bounded_nonnegative(expires_at_ms, "expires_at_ms")
+
+    if decision.route is ModelRoute.DETERMINISTIC_ONLY:
+        return _escalation_denied(decision, "deterministic_route_requires_no_escalation")
+
+    question = _question_from_value(unresolved_question)
+    if question is None:
+        return _escalation_denied(decision, "missing_typed_unresolved_question")
+
+    expected_capability = _expected_question_capability(decision.route)
+    if question.minimum_model_capability != expected_capability.value:
+        return _escalation_denied(
+            decision,
+            "question_capability_does_not_match_selected_route",
+            question_id=question.question_id,
+        )
+    if decision.route.value not in question.candidate_decisions_answer_could_change:
+        return _escalation_denied(
+            decision,
+            "question_answer_cannot_change_selected_decision",
+            question_id=question.question_id,
+        )
+    if decision.context_token_estimate > question.context_budget:
+        return _escalation_denied(
+            decision,
+            "question_context_budget_exceeded",
+            question_id=question.question_id,
+        )
+    if provider_spend > question.cost_budget:
+        return _escalation_denied(
+            decision,
+            "question_cost_budget_exceeded",
+            question_id=question.question_id,
+        )
+
+    # Validation remains a protected terminal obligation.  Do this check
+    # before reserving so model availability/capacity can never consume the
+    # last required validation slice.
+    validation_available = budget_ledger.available(BudgetPurpose.VALIDATION)
+    if validation_available.validation_time_ms < budget_ledger.budget.validation_reserve_ms:
+        return _escalation_denied(
+            decision,
+            "validation_reserve_exhausted",
+            question_id=question.question_id,
+        )
+
+    if decision.route is ModelRoute.HUMAN_REVIEW_REQUIRED:
+        purpose = BudgetPurpose.HUMAN
+        requested = CognitiveCost(human_questions=1, wall_time_ms=wall_time)
+    else:
+        purpose = BudgetPurpose.MODEL
+        requested = CognitiveCost(
+            total_model_calls=1,
+            strong_model_calls=int(decision.route is ModelRoute.FRONTIER_MODEL),
+            input_tokens=decision.context_token_estimate,
+            output_tokens=output_tokens,
+            provider_spend_micros=provider_spend,
+            wall_time_ms=wall_time,
+        )
+    outcome = budget_ledger.reserve(
+        idempotency_key=_identifier(idempotency_key, "idempotency_key"),
+        question_id=question.question_id,
+        action_id=_identifier(action_id, "action_id"),
+        purpose=purpose,
+        requested=requested,
+        expires_at_ms=expiry,
+    )
+    if isinstance(outcome, BudgetExhaustion):
+        return _escalation_denied(
+            decision,
+            "budget_reservation_denied",
+            outcome.reason.value,
+            question_id=question.question_id,
+            exhaustion=outcome,
+        )
+    return ModelEscalationAdmission(
+        decision=decision,
+        disposition=EscalationDisposition.ADMITTED,
+        question_id=question.question_id,
+        reservation=outcome,
+        reason_codes=("typed_question_capability_matched", "budget_reserved"),
+    )
 
 
 class SelectionMode(str, Enum):
@@ -1493,12 +1750,17 @@ def shadow_route_policy(
 __all__ = [
     "BASIS_POINTS",
     "LINEAR_UCB_STATE_SCHEMA",
+    "MODEL_ESCALATION_ADMISSION_INTERFACE",
+    "MODEL_ESCALATION_ADMISSION_SCHEMA",
     "PROTECTED_POLICY_AXES",
     "ROUTE_POLICY_CANDIDATE_INTERFACE",
     "SHADOW_ROUTE_POLICY_INTERFACE",
     "SHADOW_ROUTE_POLICY_SCHEMA",
+    "EscalationDisposition",
     "LinearUcbActionState",
     "LinearUcbState",
+    "ModelEscalationAdmission",
+    "ModelEscalationPolicyError",
     "RoutePolicySnapshot",
     "SelectionDisposition",
     "SelectionMode",
@@ -1506,6 +1768,7 @@ __all__ = [
     "ShadowRoutePolicyError",
     "ShadowRouteScore",
     "ShadowRouteSelection",
+    "admit_model_escalation",
     "field_is_forbidden",
     "shadow_route_policy",
 ]

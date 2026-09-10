@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/state-transition-table@1",
+  "title": "Agent supervisor candidate state-transition table",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "version",
+    "states",
+    "events",
+    "terminal_states",
+    "transitions",
+    "legacy_status_mappings",
+    "invariants",
+    "authority",
+    "policy_time_semantics"
+  ],
+  "properties": {
+    "schema": {"const": "ipfs_accelerate_py/agent-supervisor/state-transition-table@1"},
+    "version": {"const": 1},
+    "states": {"$ref": "#/$defs/states"},
+    "events": {"$ref": "#/$defs/events"},
+    "terminal_states": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["terminal_succeeded", "terminal_failed", "quarantined", "compensated"]}
+    },
+    "transitions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/transition"}
+    },
+    "legacy_status_mappings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["todo", "unstarted", "queued", "proposed", "admitted", "pending", "ready", "retrying", "claimed", "in_progress", "running", "processing", "blocked", "on_hold", "completed", "complete", "done", "skipped", "failed", "rejected", "cancelled", "quarantined"],
+      "properties": {
+        "todo": {"$ref": "#/$defs/state"}, "unstarted": {"$ref": "#/$defs/state"}, "queued": {"$ref": "#/$defs/state"},
+        "proposed": {"$ref": "#/$defs/state"}, "admitted": {"$ref": "#/$defs/state"},
+        "pending": {"$ref": "#/$defs/state"}, "ready": {"$ref": "#/$defs/state"},
+        "retrying": {"$ref": "#/$defs/state"}, "claimed": {"$ref": "#/$defs/state"},
+        "in_progress": {"$ref": "#/$defs/state"}, "running": {"$ref": "#/$defs/state"},
+        "processing": {"$ref": "#/$defs/state"}, "blocked": {"$ref": "#/$defs/state"},
+        "on_hold": {"$ref": "#/$defs/state"}, "completed": {"$ref": "#/$defs/state"},
+        "complete": {"$ref": "#/$defs/state"}, "done": {"$ref": "#/$defs/state"},
+        "skipped": {"$ref": "#/$defs/state"}, "failed": {"$ref": "#/$defs/state"},
+        "rejected": {"$ref": "#/$defs/state"}, "cancelled": {"$ref": "#/$defs/state"},
+        "quarantined": {"$ref": "#/$defs/state"}
+      }
+    },
+    "invariants": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}},
+    "authority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "mutation_authority"],
+      "properties": {"mode": {"const": "descriptive_only"}, "mutation_authority": {"const": "IntentRepository"}}
+    },
+    "policy_time_semantics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["dispatch_guard", "policy_change_guard"],
+      "properties": {"dispatch_guard": {"const": "policy_authorized_at_event_time"}, "policy_change_guard": {"const": "policy_change_is_nonretroactive"}}
+    }
+  },
+  "$defs": {
+    "state": {"enum": ["discovered", "admitted", "ready", "claimed", "dispatched", "provider_starting", "provider_running", "provider_completed", "provider_outcome_unknown", "validating", "validation_failed", "validation_succeeded", "rescue_pending", "retry_pending", "merge_pending", "merging", "reconciliation_pending", "terminal_succeeded", "terminal_failed", "quarantined", "compensated"]},
+    "event": {"enum": ["claim", "dispatch", "provider_start", "provider_completion", "provider_timeout", "provider_connection_loss", "validation_start", "validation_result", "rescue", "retry", "merge", "merge_conflict", "reconciliation", "terminalization", "owner_loss", "owner_restart", "lease_expiry", "fence_takeover", "confirmation_grant", "confirmation_expiry", "policy_change", "state_recovery"]},
+    "states": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/state"}},
+    "events": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/event"}},
+    "transition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "event", "source_states", "target_state", "guards"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "event": {"$ref": "#/$defs/event"},
+        "source_states": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/state"}},
+        "target_state": {"$ref": "#/$defs/state"},
+        "guards": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}}
+      }
+    }
+  }
+}

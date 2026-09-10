@@ -117,6 +117,15 @@ from ipfs_accelerate_py.llm_router import (
     AGENT_IMPLEMENTATION_QUOTA_VERIFIER_DISALLOWED_TOOLS,
     AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX,
 )
+import errno
+import select
+import socket
+import struct
+from typing import Any, TextIO
+from ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator import CONFIGURATION_ROOT_ENV, FENCING_EPOCH_ENV, PROFILE_ID_ENV, REPOSITORY_ROOT_ENV, RUN_ID_ENV, RUN_ROOT_ENV, STATE_ROOT_ENV, TARGET_ID_ENV
+from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import hashing_lock
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import read_process_birth
+from ipfs_accelerate_py.llm_router import AGENT_IMPLEMENTATION_CODEX_IMAGE_ID, AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL, AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX, AGENT_IMPLEMENTATION_QUOTA_VERIFIER_DISALLOWED_TOOLS, find_codex_vendor_binaries
 
 # Self-heal: if a static import is incomplete on an older pin or partial merge,
 # bind every provider-command symbol this module loads by name.
@@ -217,8 +226,23 @@ def parse_grok_quota_error(text: str) -> dict[str, object]:
     stripped = text.strip()
     if _GROK_USAGE_LIMIT_PATTERN.fullmatch(stripped):
         return {"kind": "usage_limit", "http_status": None}
+    search_from = len(stripped)
+    while search_from > 0:
+        marker_at = stripped.rfind(_GROK_BALANCE_MESSAGE, 0, search_from)
+        if marker_at < 0:
+            break
+        start = stripped.rfind("{", 0, marker_at + 1)
+        if start >= 0:
+            try:
+                payload, _end = json.JSONDecoder().raw_decode(stripped[start:])
+            except (json.JSONDecodeError, TypeError, ValueError):
+                payload = None
+            found = _grok_balance_payload(payload)
+            if found:
+                return found
+        search_from = marker_at
     lowered = stripped.lower()
-    prefixes = ("internal error:", "error:")
+    prefixes = ("error: internal error:", "internal error:", "error:")
     prefix = next((item for item in prefixes if lowered.startswith(item)), "")
     if not prefix:
         return {}
@@ -227,33 +251,27 @@ def parse_grok_quota_error(text: str) -> dict[str, object]:
         payload = json.loads(payload_text)
     except (json.JSONDecodeError, TypeError, ValueError):
         return {}
-    if not isinstance(payload, dict) or set(payload) != {"message", "http_status"}:
-        return {}
-    status = payload.get("http_status")
-    message = payload.get("message")
-    if (
-        isinstance(status, bool)
-        or not isinstance(status, int)
-        or status != 402
-        or not isinstance(message, str)
-        or " ".join(message.split()) != _GROK_BALANCE_MESSAGE
-    ):
-        return {}
-    return {"kind": "usage_balance_exhausted", "http_status": 402}
+    return _grok_balance_payload(payload)
 
 
 def _run_grok_with_bounded_stderr(
     command: Sequence[str],
     *,
     env: dict[str, str],
+    provider_stdin: socket.socket | None = None,
 ) -> tuple[int, bytes, int, bool]:
     """Drain child stderr without unbounded memory or disk growth."""
 
-    process = subprocess.Popen(
-        list(command),
-        env=env,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        process = subprocess.Popen(
+            list(command),
+            env=env,
+            stderr=subprocess.PIPE,
+            **({"stdin": provider_stdin} if provider_stdin is not None else {}),
+        )
+    finally:
+        if provider_stdin is not None:
+            provider_stdin.close()
     assert process.stderr is not None
     retained = bytearray()
     total = 0
@@ -631,8 +649,11 @@ def _resolve_trusted_grok_bin(*, configured: str, workspace: Path) -> str:
         if system_install
         else resolved_stat.st_uid == os.getuid()
     )
+    named_grok = (
+        candidate.name.casefold() in {"grok", "grok.exe"} or versioned_download
+    )
     if (
-        candidate.name.casefold() not in {"grok", "grok.exe"}
+        not named_grok
         or not resolved.is_file()
         or not os.access(resolved, os.X_OK)
         or resolved_stat.st_mode & 0o022
@@ -693,10 +714,18 @@ def build_grok_quota_routed_agent_command(
             if enable_codex_fallback
             else ""
         )
+    # The installed-module route imports from the candidate worktree.  Keep
+    # those supervisor imports from writing ``__pycache__`` after the runner
+    # seals its workspace fingerprint.  The accepted descriptor route stays
+    # under its existing isolated-interpreter argv contract.
     runner_argv = (
         ["-I", runner]
         if runner
-        else ["-m", "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"]
+        else [
+            "-B",
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        ]
     )
     if runner and (not Path(runner).is_absolute() or not Path(runner).is_file()):
         raise ValueError("accepted Grok runner must be an absolute file")
@@ -1094,7 +1123,8 @@ def build_grok_agent_command(
         "--tools",
         _SEALED_GROK_TOOLS,
         "--sandbox",
-        GROK_PRIMARY_SANDBOX_PROFILE,
+        grok_sandbox_cli_profile(GROK_ISOLATION_WORKTREE)
+        or GROK_WORKTREE_SANDBOX_PROFILE,
         "--max-turns",
         str(max_turns),
         "--output-format",
@@ -1334,13 +1364,16 @@ def _isolated_grok_home(
     codex_fallback_command: Sequence[str],
     workspace: Path | None = None,
     signed_source_authorization: bool = False,
+    populate_credentials: bool = True,
+    isolation_backend: str = GROK_ISOLATION_GROK_SANDBOX,
 ) -> tuple[tempfile.TemporaryDirectory[str], dict[str, str], Path, tuple[Path, ...]]:
     """Create a private Grok home with a machine-resolved custom sandbox.
 
     A unique global profile avoids project/user profile precedence conflicts.
     Its non-empty exact-path deny set forces Grok's Linux bubblewrap backend;
     the sentinel guarantees that even hosts without peer CLIs fail closed if
-    the kernel sandbox cannot be installed.
+    the kernel sandbox cannot be installed.  Worktree isolation keeps the
+    Landlock ``workspace`` profile instead: this host cannot install bwrap.
     """
 
     temporary_home = tempfile.TemporaryDirectory(prefix="asref-grok-home-")
@@ -1361,16 +1394,23 @@ def _isolated_grok_home(
         if grok_home not in denied_paths:
             raise ValueError("Grok sandbox state-directory deny was not resolved")
 
-        policy_lines = [
-            f"[profiles.{GROK_PRIMARY_SANDBOX_PROFILE}]",
-            'extends = "workspace"',
-            "restrict_network = true",
-            "deny = [",
-        ]
-        policy_lines.extend(f"  {json.dumps(str(path))}," for path in denied_paths)
-        policy_lines.append("]")
         policy_path = grok_home / "sandbox.toml"
-        policy_path.write_text("\n".join(policy_lines) + "\n", encoding="utf-8")
+        write_custom_deny_profile = (
+            grok_sandbox_cli_profile(isolation_backend)
+            == GROK_PRIMARY_SANDBOX_PROFILE
+        )
+        if write_custom_deny_profile:
+            policy_lines = [
+                f"[profiles.{GROK_PRIMARY_SANDBOX_PROFILE}]",
+                'extends = "workspace"',
+                "restrict_network = true",
+                "deny = [",
+            ]
+            policy_lines.extend(f"  {json.dumps(str(path))}," for path in denied_paths)
+            policy_lines.append("]")
+            policy_path.write_text("\n".join(policy_lines) + "\n", encoding="utf-8")
+        else:
+            policy_path.write_text("", encoding="utf-8")
         policy_path.chmod(0o600)
 
         # Prevent compatibility discovery from importing peer-agent skills,
@@ -1447,6 +1487,11 @@ def _isolated_grok_home(
                             _install_ephemeral_credential(extra, nested_home / name)
                         except ValueError:
                             continue
+        if populate_credentials:
+            _populate_isolated_grok_credentials(
+                base_env=base_env,
+                grok_home=grok_home,
+            )
 
         isolated_env = dict(child_env)
         isolated_env["GROK_HOME"] = str(grok_home)
@@ -1537,6 +1582,7 @@ def _install_ephemeral_credential(source: Path, destination: Path) -> None:
         if written != len(data):
             raise ValueError("isolated credential copy is incomplete")
         os.fchmod(dest_fd, 0o600)
+        os.fsync(dest_fd)
     finally:
         os.close(dest_fd)
 
@@ -1807,6 +1853,10 @@ def _workspace_content_fingerprint(workspace: Path) -> str:
         raise ValueError("unable to fingerprint Grok workspace") from exc
     check_deadline()
     return digest.hexdigest()
+    """Fully verify mutable bytes under the shared background hashing budget."""
+
+    with hashing_lock(kind="workspace-fingerprint", exclusive=True):
+        return _workspace_content_fingerprint_unlocked(workspace)
 
 
 def _grok_custom_sandbox_available() -> bool:
@@ -2616,21 +2666,28 @@ def _runner_process_start_ticks(pid: int) -> int:
     if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
         raise ValueError("process identity is invalid")
     try:
-        fields = Path(f"/proc/{pid}/stat").read_text(
-            encoding="ascii"
-        ).split()
-        ticks = int(fields[21])
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        closing_parenthesis = raw.rfind(")")
+        fields = raw[closing_parenthesis + 2 :].split()
+        ticks = int(fields[19])
     except (OSError, IndexError, UnicodeError, ValueError) as exc:
         raise ValueError("process identity is unavailable") from exc
-    if ticks < 0:
+    if closing_parenthesis < 0 or ticks < 0:
         raise ValueError("process identity is invalid")
     return ticks
 
 
 def _runner_process_identity_alive(pid: int, start_ticks: int) -> bool:
     try:
-        return _runner_process_start_ticks(pid) == start_ticks
-    except ValueError:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        closing_parenthesis = raw.rfind(")")
+        fields = raw[closing_parenthesis + 2 :].split()
+        return (
+            closing_parenthesis >= 0
+            and fields[0] != "Z"
+            and int(fields[19]) == start_ticks
+        )
+    except (OSError, IndexError, UnicodeError, ValueError):
         return False
 
 
@@ -2739,10 +2796,14 @@ def _docker_mount(
 ) -> list[str]:
     """Return one Docker bind-mount argument without invoking a shell."""
 
-    target = destination or source
+    try:
+        resolved_source = source.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("Docker create mount source is unavailable") from exc
+    target = destination if destination is not None else resolved_source
     fields = [
         "type=bind",
-        f"src={source}",
+        f"src={resolved_source}",
         f"dst={target}",
     ]
     if read_only:
@@ -2840,45 +2901,166 @@ def _remove_exact_docker_container(
         time.sleep(0.1)
 
 
-def _robust_remove_runner_temp_tree(path: Path) -> None:
-    """Remove one runner-owned temp tree without following credential symlinks."""
+def _robust_remove_runner_temp_tree(
+    path: Path,
+    *,
+    expected_identity: Mapping[str, int] | None = None,
+) -> bool:
+    """Remove one exact temp-tree inode using only descriptor-relative walks.
 
-    try:
-        path.chmod(0o700, follow_symlinks=False)
-    except (FileNotFoundError, NotImplementedError, OSError):
-        pass
-    try:
-        for root, directories, files in os.walk(path, topdown=True, followlinks=False):
-            root_path = Path(root)
+    A provider may change permissions or create symlinks below its private
+    home.  Cleanup may unlink those directory entries, but it must never follow
+    them and must never turn a rename/replacement race into authority over a
+    different tree.  The retained descriptors and inode checks below make each
+    directory boundary fail closed under concurrent namespace changes.
+    """
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+
+    def same_inode(left: os.stat_result, right: os.stat_result) -> bool:
+        return bool(
+            left.st_dev == right.st_dev
+            and left.st_ino == right.st_ino
+            and stat.S_IFMT(left.st_mode) == stat.S_IFMT(right.st_mode)
+            and left.st_uid == right.st_uid == os.geteuid()
+        )
+
+    def remove_contents(directory_fd: int) -> bool:
+        try:
+            names = tuple(os.listdir(directory_fd))
+        except OSError:
+            return False
+        for name in names:
+            if not name or name in {".", ".."} or "/" in name:
+                return False
             try:
-                root_path.chmod(0o700, follow_symlinks=False)
-            except (NotImplementedError, OSError):
-                pass
-            for name in directories:
-                candidate = root_path / name
-                if candidate.is_symlink():
-                    continue
-                try:
-                    candidate.chmod(0o700, follow_symlinks=False)
-                except (NotImplementedError, OSError):
-                    pass
-            for name in files:
-                candidate = root_path / name
-                if candidate.is_symlink():
-                    continue
-                try:
-                    candidate.chmod(0o600, follow_symlinks=False)
-                except (NotImplementedError, OSError):
-                    pass
-    except OSError:
-        pass
+                before = os.stat(
+                    name,
+                    dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+                if stat.S_ISDIR(before.st_mode) and not stat.S_ISLNK(
+                    before.st_mode
+                ):
+                    os.chmod(
+                        name,
+                        0o700,
+                        dir_fd=directory_fd,
+                        follow_symlinks=False,
+                    )
+                    after_chmod = os.stat(
+                        name,
+                        dir_fd=directory_fd,
+                        follow_symlinks=False,
+                    )
+                    if not same_inode(before, after_chmod):
+                        return False
+                    child_fd = os.open(name, flags, dir_fd=directory_fd)
+                    try:
+                        opened = os.fstat(child_fd)
+                        if not same_inode(after_chmod, opened):
+                            return False
+                        if not remove_contents(child_fd):
+                            return False
+                        current = os.stat(
+                            name,
+                            dir_fd=directory_fd,
+                            follow_symlinks=False,
+                        )
+                        if not same_inode(opened, current):
+                            return False
+                    finally:
+                        os.close(child_fd)
+                    os.rmdir(name, dir_fd=directory_fd)
+                else:
+                    # unlinkat removes the entry itself.  A symlink or special
+                    # file is never opened and therefore cannot redirect the
+                    # cleanup walk outside this descriptor-bound directory.
+                    os.unlink(name, dir_fd=directory_fd)
+            except (FileNotFoundError, NotImplementedError, OSError):
+                return False
+        try:
+            os.fsync(directory_fd)
+            return not os.listdir(directory_fd)
+        except OSError:
+            return False
+
+    parent_fd = -1
+    directory_fd = -1
     try:
-        shutil.rmtree(path)
-    except (FileNotFoundError, OSError):
-        pass
+        parent_fd = os.open(path.parent, flags)
+        before = os.stat(
+            path.name,
+            dir_fd=parent_fd,
+            follow_symlinks=False,
+        )
+        if (
+            not stat.S_ISDIR(before.st_mode)
+            or stat.S_ISLNK(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or (
+                expected_identity is not None
+                and not _owned_cleanup_path_matches(
+                    before,
+                    directory=True,
+                    identity=expected_identity,
+                )
+            )
+        ):
+            return False
+        os.chmod(
+            path.name,
+            0o700,
+            dir_fd=parent_fd,
+            follow_symlinks=False,
+        )
+        after_chmod = os.stat(
+            path.name,
+            dir_fd=parent_fd,
+            follow_symlinks=False,
+        )
+        if not same_inode(before, after_chmod):
+            return False
+        directory_fd = os.open(path.name, flags, dir_fd=parent_fd)
+        opened = os.fstat(directory_fd)
+        if not same_inode(after_chmod, opened):
+            return False
+        if not remove_contents(directory_fd):
+            return False
+        current = os.stat(
+            path.name,
+            dir_fd=parent_fd,
+            follow_symlinks=False,
+        )
+        if not same_inode(opened, current):
+            return False
+        os.rmdir(path.name, dir_fd=parent_fd)
+        os.fsync(parent_fd)
+        try:
+            os.stat(
+                path.name,
+                dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return True
+        return False
+    except (FileNotFoundError, NotImplementedError, OSError, ValueError):
+        return False
+    finally:
+        if directory_fd >= 0:
+            os.close(directory_fd)
+        if parent_fd >= 0:
+            os.close(parent_fd)
 
 
-def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
+def _docker_cleanup_watchdog_main(
+    argv: Sequence[str],
+    *,
+    control_socket: socket.socket | None = None,
+) -> int:
     """Remove a leaked container after the owning runner closes or dies."""
 
     parser = argparse.ArgumentParser(add_help=False)
@@ -2894,7 +3076,34 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
     parser.add_argument("--lease-root", type=Path, required=True)
     parser.add_argument("--provider-home", type=Path, required=True)
     parser.add_argument("--prompt-path", type=Path, required=True)
+    parser.add_argument("--logical-attempt-id", default="")
+    parser.add_argument("--provider-attempt-store", default="")
+    parser.add_argument("--provider-attempt-store-identity", default="")
+    parser.add_argument("--cleanup-binding-record", default="")
+    parser.add_argument("--runner-pid", type=int, required=True)
+    parser.add_argument("--runner-start-ticks", type=int, required=True)
+    parser.add_argument("--control-fd", type=int, default=-1)
     args = parser.parse_args(list(argv))
+
+    try:
+        if control_socket is None:
+            control_socket = _docker_cleanup_control_socket(args.control_fd)
+        elif args.control_fd >= 3:
+            raise ValueError("Docker cleanup control descriptor is duplicated")
+        peer_pid, peer_uid, peer_gid = _docker_control_peer_credentials(
+            control_socket
+        )
+        if (
+            peer_pid != args.runner_pid
+            or peer_uid != os.geteuid()
+            or peer_gid != os.getegid()
+            or _runner_process_start_ticks(peer_pid) != args.runner_start_ticks
+        ):
+            raise ValueError("Docker cleanup control peer identity drifted")
+    except (OSError, ValueError):
+        if control_socket is not None:
+            control_socket.close()
+        return 2
 
     try:
         docker_path = Path(args.docker_bin).resolve(strict=True)
@@ -2909,10 +3118,62 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
     cidfile = args.cidfile.absolute()
     provider_home = args.provider_home.absolute()
     prompt_path = args.prompt_path.absolute()
+    cleanup_binding_record = (
+        Path(args.cleanup_binding_record).absolute()
+        if args.cleanup_binding_record
+        else None
+    )
+    observation_values = (
+        args.logical_attempt_id,
+        args.provider_attempt_store,
+        args.provider_attempt_store_identity,
+    )
+    observation_configured = all(observation_values)
+    if any(observation_values) and not observation_configured:
+        return 2
+    attempt_observer = None
+    if observation_configured:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.control.provider_attempt_store import (
+                DurableProviderAttemptCAS,
+                ProviderAttemptStoreError,
+            )
+
+            attempt_observer = DurableProviderAttemptCAS(
+                args.provider_attempt_store,
+                expected_directory_identity=(
+                    args.provider_attempt_store_identity
+                ),
+                create_if_missing=False,
+            )
+            # Validate the stable logical identifier before provider creation.
+            attempt_observer.observe(args.logical_attempt_id)
+        except (OSError, ProviderAttemptStoreError, ValueError):
+            return 2
+    cleanup_effect_observation = (
+        {
+            "logical_attempt_id": args.logical_attempt_id,
+            "provider_attempt_store": args.provider_attempt_store,
+            "provider_attempt_store_identity": (
+                args.provider_attempt_store_identity
+            ),
+        }
+        if observation_configured
+        else {}
+    )
     cas_marker = lease_root / "cas-owned"
     terminal_marker = lease_root / "cas-terminal"
-    temporary_root = Path(tempfile.gettempdir()).resolve()
     expected_container_prefix = f"ipfs-accelerate-{args.provider}-"
+    try:
+        _cleanup_root, _cleanup_root_identity = (
+            _validated_docker_cleanup_root(
+                lease_root=lease_root,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+            )
+        )
+    except ValueError:
+        return 2
     if (
         docker_path not in {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
         or docker_path.name not in {"docker", "docker.exe"}
@@ -2920,21 +3181,53 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
         or docker_stat.st_mode & 0o022
         or _DOCKER_CONTAINER_NAME_RE.fullmatch(args.container_name) is None
         or not args.container_name.startswith(expected_container_prefix)
-        or lease_root.parent != temporary_root
         or not lease_root.name.startswith(
             f"asref-{args.provider}-container-"
         )
         or cidfile.parent != lease_root
         or cidfile.name != "container.cid"
         or not docker_config.is_dir()
-        or provider_home.parent != temporary_root
         or not provider_home.name.startswith(
             f"asref-{args.provider}-home-"
         )
-        or prompt_path.parent != temporary_root
         or not prompt_path.name.startswith("asref-grok-prompt-")
+        or (
+            cleanup_binding_record is not None
+            and (
+                cleanup_binding_record.parent.name
+                != _DOCKER_CLEANUP_BINDING_DIRECTORY
+                or re.fullmatch(
+                    r"[0-9a-f]{64}\.json",
+                    cleanup_binding_record.name,
+                )
+                is None
+            )
+        )
     ):
         return 2
+    try:
+        cleanup_path_identities: dict[str, Mapping[str, int]] = {
+            "docker_config": _cleanup_path_identity(
+                docker_config,
+                directory=True,
+            ),
+            "lease_root": _cleanup_path_identity(
+                lease_root,
+                directory=True,
+            ),
+            "prompt_path": _cleanup_path_identity(
+                prompt_path,
+                directory=False,
+            ),
+            "provider_home": _cleanup_path_identity(
+                provider_home,
+                directory=True,
+            ),
+        }
+    except ValueError:
+        return 2
+    cleanup_binding_identity: Mapping[str, int] | None = None
+    cleanup_binding_value: Mapping[str, object] | None = None
 
     # A clean marker means docker-run returned, but the final rm remains a
     # defensive idempotent action.  Empty input means the runner was killed;
@@ -2942,6 +3235,22 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
     cleanup_started = False
     cleanup_succeeded = False
     cleanup_failed = False
+    create_request_received = False
+    create_worker_active = False
+    create_environment: dict[str, str] | None = None
+    private_create_command_id = ""
+    private_create_command_body: dict[str, object] | None = None
+    private_result_open = True
+
+    def close_private_result() -> None:
+        nonlocal private_result_open
+        if not private_result_open:
+            return
+        try:
+            control_socket.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+        private_result_open = False
 
     def cas_owned() -> bool:
         try:
@@ -2971,30 +3280,507 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
             and stat.S_IMODE(metadata.st_mode) == 0o600
         )
 
+    def durable_cas_state() -> str:
+        """Observe only the exact existing attempt CAS; never mutate it."""
+
+        return _observed_provider_attempt_cleanup_state(
+            attempt_observer,
+            logical_attempt_id=args.logical_attempt_id,
+            lease_root=lease_root,
+            docker_config=docker_config,
+            container_name=args.container_name,
+            watchdog_pid=os.getpid(),
+            watchdog_start_ticks=_runner_process_start_ticks(os.getpid()),
+        )
+
+    def create_journal() -> dict[str, object] | None:
+        return _validated_docker_create_journal(
+            lease_root=lease_root,
+            provider=args.provider,
+            docker_bin=str(docker_path),
+            docker_config=docker_config,
+            container_name=args.container_name,
+            cidfile=cidfile,
+        )
+
+    def admit_cleanup_authority(
+        journal: Mapping[str, object] | None,
+    ) -> bool:
+        nonlocal cleanup_binding_identity, cleanup_binding_value
+        if cleanup_binding_record is None:
+            return True
+        try:
+            raw_binding = _read_private_control_record(
+                cleanup_binding_record.parent,
+                cleanup_binding_record.name,
+            )
+            if raw_binding is None:
+                return False
+            binding_state = str(raw_binding.get("binding_state") or "")
+            if binding_state == "prepared_no_dispatch":
+                if journal is not None and journal.get("state") != "prepared":
+                    return False
+                create_command_id = ""
+                create_cwd = None
+                create_environment_id = ""
+                termination_fence: Mapping[str, object] = {}
+            elif binding_state == "command_bound" and journal is not None:
+                create_command_id = str(journal["command_id"])
+                create_cwd = Path(str(journal["cwd"]))
+                create_environment_id = str(journal["environment_id"])
+                raw_termination_fence = raw_binding.get("termination_fence")
+                if not isinstance(raw_termination_fence, Mapping):
+                    return False
+                termination_fence = raw_termination_fence
+                if (
+                    not private_create_command_id
+                    or private_create_command_body is None
+                    or create_command_id != private_create_command_id
+                    or any(
+                        journal.get(name) != expected
+                        for name, expected in private_create_command_body.items()
+                    )
+                ):
+                    return False
+            else:
+                return False
+            value = _validated_cleanup_binding_record(
+                cleanup_binding_record,
+                provider=args.provider,
+                docker_bin=str(docker_path),
+                docker_config=docker_config,
+                container_name=args.container_name,
+                cidfile=cidfile,
+                lease_root=lease_root,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+                effect_observation=cleanup_effect_observation,
+                binding_state=binding_state,
+                runner_pid=args.runner_pid,
+                runner_start_ticks=args.runner_start_ticks,
+                watchdog_pid=os.getpid(),
+                watchdog_start_ticks=_runner_process_start_ticks(os.getpid()),
+                create_command_id=create_command_id,
+                create_cwd=create_cwd,
+                create_environment_id=create_environment_id,
+                termination_fence=termination_fence,
+            )
+            if value.get("path_identities") != cleanup_path_identities:
+                return False
+            observed_binding = _cleanup_path_identity(
+                cleanup_binding_record,
+                directory=False,
+            )
+        except (KeyError, ValueError):
+            return False
+        expected_upgrade = bool(
+            cleanup_binding_value is not None
+            and (
+                (
+                    cleanup_binding_value.get("binding_state")
+                    == "prepared_no_dispatch"
+                    and value.get("binding_state") == "command_bound"
+                )
+                or (
+                    cleanup_binding_value.get("binding_state")
+                    == value.get("binding_state")
+                    == "command_bound"
+                    and cleanup_binding_value.get("termination_fence") == {}
+                    and bool(value.get("termination_fence"))
+                )
+            )
+        )
+        if (
+            cleanup_binding_identity is not None
+            and observed_binding != cleanup_binding_identity
+            and not expected_upgrade
+        ):
+            return False
+        cleanup_binding_identity = observed_binding
+        cleanup_binding_value = value
+        return True
+
+    def publish_command_bound_cleanup_authority(
+        journal: Mapping[str, object],
+    ) -> None:
+        """Let the pipe-bound watchdog perform the sole binding upgrade."""
+
+        nonlocal cleanup_binding_identity, cleanup_binding_value
+        if (
+            cleanup_binding_record is None
+            or cleanup_binding_identity is None
+            or cleanup_binding_value is None
+            or cleanup_binding_value.get("binding_state")
+            != "prepared_no_dispatch"
+            or not private_create_command_id
+            or private_create_command_body is None
+            or journal.get("command_id") != private_create_command_id
+            or any(
+                journal.get(name) != expected
+                for name, expected in private_create_command_body.items()
+            )
+        ):
+            raise ValueError("Docker create command lacks private pipe authority")
+        lock_handle = _docker_binding_lock_descriptor(cleanup_binding_record)
+        try:
+            prepared_value = _validated_cleanup_binding_record(
+                cleanup_binding_record,
+                provider=args.provider,
+                docker_bin=str(docker_path),
+                docker_config=docker_config,
+                container_name=args.container_name,
+                cidfile=cidfile,
+                lease_root=lease_root,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+                effect_observation=cleanup_effect_observation,
+                binding_state="prepared_no_dispatch",
+                runner_pid=args.runner_pid,
+                runner_start_ticks=args.runner_start_ticks,
+                watchdog_pid=os.getpid(),
+                watchdog_start_ticks=_runner_process_start_ticks(os.getpid()),
+                control_directory_fd=lock_handle.directory_fd,
+            )
+            prepared_identity = lock_handle.path_identity(cleanup_binding_record)
+            if (
+                prepared_value != cleanup_binding_value
+                or prepared_identity != cleanup_binding_identity
+            ):
+                raise ValueError(
+                    "Docker cleanup pre-dispatch binding changed"
+                )
+            command_value = _docker_cleanup_binding_value(
+                binding_state="command_bound",
+                provider=args.provider,
+                docker_bin=str(docker_path),
+                container_name=args.container_name,
+                lease_root=lease_root,
+                docker_config=docker_config,
+                cidfile=cidfile,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+                effect_observation=cleanup_effect_observation,
+                path_identities=cleanup_path_identities,
+                binding_path=cleanup_binding_record,
+                runner_pid=args.runner_pid,
+                runner_start_ticks=args.runner_start_ticks,
+                watchdog_pid=os.getpid(),
+                watchdog_start_ticks=_runner_process_start_ticks(os.getpid()),
+                create_command_id=private_create_command_id,
+                create_cwd=Path(str(private_create_command_body["cwd"])),
+                create_environment_id=str(
+                    private_create_command_body["environment_id"]
+                ),
+            )
+            lock_handle.write(
+                cleanup_binding_record,
+                command_value,
+                replace_existing=True,
+            )
+            cleanup_binding_value = _validated_cleanup_binding_record(
+                cleanup_binding_record,
+                provider=args.provider,
+                docker_bin=str(docker_path),
+                docker_config=docker_config,
+                container_name=args.container_name,
+                cidfile=cidfile,
+                lease_root=lease_root,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+                effect_observation=cleanup_effect_observation,
+                binding_state="command_bound",
+                runner_pid=args.runner_pid,
+                runner_start_ticks=args.runner_start_ticks,
+                watchdog_pid=os.getpid(),
+                watchdog_start_ticks=_runner_process_start_ticks(os.getpid()),
+                create_command_id=private_create_command_id,
+                create_cwd=Path(str(private_create_command_body["cwd"])),
+                create_environment_id=str(
+                    private_create_command_body["environment_id"]
+                ),
+                control_directory_fd=lock_handle.directory_fd,
+            )
+            cleanup_binding_identity = lock_handle.path_identity(
+                cleanup_binding_record
+            )
+        finally:
+            lock_handle.close()
+
+    def publish_termination_fence(
+        journal: Mapping[str, object],
+    ) -> Mapping[str, object]:
+        """CAS-publish exact init/namespace/cgroup identity before Docker rm."""
+
+        nonlocal cleanup_binding_identity, cleanup_binding_value
+        if journal.get("state") != "create_observed":
+            raise ValueError("Docker termination fence requires observed create")
+        try:
+            container_id = cidfile.read_text(encoding="ascii").strip()
+        except (OSError, UnicodeError) as exc:
+            raise ValueError("Docker termination CID is unavailable") from exc
+        image_id = str(journal.get("image_id") or "")
+        if (
+            re.fullmatch(r"[0-9a-f]{64}", container_id) is None
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None
+        ):
+            raise ValueError("Docker termination identity is invalid")
+        existing = (
+            cleanup_binding_value.get("termination_fence")
+            if cleanup_binding_value is not None
+            else None
+        )
+        if isinstance(existing, Mapping) and existing:
+            return _validated_docker_termination_fence(
+                existing,
+                provider=args.provider,
+                container_name=args.container_name,
+                expected_container_id=container_id,
+                expected_image_id=image_id,
+            )
+        fence = _attest_exact_docker_execution(
+            docker_bin=str(docker_path),
+            docker_config=docker_config,
+            provider=args.provider,
+            container_name=args.container_name,
+            container_id=container_id,
+            image_id=image_id,
+            timeout=2.0,
+        )
+        if cleanup_binding_record is None:
+            return fence
+        if (
+            cleanup_binding_identity is None
+            or cleanup_binding_value is None
+            or cleanup_binding_value.get("binding_state") != "command_bound"
+            or cleanup_binding_value.get("termination_fence") != {}
+        ):
+            raise ValueError("Docker termination binding was not admitted")
+        cleanup_binding_value, cleanup_binding_identity = (
+            _publish_docker_termination_fence_binding(
+                record_path=cleanup_binding_record,
+                expected_record_id=str(cleanup_binding_value["record_id"]),
+                expected_identity=cleanup_binding_identity,
+                provider=args.provider,
+                docker_bin=str(docker_path),
+                docker_config=docker_config,
+                container_name=args.container_name,
+                cidfile=cidfile,
+                lease_root=lease_root,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+                effect_observation=cleanup_effect_observation,
+                runner_pid=args.runner_pid,
+                runner_start_ticks=args.runner_start_ticks,
+                watchdog_pid=os.getpid(),
+                watchdog_start_ticks=_runner_process_start_ticks(os.getpid()),
+                create_command_id=str(journal["command_id"]),
+                create_cwd=Path(str(journal["cwd"])),
+                create_environment_id=str(journal["environment_id"]),
+                termination_fence=fence,
+            )
+        )
+        return fence
+
+    def run_durable_create() -> None:
+        nonlocal create_request_received, create_worker_active
+        if create_request_received:
+            raise ValueError("Docker create worker received duplicate dispatch")
+        create_request_received = True
+        journal = create_journal()
+        if (
+            journal is None
+            or journal.get("state") != "create_armed"
+            or create_environment is None
+            or not private_create_command_id
+            or private_create_command_body is None
+            or journal.get("command_id") != private_create_command_id
+            or any(
+                journal.get(name) != expected
+                for name, expected in private_create_command_body.items()
+            )
+        ):
+            raise ValueError("Docker create worker lacks one armed journal")
+        environment_id, _payload, admitted_environment = (
+            _docker_create_environment_payload(create_environment)
+        )
+        create_cwd = Path(str(journal.get("cwd") or ""))
+        if journal.get("environment_id") != environment_id:
+            raise ValueError("Docker create environment identity drifted")
+        if cleanup_binding_record is None:
+            raise ValueError("Docker create worker lacks a durable binding")
+        publish_command_bound_cleanup_authority(journal)
+        if not admit_cleanup_authority(journal):
+            raise ValueError("Docker create worker lacks cleanup authority")
+        create_worker_active = True
+        request_dispatched = False
+        forced_kill = False
+        try:
+            try:
+                (
+                    journal,
+                    returncode,
+                    stdout,
+                    stderr,
+                    request_dispatched,
+                    forced_kill,
+                ) = _run_fenced_docker_create_issuer(
+                    journal,
+                    lease_root=lease_root,
+                    cwd=create_cwd,
+                    environment=admitted_environment,
+                )
+            except (OSError, TypeError, ValueError):
+                stdout = b""
+                stderr = b""
+                returncode = 125
+                current = create_journal()
+                if current is not None:
+                    journal = current
+                    if current.get("state") in {
+                        "create_inflight",
+                        "create_outcome_unknown",
+                    }:
+                        # The issuer crossed the durable inflight transition.
+                        # If its result path then failed, absence at one instant
+                        # cannot prove Docker did not accept the request.
+                        request_dispatched = True
+                        forced_kill = True
+        finally:
+            create_worker_active = False
+        observed = bool(
+            request_dispatched
+            and not forced_kill
+            and returncode == 0
+            and len(stdout) <= _DOCKER_INSPECTION_MAX_BYTES
+            and len(stderr) <= _DOCKER_INSPECTION_MAX_BYTES
+        )
+        if not observed and (
+            len(stdout) > _DOCKER_INSPECTION_MAX_BYTES
+            or len(stderr) > _DOCKER_INSPECTION_MAX_BYTES
+        ):
+            stdout = b""
+            stderr = b""
+            returncode = 125
+        # Only a dispatch that never crossed the private gate is a proven
+        # failed create.  A natural nonzero CLI exit (and especially a forced
+        # kill) can follow daemon acceptance, so fixed-time name absence must
+        # not turn it into a releasable observation.
+        failed_observed = bool(not request_dispatched and not observed)
+        terminal_journal = _transition_docker_create_journal(
+            journal,
+            lease_root=lease_root,
+            state=(
+                "create_observed"
+                if observed
+                else (
+                    "create_failed_observed"
+                    if failed_observed
+                    else "create_outcome_unknown"
+                )
+            ),
+            returncode=returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+        _write_docker_create_private_result(
+            control_socket,
+            terminal_journal,
+        )
+        close_private_result()
+
     def cleanup(*, settle_for_creation: bool) -> bool:
         nonlocal cleanup_started, cleanup_succeeded, cleanup_failed
         if cleanup_started:
             return cleanup_succeeded
+        try:
+            journal = create_journal()
+        except ValueError:
+            cleanup_failed = True
+            return False
+        if not admit_cleanup_authority(journal):
+            cleanup_failed = True
+            return False
+        if journal is not None and journal.get("state") in {
+            "create_armed",
+            "create_inflight",
+            "create_outcome_unknown",
+        }:
+            cleanup_failed = True
+            return False
         cleanup_started = True
         try:
+            termination_fence = (
+                publish_termination_fence(journal)
+                if journal is not None
+                and journal.get("state") == "create_observed"
+                else None
+            )
+            issue_removal = False
+            if termination_fence is not None:
+                if (
+                    cleanup_binding_record is None
+                    or cleanup_binding_value is None
+                    or cleanup_binding_identity is None
+                ):
+                    raise ValueError(
+                        "Docker rm lacks a durable dispatch authority"
+                    )
+                issue_removal = _arm_docker_removal_once(
+                    binding_path=cleanup_binding_record,
+                    expected_binding_identity=cleanup_binding_identity,
+                    binding_record=cleanup_binding_value,
+                    termination_fence=termination_fence,
+                )
             _remove_exact_docker_container(
                 docker_bin=str(docker_path),
                 docker_config=docker_config,
                 container_name=args.container_name,
                 settle_for_creation=settle_for_creation,
                 engine_endpoint=engine_endpoint,
+                termination_fence=termination_fence,
+                issue_removal=issue_removal,
             )
         except ValueError:
             cleanup_failed = True
+            cleanup_started = False
             return False
         cleanup_succeeded = True
+        cleanup_failed = False
         return True
 
     def terminate_watchdog(signum: int, _frame: object) -> None:
         # The supervisor deliberately terminates separately owned descendant
         # process groups before the runner group.  Reap synchronously here so
         # that ordering cannot strand the runner-owned workspace mount.
-        if cas_owned() and not cas_terminal():
+        if cleanup_started:
+            # EOF and lifecycle TERM can arrive together after a strict
+            # ancestry fence.  Never turn the second trigger into a
+            # re-entrant false failure while the first exact Docker rm is
+            # still in progress; that in-flight cleanup retains authority and
+            # reports its own terminal result.
+            return
+        try:
+            journal = create_journal()
+        except ValueError:
+            return
+        if create_worker_active or (
+            journal is not None
+            and journal.get("state")
+            in {
+                "create_armed",
+                "create_inflight",
+                "create_outcome_unknown",
+            }
+        ):
+            # The detached worker is the sole Docker-create issuer.  Never
+            # kill it or free its exact name while that request lacks a
+            # definite successful observation.
+            return
+        durable_state = durable_cas_state()
+        if (
+            (cas_owned() or durable_state in {"owned", "unknown"})
+            and not (cas_terminal() or durable_state == "terminal")
+        ):
             # Recovery owns every path needed to inspect/start the inert or
             # running exact container.  Supervisor shutdown must not delete
             # those bind/config inputs before a durable terminal transition.
@@ -3003,27 +3789,277 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
         # container synchronously *before* finally removes the Docker config
         # and bind sources.  This covers marker->SIGTERM interleavings where
         # the polling loop has not observed the terminal transition yet.
-        if not cleanup(settle_for_creation=True):
+        if observation_configured and durable_state == "absent":
+            # A signal can arrive while the live runner is still inside the
+            # durable claim.  Wait for runner EOF, then observe the final CAS.
+            return
+        if not cleanup(settle_for_creation=journal is not None):
+            # Preserve the private cleanup inputs and return a distinct
+            # failure status.  The lifecycle owner independently verifies
+            # the exact lease root and container absence, so a detached
+            # proxy cannot convert this failed reaper into lane release.
             raise SystemExit(125)
         raise SystemExit(128 + signum)
 
     try:
         signal.signal(signal.SIGTERM, terminate_watchdog)
         signal.signal(signal.SIGINT, terminate_watchdog)
-        markers = sys.stdin.buffer.read(16)
-        clean_exit = b"C" in markers
-        if not cas_owned():
-            cleanup(settle_for_creation=not clean_exit)
-        elif cas_terminal():
+        if cleanup_binding_record is not None:
+            try:
+                runner_birth = read_process_birth(args.runner_pid)
+                if (
+                    runner_birth is None
+                    or runner_birth.start_time_ticks != args.runner_start_ticks
+                    or runner_birth.boot_id
+                    != Path(
+                        "/proc/sys/kernel/random/boot_id"
+                    ).read_text(encoding="ascii").strip()
+                ):
+                    raise ValueError("Docker cleanup runner birth changed")
+                cleanup_binding_value = _docker_cleanup_binding_value(
+                    binding_state="prepared_no_dispatch",
+                    provider=args.provider,
+                    docker_bin=str(docker_path),
+                    container_name=args.container_name,
+                    lease_root=lease_root,
+                    docker_config=docker_config,
+                    cidfile=cidfile,
+                    provider_home=provider_home,
+                    prompt_path=prompt_path,
+                    effect_observation=cleanup_effect_observation,
+                    path_identities=cleanup_path_identities,
+                    binding_path=cleanup_binding_record,
+                    runner_pid=args.runner_pid,
+                    runner_start_ticks=args.runner_start_ticks,
+                    watchdog_pid=os.getpid(),
+                    watchdog_start_ticks=_runner_process_start_ticks(
+                        os.getpid()
+                    ),
+                )
+                _write_private_control_record(
+                    cleanup_binding_record.parent,
+                    cleanup_binding_record.name,
+                    cleanup_binding_value,
+                    replace_existing=False,
+                )
+                cleanup_binding_identity = _cleanup_path_identity(
+                    cleanup_binding_record,
+                    directory=False,
+                )
+            except (OSError, ValueError):
+                return 2
+        sealed_match = re.fullmatch(r"/proc/self/fd/([0-9]+)", sys.argv[0])
+        if sealed_match is not None:
+            sealed_descriptor = int(sealed_match.group(1))
+            if (
+                sealed_descriptor >= 3
+                and sealed_descriptor != control_socket.fileno()
+            ):
+                try:
+                    os.close(sealed_descriptor)
+                except OSError:
+                    pass
+        ready_payload = (
+            f"{os.getpid()}:{_runner_process_start_ticks(os.getpid())}\n"
+        ).encode("ascii")
+        try:
+            control_socket.sendall(ready_payload)
+        except OSError:
+            # Readiness precedes the caller's Docker create boundary, so there
+            # is no creation race to settle on a rejected launch.
             cleanup(settle_for_creation=False)
+            return 2
+        markers = bytearray()
+        while True:
+            marker = control_socket.recv(1)
+            if not marker:
+                break
+            if marker == b"Q":
+                try:
+                    if (
+                        create_environment is not None
+                        or private_create_command_id
+                        or private_create_command_body is not None
+                        or create_request_received
+                    ):
+                        raise ValueError(
+                            "Docker create private handoff is duplicated"
+                        )
+                    raw_size = _docker_control_read_exact(control_socket, 8)
+                    payload_size = int.from_bytes(raw_size, "big")
+                    if not 0 < payload_size <= _DOCKER_CREATE_HANDOFF_MAX_BYTES:
+                        raise ValueError(
+                            "Docker create private handoff length is invalid"
+                        )
+                    payload = _docker_control_read_exact(
+                        control_socket,
+                        payload_size,
+                    )
+                    decoded = json.loads(
+                        payload.decode("utf-8"),
+                        object_pairs_hook=_reject_duplicate_control_keys,
+                    )
+                    if (
+                        type(decoded) is not dict
+                        or set(decoded)
+                        != {
+                            "schema",
+                            "command_id",
+                            "command_body",
+                            "environment",
+                            "handoff_id",
+                        }
+                        or decoded.get("schema")
+                        != _DOCKER_CREATE_HANDOFF_SCHEMA
+                        or not isinstance(decoded.get("command_body"), dict)
+                        or not isinstance(decoded.get("environment"), dict)
+                    ):
+                        raise ValueError(
+                            "Docker create private handoff is invalid"
+                        )
+                    environment_id, _canonical_environment, admitted = (
+                        _docker_create_environment_payload(
+                            decoded["environment"]
+                        )
+                    )
+                    command_body = decoded["command_body"]
+                    argv = command_body.get("argv")
+                    if not isinstance(argv, list) or not all(
+                        isinstance(item, str) for item in argv
+                    ):
+                        raise ValueError(
+                            "Docker create private command argv is invalid"
+                        )
+                    command_id, admitted_command_body = (
+                        _docker_create_command_identity(
+                            provider=args.provider,
+                            docker_bin=str(docker_path),
+                            docker_config=docker_config,
+                            container_name=args.container_name,
+                            cidfile=cidfile,
+                            cwd=Path(str(command_body.get("cwd") or "")),
+                            environment_id=environment_id,
+                            expected_image=str(
+                                command_body.get("image_id") or ""
+                            ),
+                            argv=argv,
+                        )
+                    )
+                    canonical = _docker_create_private_handoff_payload(
+                        command_id=command_id,
+                        command_body=admitted_command_body,
+                        environment=admitted,
+                    )
+                    if (
+                        canonical != payload
+                        or decoded.get("command_id") != command_id
+                        or command_body != admitted_command_body
+                        or decoded.get("handoff_id")
+                        != _effect_receipt_identity(
+                            {
+                                key: value
+                                for key, value in decoded.items()
+                                if key != "handoff_id"
+                            }
+                        )
+                    ):
+                        raise ValueError(
+                            "Docker create private handoff is noncanonical"
+                        )
+                    create_environment = admitted
+                    private_create_command_id = command_id
+                    private_create_command_body = admitted_command_body
+                except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+                    journal = create_journal()
+                    if journal is not None and journal.get("state") == (
+                        "create_armed"
+                    ):
+                        _transition_docker_create_journal(
+                            journal,
+                            lease_root=lease_root,
+                            state="prepared_abandoned",
+                        )
+                    return 125
+                continue
+            if marker == b"D":
+                try:
+                    run_durable_create()
+                except (OSError, ValueError):
+                    journal = create_journal()
+                    if journal is not None and journal.get("state") == (
+                        "create_armed"
+                    ):
+                        _transition_docker_create_journal(
+                            journal,
+                            lease_root=lease_root,
+                            state="prepared_abandoned",
+                        )
+                    elif journal is not None and journal.get("state") == (
+                        "create_inflight"
+                    ):
+                        _transition_docker_create_journal(
+                            journal,
+                            lease_root=lease_root,
+                            state="create_outcome_unknown",
+                            returncode=125,
+                        )
+                    # This dispatch can never produce an admitted private
+                    # result. Close the sole writer now so the runner observes
+                    # EOF immediately instead of waiting its 120-second bound.
+                    close_private_result()
+                continue
+            if marker not in {b"A", b"T", b"C"}:
+                return 125
+            markers.extend(marker)
+        journal = create_journal()
+        if (
+            journal is not None
+            and journal.get("state") == "create_armed"
+            and not create_request_received
+        ):
+            journal = _transition_docker_create_journal(
+                journal,
+                lease_root=lease_root,
+                state="prepared_abandoned",
+            )
+        if journal is not None and journal.get("state") in {
+            "create_inflight",
+            "create_outcome_unknown",
+        }:
+            return 125
+        clean_exit = b"C" in markers
+        durable_state = durable_cas_state()
+        if (
+            not cas_owned()
+            and durable_state in {"unscoped", "absent", "foreign"}
+        ):
+            settle_for_creation = bool(
+                journal is not None
+                and not clean_exit
+                and journal.get("state") != "create_failed_observed"
+            )
+            while not cleanup(
+                settle_for_creation=settle_for_creation
+            ):
+                settle_for_creation = True
+                time.sleep(0.25)
+        elif cas_terminal() or durable_state == "terminal":
+            settle_for_creation = False
+            while not cleanup(
+                settle_for_creation=settle_for_creation
+            ):
+                settle_for_creation = True
+                time.sleep(0.25)
         else:
             # A durable effect_started claim transfers cleanup priority to
             # recovery.  Container absence or exit is not proof that the
             # provider effect never ran, so the watchdog must preserve the
             # exact container until the CAS terminal record has been written.
             while True:
-                if cas_terminal():
-                    cleanup(settle_for_creation=True)
+                durable_state = durable_cas_state()
+                if cas_terminal() or durable_state == "terminal":
+                    while not cleanup(settle_for_creation=True):
+                        time.sleep(0.25)
                     break
                 time.sleep(1.0)
     finally:
@@ -3031,38 +4067,60 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
         # absence/removal of the receipt-bound container was proven.  A dead
         # reaper with preserved private inputs is recoverable; deleting those
         # inputs after an unverified rm is not.
-        if cleanup_succeeded:
+        cleanup_resources = (
+            (
+                prompt_path,
+                False,
+                cleanup_path_identities["prompt_path"],
+            ),
+            (
+                provider_home,
+                True,
+                cleanup_path_identities["provider_home"],
+            ),
+            (
+                lease_root,
+                True,
+                cleanup_path_identities["lease_root"],
+            ),
+        )
+        if cleanup_succeeded and cleanup_binding_record is not None:
             try:
-                prompt_path.unlink()
-            except FileNotFoundError:
-                pass
-            mask_root = lease_root / "provider-masks"
-            _restore_mask_permissions(mask_root)
-            try:
-                shutil.rmtree(mask_root)
-            except FileNotFoundError:
-                pass
-            _robust_remove_runner_temp_tree(provider_home)
-            try:
-                cidfile.unlink()
-            except FileNotFoundError:
-                pass
-            try:
-                cas_marker.unlink()
-            except FileNotFoundError:
-                pass
-            try:
-                terminal_marker.unlink()
-            except FileNotFoundError:
-                pass
-            try:
-                docker_config.rmdir()
-            except (FileNotFoundError, OSError):
-                pass
-            try:
-                lease_root.rmdir()
-            except (FileNotFoundError, OSError):
-                pass
+                if (
+                    cleanup_binding_identity is None
+                    or cleanup_binding_value is None
+                ):
+                    raise ValueError("Docker cleanup binding was not admitted")
+                if not _finalize_verified_cleanup_completion(
+                    binding_path=cleanup_binding_record,
+                    binding_identity=cleanup_binding_identity,
+                    binding_record=cleanup_binding_value,
+                ):
+                    raise ValueError("Docker cleanup completion did not converge")
+            except ValueError:
+                cleanup_succeeded = False
+                cleanup_failed = True
+        if cleanup_succeeded and cleanup_binding_record is None:
+            for path, directory, identity in cleanup_resources:
+                if not _remove_owned_cleanup_path(
+                    path,
+                    directory=directory,
+                    identity=identity,
+                ):
+                    cleanup_succeeded = False
+                    cleanup_failed = True
+                    break
+        if cleanup_succeeded and cleanup_binding_record is None:
+            # The binding was the last durable authority.  Tombstones contain
+            # no credentials and are discarded only after its exact removal;
+            # a crash here is harmless and replayable.
+            for path, directory, identity in cleanup_resources:
+                _discard_owned_cleanup_tombstone(
+                    path,
+                    directory=directory,
+                    identity=identity,
+                )
+        control_socket.close()
     return 125 if cleanup_failed or not cleanup_succeeded else 0
 
 
@@ -3082,6 +4140,11 @@ class _DockerContainerLease:
         engine_endpoint: str,
         write_fd: int,
         watchdog: subprocess.Popen[bytes],
+        control_socket: socket.socket,
+        watchdog: _DetachedDockerCleanupWatchdog,
+        provider: str,
+        effect_observation: Mapping[str, str],
+        cleanup_binding_record: Path | None,
     ) -> None:
         self.docker_bin = docker_bin
         self.container_name = container_name
@@ -3092,11 +4155,81 @@ class _DockerContainerLease:
         self.prompt_path = prompt_path
         self.engine_endpoint = engine_endpoint
         self._write_fd = write_fd
+        self._control_socket = control_socket
         self._watchdog = watchdog
+        self.provider = provider
+        self.effect_observation = dict(effect_observation)
+        self.cleanup_binding_record = cleanup_binding_record
+        self._cleanup_path_identities: dict[str, Mapping[str, int]] = {
+            "docker_config": _cleanup_path_identity(
+                docker_config,
+                directory=True,
+            ),
+            "lease_root": _cleanup_path_identity(
+                lease_root,
+                directory=True,
+            ),
+            "prompt_path": _cleanup_path_identity(
+                prompt_path,
+                directory=False,
+            ),
+            "provider_home": _cleanup_path_identity(
+                provider_home,
+                directory=True,
+            ),
+        }
+        self._provider_start_sender: socket.socket | None = None
+        self._provider_start_stdin: socket.socket | None = None
+        self._provider_start_stdin_taken = False
+        self._provider_start_released = False
+        self._cleanup_binding_identity: Mapping[str, int] | None = None
+        self._cleanup_binding_value: Mapping[str, object] | None = None
+        self._create_command_id = ""
+        self._create_command_body: Mapping[str, object] | None = None
+        self._create_lock = threading.Lock()
+        self._create_started = False
+        self._authorized_image_id = ""
+        self._termination_fence: Mapping[str, object] = {}
         self._closed = False
         self._cas_owned = False
         self._cas_terminal = False
+        self._create_outcome_unknown = False
         self.preserve_for_recovery = False
+        if self.cleanup_binding_record is not None:
+            try:
+                value = _validated_cleanup_binding_record(
+                    self.cleanup_binding_record,
+                    provider=self.provider,
+                    docker_bin=self.docker_bin,
+                    docker_config=self.docker_config,
+                    container_name=self.container_name,
+                    cidfile=self.cidfile,
+                    lease_root=self.lease_root,
+                    provider_home=self.provider_home,
+                    prompt_path=self.prompt_path,
+                    effect_observation=self.effect_observation,
+                    binding_state="prepared_no_dispatch",
+                    runner_pid=os.getpid(),
+                    runner_start_ticks=_runner_process_start_ticks(os.getpid()),
+                    watchdog_pid=self._watchdog.pid,
+                    watchdog_start_ticks=self._watchdog.start_ticks,
+                )
+                identity = _cleanup_path_identity(
+                    self.cleanup_binding_record,
+                    directory=False,
+                )
+            except (OSError, ValueError) as exc:
+                raise ValueError(
+                    "Docker cleanup pre-dispatch binding is unavailable"
+                ) from exc
+            if value.get("path_identities") != self._cleanup_path_identities:
+                raise ValueError("Docker cleanup pre-dispatch paths drifted")
+            self._cleanup_binding_identity = identity
+            self._cleanup_binding_value = value
+        (
+            self._provider_start_sender,
+            self._provider_start_stdin,
+        ) = _provider_start_socketpair()
 
     @classmethod
     def create(
@@ -3224,25 +4357,34 @@ class _DockerContainerLease:
     def mark_cas_owned(self) -> None:
         if self._cas_owned:
             return
-        marker = self.lease_root / "cas-owned"
-        descriptor = os.open(
-            marker,
-            os.O_WRONLY
-            | os.O_CREAT
-            | os.O_EXCL
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-        )
-        try:
-            os.write(descriptor, self.container_name.encode("ascii"))
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+        # This method is entered only after the durable effect_started CAS
+        # commits.  Transfer cleanup ownership in memory before the first
+        # fallible marker operation so ENOSPC/I/O failure cannot make close()
+        # reap a winner whose external outcome is still recoverable.
         self._cas_owned = True
+        marker = self.lease_root / "cas-owned"
         try:
-            os.write(self._write_fd, b"A")
+            descriptor = os.open(
+                marker,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            try:
+                os.write(descriptor, self.container_name.encode("ascii"))
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        except OSError:
+            self.preserve_for_recovery = True
+            raise
+        try:
+            self._control_socket.sendall(b"A")
         except OSError as exc:
+            self.preserve_for_recovery = True
             raise ValueError("Docker CAS watchdog marker failed") from exc
 
     def mark_cas_terminal(self) -> None:
@@ -3275,7 +4417,7 @@ class _DockerContainerLease:
             os.close(descriptor)
         self._cas_terminal = True
         try:
-            os.write(self._write_fd, b"T")
+            self._control_socket.sendall(b"T")
         except OSError as exc:
             raise ValueError("Docker CAS terminal watchdog marker failed") from exc
 
@@ -3285,15 +4427,43 @@ class _DockerContainerLease:
         self._closed = True
         try:
             if docker_run_finished:
-                os.write(self._write_fd, b"C")
+                self._control_socket.sendall(b"C")
         except OSError:
             pass
         finally:
+            self._control_socket.close()
+        self._abort_provider_start()
+        if self.preserve_for_recovery:
+            return
+        journal: Mapping[str, object] | None = None
+        if self.cleanup_binding_record is not None:
             try:
-                os.close(self._write_fd)
-            except OSError:
-                pass
-        if self._cas_owned and not self._cas_terminal:
+                journal = _validated_docker_create_journal(
+                    lease_root=self.lease_root,
+                    provider=self.provider,
+                    docker_bin=self.docker_bin,
+                    docker_config=self.docker_config,
+                    container_name=self.container_name,
+                    cidfile=self.cidfile,
+                )
+            except ValueError:
+                self.preserve_for_recovery = True
+                return
+            if journal is not None and journal.get("state") in {
+                "create_armed",
+                "create_inflight",
+                "create_outcome_unknown",
+            }:
+                self.preserve_for_recovery = True
+                return
+            if not self._admit_cleanup_authority(journal):
+                self.preserve_for_recovery = True
+                return
+        durable_state = self._durable_cas_state()
+        if (
+            (self._cas_owned or durable_state in {"owned", "unknown"})
+            and not (self._cas_terminal or durable_state == "terminal")
+        ):
             # The runner may have died after the provider effect but before
             # durable completion.  Recovery owns both the container evidence
             # and its private Docker configuration from this point onward.
@@ -3302,13 +4472,40 @@ class _DockerContainerLease:
         try:
             self._watchdog.wait(timeout=_DOCKER_CLEANUP_TIMEOUT_SECONDS + 2)
         except subprocess.TimeoutExpired:
+            if (
+                self.cleanup_binding_record is not None
+                and not self._admit_cleanup_authority(journal)
+            ):
+                self.preserve_for_recovery = True
+                return
+            raw_fence = (
+                self._cleanup_binding_value.get("termination_fence")
+                if self._cleanup_binding_value is not None
+                else self._termination_fence
+            )
+            termination_fence = (
+                raw_fence if isinstance(raw_fence, Mapping) and raw_fence else None
+            )
+            if (
+                journal is not None
+                and journal.get("state") == "create_observed"
+                and termination_fence is None
+            ):
+                self.preserve_for_recovery = True
+                return
             try:
+                issue_removal = bool(
+                    termination_fence is not None
+                    and self._arm_fenced_removal(termination_fence)
+                )
                 _remove_exact_docker_container(
                     docker_bin=self.docker_bin,
                     docker_config=self.docker_config,
                     container_name=self.container_name,
                     settle_for_creation=False,
                     engine_endpoint=self.engine_endpoint,
+                    termination_fence=termination_fence,
+                    issue_removal=issue_removal,
                 )
             except ValueError:
                 # Preserve the exact private cleanup inputs.  A later sealed
@@ -3322,46 +4519,757 @@ class _DockerContainerLease:
             except subprocess.TimeoutExpired:
                 self._watchdog.kill()
                 self._watchdog.wait(timeout=2)
+        cleanup_resources = (
+            (
+                self.prompt_path,
+                False,
+                self._cleanup_path_identities["prompt_path"],
+            ),
+            (
+                self.provider_home,
+                True,
+                self._cleanup_path_identities["provider_home"],
+            ),
+            (
+                self.lease_root,
+                True,
+                self._cleanup_path_identities["lease_root"],
+            ),
+        )
         if self.lease_root.exists():
             # The watchdog can exit between receiving its marker and proving
             # cleanup.  Do not infer success merely from process death.
             try:
+                if (
+                    self.cleanup_binding_record is not None
+                    and not self._admit_cleanup_authority(journal)
+                ):
+                    raise ValueError("Docker cleanup binding could not be refreshed")
+                raw_fence = (
+                    self._cleanup_binding_value.get("termination_fence")
+                    if self._cleanup_binding_value is not None
+                    else self._termination_fence
+                )
+                termination_fence = (
+                    raw_fence
+                    if isinstance(raw_fence, Mapping) and raw_fence
+                    else None
+                )
+                if (
+                    journal is not None
+                    and journal.get("state") == "create_observed"
+                    and termination_fence is None
+                ):
+                    raise ValueError(
+                        "Docker executed effect has no kernel cleanup fence"
+                    )
+                issue_removal = bool(
+                    termination_fence is not None
+                    and self._arm_fenced_removal(termination_fence)
+                )
                 _remove_exact_docker_container(
                     docker_bin=self.docker_bin,
                     docker_config=self.docker_config,
                     container_name=self.container_name,
                     settle_for_creation=False,
                     engine_endpoint=self.engine_endpoint,
+                    termination_fence=termination_fence,
+                    issue_removal=issue_removal,
                 )
             except ValueError:
                 self.preserve_for_recovery = True
                 return
+        if self.cleanup_binding_record is not None:
+            if (
+                self._cleanup_binding_identity is None
+                or self._cleanup_binding_value is None
+            ):
+                self.preserve_for_recovery = True
+                return
+            try:
+                completed = _finalize_verified_cleanup_completion(
+                    binding_path=self.cleanup_binding_record,
+                    binding_identity=self._cleanup_binding_identity,
+                    binding_record=self._cleanup_binding_value,
+                )
+            except ValueError:
+                self.preserve_for_recovery = True
+                return
+            if not completed:
+                self.preserve_for_recovery = True
+            return
+        # Legacy/unbound pre-dispatch paths have no durable per-binding lock.
+        # They retain the older exact-inode transition but cannot coalesce a
+        # tombstone replay into authoritative cleanup.
+        for path, directory, identity in cleanup_resources:
+            if not _remove_owned_cleanup_path(
+                path,
+                directory=directory,
+                identity=identity,
+            ):
+                self.preserve_for_recovery = True
+                return
+        for path, directory, identity in cleanup_resources:
+            _discard_owned_cleanup_tombstone(
+                path,
+                directory=directory,
+                identity=identity,
+            )
+
+    def _publish_cleanup_binding(
+        self,
+        *,
+        create_command_id: str,
+        create_cwd: Path,
+        create_environment_id: str,
+    ) -> None:
+        if self.cleanup_binding_record is None:
+            return
+        lock_handle = _docker_binding_lock_descriptor(
+            self.cleanup_binding_record
+        )
         try:
-            self.cidfile.unlink()
-        except FileNotFoundError:
-            pass
-        mask_root = self.lease_root / "provider-masks"
-        _restore_mask_permissions(mask_root)
+            expected_value = self._cleanup_binding_value
+            expected_identity = self._cleanup_binding_identity
+            if expected_value is None or expected_identity is None:
+                raise ValueError("Docker cleanup pre-dispatch binding was not admitted")
+            current = _validated_cleanup_binding_record(
+                self.cleanup_binding_record,
+                provider=self.provider,
+                docker_bin=self.docker_bin,
+                docker_config=self.docker_config,
+                container_name=self.container_name,
+                cidfile=self.cidfile,
+                lease_root=self.lease_root,
+                provider_home=self.provider_home,
+                prompt_path=self.prompt_path,
+                effect_observation=self.effect_observation,
+                binding_state="prepared_no_dispatch",
+                runner_pid=os.getpid(),
+                runner_start_ticks=_runner_process_start_ticks(os.getpid()),
+                watchdog_pid=self._watchdog.pid,
+                watchdog_start_ticks=self._watchdog.start_ticks,
+                control_directory_fd=lock_handle.directory_fd,
+            )
+            current_identity = lock_handle.path_identity(
+                self.cleanup_binding_record
+            )
+            if current != expected_value or current_identity != expected_identity:
+                raise ValueError("Docker cleanup pre-dispatch binding changed")
+            body = _docker_cleanup_binding_value(
+                binding_state="command_bound",
+                provider=self.provider,
+                docker_bin=self.docker_bin,
+                container_name=self.container_name,
+                lease_root=self.lease_root,
+                docker_config=self.docker_config,
+                cidfile=self.cidfile,
+                provider_home=self.provider_home,
+                prompt_path=self.prompt_path,
+                effect_observation=self.effect_observation,
+                path_identities=self._cleanup_path_identities,
+                binding_path=self.cleanup_binding_record,
+                runner_pid=os.getpid(),
+                runner_start_ticks=_runner_process_start_ticks(os.getpid()),
+                watchdog_pid=self._watchdog.pid,
+                watchdog_start_ticks=self._watchdog.start_ticks,
+                create_command_id=create_command_id,
+                create_cwd=create_cwd,
+                create_environment_id=create_environment_id,
+            )
+            lock_handle.write(
+                self.cleanup_binding_record,
+                body,
+                replace_existing=True,
+            )
+            admitted = _validated_cleanup_binding_record(
+                self.cleanup_binding_record,
+                provider=self.provider,
+                docker_bin=self.docker_bin,
+                docker_config=self.docker_config,
+                container_name=self.container_name,
+                cidfile=self.cidfile,
+                lease_root=self.lease_root,
+                provider_home=self.provider_home,
+                prompt_path=self.prompt_path,
+                effect_observation=self.effect_observation,
+                binding_state="command_bound",
+                runner_pid=os.getpid(),
+                runner_start_ticks=_runner_process_start_ticks(os.getpid()),
+                watchdog_pid=self._watchdog.pid,
+                watchdog_start_ticks=self._watchdog.start_ticks,
+                create_command_id=create_command_id,
+                create_cwd=create_cwd,
+                create_environment_id=create_environment_id,
+                control_directory_fd=lock_handle.directory_fd,
+            )
+            self._cleanup_binding_identity = lock_handle.path_identity(
+                self.cleanup_binding_record
+            )
+            self._cleanup_binding_value = admitted
+        finally:
+            lock_handle.close()
+
+    def _admit_cleanup_authority(
+        self,
+        journal: Mapping[str, object] | None,
+    ) -> bool:
+        if self.cleanup_binding_record is None:
+            return True
         try:
-            shutil.rmtree(mask_root)
-        except FileNotFoundError:
-            pass
+            raw_binding = _read_private_control_record(
+                self.cleanup_binding_record.parent,
+                self.cleanup_binding_record.name,
+            )
+            if raw_binding is None:
+                return False
+            binding_state = str(raw_binding.get("binding_state") or "")
+            if binding_state == "prepared_no_dispatch":
+                if journal is not None and journal.get("state") != "prepared":
+                    return False
+                create_command_id = ""
+                create_cwd = None
+                create_environment_id = ""
+                termination_fence: Mapping[str, object] = {}
+            elif binding_state == "command_bound" and journal is not None:
+                create_command_id = str(journal["command_id"])
+                create_cwd = Path(str(journal["cwd"]))
+                create_environment_id = str(journal["environment_id"])
+                raw_termination_fence = raw_binding.get("termination_fence")
+                if not isinstance(raw_termination_fence, Mapping):
+                    return False
+                termination_fence = raw_termination_fence
+                if (
+                    not self._create_command_id
+                    or self._create_command_body is None
+                    or create_command_id != self._create_command_id
+                    or any(
+                        journal.get(name) != expected
+                        for name, expected in self._create_command_body.items()
+                    )
+                ):
+                    return False
+            else:
+                return False
+            value = _validated_cleanup_binding_record(
+                self.cleanup_binding_record,
+                provider=self.provider,
+                docker_bin=self.docker_bin,
+                docker_config=self.docker_config,
+                container_name=self.container_name,
+                cidfile=self.cidfile,
+                lease_root=self.lease_root,
+                provider_home=self.provider_home,
+                prompt_path=self.prompt_path,
+                effect_observation=self.effect_observation,
+                binding_state=binding_state,
+                runner_pid=os.getpid(),
+                runner_start_ticks=_runner_process_start_ticks(os.getpid()),
+                watchdog_pid=self._watchdog.pid,
+                watchdog_start_ticks=self._watchdog.start_ticks,
+                create_command_id=create_command_id,
+                create_cwd=create_cwd,
+                create_environment_id=create_environment_id,
+                termination_fence=termination_fence,
+            )
+            current_binding_identity = _cleanup_path_identity(
+                self.cleanup_binding_record,
+                directory=False,
+            )
+        except (KeyError, ValueError):
+            return False
+        if value.get("path_identities") != self._cleanup_path_identities:
+            return False
+        expected_upgrade = bool(
+            self._cleanup_binding_value is not None
+            and (
+                (
+                    self._cleanup_binding_value.get("binding_state")
+                    == "prepared_no_dispatch"
+                    and value.get("binding_state") == "command_bound"
+                )
+                or (
+                    self._cleanup_binding_value.get("binding_state")
+                    == value.get("binding_state")
+                    == "command_bound"
+                    and self._cleanup_binding_value.get("termination_fence")
+                    == {}
+                    and bool(value.get("termination_fence"))
+                )
+            )
+        )
+        if (
+            self._cleanup_binding_identity is not None
+            and current_binding_identity != self._cleanup_binding_identity
+            and not expected_upgrade
+        ):
+            return False
+        self._cleanup_binding_identity = current_binding_identity
+        self._cleanup_binding_value = value
+        return True
+
+    def bind_isolation_image(self, image_id: str) -> None:
+        """Bind the separately resolved immutable image before create."""
+
+        image = str(image_id or "").strip()
+        allowed_codex_images = {_CODEX_TASK_TOOLCHAIN_IMAGE_ID}
+        sealed = _sealed_provider_isolation_image_id()
+        if sealed:
+            allowed_codex_images.add(sealed)
+        if (
+            re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None
+            or (self.provider == "codex" and image not in allowed_codex_images)
+        ):
+            raise ValueError("Docker isolation image authority is invalid")
+        with self._create_lock:
+            if self._create_started or self._authorized_image_id:
+                raise ValueError("Docker isolation image is already bound")
+            self._authorized_image_id = image
+
+    def create_inert_container(
+        self,
+        command: Sequence[str],
+        *,
+        cwd: Path,
+        env: Mapping[str, str],
+    ) -> subprocess.CompletedProcess[bytes]:
+        """Have the durable watchdog issue the sole Docker create request."""
+
+        with self._create_lock:
+            if self._create_started:
+                raise ValueError("Docker create lease permits exactly one dispatch")
+            if not self._authorized_image_id:
+                raise ValueError("Docker create lease has no bound image authority")
+            authorized_image = self._authorized_image_id
+            self._create_started = True
+        if self.cleanup_binding_record is None:
+            create_cwd = cwd.resolve(strict=True)
+            environment_id, _environment_payload, _create_environment = (
+                _docker_create_environment_payload(env)
+            )
+            try:
+                command_id, command_body = _docker_create_command_identity(
+                    provider=self.provider,
+                    docker_bin=self.docker_bin,
+                    docker_config=self.docker_config,
+                    container_name=self.container_name,
+                    cidfile=self.cidfile,
+                    cwd=create_cwd,
+                    environment_id=environment_id,
+                    expected_image=authorized_image,
+                    argv=command,
+                )
+            except ValueError as exc:
+                expected_prefix = [
+                    self.docker_bin,
+                    f"--host={_DOCKER_LOCAL_HOST}",
+                    "--config",
+                    str(self.docker_config),
+                    "create",
+                ]
+                empty_items = [
+                    index
+                    for index, item in enumerate(command)
+                    if not item
+                ]
+                raise ValueError(
+                    "unsupervised Docker create journal could not bind: "
+                    f"{exc}; argv_prefix={list(command)[:5]!r} "
+                    f"expected_prefix={expected_prefix!r} "
+                    f"cwd={str(create_cwd)!r} env_id={environment_id!r} "
+                    f"argc={len(command)} empty_argv_indexes={empty_items!r}"
+                ) from exc
+            created = subprocess.run(
+                list(command),
+                cwd=create_cwd,
+                env=dict(env),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=_DOCKER_CREATE_TIMEOUT_SECONDS,
+                check=False,
+            )
+            boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+                encoding="ascii"
+            ).strip()
+            issuer = {
+                "pid": os.getpid(),
+                "start_time_ticks": _runner_process_start_ticks(os.getpid()),
+                "boot_id": boot_id,
+                "parent_pid": os.getppid(),
+            }
+            observed_state = (
+                "create_observed"
+                if created.returncode == 0
+                else "create_failed_observed"
+            )
+            journal = _docker_create_journal_value(
+                command_body=command_body,
+                command_id=command_id,
+                state=observed_state,
+                issuer_process_birth=issuer,
+                returncode=int(created.returncode),
+                stdout=created.stdout or b"",
+                stderr=created.stderr or b"",
+            )
+            self._create_command_id = command_id
+            self._create_command_body = command_body
+            _write_private_control_record(
+                self.lease_root,
+                _DOCKER_CREATE_JOURNAL_NAME,
+                journal,
+                replace_existing=False,
+            )
+            return created
+        environment_id, _environment_payload, create_environment = (
+            _docker_create_environment_payload(env)
+        )
+        command_id, command_body = _docker_create_command_identity(
+            provider=self.provider,
+            docker_bin=self.docker_bin,
+            docker_config=self.docker_config,
+            container_name=self.container_name,
+            cidfile=self.cidfile,
+            cwd=cwd,
+            environment_id=environment_id,
+            expected_image=authorized_image,
+            argv=command,
+        )
+        prepared = _docker_create_journal_value(
+            command_body=command_body,
+            command_id=command_id,
+            state="prepared",
+        )
+        self._create_command_id = command_id
+        self._create_command_body = command_body
+        private_payload = _docker_create_private_handoff_payload(
+            command_id=command_id,
+            command_body=command_body,
+            environment=create_environment,
+        )
+        private_message = (
+            b"Q"
+            + len(private_payload).to_bytes(8, "big")
+            + private_payload
+        )
         try:
-            (self.lease_root / "cas-owned").unlink()
-        except FileNotFoundError:
-            pass
+            self._control_socket.sendall(private_message)
+        except OSError as exc:
+            self.preserve_for_recovery = True
+            raise ValueError("Docker private command handoff failed") from exc
+        _write_private_control_record(
+            self.lease_root,
+            _DOCKER_CREATE_JOURNAL_NAME,
+            prepared,
+            replace_existing=False,
+        )
+        _transition_docker_create_journal(
+            prepared,
+            lease_root=self.lease_root,
+            state="create_armed",
+        )
         try:
-            (self.lease_root / "cas-terminal").unlink()
-        except FileNotFoundError:
-            pass
+            self._control_socket.sendall(b"D")
+        except OSError as exc:
+            self.preserve_for_recovery = True
+            raise ValueError("Docker create worker dispatch failed") from exc
+        deadline = time.monotonic() + _DOCKER_CREATE_TIMEOUT_SECONDS
         try:
-            self.docker_config.rmdir()
-        except (FileNotFoundError, OSError):
-            pass
+            journal = _read_docker_create_private_result(
+                self._control_socket,
+                deadline=deadline,
+            )
+            state = str(journal.get("state") or "")
+            stdout = bytes.fromhex(str(journal.get("stdout_hex") or ""))
+            stderr = bytes.fromhex(str(journal.get("stderr_hex") or ""))
+            returncode = journal.get("returncode")
+            issuer = journal.get("issuer_process_birth")
+            if isinstance(returncode, bool) or not isinstance(returncode, int):
+                raise ValueError("Docker create private return code is invalid")
+            expected = _docker_create_journal_value(
+                command_body=command_body,
+                command_id=command_id,
+                state=state,
+                issuer_process_birth=(issuer if isinstance(issuer, Mapping) else None),
+                returncode=returncode,
+                stdout=stdout,
+                stderr=stderr,
+            )
+            if (
+                journal != expected
+                or not isinstance(issuer, Mapping)
+                or issuer.get("parent_pid") != self._watchdog.pid
+                or any(
+                    journal.get(name) != item
+                    for name, item in command_body.items()
+                )
+                or not self._admit_cleanup_authority(journal)
+            ):
+                raise ValueError("Docker create private result identity drifted")
+        except (OSError, TypeError, ValueError) as exc:
+            self.preserve_for_recovery = True
+            raise ValueError("Docker create worker result is unavailable") from exc
+        if state == "create_outcome_unknown":
+            self._create_outcome_unknown = True
+            self.preserve_for_recovery = True
+        return subprocess.CompletedProcess(
+            list(command),
+            returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    def take_provider_start_stdin(self) -> socket.socket:
+        """Transfer the sole anonymous Docker-stdin endpoint to one start."""
+
+        if (
+            not self._create_started
+            or self._create_outcome_unknown
+            or self._provider_start_stdin_taken
+            or self._provider_start_stdin is None
+            or self._provider_start_sender is None
+        ):
+            raise ValueError("Docker provider start capability is unavailable")
+        channel = self._provider_start_stdin
+        self._provider_start_stdin = None
+        self._provider_start_stdin_taken = True
+        return channel
+
+    def finish_provider_input(self, payload: str | bytes = b"") -> None:
+        """Send post-fence provider input once, then make stdin observe EOF."""
+
+        if not self._provider_start_released:
+            raise ValueError("Docker provider input precedes its running fence")
+        channel = self._provider_start_sender
+        if channel is None:
+            raise ValueError("Docker provider input capability is unavailable")
+        self._provider_start_sender = None
+        encoded = (
+            payload.encode("utf-8")
+            if isinstance(payload, str)
+            else bytes(payload)
+        )
         try:
-            self.lease_root.rmdir()
-        except (FileNotFoundError, OSError):
-            pass
+            if encoded:
+                channel.sendall(encoded)
+            try:
+                channel.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+        finally:
+            channel.close()
+
+    def _abort_provider_start(self) -> None:
+        """Close every local endpoint so an unreleased wrapper observes EOF."""
+
+        for name in ("_provider_start_sender", "_provider_start_stdin"):
+            channel = getattr(self, name, None)
+            setattr(self, name, None)
+            if channel is not None:
+                try:
+                    channel.close()
+                except OSError:
+                    pass
+
+    def capture_running_termination_fence(
+        self,
+        *,
+        timeout: float = 5.0,
+    ) -> Mapping[str, object]:
+        """Persist the exact init/cgroup identity while the container runs.
+
+        Docker clears ``State.Pid`` after exit.  Capturing only in ``close``
+        therefore permits a detached cgroup member to outlive a disappeared
+        Docker name.  The attached start path calls this method immediately
+        after dispatch and before it supplies provider input or waits for the
+        provider outcome.
+        """
+
+        if (
+            not self._create_started
+            or not self._authorized_image_id
+            or self._create_outcome_unknown
+        ):
+            raise ValueError("Docker execution was not exactly created")
+        try:
+            raw_container_id = self.cidfile.read_text(encoding="ascii").strip()
+        except (OSError, UnicodeError) as exc:
+            self.preserve_for_recovery = True
+            raise ValueError("Docker execution CID is unavailable") from exc
+        if re.fullmatch(r"[0-9a-f]{64}", raw_container_id) is None:
+            self.preserve_for_recovery = True
+            raise ValueError("Docker execution CID is invalid")
+        try:
+            journal = _validated_docker_create_journal(
+                lease_root=self.lease_root,
+                provider=self.provider,
+                docker_bin=self.docker_bin,
+                docker_config=self.docker_config,
+                container_name=self.container_name,
+                cidfile=self.cidfile,
+            )
+            if journal is None or journal.get("state") != "create_observed":
+                raise ValueError("Docker create is not durably observed")
+            if not self._admit_cleanup_authority(journal):
+                raise ValueError("Docker cleanup authority is unavailable")
+            existing = (
+                self._cleanup_binding_value.get("termination_fence")
+                if self._cleanup_binding_value is not None
+                else self._termination_fence
+            )
+            if isinstance(existing, Mapping) and existing:
+                admitted_existing = _validated_docker_termination_fence(
+                    existing,
+                    provider=self.provider,
+                    container_name=self.container_name,
+                    expected_container_id=raw_container_id,
+                    expected_image_id=self._authorized_image_id,
+                )
+                self._termination_fence = admitted_existing
+                self._release_provider_start_capability(admitted_existing)
+                return admitted_existing
+
+            deadline = time.monotonic() + max(0.05, timeout)
+            fence: dict[str, object] | None = None
+            while time.monotonic() < deadline:
+                try:
+                    candidate = _attest_exact_docker_execution(
+                        docker_bin=self.docker_bin,
+                        docker_config=self.docker_config,
+                        provider=self.provider,
+                        container_name=self.container_name,
+                        container_id=raw_container_id,
+                        image_id=self._authorized_image_id,
+                        timeout=min(0.5, max(0.05, deadline - time.monotonic())),
+                    )
+                except ValueError:
+                    candidate = {}
+                if candidate and candidate.get("init_pid"):
+                    fence = candidate
+                    break
+                time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+            if fence is None:
+                raise ValueError("Docker running kernel scope was not captured")
+
+            if self.cleanup_binding_record is not None:
+                expected_value = self._cleanup_binding_value
+                expected_identity = self._cleanup_binding_identity
+                if expected_value is None or expected_identity is None:
+                    raise ValueError("Docker cleanup binding CAS is unavailable")
+                published, published_identity = (
+                    _publish_docker_termination_fence_binding(
+                        record_path=self.cleanup_binding_record,
+                        expected_record_id=str(expected_value.get("record_id") or ""),
+                        expected_identity=expected_identity,
+                        provider=self.provider,
+                        docker_bin=self.docker_bin,
+                        docker_config=self.docker_config,
+                        container_name=self.container_name,
+                        cidfile=self.cidfile,
+                        lease_root=self.lease_root,
+                        provider_home=self.provider_home,
+                        prompt_path=self.prompt_path,
+                        effect_observation=self.effect_observation,
+                        runner_pid=os.getpid(),
+                        runner_start_ticks=_runner_process_start_ticks(os.getpid()),
+                        watchdog_pid=self._watchdog.pid,
+                        watchdog_start_ticks=self._watchdog.start_ticks,
+                        create_command_id=str(journal["command_id"]),
+                        create_cwd=Path(str(journal["cwd"])),
+                        create_environment_id=str(journal["environment_id"]),
+                        termination_fence=fence,
+                    )
+                )
+                self._cleanup_binding_value = published
+                self._cleanup_binding_identity = published_identity
+            self._termination_fence = fence
+            self._release_provider_start_capability(fence)
+            return fence
+        except (KeyError, OSError, TypeError, ValueError):
+            self.preserve_for_recovery = True
+            raise
+
+    def _release_provider_start_capability(
+        self,
+        termination_fence: Mapping[str, object],
+    ) -> None:
+        """Send the one-shot stdin marker only after the fence CAS is durable."""
+
+        if self._provider_start_released:
+            return
+        admitted = _validated_docker_termination_fence(
+            termination_fence,
+            provider=self.provider,
+            container_name=self.container_name,
+            expected_image_id=self._authorized_image_id,
+        )
+        channel = self._provider_start_sender
+        if (
+            admitted.get("docker_state") != "running"
+            or int(admitted.get("init_pid") or 0) <= 0
+            or not self._provider_start_stdin_taken
+            or channel is None
+            or channel.family != socket.AF_UNIX
+            or channel.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)
+            != socket.SOCK_STREAM
+            or not stat.S_ISSOCK(os.fstat(channel.fileno()).st_mode)
+        ):
+            raise ValueError("Docker provider start release lacks a live fence")
+        # This is a one-shot external handoff.  Mark it consumed before the
+        # fallible send so an unknown partial write can never be replayed.
+        self._provider_start_released = True
+        try:
+            channel.sendall(_DOCKER_PROVIDER_START_MARKER)
+        except OSError:
+            self._provider_start_sender = None
+            channel.close()
+            raise
+        if self.provider == "grok":
+            self.finish_provider_input()
+
+    def _arm_fenced_removal(
+        self,
+        termination_fence: Mapping[str, object],
+    ) -> bool:
+        if (
+            self.cleanup_binding_record is None
+            or self._cleanup_binding_value is None
+            or self._cleanup_binding_identity is None
+        ):
+            raise ValueError("Docker rm lacks a durable binding")
+        return _arm_docker_removal_once(
+            binding_path=self.cleanup_binding_record,
+            expected_binding_identity=self._cleanup_binding_identity,
+            binding_record=self._cleanup_binding_value,
+            termination_fence=termination_fence,
+        )
+
+    def _durable_cas_state(self) -> str:
+        if not self.effect_observation:
+            return "unscoped"
+        try:
+            from ipfs_accelerate_py.agent_supervisor.control.provider_attempt_store import (
+                DurableProviderAttemptCAS,
+            )
+
+            observer = DurableProviderAttemptCAS(
+                self.effect_observation["provider_attempt_store"],
+                expected_directory_identity=self.effect_observation[
+                    "provider_attempt_store_identity"
+                ],
+                create_if_missing=False,
+            )
+        except (KeyError, OSError, ValueError):
+            return "unknown"
+        return _observed_provider_attempt_cleanup_state(
+            observer,
+            logical_attempt_id=self.effect_observation["logical_attempt_id"],
+            lease_root=self.lease_root,
+            docker_config=self.docker_config,
+            container_name=self.container_name,
+            watchdog_pid=self._watchdog.pid,
+            watchdog_start_ticks=self._watchdog.start_ticks,
+        )
 
 
 def _restore_mask_permissions(mask_root: Path) -> None:
@@ -5089,35 +6997,19 @@ def _bounded_docker_query(
 def _recorded_codex_lease_root(
     launch_receipt: Mapping[str, object],
 ) -> tuple[Path, Path, str]:
-    """Recover the winner's private watchdog lease from its exact argv."""
+    """Recover the winner's live private watchdog lease from exact bytes."""
 
-    command = launch_receipt.get("command_receipt")
-    if not isinstance(command, Mapping):
-        raise ValueError("recorded Docker cleanup command is unavailable")
-    create_argv = command.get("create_argv")
-    if not isinstance(create_argv, list) or any(
-        not isinstance(item, str) for item in create_argv
-    ):
-        raise ValueError("recorded Docker cleanup command is invalid")
-    try:
-        config_index = create_argv.index("--config") + 1
-        cidfile_index = create_argv.index("--cidfile") + 1
-        config_path = Path(create_argv[config_index])
-        cidfile_path = Path(create_argv[cidfile_index])
-    except (IndexError, ValueError) as exc:
-        raise ValueError("recorded Docker cleanup lease is invalid") from exc
-    container_name = str(launch_receipt.get("container_name") or "")
-    lease_root = config_path.parent
-    if (
-        not config_path.is_absolute()
-        or config_path.name != "docker-config"
-        or cidfile_path != lease_root / "container.cid"
-        or lease_root.parent != Path(tempfile.gettempdir()).resolve()
-        or not lease_root.name.startswith("asref-codex-container-")
-        or _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
-        or container_name not in create_argv
-    ):
-        raise ValueError("recorded Docker cleanup lease identity is invalid")
+    lease_root, config_path, container_name = (
+        _recorded_codex_cleanup_identity(launch_receipt)
+    )
+    cleanup = launch_receipt.get("cleanup_receipt")
+    if not isinstance(cleanup, Mapping):
+        raise ValueError("recorded Docker cleanup receipt is unavailable")
+    _validated_docker_cleanup_root(
+        lease_root=lease_root,
+        provider_home=Path(str(cleanup.get("provider_home") or "")),
+        prompt_path=Path(str(cleanup.get("prompt_path") or "")),
+    )
     cursor = Path(lease_root.anchor)
     for component in lease_root.parts[1:]:
         cursor /= component
@@ -5140,8 +7032,21 @@ def _recorded_codex_lease_root(
 
 def _release_recorded_codex_effect_cleanup(
     launch_receipt: Mapping[str, object],
+    *,
+    terminal_observer: object,
+    terminal_reservation: object,
 ) -> None:
     """Idempotently reap exact receipt-bound resources after CAS terminal."""
+
+    admitted_terminal = _admit_terminal_cleanup_authority(
+        launch_receipt=launch_receipt,
+        terminal_observer=terminal_observer,
+        terminal_reservation=terminal_reservation,
+    )
+    terminal_cleanup_authority = getattr(
+        admitted_terminal,
+        "terminal_cleanup_authority",
+    )
 
     cleanup = launch_receipt.get("cleanup_receipt")
     if not isinstance(cleanup, Mapping) or set(cleanup) != {
@@ -5173,15 +7078,21 @@ def _release_recorded_codex_effect_cleanup(
     prompt_path = Path(str(cleanup.get("prompt_path") or ""))
     watchdog_pid = cleanup.get("watchdog_pid")
     watchdog_start_ticks = cleanup.get("watchdog_start_ticks")
-    temporary_root = Path(tempfile.gettempdir()).resolve()
+    try:
+        cleanup_root, cleanup_root_identity = (
+            _validated_docker_cleanup_root(
+                lease_root=lease_root,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+            )
+        )
+    except ValueError as exc:
+        raise ValueError("recorded Docker cleanup root is invalid") from exc
     if (
-        lease_root.parent != temporary_root
-        or not lease_root.name.startswith("asref-codex-container-")
+        not lease_root.name.startswith("asref-codex-container-")
         or docker_config != lease_root / "docker-config"
         or cidfile != lease_root / "container.cid"
-        or provider_home.parent != temporary_root
         or not provider_home.name.startswith("asref-codex-home-")
-        or prompt_path.parent != temporary_root
         or not prompt_path.name.startswith("asref-grok-prompt-")
         or isinstance(watchdog_pid, bool)
         or not isinstance(watchdog_pid, int)
@@ -5192,135 +7103,392 @@ def _release_recorded_codex_effect_cleanup(
     ):
         raise ValueError("recorded Docker cleanup paths are invalid")
     container_name = str(launch_receipt.get("container_name") or "")
-    if not lease_root.exists():
-        if provider_home.exists() or prompt_path.exists():
-            raise ValueError("recorded Docker cleanup is partially missing")
-        return
-    observed_root, observed_config, observed_name = (
-        _recorded_codex_lease_root(launch_receipt)
-    )
-    if (
-        observed_root != lease_root
-        or observed_config != docker_config
-        or observed_name != container_name
-    ):
-        raise ValueError("recorded Docker cleanup lease drifted")
-    marker = lease_root / "cas-terminal"
-    payload = container_name.encode("ascii")
-    try:
-        descriptor = os.open(
-            marker,
-            os.O_WRONLY
-            | os.O_CREAT
-            | os.O_EXCL
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-        )
-    except FileExistsError:
-        descriptor = os.open(
-            marker,
-            os.O_RDONLY
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_NOFOLLOW", 0),
-        )
-        try:
-            metadata = os.fstat(descriptor)
-            observed = os.read(descriptor, len(payload) + 1)
-        finally:
-            os.close(descriptor)
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_uid != os.geteuid()
-            or metadata.st_nlink != 1
-            or stat.S_IMODE(metadata.st_mode) != 0o600
-            or observed != payload
-        ):
-            raise ValueError("recorded Docker terminal marker drifted")
-    else:
-        try:
-            offset = 0
-            while offset < len(payload):
-                written = os.write(descriptor, payload[offset:])
-                if written <= 0:
-                    raise ValueError("recorded Docker terminal marker write failed")
-                offset += written
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-    directory = os.open(
-        lease_root,
-        os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_CLOEXEC", 0)
-        | getattr(os, "O_NOFOLLOW", 0),
-    )
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
-    if _runner_process_identity_alive(watchdog_pid, watchdog_start_ticks):
-        try:
-            os.kill(watchdog_pid, signal.SIGTERM)
-        except OSError:
-            pass
-        for _ in range(20):
-            if not _runner_process_identity_alive(
-                watchdog_pid, watchdog_start_ticks
-            ):
-                break
-            time.sleep(0.05)
-    if _runner_process_identity_alive(watchdog_pid, watchdog_start_ticks):
-        # A verified live watchdog owns the same exact receipt and will
-        # consume the durable marker.  A later terminal replay retries if it
-        # dies before cleanup.
-        return
-    # A terminal-aware watchdog performs Docker rm before deleting its
-    # private inputs.  Recheck after its process has exited so a successful
-    # synchronous signal-handler cleanup is not followed by an impossible
-    # retry through a now-removed Docker config.
-    if not lease_root.exists():
-        if provider_home.exists() or prompt_path.exists():
-            raise ValueError("recorded Docker cleanup is partially missing")
-        return
-    observed_root, observed_config, observed_name = (
-        _recorded_codex_lease_root(launch_receipt)
-    )
-    if (
-        observed_root != lease_root
-        or observed_config != docker_config
-        or observed_name != container_name
-    ):
-        raise ValueError("recorded Docker cleanup lease drifted")
     runtime = launch_receipt.get("runtime_receipt")
     docker_bin = str(runtime.get("path") or "") if isinstance(runtime, Mapping) else ""
     if docker_bin not in {"/usr/bin/docker", "/usr/local/bin/docker"}:
         raise ValueError("recorded Docker cleanup runtime is invalid")
+    binding_path = _docker_cleanup_binding_path(
+        container_name,
+        create_directory=False,
+    )
+    if binding_path is None:
+        raise ValueError("recorded Docker cleanup binding path is absent")
+    completion_path = _cleanup_completion_path(binding_path)
+    try:
+        expected_lifecycle: dict[str, object] = {
+            "run_id": os.environ[RUN_ID_ENV],
+            "profile_id": os.environ[PROFILE_ID_ENV],
+            "target_id": os.environ[TARGET_ID_ENV],
+            "repository_root": os.environ[REPOSITORY_ROOT_ENV],
+            "state_root": os.environ[STATE_ROOT_ENV],
+            "run_root": os.environ[RUN_ROOT_ENV],
+            "configuration_root": os.environ[CONFIGURATION_ROOT_ENV],
+            "fencing_epoch": int(os.environ[FENCING_EPOCH_ENV]),
+        }
+    except (KeyError, ValueError) as exc:
+        raise ValueError("recorded Docker cleanup lifecycle is unavailable") from exc
+    if not os.path.lexists(binding_path):
+        if (
+            not os.path.lexists(completion_path)
+            or not os.path.lexists(_cleanup_authority_path(binding_path))
+        ):
+            raise ValueError(
+                "recorded Docker cleanup lost its terminal fence receipt"
+            )
+        completion = _read_private_control_record(
+            completion_path.parent,
+            completion_path.name,
+        )
+        completed_binding = (
+            completion.get("binding_record")
+            if isinstance(completion, Mapping)
+            else None
+        )
+        completed_fence = (
+            completed_binding.get("termination_fence")
+            if isinstance(completed_binding, Mapping)
+            else None
+        )
+        recorded_container_id = str(
+            launch_receipt.get("container_id") or ""
+        ).removeprefix("sha256:")
+        recorded_image_id = str(launch_receipt.get("image_id") or "")
+        terminal_fence_id = str(
+            terminal_cleanup_authority.get("termination_fence_id") or ""
+        )
+        if (
+            not isinstance(completed_binding, Mapping)
+            or not isinstance(completed_fence, Mapping)
+            or bool(completed_fence) != bool(terminal_fence_id)
+            or completed_binding.get("record_id")
+            != terminal_cleanup_authority.get("binding_record_id")
+            or completed_binding.get("binding_path") != str(binding_path)
+            or terminal_cleanup_authority.get("binding_path")
+            != str(binding_path)
+            or completed_binding.get("provider") != "codex"
+            or completed_binding.get("docker_bin") != docker_bin
+            or completed_binding.get("container_name") != container_name
+            or completed_binding.get("cleanup_root") != str(cleanup_root)
+            or completed_binding.get("cleanup_root_identity")
+            != cleanup_root_identity
+            or completed_binding.get("lease_root") != str(lease_root)
+            or completed_binding.get("docker_config") != str(docker_config)
+            or completed_binding.get("cidfile") != str(cidfile)
+            or completed_binding.get("provider_home") != str(provider_home)
+            or completed_binding.get("prompt_path") != str(prompt_path)
+            or completed_binding.get("watchdog_pid") != watchdog_pid
+            or completed_binding.get("watchdog_start_ticks")
+            != watchdog_start_ticks
+            or any(
+                completed_binding.get(name) != expected
+                for name, expected in expected_lifecycle.items()
+            )
+        ):
+            raise ValueError("recorded Docker cleanup completion lacks authority")
+        admitted_fence: Mapping[str, object] | None = None
+        if completed_fence:
+            admitted_fence = _validated_docker_termination_fence(
+                completed_fence,
+                provider="codex",
+                container_name=container_name,
+                expected_container_id=recorded_container_id,
+                expected_image_id=recorded_image_id,
+            )
+            if admitted_fence.get("fence_id") != terminal_fence_id:
+                raise ValueError(
+                    "recorded Docker cleanup completion fence drifted"
+                )
+        # This is an idempotent replay after a durable completion.  It may
+        # observe the exact CID/name/scope but must never dispatch rm again.
+        recovery_config = Path(
+            tempfile.mkdtemp(prefix="aseh-docker-recovery-config-")
+        )
+        recovery_config.chmod(0o700)
+        try:
+            _remove_exact_docker_container(
+                docker_bin=docker_bin,
+                docker_config=recovery_config,
+                container_name=container_name,
+                settle_for_creation=False,
+                termination_fence=admitted_fence,
+                issue_removal=False,
+            )
+        finally:
+            shutil.rmtree(recovery_config, ignore_errors=True)
+        completed_identity = completion.get("binding_identity")
+        if not isinstance(completed_identity, Mapping) or not (
+            _finalize_verified_cleanup_completion(
+                binding_path=binding_path,
+                binding_identity=completed_identity,
+                binding_record=completed_binding,
+                expected_lifecycle=expected_lifecycle,
+                terminal_cleanup_store=terminal_observer,
+                terminal_cleanup_reservation=admitted_terminal,
+            )
+        ):
+            raise ValueError("recorded Docker cleanup completion is invalid")
+        return
+    candidate = _read_private_control_record(
+        binding_path.parent,
+        binding_path.name,
+    )
+    if candidate is None:
+        raise ValueError("recorded Docker cleanup binding disappeared")
+    candidate_body = {
+        key: item for key, item in candidate.items() if key != "record_id"
+    }
+    try:
+        runner_pid = int(candidate.get("runner_pid"))
+        runner_start_ticks = int(candidate.get("runner_start_ticks"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("recorded Docker cleanup runner is invalid") from exc
+    path_identities = candidate.get("path_identities")
+    if (
+        candidate.get("schema") != _DOCKER_CLEANUP_BINDING_SCHEMA
+        or candidate.get("record_id") != _effect_receipt_identity(candidate_body)
+        or candidate.get("record_id")
+        != terminal_cleanup_authority.get("binding_record_id")
+        or candidate.get("binding_path") != str(binding_path)
+        or terminal_cleanup_authority.get("binding_path") != str(binding_path)
+        or candidate.get("provider") != "codex"
+        or candidate.get("docker_bin") != docker_bin
+        or candidate.get("container_name") != container_name
+        or candidate.get("cleanup_root") != str(cleanup_root)
+        or candidate.get("cleanup_root_identity") != cleanup_root_identity
+        or candidate.get("lease_root") != str(lease_root)
+        or candidate.get("docker_config") != str(docker_config)
+        or candidate.get("cidfile") != str(cidfile)
+        or candidate.get("provider_home") != str(provider_home)
+        or candidate.get("prompt_path") != str(prompt_path)
+        or candidate.get("watchdog_pid") != watchdog_pid
+        or candidate.get("watchdog_start_ticks") != watchdog_start_ticks
+        or any(
+            candidate.get(name) != expected
+            for name, expected in expected_lifecycle.items()
+        )
+        or not isinstance(path_identities, dict)
+    ):
+        raise ValueError("recorded Docker cleanup binding drifted")
+    raw_fence = candidate.get("termination_fence")
+    terminal_fence_id = str(
+        terminal_cleanup_authority.get("termination_fence_id") or ""
+    )
+    if (
+        not isinstance(raw_fence, Mapping)
+        or bool(raw_fence) != bool(terminal_fence_id)
+    ):
+        raise ValueError("recorded Docker effect cleanup fence differs")
+    admitted_fence = None
+    if raw_fence:
+        admitted_fence = _validated_docker_termination_fence(
+            raw_fence,
+            provider="codex",
+            container_name=container_name,
+            expected_container_id=str(
+                launch_receipt.get("container_id") or ""
+            ).removeprefix("sha256:"),
+            expected_image_id=str(launch_receipt.get("image_id") or ""),
+        )
+        if admitted_fence.get("fence_id") != terminal_fence_id:
+            raise ValueError("recorded Docker cleanup terminal fence drifted")
+    binding_identity = _cleanup_path_identity(
+        binding_path,
+        directory=False,
+    )
+    if not lease_root.exists():
+        # A prior cleanup may have removed the lease and then crashed before
+        # retiring its binding.  Only exact inode tombstones—not mere path
+        # absence—admit that crash gap.
+        recovery_config = Path(
+            tempfile.mkdtemp(prefix="aseh-docker-recovery-config-")
+        )
+        recovery_config.chmod(0o700)
+        try:
+            _remove_exact_docker_container(
+                docker_bin=docker_bin,
+                docker_config=recovery_config,
+                container_name=container_name,
+                settle_for_creation=False,
+                termination_fence=admitted_fence,
+                issue_removal=False,
+            )
+        finally:
+            shutil.rmtree(recovery_config, ignore_errors=True)
+        if not _finalize_verified_cleanup_completion(
+            binding_path=binding_path,
+            binding_identity=binding_identity,
+            binding_record=candidate,
+            expected_lifecycle=expected_lifecycle,
+            terminal_cleanup_store=terminal_observer,
+            terminal_cleanup_reservation=admitted_terminal,
+        ):
+            raise ValueError("recorded Docker cleanup did not converge")
+        return
+    observed_root, observed_config, observed_name = (
+        _recorded_codex_lease_root(launch_receipt)
+    )
+    if (
+        observed_root != lease_root
+        or observed_config != docker_config
+        or observed_name != container_name
+    ):
+        raise ValueError("recorded Docker cleanup lease drifted")
+    journal = _validated_docker_create_journal(
+        lease_root=lease_root,
+        provider="codex",
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+    )
+    if journal is None or journal.get("state") != "create_observed":
+        raise ValueError("recorded Docker create is not terminal")
+    observation = candidate.get("effect_observation")
+    candidate_termination_fence = candidate.get("termination_fence")
+    if not isinstance(observation, dict) or any(
+        not isinstance(name, str) or not isinstance(value, str)
+        for name, value in observation.items()
+    ) or not isinstance(candidate_termination_fence, Mapping):
+        raise ValueError("recorded Docker cleanup observation is invalid")
+    admitted = _validated_cleanup_binding_record(
+        binding_path,
+        provider="codex",
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        lease_root=lease_root,
+        provider_home=provider_home,
+        prompt_path=prompt_path,
+        effect_observation=observation,
+        binding_state="command_bound",
+        runner_pid=runner_pid,
+        runner_start_ticks=runner_start_ticks,
+        create_command_id=str(journal["command_id"]),
+        create_cwd=Path(str(journal["cwd"])),
+        create_environment_id=str(journal["environment_id"]),
+        watchdog_pid=watchdog_pid,
+        watchdog_start_ticks=watchdog_start_ticks,
+        termination_fence=candidate_termination_fence,
+    )
+    path_identities = admitted.get("path_identities")
+    if not isinstance(path_identities, dict):
+        raise ValueError("recorded Docker cleanup path authority is invalid")
+    watchdog_boot_id = str(admitted.get("boot_id") or "")
+    try:
+        current_boot_id = Path(
+            "/proc/sys/kernel/random/boot_id"
+        ).read_text(encoding="ascii").strip()
+        watchdog_birth = read_process_birth(watchdog_pid)
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("recorded Docker watchdog liveness is unknown") from exc
+    exact_watchdog: _DetachedDockerCleanupWatchdog | None = None
+    if (
+        current_boot_id == watchdog_boot_id
+        and watchdog_birth is not None
+        and watchdog_birth.start_time_ticks == watchdog_start_ticks
+        and watchdog_birth.boot_id == watchdog_boot_id
+    ):
+        exact_watchdog = _DetachedDockerCleanupWatchdog(
+            watchdog_pid,
+            watchdog_start_ticks,
+        )
+        exact_watchdog.terminate()
+        for _ in range(20):
+            if exact_watchdog.poll() is not None:
+                break
+            time.sleep(0.05)
+        try:
+            still_live = read_process_birth(watchdog_pid)
+        except OSError as exc:
+            raise ValueError("recorded Docker watchdog exit is unknown") from exc
+        if (
+            still_live is not None
+            and still_live.start_time_ticks == watchdog_start_ticks
+            and still_live.boot_id == watchdog_boot_id
+        ):
+            raise ValueError("recorded Docker watchdog cleanup remains pending")
+    if not lease_root.exists():
+        recovery_config = Path(
+            tempfile.mkdtemp(prefix="aseh-docker-recovery-config-")
+        )
+        recovery_config.chmod(0o700)
+        try:
+            _remove_exact_docker_container(
+                docker_bin=docker_bin,
+                docker_config=recovery_config,
+                container_name=container_name,
+                settle_for_creation=False,
+                termination_fence=admitted_fence,
+                issue_removal=False,
+            )
+        finally:
+            shutil.rmtree(recovery_config, ignore_errors=True)
+        if not _finalize_verified_cleanup_completion(
+            binding_path=binding_path,
+            binding_identity=binding_identity,
+            binding_record=candidate,
+            expected_lifecycle=expected_lifecycle,
+            terminal_cleanup_store=terminal_observer,
+            terminal_cleanup_reservation=admitted_terminal,
+        ):
+            raise ValueError("recorded Docker cleanup did not converge")
+        return
+    # Revalidate all inode authority after any concurrent watchdog activity
+    # and immediately before the exact Docker/path cleanup boundary.
+    current = _validated_cleanup_binding_record(
+        binding_path,
+        provider="codex",
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        lease_root=lease_root,
+        provider_home=provider_home,
+        prompt_path=prompt_path,
+        effect_observation=observation,
+        binding_state="command_bound",
+        runner_pid=runner_pid,
+        runner_start_ticks=runner_start_ticks,
+        create_command_id=str(journal["command_id"]),
+        create_cwd=Path(str(journal["cwd"])),
+        create_environment_id=str(journal["environment_id"]),
+        watchdog_pid=watchdog_pid,
+        watchdog_start_ticks=watchdog_start_ticks,
+        termination_fence=admitted_fence,
+    )
+    if current.get("record_id") != admitted.get("record_id"):
+        raise ValueError("recorded Docker cleanup binding changed")
+    current_identity = _cleanup_path_identity(
+        binding_path,
+        directory=False,
+    )
+    issue_removal = bool(
+        admitted_fence is not None
+        and _arm_docker_removal_once(
+            binding_path=binding_path,
+            expected_binding_identity=current_identity,
+            binding_record=current,
+            termination_fence=admitted_fence,
+        )
+    )
     _remove_exact_docker_container(
         docker_bin=docker_bin,
         docker_config=docker_config,
         container_name=container_name,
         settle_for_creation=False,
+        termination_fence=admitted_fence,
+        issue_removal=issue_removal,
     )
-    try:
-        prompt_path.unlink()
-    except FileNotFoundError:
-        pass
-    _robust_remove_runner_temp_tree(provider_home)
-    for candidate in (
-        cidfile,
-        lease_root / "cas-owned",
-        marker,
+    if not _finalize_verified_cleanup_completion(
+        binding_path=binding_path,
+        binding_identity=current_identity,
+        binding_record=current,
+        expected_lifecycle=expected_lifecycle,
+        terminal_cleanup_store=terminal_observer,
+        terminal_cleanup_reservation=admitted_terminal,
     ):
-        try:
-            candidate.unlink()
-        except FileNotFoundError:
-            pass
-    _robust_remove_runner_temp_tree(docker_config)
-    try:
-        lease_root.rmdir()
-    except FileNotFoundError:
-        pass
+        raise ValueError("recorded Docker cleanup did not converge")
 
 
 def _inspect_recorded_codex_effect(
@@ -5799,19 +7967,60 @@ def _start_recorded_codex_effect(
         ]
     ):
         raise ValueError("recorded Docker start command drifted")
-    process = subprocess.Popen(
-        list(command),
-        env=_docker_control_env(),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        require_state_authority_handoff_ptrace_protection,
     )
-    if process.stdin is None or process.stdout is None or process.stderr is None:
+
+    # This adoption owner mints a new, process-local capability. Apply the
+    # same same-UID descriptor-duplication prerequisite as an ordinary lease
+    # immediately before the socket exists.
+    require_state_authority_handoff_ptrace_protection()
+    provider_sender, provider_stdin = _provider_start_socketpair()
+    try:
+        try:
+            process = subprocess.Popen(
+                list(command),
+                env=_docker_control_env(),
+                stdin=provider_stdin,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+            )
+        finally:
+            provider_stdin.close()
+    except BaseException:
+        provider_sender.close()
+        raise
+    if process.stdout is None or process.stderr is None:
+        provider_sender.close()
         raise ValueError("recorded Docker start pipes were not created")
+    try:
+        _recorded_codex_running_fence(
+            launch_receipt,
+            capture_if_absent=True,
+        )
+        provider_sender.sendall(_DOCKER_PROVIDER_START_MARKER)
+        if prompt:
+            provider_sender.sendall(prompt.encode("utf-8"))
+        try:
+            provider_sender.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+    except BaseException:
+        provider_sender.close()
+        try:
+            process.terminate()
+            process.wait(timeout=2.0)
+        except (OSError, subprocess.TimeoutExpired):
+            try:
+                process.kill()
+            except OSError:
+                pass
+        raise
+    provider_sender.close()
     stdout_thread = threading.Thread(
         target=_stream_provider_pipe_without_reserved_records,
         args=(process.stdout, sys.stdout),
@@ -5824,11 +8033,6 @@ def _start_recorded_codex_effect(
     )
     stdout_thread.start()
     stderr_thread.start()
-    try:
-        process.stdin.write(prompt)
-        process.stdin.close()
-    except BrokenPipeError:
-        pass
     returncode = int(process.wait())
     stdout_thread.join()
     stderr_thread.join()
@@ -6413,29 +8617,39 @@ def _run_grok_with_typed_failure_capture(
     command: Sequence[str],
     *,
     env: dict[str, str],
+    provider_stdin: socket.socket | None = None,
+    stderr_capture: list[str] | None = None,
+    stdout_capture: list[str] | None = None,
 ) -> int:
     """Run Grok with live output; stdout never grants fallback authority."""
 
-    process = subprocess.Popen(
-        list(command),
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-    )
+    stdout_tee = _BoundedStderrTee(sys.stdout, limit=MAX_GROK_ERROR_BYTES)
+    stderr_tee = _BoundedStderrTee(sys.stderr, limit=MAX_GROK_ERROR_BYTES)
+    try:
+        process = subprocess.Popen(
+            list(command),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            **({"stdin": provider_stdin} if provider_stdin is not None else {}),
+        )
+    finally:
+        if provider_stdin is not None:
+            provider_stdin.close()
     assert process.stdout is not None
     assert process.stderr is not None
     stdout_thread = threading.Thread(
         target=_stream_pipe,
-        args=(process.stdout, sys.stdout),
+        args=(process.stdout, stdout_tee),
         daemon=True,
     )
     stderr_thread = threading.Thread(
         target=_stream_pipe,
-        args=(process.stderr, sys.stderr),
+        args=(process.stderr, stderr_tee),
         daemon=True,
     )
     stdout_thread.start()
@@ -6470,6 +8684,10 @@ def _run_grok_with_typed_failure_capture(
         reaper.join(timeout=2.0)
     stdout_thread.join()
     stderr_thread.join()
+    if stdout_capture is not None:
+        stdout_capture.append(stdout_tee.getvalue())
+    if stderr_capture is not None:
+        stderr_capture.append(stderr_tee.getvalue())
     return returncode
 
 
@@ -7203,7 +9421,9 @@ def _run_protected_effect_recovery(
             ):
                 raise ValueError("protected terminal recovery outcome is invalid")
             _release_recorded_codex_effect_cleanup(
-                reservation.effect_launch_receipt
+                reservation.effect_launch_receipt,
+                terminal_observer=store,
+                terminal_reservation=reservation,
             )
             capacity_receipt = outcome.get("fallback_capacity_receipt", {})
             if isinstance(capacity_receipt, Mapping) and capacity_receipt:
@@ -7275,6 +9495,10 @@ def _run_protected_effect_recovery(
                 raise ProviderAttemptStoreError(
                     "quarantined running effect requires later reinspection"
                 )
+            _recorded_codex_running_fence(
+                active.effect_launch_receipt,
+                capture_if_absent=False,
+            )
             returncode = _wait_for_recorded_codex_effect(
                 active.effect_launch_receipt
             )
@@ -7332,6 +9556,16 @@ def _run_protected_effect_recovery(
             returncode=returncode,
             outcome=outcome,
             completion_capability=adopted.completion_capability,
+            terminal_cleanup_evidence=(
+                _recorded_codex_terminal_cleanup_evidence(
+                    active.effect_launch_receipt
+                )
+            ),
+        )
+        _release_recorded_codex_effect_cleanup(
+            terminal.effect_launch_receipt,
+            terminal_observer=store,
+            terminal_reservation=terminal,
         )
         _release_recorded_codex_effect_cleanup(terminal.effect_launch_receipt)
         if capacity_receipt:
@@ -9521,9 +11755,47 @@ def main(argv: Sequence[str] | None = None) -> int:
     # imports must not create bytecode inside the content-fenced workspace.
     previous_dont_write_bytecode = sys.dont_write_bytecode
     sys.dont_write_bytecode = True
+    # quota correlation plus independent verification.
+    # Absolute import: this file is sometimes loaded as
+    # ``ipfs_accelerate_py.agent_supervisor.grok_cli_runner`` (capsule
+    # runner_path), so a relative import looks for
+    # ``agent_supervisor.interrupted_validation_checkpoint`` and crashes.
+    restore_interrupted_validation = None
+    snapshot_implementation_workspace = None
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.interrupted_validation_checkpoint import (
+            restore_interrupted_validation as _restore_interrupted_validation,
+            snapshot_implementation_workspace as _snapshot_implementation_workspace,
+        )
+        restore_interrupted_validation = _restore_interrupted_validation
+        snapshot_implementation_workspace = _snapshot_implementation_workspace
+    except ImportError:
+        try:
+            from .interrupted_validation_checkpoint import (
+                restore_interrupted_validation as _restore_interrupted_validation,
+                snapshot_implementation_workspace as _snapshot_implementation_workspace,
+            )
+            restore_interrupted_validation = _restore_interrupted_validation
+            snapshot_implementation_workspace = _snapshot_implementation_workspace
+        except ImportError:
+            pass
+
+    workspace = Path(args.workspace).expanduser().resolve()
+    resumed = False
+    if restore_interrupted_validation is not None:
+        try:
+            resumed = bool(restore_interrupted_validation(workspace))
+        except Exception:
+            resumed = False
+    if resumed:
+        print(
+            "resumed interrupted validation; skipping grok provider",
+            flush=True,
+        )
+        return 0
     try:
         try:
-            return _run(args, receipt_fd)
+            result = _run(args, receipt_fd)
         except NameError as exc:
             # Infer and bind missing provider-command symbols, then retry once.
             healed = recover_provider_command_name_error(exc, globals())
@@ -9535,7 +11807,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 namespace_name=__name__,
                 strict=False,
             )
-            return _run(args, receipt_fd)
+            result = _run(args, receipt_fd)
+        if result == 0 and snapshot_implementation_workspace is not None:
+            try:
+                snapshot_implementation_workspace(workspace)
+            except Exception:
+                pass
+        return result
     finally:
         sys.dont_write_bytecode = previous_dont_write_bytecode
         if receipt_fd >= 3:
@@ -9550,3 +11828,5785 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == _DOCKER_CLEANUP_WATCHDOG_ARG:
         raise SystemExit(_docker_cleanup_watchdog_main(sys.argv[2:]))
     raise SystemExit(main())
+
+def _grok_balance_payload(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        return {}
+    status = payload.get("http_status")
+    message = payload.get("message")
+    if (
+        isinstance(status, bool)
+        or not isinstance(status, int)
+        or status != 402
+        or not isinstance(message, str)
+        or " ".join(message.split()) != _GROK_BALANCE_MESSAGE
+    ):
+        return {}
+    return {"kind": "usage_balance_exhausted", "http_status": 402}
+
+GROK_WORKTREE_SANDBOX_PROFILE = "workspace"
+
+GROK_DISABLED_SANDBOX_PROFILE = "off"
+
+GROK_ISOLATION_WORKTREE = "worktree"
+
+GROK_ISOLATION_KUBERNETES = "kubernetes"
+
+_DOCKER_CREATE_TIMEOUT_SECONDS = 120.0
+
+_DOCKER_CLEANUP_WATCHDOG_LAUNCHER_ARG = (
+    "--internal-docker-cleanup-watchdog-launcher"
+)
+
+_DOCKER_REMOVAL_ISSUER_ARG = "--internal-docker-removal-issuer"
+
+_DOCKER_REMOVAL_ISSUER_LAUNCHER_ARG = (
+    "--internal-docker-removal-issuer-launcher"
+)
+
+_DOCKER_BINDING_LOCK_TIMEOUT_SECONDS = 5.0
+
+_DOCKER_CREATE_JOURNAL_NAME = "create-journal.json"
+
+_DOCKER_CREATE_JOURNAL_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/docker-create-journal@4"
+)
+
+_DOCKER_CLEANUP_COMPLETION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/docker-cleanup-completion@5"
+)
+
+_DOCKER_CLEANUP_INTENT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/terminal-cleanup-intent@1"
+)
+
+_DOCKER_CLEANUP_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/docker-cleanup-binding@6"
+)
+
+_DOCKER_TERMINATION_FENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/docker-termination-fence@1"
+)
+
+_DOCKER_REMOVAL_DISPATCH_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/docker-removal-dispatch@3"
+)
+
+_DOCKER_CLEANUP_BINDING_DIRECTORY = "provider-cleanup-bindings"
+
+_DOCKER_PROVIDER_START_MARKER = b"ASEH_PROVIDER_START_FENCE_V2\n"
+
+_DOCKER_PROVIDER_START_SCRIPT = (
+    "IFS= read -r aseh_provider_start && "
+    "[ \"$aseh_provider_start\" = ASEH_PROVIDER_START_FENCE_V2 ] "
+    "|| exit 125; exec \"$@\""
+)
+
+_DOCKER_PRIVATE_CONTROL_MAX_BYTES = 512 * 1024
+
+_DOCKER_CREATE_ENVIRONMENT_MAX_BYTES = 1024 * 1024
+
+_DOCKER_CREATE_HANDOFF_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/docker-create-private-handoff@2"
+)
+
+_DOCKER_CREATE_HANDOFF_MAX_BYTES = 2 * 1024 * 1024
+
+_DOCKER_CREATE_RESULT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/docker-create-private-result@2"
+)
+
+_DOCKER_CREATE_RESULT_MAX_BYTES = 2 * 1024 * 1024
+
+def resolve_codex_quota_fallback_executable(
+    *,
+    workspace: str | Path,
+    configured: str = "",
+) -> str:
+    """Resolve a pinned executable that the Grok workspace cannot replace."""
+
+    workspace_path = Path(workspace).expanduser().resolve()
+    codex_candidate = str(configured or shutil.which("codex") or "").strip()
+    if not codex_candidate:
+        return ""
+    candidate_path = Path(codex_candidate).expanduser()
+    if not candidate_path.is_absolute():
+        resolved_from_path = shutil.which(codex_candidate)
+        if not resolved_from_path:
+            return ""
+        candidate_path = Path(resolved_from_path)
+    try:
+        resolved_candidate = candidate_path.resolve(strict=True)
+    except OSError:
+        return ""
+    candidate_entry = Path(os.path.abspath(candidate_path))
+    system_entries = {
+        Path("/usr/bin/codex"),
+        Path("/usr/local/bin/codex"),
+        Path("/usr/bin/codex.exe"),
+        Path("/usr/local/bin/codex.exe"),
+    }
+    package_roots = (
+        Path("/usr/lib/node_modules/@openai/codex"),
+        Path("/usr/local/lib/node_modules/@openai/codex"),
+    )
+    matched_root = next(
+        (
+            root
+            for root in package_roots
+            if resolved_candidate == root
+            or resolved_candidate.is_relative_to(root)
+        ),
+        resolved_candidate.parent
+        if resolved_candidate.parent in {Path("/usr/bin"), Path("/usr/local/bin")}
+        else None,
+    )
+    try:
+        trust_chain = (
+            [candidate_entry, candidate_entry.parent, resolved_candidate]
+            + (
+                list(resolved_candidate.parents)[
+                    : list(resolved_candidate.parents).index(matched_root) + 1
+                ]
+                if matched_root is not None and resolved_candidate != matched_root
+                else ([matched_root] if matched_root is not None else [])
+            )
+        )
+        trusted_chain = all(
+            path.lstat().st_uid == 0
+            and (path.is_symlink() or not path.stat().st_mode & 0o022)
+            for path in trust_chain
+        )
+    except (OSError, ValueError):
+        trusted_chain = False
+    if (
+        candidate_entry not in system_entries
+        or matched_root is None
+        or not trusted_chain
+        or not candidate_entry.is_file()
+        or not os.access(candidate_entry, os.X_OK)
+        or candidate_entry.is_relative_to(workspace_path)
+        or resolved_candidate.is_relative_to(workspace_path)
+        or candidate_entry.name.casefold() not in {"codex", "codex.exe"}
+    ):
+        return ""
+    return str(candidate_entry)
+
+def _populate_isolated_grok_credentials(
+    *,
+    base_env: Mapping[str, str],
+    grok_home: Path,
+) -> None:
+    """Populate credentials only after ``grok_home`` has durable ownership."""
+
+    source_home_raw = str(base_env.get("GROK_HOME") or "").strip()
+    source_home = (
+        Path(source_home_raw).expanduser()
+        if source_home_raw
+        else user_home_from_env(dict(base_env)) / ".grok"
+    )
+    source_auth = source_home / "auth.json"
+    if not source_auth.is_file():
+        try:
+            import pwd
+
+            source_auth = (
+                Path(pwd.getpwuid(os.getuid()).pw_dir) / ".grok" / "auth.json"
+            )
+        except Exception:
+            source_auth = Path.home() / ".grok" / "auth.json"
+    if not source_auth.is_file():
+        return
+    # Copy, do not bind-mount, the operator credential.  For Docker routes the
+    # caller invokes this only after the watchdog has durably bound the exact
+    # provider-home inode, so SIGKILL cannot create an untracked secret tree.
+    nested_home = grok_home / ".grok"
+    nested_home.mkdir(mode=0o700, exist_ok=True)
+    _install_ephemeral_credential(source_auth, grok_home / "auth.json")
+    _install_ephemeral_credential(source_auth, nested_home / "auth.json")
+    for name in ("config.toml", "agent_id"):
+        extra = source_auth.parent / name
+        if extra.is_file():
+            try:
+                _install_ephemeral_credential(extra, nested_home / name)
+            except ValueError:
+                continue
+
+def _populate_bound_ephemeral_prompt(path: Path, prompt: str) -> None:
+    """Write task context through the exact empty inode bound by cleanup."""
+
+    payload = prompt.encode("utf-8")
+    if not payload or len(payload) > 8 * 1024 * 1024:
+        raise ValueError("implementation prompt is not bounded")
+    try:
+        before = os.lstat(path)
+        descriptor = os.open(
+            path,
+            os.O_WRONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as exc:
+        raise ValueError("ephemeral prompt inode is unavailable") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or stat.S_ISLNK(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or (before.st_dev, before.st_ino)
+            != (opened.st_dev, opened.st_ino)
+            or opened.st_uid != os.geteuid()
+            or opened.st_nlink != 1
+        ):
+            raise ValueError("ephemeral prompt ownership changed")
+        os.fchmod(descriptor, 0o600)
+        os.ftruncate(descriptor, 0)
+        view = memoryview(payload)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise ValueError("ephemeral prompt write made no progress")
+            view = view[written:]
+        os.fsync(descriptor)
+        after = os.lstat(path)
+        if (
+            (after.st_dev, after.st_ino) != (opened.st_dev, opened.st_ino)
+            or after.st_uid != os.geteuid()
+            or after.st_nlink != 1
+            or not stat.S_ISREG(after.st_mode)
+        ):
+            raise ValueError("ephemeral prompt inode changed while written")
+    finally:
+        os.close(descriptor)
+
+def _workspace_content_fingerprint_unlocked(workspace: Path) -> str:
+    """Preserve the existing path/mode/byte stream and its SHA-256 identity."""
+
+    digest = hashlib.sha256()
+    try:
+        for root, directories, files in os.walk(
+            workspace,
+            topdown=True,
+            followlinks=False,
+        ):
+            directories.sort()
+            files.sort()
+            root_path = Path(root)
+            for name in (*directories, *files):
+                candidate = root_path / name
+                relative = candidate.relative_to(workspace).as_posix()
+                stat_result = candidate.lstat()
+                digest.update(relative.encode("utf-8", errors="surrogateescape"))
+                digest.update(b"\0")
+                digest.update(str(stat_result.st_mode).encode("ascii"))
+                digest.update(b"\0")
+                if candidate.is_symlink():
+                    digest.update(b"L")
+                    digest.update(
+                        os.readlink(candidate).encode(
+                            "utf-8",
+                            errors="surrogateescape",
+                        )
+                    )
+                elif candidate.is_dir():
+                    digest.update(b"D")
+                elif candidate.is_file():
+                    digest.update(b"F")
+                    with candidate.open("rb") as handle:
+                        while chunk := handle.read(1024 * 1024):
+                            digest.update(chunk)
+                else:
+                    raise ValueError(
+                        f"unsupported special file in Grok workspace: {candidate}"
+                    )
+                digest.update(b"\0")
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("unable to fingerprint Grok workspace") from exc
+    return digest.hexdigest()
+
+def grok_sandbox_cli_profile(isolation_backend: str) -> str | None:
+    """Return the Grok ``--sandbox`` profile for one isolation backend.
+
+    Custom deny profiles require Linux bubblewrap user namespaces.  On hosts
+    where ``bwrap`` cannot set a uid map, worktree isolation must disable
+    Grok's sandbox (``off``).  The ``workspace`` Landlock profile still
+    launches bwrap on this host, so it is not a recovery path here.
+    """
+
+    backend = str(isolation_backend or "").strip().casefold()
+    if backend == GROK_ISOLATION_GROK_SANDBOX:
+        return GROK_PRIMARY_SANDBOX_PROFILE
+    if backend == GROK_ISOLATION_WORKTREE:
+        if sys.platform != "darwin" and not _grok_custom_sandbox_available():
+            return GROK_DISABLED_SANDBOX_PROFILE
+        return GROK_WORKTREE_SANDBOX_PROFILE
+    return None
+
+def grok_stderr_is_sandbox_host_failure(text: str) -> bool:
+    """True when Grok died because this host cannot install bubblewrap."""
+
+    lowered = str(text or "").casefold()
+    return "bwrap: setting up uid map" in lowered or (
+        "bwrap: setting up gid map" in lowered
+    )
+
+def _clear_custom_grok_sandbox_profile(grok_home: Path) -> None:
+    """Drop the bubblewrap deny profile from an isolated Grok home."""
+
+    policy_path = grok_home / "sandbox.toml"
+    try:
+        policy_path.write_text("", encoding="utf-8")
+        policy_path.chmod(0o600)
+    except OSError:
+        return
+
+def _command_sandbox_profile(command: Sequence[str]) -> str | None:
+    rewritten = [str(item) for item in command]
+    try:
+        index = rewritten.index("--sandbox")
+    except ValueError:
+        return None
+    if index + 1 < len(rewritten):
+        return rewritten[index + 1]
+    return None
+
+def _should_disable_sandbox_after_bwrap_host_failure(
+    *,
+    command: Sequence[str],
+    returncode: int,
+    error_text: str,
+) -> bool:
+    """True when Grok died on this host's bubblewrap uid-map refusal."""
+
+    if returncode == 0 or not grok_stderr_is_sandbox_host_failure(error_text):
+        return False
+    return _command_sandbox_profile(command) != GROK_DISABLED_SANDBOX_PROFILE
+
+def _rewrite_grok_sandbox_profile(
+    command: Sequence[str],
+    profile: str | None,
+) -> list[str]:
+    rewritten = [str(item) for item in command]
+    try:
+        index = rewritten.index("--sandbox")
+    except ValueError:
+        if profile:
+            rewritten.extend(["--sandbox", str(profile)])
+        return rewritten
+    if profile:
+        if index + 1 < len(rewritten):
+            rewritten[index + 1] = str(profile)
+        else:
+            rewritten.append(str(profile))
+        return rewritten
+    del rewritten[index : index + 2 if index + 1 < len(rewritten) else index + 1]
+    return rewritten
+
+_DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES = (
+    RUN_ID_ENV,
+    PROFILE_ID_ENV,
+    TARGET_ID_ENV,
+    REPOSITORY_ROOT_ENV,
+    STATE_ROOT_ENV,
+    RUN_ROOT_ENV,
+    FENCING_EPOCH_ENV,
+    CONFIGURATION_ROOT_ENV,
+)
+
+_DOCKER_EFFECT_OBSERVATION_FIELDS = frozenset(
+    {
+        "logical_attempt_id",
+        "provider_attempt_store",
+        "provider_attempt_store_identity",
+    }
+)
+
+def _docker_cleanup_watchdog_env() -> dict[str, str]:
+    """Project lifecycle identity, never state credentials, to the reaper.
+
+    The configured multi-supervisor stop path snapshots every profile member,
+    so this detached auxiliary root becomes a synchronous cleanup barrier.
+    Generic single-root health checks see it as non-healthy and therefore fail
+    closed; they never mistake an auxiliary reaper for a second supervisor.
+    """
+
+    environment = _docker_control_env()
+    projected = {
+        name: str(os.environ[name])
+        for name in _DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES
+        if name in os.environ
+    }
+    complete = (
+        len(projected) == len(_DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES)
+        and all(str(value or "").strip() for value in projected.values())
+    )
+    if projected and not complete:
+        # Provider children drop repository-root identity.  A leaked subset
+        # must not start Docker cleanup supervision.  An asymmetric docker
+        # root pair is still fail-closed.
+        state_root = str(os.environ.get(STATE_ROOT_ENV, "") or "").strip()
+        run_root = str(os.environ.get(RUN_ROOT_ENV, "") or "").strip()
+        if bool(state_root) != bool(run_root):
+            raise ValueError(
+                "Docker cleanup watchdog lifecycle identity is partial"
+            )
+        return environment
+    environment.update(projected)
+    return environment
+
+_DOCKER_TERMINATION_FENCE_FIELDS = frozenset(
+    {
+        "schema",
+        "provider",
+        "container_id",
+        "container_name",
+        "image_id",
+        "isolation_label",
+        "docker_state",
+        "init_pid",
+        "kernel_scope",
+        "fence_id",
+    }
+)
+
+def _validated_docker_termination_fence(
+    value: Mapping[str, object],
+    *,
+    provider: str,
+    container_name: str,
+    expected_container_id: str = "",
+    expected_image_id: str = "",
+) -> dict[str, object]:
+    """Validate one exact Docker effect and its captured kernel scope."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        StateAuthorityProcessIsolationError,
+        validate_linux_process_scope,
+    )
+
+    body = {name: item for name, item in value.items() if name != "fence_id"}
+    container_id = str(value.get("container_id") or "")
+    image_id = str(value.get("image_id") or "")
+    init_pid = value.get("init_pid")
+    kernel_scope = value.get("kernel_scope")
+    expected_label = (
+        "ipfs_accelerate.grok_isolation"
+        if provider == "grok"
+        else "ipfs_accelerate.codex_fallback_isolation"
+    )
+    if (
+        set(value) != _DOCKER_TERMINATION_FENCE_FIELDS
+        or value.get("schema") != _DOCKER_TERMINATION_FENCE_SCHEMA
+        or provider not in _DOCKER_ISOLATION_PROVIDERS
+        or value.get("provider") != provider
+        or value.get("container_name") != container_name
+        or _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
+        or not container_name.startswith(f"ipfs-accelerate-{provider}-")
+        or re.fullmatch(r"[0-9a-f]{64}", container_id) is None
+        or (
+            expected_container_id
+            and container_id != expected_container_id
+        )
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None
+        or (expected_image_id and image_id != expected_image_id)
+        or value.get("isolation_label") != expected_label
+        or value.get("docker_state")
+        not in {"created", "running", "paused", "restarting"}
+        or type(init_pid) is not int
+        or int(init_pid) < 0
+        or value.get("fence_id") != _effect_receipt_identity(body)
+    ):
+        raise ValueError("Docker termination fence identity is invalid")
+    if init_pid:
+        if not isinstance(kernel_scope, Mapping):
+            raise ValueError("Docker termination kernel scope is absent")
+        try:
+            scope = validate_linux_process_scope(kernel_scope)
+        except StateAuthorityProcessIsolationError as exc:
+            raise ValueError("Docker termination kernel scope is invalid") from exc
+        if (
+            scope.get("pid") != init_pid
+            or value.get("docker_state") == "created"
+        ):
+            raise ValueError("Docker termination kernel scope differs")
+    elif kernel_scope != {} or value.get("docker_state") != "created":
+        # Docker reports State.Pid=0 after an executed container exits.  At
+        # that point a detached descendant can still populate the old cgroup,
+        # so a post-hoc name/CID observation cannot mint a cleanup fence.  The
+        # only safe zero-PID case is an inert container that never crossed its
+        # start boundary.
+        raise ValueError("inactive Docker termination scope is not inert")
+    return dict(value)
+
+def _attest_exact_docker_execution(
+    *,
+    docker_bin: str,
+    docker_config: str | Path,
+    provider: str,
+    container_name: str,
+    container_id: str,
+    image_id: str,
+    timeout: float,
+    pass_fds: tuple[int, ...] = (),
+) -> dict[str, object]:
+    """Capture immutable Docker and Linux process-scope identity before rm."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        StateAuthorityProcessIsolationError,
+        capture_linux_process_scope,
+    )
+
+    try:
+        observed = subprocess.run(
+            [
+                docker_bin,
+                f"--host={_DOCKER_LOCAL_HOST}",
+                "--config",
+                str(docker_config),
+                "container",
+                "inspect",
+                container_id,
+            ],
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=max(0.05, timeout),
+            check=False,
+            pass_fds=pass_fds,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("Docker execution identity is unavailable") from exc
+    if (
+        observed.returncode != 0
+        or not observed.stdout
+        or len(observed.stdout) > _DOCKER_INSPECTION_MAX_BYTES
+    ):
+        raise ValueError("Docker execution could not be inspected")
+    try:
+        decoded = json.loads(observed.stdout.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Docker execution inspection is malformed") from exc
+    if (
+        not isinstance(decoded, list)
+        or len(decoded) != 1
+        or not isinstance(decoded[0], Mapping)
+    ):
+        raise ValueError("Docker execution inspection shape is invalid")
+    inspection = decoded[0]
+    config = inspection.get("Config")
+    labels = config.get("Labels") if isinstance(config, Mapping) else None
+    state = inspection.get("State")
+    expected_label = (
+        "ipfs_accelerate.grok_isolation"
+        if provider == "grok"
+        else "ipfs_accelerate.codex_fallback_isolation"
+    )
+    if not isinstance(state, Mapping):
+        raise ValueError("Docker execution state is unavailable")
+    raw_pid = state.get("Pid")
+    docker_state = str(state.get("Status") or "")
+    if (
+        inspection.get("Id") != container_id
+        or inspection.get("Name") != "/" + container_name
+        or inspection.get("Image") != image_id
+        or not isinstance(labels, Mapping)
+        or labels.get(expected_label) != "true"
+        or type(raw_pid) is not int
+        or raw_pid < 0
+    ):
+        raise ValueError("Docker execution identity differs")
+    try:
+        kernel_scope: Mapping[str, object] = (
+            capture_linux_process_scope(raw_pid) if raw_pid else {}
+        )
+    except StateAuthorityProcessIsolationError as exc:
+        raise ValueError("Docker execution kernel scope is unavailable") from exc
+    # Close the inspect -> /proc capture race.  A PID that exited or was
+    # reused between those observations must never be bound to this container.
+    try:
+        confirmed = subprocess.run(
+            [
+                docker_bin,
+                f"--host={_DOCKER_LOCAL_HOST}",
+                "--config",
+                str(docker_config),
+                "container",
+                "inspect",
+                container_id,
+            ],
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=max(0.05, timeout),
+            check=False,
+            pass_fds=pass_fds,
+        )
+        confirmed_decoded = json.loads(confirmed.stdout.decode("utf-8"))
+    except (
+        OSError,
+        subprocess.TimeoutExpired,
+        UnicodeError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise ValueError("Docker execution confirmation is unavailable") from exc
+    if (
+        confirmed.returncode != 0
+        or len(confirmed.stdout) > _DOCKER_INSPECTION_MAX_BYTES
+        or not isinstance(confirmed_decoded, list)
+        or len(confirmed_decoded) != 1
+        or not isinstance(confirmed_decoded[0], Mapping)
+    ):
+        raise ValueError("Docker execution confirmation is malformed")
+    confirmed_inspection = confirmed_decoded[0]
+    confirmed_config = confirmed_inspection.get("Config")
+    confirmed_labels = (
+        confirmed_config.get("Labels")
+        if isinstance(confirmed_config, Mapping)
+        else None
+    )
+    confirmed_state = confirmed_inspection.get("State")
+    if (
+        confirmed_inspection.get("Id") != container_id
+        or confirmed_inspection.get("Name") != "/" + container_name
+        or confirmed_inspection.get("Image") != image_id
+        or not isinstance(confirmed_labels, Mapping)
+        or confirmed_labels.get(expected_label) != "true"
+        or not isinstance(confirmed_state, Mapping)
+        or confirmed_state.get("Pid") != raw_pid
+        or str(confirmed_state.get("Status") or "") != docker_state
+    ):
+        raise ValueError("Docker execution changed during kernel capture")
+    body: dict[str, object] = {
+        "schema": _DOCKER_TERMINATION_FENCE_SCHEMA,
+        "provider": provider,
+        "container_id": container_id,
+        "container_name": container_name,
+        "image_id": image_id,
+        "isolation_label": expected_label,
+        "docker_state": docker_state,
+        "init_pid": raw_pid,
+        "kernel_scope": dict(kernel_scope),
+    }
+    body["fence_id"] = _effect_receipt_identity(body)
+    return _validated_docker_termination_fence(
+        body,
+        provider=provider,
+        container_name=container_name,
+        expected_container_id=container_id,
+        expected_image_id=image_id,
+    )
+
+def _docker_termination_scope_quiescent(
+    fence: Mapping[str, object],
+) -> bool:
+    """Require the captured init, PID namespace, and cgroup to be empty."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        StateAuthorityProcessIsolationError,
+        linux_process_scope_quiescent,
+    )
+
+    provider = str(fence.get("provider") or "")
+    container_name = str(fence.get("container_name") or "")
+    admitted = _validated_docker_termination_fence(
+        fence,
+        provider=provider,
+        container_name=container_name,
+    )
+    if admitted["init_pid"] == 0:
+        return True
+    scope = admitted["kernel_scope"]
+    try:
+        return bool(
+            isinstance(scope, Mapping)
+            and linux_process_scope_quiescent(scope)
+        )
+    except StateAuthorityProcessIsolationError:
+        return False
+
+def _cleanup_path_identity(path: Path, *, directory: bool) -> dict[str, int]:
+    try:
+        metadata = os.lstat(path)
+    except OSError as exc:
+        raise ValueError("Docker cleanup path identity is unavailable") from exc
+    if (
+        metadata.st_uid != os.geteuid()
+        or stat.S_ISLNK(metadata.st_mode)
+        or (directory and not stat.S_ISDIR(metadata.st_mode))
+        or (not directory and not stat.S_ISREG(metadata.st_mode))
+    ):
+        raise ValueError("Docker cleanup path identity is unsafe")
+    return {
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+        # Bind the object kind, not mutable permission bits.  The provider is
+        # allowed to chmod files inside its own isolated home; cleanup still
+        # owns the same inode and normalizes permissions only after moving it
+        # into the private quarantine below.
+        "mode": stat.S_IFMT(metadata.st_mode),
+        "uid": metadata.st_uid,
+    }
+
+def _docker_cleanup_root_identity(path: Path) -> dict[str, int]:
+    """Bind one trusted shared or private provider allocator root."""
+
+    root = path.absolute()
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            root,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        metadata = os.fstat(descriptor)
+        named = os.lstat(root)
+        resolved = root.resolve(strict=True)
+        final = os.lstat(root)
+    except OSError as exc:
+        raise ValueError("Docker cleanup root identity is unavailable") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    permissions = stat.S_IMODE(metadata.st_mode)
+    private_owned = metadata.st_uid == os.geteuid() and permissions == 0o700
+    trusted_shared = metadata.st_uid == 0 and permissions == 0o1777
+    if (
+        resolved != root
+        or stat.S_ISLNK(named.st_mode)
+        or not stat.S_ISDIR(metadata.st_mode)
+        or (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_uid,
+        )
+        != (
+            named.st_dev,
+            named.st_ino,
+            named.st_mode,
+            named.st_uid,
+        )
+        or (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_uid,
+        )
+        != (
+            final.st_dev,
+            final.st_ino,
+            final.st_mode,
+            final.st_uid,
+        )
+        or not (private_owned or trusted_shared)
+    ):
+        raise ValueError("Docker cleanup root identity is unsafe")
+    return {
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+        "mode": metadata.st_mode,
+        "uid": metadata.st_uid,
+    }
+
+def _validated_docker_cleanup_root(
+    *,
+    lease_root: Path,
+    provider_home: Path,
+    prompt_path: Path,
+    expected_root: Path | None = None,
+    expected_identity: Mapping[str, object] | None = None,
+) -> tuple[Path, dict[str, int]]:
+    """Admit the exact direct parent shared by all disposable resources."""
+
+    cleanup_root = lease_root.parent.absolute()
+    if (
+        not lease_root.is_absolute()
+        or not provider_home.is_absolute()
+        or not prompt_path.is_absolute()
+        or provider_home.parent != cleanup_root
+        or prompt_path.parent != cleanup_root
+        or (expected_root is not None and expected_root != cleanup_root)
+    ):
+        raise ValueError("Docker cleanup resources do not share one root")
+    identity = _docker_cleanup_root_identity(cleanup_root)
+    if expected_identity is not None:
+        if (
+            not isinstance(expected_identity, Mapping)
+            or set(expected_identity) != {"device", "inode", "mode", "uid"}
+            or any(
+                isinstance(expected_identity.get(name), bool)
+                or not isinstance(expected_identity.get(name), int)
+                or int(expected_identity[name]) < 0
+                for name in ("device", "inode", "mode", "uid")
+            )
+            or dict(expected_identity) != identity
+        ):
+            raise ValueError("Docker cleanup root identity drifted")
+    return cleanup_root, identity
+
+def _provider_start_socketpair() -> tuple[socket.socket, socket.socket]:
+    """Mint one anonymous, procfs-nonreopenable provider-start capability."""
+
+    sender, docker_stdin = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        for channel in (sender, docker_stdin):
+            channel.set_inheritable(False)
+            if (
+                channel.family != socket.AF_UNIX
+                or channel.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)
+                != socket.SOCK_STREAM
+            ):
+                raise ValueError("Docker provider start capability is invalid")
+        return sender, docker_stdin
+    except BaseException:
+        sender.close()
+        docker_stdin.close()
+        raise
+
+def _docker_cleanup_binding_value(
+    *,
+    binding_state: str,
+    provider: str,
+    docker_bin: str,
+    container_name: str,
+    lease_root: Path,
+    docker_config: Path,
+    cidfile: Path,
+    provider_home: Path,
+    prompt_path: Path,
+    effect_observation: Mapping[str, str],
+    path_identities: Mapping[str, Mapping[str, int]],
+    binding_path: Path,
+    runner_pid: int,
+    runner_start_ticks: int,
+    watchdog_pid: int,
+    watchdog_start_ticks: int,
+    create_command_id: str = "",
+    create_cwd: Path | None = None,
+    create_environment_id: str = "",
+    termination_fence: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Build either the pre-dispatch or command-bound durable authority."""
+
+    if binding_state not in {"prepared_no_dispatch", "command_bound"}:
+        raise ValueError("Docker cleanup binding state is invalid")
+    cleanup_root, cleanup_root_identity = _validated_docker_cleanup_root(
+        lease_root=lease_root,
+        provider_home=provider_home,
+        prompt_path=prompt_path,
+    )
+    lifecycle = {
+        name: str(os.environ.get(name, "") or "").strip()
+        for name in _DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES
+    }
+    try:
+        fencing_epoch = int(lifecycle[FENCING_EPOCH_ENV])
+        docker_metadata = Path(docker_bin).stat()
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+            encoding="ascii"
+        ).strip()
+    except (OSError, ValueError) as exc:
+        raise ValueError("Docker cleanup binding identity is unavailable") from exc
+    command_bound = binding_state == "command_bound"
+    fence = dict(termination_fence or {})
+    if (
+        not all(lifecycle.values())
+        or fencing_epoch < 0
+        or not boot_id
+        or runner_pid <= 0
+        or runner_start_ticks <= 0
+        or watchdog_pid <= 0
+        or watchdog_start_ticks <= 0
+        or command_bound
+        != bool(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", create_command_id)
+            and create_cwd is not None
+            and create_cwd.is_absolute()
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", create_environment_id)
+        )
+    ):
+        raise ValueError("Docker cleanup binding identity is incomplete")
+    if fence:
+        if not command_bound:
+            raise ValueError(
+                "Docker termination fence requires command-bound cleanup"
+            )
+        _validated_docker_termination_fence(
+            fence,
+            provider=provider,
+            container_name=container_name,
+        )
+    body: dict[str, object] = {
+        "schema": _DOCKER_CLEANUP_BINDING_SCHEMA,
+        "binding_state": binding_state,
+        "run_id": lifecycle[RUN_ID_ENV],
+        "profile_id": lifecycle[PROFILE_ID_ENV],
+        "target_id": lifecycle[TARGET_ID_ENV],
+        "repository_root": lifecycle[REPOSITORY_ROOT_ENV],
+        "state_root": lifecycle[STATE_ROOT_ENV],
+        "run_root": lifecycle[RUN_ROOT_ENV],
+        "configuration_root": lifecycle[CONFIGURATION_ROOT_ENV],
+        "fencing_epoch": fencing_epoch,
+        "runner_pid": runner_pid,
+        "runner_start_ticks": runner_start_ticks,
+        "watchdog_pid": watchdog_pid,
+        "watchdog_start_ticks": watchdog_start_ticks,
+        "boot_id": boot_id,
+        "provider": provider,
+        "docker_bin": docker_bin,
+        "docker_device": docker_metadata.st_dev,
+        "docker_inode": docker_metadata.st_ino,
+        "docker_mode": docker_metadata.st_mode,
+        "docker_uid": docker_metadata.st_uid,
+        "container_name": container_name,
+        "cleanup_root": str(cleanup_root),
+        "cleanup_root_identity": cleanup_root_identity,
+        "lease_root": str(lease_root),
+        "docker_config": str(docker_config),
+        "cidfile": str(cidfile),
+        "provider_home": str(provider_home),
+        "prompt_path": str(prompt_path),
+        "effect_observation": dict(sorted(effect_observation.items())),
+        "create_command_id": create_command_id if command_bound else "",
+        "create_cwd": str(create_cwd) if command_bound else "",
+        "create_environment_id": (
+            create_environment_id if command_bound else ""
+        ),
+        "termination_fence": fence,
+        "path_identities": {
+            name: dict(identity)
+            for name, identity in path_identities.items()
+        },
+        "binding_path": str(binding_path),
+    }
+    body["record_id"] = _effect_receipt_identity(body)
+    return body
+
+def _reject_duplicate_control_keys(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("private Docker control record repeats a key")
+        value[key] = item
+    return value
+
+def _validate_private_control_directory_descriptor(
+    path: Path,
+    descriptor: int,
+) -> None:
+    """Require a retained directory descriptor to remain the canonical name."""
+
+    absolute = path.absolute()
+    try:
+        if absolute.resolve(strict=True) != absolute:
+            raise ValueError("private Docker control directory is aliased")
+        metadata = os.fstat(descriptor)
+        final = os.lstat(absolute)
+    except OSError as exc:
+        raise ValueError("private Docker control directory is unavailable") from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+        or (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_uid,
+        )
+        != (
+            final.st_dev,
+            final.st_ino,
+            final.st_mode,
+            final.st_uid,
+        )
+    ):
+        raise ValueError("private Docker control directory is not owned")
+
+def _private_control_directory(path: Path) -> int:
+    """Bind one exact private directory without following a replacement."""
+
+    absolute = path.absolute()
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            absolute,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        _validate_private_control_directory_descriptor(absolute, descriptor)
+    except OSError as exc:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise ValueError(
+            "private Docker control directory is unavailable"
+        ) from exc
+    except BaseException:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise
+    return descriptor
+
+def _private_control_bytes(value: Mapping[str, object]) -> bytes:
+    encoded = (
+        json.dumps(
+            dict(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    if len(encoded) > _DOCKER_PRIVATE_CONTROL_MAX_BYTES:
+        raise ValueError("private Docker control record is oversized")
+    return encoded
+
+def _write_private_control_record(
+    directory: Path,
+    name: str,
+    value: Mapping[str, object],
+    *,
+    replace_existing: bool,
+    directory_fd: int | None = None,
+) -> None:
+    """Publish canonical private JSON with create-only or atomic CAS shape."""
+
+    if re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,127}", name) is None:
+        raise ValueError("private Docker control record name is invalid")
+    encoded = _private_control_bytes(value)
+    owns_directory_fd = directory_fd is None
+    bound_directory_fd = (
+        _private_control_directory(directory)
+        if directory_fd is None
+        else directory_fd
+    )
+    if not owns_directory_fd:
+        _validate_private_control_directory_descriptor(
+            directory,
+            bound_directory_fd,
+        )
+    temporary_name = "." + name + "." + secrets.token_hex(8)
+    try:
+        descriptor = os.open(
+            temporary_name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=bound_directory_fd,
+        )
+        try:
+            view = memoryview(encoded)
+            while view:
+                written = os.write(descriptor, view)
+                if written <= 0:
+                    raise OSError("private Docker control write made no progress")
+                view = view[written:]
+            os.fchmod(descriptor, 0o600)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        if replace_existing:
+            os.replace(
+                temporary_name,
+                name,
+                src_dir_fd=bound_directory_fd,
+                dst_dir_fd=bound_directory_fd,
+            )
+        else:
+            os.link(
+                temporary_name,
+                name,
+                src_dir_fd=bound_directory_fd,
+                dst_dir_fd=bound_directory_fd,
+                follow_symlinks=False,
+            )
+            os.unlink(temporary_name, dir_fd=bound_directory_fd)
+        os.fsync(bound_directory_fd)
+        _validate_private_control_directory_descriptor(
+            directory,
+            bound_directory_fd,
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        raise ValueError("private Docker control record cannot be published") from exc
+    finally:
+        try:
+            os.unlink(temporary_name, dir_fd=bound_directory_fd)
+        except FileNotFoundError:
+            pass
+        finally:
+            if owns_directory_fd:
+                os.close(bound_directory_fd)
+
+def _read_private_control_record(
+    directory: Path,
+    name: str,
+    *,
+    directory_fd: int | None = None,
+) -> dict[str, object] | None:
+    """Read one exact canonical private JSON record without mutating it."""
+
+    owns_directory_fd = directory_fd is None
+    bound_directory_fd = (
+        _private_control_directory(directory)
+        if directory_fd is None
+        else directory_fd
+    )
+    if not owns_directory_fd:
+        _validate_private_control_directory_descriptor(
+            directory,
+            bound_directory_fd,
+        )
+    try:
+        try:
+            descriptor = os.open(
+                name,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=bound_directory_fd,
+            )
+        except FileNotFoundError:
+            _validate_private_control_directory_descriptor(
+                directory,
+                bound_directory_fd,
+            )
+            return None
+        before = os.fstat(descriptor)
+        try:
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != os.geteuid()
+                or before.st_nlink != 1
+                or stat.S_IMODE(before.st_mode) != 0o600
+                or before.st_size > _DOCKER_PRIVATE_CONTROL_MAX_BYTES
+            ):
+                raise ValueError("private Docker control record is unsafe")
+            remaining = _DOCKER_PRIVATE_CONTROL_MAX_BYTES + 1
+            chunks: list[bytes] = []
+            while remaining:
+                chunk = os.read(descriptor, min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+            after = os.fstat(descriptor)
+            final = os.stat(
+                name,
+                dir_fd=bound_directory_fd,
+                follow_symlinks=False,
+            )
+        finally:
+            os.close(descriptor)
+        snapshots = (
+            before.st_dev,
+            before.st_ino,
+            before.st_mode,
+            before.st_uid,
+            before.st_nlink,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        )
+        if snapshots != (
+            after.st_dev,
+            after.st_ino,
+            after.st_mode,
+            after.st_uid,
+            after.st_nlink,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ) or snapshots != (
+            final.st_dev,
+            final.st_ino,
+            final.st_mode,
+            final.st_uid,
+            final.st_nlink,
+            final.st_size,
+            final.st_mtime_ns,
+            final.st_ctime_ns,
+        ):
+            raise ValueError("private Docker control record changed while read")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_control_keys,
+        )
+        _validate_private_control_directory_descriptor(
+            directory,
+            bound_directory_fd,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("private Docker control record is unreadable") from exc
+    finally:
+        if owns_directory_fd:
+            os.close(bound_directory_fd)
+    if type(value) is not dict or raw != _private_control_bytes(value):
+        raise ValueError("private Docker control record is noncanonical")
+    return value
+
+def _unlink_private_control_record(directory: Path, name: str) -> None:
+    directory_fd = _private_control_directory(directory)
+    try:
+        try:
+            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+        ):
+            raise ValueError("private Docker control record is unsafe")
+        os.unlink(name, dir_fd=directory_fd)
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+def _docker_cleanup_binding_path(
+    container_name: str,
+    *,
+    create_directory: bool = True,
+) -> Path | None:
+    """Return the lifecycle-owned durable binding path, when supervised."""
+
+    lifecycle = {
+        name: str(os.environ.get(name, "") or "").strip()
+        for name in _DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES
+    }
+    if not any(lifecycle.values()):
+        return None
+    if not all(lifecycle.values()):
+        # Repository-root identity alone is not Docker cleanup supervision.
+        # Provider children also drop that name while leaking the docker
+        # roots; a leaked subset must not abort the runner or start a
+        # half-bound contract.  One docker root without the other still
+        # fail-closes.
+        if bool(lifecycle[STATE_ROOT_ENV]) != bool(lifecycle[RUN_ROOT_ENV]):
+            raise ValueError("Docker cleanup lifecycle binding is partial")
+        return None
+    run_root = Path(lifecycle[RUN_ROOT_ENV])
+    state_root = Path(lifecycle[STATE_ROOT_ENV])
+    try:
+        resolved_run_root = run_root.resolve(strict=True)
+        resolved_state_root = state_root.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("Docker cleanup lifecycle root is unavailable") from exc
+    if (
+        resolved_run_root != run_root.absolute()
+        or resolved_state_root != state_root.absolute()
+        or not resolved_run_root.is_relative_to(resolved_state_root)
+    ):
+        raise ValueError("Docker cleanup lifecycle root is invalid")
+    binding_directory = resolved_run_root / _DOCKER_CLEANUP_BINDING_DIRECTORY
+    token = hashlib.sha256(container_name.encode("ascii")).hexdigest()
+    if not create_directory and not binding_directory.exists():
+        return binding_directory / (token + ".json")
+    try:
+        if create_directory:
+            binding_directory.mkdir(mode=0o700, exist_ok=True)
+        if stat.S_IMODE(binding_directory.stat().st_mode) != 0o700:
+            raise ValueError("Docker cleanup binding directory is not private")
+        descriptor = _private_control_directory(binding_directory)
+        os.close(descriptor)
+    except OSError as exc:
+        raise ValueError("Docker cleanup binding directory is unavailable") from exc
+    return binding_directory / (token + ".json")
+
+def _publish_provider_cli_logs(
+    docker_lease: Any,
+    *,
+    provider: str,
+    returncode: int | None,
+    captured_output: str = "",
+    backend: str = "",
+) -> None:
+    """Copy CLI output onto the supervisor-visible log volume.
+
+    Worktree and grok-sandbox runs publish captured stdout/stderr.  Docker
+    and Kubernetes opt-in backends also scrape ``docker logs`` / ``kubectl
+    logs`` so the supervisor is not blind to in-container errors.
+    """
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.provider_isolation import (
+            PROVIDER_ISOLATION_DOCKER,
+            PROVIDER_ISOLATION_WORKTREE,
+            publish_provider_cli_logs,
+        )
+
+        selected = str(backend or "").strip()
+        identity: dict[str, str] = {}
+        docker_bin = ""
+        docker_config = ""
+        container = ""
+        if docker_lease is not None:
+            container = str(getattr(docker_lease, "container_name", "") or "")
+            cidfile = getattr(docker_lease, "cidfile", None)
+            if isinstance(cidfile, Path) and cidfile.is_file():
+                try:
+                    container = (
+                        cidfile.read_text(encoding="utf-8").strip() or container
+                    )
+                except OSError:
+                    pass
+            docker_bin = str(getattr(docker_lease, "docker_bin", "") or "")
+            docker_config = str(getattr(docker_lease, "docker_config", "") or "")
+            identity = {
+                "container_name": str(
+                    getattr(docker_lease, "container_name", "") or ""
+                ),
+                "container_id": container,
+            }
+            selected = selected or PROVIDER_ISOLATION_DOCKER
+        publish_provider_cli_logs(
+            backend=selected or PROVIDER_ISOLATION_WORKTREE,
+            provider=provider,
+            identity=identity,
+            returncode=returncode,
+            captured_output=captured_output,
+            docker_bin=docker_bin,
+            docker_host=_docker_isolation_host(),
+            docker_config=docker_config,
+            container_id=container,
+        )
+    except Exception:
+        return
+
+def _publish_docker_cli_logs(
+    docker_lease: Any,
+    *,
+    provider: str,
+    returncode: int | None,
+    captured_output: str = "",
+    backend: str = "",
+) -> None:
+    """Compatibility wrapper around :func:`_publish_provider_cli_logs`."""
+
+    _publish_provider_cli_logs(
+        docker_lease,
+        provider=provider,
+        returncode=returncode,
+        captured_output=captured_output,
+        backend=backend,
+    )
+
+def _docker_codex_host_vendor_mounts() -> list[str]:
+    """Project the router-admitted native Codex pair as one read-only mount."""
+
+    vendor = find_codex_vendor_binaries()
+    if vendor is None:
+        return []
+    host_codex, host_companion = vendor
+    if host_codex.parent != host_companion.parent:
+        return []
+    try:
+        return _docker_mount(
+            host_codex.parent,
+            destination=Path("/usr/local/bin"),
+            read_only=True,
+        )
+    except (OSError, ValueError):
+        return []
+
+def _docker_create_command_identity(
+    *,
+    provider: str,
+    docker_bin: str,
+    docker_config: Path,
+    container_name: str,
+    cidfile: Path,
+    cwd: Path,
+    environment_id: str,
+    expected_image: str,
+    argv: Sequence[str],
+) -> tuple[str, dict[str, object]]:
+    values = [str(item) for item in argv]
+    try:
+        resolved_cwd = cwd.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("Docker create working directory is unavailable") from exc
+    expected_label = (
+        "ipfs_accelerate.grok_isolation=true"
+        if provider == "grok"
+        else "ipfs_accelerate.codex_fallback_isolation=true"
+    )
+    if (
+        provider not in _DOCKER_ISOLATION_PROVIDERS
+        or resolved_cwd != cwd.absolute()
+        or not resolved_cwd.is_dir()
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", environment_id) is None
+        or len(values) < 6
+        or len(values) > 2048
+        or any(not item or "\x00" in item for item in values)
+        or values[:5]
+        != [
+            docker_bin,
+            f"--host={_DOCKER_LOCAL_HOST}",
+            "--config",
+            str(docker_config),
+            "create",
+        ]
+    ):
+        raise ValueError("Docker create command is not exact and inert")
+
+    # Parse Docker's option region with a positive grammar.  The first
+    # non-option is the IMAGE operand; a digest appearing later in container
+    # argv can never satisfy image pinning.
+    fixed_options = {
+        "--pull=never",
+        "--interactive",
+        "--read-only",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--pids-limit=1024",
+    }
+    codex_fixed_options = {
+        "--network=bridge",
+        "--runtime=runc",
+        "--entrypoint=/usr/bin/env",
+    }
+    grok_fixed_options = {"--entrypoint=/bin/sh"}
+    value_options = {
+        "--name",
+        "--cidfile",
+        "--label",
+        "--user",
+        "--workdir",
+        "--tmpfs",
+        "--env",
+        "--mount",
+    }
+    seen: dict[str, list[str]] = {}
+    index = 5
+    image = ""
+    while index < len(values):
+        item = values[index]
+        if (
+            item in fixed_options
+            or (provider == "codex" and item in codex_fixed_options)
+            or (provider == "grok" and item in grok_fixed_options)
+        ):
+            seen.setdefault(item, []).append("")
+            index += 1
+            continue
+        if item in value_options:
+            if index + 1 >= len(values):
+                raise ValueError("Docker create option value is absent")
+            seen.setdefault(item, []).append(values[index + 1])
+            index += 2
+            continue
+        if item.startswith("-"):
+            raise ValueError("Docker create option is not allowlisted")
+        image = item
+        index += 1
+        break
+    container_argv = values[index:]
+    if (
+        re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None
+        or image != expected_image
+        or any(len(seen.get(name, ())) != 1 for name in fixed_options)
+        or seen.get("--name") != [container_name]
+        or seen.get("--cidfile") != [str(cidfile)]
+        or seen.get("--label") != [expected_label]
+        or seen.get("--user") != [f"{os.getuid()}:{os.getgid()}"]
+        or seen.get("--workdir") != [str(resolved_cwd)]
+        or (
+            provider == "codex"
+            and any(len(seen.get(name, ())) != 1 for name in codex_fixed_options)
+        )
+        or (
+            provider == "grok"
+            and any(len(seen.get(name, ())) != 1 for name in grok_fixed_options)
+        )
+    ):
+        raise ValueError("Docker create command grammar is not canonical")
+    expected_tmpfs = {
+        (
+            "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+        (
+            "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+    }
+    if provider == "codex":
+        expected_tmpfs.add(
+            (
+                f"{_CODEX_CONTAINER_HOME}:rw,nosuid,nodev,noexec,mode=0700,"
+                f"uid={os.getuid()},gid={os.getgid()}"
+            )
+        )
+    if sorted(seen.get("--tmpfs", ())) != sorted(expected_tmpfs):
+        raise ValueError("Docker create tmpfs is outside provider policy")
+    if provider == "grok":
+        expected_prefix = [
+            "-c",
+            _DOCKER_PROVIDER_START_SCRIPT,
+            "aseh-provider-start",
+        ]
+    else:
+        expected_prefix = [
+            "-i",
+            *[
+                f"{name}={value}"
+                for name, value in sorted(
+                    _codex_task_container_environment().items()
+                )
+            ],
+            "/bin/sh",
+            "-c",
+            _DOCKER_PROVIDER_START_SCRIPT,
+            "aseh-provider-start",
+        ]
+    if (
+        container_argv[: len(expected_prefix)] != expected_prefix
+        or len(container_argv) <= len(expected_prefix)
+    ):
+        raise ValueError("Docker provider start command is not canonical")
+
+    denied_environment_fragments = (
+        "TOKEN",
+        "SECRET",
+        "PASSWORD",
+        "CREDENTIAL",
+        "STATE_OWNER",
+        "GRANT_BROKER",
+        "QUACK",
+        "DOCKER_",
+        "CONTAINER_",
+        "PODMAN_",
+        "BUILDAH_",
+    )
+    for assignment in seen.get("--env", ()):
+        name = assignment.partition("=")[0]
+        if (
+            re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) is None
+            or any(fragment in name.upper() for fragment in denied_environment_fragments)
+        ):
+            raise ValueError("Docker create environment projection is unsafe")
+
+    lease_root = docker_config.parent
+    cleanup_root = lease_root.parent
+    _docker_cleanup_root_identity(cleanup_root)
+    allowed_git_sources = set(_git_metadata_roots(resolved_cwd))
+    git_control_path = _existing_path(resolved_cwd / ".git")
+    if git_control_path is not None:
+        allowed_git_sources.add(git_control_path)
+    allowed_codex_vendor_mounts: set[str] = set()
+    if provider == "codex":
+        try:
+            vendor_arguments = _docker_codex_host_vendor_mounts()
+            if len(vendor_arguments) % 2:
+                raise ValueError("Codex vendor mount arguments are incomplete")
+            allowed_codex_vendor_mounts = {
+                vendor_arguments[offset + 1]
+                for offset in range(0, len(vendor_arguments), 2)
+                if vendor_arguments[offset] == "--mount"
+            }
+            if len(allowed_codex_vendor_mounts) * 2 != len(vendor_arguments):
+                raise ValueError("Codex vendor mount arguments are noncanonical")
+        except (ImportError, OSError, RuntimeError, ValueError):
+            # An unavailable vendor authority means no vendor mount is
+            # admissible.  The ordinary image-contained Codex path remains
+            # valid; a command carrying an unverified host mount fails below.
+            allowed_codex_vendor_mounts = set()
+    for mount in seen.get("--mount", ()):
+        fields = mount.split(",")
+        if len(fields) not in {3, 4} or fields[0] != "type=bind":
+            raise ValueError("Docker create mount grammar is invalid")
+        pairs: dict[str, str] = {}
+        readonly = False
+        for field in fields[1:]:
+            if field == "readonly":
+                if readonly:
+                    raise ValueError("Docker create mount repeats readonly")
+                readonly = True
+                continue
+            key, separator, value = field.partition("=")
+            if key not in {"src", "dst"} or not separator or key in pairs:
+                raise ValueError("Docker create mount fields are invalid")
+            pairs[key] = value
+        if set(pairs) != {"src", "dst"}:
+            raise ValueError("Docker create mount is incomplete")
+        source = Path(pairs["src"])
+        destination = Path(pairs["dst"])
+        try:
+            resolved_source = source.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError("Docker create mount source is unavailable") from exc
+        docker_sockets = {
+            Path("/var/run/docker.sock"),
+            Path("/run/docker.sock"),
+        }
+        if (
+            not source.is_absolute()
+            or resolved_source != source.absolute()
+            or not destination.is_absolute()
+            or source in docker_sockets
+            or resolved_source in docker_sockets
+        ):
+            # Covering the host socket with a provider-mask destination is
+            # required isolation. Binding the real socket as a source is not.
+            raise ValueError(
+                "Docker create mount path is unsafe "
+                f"src={source} dst={destination}"
+            )
+        writable_workspace = bool(
+            resolved_source == resolved_cwd and destination == resolved_cwd
+        )
+        writable_grok_home = bool(
+            provider == "grok"
+            and resolved_source.parent == cleanup_root
+            and resolved_source.name.startswith("asref-grok-home-")
+            and destination == resolved_source
+        )
+        writable_codex_auth = bool(
+            provider == "codex"
+            and resolved_source.parent.parent == cleanup_root
+            and resolved_source.parent.name.startswith("asref-codex-home-")
+            and resolved_source.name == "auth.json"
+            and destination == _CODEX_CONTAINER_AUTH_PATH
+        )
+        if not readonly and not (
+            writable_workspace or writable_grok_home or writable_codex_auth
+        ):
+            raise ValueError("Docker create writable mount is outside policy")
+        if readonly:
+            readonly_source_allowed = bool(
+                (
+                    resolved_source == Path("/usr")
+                    and destination == Path("/usr")
+                )
+                or (
+                    provider == "codex"
+                    and resolved_source == Path("/etc/ssl/certs")
+                    and destination == Path("/etc/ssl/certs")
+                )
+                or (
+                    provider == "codex"
+                    and resolved_source == _HOST_CODEX_TASK_TOOLCHAIN_PYTHON
+                    and destination == _CODEX_TASK_TOOLCHAIN_PYTHON
+                )
+                or (
+                    provider == "codex"
+                    and mount in allowed_codex_vendor_mounts
+                )
+                or (
+                    destination == resolved_source
+                    and resolved_source in allowed_git_sources
+                )
+                or (
+                    resolved_source.parent == cleanup_root
+                    and resolved_source.name.startswith("asref-grok-prompt-")
+                    and destination == resolved_source
+                )
+                or resolved_source.is_relative_to(
+                    lease_root / "provider-masks"
+                )
+                or (
+                    provider == "grok"
+                    and destination == Path("/opt/ipfs-accelerate/grok")
+                    and _resolve_trusted_grok_bin(
+                        configured=str(resolved_source),
+                        workspace=resolved_cwd,
+                    )
+                    == str(resolved_source)
+                )
+            )
+            if not readonly_source_allowed:
+                raise ValueError("Docker create read-only mount is outside policy")
+
+    body: dict[str, object] = {
+        "provider": provider,
+        "docker_bin": docker_bin,
+        "docker_config": str(docker_config),
+        "container_name": container_name,
+        "cidfile": str(cidfile),
+        "cwd": str(resolved_cwd),
+        "environment_id": environment_id,
+        "image_id": image,
+        "argv": values,
+    }
+    return _effect_receipt_identity(body), body
+
+def _docker_create_private_handoff_payload(
+    *,
+    command_id: str,
+    command_body: Mapping[str, object],
+    environment: Mapping[str, str],
+) -> bytes:
+    """Bind the watchdog's executable tuple to its private runner pipe."""
+
+    body: dict[str, object] = {
+        "schema": _DOCKER_CREATE_HANDOFF_SCHEMA,
+        "command_id": command_id,
+        "command_body": dict(command_body),
+        "environment": dict(sorted(environment.items())),
+    }
+    body["handoff_id"] = _effect_receipt_identity(body)
+    encoded = json.dumps(
+        body,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    if not encoded or len(encoded) > _DOCKER_CREATE_HANDOFF_MAX_BYTES:
+        raise ValueError("Docker create private handoff is oversized")
+    return encoded
+
+def _docker_create_private_result_payload(
+    journal: Mapping[str, object],
+) -> bytes:
+    """Encode one watchdog-observed terminal result for its private pipe."""
+
+    state = str(journal.get("state") or "")
+    if state not in {
+        "create_observed",
+        "create_failed_observed",
+        "create_outcome_unknown",
+    }:
+        raise ValueError("Docker create private result is not terminal")
+    body: dict[str, object] = {
+        "schema": _DOCKER_CREATE_RESULT_SCHEMA,
+        "journal": dict(journal),
+    }
+    body["result_id"] = _effect_receipt_identity(body)
+    encoded = json.dumps(
+        body,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    if not encoded or len(encoded) > _DOCKER_CREATE_RESULT_MAX_BYTES:
+        raise ValueError("Docker create private result is oversized")
+    return encoded
+
+def _write_docker_create_private_result(
+    channel: socket.socket,
+    journal: Mapping[str, object],
+) -> None:
+    payload = _docker_create_private_result_payload(journal)
+    message = b"R" + len(payload).to_bytes(8, "big") + payload
+    channel.sendall(message)
+
+def _docker_control_read_exact(
+    channel: socket.socket,
+    size: int,
+    *,
+    deadline: float | None = None,
+) -> bytes:
+    payload = bytearray()
+    while len(payload) < size:
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ValueError("Docker private control read timed out")
+            readable, _writable, _exceptional = select.select(
+                [channel],
+                [],
+                [],
+                remaining,
+            )
+            if not readable:
+                raise ValueError("Docker private control read timed out")
+        chunk = channel.recv(size - len(payload))
+        if not chunk:
+            raise ValueError("Docker private control message is incomplete")
+        payload.extend(chunk)
+    return bytes(payload)
+
+def _read_docker_create_private_result(
+    channel: socket.socket,
+    *,
+    deadline: float,
+) -> dict[str, object]:
+    """Read one bounded canonical watchdog result from its private socket."""
+
+    if _docker_control_read_exact(channel, 1, deadline=deadline) != b"R":
+        raise ValueError("Docker create private result marker is invalid")
+    size = int.from_bytes(
+        _docker_control_read_exact(channel, 8, deadline=deadline),
+        "big",
+    )
+    if not 0 < size <= _DOCKER_CREATE_RESULT_MAX_BYTES:
+        raise ValueError("Docker create private result length is invalid")
+    raw = _docker_control_read_exact(channel, size, deadline=deadline)
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_control_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Docker create private result is invalid JSON") from exc
+    if (
+        type(value) is not dict
+        or set(value) != {"schema", "journal", "result_id"}
+        or value.get("schema") != _DOCKER_CREATE_RESULT_SCHEMA
+        or not isinstance(value.get("journal"), dict)
+        or value.get("result_id")
+        != _effect_receipt_identity(
+            {key: item for key, item in value.items() if key != "result_id"}
+        )
+        or raw != _docker_create_private_result_payload(value["journal"])
+    ):
+        raise ValueError("Docker create private result is noncanonical")
+    return dict(value["journal"])
+
+def _docker_create_environment_payload(
+    environment: Mapping[str, str],
+) -> tuple[str, bytes, dict[str, str]]:
+    """Seal the exact Docker CLI environment for an in-memory handoff."""
+
+    values = dict(environment)
+    if (
+        not values
+        or any(
+            re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) is None
+            or not isinstance(value, str)
+            or "\x00" in value
+            or name.upper().startswith(
+                ("DOCKER_", "CONTAINER_", "PODMAN_", "BUILDAH_")
+            )
+            for name, value in values.items()
+        )
+        or not values.get("PATH")
+        or not values.get("HOME")
+    ):
+        raise ValueError("Docker create environment is not sanitized")
+    encoded = json.dumps(
+        dict(sorted(values.items())),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    if len(encoded) > _DOCKER_CREATE_ENVIRONMENT_MAX_BYTES:
+        raise ValueError("Docker create environment is oversized")
+    return _effect_receipt_identity(values), encoded, values
+
+def _docker_create_journal_value(
+    *,
+    command_body: Mapping[str, object],
+    command_id: str,
+    state: str,
+    issuer_process_birth: Mapping[str, object] | None = None,
+    returncode: int | None = None,
+    stdout: bytes = b"",
+    stderr: bytes = b"",
+) -> dict[str, object]:
+    if state not in {
+        "prepared",
+        "create_armed",
+        "create_inflight",
+        "create_observed",
+        "create_failed_observed",
+        "create_outcome_unknown",
+        "prepared_abandoned",
+    }:
+        raise ValueError("Docker create journal state is invalid")
+    if state == "create_observed" and (
+        type(returncode) is not int or returncode != 0
+    ):
+        raise ValueError("observed Docker create must have return code zero")
+    if state == "create_outcome_unknown" and (
+        isinstance(returncode, bool)
+        or not isinstance(returncode, int)
+        or returncode == 0
+    ):
+        raise ValueError("unknown Docker create must have a nonzero result")
+    if state == "create_failed_observed" and (
+        type(returncode) is not int or returncode == 0
+    ):
+        raise ValueError("failed Docker create must have a nonzero result")
+    if state not in {
+        "create_observed",
+        "create_failed_observed",
+        "create_outcome_unknown",
+    } and (
+        returncode is not None or stdout or stderr
+    ):
+        raise ValueError("nonterminal Docker create journal has output")
+    issuer_required = state in {
+        "create_inflight",
+        "create_observed",
+        "create_failed_observed",
+        "create_outcome_unknown",
+    }
+    issuer = dict(issuer_process_birth or {})
+    valid_issuer = bool(
+        set(issuer) == {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+        and type(issuer.get("pid")) is int
+        and issuer["pid"] > 0
+        and type(issuer.get("start_time_ticks")) is int
+        and issuer["start_time_ticks"] > 0
+        and type(issuer.get("parent_pid")) is int
+        and issuer["parent_pid"] > 0
+        and isinstance(issuer.get("boot_id"), str)
+        and re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            str(issuer.get("boot_id") or ""),
+        )
+        is not None
+    )
+    if issuer_required != valid_issuer:
+        raise ValueError("Docker create issuer identity is invalid")
+    if not issuer_required and issuer:
+        raise ValueError("pre-dispatch Docker journal has an issuer")
+    if (
+        len(stdout) > _DOCKER_INSPECTION_MAX_BYTES
+        or len(stderr) > _DOCKER_INSPECTION_MAX_BYTES
+    ):
+        raise ValueError("Docker create result is oversized")
+    value: dict[str, object] = {
+        "schema": _DOCKER_CREATE_JOURNAL_SCHEMA,
+        **dict(command_body),
+        "command_id": command_id,
+        "state": state,
+        "issuer_process_birth": issuer,
+        "returncode": returncode,
+        "stdout_hex": stdout.hex(),
+        "stderr_hex": stderr.hex(),
+    }
+    value["journal_id"] = _effect_receipt_identity(value)
+    return value
+
+def _validated_docker_create_journal(
+    *,
+    lease_root: Path,
+    provider: str,
+    docker_bin: str,
+    docker_config: Path,
+    container_name: str,
+    cidfile: Path,
+) -> dict[str, object] | None:
+    value = _read_private_control_record(
+        lease_root,
+        _DOCKER_CREATE_JOURNAL_NAME,
+    )
+    if value is None:
+        return None
+    expected_fields = {
+        "schema",
+        "provider",
+        "docker_bin",
+        "docker_config",
+        "container_name",
+        "cidfile",
+        "cwd",
+        "environment_id",
+        "image_id",
+        "argv",
+        "command_id",
+        "state",
+        "issuer_process_birth",
+        "returncode",
+        "stdout_hex",
+        "stderr_hex",
+        "journal_id",
+    }
+    if set(value) != expected_fields or value.get("schema") != (
+        _DOCKER_CREATE_JOURNAL_SCHEMA
+    ):
+        raise ValueError("Docker create journal shape is invalid")
+    argv = value.get("argv")
+    if not isinstance(argv, list) or not all(
+        isinstance(item, str) for item in argv
+    ):
+        raise ValueError("Docker create journal argv is invalid")
+    command_id, command_body = _docker_create_command_identity(
+        provider=provider,
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        cwd=Path(str(value.get("cwd") or "")),
+        environment_id=str(value.get("environment_id") or ""),
+        expected_image=str(value.get("image_id") or ""),
+        argv=argv,
+    )
+    try:
+        stdout = bytes.fromhex(str(value.get("stdout_hex") or ""))
+        stderr = bytes.fromhex(str(value.get("stderr_hex") or ""))
+    except ValueError as exc:
+        raise ValueError("Docker create journal output is invalid") from exc
+    expected = _docker_create_journal_value(
+        command_body=command_body,
+        command_id=command_id,
+        state=str(value.get("state") or ""),
+        issuer_process_birth=value.get("issuer_process_birth"),  # type: ignore[arg-type]
+        returncode=value.get("returncode"),  # type: ignore[arg-type]
+        stdout=stdout,
+        stderr=stderr,
+    )
+    if (
+        value != expected
+        or value.get("command_id") != command_id
+        or value.get("journal_id") != expected["journal_id"]
+    ):
+        raise ValueError("Docker create journal identity drifted")
+    return value
+
+def _transition_docker_create_journal(
+    journal: Mapping[str, object],
+    *,
+    lease_root: Path,
+    state: str,
+    issuer_process_birth: Mapping[str, object] | None = None,
+    returncode: int | None = None,
+    stdout: bytes = b"",
+    stderr: bytes = b"",
+) -> dict[str, object]:
+    command_body = {
+        name: journal[name]
+        for name in (
+            "provider",
+            "docker_bin",
+            "docker_config",
+            "container_name",
+            "cidfile",
+            "cwd",
+            "environment_id",
+            "image_id",
+            "argv",
+        )
+    }
+    value = _docker_create_journal_value(
+        command_body=command_body,
+        command_id=str(journal.get("command_id") or ""),
+        state=state,
+        issuer_process_birth=(
+            issuer_process_birth
+            if issuer_process_birth is not None
+            else journal.get("issuer_process_birth")  # type: ignore[arg-type]
+        ),
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    _write_private_control_record(
+        lease_root,
+        _DOCKER_CREATE_JOURNAL_NAME,
+        value,
+        replace_existing=True,
+    )
+    return value
+
+def _run_fenced_docker_create_issuer(
+    journal: Mapping[str, object],
+    *,
+    lease_root: Path,
+    cwd: Path,
+    environment: Mapping[str, str],
+) -> tuple[dict[str, object], int, bytes, bytes, bool, bool]:
+    """Run one gated Docker-create issuer whose exact birth is durable.
+
+    The forked child cannot cross the Docker ``exec`` boundary until its PID,
+    start ticks, and boot identity have been fsynced in ``create_inflight``.
+    If the watchdog dies, EOF closes the pre-dispatch gate or recovery can
+    prove the exact post-dispatch issuer birth is gone before settling the
+    external Docker name.  The create command is never replayed.
+    """
+
+    # Ordinary pipes are reopenable through /proc/<pid>/fd by a same-UID
+    # process and therefore cannot carry either the post-fsync dispatch gate
+    # or observed provider output.  Unnamed Unix socketpairs are inherited
+    # capabilities whose descriptors Linux refuses to reopen through procfs.
+    gate_parent, gate_child = socket.socketpair(
+        socket.AF_UNIX,
+        socket.SOCK_STREAM,
+    )
+    stdout_parent, stdout_child = socket.socketpair(
+        socket.AF_UNIX,
+        socket.SOCK_STREAM,
+    )
+    stderr_parent, stderr_child = socket.socketpair(
+        socket.AF_UNIX,
+        socket.SOCK_STREAM,
+    )
+    child_pid = -1
+    try:
+        child_pid = os.fork()
+    except OSError:
+        for channel in (
+            gate_parent,
+            gate_child,
+            stdout_parent,
+            stdout_child,
+            stderr_parent,
+            stderr_child,
+        ):
+            channel.close()
+        raise
+    if child_pid == 0:
+        try:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+            gate_parent.close()
+            stdout_parent.close()
+            stderr_parent.close()
+            marker = gate_child.recv(1)
+            gate_child.close()
+            if marker != b"D":
+                os._exit(125)
+            null_fd = os.open(os.devnull, os.O_RDONLY)
+            os.dup2(null_fd, 0)
+            os.dup2(stdout_child.fileno(), 1)
+            os.dup2(stderr_child.fileno(), 2)
+            for descriptor in (
+                null_fd,
+                stdout_child.fileno(),
+                stderr_child.fileno(),
+            ):
+                if descriptor > 2:
+                    os.close(descriptor)
+            os.chdir(cwd)
+            argv = [str(item) for item in journal["argv"]]  # type: ignore[index]
+            os.execve(argv[0], argv, dict(environment))
+        except BaseException:
+            os._exit(125)
+
+    gate_child.close()
+    stdout_child.close()
+    stderr_child.close()
+    issuer_exited = False
+    forced_kill = False
+    dispatched = False
+    status: int | None = None
+    try:
+        issuer_birth = read_process_birth(child_pid)
+        if (
+            issuer_birth is None
+            or issuer_birth.parent_pid != os.getpid()
+            or not issuer_birth.boot_id
+        ):
+            raise ValueError("Docker create issuer birth is unavailable")
+        issuer_start_ticks = issuer_birth.start_time_ticks
+        journal = _transition_docker_create_journal(
+            journal,
+            lease_root=lease_root,
+            state="create_inflight",
+            issuer_process_birth=issuer_birth.to_dict(),
+        )
+        try:
+            gate_parent.sendall(b"D")
+            dispatched = True
+        except OSError:
+            dispatched = False
+        finally:
+            gate_parent.close()
+
+        for channel in (stdout_parent, stderr_parent):
+            channel.setblocking(False)
+        streams = {
+            stdout_parent: bytearray(),
+            stderr_parent: bytearray(),
+        }
+        open_streams = set(streams)
+        deadline = time.monotonic() + _DOCKER_CREATE_TIMEOUT_SECONDS
+        while open_streams or status is None:
+            now = time.monotonic()
+            if status is None:
+                waited_pid, observed_status = os.waitpid(child_pid, os.WNOHANG)
+                if waited_pid == child_pid:
+                    status = observed_status
+                    issuer_exited = True
+            if status is None and now >= deadline:
+                # This PID is our unreaped direct child, so it cannot be
+                # recycled.  Do not collapse an unreadable /proc record into
+                # "gone" and then block forever in waitpid.
+                forced_kill = True
+                try:
+                    os.kill(child_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                kill_deadline = time.monotonic() + 2.0
+                while status is None and time.monotonic() < kill_deadline:
+                    waited_pid, observed_status = os.waitpid(
+                        child_pid,
+                        os.WNOHANG,
+                    )
+                    if waited_pid == child_pid:
+                        status = observed_status
+                        issuer_exited = True
+                        break
+                    time.sleep(0.02)
+                if status is None:
+                    raise ValueError("Docker create issuer could not be reaped")
+            if status is not None and now >= deadline and open_streams:
+                open_streams.clear()
+            if open_streams:
+                readable, _writable, _exceptional = select.select(
+                    tuple(open_streams),
+                    (),
+                    (),
+                    0.05,
+                )
+                for channel in readable:
+                    try:
+                        chunk = channel.recv(64 * 1024)
+                    except BlockingIOError:
+                        continue
+                    if not chunk:
+                        open_streams.remove(channel)
+                        continue
+                    buffer = streams[channel]
+                    if len(buffer) <= _DOCKER_INSPECTION_MAX_BYTES:
+                        buffer.extend(chunk)
+            elif status is None:
+                time.sleep(0.02)
+        stdout = bytes(streams[stdout_parent])
+        stderr = bytes(streams[stderr_parent])
+        returncode = (
+            os.waitstatus_to_exitcode(status)
+            if status is not None
+            else 125
+        )
+        if not dispatched and returncode == 0:
+            returncode = 125
+        return (
+            dict(journal),
+            returncode,
+            stdout,
+            stderr,
+            dispatched,
+            forced_kill,
+        )
+    finally:
+        for channel in (gate_parent, stdout_parent, stderr_parent):
+            try:
+                channel.close()
+            except OSError:
+                pass
+        if child_pid > 0 and not issuer_exited:
+            try:
+                os.kill(child_pid, signal.SIGKILL)
+            except (ProcessLookupError, OSError):
+                pass
+            reap_deadline = time.monotonic() + 2.0
+            while time.monotonic() < reap_deadline:
+                try:
+                    waited_pid, _status = os.waitpid(child_pid, os.WNOHANG)
+                except (ChildProcessError, OSError):
+                    break
+                if waited_pid == child_pid:
+                    break
+                time.sleep(0.02)
+
+def _validated_cleanup_binding_record(
+    record_path: Path,
+    *,
+    provider: str,
+    docker_bin: str,
+    docker_config: Path,
+    container_name: str,
+    cidfile: Path,
+    lease_root: Path,
+    provider_home: Path,
+    prompt_path: Path,
+    effect_observation: Mapping[str, str],
+    binding_state: str,
+    runner_pid: int,
+    runner_start_ticks: int,
+    watchdog_pid: int,
+    watchdog_start_ticks: int,
+    create_command_id: str = "",
+    create_cwd: Path | None = None,
+    create_environment_id: str = "",
+    termination_fence: Mapping[str, object] | None = None,
+    control_directory_fd: int | None = None,
+) -> dict[str, object]:
+    value = _read_private_control_record(
+        record_path.parent,
+        record_path.name,
+        directory_fd=control_directory_fd,
+    )
+    expected_fields = {
+        "schema",
+        "binding_state",
+        "run_id",
+        "profile_id",
+        "target_id",
+        "repository_root",
+        "state_root",
+        "run_root",
+        "configuration_root",
+        "fencing_epoch",
+        "runner_pid",
+        "runner_start_ticks",
+        "watchdog_pid",
+        "watchdog_start_ticks",
+        "boot_id",
+        "provider",
+        "docker_bin",
+        "docker_device",
+        "docker_inode",
+        "docker_mode",
+        "docker_uid",
+        "container_name",
+        "cleanup_root",
+        "cleanup_root_identity",
+        "lease_root",
+        "docker_config",
+        "cidfile",
+        "provider_home",
+        "prompt_path",
+        "effect_observation",
+        "create_command_id",
+        "create_cwd",
+        "create_environment_id",
+        "termination_fence",
+        "path_identities",
+        "binding_path",
+        "record_id",
+    }
+    if value is None or set(value) != expected_fields:
+        raise ValueError("Docker cleanup binding record shape is invalid")
+    body = {key: item for key, item in value.items() if key != "record_id"}
+    lifecycle = {
+        RUN_ID_ENV: "run_id",
+        PROFILE_ID_ENV: "profile_id",
+        TARGET_ID_ENV: "target_id",
+        REPOSITORY_ROOT_ENV: "repository_root",
+        STATE_ROOT_ENV: "state_root",
+        RUN_ROOT_ENV: "run_root",
+        CONFIGURATION_ROOT_ENV: "configuration_root",
+    }
+    try:
+        fencing_epoch = int(os.environ[FENCING_EPOCH_ENV])
+        observed_runner_pid = int(value["runner_pid"])
+        observed_runner_start_ticks = int(value["runner_start_ticks"])
+        docker_metadata = Path(docker_bin).stat()
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+            encoding="ascii"
+        ).strip()
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        raise ValueError("Docker cleanup binding identity is unavailable") from exc
+    command_bound = binding_state == "command_bound"
+    expected_termination_fence = dict(termination_fence or {})
+    if (
+        binding_state not in {"prepared_no_dispatch", "command_bound"}
+        or runner_pid <= 0
+        or runner_start_ticks <= 0
+        or watchdog_pid <= 0
+        or watchdog_start_ticks <= 0
+        or command_bound
+        != bool(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", create_command_id)
+            and create_cwd is not None
+            and create_cwd.is_absolute()
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", create_environment_id)
+        )
+    ):
+        raise ValueError("Docker cleanup binding expectation is invalid")
+    if expected_termination_fence:
+        if not command_bound:
+            raise ValueError(
+                "Docker termination fence requires command-bound cleanup"
+            )
+        _validated_docker_termination_fence(
+            expected_termination_fence,
+            provider=provider,
+            container_name=container_name,
+        )
+    try:
+        cleanup_root, cleanup_root_identity = _validated_docker_cleanup_root(
+            lease_root=lease_root,
+            provider_home=provider_home,
+            prompt_path=prompt_path,
+            expected_root=Path(str(value.get("cleanup_root") or "")),
+            expected_identity=value.get("cleanup_root_identity"),  # type: ignore[arg-type]
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Docker cleanup binding root is invalid") from exc
+    if (
+        value.get("schema") != _DOCKER_CLEANUP_BINDING_SCHEMA
+        or value.get("binding_state") != binding_state
+        or value.get("record_id") != _effect_receipt_identity(body)
+        or any(value.get(field) != os.environ.get(name) for name, field in lifecycle.items())
+        or value.get("fencing_epoch") != fencing_epoch
+        or value.get("watchdog_pid") != watchdog_pid
+        or value.get("watchdog_start_ticks") != watchdog_start_ticks
+        or value.get("boot_id") != boot_id
+        or observed_runner_pid != runner_pid
+        or observed_runner_start_ticks != runner_start_ticks
+        or value.get("provider") != provider
+        or value.get("docker_bin") != docker_bin
+        or value.get("docker_device") != docker_metadata.st_dev
+        or value.get("docker_inode") != docker_metadata.st_ino
+        or value.get("docker_mode") != docker_metadata.st_mode
+        or value.get("docker_uid") != docker_metadata.st_uid
+        or value.get("container_name") != container_name
+        or value.get("cleanup_root") != str(cleanup_root)
+        or value.get("cleanup_root_identity") != cleanup_root_identity
+        or value.get("lease_root") != str(lease_root)
+        or value.get("docker_config") != str(docker_config)
+        or value.get("cidfile") != str(cidfile)
+        or value.get("provider_home") != str(provider_home)
+        or value.get("prompt_path") != str(prompt_path)
+        or value.get("effect_observation") != dict(sorted(effect_observation.items()))
+        or value.get("create_command_id")
+        != (create_command_id if command_bound else "")
+        or value.get("create_cwd")
+        != (str(create_cwd) if command_bound else "")
+        or value.get("create_environment_id")
+        != (create_environment_id if command_bound else "")
+        or value.get("termination_fence") != expected_termination_fence
+        or value.get("path_identities")
+        != {
+            "docker_config": _cleanup_path_identity(
+                docker_config,
+                directory=True,
+            ),
+            "lease_root": _cleanup_path_identity(
+                lease_root,
+                directory=True,
+            ),
+            "prompt_path": _cleanup_path_identity(
+                prompt_path,
+                directory=False,
+            ),
+            "provider_home": _cleanup_path_identity(
+                provider_home,
+                directory=True,
+            ),
+        }
+        or value.get("binding_path") != str(record_path)
+        or record_path.parent
+        != Path(str(value.get("run_root")))
+        / _DOCKER_CLEANUP_BINDING_DIRECTORY
+    ):
+        raise ValueError("Docker cleanup binding record identity drifted")
+    return value
+
+class _DockerBindingLock:
+    """Composite per-binding lock tied to one exact private directory."""
+
+    def __init__(
+        self,
+        *,
+        binding_path: Path,
+        directory_fd: int,
+        descriptor: int,
+        uniqueness_socket: socket.socket,
+    ) -> None:
+        self.binding_path = binding_path.absolute()
+        self.directory_fd = directory_fd
+        self.descriptor = descriptor
+        self.uniqueness_socket = uniqueness_socket
+        self._closed = False
+
+    def assert_current(self) -> None:
+        if self._closed:
+            raise ValueError("Docker cleanup binding lock is closed")
+        _validate_private_control_directory_descriptor(
+            self.binding_path.parent,
+            self.directory_fd,
+        )
+
+    def read(self, path: Path) -> dict[str, object] | None:
+        if path.parent.absolute() != self.binding_path.parent:
+            raise ValueError("Docker control read escaped binding directory")
+        return _read_private_control_record(
+            path.parent,
+            path.name,
+            directory_fd=self.directory_fd,
+        )
+
+    def write(
+        self,
+        path: Path,
+        value: Mapping[str, object],
+        *,
+        replace_existing: bool,
+    ) -> None:
+        if path.parent.absolute() != self.binding_path.parent:
+            raise ValueError("Docker control write escaped binding directory")
+        _write_private_control_record(
+            path.parent,
+            path.name,
+            value,
+            replace_existing=replace_existing,
+            directory_fd=self.directory_fd,
+        )
+
+    def path_identity(self, path: Path, *, directory: bool = False) -> dict[str, int]:
+        if path.parent.absolute() != self.binding_path.parent:
+            raise ValueError("Docker control identity escaped binding directory")
+        self.assert_current()
+        try:
+            metadata = os.stat(
+                path.name,
+                dir_fd=self.directory_fd,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise ValueError("Docker cleanup path identity is unavailable") from exc
+        if (
+            metadata.st_uid != os.geteuid()
+            or stat.S_ISLNK(metadata.st_mode)
+            or (directory and not stat.S_ISDIR(metadata.st_mode))
+            or (not directory and not stat.S_ISREG(metadata.st_mode))
+        ):
+            raise ValueError("Docker cleanup path identity is unsafe")
+        self.assert_current()
+        return {
+            "device": metadata.st_dev,
+            "inode": metadata.st_ino,
+            "mode": stat.S_IFMT(metadata.st_mode),
+            "uid": metadata.st_uid,
+        }
+
+    def exists(self, path: Path) -> bool:
+        if path.parent.absolute() != self.binding_path.parent:
+            raise ValueError("Docker control lookup escaped binding directory")
+        self.assert_current()
+        try:
+            os.stat(
+                path.name,
+                dir_fd=self.directory_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            self.assert_current()
+            return False
+        self.assert_current()
+        return True
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            fcntl.flock(self.descriptor, fcntl.LOCK_UN)
+        finally:
+            try:
+                os.close(self.descriptor)
+            finally:
+                try:
+                    os.close(self.directory_fd)
+                finally:
+                    self.uniqueness_socket.close()
+
+def _docker_binding_uniqueness_socket(
+    binding_path: Path,
+    *,
+    deadline: float,
+) -> socket.socket:
+    """Acquire one kernel-resident lease independent of the lock inode."""
+
+    normalized = os.path.normpath(os.path.abspath(os.fspath(binding_path)))
+    identity = hashlib.sha256(
+        f"{os.geteuid()}\0{normalized}".encode("utf-8")
+    ).hexdigest()
+    address = b"\0ipfs-accelerate-docker-binding-" + identity.encode("ascii")
+    while True:
+        channel = socket.socket(
+            socket.AF_UNIX,
+            socket.SOCK_DGRAM | getattr(socket, "SOCK_CLOEXEC", 0),
+        )
+        try:
+            channel.set_inheritable(False)
+            channel.bind(address)
+            return channel
+        except OSError as exc:
+            channel.close()
+            remaining = deadline - time.monotonic()
+            if exc.errno != errno.EADDRINUSE or remaining <= 0:
+                if exc.errno == errno.EADDRINUSE:
+                    raise ValueError(
+                        "Docker cleanup binding lock is contended"
+                    ) from None
+                raise ValueError(
+                    "Docker cleanup binding uniqueness lease is unavailable"
+                ) from exc
+            time.sleep(min(0.01, remaining))
+
+def _docker_binding_lock_descriptor(
+    binding_path: Path,
+    *,
+    deadline: float | None = None,
+) -> _DockerBindingLock:
+    """Boundedly lock one stable binding name without global contention.
+
+    The lock file is permanent.  After acquiring its inode, re-resolve the
+    name relative to the already-admitted private directory so a renamed or
+    replaced lock can never split the per-binding exclusion domain.
+    """
+
+    if re.fullmatch(r"[0-9a-f]{64}\.json", binding_path.name) is None:
+        raise ValueError("Docker cleanup binding name is invalid")
+    directory_fd = _private_control_directory(binding_path.parent)
+    lock_name = binding_path.with_suffix(".lock").name
+    descriptor = -1
+    uniqueness_socket: socket.socket | None = None
+    try:
+        descriptor = os.open(
+            lock_name,
+            os.O_RDWR
+            | os.O_CREAT
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=directory_fd,
+        )
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+        ):
+            raise ValueError("Docker cleanup binding lock is unsafe")
+        os.fsync(directory_fd)
+        lock_deadline = (
+            time.monotonic() + _DOCKER_BINDING_LOCK_TIMEOUT_SECONDS
+            if deadline is None
+            else float(deadline)
+        )
+        while True:
+            try:
+                fcntl.flock(
+                    descriptor,
+                    fcntl.LOCK_EX | fcntl.LOCK_NB,
+                )
+                break
+            except BlockingIOError:
+                remaining = lock_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ValueError(
+                        "Docker cleanup binding lock is contended"
+                    ) from None
+                time.sleep(min(0.01, remaining))
+        uniqueness_socket = _docker_binding_uniqueness_socket(
+            binding_path,
+            deadline=lock_deadline,
+        )
+        named_metadata = os.stat(
+            lock_name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        locked_metadata = os.fstat(descriptor)
+        if (
+            named_metadata.st_dev != locked_metadata.st_dev
+            or named_metadata.st_ino != locked_metadata.st_ino
+            or named_metadata.st_mode != locked_metadata.st_mode
+            or named_metadata.st_uid != locked_metadata.st_uid
+            or named_metadata.st_nlink != locked_metadata.st_nlink
+        ):
+            raise ValueError("Docker cleanup binding lock name changed")
+        _validate_private_control_directory_descriptor(
+            binding_path.parent,
+            directory_fd,
+        )
+        return _DockerBindingLock(
+            binding_path=binding_path,
+            directory_fd=directory_fd,
+            descriptor=descriptor,
+            uniqueness_socket=uniqueness_socket,
+        )
+    except BaseException:
+        if uniqueness_socket is not None:
+            uniqueness_socket.close()
+        if descriptor >= 0:
+            os.close(descriptor)
+        os.close(directory_fd)
+        raise
+
+def _publish_docker_termination_fence_binding(
+    *,
+    record_path: Path,
+    expected_record_id: str,
+    expected_identity: Mapping[str, int],
+    provider: str,
+    docker_bin: str,
+    docker_config: Path,
+    container_name: str,
+    cidfile: Path,
+    lease_root: Path,
+    provider_home: Path,
+    prompt_path: Path,
+    effect_observation: Mapping[str, str],
+    runner_pid: int,
+    runner_start_ticks: int,
+    watchdog_pid: int,
+    watchdog_start_ticks: int,
+    create_command_id: str,
+    create_cwd: Path,
+    create_environment_id: str,
+    termination_fence: Mapping[str, object],
+) -> tuple[dict[str, object], dict[str, int]]:
+    """CAS-upgrade the one canonical cleanup binding before Docker rm."""
+
+    fence = _validated_docker_termination_fence(
+        termination_fence,
+        provider=provider,
+        container_name=container_name,
+    )
+    lock_handle = _docker_binding_lock_descriptor(record_path)
+    try:
+        raw = lock_handle.read(record_path)
+        if raw is None or not isinstance(raw.get("termination_fence"), Mapping):
+            raise ValueError("Docker cleanup binding disappeared")
+        current_fence = dict(raw["termination_fence"])
+        current = _validated_cleanup_binding_record(
+            record_path,
+            provider=provider,
+            docker_bin=docker_bin,
+            docker_config=docker_config,
+            container_name=container_name,
+            cidfile=cidfile,
+            lease_root=lease_root,
+            provider_home=provider_home,
+            prompt_path=prompt_path,
+            effect_observation=effect_observation,
+            binding_state="command_bound",
+            runner_pid=runner_pid,
+            runner_start_ticks=runner_start_ticks,
+            watchdog_pid=watchdog_pid,
+            watchdog_start_ticks=watchdog_start_ticks,
+            create_command_id=create_command_id,
+            create_cwd=create_cwd,
+            create_environment_id=create_environment_id,
+            termination_fence=current_fence,
+            control_directory_fd=lock_handle.directory_fd,
+        )
+        current_identity = lock_handle.path_identity(record_path)
+        if current_fence:
+            if current_fence != fence:
+                raise ValueError("Docker termination fence changed")
+            # Another exact publisher may have won while this caller waited
+            # for the stable lock.  Coalesce only the deterministic successor
+            # of the caller's admitted unfenced record; never accept an
+            # unrelated already-fenced binding merely because its fields look
+            # plausible.
+            predecessor_body = {
+                name: item
+                for name, item in current.items()
+                if name != "record_id"
+            }
+            predecessor_body["termination_fence"] = {}
+            if _effect_receipt_identity(predecessor_body) != expected_record_id:
+                raise ValueError("Docker termination fence predecessor changed")
+            return current, current_identity
+        if (
+            current.get("record_id") != expected_record_id
+            or current_identity != dict(expected_identity)
+        ):
+            raise ValueError("Docker cleanup binding lost its CAS identity")
+        fenced = _docker_cleanup_binding_value(
+            binding_state="command_bound",
+            provider=provider,
+            docker_bin=docker_bin,
+            container_name=container_name,
+            lease_root=lease_root,
+            docker_config=docker_config,
+            cidfile=cidfile,
+            provider_home=provider_home,
+            prompt_path=prompt_path,
+            effect_observation=effect_observation,
+            path_identities=current["path_identities"],  # type: ignore[arg-type]
+            binding_path=record_path,
+            runner_pid=runner_pid,
+            runner_start_ticks=runner_start_ticks,
+            watchdog_pid=watchdog_pid,
+            watchdog_start_ticks=watchdog_start_ticks,
+            create_command_id=create_command_id,
+            create_cwd=create_cwd,
+            create_environment_id=create_environment_id,
+            termination_fence=fence,
+        )
+        lock_handle.write(
+            record_path,
+            fenced,
+            replace_existing=True,
+        )
+        admitted = _validated_cleanup_binding_record(
+            record_path,
+            provider=provider,
+            docker_bin=docker_bin,
+            docker_config=docker_config,
+            container_name=container_name,
+            cidfile=cidfile,
+            lease_root=lease_root,
+            provider_home=provider_home,
+            prompt_path=prompt_path,
+            effect_observation=effect_observation,
+            binding_state="command_bound",
+            runner_pid=runner_pid,
+            runner_start_ticks=runner_start_ticks,
+            watchdog_pid=watchdog_pid,
+            watchdog_start_ticks=watchdog_start_ticks,
+            create_command_id=create_command_id,
+            create_cwd=create_cwd,
+            create_environment_id=create_environment_id,
+            termination_fence=fence,
+            control_directory_fd=lock_handle.directory_fd,
+        )
+        return admitted, lock_handle.path_identity(record_path)
+    finally:
+        lock_handle.close()
+
+def _docker_removal_dispatch_path(binding_path: Path) -> Path:
+    if re.fullmatch(r"[0-9a-f]{64}\.json", binding_path.name) is None:
+        raise ValueError("Docker cleanup binding name is invalid")
+    return binding_path.with_suffix(".remove-dispatched")
+
+def _docker_removal_dispatch_value(
+    *,
+    binding_path: Path,
+    binding_record: Mapping[str, object],
+    termination_fence: Mapping[str, object],
+    issuer_process_birth: Mapping[str, object],
+    state: str,
+    generation: int,
+    previous_dispatch_id: str,
+    docker_returncode: int | None,
+    failure_kind: str,
+) -> dict[str, object]:
+    provider = str(binding_record.get("provider") or "")
+    container_name = str(binding_record.get("container_name") or "")
+    fence = _validated_docker_termination_fence(
+        termination_fence,
+        provider=provider,
+        container_name=container_name,
+    )
+    record_id = str(binding_record.get("record_id") or "")
+    if (
+        binding_record.get("binding_path") != str(binding_path)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", record_id) is None
+        or binding_record.get("termination_fence") != fence
+    ):
+        raise ValueError("Docker removal dispatch authority is invalid")
+    issuer = dict(issuer_process_birth)
+    if (
+        set(issuer) != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+        or type(issuer.get("pid")) is not int
+        or int(issuer["pid"]) <= 0
+        or type(issuer.get("start_time_ticks")) is not int
+        or int(issuer["start_time_ticks"]) <= 0
+        or type(issuer.get("parent_pid")) is not int
+        or int(issuer["parent_pid"]) <= 0
+        or re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            str(issuer.get("boot_id") or ""),
+        )
+        is None
+    ):
+        raise ValueError("Docker removal issuer identity is invalid")
+    if (
+        isinstance(generation, bool)
+        or not isinstance(generation, int)
+        or generation < 1
+        or state
+        not in {
+            "prepared",
+            "request_started",
+            "request_completed",
+            "request_outcome_unknown",
+        }
+        or (
+            generation == 1
+            and state == "prepared"
+            and previous_dispatch_id
+        )
+        or (
+            (generation > 1 or state != "prepared")
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}", previous_dispatch_id
+            )
+            is None
+        )
+        or (
+            state in {"prepared", "request_started"}
+            and (docker_returncode is not None or failure_kind)
+        )
+        or (
+            state == "request_completed"
+            and (
+                isinstance(docker_returncode, bool)
+                or not isinstance(docker_returncode, int)
+                or failure_kind
+            )
+        )
+        or (
+            state == "request_outcome_unknown"
+            and (
+                docker_returncode is not None
+                or failure_kind not in {"timeout", "os_error", "issuer_failure"}
+            )
+        )
+    ):
+        raise ValueError("Docker removal dispatch transition is invalid")
+    body: dict[str, object] = {
+        "schema": _DOCKER_REMOVAL_DISPATCH_SCHEMA,
+        "binding_path": str(binding_path),
+        "binding_record_id": record_id,
+        "provider": provider,
+        "container_name": container_name,
+        "container_id": fence["container_id"],
+        "fence_id": fence["fence_id"],
+        "issuer_process_birth": issuer,
+        "state": state,
+        "generation": generation,
+        "previous_dispatch_id": previous_dispatch_id,
+        "docker_returncode": docker_returncode,
+        "failure_kind": failure_kind,
+    }
+    body["dispatch_id"] = _effect_receipt_identity(body)
+    return body
+
+def _validated_docker_removal_dispatch(
+    value: Mapping[str, object],
+    *,
+    binding_path: Path,
+    binding_record: Mapping[str, object],
+    termination_fence: Mapping[str, object],
+) -> dict[str, object]:
+    """Validate one exact, lineage-linked removal-request transition."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError("Docker removal dispatch record is absent")
+    try:
+        expected = _docker_removal_dispatch_value(
+            binding_path=binding_path,
+            binding_record=binding_record,
+            termination_fence=termination_fence,
+            issuer_process_birth=value["issuer_process_birth"],
+            state=str(value["state"]),
+            generation=value["generation"],  # type: ignore[arg-type]
+            previous_dispatch_id=str(value["previous_dispatch_id"]),
+            docker_returncode=value["docker_returncode"],  # type: ignore[arg-type]
+            failure_kind=str(value["failure_kind"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Docker removal dispatch record is invalid") from exc
+    if dict(value) != expected:
+        raise ValueError("Docker removal dispatch record drifted")
+    return expected
+
+def _docker_removal_issuer_live(
+    issuer_process_birth: Mapping[str, object],
+) -> bool | None:
+    """Return exact issuer liveness; never confuse PID reuse with ownership."""
+
+    try:
+        pid = issuer_process_birth.get("pid")
+        if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+            return None
+        observed = read_process_birth(pid)
+    except (OSError, TypeError, ValueError):
+        return None
+    if observed is None:
+        return False
+    return observed.to_dict() == dict(issuer_process_birth)
+
+def _open_docker_removal_execution_authority(
+    binding_record: Mapping[str, object],
+) -> tuple[int, int]:
+    """Return exact executable/config descriptors for the removal effect."""
+
+    docker_bin = Path(str(binding_record.get("docker_bin") or ""))
+    docker_config = Path(str(binding_record.get("docker_config") or ""))
+    identities = binding_record.get("path_identities")
+    executable_fd = -1
+    config_fd = -1
+    try:
+        if not docker_bin.is_absolute() or "\x00" in os.fspath(docker_bin):
+            raise ValueError("Docker removal executable path is invalid")
+        executable_fd = os.open(
+            docker_bin,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        config_fd = os.open(
+            docker_config,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        executable = os.fstat(executable_fd)
+        config = os.fstat(config_fd)
+        expected_config = (
+            identities.get("docker_config")
+            if isinstance(identities, Mapping)
+            else None
+        )
+        if (
+            not stat.S_ISREG(executable.st_mode)
+            or executable.st_dev != binding_record.get("docker_device")
+            or executable.st_ino != binding_record.get("docker_inode")
+            or executable.st_mode != binding_record.get("docker_mode")
+            or executable.st_uid != binding_record.get("docker_uid")
+            or not isinstance(expected_config, Mapping)
+            or config.st_dev != expected_config.get("device")
+            or config.st_ino != expected_config.get("inode")
+            or stat.S_IFMT(config.st_mode) != expected_config.get("mode")
+            or config.st_uid != expected_config.get("uid")
+            or not stat.S_ISDIR(config.st_mode)
+            or not Path(f"/proc/self/fd/{executable_fd}").exists()
+            or not Path(f"/proc/self/fd/{config_fd}").exists()
+        ):
+            raise ValueError("Docker removal execution authority drifted")
+        return executable_fd, config_fd
+    except BaseException:
+        if config_fd >= 0:
+            os.close(config_fd)
+        if executable_fd >= 0:
+            os.close(executable_fd)
+        raise
+
+def _docker_removal_issuer_main(
+    argv: Sequence[str],
+    *,
+    control_socket: socket.socket | None = None,
+) -> int:
+    """Issue one Docker removal only after a durable request-start CAS."""
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--binding-path", type=Path, required=True)
+    parser.add_argument("--runner-pid", type=int, required=True)
+    parser.add_argument("--control-fd", type=int, default=-1)
+    try:
+        args = parser.parse_args(list(argv))
+        if control_socket is None:
+            control_socket = _docker_cleanup_control_socket(args.control_fd)
+        elif args.control_fd >= 3:
+            raise ValueError("Docker removal control descriptor is duplicated")
+        peer_pid, peer_uid, peer_gid = _docker_control_peer_credentials(
+            control_socket
+        )
+        if (
+            args.runner_pid <= 0
+            or peer_pid != args.runner_pid
+            or peer_uid != os.geteuid()
+            or peer_gid != os.getegid()
+        ):
+            raise ValueError("Docker removal control peer identity drifted")
+        binding_path = args.binding_path.absolute()
+        if (
+            not binding_path.is_absolute()
+            or re.fullmatch(r"[0-9a-f]{64}\.json", binding_path.name) is None
+        ):
+            raise ValueError("Docker removal binding path is invalid")
+        issuer_birth = read_process_birth(os.getpid())
+        if (
+            issuer_birth is None
+            or not issuer_birth.boot_id
+            or issuer_birth.parent_pid != 1
+        ):
+            raise ValueError("Docker removal issuer is not detached")
+        issuer_identity = issuer_birth.to_dict()
+        control_socket.sendall(
+            json.dumps(
+                issuer_identity,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("ascii")
+            + b"\n"
+        )
+        # Explicit release and EOF have identical semantics.  The durable
+        # prepared record below—not the byte—is the sole effect authority.
+        control_socket.recv(1)
+        control_socket.close()
+        control_socket = None
+    except (OSError, TypeError, ValueError):
+        if control_socket is not None:
+            control_socket.close()
+        return 125
+
+    lock_handle: _DockerBindingLock | None = None
+    started: dict[str, object] | None = None
+    try:
+        lock_handle = _docker_binding_lock_descriptor(binding_path)
+        binding_record = lock_handle.read(binding_path)
+        dispatch_path = _docker_removal_dispatch_path(binding_path)
+        observed = lock_handle.read(dispatch_path)
+        if binding_record is None or observed is None:
+            return 125
+        raw_fence = binding_record.get("termination_fence")
+        if not isinstance(raw_fence, Mapping) or not raw_fence:
+            return 125
+        prepared = _validated_docker_removal_dispatch(
+            observed,
+            binding_path=binding_path,
+            binding_record=binding_record,
+            termination_fence=raw_fence,
+        )
+        if (
+            prepared.get("state") != "prepared"
+            or prepared.get("issuer_process_birth") != issuer_identity
+        ):
+            return 125
+        started = _docker_removal_dispatch_value(
+            binding_path=binding_path,
+            binding_record=binding_record,
+            termination_fence=raw_fence,
+            issuer_process_birth=issuer_identity,
+            state="request_started",
+            generation=int(prepared["generation"]),
+            previous_dispatch_id=str(prepared["dispatch_id"]),
+            docker_returncode=None,
+            failure_kind="",
+        )
+        lock_handle.write(
+            dispatch_path,
+            started,
+            replace_existing=True,
+        )
+        if lock_handle.read(dispatch_path) != started:
+            return 125
+
+        executable_fd = -1
+        config_fd = -1
+        try:
+            lock_handle.assert_current()
+            executable_fd, config_fd = (
+                _open_docker_removal_execution_authority(binding_record)
+            )
+            completed = subprocess.run(
+                [
+                    f"/proc/self/fd/{executable_fd}",
+                    f"--host={_DOCKER_LOCAL_HOST}",
+                    "--config",
+                    f"/proc/self/fd/{config_fd}",
+                    "rm",
+                    "--force",
+                    str(started["container_id"]),
+                ],
+                env=_docker_control_env(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2.0,
+                check=False,
+                close_fds=True,
+                pass_fds=(executable_fd, config_fd),
+            )
+            terminal_state = "request_completed"
+            returncode: int | None = int(completed.returncode)
+            failure_kind = ""
+        except subprocess.TimeoutExpired:
+            terminal_state = "request_outcome_unknown"
+            returncode = None
+            failure_kind = "timeout"
+        except OSError:
+            terminal_state = "request_outcome_unknown"
+            returncode = None
+            failure_kind = "os_error"
+        finally:
+            if config_fd >= 0:
+                os.close(config_fd)
+            if executable_fd >= 0:
+                os.close(executable_fd)
+        terminal = _docker_removal_dispatch_value(
+            binding_path=binding_path,
+            binding_record=binding_record,
+            termination_fence=raw_fence,
+            issuer_process_birth=issuer_identity,
+            state=terminal_state,
+            generation=int(started["generation"]),
+            previous_dispatch_id=str(started["dispatch_id"]),
+            docker_returncode=returncode,
+            failure_kind=failure_kind,
+        )
+        lock_handle.write(
+            dispatch_path,
+            terminal,
+            replace_existing=True,
+        )
+        return 0
+    except BaseException:
+        if started is not None and lock_handle is not None:
+            try:
+                binding_record = lock_handle.read(binding_path)
+                raw_fence = (
+                    binding_record.get("termination_fence")
+                    if isinstance(binding_record, Mapping)
+                    else None
+                )
+                if isinstance(raw_fence, Mapping) and raw_fence:
+                    unknown = _docker_removal_dispatch_value(
+                        binding_path=binding_path,
+                        binding_record=binding_record,
+                        termination_fence=raw_fence,
+                        issuer_process_birth=issuer_identity,
+                        state="request_outcome_unknown",
+                        generation=int(started["generation"]),
+                        previous_dispatch_id=str(started["dispatch_id"]),
+                        docker_returncode=None,
+                        failure_kind="issuer_failure",
+                    )
+                    lock_handle.write(
+                        _docker_removal_dispatch_path(binding_path),
+                        unknown,
+                        replace_existing=True,
+                    )
+            except BaseException:
+                pass
+        return 125
+    finally:
+        if lock_handle is not None:
+            lock_handle.close()
+
+def _docker_removal_issuer_launcher_main(argv: Sequence[str]) -> int:
+    """Exec-clean, double-fork launcher for one kill-tree-safe rm issuer."""
+
+    items = list(argv)
+    if (
+        len(items) < 7
+        or items[0] != "--control-fd"
+        or items[2] != _DOCKER_REMOVAL_ISSUER_ARG
+    ):
+        return 2
+    channel: socket.socket | None = None
+    try:
+        channel = _docker_cleanup_control_socket(int(items[1]))
+        runner_index = items.index("--runner-pid", 3)
+        runner_pid = int(items[runner_index + 1])
+        peer_pid, peer_uid, peer_gid = _docker_control_peer_credentials(channel)
+    except (IndexError, OSError, ValueError):
+        if channel is not None:
+            channel.close()
+        return 2
+    if (
+        runner_pid <= 0
+        or peer_pid != runner_pid
+        or peer_uid != os.geteuid()
+        or peer_gid != os.getegid()
+    ):
+        channel.close()
+        return 2
+    launcher_pid = os.getpid()
+    try:
+        child_pid = os.fork()
+    except OSError:
+        channel.close()
+        return 2
+    if child_pid:
+        channel.close()
+        return 0
+    try:
+        os.setsid()
+    except OSError:
+        channel.close()
+        return 2
+    deadline = time.monotonic() + 2.0
+    while os.getppid() == launcher_pid and time.monotonic() < deadline:
+        time.sleep(0.005)
+    if os.getppid() != 1:
+        channel.close()
+        return 2
+    return _docker_removal_issuer_main(items[3:], control_socket=channel)
+
+def _arm_docker_removal_once(
+    *,
+    binding_path: Path,
+    expected_binding_identity: Mapping[str, int],
+    binding_record: Mapping[str, object],
+    termination_fence: Mapping[str, object],
+) -> bool:
+    """Commit one recoverable rm request; callers may only reconcile.
+
+    The multithreaded supervisor never forks.  It execs a clean launcher that
+    double-forks an issuer outside the managed kill tree.  The issuer durably
+    transitions ``prepared`` to ``request_started`` before Docker sees the
+    request and publishes the exact CLI outcome afterwards.  A dead prepared
+    issuer can be replaced by one lineage-linked generation; a started or
+    unknown request is never replayed.
+    """
+
+    dispatch_path = _docker_removal_dispatch_path(binding_path)
+    lock_handle = _docker_binding_lock_descriptor(binding_path)
+    control_socket: socket.socket | None = None
+    launcher_socket: socket.socket | None = None
+    launcher: subprocess.Popen[bytes] | None = None
+    try:
+        current = lock_handle.read(binding_path)
+        if (
+            current != dict(binding_record)
+            or lock_handle.path_identity(binding_path)
+            != dict(expected_binding_identity)
+        ):
+            raise ValueError("Docker removal binding lost its CAS identity")
+        observed = lock_handle.read(dispatch_path)
+        generation = 1
+        previous_dispatch_id = ""
+        if observed is not None:
+            admitted = _validated_docker_removal_dispatch(
+                observed,
+                binding_path=binding_path,
+                binding_record=binding_record,
+                termination_fence=termination_fence,
+            )
+            state = str(admitted["state"])
+            issuer = admitted["issuer_process_birth"]
+            if not isinstance(issuer, Mapping):
+                raise ValueError("Docker removal issuer identity is absent")
+            live = _docker_removal_issuer_live(issuer)
+            if live is None:
+                raise ValueError("Docker removal issuer liveness is unknown")
+            if state == "prepared":
+                if live:
+                    return False
+                generation = int(admitted["generation"]) + 1
+                previous_dispatch_id = str(admitted["dispatch_id"])
+            elif state == "request_started" and not live:
+                unknown = _docker_removal_dispatch_value(
+                    binding_path=binding_path,
+                    binding_record=binding_record,
+                    termination_fence=termination_fence,
+                    issuer_process_birth=issuer,
+                    state="request_outcome_unknown",
+                    generation=int(admitted["generation"]),
+                    previous_dispatch_id=str(admitted["dispatch_id"]),
+                    docker_returncode=None,
+                    failure_kind="issuer_failure",
+                )
+                lock_handle.write(
+                    dispatch_path,
+                    unknown,
+                    replace_existing=True,
+                )
+                return False
+            else:
+                return False
+
+        from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+            require_state_authority_handoff_ptrace_protection,
+        )
+
+        require_state_authority_handoff_ptrace_protection()
+        control_socket, launcher_socket = socket.socketpair(
+            socket.AF_UNIX,
+            socket.SOCK_STREAM,
+        )
+        sealed_match = re.fullmatch(r"/proc/self/fd/([0-9]+)", str(sys.argv[0]))
+        runner_entry = (
+            str(sys.argv[0])
+            if sealed_match is not None
+            else str(Path(__file__).resolve())
+        )
+        inherited_control_plane = (
+            (int(sealed_match.group(1)),) if sealed_match is not None else ()
+        )
+        launcher = subprocess.Popen(
+            [
+                sys.executable,
+                "-I",
+                "-B",
+                runner_entry,
+                _DOCKER_REMOVAL_ISSUER_LAUNCHER_ARG,
+                "--control-fd",
+                str(launcher_socket.fileno()),
+                _DOCKER_REMOVAL_ISSUER_ARG,
+                "--binding-path",
+                str(binding_path),
+                "--runner-pid",
+                str(os.getpid()),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            cwd="/",
+            env=_docker_cleanup_watchdog_env(),
+            start_new_session=True,
+            close_fds=True,
+            pass_fds=tuple(
+                sorted({*inherited_control_plane, launcher_socket.fileno()})
+            ),
+        )
+        launcher_socket.close()
+        launcher_socket = None
+        if launcher.wait(timeout=3.0) != 0:
+            raise ValueError("Docker removal issuer launcher failed")
+        control_socket.settimeout(3.0)
+        encoded_birth = bytearray()
+        while b"\n" not in encoded_birth and len(encoded_birth) <= 512:
+            chunk = control_socket.recv(513 - len(encoded_birth))
+            if not chunk:
+                break
+            encoded_birth.extend(chunk)
+        if not encoded_birth.endswith(b"\n") or len(encoded_birth) > 512:
+            raise ValueError("Docker removal issuer birth is unavailable")
+        try:
+            reported_birth = json.loads(encoded_birth[:-1].decode("ascii"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Docker removal issuer birth is malformed") from exc
+        issuer_pid = (
+            reported_birth.get("pid")
+            if isinstance(reported_birth, Mapping)
+            else None
+        )
+        observed_birth = (
+            read_process_birth(issuer_pid)
+            if isinstance(issuer_pid, int) and not isinstance(issuer_pid, bool)
+            else None
+        )
+        if (
+            observed_birth is None
+            or reported_birth != observed_birth.to_dict()
+            or observed_birth.parent_pid != 1
+            or not observed_birth.boot_id
+        ):
+            raise ValueError("Docker removal issuer birth differs")
+        prepared = _docker_removal_dispatch_value(
+            binding_path=binding_path,
+            binding_record=binding_record,
+            termination_fence=termination_fence,
+            issuer_process_birth=reported_birth,
+            state="prepared",
+            generation=generation,
+            previous_dispatch_id=previous_dispatch_id,
+            docker_returncode=None,
+            failure_kind="",
+        )
+        lock_handle.write(
+            dispatch_path,
+            prepared,
+            replace_existing=observed is not None,
+        )
+        admitted = lock_handle.read(dispatch_path)
+        if admitted != prepared:
+            raise ValueError("Docker removal dispatch was not durably admitted")
+        try:
+            control_socket.sendall(b"D")
+        except OSError:
+            # EOF releases the already self-bound issuer too.
+            pass
+        control_socket.close()
+        control_socket = None
+        return False
+    finally:
+        if control_socket is not None:
+            try:
+                control_socket.close()
+            except OSError:
+                pass
+        if launcher_socket is not None:
+            try:
+                launcher_socket.close()
+            except OSError:
+                pass
+        if launcher is not None and launcher.poll() is None:
+            try:
+                launcher.kill()
+            except OSError:
+                pass
+            try:
+                launcher.wait(timeout=1.0)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        lock_handle.close()
+
+def _owned_cleanup_path_matches(
+    metadata: os.stat_result,
+    *,
+    directory: bool,
+    identity: Mapping[str, int],
+) -> bool:
+    return bool(
+        metadata.st_dev == identity.get("device")
+        and metadata.st_ino == identity.get("inode")
+        and stat.S_IFMT(metadata.st_mode) == identity.get("mode")
+        and metadata.st_uid == identity.get("uid") == os.geteuid()
+        and not stat.S_ISLNK(metadata.st_mode)
+        and (
+            stat.S_ISDIR(metadata.st_mode)
+            if directory
+            else stat.S_ISREG(metadata.st_mode)
+        )
+    )
+
+def _cleanup_path_quarantine(
+    path: Path,
+    *,
+    directory: bool,
+    identity: Mapping[str, int],
+) -> tuple[Path, Path, Path, dict[str, object]]:
+    """Derive the replayable private quarantine for one admitted inode."""
+
+    body: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "cleanup-path-tombstone@1"
+        ),
+        "path": str(path.absolute()),
+        "directory": directory,
+        "identity": {
+            name: int(identity.get(name, -1))
+            for name in ("device", "inode", "mode", "uid")
+        },
+        "transition": "exact_inode_quarantined_for_removal",
+    }
+    body["tombstone_id"] = _effect_receipt_identity(body)
+    quarantine = path.with_name(
+        ".aseh-cleanup-"
+        + hashlib.sha256(
+            json.dumps(
+                body,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    return quarantine, quarantine / "owned", quarantine / "removed.json", body
+
+def _cleanup_tombstone_matches(
+    marker: Path,
+    expected: Mapping[str, object],
+) -> bool:
+    try:
+        observed = _read_private_control_record(marker.parent, marker.name)
+    except (OSError, ValueError):
+        return False
+    return observed == dict(expected)
+
+def _remove_owned_cleanup_path(
+    path: Path,
+    *,
+    directory: bool,
+    identity: Mapping[str, int],
+    admitted_tombstone_id: str = "",
+) -> bool:
+    """Replayably quarantine and remove only the admitted inode.
+
+    The identity-bound tombstone is written and fsynced before ``owned`` is
+    deleted.  Consequently a crash can distinguish an admitted removal from
+    a same-UID/provider rename-away: an initially absent path without the
+    exact tombstone fails closed.
+    """
+
+    def matches(metadata: os.stat_result) -> bool:
+        return _owned_cleanup_path_matches(
+            metadata,
+            directory=directory,
+            identity=identity,
+        )
+
+    quarantine, owned, marker, tombstone = _cleanup_path_quarantine(
+        path,
+        directory=directory,
+        identity=identity,
+    )
+    try:
+        original_exists = os.path.lexists(path)
+        owned_exists = os.path.lexists(owned)
+        marker_exists = os.path.lexists(marker)
+        if original_exists:
+            if not matches(os.lstat(path)) or owned_exists or marker_exists:
+                return False
+            path.chmod(0o700 if directory else 0o600, follow_symlinks=False)
+            if not matches(os.lstat(path)):
+                return False
+            try:
+                quarantine.mkdir(mode=0o700)
+            except FileExistsError:
+                quarantine_metadata = os.lstat(quarantine)
+                if (
+                    not stat.S_ISDIR(quarantine_metadata.st_mode)
+                    or stat.S_ISLNK(quarantine_metadata.st_mode)
+                    or quarantine_metadata.st_uid != os.geteuid()
+                    or stat.S_IMODE(quarantine_metadata.st_mode) != 0o700
+                    or any(quarantine.iterdir())
+                ):
+                    return False
+            os.rename(path, owned)
+            for directory_path in (path.parent, quarantine):
+                descriptor = os.open(
+                    directory_path,
+                    os.O_RDONLY
+                    | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                )
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+            owned_exists = True
+        elif not owned_exists:
+            # A deterministic, self-hashed marker is an audit journal, not
+            # mutation authority.  Marker-only replay is admitted exclusively
+            # when the canonical terminal attempt CAS precommitted this exact
+            # tombstone before any inode mutation.  Unscoped cleanup therefore
+            # remains fail-closed across this crash gap.
+            if (
+                admitted_tombstone_id != tombstone.get("tombstone_id")
+                or not marker_exists
+                or not _cleanup_tombstone_matches(marker, tombstone)
+            ):
+                return False
+        if owned_exists and not matches(os.lstat(owned)):
+            # A replacement won between the pre-rename lstat and rename.
+            # Restore that unrelated inode to its original name; never delete
+            # it under cleanup authority for the displaced admitted inode.
+            if not os.path.lexists(path):
+                try:
+                    os.rename(owned, path)
+                except OSError:
+                    pass
+            return False
+        if not marker_exists:
+            _write_private_control_record(
+                quarantine,
+                marker.name,
+                tombstone,
+                replace_existing=False,
+            )
+        elif not _cleanup_tombstone_matches(marker, tombstone):
+            return False
+        if owned_exists:
+            if directory:
+                if not _robust_remove_runner_temp_tree(
+                    owned,
+                    expected_identity=identity,
+                ):
+                    return False
+            else:
+                current = os.lstat(owned)
+                if not matches(current):
+                    return False
+                owned.chmod(0o600, follow_symlinks=False)
+                owned.unlink()
+            descriptor = os.open(
+                quarantine,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+    return bool(
+        not os.path.lexists(path)
+        and not os.path.lexists(owned)
+        and _cleanup_tombstone_matches(marker, tombstone)
+    )
+
+def _remove_or_admit_cleanup_tombstone(
+    path: Path,
+    *,
+    directory: bool,
+    identity: Mapping[str, int],
+) -> bool:
+    """Remove a live exact inode; never promote a public marker to authority.
+
+    Crash-gap admission is intentionally confined to the active binding CAS
+    while its stable lock is held by
+    :func:`_finalize_verified_cleanup_completion`.  This public compatibility
+    helper therefore cannot turn a predictable self-hashed tombstone into
+    deletion evidence.
+    """
+
+    return _remove_owned_cleanup_path(
+        path,
+        directory=directory,
+        identity=identity,
+    )
+
+def _discard_owned_cleanup_tombstone(
+    path: Path,
+    *,
+    directory: bool,
+    identity: Mapping[str, int],
+) -> bool:
+    """Best-effort finalization after the durable binding is gone."""
+
+    quarantine, owned, marker, tombstone = _cleanup_path_quarantine(
+        path,
+        directory=directory,
+        identity=identity,
+    )
+    try:
+        if os.path.lexists(path) or os.path.lexists(owned):
+            return False
+        if not _cleanup_tombstone_matches(marker, tombstone):
+            return False
+        marker.unlink()
+        descriptor = os.open(
+            quarantine,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        quarantine.rmdir()
+        parent_descriptor = os.open(
+            path.parent,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            os.fsync(parent_descriptor)
+        finally:
+            os.close(parent_descriptor)
+        return True
+    except (FileNotFoundError, OSError):
+        return False
+
+def _unlink_owned_cleanup_record(
+    path: Path,
+    *,
+    identity: Mapping[str, int],
+) -> bool:
+    """Unlink one exact private control record and durably fsync its parent."""
+
+    directory_fd = -1
+    try:
+        metadata = os.lstat(path)
+        if not _owned_cleanup_path_matches(
+            metadata,
+            directory=False,
+            identity=identity,
+        ):
+            return False
+        directory_fd = os.open(
+            path.parent,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        current = os.stat(
+            path.name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if not _owned_cleanup_path_matches(
+            current,
+            directory=False,
+            identity=identity,
+        ):
+            return False
+        os.unlink(path.name, dir_fd=directory_fd)
+        os.fsync(directory_fd)
+        return not os.path.lexists(path)
+    except (FileNotFoundError, OSError):
+        return False
+    finally:
+        if directory_fd >= 0:
+            os.close(directory_fd)
+
+def _cleanup_completion_path(binding_path: Path) -> Path:
+    if re.fullmatch(r"[0-9a-f]{64}\.json", binding_path.name) is None:
+        raise ValueError("Docker cleanup binding name is invalid")
+    return binding_path.with_suffix(".complete")
+
+def _cleanup_authority_path(binding_path: Path) -> Path:
+    """Return the retained exact binding inode after cleanup retirement."""
+
+    if re.fullmatch(r"[0-9a-f]{64}\.json", binding_path.name) is None:
+        raise ValueError("Docker cleanup binding name is invalid")
+    return binding_path.with_suffix(".authority")
+
+def _cleanup_binding_authority_present(
+    binding_path: Path,
+    *,
+    binding_identity: Mapping[str, int],
+    binding_record: Mapping[str, object],
+    binding_lock: _DockerBindingLock | None = None,
+) -> bool:
+    """Validate exactly one live or retired copy of the original inode."""
+
+    authority_path = _cleanup_authority_path(binding_path)
+    live = (
+        binding_lock.exists(binding_path)
+        if binding_lock is not None
+        else os.path.lexists(binding_path)
+    )
+    retired = (
+        binding_lock.exists(authority_path)
+        if binding_lock is not None
+        else os.path.lexists(authority_path)
+    )
+    if live is retired:
+        return False
+    path = binding_path if live else authority_path
+    try:
+        return bool(
+            (
+                binding_lock.read(path)
+                if binding_lock is not None
+                else _read_private_control_record(path.parent, path.name)
+            )
+            == dict(binding_record)
+            and (
+                binding_lock.path_identity(path)
+                if binding_lock is not None
+                else _cleanup_path_identity(path, directory=False)
+            )
+            == dict(binding_identity)
+        )
+    except (OSError, ValueError):
+        return False
+
+def _cleanup_binding_retirement_pair_matches(
+    directory_fd: int,
+    *,
+    binding_name: str,
+    authority_name: str,
+    binding_identity: Mapping[str, int],
+    binding_record: Mapping[str, object],
+) -> bool:
+    """Validate the transient two-link retirement state without mutation."""
+
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            authority_name,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=directory_fd,
+        )
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 2
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_size > _DOCKER_PRIVATE_CONTROL_MAX_BYTES
+            or before.st_dev != binding_identity.get("device")
+            or before.st_ino != binding_identity.get("inode")
+            or stat.S_IFMT(before.st_mode) != binding_identity.get("mode")
+            or before.st_uid != binding_identity.get("uid")
+        ):
+            return False
+        remaining = _DOCKER_PRIVATE_CONTROL_MAX_BYTES + 1
+        chunks: list[bytes] = []
+        while remaining:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        after = os.fstat(descriptor)
+        binding = os.stat(
+            binding_name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        authority = os.stat(
+            authority_name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        snapshots = tuple(
+            (
+                item.st_dev,
+                item.st_ino,
+                item.st_mode,
+                item.st_uid,
+                item.st_nlink,
+                item.st_size,
+                item.st_mtime_ns,
+                item.st_ctime_ns,
+            )
+            for item in (before, after, binding, authority)
+        )
+        return bool(
+            all(snapshot == snapshots[0] for snapshot in snapshots[1:])
+            and raw == _private_control_bytes(binding_record)
+        )
+    except (FileNotFoundError, OSError, TypeError, ValueError):
+        return False
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+def _retire_cleanup_binding_authority(
+    binding_path: Path,
+    *,
+    binding_identity: Mapping[str, int],
+    binding_record: Mapping[str, object],
+    binding_lock: _DockerBindingLock | None = None,
+) -> bool:
+    """Retain the exact binding inode under a create-only authority name.
+
+    The hard-link/fsync/unlink sequence cannot overwrite a raced foreign
+    authority file.  If the process exits after link publication, a later
+    call validates the exact two-link inode and finishes only the pending
+    source unlink.
+    """
+
+    authority_path = _cleanup_authority_path(binding_path)
+    directory_fd = -1
+    owns_directory_fd = binding_lock is None
+    try:
+        directory_fd = (
+            _private_control_directory(binding_path.parent)
+            if binding_lock is None
+            else binding_lock.directory_fd
+        )
+        if binding_lock is not None:
+            if binding_lock.binding_path != binding_path.absolute():
+                return False
+            binding_lock.assert_current()
+        try:
+            binding_metadata = os.stat(
+                binding_path.name,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            binding_metadata = None
+        try:
+            authority_metadata = os.stat(
+                authority_path.name,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            authority_metadata = None
+
+        if authority_metadata is not None:
+            if binding_metadata is None:
+                return _cleanup_binding_authority_present(
+                    binding_path,
+                    binding_identity=binding_identity,
+                    binding_record=binding_record,
+                    binding_lock=binding_lock,
+                )
+            if not _cleanup_binding_retirement_pair_matches(
+                directory_fd,
+                binding_name=binding_path.name,
+                authority_name=authority_path.name,
+                binding_identity=binding_identity,
+                binding_record=binding_record,
+            ):
+                return False
+            os.unlink(binding_path.name, dir_fd=directory_fd)
+            os.fsync(directory_fd)
+            return _cleanup_binding_authority_present(
+                binding_path,
+                binding_identity=binding_identity,
+                binding_record=binding_record,
+                binding_lock=binding_lock,
+            )
+
+        if (
+            binding_metadata is None
+            or (
+                binding_lock.read(binding_path)
+                if binding_lock is not None
+                else _read_private_control_record(
+                    binding_path.parent,
+                    binding_path.name,
+                )
+            )
+            != dict(binding_record)
+            or (
+                binding_lock.path_identity(binding_path)
+                if binding_lock is not None
+                else _cleanup_path_identity(binding_path, directory=False)
+            )
+            != dict(binding_identity)
+        ):
+            return False
+        os.link(
+            binding_path.name,
+            authority_path.name,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        os.fsync(directory_fd)
+        if not _cleanup_binding_retirement_pair_matches(
+            directory_fd,
+            binding_name=binding_path.name,
+            authority_name=authority_path.name,
+            binding_identity=binding_identity,
+            binding_record=binding_record,
+        ):
+            return False
+        os.unlink(binding_path.name, dir_fd=directory_fd)
+        os.fsync(directory_fd)
+        if binding_lock is not None:
+            binding_lock.assert_current()
+        return _cleanup_binding_authority_present(
+            binding_path,
+            binding_identity=binding_identity,
+            binding_record=binding_record,
+            binding_lock=binding_lock,
+        )
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+    finally:
+        if owns_directory_fd and directory_fd >= 0:
+            os.close(directory_fd)
+
+def _cleanup_intent_value(
+    *,
+    binding_path: Path,
+    binding_identity: Mapping[str, int],
+    binding_record: Mapping[str, object],
+    docker_absence: Mapping[str, object],
+    terminal_cleanup_authority: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Bind the exact inodes and lifecycle before any path is removed."""
+
+    record_body = {
+        key: item for key, item in binding_record.items() if key != "record_id"
+    }
+    record_id = str(binding_record.get("record_id") or "")
+    raw_fence = binding_record.get("termination_fence")
+    fence_id = str(
+        raw_fence.get("fence_id")
+        if isinstance(raw_fence, Mapping) and raw_fence
+        else ""
+    )
+    path_identities = binding_record.get("path_identities")
+    authority = dict(terminal_cleanup_authority or {})
+    if authority:
+        authority_body = {
+            key: item for key, item in authority.items() if key != "authority_id"
+        }
+        if (
+            set(authority)
+            != {
+                "schema",
+                "logical_attempt_id",
+                "reservation_id",
+                "cleanup_id",
+                "binding_path",
+                "binding_record_id",
+                "termination_fence_id",
+                "authority_id",
+            }
+            or authority.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "terminal-cleanup-authority@1"
+            )
+            or authority.get("binding_path") != str(binding_path)
+            or authority.get("binding_record_id") != record_id
+            or authority.get("termination_fence_id") != fence_id
+            or authority.get("authority_id")
+            != _effect_receipt_identity(authority_body)
+        ):
+            raise ValueError("terminal cleanup intent authority is invalid")
+    else:
+        authority = {
+            "logical_attempt_id": "",
+            "reservation_id": "",
+            "cleanup_id": "",
+            "authority_id": record_id,
+        }
+    lifecycle_names = (
+        "run_id",
+        "profile_id",
+        "target_id",
+        "repository_root",
+        "state_root",
+        "run_root",
+        "configuration_root",
+        "fencing_epoch",
+    )
+    if (
+        binding_record.get("record_id") != _effect_receipt_identity(record_body)
+        or binding_record.get("binding_path") != str(binding_path)
+        or not isinstance(path_identities, Mapping)
+        or set(path_identities)
+        != {
+            "docker_config",
+            "lease_root",
+            "prompt_path",
+            "provider_home",
+        }
+        or set(binding_identity) != {"device", "inode", "mode", "uid"}
+        or not stat.S_ISREG(int(binding_identity.get("mode", 0)))
+        or binding_identity.get("uid") != os.geteuid()
+        or not isinstance(docker_absence, Mapping)
+        or docker_absence.get("binding_record_id") != record_id
+        or any(binding_record.get(name) in (None, "") for name in lifecycle_names)
+    ):
+        raise ValueError("Docker cleanup intent inputs are invalid")
+    resources: list[dict[str, object]] = []
+    for name, field, directory in (
+        ("prompt_path", "prompt_path", False),
+        ("provider_home", "provider_home", True),
+        ("lease_root", "lease_root", True),
+    ):
+        identity = path_identities.get(name)
+        path = Path(str(binding_record.get(field) or ""))
+        if not isinstance(identity, Mapping):
+            raise ValueError("Docker cleanup resource identity is invalid")
+        _quarantine, _owned, _marker, tombstone = _cleanup_path_quarantine(
+            path,
+            directory=directory,
+            identity=identity,
+        )
+        resources.append(
+            {
+                "name": name,
+                "path": str(path),
+                "directory": directory,
+                "identity": dict(identity),
+                "tombstone_id": tombstone["tombstone_id"],
+            }
+        )
+    body: dict[str, object] = {
+        "schema": _DOCKER_CLEANUP_INTENT_SCHEMA,
+        "logical_attempt_id": authority["logical_attempt_id"],
+        "reservation_id": authority["reservation_id"],
+        "cleanup_id": authority["cleanup_id"],
+        "authority_id": authority["authority_id"],
+        "binding_path": str(binding_path),
+        "binding_identity": dict(binding_identity),
+        "binding_record_id": record_id,
+        "termination_fence_id": fence_id,
+        "lifecycle": {
+            name: binding_record[name] for name in lifecycle_names
+        },
+        "resources": resources,
+        "docker_absence": dict(docker_absence),
+    }
+    body["intent_id"] = _effect_receipt_identity(body)
+    return body
+
+def _cleanup_completion_value(
+    *,
+    binding_path: Path,
+    binding_identity: Mapping[str, int],
+    binding_record: Mapping[str, object],
+    terminal_cleanup_authority: Mapping[str, object] | None = None,
+    binding_lock: _DockerBindingLock | None = None,
+) -> dict[str, object]:
+    """Build the durable transition from exact absence to path removal."""
+
+    record_body = {
+        key: item for key, item in binding_record.items() if key != "record_id"
+    }
+    path_identities = binding_record.get("path_identities")
+    if (
+        binding_record.get("record_id") != _effect_receipt_identity(record_body)
+        or binding_record.get("binding_path") != str(binding_path)
+        or not isinstance(path_identities, dict)
+        or set(path_identities)
+        != {
+            "docker_config",
+            "lease_root",
+            "prompt_path",
+            "provider_home",
+        }
+    ):
+        raise ValueError("Docker cleanup completion authority is invalid")
+    resources = [
+        {
+            "name": name,
+            "path": str(binding_record[path_field]),
+            "directory": directory,
+            "identity": dict(path_identities[name]),
+        }
+        for name, path_field, directory in (
+            ("prompt_path", "prompt_path", False),
+            ("provider_home", "provider_home", True),
+            ("lease_root", "lease_root", True),
+        )
+    ]
+    raw_fence = binding_record.get("termination_fence")
+    dispatch_path = _docker_removal_dispatch_path(binding_path)
+    dispatch = (
+        binding_lock.read(dispatch_path)
+        if binding_lock is not None
+        else _read_private_control_record(
+            dispatch_path.parent,
+            dispatch_path.name,
+        )
+    )
+    if isinstance(raw_fence, Mapping) and raw_fence:
+        fence = _validated_docker_termination_fence(
+            raw_fence,
+            provider=str(binding_record.get("provider") or ""),
+            container_name=str(binding_record.get("container_name") or ""),
+        )
+        expected_dispatch = _validated_docker_removal_dispatch(
+            dispatch if isinstance(dispatch, Mapping) else {},
+            binding_path=binding_path,
+            binding_record=binding_record,
+            termination_fence=fence,
+        )
+        dispatch_state = expected_dispatch.get("state")
+        if dispatch_state == "request_started":
+            issuer_live = _docker_removal_issuer_live(
+                expected_dispatch["issuer_process_birth"]  # type: ignore[arg-type]
+            )
+            if issuer_live is not False:
+                raise ValueError(
+                    "Docker removal request outcome is not reconcilable"
+                )
+        elif dispatch_state not in {
+            "request_completed",
+            "request_outcome_unknown",
+        }:
+            raise ValueError("Docker cleanup dispatch is not effect-terminal")
+        docker_absence: dict[str, object] = {
+            "kind": "fenced_effect_absence",
+            "binding_record_id": binding_record["record_id"],
+            "container_id": fence["container_id"],
+            "fence_id": fence["fence_id"],
+            "dispatch_id": expected_dispatch["dispatch_id"],
+            "observation": "exact_cid_name_and_kernel_scope_quiescent",
+        }
+    else:
+        if dispatch is not None:
+            raise ValueError("unfenced Docker cleanup has a dispatch record")
+        docker_absence = {
+            "kind": "unmaterialized_name_absence",
+            "binding_record_id": binding_record["record_id"],
+            "binding_state": binding_record.get("binding_state"),
+            "observation": "exact_name_absent_twice",
+        }
+    cleanup_intent = _cleanup_intent_value(
+        binding_path=binding_path,
+        binding_identity=binding_identity,
+        binding_record=binding_record,
+        docker_absence=docker_absence,
+        terminal_cleanup_authority=terminal_cleanup_authority,
+    )
+    body: dict[str, object] = {
+        "schema": _DOCKER_CLEANUP_COMPLETION_SCHEMA,
+        "binding_path": str(binding_path),
+        "binding_identity": dict(binding_identity),
+        "binding_record": dict(binding_record),
+        "resources": resources,
+        "docker_absence": docker_absence,
+        "cleanup_intent": cleanup_intent,
+    }
+    body["completion_id"] = _effect_receipt_identity(body)
+    return body
+
+def _publish_cleanup_completion(
+    *,
+    binding_path: Path,
+    binding_identity: Mapping[str, int],
+    binding_record: Mapping[str, object],
+    terminal_cleanup_authority: Mapping[str, object] | None = None,
+    binding_lock: _DockerBindingLock | None = None,
+) -> Path:
+    completion_path = _cleanup_completion_path(binding_path)
+    expected = _cleanup_completion_value(
+        binding_path=binding_path,
+        binding_identity=binding_identity,
+        binding_record=binding_record,
+        terminal_cleanup_authority=terminal_cleanup_authority,
+        binding_lock=binding_lock,
+    )
+    observed = (
+        binding_lock.read(completion_path)
+        if binding_lock is not None
+        else _read_private_control_record(
+            completion_path.parent,
+            completion_path.name,
+        )
+    )
+    if observed is None:
+        if binding_lock is not None:
+            binding_lock.write(
+                completion_path,
+                expected,
+                replace_existing=False,
+            )
+        else:
+            _write_private_control_record(
+                completion_path.parent,
+                completion_path.name,
+                expected,
+                replace_existing=False,
+            )
+    elif observed != expected:
+        raise ValueError("Docker cleanup completion record drifted")
+    return completion_path
+
+def _cleanup_intent_terminal_authority(
+    intent: Mapping[str, object],
+) -> Mapping[str, object] | None:
+    """Reconstruct the exact terminal authority embedded by a scoped intent."""
+
+    if not str(intent.get("logical_attempt_id") or ""):
+        return None
+    authority: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "terminal-cleanup-authority@1"
+        ),
+        "logical_attempt_id": intent.get("logical_attempt_id"),
+        "reservation_id": intent.get("reservation_id"),
+        "cleanup_id": intent.get("cleanup_id"),
+        "binding_path": intent.get("binding_path"),
+        "binding_record_id": intent.get("binding_record_id"),
+        "termination_fence_id": intent.get("termination_fence_id"),
+    }
+    authority["authority_id"] = _effect_receipt_identity(authority)
+    if authority.get("authority_id") != intent.get("authority_id"):
+        raise ValueError("terminal cleanup intent authority drifted")
+    return authority
+
+def _cleanup_progress_matches(
+    progress: Mapping[str, object] | None,
+    *,
+    intent: Mapping[str, object],
+    completion_id: str = "",
+) -> bool:
+    """Validate authority-observed monotonic cleanup progress bytes."""
+
+    if not isinstance(progress, Mapping) or set(progress) != {
+        "schema",
+        "logical_attempt_id",
+        "reservation_id",
+        "authority_id",
+        "phase",
+        "intent_id",
+        "intent",
+        "completion_id",
+        "previous_progress_id",
+        "progress_id",
+    }:
+        return False
+    body = {
+        key: item for key, item in progress.items() if key != "progress_id"
+    }
+    phase = progress.get("phase")
+    if (
+        progress.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "terminal-cleanup-progress@1"
+        )
+        or phase not in {"intent_committed", "completion_committed"}
+        or progress.get("logical_attempt_id")
+        != intent.get("logical_attempt_id")
+        or progress.get("reservation_id") != intent.get("reservation_id")
+        or progress.get("authority_id") != intent.get("authority_id")
+        or progress.get("intent_id") != intent.get("intent_id")
+        or progress.get("intent") != dict(intent)
+        or progress.get("progress_id") != _effect_receipt_identity(body)
+        or (
+            phase == "intent_committed"
+            and (
+                progress.get("completion_id") != ""
+                or progress.get("previous_progress_id") != ""
+            )
+        )
+        or (
+            phase == "completion_committed"
+            and (
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(progress.get("completion_id") or ""),
+                )
+                is None
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(progress.get("previous_progress_id") or ""),
+                )
+                is None
+            )
+        )
+        or completion_id
+        and (
+            phase != "completion_committed"
+            or progress.get("completion_id") != completion_id
+        )
+    ):
+        return False
+    return True
+
+def _recover_cleanup_completion(
+    completion_path: Path,
+    *,
+    expected_lifecycle: Mapping[str, object] | None = None,
+    docker_absence_verified: bool = False,
+    binding_lock: _DockerBindingLock | None = None,
+    terminal_cleanup_progress: Mapping[str, object] | None = None,
+) -> bool:
+    """Converge an already-authorized post-Docker cleanup transition.
+
+    A completion record has a public integrity hash, not mutation authority.
+    Replay therefore requires the retained original binding inode and, for a
+    marker-only crash gap, the exact terminal attempt-CAS intent.  Tombstones
+    are discarded only after that CAS also binds these exact completion bytes
+    and the binding inode has been renamed to its retained authority name.
+    """
+
+    lock_handle = binding_lock
+    owns_lock = binding_lock is None
+    try:
+        if re.fullmatch(r"[0-9a-f]{64}\.complete", completion_path.name) is None:
+            return False
+        expected_binding_path = completion_path.with_suffix(".json")
+        if lock_handle is None:
+            lock_handle = _docker_binding_lock_descriptor(expected_binding_path)
+        value = lock_handle.read(completion_path)
+        if value is None or set(value) != {
+            "schema",
+            "binding_path",
+            "binding_identity",
+            "binding_record",
+            "resources",
+            "docker_absence",
+            "cleanup_intent",
+            "completion_id",
+        }:
+            return False
+        body = {key: item for key, item in value.items() if key != "completion_id"}
+        binding_path = Path(str(value.get("binding_path") or ""))
+        binding_identity = value.get("binding_identity")
+        binding_record = value.get("binding_record")
+        resources = value.get("resources")
+        cleanup_intent = value.get("cleanup_intent")
+        record_container = str(
+            binding_record.get("container_name")
+            if isinstance(binding_record, dict)
+            else ""
+        )
+        record_provider = str(
+            binding_record.get("provider")
+            if isinstance(binding_record, dict)
+            else ""
+        )
+        record_lease = Path(
+            str(
+                binding_record.get("lease_root")
+                if isinstance(binding_record, dict)
+                else ""
+            )
+        )
+        record_home = Path(
+            str(
+                binding_record.get("provider_home")
+                if isinstance(binding_record, dict)
+                else ""
+            )
+        )
+        record_prompt = Path(
+            str(
+                binding_record.get("prompt_path")
+                if isinstance(binding_record, dict)
+                else ""
+            )
+        )
+        cleanup_root_valid = False
+        if isinstance(binding_record, dict):
+            try:
+                observed_root, observed_root_identity = (
+                    _validated_docker_cleanup_root(
+                        lease_root=record_lease,
+                        provider_home=record_home,
+                        prompt_path=record_prompt,
+                        expected_root=Path(
+                            str(binding_record.get("cleanup_root") or "")
+                        ),
+                        expected_identity=binding_record.get(
+                            "cleanup_root_identity"
+                        ),
+                    )
+                )
+                cleanup_root_valid = bool(
+                    binding_record.get("cleanup_root") == str(observed_root)
+                    and binding_record.get("cleanup_root_identity")
+                    == observed_root_identity
+                )
+            except (TypeError, ValueError):
+                cleanup_root_valid = False
+        lifecycle_valid = bool(
+            expected_lifecycle is None
+            or (
+                isinstance(binding_record, dict)
+                and all(
+                    binding_record.get(name) == expected
+                    for name, expected in expected_lifecycle.items()
+                )
+            )
+        )
+        if (
+            value.get("schema") != _DOCKER_CLEANUP_COMPLETION_SCHEMA
+            or value.get("completion_id") != _effect_receipt_identity(body)
+            or not isinstance(value.get("docker_absence"), dict)
+            or completion_path != _cleanup_completion_path(binding_path)
+            or binding_path != expected_binding_path
+            or completion_path.parent != binding_path.parent
+            or binding_path.parent.name != _DOCKER_CLEANUP_BINDING_DIRECTORY
+            or not isinstance(binding_identity, dict)
+            or set(binding_identity) != {"device", "inode", "mode", "uid"}
+            or not isinstance(binding_record, dict)
+            or not isinstance(cleanup_intent, dict)
+            or binding_record.get("schema") != _DOCKER_CLEANUP_BINDING_SCHEMA
+            or not cleanup_root_valid
+            or binding_record.get("binding_path") != str(binding_path)
+            or binding_record.get("provider") not in _DOCKER_ISOLATION_PROVIDERS
+            or record_provider not in _DOCKER_ISOLATION_PROVIDERS
+            or _DOCKER_CONTAINER_NAME_RE.fullmatch(record_container) is None
+            or not record_container.startswith(
+                f"ipfs-accelerate-{record_provider}-"
+            )
+            or binding_path
+            != binding_path.parent
+            / (hashlib.sha256(record_container.encode("ascii")).hexdigest() + ".json")
+            or not record_lease.name.startswith(
+                f"asref-{record_provider}-container-"
+            )
+            or not record_home.name.startswith(
+                f"asref-{record_provider}-home-"
+            )
+            or not record_prompt.name.startswith("asref-grok-prompt-")
+            or binding_record.get("docker_config")
+            != str(record_lease / "docker-config")
+            or binding_record.get("cidfile") != str(record_lease / "container.cid")
+            or not lifecycle_valid
+            or _cleanup_completion_value(
+                binding_path=binding_path,
+                binding_identity=binding_identity,
+                binding_record=binding_record,
+                terminal_cleanup_authority=(
+                    _cleanup_intent_terminal_authority(cleanup_intent)
+                ),
+                binding_lock=lock_handle,
+            )
+            != value
+            or not isinstance(resources, list)
+        ):
+            return False
+        if not docker_absence_verified:
+            return False
+        lock_handle.path_identity(completion_path)
+        scoped_intent = bool(cleanup_intent.get("logical_attempt_id"))
+        if scoped_intent and not _cleanup_progress_matches(
+            terminal_cleanup_progress,
+            intent=cleanup_intent,
+            completion_id=str(value.get("completion_id") or ""),
+        ):
+            return False
+        if (
+            not _cleanup_binding_authority_present(
+                binding_path,
+                binding_identity=binding_identity,
+                binding_record=binding_record,
+                binding_lock=lock_handle,
+            )
+        ):
+            return False
+        resource_specs: list[tuple[Path, bool, Mapping[str, int]]] = []
+        for item in resources:
+            if (
+                not isinstance(item, dict)
+                or set(item) != {"name", "path", "directory", "identity"}
+                or not isinstance(item.get("directory"), bool)
+                or not isinstance(item.get("identity"), dict)
+            ):
+                return False
+            resource_specs.append(
+                (
+                    Path(str(item["path"])),
+                    bool(item["directory"]),
+                    item["identity"],
+                )
+            )
+        resource_states: list[
+            tuple[Path, bool, Mapping[str, int], bool]
+        ] = []
+        for path, directory, identity in resource_specs:
+            quarantine, owned, marker, tombstone = _cleanup_path_quarantine(
+                path,
+                directory=directory,
+                identity=identity,
+            )
+            # A self-hashed completion is never authority to rename or delete
+            # a live original (or an incompletely quarantined ``owned``
+            # inode).  Only the pre-existing exact tombstone admits final
+            # tombstone disposal below.
+            if os.path.lexists(path) or os.path.lexists(owned):
+                return False
+            tombstone_present = _cleanup_tombstone_matches(marker, tombstone)
+            fully_absent = bool(
+                not tombstone_present
+                and not os.path.lexists(marker)
+                and not os.path.lexists(quarantine)
+            )
+            if not tombstone_present and not fully_absent:
+                return False
+            resource_states.append(
+                (path, directory, identity, tombstone_present)
+            )
+        # A crash can occur between any two tombstone disposals.  Each exact
+        # resource therefore converges independently from either its admitted
+        # tombstone or a fully absent prior completion state.
+        for path, directory, identity, tombstone_present in resource_states:
+            if tombstone_present:
+                if not _discard_owned_cleanup_tombstone(
+                    path,
+                    directory=directory,
+                    identity=identity,
+                ):
+                    return False
+        for path, directory, identity, _present in resource_states:
+            quarantine, owned, marker, _tombstone = _cleanup_path_quarantine(
+                path,
+                directory=directory,
+                identity=identity,
+            )
+            if any(
+                os.path.lexists(candidate)
+                for candidate in (path, owned, marker, quarantine)
+            ):
+                return False
+        return True
+    except (KeyError, OSError, TypeError, ValueError):
+        return False
+    finally:
+        if owns_lock and lock_handle is not None:
+            lock_handle.close()
+
+def _reobserve_cleanup_binding_docker_absence(
+    binding_record: Mapping[str, object],
+) -> bool:
+    """Independently recheck a completed binding without issuing an effect."""
+
+    raw_fence = binding_record.get("termination_fence")
+    fence = raw_fence if isinstance(raw_fence, Mapping) and raw_fence else None
+    docker_bin = str(binding_record.get("docker_bin") or "")
+    container_name = str(binding_record.get("container_name") or "")
+    if (
+        docker_bin not in {"/usr/bin/docker", "/usr/local/bin/docker"}
+        or _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
+    ):
+        return False
+    recovery_config = Path(
+        tempfile.mkdtemp(prefix="aseh-docker-completion-recheck-")
+    )
+    recovery_config.chmod(0o700)
+    try:
+        _remove_exact_docker_container(
+            docker_bin=docker_bin,
+            docker_config=recovery_config,
+            container_name=container_name,
+            settle_for_creation=False,
+            deadline=time.monotonic() + _DOCKER_CLEANUP_TIMEOUT_SECONDS,
+            termination_fence=fence,
+            issue_removal=False,
+        )
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+    finally:
+        shutil.rmtree(recovery_config, ignore_errors=True)
+
+def _finalize_verified_cleanup_completion(
+    *,
+    binding_path: Path,
+    binding_identity: Mapping[str, int],
+    binding_record: Mapping[str, object],
+    expected_lifecycle: Mapping[str, object] | None = None,
+    terminal_cleanup_store: object | None = None,
+    terminal_cleanup_reservation: object | None = None,
+) -> bool:
+    """Retire an independently admitted binding after Docker absence.
+
+    Callers invoke this only after they have established exact Docker identity
+    and kernel-scope quiescence. Protected provider cleanup first commits the
+    exact removal intent through its existing terminal attempt CAS. The stable
+    binding lock then covers inode quarantine, completion publication, the
+    monotonic CAS completion, and retirement of the original binding inode.
+    Unscoped cleanup can complete the uninterrupted live path, but never
+    admits a marker-only crash gap.
+    """
+
+    lock_handle: _DockerBindingLock | None = None
+    try:
+        scoped_cleanup = bool(
+            terminal_cleanup_store is not None
+            and terminal_cleanup_reservation is not None
+        )
+        if (terminal_cleanup_store is None) != (
+            terminal_cleanup_reservation is None
+        ):
+            return False
+
+        def observed_terminal() -> object | None:
+            if not scoped_cleanup:
+                return None
+            logical_attempt_id = str(
+                getattr(
+                    terminal_cleanup_reservation,
+                    "logical_attempt_id",
+                    "",
+                )
+                or ""
+            )
+            observe = getattr(terminal_cleanup_store, "observe", None)
+            if not logical_attempt_id or not callable(observe):
+                raise ValueError("terminal cleanup CAS observer is unavailable")
+            observed = observe(logical_attempt_id)
+            if (
+                observed is None
+                or getattr(observed, "state", "") != "terminal"
+                or getattr(observed, "reservation_id", "")
+                != getattr(terminal_cleanup_reservation, "reservation_id", "")
+                or getattr(observed, "terminal_cleanup_authority", None)
+                != getattr(
+                    terminal_cleanup_reservation,
+                    "terminal_cleanup_authority",
+                    None,
+                )
+            ):
+                raise ValueError("terminal cleanup CAS authority changed")
+            return observed
+
+        terminal = observed_terminal()
+        terminal_authority = (
+            getattr(terminal, "terminal_cleanup_authority", None)
+            if terminal is not None
+            else None
+        )
+        lock_handle = _docker_binding_lock_descriptor(binding_path)
+        completion_path = _cleanup_completion_path(binding_path)
+        authority_path = _cleanup_authority_path(binding_path)
+        if lock_handle.exists(binding_path) and lock_handle.exists(authority_path):
+            # Recover only the exact link-before-unlink retirement crash.
+            # The completion bytes and (when scoped) terminal CAS completion
+            # must already be authoritative; a second name alone grants no
+            # ability to issue or replay any removal effect.
+            expected_completion = _cleanup_completion_value(
+                binding_path=binding_path,
+                binding_identity=binding_identity,
+                binding_record=binding_record,
+                terminal_cleanup_authority=terminal_authority,
+                binding_lock=lock_handle,
+            )
+            completion = lock_handle.read(completion_path)
+            cleanup_intent = (
+                completion.get("cleanup_intent")
+                if isinstance(completion, Mapping)
+                else None
+            )
+            progress = (
+                getattr(terminal, "terminal_cleanup_progress", None)
+                if terminal is not None
+                else None
+            )
+            if (
+                completion != expected_completion
+                or not isinstance(cleanup_intent, Mapping)
+                or (
+                    scoped_cleanup
+                    and not _cleanup_progress_matches(
+                        progress,
+                        intent=cleanup_intent,
+                        completion_id=str(
+                            completion.get("completion_id") or ""
+                        ),
+                    )
+                )
+                or not _reobserve_cleanup_binding_docker_absence(
+                    binding_record
+                )
+                or not _retire_cleanup_binding_authority(
+                    binding_path,
+                    binding_identity=binding_identity,
+                    binding_record=binding_record,
+                    binding_lock=lock_handle,
+                )
+            ):
+                return False
+            return _recover_cleanup_completion(
+                completion_path,
+                expected_lifecycle=expected_lifecycle,
+                docker_absence_verified=True,
+                binding_lock=lock_handle,
+                terminal_cleanup_progress=progress,
+            )
+        current = lock_handle.read(binding_path)
+        if current is None:
+            expected_completion = _cleanup_completion_value(
+                binding_path=binding_path,
+                binding_identity=binding_identity,
+                binding_record=binding_record,
+                terminal_cleanup_authority=terminal_authority,
+                binding_lock=lock_handle,
+            )
+            if (
+                lock_handle.read(completion_path)
+                != expected_completion
+                or not _cleanup_binding_authority_present(
+                    binding_path,
+                    binding_identity=binding_identity,
+                    binding_record=binding_record,
+                    binding_lock=lock_handle,
+                )
+                or not _reobserve_cleanup_binding_docker_absence(binding_record)
+            ):
+                return False
+            return _recover_cleanup_completion(
+                completion_path,
+                expected_lifecycle=expected_lifecycle,
+                docker_absence_verified=True,
+                binding_lock=lock_handle,
+                terminal_cleanup_progress=(
+                    getattr(terminal, "terminal_cleanup_progress", None)
+                    if terminal is not None
+                    else None
+                ),
+            )
+        if (
+            current != dict(binding_record)
+            or lock_handle.path_identity(binding_path)
+            != dict(binding_identity)
+            or not _reobserve_cleanup_binding_docker_absence(binding_record)
+        ):
+            return False
+        path_identities = binding_record.get("path_identities")
+        if not isinstance(path_identities, dict):
+            return False
+        expected_completion = _cleanup_completion_value(
+            binding_path=binding_path,
+            binding_identity=binding_identity,
+            binding_record=binding_record,
+            terminal_cleanup_authority=terminal_authority,
+            binding_lock=lock_handle,
+        )
+        cleanup_intent = expected_completion.get("cleanup_intent")
+        if not isinstance(cleanup_intent, Mapping):
+            return False
+        if scoped_cleanup:
+            prior_progress = getattr(
+                terminal,
+                "terminal_cleanup_progress",
+                None,
+            )
+            if not prior_progress:
+                # The CAS intent must precede every inode mutation. If a
+                # same-UID writer renamed a credential and forged its public
+                # tombstone first, do not convert that absence into cleanup
+                # authority.
+                initial_resources = cleanup_intent.get("resources")
+                if not isinstance(initial_resources, list):
+                    return False
+                for item in initial_resources:
+                    if (
+                        not isinstance(item, Mapping)
+                        or not isinstance(item.get("identity"), Mapping)
+                        or not isinstance(item.get("directory"), bool)
+                    ):
+                        return False
+                    initial_path = Path(str(item.get("path") or ""))
+                    try:
+                        metadata = os.lstat(initial_path)
+                    except OSError:
+                        return False
+                    quarantine, owned, marker, _tombstone = (
+                        _cleanup_path_quarantine(
+                            initial_path,
+                            directory=bool(item["directory"]),
+                            identity=item["identity"],  # type: ignore[arg-type]
+                        )
+                    )
+                    if (
+                        not _owned_cleanup_path_matches(
+                            metadata,
+                            directory=bool(item["directory"]),
+                            identity=item["identity"],  # type: ignore[arg-type]
+                        )
+                        or any(
+                            os.path.lexists(candidate)
+                            for candidate in (owned, marker, quarantine)
+                        )
+                    ):
+                        return False
+            commit_intent = getattr(
+                terminal_cleanup_store,
+                "commit_terminal_cleanup_intent",
+                None,
+            )
+            if not callable(commit_intent):
+                return False
+            terminal = commit_intent(terminal, intent=cleanup_intent)
+            progress = getattr(terminal, "terminal_cleanup_progress", None)
+            if not _cleanup_progress_matches(
+                progress,
+                intent=cleanup_intent,
+            ):
+                return False
+        else:
+            progress = None
+        completion_already_exact = bool(
+            lock_handle.read(completion_path)
+            == expected_completion
+        )
+        completion_already_committed = bool(
+            completion_already_exact
+            and (
+                not scoped_cleanup
+                or _cleanup_progress_matches(
+                    progress,
+                    intent=cleanup_intent,
+                    completion_id=str(
+                        expected_completion.get("completion_id") or ""
+                    ),
+                )
+            )
+        )
+        intent_resources = cleanup_intent.get("resources")
+        if not isinstance(intent_resources, list) or len(intent_resources) != 3:
+            return False
+        admitted_tombstones = {
+            str(item.get("name") or ""): str(item.get("tombstone_id") or "")
+            for item in intent_resources
+            if isinstance(item, Mapping)
+        }
+        for name, field, directory in (
+            ("prompt_path", "prompt_path", False),
+            ("provider_home", "provider_home", True),
+            ("lease_root", "lease_root", True),
+        ):
+            identity = path_identities.get(name)
+            path = Path(str(binding_record.get(field) or ""))
+            if not isinstance(identity, dict):
+                return False
+            quarantine, owned, marker, _tombstone = _cleanup_path_quarantine(
+                path,
+                directory=directory,
+                identity=identity,
+            )
+            fully_absent = not any(
+                os.path.lexists(candidate)
+                for candidate in (path, owned, marker, quarantine)
+            )
+            if fully_absent and completion_already_committed:
+                continue
+            if not _remove_owned_cleanup_path(
+                path,
+                directory=directory,
+                identity=identity,
+                admitted_tombstone_id=(
+                    admitted_tombstones.get(name, "")
+                    if scoped_cleanup
+                    else ""
+                ),
+            ):
+                return False
+        completion_path = _publish_cleanup_completion(
+            binding_path=binding_path,
+            binding_identity=binding_identity,
+            binding_record=binding_record,
+            terminal_cleanup_authority=terminal_authority,
+            binding_lock=lock_handle,
+        )
+        completion = lock_handle.read(completion_path)
+        if completion != expected_completion:
+            return False
+        if scoped_cleanup:
+            commit_completion = getattr(
+                terminal_cleanup_store,
+                "commit_terminal_cleanup_completion",
+                None,
+            )
+            if not callable(commit_completion):
+                return False
+            terminal = commit_completion(
+                terminal,
+                intent_id=str(cleanup_intent.get("intent_id") or ""),
+                completion_id=str(completion.get("completion_id") or ""),
+            )
+            progress = getattr(terminal, "terminal_cleanup_progress", None)
+            if not _cleanup_progress_matches(
+                progress,
+                intent=cleanup_intent,
+                completion_id=str(completion.get("completion_id") or ""),
+            ):
+                return False
+        if not _recover_cleanup_completion(
+            completion_path,
+            expected_lifecycle=expected_lifecycle,
+            docker_absence_verified=True,
+            binding_lock=lock_handle,
+            terminal_cleanup_progress=progress,
+        ):
+            return False
+        if not _retire_cleanup_binding_authority(
+            binding_path,
+            binding_identity=binding_identity,
+            binding_record=binding_record,
+            binding_lock=lock_handle,
+        ):
+            return False
+        return _recover_cleanup_completion(
+            completion_path,
+            expected_lifecycle=expected_lifecycle,
+            docker_absence_verified=True,
+            binding_lock=lock_handle,
+            terminal_cleanup_progress=progress,
+        )
+    except (FileNotFoundError, OSError, TypeError, ValueError):
+        return False
+    finally:
+        if lock_handle is not None:
+            lock_handle.close()
+
+def _docker_cleanup_control_socket(descriptor: int) -> socket.socket:
+    """Take ownership of one connected, procfs-nonreopenable Unix socket."""
+
+    if descriptor < 3:
+        raise ValueError("Docker cleanup control descriptor is invalid")
+    try:
+        metadata = os.fstat(descriptor)
+    except OSError as exc:
+        raise ValueError("Docker cleanup control descriptor is unavailable") from exc
+    if not stat.S_ISSOCK(metadata.st_mode):
+        raise ValueError("Docker cleanup control descriptor is not a socket")
+    channel = socket.socket(fileno=descriptor)
+    try:
+        if (
+            channel.family != socket.AF_UNIX
+            or channel.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)
+            != socket.SOCK_STREAM
+        ):
+            raise ValueError("Docker cleanup control socket has the wrong type")
+        channel.getpeername()
+        channel.settimeout(None)
+        os.set_inheritable(descriptor, False)
+        return channel
+    except BaseException:
+        channel.close()
+        raise
+
+def _docker_control_peer_credentials(
+    channel: socket.socket,
+) -> tuple[int, int, int]:
+    try:
+        payload = channel.getsockopt(
+            socket.SOL_SOCKET,
+            socket.SO_PEERCRED,
+            struct.calcsize("3i"),
+        )
+        pid, uid, gid = struct.unpack("3i", payload)
+    except (OSError, struct.error) as exc:
+        raise ValueError("Docker cleanup control peer is unavailable") from exc
+    if pid <= 0 or uid < 0 or gid < 0:
+        raise ValueError("Docker cleanup control peer is invalid")
+    return pid, uid, gid
+
+def _docker_cleanup_watchdog_launcher_main(argv: Sequence[str]) -> int:
+    """Detach the existing cleanup watchdog beyond the fenced runner tree.
+
+    The supervisor's strict shutdown path freezes and kills every descendant
+    before it releases a lane.  A mere ``setsid`` watchdog is still a
+    descendant and therefore cannot run its exact-container cleanup handler.
+    This single-purpose launcher double-forks, and reports readiness only
+    after the watchdog has been reparented to PID 1.  If that invariant is not
+    available (for example under an unexpected subreaper), provider launch
+    fails closed instead of creating an unreapable external effect.
+
+    The inherited control capability is a connected Unix socket, not a pipe.
+    Linux refuses reopening socket FDs through ``/proc/<pid>/fd``; combined
+    with the qualified ptrace prerequisite this prevents a same-UID peer from
+    injecting command or result bytes into the post-exec channel.
+    """
+
+    items = list(argv)
+    if (
+        len(items) < 4
+        or items[0] != "--control-fd"
+        or items[2] != _DOCKER_CLEANUP_WATCHDOG_ARG
+    ):
+        return 2
+    channel: socket.socket | None = None
+    try:
+        channel = _docker_cleanup_control_socket(int(items[1]))
+        runner_index = items.index("--runner-pid", 3)
+        runner_pid = int(items[runner_index + 1])
+        peer_pid, peer_uid, peer_gid = _docker_control_peer_credentials(channel)
+    except (IndexError, OSError, ValueError):
+        if channel is not None:
+            channel.close()
+        return 2
+    if (
+        peer_pid != runner_pid
+        or peer_uid != os.geteuid()
+        or peer_gid != os.getegid()
+    ):
+        channel.close()
+        return 2
+
+    launcher_pid = os.getpid()
+    try:
+        child_pid = os.fork()
+    except OSError:
+        channel.close()
+        return 2
+    if child_pid:
+        channel.close()
+        return 0
+
+    try:
+        os.setsid()
+    except OSError:
+        channel.close()
+        return 2
+    deadline = time.monotonic() + 2.0
+    while os.getppid() == launcher_pid and time.monotonic() < deadline:
+        time.sleep(0.005)
+    if os.getppid() != 1:
+        # The nearest subreaper is still inside an unknown ownership tree.
+        # Refuse to claim kill-safe cleanup rather than weakening strict
+        # descendant fencing or silently leaking a provider effect.
+        channel.close()
+        return 2
+    return _docker_cleanup_watchdog_main(items[3:], control_socket=channel)
+
+class _DetachedDockerCleanupWatchdog:
+    """Exact birth identity for the non-child kill-safe cleanup process."""
+
+    def __init__(self, pid: int, start_ticks: int) -> None:
+        self.pid = pid
+        self.start_ticks = start_ticks
+        if not _runner_process_identity_alive(pid, start_ticks):
+            raise ValueError("Docker cleanup watchdog birth is not alive")
+        try:
+            self._pidfd = os.pidfd_open(pid, 0)
+        except (AttributeError, OSError) as exc:
+            raise ValueError("Docker cleanup watchdog pidfd is unavailable") from exc
+        self._exited = False
+        if not _runner_process_identity_alive(pid, start_ticks):
+            os.close(self._pidfd)
+            self._pidfd = -1
+            raise ValueError("Docker cleanup watchdog birth changed")
+
+    def poll(self) -> int | None:
+        if self._exited:
+            return 0
+        readable, _writable, _exceptional = select.select(
+            [self._pidfd],
+            [],
+            [],
+            0,
+        )
+        if not readable:
+            return None
+        self._exited = True
+        os.close(self._pidfd)
+        self._pidfd = -1
+        return 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        deadline = (
+            None
+            if timeout is None
+            else time.monotonic() + max(0.0, float(timeout))
+        )
+        while self.poll() is None:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(
+                    cmd=["docker-cleanup-watchdog", str(self.pid)],
+                    timeout=timeout,
+                )
+            time.sleep(0.02)
+        return 0
+
+    def _signal(self, signum: int) -> None:
+        if self.poll() is not None:
+            return
+        try:
+            signal.pidfd_send_signal(self._pidfd, signum)
+        except (AttributeError, ProcessLookupError):
+            return
+
+    def terminate(self) -> None:
+        self._signal(signal.SIGTERM)
+
+    def kill(self) -> None:
+        self._signal(signal.SIGKILL)
+
+    def __del__(self) -> None:
+        descriptor = getattr(self, "_pidfd", -1)
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+def _read_detached_docker_cleanup_watchdog(
+    channel: socket.socket,
+    *,
+    timeout: float = 5.0,
+) -> _DetachedDockerCleanupWatchdog:
+    """Read and verify one bounded detached-watchdog readiness record."""
+
+    deadline = time.monotonic() + max(0.0, timeout)
+    payload = bytearray()
+    while b"\n" not in payload and len(payload) <= 128:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("Docker cleanup watchdog readiness timed out")
+        readable, _writable, _exceptional = select.select(
+            [channel],
+            [],
+            [],
+            remaining,
+        )
+        if not readable:
+            raise ValueError("Docker cleanup watchdog readiness timed out")
+        block = channel.recv(129 - len(payload))
+        if not block:
+            break
+        payload.extend(block)
+    match = re.fullmatch(rb"([1-9][0-9]*):([0-9]+)\n", bytes(payload))
+    if match is None:
+        raise ValueError("Docker cleanup watchdog readiness is invalid")
+    pid = int(match.group(1))
+    start_ticks = int(match.group(2))
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        closing_parenthesis = raw.rfind(")")
+        fields = raw[closing_parenthesis + 2 :].split()
+        parent_pid = int(fields[1])
+    except (OSError, IndexError, UnicodeError, ValueError) as exc:
+        raise ValueError("Docker cleanup watchdog parent is unavailable") from exc
+    if closing_parenthesis < 0 or parent_pid != 1:
+        raise ValueError("Docker cleanup watchdog is not detached from the fence")
+    watchdog = _DetachedDockerCleanupWatchdog(pid, start_ticks)
+    if watchdog.poll() is not None:
+        raise ValueError("Docker cleanup watchdog exited before admission")
+    return watchdog
+
+def _recorded_codex_cleanup_identity(
+    launch_receipt: Mapping[str, object],
+) -> tuple[Path, Path, str]:
+    """Validate one immutable cleanup receipt without requiring live paths."""
+
+    command = launch_receipt.get("command_receipt")
+    cleanup = launch_receipt.get("cleanup_receipt")
+    if not isinstance(command, Mapping):
+        raise ValueError("recorded Docker cleanup command is unavailable")
+    if not isinstance(cleanup, Mapping) or set(cleanup) != {
+        "schema",
+        "lease_root",
+        "docker_config",
+        "cidfile",
+        "provider_home",
+        "prompt_path",
+        "watchdog_pid",
+        "watchdog_start_ticks",
+        "receipt_id",
+    }:
+        raise ValueError("recorded Docker cleanup receipt is invalid")
+    cleanup_body = {
+        key: item for key, item in cleanup.items() if key != "receipt_id"
+    }
+    if (
+        cleanup.get("schema")
+        != "ipfs_accelerate_py.agent_supervisor.provider-effect-cleanup@1"
+        or cleanup.get("receipt_id") != _effect_receipt_identity(cleanup_body)
+        or launch_receipt.get("cleanup_id") != cleanup.get("receipt_id")
+    ):
+        raise ValueError("recorded Docker cleanup receipt drifted")
+    create_argv = command.get("create_argv")
+    if not isinstance(create_argv, list) or any(
+        not isinstance(item, str) for item in create_argv
+    ):
+        raise ValueError("recorded Docker cleanup command is invalid")
+    try:
+        if create_argv.count("--config") != 1 or create_argv.count(
+            "--cidfile"
+        ) != 1:
+            raise ValueError("recorded Docker cleanup command is ambiguous")
+        config_index = create_argv.index("--config") + 1
+        cidfile_index = create_argv.index("--cidfile") + 1
+        config_path = Path(create_argv[config_index])
+        cidfile_path = Path(create_argv[cidfile_index])
+    except (IndexError, ValueError) as exc:
+        raise ValueError("recorded Docker cleanup lease is invalid") from exc
+    container_name = str(launch_receipt.get("container_name") or "")
+    lease_root = config_path.parent
+    provider_home = Path(str(cleanup.get("provider_home") or ""))
+    prompt_path = Path(str(cleanup.get("prompt_path") or ""))
+    watchdog_pid = cleanup.get("watchdog_pid")
+    watchdog_start_ticks = cleanup.get("watchdog_start_ticks")
+    cleanup_root = lease_root.parent
+    if (
+        not config_path.is_absolute()
+        or config_path.name != "docker-config"
+        or cidfile_path != lease_root / "container.cid"
+        or not cleanup_root.is_absolute()
+        or not lease_root.name.startswith("asref-codex-container-")
+        or _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
+        or create_argv.count("--name") != 1
+        or create_argv.index("--name") + 1 >= len(create_argv)
+        or create_argv[create_argv.index("--name") + 1] != container_name
+        or cleanup.get("lease_root") != str(lease_root)
+        or cleanup.get("docker_config") != str(config_path)
+        or cleanup.get("cidfile") != str(cidfile_path)
+        or not provider_home.is_absolute()
+        or provider_home.parent != cleanup_root
+        or not provider_home.name.startswith("asref-codex-home-")
+        or not prompt_path.is_absolute()
+        or prompt_path.parent != cleanup_root
+        or not prompt_path.name.startswith("asref-grok-prompt-")
+        or type(watchdog_pid) is not int
+        or watchdog_pid <= 0
+        or type(watchdog_start_ticks) is not int
+        or watchdog_start_ticks < 0
+    ):
+        raise ValueError("recorded Docker cleanup lease identity is invalid")
+    return lease_root, config_path, container_name
+
+def _recorded_codex_terminal_cleanup_evidence(
+    launch_receipt: Mapping[str, object],
+) -> dict[str, object]:
+    """Read the exact live binding identities sealed by terminal CAS.
+
+    This observation happens before the terminal provider transition, while
+    the winner's private lease and command-bound cleanup record must still be
+    present. It never treats a retained completion record as input authority.
+    """
+
+    lease_root, docker_config, container_name = _recorded_codex_lease_root(
+        launch_receipt
+    )
+    cleanup = launch_receipt.get("cleanup_receipt")
+    runtime = launch_receipt.get("runtime_receipt")
+    if not isinstance(cleanup, Mapping) or not isinstance(runtime, Mapping):
+        raise ValueError("recorded Docker cleanup authority is unavailable")
+    docker_bin = str(runtime.get("path") or "")
+    if docker_bin not in {"/usr/bin/docker", "/usr/local/bin/docker"}:
+        raise ValueError("recorded Docker cleanup runtime is invalid")
+    cidfile = lease_root / "container.cid"
+    provider_home = Path(str(cleanup.get("provider_home") or ""))
+    prompt_path = Path(str(cleanup.get("prompt_path") or ""))
+    binding_path = _docker_cleanup_binding_path(
+        container_name,
+        create_directory=False,
+    )
+    if binding_path is None or not os.path.lexists(binding_path):
+        raise ValueError("recorded Docker cleanup binding is unavailable")
+    candidate = _read_private_control_record(
+        binding_path.parent,
+        binding_path.name,
+    )
+    if candidate is None:
+        raise ValueError("recorded Docker cleanup binding disappeared")
+    journal = _validated_docker_create_journal(
+        lease_root=lease_root,
+        provider="codex",
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+    )
+    observation = candidate.get("effect_observation")
+    raw_fence = candidate.get("termination_fence")
+    try:
+        runner_pid = int(candidate.get("runner_pid"))
+        runner_start_ticks = int(candidate.get("runner_start_ticks"))
+        watchdog_pid = int(cleanup.get("watchdog_pid"))
+        watchdog_start_ticks = int(cleanup.get("watchdog_start_ticks"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("recorded Docker cleanup process identity is invalid") from exc
+    if (
+        journal is None
+        or journal.get("state") != "create_observed"
+        or not isinstance(observation, Mapping)
+        or any(
+            not isinstance(name, str) or not isinstance(value, str)
+            for name, value in observation.items()
+        )
+        or not isinstance(raw_fence, Mapping)
+    ):
+        raise ValueError("recorded Docker cleanup binding is not terminalizable")
+    admitted = _validated_cleanup_binding_record(
+        binding_path,
+        provider="codex",
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        lease_root=lease_root,
+        provider_home=provider_home,
+        prompt_path=prompt_path,
+        effect_observation=observation,  # type: ignore[arg-type]
+        binding_state="command_bound",
+        runner_pid=runner_pid,
+        runner_start_ticks=runner_start_ticks,
+        watchdog_pid=watchdog_pid,
+        watchdog_start_ticks=watchdog_start_ticks,
+        create_command_id=str(journal["command_id"]),
+        create_cwd=Path(str(journal["cwd"])),
+        create_environment_id=str(journal["environment_id"]),
+        termination_fence=raw_fence,
+    )
+    fence_id = ""
+    if raw_fence:
+        fence = _validated_docker_termination_fence(
+            raw_fence,
+            provider="codex",
+            container_name=container_name,
+            expected_container_id=str(
+                launch_receipt.get("container_id") or ""
+            ).removeprefix("sha256:"),
+            expected_image_id=str(launch_receipt.get("image_id") or ""),
+        )
+        fence_id = str(fence["fence_id"])
+    return {
+        "binding_path": str(binding_path),
+        "binding_record_id": str(admitted["record_id"]),
+        "termination_fence_id": fence_id,
+    }
+
+def _observed_provider_attempt_cleanup_state(
+    attempt_observer: object | None,
+    *,
+    logical_attempt_id: str,
+    lease_root: Path,
+    docker_config: Path,
+    container_name: str,
+    watchdog_pid: int,
+    watchdog_start_ticks: int,
+) -> str:
+    """Read one exact provider CAS without acquiring mutation authority."""
+
+    if attempt_observer is None:
+        return "unscoped"
+    try:
+        reservation = attempt_observer.observe(  # type: ignore[attr-defined]
+            logical_attempt_id
+        )
+    except (OSError, ValueError):
+        return "unknown"
+    if reservation is None or reservation.state == "reserved":
+        return "absent"
+    if reservation.state not in {
+        "effect_started",
+        "quarantined",
+        "terminal",
+    }:
+        return "unknown"
+    launch_receipt = reservation.effect_launch_receipt
+    cleanup = launch_receipt.get("cleanup_receipt")
+    if not isinstance(cleanup, Mapping):
+        return "unknown"
+    try:
+        observed_root, observed_config, observed_name = (
+            _recorded_codex_cleanup_identity(launch_receipt)
+        )
+    except (OSError, ValueError):
+        return "unknown"
+    if (
+        observed_root != lease_root
+        or observed_config != docker_config
+        or observed_name != container_name
+        or cleanup.get("lease_root") != str(lease_root)
+        or cleanup.get("docker_config") != str(docker_config)
+        or cleanup.get("watchdog_pid") != watchdog_pid
+        or cleanup.get("watchdog_start_ticks") != watchdog_start_ticks
+    ):
+        # The CAS admits exactly one cleanup receipt for this logical
+        # attempt.  A different, fully validated immutable receipt proves
+        # that this local lease lost before provider start and remains inert.
+        # Local marker ownership still wins fail-closed in the caller.
+        return "foreign"
+    return "terminal" if reservation.state == "terminal" else "owned"
+
+def _admit_terminal_cleanup_authority(
+    *,
+    launch_receipt: Mapping[str, object],
+    terminal_observer: object,
+    terminal_reservation: object,
+) -> object:
+    """Re-observe the immutable terminal provider CAS before destruction."""
+
+    logical_attempt_id = str(
+        getattr(terminal_reservation, "logical_attempt_id", "") or ""
+    )
+    observe = getattr(terminal_observer, "observe", None)
+    if not logical_attempt_id or not callable(observe):
+        raise ValueError("terminal Docker cleanup observer is unavailable")
+    try:
+        observed = observe(logical_attempt_id)
+    except (OSError, TypeError, ValueError) as exc:
+        raise ValueError("terminal Docker cleanup CAS is unavailable") from exc
+    observed_outcome = getattr(observed, "terminal_outcome", None)
+    observed_returncode = getattr(observed, "terminal_returncode", None)
+    observed_cleanup_authority = getattr(
+        observed,
+        "terminal_cleanup_authority",
+        None,
+    )
+    cleanup_authority_fields = {
+        "schema",
+        "logical_attempt_id",
+        "reservation_id",
+        "cleanup_id",
+        "binding_path",
+        "binding_record_id",
+        "termination_fence_id",
+        "authority_id",
+    }
+    authority_body = (
+        {
+            name: item
+            for name, item in observed_cleanup_authority.items()
+            if name != "authority_id"
+        }
+        if isinstance(observed_cleanup_authority, Mapping)
+        else {}
+    )
+    if (
+        observed is None
+        or getattr(observed, "state", "") != "terminal"
+        or getattr(observed, "terminal", False) is not True
+        or (
+            getattr(observed, "content_id", "")
+            != getattr(terminal_reservation, "content_id", "")
+            and (
+                getattr(observed, "terminal_outcome_id", "")
+                != getattr(terminal_reservation, "terminal_outcome_id", "")
+                or getattr(observed, "terminal_cleanup_authority", None)
+                != getattr(
+                    terminal_reservation,
+                    "terminal_cleanup_authority",
+                    None,
+                )
+            )
+        )
+        or getattr(observed, "reservation_id", "")
+        != getattr(terminal_reservation, "reservation_id", "")
+        or getattr(observed, "effect_launch_receipt", None)
+        != dict(launch_receipt)
+        or not isinstance(observed_outcome, Mapping)
+        or observed_outcome.get("reservation_id")
+        != getattr(observed, "reservation_id", "")
+        or observed_outcome.get("effect_launch_receipt")
+        != getattr(observed, "effect_launch_receipt", None)
+        or not isinstance(
+            observed_outcome.get("fallback_dispatched"),
+            bool,
+        )
+        or isinstance(observed_returncode, bool)
+        or not isinstance(observed_returncode, int)
+        or observed_outcome.get("fallback_returncode") != observed_returncode
+        or not isinstance(observed_cleanup_authority, Mapping)
+        or set(observed_cleanup_authority) != cleanup_authority_fields
+        or observed_cleanup_authority.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "terminal-cleanup-authority@1"
+        )
+        or observed_cleanup_authority.get("logical_attempt_id")
+        != logical_attempt_id
+        or observed_cleanup_authority.get("reservation_id")
+        != getattr(observed, "reservation_id", "")
+        or observed_cleanup_authority.get("cleanup_id")
+        != launch_receipt.get("cleanup_id")
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(observed_cleanup_authority.get("binding_record_id") or ""),
+        )
+        is None
+        or (
+            observed_outcome.get("fallback_dispatched") is True
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(
+                    observed_cleanup_authority.get(
+                        "termination_fence_id"
+                    )
+                    or ""
+                ),
+            )
+            is None
+        )
+        or (
+            observed_outcome.get("fallback_dispatched") is False
+            and observed_cleanup_authority.get("termination_fence_id") != ""
+        )
+        or observed_cleanup_authority.get("authority_id")
+        != _effect_receipt_identity(authority_body)
+    ):
+        raise ValueError("terminal Docker cleanup CAS authority drifted")
+    return observed
+
+def _recorded_codex_running_fence(
+    launch_receipt: Mapping[str, object],
+    *,
+    capture_if_absent: bool,
+) -> Mapping[str, object]:
+    """Admit a persisted fence, or capture one for a newly started container."""
+
+    lease_root, docker_config, container_name = _recorded_codex_lease_root(
+        launch_receipt
+    )
+    binding_path = _docker_cleanup_binding_path(
+        container_name,
+        create_directory=False,
+    )
+    if binding_path is None:
+        raise ValueError("recorded Docker start binding is absent")
+    candidate = _read_private_control_record(
+        binding_path.parent,
+        binding_path.name,
+    )
+    if candidate is None:
+        raise ValueError("recorded Docker start binding disappeared")
+    cleanup = launch_receipt.get("cleanup_receipt")
+    if not isinstance(cleanup, Mapping):
+        raise ValueError("recorded Docker cleanup receipt is absent")
+    provider_home = Path(str(cleanup.get("provider_home") or ""))
+    prompt_path = Path(str(cleanup.get("prompt_path") or ""))
+    cidfile = Path(str(cleanup.get("cidfile") or ""))
+    journal = _validated_docker_create_journal(
+        lease_root=lease_root,
+        provider="codex",
+        docker_bin=str(candidate.get("docker_bin") or ""),
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+    )
+    effect_observation = candidate.get("effect_observation")
+    raw_fence = candidate.get("termination_fence")
+    if (
+        journal is None
+        or journal.get("state") != "create_observed"
+        or candidate.get("binding_state") != "command_bound"
+        or not isinstance(effect_observation, dict)
+        or not isinstance(raw_fence, Mapping)
+    ):
+        raise ValueError("recorded Docker start authority is invalid")
+    admitted = _validated_cleanup_binding_record(
+        binding_path,
+        provider="codex",
+        docker_bin=str(candidate.get("docker_bin") or ""),
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        lease_root=lease_root,
+        provider_home=provider_home,
+        prompt_path=prompt_path,
+        effect_observation=effect_observation,
+        binding_state="command_bound",
+        runner_pid=int(candidate.get("runner_pid") or 0),
+        runner_start_ticks=int(candidate.get("runner_start_ticks") or 0),
+        watchdog_pid=int(candidate.get("watchdog_pid") or 0),
+        watchdog_start_ticks=int(candidate.get("watchdog_start_ticks") or 0),
+        create_command_id=str(journal["command_id"]),
+        create_cwd=Path(str(journal["cwd"])),
+        create_environment_id=str(journal["environment_id"]),
+        termination_fence=raw_fence,
+    )
+    container_id = str(launch_receipt.get("container_id") or "").removeprefix(
+        "sha256:"
+    )
+    image_id = str(launch_receipt.get("image_id") or "")
+    if raw_fence:
+        fence = _validated_docker_termination_fence(
+            raw_fence,
+            provider="codex",
+            container_name=container_name,
+            expected_container_id=container_id,
+            expected_image_id=image_id,
+        )
+    else:
+        if not capture_if_absent:
+            raise ValueError(
+                "running Docker adoption lacks its persisted termination fence"
+            )
+        fence = _attest_exact_docker_execution(
+            docker_bin=str(admitted["docker_bin"]),
+            docker_config=docker_config,
+            provider="codex",
+            container_name=container_name,
+            container_id=container_id,
+            image_id=image_id,
+            timeout=2.0,
+        )
+        if fence.get("docker_state") != "running" or int(
+            fence.get("init_pid") or 0
+        ) <= 0:
+            raise ValueError("recorded Docker provider start is not running")
+        admitted, _admitted_identity = _publish_docker_termination_fence_binding(
+            record_path=binding_path,
+            expected_record_id=str(admitted["record_id"]),
+            expected_identity=_cleanup_path_identity(
+                binding_path,
+                directory=False,
+            ),
+            provider="codex",
+            docker_bin=str(admitted["docker_bin"]),
+            docker_config=docker_config,
+            container_name=container_name,
+            cidfile=cidfile,
+            lease_root=lease_root,
+            provider_home=provider_home,
+            prompt_path=prompt_path,
+            effect_observation=effect_observation,
+            runner_pid=int(admitted["runner_pid"]),
+            runner_start_ticks=int(admitted["runner_start_ticks"]),
+            watchdog_pid=int(admitted["watchdog_pid"]),
+            watchdog_start_ticks=int(admitted["watchdog_start_ticks"]),
+            create_command_id=str(journal["command_id"]),
+            create_cwd=Path(str(journal["cwd"])),
+            create_environment_id=str(journal["environment_id"]),
+            termination_fence=fence,
+        )
+    return fence
+
+class _BoundedStderrTee:
+    """Copy live Grok stderr for host-failure detection without muting it."""
+
+    def __init__(self, destination: Any, *, limit: int = 65536) -> None:
+        self._destination = destination
+        self._chunks: list[str] = []
+        self._size = 0
+        self._limit = int(limit)
+
+    def write(self, data: str) -> int:
+        text = str(data)
+        self._destination.write(text)
+        if text:
+            self._chunks.append(text)
+            self._size += len(text)
+            while self._size > self._limit and len(self._chunks) > 1:
+                dropped = self._chunks.pop(0)
+                self._size -= len(dropped)
+        return len(text)
+
+    def flush(self) -> None:
+        self._destination.flush()
+
+    def getvalue(self) -> str:
+        return "".join(self._chunks)

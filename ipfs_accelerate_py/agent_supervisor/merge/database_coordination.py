@@ -1199,6 +1199,32 @@ CREATE INDEX IF NOT EXISTS maintenance_leases_scope_idx
 """
 
 
+_STARTUP_REBUILT_INDEXES: Final[tuple[tuple[str, str], ...]] = (
+    (
+        "coordination_tasks_ready_idx",
+        "CREATE INDEX coordination_tasks_ready_idx "
+        "ON coordination_tasks(ready, registered_at_ms, task_cid)",
+    ),
+)
+
+
+def _rebuild_startup_indexes(connection: Any) -> None:
+    """Rebuild exact disposable indexes before coordination mutations.
+
+    DuckDB can preserve an inconsistent ART index after an interrupted update
+    while every underlying table row remains readable. Reopening that file
+    and updating ``coordination_tasks.ready`` then invalidates the connection
+    with ``Failed to delete all rows from index`` on every daemon restart.
+    The coordinator's file lock is already held here, so replacing this one
+    derived lookup structure cannot contend with another writer and does not
+    alter authoritative task, claim, lease, or event rows.
+    """
+
+    for name, statement in _STARTUP_REBUILT_INDEXES:
+        connection.execute(f'DROP INDEX IF EXISTS "{name}"')
+        connection.execute(statement)
+
+
 _COORDINATION_REQUIRED_COLUMNS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "coordination_metadata": (("key", "VARCHAR"), ("value", "VARCHAR")),
     "coordination_tasks": (
@@ -1825,6 +1851,7 @@ class DatabaseCoordinator:
                     for statement in _split_sql_statements(_BOOKKEEPING_SQL):
                         connection.execute(statement)
                     _ensure_immutable_fenced_lease_indexes(connection)
+                    _rebuild_startup_indexes(connection)
                     for key, value in (
                         ("interface", DATABASE_COORDINATOR_INTERFACE),
                         ("schema", DATABASE_COORDINATION_SCHEMA),
@@ -5917,7 +5944,11 @@ class DatabaseCoordinator:
                 connection,
                 lease_id=lease_id,
                 scope_key=scope_key,
-                event_type="protected_task_write",
+                event_type=(
+                    "protected_task_write"
+                    if expected_lease_state is LeaseState.ACCEPTED
+                    else "verified_released_task_claim"
+                ),
                 fencing_token=token,
                 fence_epoch=epoch,
                 observed_at_ms=now,
@@ -6787,6 +6818,7 @@ class DatabaseCoordinator:
         expected_fencing_token: int | None = None,
         expected_fence_epoch: int | None = None,
         expected_attempt_status: AttemptStatus | str = AttemptStatus.RUNNING,
+        expected_lease_state: LeaseState | str = LeaseState.ACCEPTED,
         allow_logically_completed: bool = False,
         now_ms: int | None = None,
     ) -> FencedLease:
@@ -6795,8 +6827,11 @@ class DatabaseCoordinator:
         Unlike :meth:`protect_write`, this validates the task claim, fenced
         lease, and task-attempt projections together.  The caller-provided
         identity must name the same task, claim, attempt, owner, lease, token,
-        and epoch in all three rows.  Expired, released, completed, or taken-
-        over attempts fail closed.
+        and epoch in all three rows.  Live writes require the default
+        ``accepted`` state.  Retry reconciliation may explicitly verify an
+        immutable ``released`` claim, but that check does not reactivate the
+        lease or authorize another provider/effect execution.  Expired,
+        completed, or taken-over attempts fail closed.
         """
 
         identity = self._task_claim_identity(claim)
@@ -6825,6 +6860,22 @@ class DatabaseCoordinator:
             if isinstance(expected_attempt_status, AttemptStatus)
             else AttemptStatus(str(expected_attempt_status).strip().lower())
         )
+        lease_state = (
+            expected_lease_state
+            if isinstance(expected_lease_state, LeaseState)
+            else LeaseState(str(expected_lease_state).strip().lower())
+        )
+        if lease_state not in {LeaseState.ACCEPTED, LeaseState.RELEASED}:
+            raise ValueError(
+                "task claim protection only admits accepted or released state"
+            )
+        if (
+            lease_state is LeaseState.RELEASED
+            and status is not AttemptStatus.RELEASED
+        ):
+            raise ValueError(
+                "released task claim protection requires a released attempt"
+            )
         now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
         with self._lock:
             connection = self._require()
@@ -6837,6 +6888,7 @@ class DatabaseCoordinator:
                     expected_attempt_status=status,
                     allow_logically_completed=bool(allow_logically_completed),
                     record_event=True,
+                    expected_lease_state=lease_state,
                 )
                 self._commit_if_idle(connection)
                 return lease
