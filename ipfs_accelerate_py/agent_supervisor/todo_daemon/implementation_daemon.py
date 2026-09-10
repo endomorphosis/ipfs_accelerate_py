@@ -127061,6 +127061,119 @@ class DatabaseImplementationDaemon:
             KeyError,
         ):
             return False
+    @staticmethod
+    def _unknown_callback_no_merge_source_is_retryable(
+        diagnostic: Mapping[str, Any],
+    ) -> bool:
+        """True when unknown-callback recovery found no merge and no effect.
+
+        DOEP-031-class stalls: the provider started, the callback expired
+        unknown, and landed-callback requalification rejects source_count=0.
+        That is not an observed mutation; it is a lost callback with nothing
+        to requalify.  One automatic requeue unblocks the frontier.
+        """
+
+        provenance = diagnostic.get("mutation_provenance")
+        admission = diagnostic.get("admission")
+        return bool(
+            str(diagnostic.get("stage") or "") == "callback_transport_rejected"
+            and str(diagnostic.get("reason_code") or "")
+            == "source_count_rejected"
+            and str(diagnostic.get("disposition") or "")
+            == "rejected_no_observed_effect"
+            and isinstance(provenance, Mapping)
+            and provenance
+            and all(str(value) == "not_attempted" for value in provenance.values())
+            and isinstance(admission, Mapping)
+            and admission.get("request_present") is False
+        )
+
+    def _requeue_unknown_callback_without_merge_source(
+        self,
+        *,
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+        diagnostic: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """CAS a no-merge unknown callback back to retrying once."""
+
+        current = self.task_source.get(str(getattr(task, "task_cid", "") or ""))
+        if current is None:
+            return None
+        body = getattr(current, "body", None)
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        if not isinstance(receipt, Mapping):
+            return None
+        if (
+            str(receipt.get("operation") or "")
+            == "database_portal_unknown_callback_no_merge_recovery"
+        ):
+            return None
+        if str(current.status or "").strip().lower() not in {
+            "quarantined",
+            "blocked",
+        }:
+            return None
+        recovery_receipt = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-unknown-callback-no-merge-recovery@1"
+            ),
+            "operation": "database_portal_unknown_callback_no_merge_recovery",
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "reason": "unknown_callback_no_merge_source_requeued",
+            "retryable": True,
+            "provider_dispatched": True,
+            "attempt_consumed": True,
+            "diagnostic_signature": str(
+                diagnostic.get("diagnostic_signature") or ""
+            ),
+            "control_expected_status": str(current.status),
+            "control_expected_revision": int(current.revision),
+        }
+        result = self._cas_task_status_database(
+            str(current.task_cid),
+            expected_revision=int(current.revision),
+            new_status="retrying",
+            receipt=recovery_receipt,
+            expected_control_receipt=receipt,
+        )
+        updated = self.task_source.get(str(current.task_cid))
+        if updated is None or str(updated.status).strip().lower() != "retrying":
+            return None
+        self._record_event(
+            "unknown_callback_no_merge_source_requeued",
+            attempt_id=attempt.attempt_id,
+            task_cid=str(updated.task_cid),
+            body={
+                "diagnostic_signature": recovery_receipt["diagnostic_signature"],
+                "provider_dispatched": True,
+                "attempt_consumed": True,
+            },
+        )
+        result_to_dict = getattr(result, "to_dict", None)
+        return {
+            "task_cid": str(updated.task_cid),
+            "reopened": True,
+            "changed": bool(
+                getattr(result, "changed", True)
+                if not callable(result_to_dict)
+                else result_to_dict().get("changed", True)
+            ),
+            "status": "retrying",
+            "reason": "unknown_callback_no_merge_source_requeued",
+            "provider_dispatched": False,
+            "source_provider_dispatched": True,
+            "attempt_consumed": True,
+            "operator_review_required": False,
+        }
+
     def _reopen_unimplemented_unknown_callback_task(
         self,
         task: Any,
@@ -127158,10 +127271,11 @@ class DatabaseImplementationDaemon:
                 task,
                 attempt,
             )
-        if (
-            attempt is None
-            or not source_matches
-        ):
+        if attempt is None:
+            # Another shard owns the execution cursor.  Do not advertise
+            # operator review for a task this lane cannot source-match.
+            return None
+        if not source_matches:
             return {
                 "task_cid": str(getattr(task, "task_cid", "") or ""),
                 "reopened": False,
@@ -127328,6 +127442,20 @@ class DatabaseImplementationDaemon:
             mutation_provenance = dict(diagnostic["mutation_provenance"])
             effect_changed = "changed" in mutation_provenance.values()
             effect_unknown = "unknown" in mutation_provenance.values()
+            if (
+                not effect_changed
+                and not effect_unknown
+                and self._unknown_callback_no_merge_source_is_retryable(
+                    diagnostic
+                )
+            ):
+                retried = self._requeue_unknown_callback_without_merge_source(
+                    task=task,
+                    attempt=attempt,
+                    diagnostic=diagnostic,
+                )
+                if retried is not None:
+                    return retried
             return {
                 "task_cid": str(task.task_cid),
                 "reopened": False,

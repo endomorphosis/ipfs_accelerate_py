@@ -3719,6 +3719,91 @@ def test_unknown_callback_without_landed_outputs_never_reopens_or_requeues(
         daemon.close()
 
 
+def test_unknown_callback_without_merge_source_requeues_instead_of_operator_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _git_repo(tmp_path)
+
+    def recover(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise _sealed_post_commit_recovery_diagnostic(
+            task=SimpleNamespace(
+                task_cid=attempt.task_cid,
+                task_alias=attempt.task_alias,
+            ),
+            attempt=attempt,
+            admission={
+                "phase": "unspecified",
+                "gate": "not_evaluated",
+                "allowed_task_statuses": [],
+                "allow_shared_lane_source": False,
+                "allow_callback_reconciliation_transport_lineage": False,
+                "request_present": False,
+                "request_status": "",
+                "missing_output_lineage": False,
+                "callback_transport_lineage": False,
+                "projection_scope": "unresolved",
+                "task_source_getter": "unavailable",
+                "canonical_task_present": False,
+                "canonical_task_identity_matches": False,
+                "canonical_task_status": "",
+            },
+            stage="callback_transport_rejected",
+            reason_code="source_count_rejected",
+        )
+
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        repo_root=repo,
+        session="session:doep-031-unknown",
+        post_commit_candidate_recovery_fn=recover,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        source_attempt = DatabaseTaskAttempt(
+            attempt_id="attempt:doep-031-unknown",
+            claim_id="claim:doep-031-unknown",
+            task_cid=str(task.task_cid),
+            task_alias=str(task.task_alias),
+            attempt_number=2,
+            owner_session_id="session:doep-031-unknown",
+            fencing_token=2,
+            fence_epoch=2,
+            lease_id="lease:doep-031-unknown",
+            committed_phase="failed",
+            status="failed",
+            started_at_ms=100,
+            finished_at_ms=900,
+            revision=2,
+        )
+        receipt = _unknown_callback_quarantine_receipt()
+        receipt["attempt_id"] = source_attempt.attempt_id
+        quarantined = daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=receipt,
+        ).task
+        monkeypatch.setattr(daemon, "get_attempt", lambda _id: source_attempt)
+        monkeypatch.setattr(
+            daemon,
+            "_strict_resume_rejection_receipt_matches",
+            lambda *args, **kwargs: True,
+        )
+        outcome = daemon._reopen_unimplemented_unknown_callback_task(quarantined)
+        assert outcome is not None
+        assert outcome["reopened"] is True
+        assert outcome["operator_review_required"] is False
+        assert outcome["reason"] == "unknown_callback_no_merge_source_requeued"
+        updated = daemon.task_source.get("task:cid:001")
+        assert updated is not None
+        assert updated.status == "retrying"
+    finally:
+        daemon.close()
+
+
 def test_unknown_callback_without_declared_outputs_stays_quarantined(
     tmp_path: Path,
 ) -> None:
