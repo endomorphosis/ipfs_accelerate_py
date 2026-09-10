@@ -3356,30 +3356,10 @@ def rearm_token_handoff(
         raise
 
 
-def _coordinator_cmdline_matches(pid: int) -> bool:
-    """True when /proc/pid argv is a SAWM coordinator, not an unrelated reuse."""
-
-    if int(pid) <= 1:
-        return False
-    try:
-        text = (
-            Path(f"/proc/{int(pid)}/cmdline")
-            .read_bytes()
-            .replace(b"\0", b" ")
-            .decode("utf-8", "replace")
-        )
-    except OSError:
-        return False
-    return (
-        "configured_board_scheduler" in text
-        or "multi_supervisor_runner" in text
-    )
-
-
 def _coordinator_pid_projection_liveness(pid: int) -> OwnerLiveness:
     """Classify a bare scheduler PID conservatively."""
 
-    liveness = owner_liveness(
+    return owner_liveness(
         ProcessBirthIdentity(
             pid=int(pid),
             start_time_ticks=0,
@@ -3387,11 +3367,6 @@ def _coordinator_pid_projection_liveness(pid: int) -> OwnerLiveness:
             parent_pid=0,
         )
     )
-    if liveness is not OwnerLiveness.ALIVE:
-        return liveness
-    if not _coordinator_cmdline_matches(int(pid)):
-        return OwnerLiveness.DEAD
-    return OwnerLiveness.ALIVE
 
 
 def _classify_coordinator_pid_projection(
