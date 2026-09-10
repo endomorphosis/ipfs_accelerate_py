@@ -585,6 +585,10 @@ class SupervisorLoop:
                             # Do not SIGTERM a live extra-gate child on
                             # control_plane_source_changed. Lane-0 STOP then
                             # termination_blocked killed PCTDD-005 grok.
+                            self.sleep(max(0.01, min(
+                                float(self.config.heartbeat_seconds),
+                                float(self.config.poll_seconds),
+                            )))
                             continue
                         final_status = decision.status or "stopped"
                         self.last_recycle_reason = decision.reason
@@ -603,6 +607,10 @@ class SupervisorLoop:
                                 child_still_alive=_poll_child_exit(child)
                                 is None,
                             ):
+                                self.sleep(max(0.01, min(
+                                    float(self.config.heartbeat_seconds),
+                                    float(self.config.poll_seconds),
+                                )))
                                 continue
                             final_status = "termination_blocked"
                             self.last_recycle_reason = (
@@ -640,6 +648,10 @@ class SupervisorLoop:
                                 child_still_alive=_poll_child_exit(child)
                                 is None,
                             ):
+                                self.sleep(max(0.01, min(
+                                    float(self.config.heartbeat_seconds),
+                                    float(self.config.poll_seconds),
+                                )))
                                 continue
                             final_status = "termination_blocked"
                             self.last_recycle_reason = (
