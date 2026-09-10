@@ -759,18 +759,54 @@ def test_database_watchdog_rearms_idle_frontier_when_blocked_probe_is_empty(
     ] == 1
 
 
-def test_sealed_portal_recovery_source_uses_control_plane_pin(tmp_path) -> None:
+@pytest.mark.parametrize("commit_outputs", [False, True])
+def test_database_board_producer_cannot_mutate_markdown(tmp_path, commit_outputs):
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    todo = supervisor.config.todo_path
+    todo.write_text("# Sealed board\n")
+    events = []
+    supervisor._record_event = lambda kind, payload: events.append((kind, payload))
+
+    def mutate():
+        todo.write_text("unaccepted generated card")
+        pytest.fail("database authority reached legacy board callback")
+
+    result = supervisor._run_generated_board_producer(
+        producer="reconciliation-guardrail", commit_outputs=commit_outputs,
+        callback=mutate,
+    )
+    assert result == []
+    assert todo.read_text() == "# Sealed board\n"
+    assert events[-1][1]["reason"] == "database_authority_requires_native_board_mutation"
+
+
+def test_sealed_portal_recovery_source_requires_verified_capsule(tmp_path, monkeypatch):
     supervisor = _supervisor(tmp_path, lane_index=0)
     pin = SimpleNamespace(source_head="a" * 40, source_tree="b" * 40)
     supervisor.config.accepted_control_plane_pin = pin
-    supervisor.config.plan_bound_source_head = ""
-    supervisor.config.plan_bound_source_tree = ""
     supervisor.config.configured_board_live_admission = None
+    assert supervisor._sealed_portal_recovery_source() is None
+    supervisor.config.configured_board_live_admission = pin
+    calls = []
 
+    def verify(admission, **kwargs):
+        calls.append(kwargs)
+        return pin
+
+    monkeypatch.setattr(implementation_supervisor_module,
+                        "verify_configured_board_live_capsule", verify)
     assert supervisor._sealed_portal_recovery_source() == {
-        "source_head": "a" * 40,
-        "source_tree": "b" * 40,
+        "source_head": "a" * 40, "source_tree": "b" * 40,
     }
+    assert calls[-1]["control_plane_pin"] is pin
+
+    def reject(*args, **kwargs):
+        raise ValueError("capsule source drifted")
+
+    monkeypatch.setattr(implementation_supervisor_module,
+                        "verify_configured_board_live_capsule", reject)
+    with pytest.raises(ValueError, match="capsule source drifted"):
+        supervisor._sealed_portal_recovery_source()
 
 
 def test_database_watchdog_preserves_child_when_readiness_is_unavailable(

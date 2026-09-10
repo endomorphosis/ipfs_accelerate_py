@@ -7373,46 +7373,24 @@ class PortalImplementationSupervisor:
         budget: an invalid mapping fails closed and parks the frontier.
         """
 
-        candidates: list[tuple[Any, Any]] = []
-        pin = self.config.accepted_control_plane_pin
-        if pin is not None:
-            candidates.append(
-                (getattr(pin, "source_head", ""), getattr(pin, "source_tree", ""))
-            )
-        candidates.append(
-            (
-                self.config.plan_bound_source_head,
-                self.config.plan_bound_source_tree,
-            )
-        )
         admission = self.config.configured_board_live_admission
-        if admission is not None:
-            try:
-                verified = verify_configured_board_live_capsule(
-                    admission,
-                    control_plane_pin=self.config.accepted_control_plane_pin,
-                    control_plane_descriptor=self.config.accepted_control_plane_descriptor,
-                    native_dependency_launch=self.config.native_dependency_launch,
-                    repo_root=self.config.repo_root,
-                    expected_board_namespace=self.board_namespace,
-                )
-                candidates.append((verified.source_head, verified.source_tree))
-            except Exception:
-                candidates.append(
-                    (
-                        getattr(admission, "source_head", ""),
-                        getattr(admission, "source_tree", ""),
-                    )
-                )
-        for head, tree in candidates:
-            source_head = self._git_object_id(head)
-            source_tree = self._git_object_id(tree)
-            if source_head and source_tree:
-                return {
-                    "source_head": source_head,
-                    "source_tree": source_tree,
-                }
-        return None
+        if admission is None:
+            return None
+        # Never turn failed capsule verification into an unverified source
+        # grant. The recovery budget must receive live, checked bindings.
+        verified = verify_configured_board_live_capsule(
+            admission,
+            control_plane_pin=self.config.accepted_control_plane_pin,
+            control_plane_descriptor=self.config.accepted_control_plane_descriptor,
+            native_dependency_launch=self.config.native_dependency_launch,
+            repo_root=self.config.repo_root,
+            expected_board_namespace=self.board_namespace,
+        )
+        source_head = self._git_object_id(verified.source_head)
+        source_tree = self._git_object_id(verified.source_tree)
+        if not source_head or not source_tree:
+            raise ValueError("verified portal recovery source identity is invalid")
+        return {"source_head": source_head, "source_tree": source_tree}
 
     def _rearm_blocked_recoverable_portal_frontier(self) -> dict[str, Any]:
         """CAS blocked zero-provider portal failures to retrying on the live owner."""
@@ -11646,6 +11624,17 @@ class PortalImplementationSupervisor:
     ):
         """Serialize a committed generated-board update with checkout mutations."""
 
+        # Database task definitions belong to their typed state owner. Legacy
+        # producers append Markdown cards and can invalidate a sealed board;
+        # a checkout lease does not grant task-definition mutation authority.
+        if operation == "generated_board_update" and self._database_authority_enabled():
+            payload = {
+                "producer": producer,
+                "reason": "database_authority_requires_native_board_mutation",
+                "operation": operation,
+            }
+            self._record_event("generated_board_update_deferred", payload)
+            return deferred_result(payload) if deferred_result is not None else []
         if not commit_outputs:
             return callback()
         current_lease = self._current_supervisor_checkout_lease()
