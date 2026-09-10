@@ -1729,6 +1729,90 @@ class TypedDatabaseTaskSource:
 
     get = get_task
 
+    def task_revision_diagnostic_window(
+        self, task_cid: str, *, current_revision: int
+    ) -> Mapping[str, Any]:
+        """Read at most 32 exact recent revisions through existing scoped reads.
+
+        This is optional diagnostic evidence, not complete history. A changed
+        generation, large row or predecessor outside the window is unavailable;
+        do not retry a whole history scan or widen the caller's grant.
+        """
+        from .diagnostic_history import (
+            MAX_DIAGNOSTIC_HISTORY_BYTES,
+            diagnostic_history_window,
+            diagnostic_window_start,
+        )
+
+        self._require_open()
+        start = diagnostic_window_start(current_revision)
+        deadline = time.monotonic() + 4.0
+        before = self._client.load_generation()
+        current = self.get_task(task_cid)
+        if (
+            current is None
+            or current.task_cid != task_cid
+            or current.revision != current_revision
+        ):
+            raise TaskSourceConflictError("diagnostic task head changed")
+        rows = []
+        size = 0
+        for revision in range(start, current_revision + 1):
+            # One row retains the existing transport's bounded large-body
+            # behavior; the total number of reads is independent of old history.
+            if time.monotonic() >= deadline:
+                raise TaskSourceBoundsError(
+                    "diagnostic history observation time budget elapsed"
+                )
+            page = self._client.execute(
+                "executor_task_revision_history_page",
+                {
+                    "task_cid": task_cid,
+                    "limit": 1,
+                    "offset": revision - 1,
+                },
+            )
+            if len(page) != 1:
+                raise TaskSourceIntegrityError("diagnostic history row is unavailable")
+            row = page[0]
+            if (
+                not isinstance(row, Mapping)
+                or set(row) != {"task_cid", "revision", "status", "body_json"}
+                or row["task_cid"] != task_cid
+                or type(row["revision"]) is not int
+                or row["revision"] != revision
+            ):
+                raise TaskSourceIntegrityError(
+                    "diagnostic history row identity differs"
+                )
+            entry = {
+                "revision": revision,
+                "status": row["status"],
+                "body": _closed_history_mapping_json(row["body_json"]),
+            }
+            size += len(canonical_json_bytes(entry))
+            if size > MAX_DIAGNOSTIC_HISTORY_BYTES:
+                raise TaskSourceBoundsError(
+                    "diagnostic history window exceeds byte bound"
+                )
+            rows.append(entry)
+        if time.monotonic() >= deadline:
+            raise TaskSourceBoundsError(
+                "diagnostic history observation time budget elapsed"
+            )
+        after = self._client.load_generation()
+        if before.content_id != after.content_id:
+            raise TaskSourceConflictError("diagnostic history generation changed")
+        if rows[-1]["status"] != current.status or rows[-1]["body"] != dict(
+            current.body
+        ):
+            raise TaskSourceIntegrityError(
+                "diagnostic history differs from current task"
+            )
+        return MappingProxyType(
+            diagnostic_history_window(task_cid, current_revision, rows)
+        )
+
     def task_revision_history_projection(
         self,
         task_cid_or_alias: str,

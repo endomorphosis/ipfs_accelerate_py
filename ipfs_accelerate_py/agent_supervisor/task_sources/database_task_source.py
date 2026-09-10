@@ -2794,6 +2794,14 @@ class DatabaseTaskSource:
 
         return self._intent.plan_projection(task_cids=task_cids)
 
+    def task_revision_diagnostic_window(
+        self, task_cid: str, *, current_revision: int
+    ) -> Mapping[str, Any]:
+        """Forward a bounded diagnostic suffix, never a full-history fallback."""
+        return self._intent.task_revision_diagnostic_window(
+            task_cid, current_revision=current_revision
+        )
+
     def task_revision_history_projection(self, task_cid_or_alias: str) -> Mapping[str, Any]:
         """Forward bounded lifecycle bodies used for legacy spec-CID replay."""
 
