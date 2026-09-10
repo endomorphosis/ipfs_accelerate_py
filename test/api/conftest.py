@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 import sys
 from pathlib import Path
 
@@ -111,10 +113,54 @@ else:
     pytest_runtest_logreport = _aseh_board_pytest_plugin.pytest_runtest_logreport
 
 
+_CONTROL_PLANE_MODE_SNAPSHOT: dict[Path, int] = {}
+
+
+def _control_plane_mode_targets(root: Path) -> list[Path]:
+    targets = [root / "scripts" / "run_agent_supervisor_efficiency_state_hardening.py"]
+    supervisor = root / "ipfs_accelerate_py" / "agent_supervisor"
+    if supervisor.is_dir():
+        targets.extend(supervisor.rglob("*.py"))
+    return targets
+
+
+def _snapshot_control_plane_modes(root: Path) -> None:
+    _CONTROL_PLANE_MODE_SNAPSHOT.clear()
+    for path in _control_plane_mode_targets(root):
+        try:
+            metadata = path.stat()
+        except OSError:
+            continue
+        if stat.S_ISREG(metadata.st_mode):
+            _CONTROL_PLANE_MODE_SNAPSHOT[path] = stat.S_IMODE(metadata.st_mode)
+
+
+def _restore_control_plane_modes() -> None:
+    """Undo umask-002 strips tests apply to ROOT so completion can accept SHA-stable protected paths."""
+
+    for path, mode in _CONTROL_PLANE_MODE_SNAPSHOT.items():
+        try:
+            metadata = path.stat()
+        except OSError:
+            continue
+        current = stat.S_IMODE(metadata.st_mode)
+        if current == mode:
+            continue
+        try:
+            os.chmod(path, mode)
+        except OSError:
+            continue
+
+
 def pytest_configure(config) -> None:
     _seed_r45_receipt_evidence()
+    _snapshot_control_plane_modes(repo_root)
     if _plugin_configure is not None:
         _plugin_configure(config)
+
+
+def pytest_sessionfinish(session, exitstatus) -> None:
+    _restore_control_plane_modes()
 
 
 pytest_plugins = ("ipfs_accelerate_py.testing.proof_reuse.plugin",)
