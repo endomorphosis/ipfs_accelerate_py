@@ -439,6 +439,12 @@ The semantic-preserving remodularization owner can persist and re-read its
 [kit source-forest CAS component](kit_source_forest.md) through the existing
 native authority. This component does not settle semantic acceptance or goals.
 
+The [legacy owner merge queue port](legacy_owner_merge_queue.md) provides scoped
+operations on an existing `merge_requests` queue through its admitted typed
+owner. It preserves claim fences and freezes the shared connection after an
+uncertain transaction. Native row migration, producer and consumer admission,
+and final queue settlement still require their own qualified transitions.
+
 A native preflight that performs many intent reads can use
 `with source.intent.read_session():` to reuse a standalone client connection
 for the bounded observation. Nested sessions share that scope in the calling
