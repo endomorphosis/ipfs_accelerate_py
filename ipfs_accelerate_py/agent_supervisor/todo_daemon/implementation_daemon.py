@@ -88287,7 +88287,6 @@ from ..task_sources.typed_state_owner import (
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
     TYPED_RETRYING_RECEIPT_OPERATIONS,
     TypedStateOwnerAuthorizationError,
-    TypedStateOwnerRemoteError,
     _validated_database_claim_process_attestation,
     _validated_database_strict_resume_rejection_receipt,
     typed_database_strict_resume_rejection_receipt_id,
@@ -95873,16 +95872,6 @@ class DatabaseImplementationDaemon:
             != "database_portal_callback_no_effect_recovery"
         ):
             return True
-        # Owner-admitted no-merge unknown-callback requeue reuses this
-        # operation so a live generation will CAS.  It has no Portal seed;
-        # fail-closed seed checks would exclude the only ready card and
-        # leave the board with no in-progress work.
-        if (
-            str(control.get("reason") or "")
-            == "unknown_callback_no_merge_source_requeued"
-            and control.get("retryable") is True
-        ):
-            return True
         seed = control.get("callback_no_effect_recovery_seed")
         if not isinstance(seed, Mapping) or self.max_task_attempts <= 0:
             return False
@@ -97075,25 +97064,25 @@ class DatabaseImplementationDaemon:
         }
         excluded.update(self._automatic_claim_exclusions())
         excluded.update(self._current_control_claim_rejections())
-        if self.max_task_attempts > 0:
-            for task_cid in canonical_ready_task_cids:
-                candidate = self.task_source.get(task_cid)
-                if candidate is None:
-                    continue
-                candidate_status = str(
-                    candidate.status or ""
-                ).strip().lower()
-                if (
-                    candidate_status == "ready"
-                    and self._typed_authoritative_attempt_floor(candidate)
-                    >= self.max_task_attempts
-                ) or (
-                    candidate_status == "retrying"
-                    and not self._callback_no_effect_retry_claim_is_within_budget(
-                        candidate
-                    )
-                ):
-                    excluded.add(task_cid)
+        for task_cid in canonical_ready_task_cids:
+            candidate = self.task_source.get(task_cid)
+            if candidate is None:
+                continue
+            candidate_status = str(candidate.status or "").strip().lower()
+            # Disabling the attempt ceiling never disables callback authority.
+            # A retry receipt still needs its independently verified exact seed.
+            if (
+                self.max_task_attempts > 0
+                and candidate_status == "ready"
+                and self._typed_authoritative_attempt_floor(candidate)
+                >= self.max_task_attempts
+            ) or (
+                candidate_status == "retrying"
+                and not self._callback_no_effect_retry_claim_is_within_budget(
+                    candidate
+                )
+            ):
+                excluded.add(task_cid)
         local_projection = self.coordinator.coordination_registry_projection()
         excluded.update(
             str(row.get("task_cid") or "")
@@ -127072,203 +127061,6 @@ class DatabaseImplementationDaemon:
             KeyError,
         ):
             return False
-    @staticmethod
-    def _unknown_callback_no_merge_source_is_retryable(
-        diagnostic: Mapping[str, Any],
-    ) -> bool:
-        """True when unknown-callback recovery found no merge and no effect.
-
-        DOEP-031-class stalls: the provider started, the callback expired
-        unknown, and landed-callback requalification rejects source_count=0.
-        That is not an observed mutation; it is a lost callback with nothing
-        to requalify.  One automatic requeue unblocks the frontier.
-        """
-
-        provenance = diagnostic.get("mutation_provenance")
-        admission = diagnostic.get("admission")
-        return bool(
-            str(diagnostic.get("stage") or "") == "callback_transport_rejected"
-            and str(diagnostic.get("reason_code") or "")
-            == "source_count_rejected"
-            and str(diagnostic.get("disposition") or "")
-            == "rejected_no_observed_effect"
-            and isinstance(provenance, Mapping)
-            and provenance
-            and all(str(value) == "not_attempted" for value in provenance.values())
-            and isinstance(admission, Mapping)
-            and admission.get("request_present") is False
-        )
-
-    @staticmethod
-    def _is_typed_state_owner_authorization_denied(exc: BaseException) -> bool:
-        """True when a typed owner refused the command as authorization_denied."""
-
-        if isinstance(exc, TypedStateOwnerAuthorizationError):
-            return True
-        if isinstance(exc, TypedStateOwnerRemoteError):
-            return str(getattr(exc, "error_code", "") or "") == (
-                "authorization_denied"
-            )
-        text = str(exc).casefold()
-        return (
-            "typed state-owner authorization_denied" in text
-            or (
-                "authorization_denied" in text
-                and "typedstateownerauthorizationerror" in text
-            )
-        )
-
-    def _requeue_unknown_callback_without_merge_source(
-        self,
-        *,
-        task: Any,
-        attempt: DatabaseTaskAttempt,
-        diagnostic: Mapping[str, Any],
-    ) -> dict[str, Any] | None:
-        """CAS a no-merge unknown callback back to retrying once.
-
-        The live typed owner admits only ``TYPED_RETRYING_RECEIPT_OPERATIONS``.
-        A dedicated no-merge operation is closed into that vocabulary for the
-        next owner generation, but the currently loaded owner still denies it.
-        Requeue through the already-admitted callback-no-effect retry class
-        with a complete cooldown receipt so authorization_denied cannot stall
-        the idle frontier.
-        """
-
-        current = self.task_source.get(str(getattr(task, "task_cid", "") or ""))
-        if current is None:
-            return None
-        body = getattr(current, "body", None)
-        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
-        if not isinstance(receipt, Mapping):
-            return None
-        prior_operation = str(receipt.get("operation") or "")
-        already_requeued = bool(
-            prior_operation
-            == "database_portal_unknown_callback_no_merge_recovery"
-            or (
-                prior_operation == "database_portal_callback_no_effect_recovery"
-                and str(receipt.get("reason") or "")
-                == "unknown_callback_no_merge_source_requeued"
-            )
-        )
-        if already_requeued:
-            return None
-        if str(current.status or "").strip().lower() not in {
-            "quarantined",
-            "blocked",
-        }:
-            return None
-        diagnostic_signature = str(
-            diagnostic.get("diagnostic_signature") or ""
-        )
-        queue_reason = (
-            "database_portal_unknown_callback_no_merge_recovery:"
-            + (diagnostic_signature or str(attempt.attempt_id))
-        )[:2048]
-        # The live owner process keeps the retry vocabulary loaded at boot.
-        # Use callback-no-effect, which that generation already admits, and
-        # keep the dedicated no-merge operation in the closed set for the
-        # next owner start.
-        retry_operation = "database_portal_callback_no_effect_recovery"
-        recovery_receipt: dict[str, Any] = {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "database-portal-unknown-callback-no-merge-recovery@1"
-            ),
-            "operation": retry_operation,
-            "attempt_id": attempt.attempt_id,
-            "attempt_number": int(attempt.attempt_number),
-            "claim_id": attempt.claim_id,
-            "lease_id": attempt.lease_id,
-            "owner_session_id": attempt.owner_session_id,
-            "fencing_token": int(attempt.fencing_token),
-            "fence_epoch": int(attempt.fence_epoch),
-            "reason": "unknown_callback_no_merge_source_requeued",
-            "queue_reason": queue_reason,
-            "backoff_ms": 0,
-            "retry_not_before_ms": 0,
-            "retryable": True,
-            "provider_dispatched": True,
-            "attempt_consumed": True,
-            "diagnostic_signature": diagnostic_signature,
-            "control_expected_status": str(current.status),
-            "control_expected_revision": int(current.revision),
-        }
-        owner_field = "unknown_callback_reopen_count"
-        if owner_field in receipt:
-            prior_reopen_count = receipt.get(owner_field)
-            if type(prior_reopen_count) is not int or prior_reopen_count < 0:
-                return None
-            recovery_receipt[owner_field] = int(prior_reopen_count)
-        for field in (
-            "execution_route_binding",
-            "execution_route_policy_id",
-            "execution_route_origin_revision",
-            "virgin_task_transfer",
-            "virgin_task_transfer_claim_cursor",
-        ):
-            if field in receipt:
-                recovery_receipt[field] = receipt[field]
-        guarded = getattr(
-            self.task_source,
-            "record_queue_backoff_and_cas_status",
-            None,
-        )
-        try:
-            if callable(guarded):
-                result = guarded(
-                    task_cid=str(current.task_cid),
-                    expected_revision=int(current.revision),
-                    expected_control_receipt=receipt,
-                    status="retrying",
-                    receipt=recovery_receipt,
-                    delay_ms=0,
-                    reason=queue_reason,
-                    exact_retry_not_before_ms=0,
-                )
-            else:
-                result = self._cas_task_status_database(
-                    str(current.task_cid),
-                    expected_revision=int(current.revision),
-                    new_status="retrying",
-                    receipt=recovery_receipt,
-                    expected_control_receipt=receipt,
-                )
-        except Exception as exc:
-            if self._is_typed_state_owner_authorization_denied(exc):
-                return None
-            raise
-        updated = self.task_source.get(str(current.task_cid))
-        if updated is None or str(updated.status).strip().lower() != "retrying":
-            return None
-        self._record_event(
-            "unknown_callback_no_merge_source_requeued",
-            attempt_id=attempt.attempt_id,
-            task_cid=str(updated.task_cid),
-            body={
-                "diagnostic_signature": recovery_receipt["diagnostic_signature"],
-                "provider_dispatched": True,
-                "attempt_consumed": True,
-                "retry_operation": retry_operation,
-            },
-        )
-        result_to_dict = getattr(result, "to_dict", None)
-        return {
-            "task_cid": str(updated.task_cid),
-            "reopened": True,
-            "changed": bool(
-                getattr(result, "changed", True)
-                if not callable(result_to_dict)
-                else result_to_dict().get("changed", True)
-            ),
-            "status": "retrying",
-            "reason": "unknown_callback_no_merge_source_requeued",
-            "provider_dispatched": False,
-            "source_provider_dispatched": True,
-            "attempt_consumed": True,
-            "operator_review_required": False,
-        }
 
     def _reopen_unimplemented_unknown_callback_task(
         self,
@@ -127538,27 +127330,11 @@ class DatabaseImplementationDaemon:
             mutation_provenance = dict(diagnostic["mutation_provenance"])
             effect_changed = "changed" in mutation_provenance.values()
             effect_unknown = "unknown" in mutation_provenance.values()
-            if (
-                not effect_changed
-                and not effect_unknown
-                and self._unknown_callback_no_merge_source_is_retryable(
-                    diagnostic
-                )
-            ):
-                try:
-                    retried = self._requeue_unknown_callback_without_merge_source(
-                        task=task,
-                        attempt=attempt,
-                        diagnostic=diagnostic,
-                    )
-                except Exception as requeue_error:
-                    if not self._is_typed_state_owner_authorization_denied(
-                        requeue_error
-                    ):
-                        raise
-                    retried = None
-                if retried is not None:
-                    return retried
+            # These observations describe only the rejected recovery attempt.
+            # Missing merge source and unattempted recovery writes do not close
+            # the original provider callback. Retry requires the independently
+            # verified exact-generation receipt and atomic budgeted transition
+            # below; a rejection must never bypass either authority boundary.
             return {
                 "task_cid": str(task.task_cid),
                 "reopened": False,
@@ -128356,20 +128132,6 @@ class DatabaseImplementationDaemon:
                     loaded if loaded is not None else task
                 )
             except Exception as exc:
-                if self._is_typed_state_owner_authorization_denied(exc):
-                    outcomes.append(
-                        {
-                            "task_cid": str(
-                                getattr(task, "task_cid", "") or ""
-                            ),
-                            "reopened": False,
-                            "changed": False,
-                            "reason": "typed_state_owner_authorization_denied",
-                            "error_type": type(exc).__name__,
-                            "operator_review_required": False,
-                        }
-                    )
-                    continue
                 outcomes.append(
                     {
                         "task_cid": str(getattr(task, "task_cid", "") or ""),
