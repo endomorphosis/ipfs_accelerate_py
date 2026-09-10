@@ -443,15 +443,17 @@ def test_typed_window_queries_only_bounded_recent_rows_and_denies_changed_genera
         )
 
 
+@pytest.mark.parametrize("failure_kind", ["deferral", "candidate"])
 def test_actual_typed_owner_dispatch_carries_only_exact_previous_deferral(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, failure_kind
 ):
     """Real DuckDB + authenticated typed socket; no external provider dispatch.
 
     FakeQuackTransport replaces only TCP listener setup. All executor reads,
     reservation/admission/status CAS and owner grants use the production typed
-    gateway and native database. The Portal callback builds the real prompt and
-    deliberately defers before effects, preserving ordinary release semantics.
+    gateway and native database. The Portal callback builds the real prompt.
+    Pre-effect deferral permits its ordinary successor; structured candidate
+    rejection persists codes while retaining the unsettled callback and lease.
     """
     import os
 
@@ -618,6 +620,25 @@ def test_actual_typed_owner_dispatch_carries_only_exact_previous_deferral(
                                 )
                                 is None
                             ), fault
+                if failure_kind == "candidate":
+                    return {
+                        "implementation_result": {
+                            "returncode": 78,
+                            "attempt": 1,
+                            "attempt_consumed": True,
+                            "provider_dispatched": True,
+                            "validation_result": {
+                                "attempted": True,
+                                "passed": False,
+                                "reason": "proposal_gate_failed",
+                                "proposal_gate": {
+                                    "reason_codes": [
+                                        "validation_channel_tampering_forbidden"
+                                    ]
+                                },
+                            },
+                        }
+                    }
                 raise DatabasePortalBridgeDeferred(
                     "worktree_lifecycle_claim_exists", backoff_seconds=0
                 )
@@ -629,6 +650,7 @@ def test_actual_typed_owner_dispatch_carries_only_exact_previous_deferral(
             task_source=source,
             attempt_root=tmp_path / "attempts",
             portal_factory=factory,
+            max_task_attempts=4,
         )
         outer = implementation.DatabaseImplementationDaemon(
             database_path=database,
@@ -657,15 +679,84 @@ def test_actual_typed_owner_dispatch_carries_only_exact_previous_deferral(
         prior = outer.get_attempt(first["attempt_id"])
         retry = source.get_task(prior.task_cid)
         assert retry.status == "retrying"
-        assert (
-            retry.body["completion_receipt"]["reason"]
-            == "worktree_lifecycle_claim_exists"
+        expected_reason = (
+            "proposal_gate_failed"
+            if failure_kind == "candidate"
+            else "worktree_lifecycle_claim_exists"
+        )
+        assert retry.body["completion_receipt"]["reason"] == expected_reason
+        if failure_kind == "candidate":
+            failed = next(
+                row
+                for row in outer.phase_history(prior.attempt_id)
+                if row["phase"] == "failed"
+            )
+            assert failed["body"]["candidate_failure_diagnostics"]["finding_codes"] == [
+                "validation_channel_tampering_forbidden"
+            ]
+            assert retry.body["completion_receipt"]["finding_codes"] == [
+                "validation_channel_tampering_forbidden"
+            ]
+
+        before_callback = outer.provider_invocation_recorded(
+            prior.attempt_id, idempotency_key=f"provider:{prior.attempt_id}"
         )
         second_attempt = outer.claim_next()
+        if failure_kind == "candidate":
+            # Structured failure diagnostics do not settle a dispatched
+            # callback. Preserve the native custody barrier, rather than
+            # releasing the lease to manufacture a successor for this test.
+            import json
+
+            claim = outer.coordinator.get_task_claim(prior.claim_id)
+            after_callback = outer.provider_invocation_recorded(
+                prior.attempt_id, idempotency_key=f"provider:{prior.attempt_id}"
+            )
+            assert second_attempt is None
+            assert claim.state.value == "accepted"
+            assert before_callback["callback_state"] == "started_outcome_unknown"
+            assert (
+                before_callback["provider_effect_state"] == "unknown_may_have_started"
+            )
+            assert dict(after_callback) == dict(before_callback)
+            assert len(prompts) == 1
+            (tmp_path / "candidate-custody.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "candidate-diagnostic-custody-observation@1",
+                        "source": "disposable real typed owner and actual bridge/daemon dispatch",
+                        "attempt_id": prior.attempt_id,
+                        "claim_id": prior.claim_id,
+                        "task_cid": prior.task_cid,
+                        "task_revision": retry.revision,
+                        "phase_summary": failed["body"][
+                            "candidate_failure_diagnostics"
+                        ],
+                        "canonical_retry_reason": retry.body["completion_receipt"][
+                            "reason"
+                        ],
+                        "canonical_retry_findings": retry.body["completion_receipt"][
+                            "finding_codes"
+                        ],
+                        "claim_state": claim.state.value,
+                        "callback_state": before_callback["callback_state"],
+                        "provider_effect_state": before_callback[
+                            "provider_effect_state"
+                        ],
+                        "callback_unchanged_after_next_claim": True,
+                        "successor_available": False,
+                        "provider_calls": len(prompts),
+                        "release_or_callback_mutation_by_test": False,
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
+            return
         assert second_attempt is not None
         second = outer._resume_attempt_without_process_crash(second_attempt)
         assert len(prompts) == 2 and observed[1] is not None
-        assert "worktree_lifecycle_claim_exists" in prompts[1]
+        assert expected_reason in prompts[1]
         assert prior.attempt_id in prompts[1]
         assert second["attempt_id"] != prior.attempt_id
         assert observed[1]["current"]["task_revision"] > retry.revision
