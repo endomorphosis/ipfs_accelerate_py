@@ -625,7 +625,17 @@ def _strictly_fence_pid_tree(
                     changed = True
         return selected
 
-    freeze_deadline = time.monotonic() + max(0.2, float(grace_seconds))
+    freeze_started = time.monotonic()
+    freeze_deadline = freeze_started + max(0.2, float(grace_seconds))
+    if strict_deadline is not None:
+        # A vfork parent remains in D while its child is stopped. Waiting for
+        # every member to report T can spend the whole strict deadline without
+        # ever reaching SIGKILL, leaving the owned tree frozen indefinitely.
+        # Reserve half the remaining bound for kill and exact gone-proof.
+        freeze_deadline = min(
+            freeze_deadline,
+            freeze_started + max(0.0, strict_deadline - freeze_started) / 2,
+        )
     stable_scans = 0
     while stable_scans < 2:
         if deadline_expired():
