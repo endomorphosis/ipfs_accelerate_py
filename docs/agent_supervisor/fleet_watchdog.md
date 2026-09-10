@@ -212,6 +212,17 @@ systemd starts it from the new release. A running job therefore does not wait
 on a restart of its own dispatcher. Preserve externally owned board launchers
 in the inventory; an empty `ensure_argv` leaves their native unit untouched.
 
+Recovery reuses an existing service when its unit already runs the complete
+native operator with a lifetime outside the repair job. Adding another launcher
+adapter in that case would create an unnecessary sealed-control amendment.
+Boards without such an admitted launcher need the full native operator delegated
+before credential handoff, followed by the board's source qualification. For a
+runtime update, the native maintenance gate first prevents new dispatch intents
+while the current provider finishes; source and merge leases then protect the
+verified shutdown and forward source transition. Current-root qualification and
+native resume remain required after the transition. Historical bootstrap
+completion receipts remain bound to their original sources.
+
 User lingering must be enabled for operation without an interactive login.
 Check the live units and recent observations with:
 

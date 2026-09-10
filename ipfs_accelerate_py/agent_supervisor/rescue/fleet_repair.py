@@ -358,15 +358,29 @@ as a new immutable release with the installer --enable --defer-repair-restart;
 it restarts monitoring and lets this repair dispatcher adopt the new release
 after the job ends. Use the existing configured inventory and repair checkout.
 Native detached board launches from this temporary repair service must use a
-separate user systemd scope or the board's existing dedicated service. setsid
-and start_new_session do not escape this service's control group; it is killed
-when the coding job exits. Integrate runtime.durable_launch's
+separate user systemd scope or the board's existing dedicated service. First
+inspect the configured native ensure service and its actual unit command,
+source gates and cgroup lifetime. When that existing service already runs the
+complete native operator outside the repair cgroup, reuse it and retain the
+sealed operator bytes. Do not add a launcher adapter solely to duplicate that
+existing service; this creates an unnecessary protected-manifest amendment.
+Preserve explicit cron launch custody as described above. Only when no admitted
+launcher already supplies the required lifetime, integrate runtime.durable_launch's
 delegate_repair_service_launch at the native operator entry before credential
-retirement or inherited admission descriptors. Re-run the complete native
-operator in the scope, retaining its exact source/owner/admission checks and
-propagating failure. Do not relax the repair service's KillMode or wrap an
-already sealed child in a new unqualified Python/module invocation. Verify
-that the board's actual cgroup survives the repair job's completion.
+retirement or inherited admission descriptors, and qualify that necessary source
+change. Re-run the complete native operator in the scope, retaining its exact
+source/owner/admission checks and propagating failure. setsid and start_new_session
+do not escape the repair service's control group; it is killed when the coding
+job exits. Do not relax the repair service's KillMode or wrap an already sealed
+child in a new unqualified Python/module invocation. Verify that the board's
+actual cgroup survives the repair job's completion.
+For an idle source boundary, use the native maintenance gate to stop new dispatch
+intents while preserving the current provider, then acquire the merge/source
+leases and recheck the full process population before requesting native shutdown.
+Retain exact source/index snapshots and compare them again before a forward source
+transition. A source-only candidate preflight cannot replace the native current-root
+qualification and resume checks. Ordinary descendant-source resume must not
+reissue a historical bootstrap completion receipt to bless new runtime code.
 Background worktree cleanup must not infer completion from branch ancestry or
 a terminal dead-owner lifecycle. Preserve unknown callback workspaces and refs;
 task-isolated Portal workers do not have peer cleanup authority. Database
