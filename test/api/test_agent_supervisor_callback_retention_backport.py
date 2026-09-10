@@ -63,8 +63,8 @@ def test_database_background_cleanup_requires_native_proof_api(workspace, monkey
     head = _git(repo, 'rev-parse', branch)
     def forbidden(*args, **kwargs):
         pytest.fail('cleanup without canonical proof attempted Git mutation')
-    # The guard must precede prune and the historical migration-ref cleaner.
-    monkeypatch.setattr(supervisor, '_cleanup_fenced_provider_migration_branches_locked', forbidden)
+    # This native revision has no migration-ref cleaner. Guard every Git
+    # mutation, including prune, at the subprocess boundary it actually uses.
     monkeypatch.setattr('ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.subprocess.run', forbidden)
     result = supervisor._cleanup_backlogged_worktrees_locked()
     assert result['reason'] == 'canonical_completion_cleanup_api_unavailable'
