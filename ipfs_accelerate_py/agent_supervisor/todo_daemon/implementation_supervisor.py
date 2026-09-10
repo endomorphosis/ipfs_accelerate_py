@@ -15554,6 +15554,17 @@ class PortalImplementationSupervisor:
     def cleanup_backlogged_worktrees(self) -> dict[str, Any]:
         """Remove inactive implementation worktrees whose branches are already merged."""
 
+        if self.config.database_program is not None:
+            # This native runtime lacks a canonical completion verifier at the
+            # mutation boundary. Retain callback evidence until that guarded
+            # runtime is qualified; ancestry cannot authorize disposal.
+            return {
+                "attempted": False,
+                "reason": "canonical_cleanup_requires_guarded_runtime",
+                "removed_count": 0,
+                "skipped_count": 0,
+            }
+
         lock_path = self._repo_merge_lock_path()
         lock_metadata = self._supervisor_checkout_lock_metadata(
             operation="cleanup_backlogged_worktrees",
