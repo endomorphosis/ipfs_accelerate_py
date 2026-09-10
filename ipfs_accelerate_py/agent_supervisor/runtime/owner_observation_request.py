@@ -121,6 +121,14 @@ class OwnerObservationRequests:
         self.pending.clear()
 
     def poll(self, *, observer_available: bool) -> None:
+        # Observation hints are optional. A transient descriptor shortage,
+        # aborted peer or socket cleanup error cannot retire the native owner.
+        try:
+            self._poll_one(observer_available=observer_available)
+        except OSError:
+            return
+
+    def _poll_one(self, *, observer_available: bool) -> None:
         try:
             connection, _ = self.listener.accept()
         except BlockingIOError:
