@@ -1581,7 +1581,7 @@ def test_implementation_prompt_policy_appendix_includes_admission_budgets() -> N
     assert "directory trees" in appendix
     assert "2000000" in appendix
     assert "2500000" in appendix
-    assert "1000000" in appendix
+    assert "single file ≤ 1048576 bytes" in appendix
     assert "tests/fixtures/logic/admissibility" in appendix
     assert "compact recipes" in appendix
 
