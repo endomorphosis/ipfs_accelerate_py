@@ -92679,9 +92679,11 @@ class DatabaseImplementationDaemon:
 
         Leftover retained compact pairs from the original pin become
         ``invalid_consumed_epoch`` on a later blocked unknown-outcome
-        receipt.  That must not skip ``callback_authority_incomplete_blocked``
-        when nested evidence is None.  Official unstick is rearm, never CAS.
-        Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+        receipt.  A later-epoch ``database_unknown_outcome_blocked``
+        with nested evidence None is rearm authority, including after a
+        grok-killed supervisor restart.  Official unstick is rearm, never
+        CAS. Extra-gate aliases still cannot bypass
+        ``safe_to_restart=False``.
         """
 
         if no_provider_evidence is not None:
@@ -92690,8 +92692,6 @@ class DatabaseImplementationDaemon:
             str(getattr(task, "status", "") or "").strip().lower() != "blocked"
             or str(receipt.get("operation") or "")
             != "database_unknown_outcome_blocked"
-            or str(receipt.get("reason") or "")
-            != "callback_authority_incomplete_blocked"
             or receipt.get("forced_block") is not True
             or receipt.get("authority_outcome") != "unknown"
         ):
@@ -97278,6 +97278,29 @@ class DatabaseImplementationDaemon:
                 self._automatic_claim_forbidden_current(task)
                 and not retained_landed_authority
             ):
+                portal_result = self._database_portal_reconciliation_result
+                extra_gate_later_epoch_rearm = (
+                    self._task_alias_is_extra_gate(task)
+                    and self._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+                        task,
+                        receipt,
+                        no_provider_evidence=None,
+                    )
+                )
+                if extra_gate_later_epoch_rearm or (
+                    self._task_alias_is_extra_gate(task)
+                    and isinstance(portal_result, Mapping)
+                    and self._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+                        portal_result
+                    )
+                ):
+                    # Extra-gate later-epoch unknown-outcome blocks, and
+                    # extra-gate retry authority already proven this pass,
+                    # are rearm authority. Official unstick is rearm, never
+                    # CAS. Skip terminal-landed quarantine so generic
+                    # unknown-outcome rearm can proceed. Extra-gate aliases
+                    # still cannot bypass safe_to_restart=False.
+                    continue
                 outcomes.append(
                     {
                         "task_cid": str(task.task_cid),

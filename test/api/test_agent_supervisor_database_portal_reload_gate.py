@@ -2728,6 +2728,14 @@ def test_later_epoch_005_unknown_block_opens_generic_rearm() -> None:
         receipt,
         no_provider_evidence=None,
     ) is False
+    later_reason = dict(receipt)
+    later_reason["reason"] = "provider_dispatch_outcome_unknown"
+    task.body["completion_receipt"] = later_reason
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        task,
+        later_reason,
+        no_provider_evidence=None,
+    ) is True
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,
@@ -3244,6 +3252,65 @@ def test_restarting_stale_or_exited_preserves_extra_gate_via_supervisor_pid(
             {"daemon_pid": 2681548},
         )
         is True
+    )
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_stop_tracks_preserves_extra_gate_grok_on_sigint(tmp_path, monkeypatch) -> None:
+    """SIGINT finally-stop_tracks killed extra-gate grok 3357716.
+
+    Fleet-ensure SIGINT'd master; stop_tracks fenced every lane tree
+    with zero preserving extra-gate lines. Extra-gate aliases still
+    cannot bypass ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        SupervisorTrack,
+        stop_tracks,
+    )
+
+    terminate_calls: list[int] = []
+    lines: list[str] = []
+    state_dir = tmp_path / "state" / "lane-3"
+    state_dir.mkdir(parents=True)
+    daemon_pid_path = state_dir / "daemon.pid"
+    daemon_pid_path.write_text("2889716\n", encoding="utf-8")
+    track = SupervisorTrack(
+        name="parallel-content-sealing-proof-carrying-tdd-v1-3",
+        script_path=tmp_path / "script.py",
+        log_path=state_dir / "run.log",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        daemon_pid_path=daemon_pid_path,
+    )
+    process = SimpleNamespace(pid=2811015)
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner._restarting_track_must_preserve_extra_gate_grok",
+        lambda proc, fields: True,
+    )
+
+    def _fail_terminate(proc, *, grace_seconds):
+        terminate_calls.append(int(getattr(proc, "pid", 0) or 0))
+        return True, (int(getattr(proc, "pid", 0) or 0),)
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner._terminate_managed_process",
+        _fail_terminate,
+    )
+    payload = stop_tracks(
+        [track],
+        {track.name: process},  # type: ignore[dict-item]
+        repo_root=tmp_path,
+        grace_seconds=0.1,
+        output=lines.append,
+    )
+    assert terminate_calls == []
+    assert payload["stopped_count"] == 0
+    assert payload["all_trees_fenced"] is True
+    assert any(
+        "preserving extra-gate grok descendants for" in line
+        and track.name in line
+        for line in lines
     )
     _extra_gate_cannot_bypass_safe_to_restart()
 

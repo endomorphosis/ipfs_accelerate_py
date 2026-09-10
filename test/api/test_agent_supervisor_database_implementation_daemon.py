@@ -7371,6 +7371,237 @@ def test_extra_gate_retry_authority_rearms_during_continuation_required(
         daemon.close()
 
 
+def test_extra_gate_retry_authority_skips_terminal_landed_manual_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SIGINT teardown blocked 006/007/034 as manual-authority quarantine.
+
+    Portal reconciliation already proved
+    terminal_reconciliation_extra_gate_retry_authority, but unknown-outcome
+    rearm still quarantined extra-gate as
+    terminal_landed_candidate_manual_authority_required. Official unstick
+    is rearm, never CAS. Extra-gate aliases still cannot bypass
+    safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-retry-skip-manual-quarantine",
+        max_task_attempts=2,
+    )
+    task = SimpleNamespace(
+        task_cid=(
+            "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada"
+        ),
+        task_alias="PCTDD-034",
+        status="blocked",
+        revision=1,
+        body={
+            "completion_receipt": {
+                "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                "operation": "database_unknown_outcome_blocked",
+                "reason": "callback_authority_incomplete_blocked",
+                "forced_block": True,
+                "authority_outcome": "unknown",
+                "retry_exhausted": True,
+                "attempt_number": 8,
+                "attempts_used": 2,
+                "unknown_outcome_rearm_count": 0,
+                "terminal_reconciliation": {"schema": "candidate"},
+            }
+        },
+    )
+    generic_calls: list[str] = []
+    cas_calls: list[str] = []
+    recon = {
+        "reconciled": True,
+        "blocked": False,
+        "reason": "database_portal_already_quiesced",
+        "attempts": [
+            {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "terminal_reconciliation_extra_gate_retry_authority",
+                "task_alias": "PCTDD-034",
+                "task_cid": str(task.task_cid),
+                "error_type": "DatabaseImplementationConflictError",
+                "error": "terminal phase changed its actual database disposition",
+            }
+        ],
+    }
+    try:
+        daemon._database_portal_bridge = object()
+        daemon._database_portal_reconciliation_result = recon
+        monkeypatch.setattr(
+            daemon.task_source,
+            "list_tasks",
+            lambda **_kwargs: SimpleNamespace(tasks=(task,)),
+        )
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(
+            daemon,
+            "_automatic_claim_forbidden_current",
+            lambda *_args, **_kwargs: True,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_retained_recovery_reserved_epoch_state",
+            lambda *_args, **_kwargs: "consumed",
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_reconcile_one_blocked_terminal_landed_task",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("terminal landed CAS must not run")
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_database_portal_no_provider_rearm_evidence",
+            lambda task, receipt: generic_calls.append(str(task.task_alias)),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            lambda task_cid, **_kwargs: cas_calls.append(str(task_cid)),
+        )
+        assert (
+            daemon_module.DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_unrepairable_terminal_receipt(
+                recon
+            )
+            is True
+        )
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+        assert not any(
+            item.get("reason")
+            == "terminal_landed_candidate_manual_authority_required"
+            for item in outcomes
+        )
+        assert "PCTDD-034" in generic_calls
+        assert cas_calls == []
+    finally:
+        daemon.close()
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_later_epoch_unknown_skips_terminal_landed_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Grok-killed extra-gate 005 stayed blocked in terminal-landed quarantine.
+
+    Lane-1 restarting-exited with zero preserve lines, then daemons idled
+    no_ready_tasks while 005/006/007/034 were blocked. Later-epoch
+    unknown-outcome extra-gate is rearm authority. Official unstick is
+    rearm, never CAS. Extra-gate aliases still cannot bypass
+    safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    pin = DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:extra-gate-later-epoch-skip-quarantine",
+        max_task_attempts=2,
+    )
+    task = SimpleNamespace(
+        task_cid=str(pin["task_cid"]),
+        task_alias="PCTDD-005",
+        status="blocked",
+        revision=int(pin["blocked_task_revision"]) + 14,
+        body={
+            "completion_receipt": {
+                "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                "operation": "database_unknown_outcome_blocked",
+                "reason": "provider_dispatch_outcome_unknown",
+                "forced_block": True,
+                "authority_outcome": "unknown",
+                "retry_exhausted": True,
+                "attempt_number": 8,
+                "attempts_used": 2,
+                "unknown_outcome_rearm_count": 3,
+                "terminal_reconciliation": {"schema": "candidate"},
+            }
+        },
+    )
+    generic_calls: list[str] = []
+    cas_calls: list[str] = []
+    try:
+        daemon._database_portal_bridge = object()
+        daemon._database_portal_reconciliation_result = {}
+        monkeypatch.setattr(
+            daemon.task_source,
+            "list_tasks",
+            lambda **_kwargs: SimpleNamespace(tasks=(task,)),
+        )
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(
+            daemon,
+            "_automatic_claim_forbidden_current",
+            lambda *_args, **_kwargs: True,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_retained_recovery_reserved_epoch_state",
+            lambda *_args, **_kwargs: "consumed",
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_reconcile_one_blocked_terminal_landed_task",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("terminal landed CAS must not run")
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_database_portal_no_provider_rearm_evidence",
+            lambda task, receipt: generic_calls.append(str(task.task_alias)),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            lambda task_cid, **_kwargs: cas_calls.append(str(task_cid)),
+        )
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+        assert not any(
+            item.get("reason")
+            == "terminal_landed_candidate_manual_authority_required"
+            for item in outcomes
+        )
+        assert "PCTDD-005" in generic_calls
+        assert cas_calls == []
+    finally:
+        daemon.close()
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
 def test_nested_state_changed_landed_recovery_does_not_fence_ready_dispatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
