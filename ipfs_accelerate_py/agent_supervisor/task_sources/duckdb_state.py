@@ -2680,6 +2680,15 @@ def unstall_stale_in_progress_tasks(
 
 FALSE_TERMINAL_BLOCKED_REASON_MARKERS = (
     "isolate_merge_queue_to_task_projection",
+    "typed_portal_deferral_budget_exhausted",
+    "inflight_process_deferral_budget_unstall",
+    "implementation_protected_path_mutated",
+    "identity_changed",
+    "ProcessLookupError",
+    "claim_not_accepted_outputs_missing",
+    "Portal task projection is not complete",
+    "quack_transport_unavailable",
+    "grok_quota_exhausted",
 )
 
 
@@ -2690,12 +2699,12 @@ def unstall_false_terminal_blocked_tasks(
     canonical_transition: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
     allow_projection_only: bool = False,
 ) -> dict[str, Any]:
-    """Unstall blocked rows whose terminal reason is a now-fixed supervisor bug.
+    """Unstall blocked rows whose terminal reason is leftover supervisor stall.
 
-    ASEH-061 was blocked retryable-false after merged-worktree cleanup read
-    ``isolate_merge_queue_to_task_projection`` on a daemon that never set it.
-    Exclusive-owner board_unstall must reopen that gate so the remaining DAG
-    can run without recaiming the task.
+    Exclusive leftover recovery must reopen gates that look terminal but are
+    host/supervisor bugs (deferral-budget exhaust, protected-path ctime
+    identity, missing daemon flags) so the remaining DAG can finish without
+    recaiming the task.
     """
 
     clock = now or datetime.now(timezone.utc)

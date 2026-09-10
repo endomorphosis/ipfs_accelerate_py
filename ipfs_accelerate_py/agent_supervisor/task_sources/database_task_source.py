@@ -31,6 +31,7 @@ from typing import Any, ClassVar, Final
 from .control_plane_contracts import content_identity
 from .control_plane_migrations import duckdb_available
 from .duckdb_state import (
+    FALSE_TERMINAL_BLOCKED_REASON_MARKERS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
     QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
@@ -1530,17 +1531,11 @@ class DatabaseTaskSource:
         except Exception:
             page = None
         for record in getattr(page, "tasks", ()) or ():
-            blob = " ".join(
-                str(item)
-                for item in (
-                    getattr(record, "body", None),
-                    getattr(record, "body_json", None),
-                    getattr(record, "failure_reason", None),
-                    getattr(record, "reason", None),
-                )
-                if item
-            )
-            if "isolate_merge_queue_to_task_projection" not in blob:
+            try:
+                blob = json.dumps(record.to_dict(), default=str)
+            except Exception:
+                blob = str(getattr(record, "body", "") or "")
+            if not any(marker in blob for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS):
                 continue
             cas = self.rearm_blocked_task(
                 record,
