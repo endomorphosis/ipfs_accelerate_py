@@ -2092,6 +2092,18 @@ def test_operator_m70_live_owner_retired_token_does_not_demand_quack_start() -> 
     assert live_source.index(wait_token) < live_source.index(unavailable)
 
 
+def test_retryable_readiness_includes_duckdb_ioexception() -> None:
+    """IOException must not park lanes as typed-78 the way a pin failure does."""
+
+    source = (
+        REPO_ROOT
+        / "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py"
+    ).read_text(encoding="utf-8")
+    assert '"IOException"' in source
+    assert "RETRYABLE_READINESS_ERROR_TYPES = frozenset(" in source
+    assert source.index('"OutOfMemoryException"') < source.index('"IOException"')
+
+
 def test_sidecar_duckdb_opens_do_not_prefer_unbound_quack_owner() -> None:
     """Sidecar files must not default-prefer the live owner URI."""
 

@@ -215,6 +215,7 @@ RETRYABLE_READINESS_ERROR_TYPES = frozenset(
     {
         "OutOfMemoryException",
         "MemoryError",
+        "IOException",
     }
 )
 TYPED_FAIL_CLOSED_OUTER_RECOVERY_BACKOFF_SECONDS = (
@@ -1962,14 +1963,14 @@ def _run_daemon_main_with_retryable_memory_backoff(
     sleep: Callable[[float], None] = time.sleep,
     backoff_seconds: Sequence[float] = TYPED_FAIL_CLOSED_OUTER_RECOVERY_BACKOFF_SECONDS,
 ) -> int:
-    """Keep a sealed daemon child alive across retryable memory pressure.
+    """Keep a sealed daemon child alive across retryable probe pressure.
 
-    DuckDB ``OutOfMemoryException`` and ``MemoryError`` escaping ``main()``
-    are mapped to exit 78 by the sealed bootstrap. That parks the parent as
-    ``typed_child_blocker`` and respawns a new child, which repeats the same
-    query storm. Retry in-process with the outer typed-78 backoff so the
-    child pid stays live and Quack is not hammered. Non-retryable failures
-    and ``SystemExit`` still fail closed.
+    DuckDB ``OutOfMemoryException``, ``MemoryError``, and ``IOException``
+    escaping ``main()`` are mapped to exit 78 by the sealed bootstrap. That
+    parks the parent as ``typed_child_blocker`` and respawns a new child,
+    which repeats the same query storm. Retry in-process with the outer
+    typed-78 backoff so the child pid stays live and Quack is not hammered.
+    Non-retryable failures and ``SystemExit`` still fail closed.
     """
 
     attempt = 0
@@ -1983,7 +1984,7 @@ def _run_daemon_main_with_retryable_memory_backoff(
             delay = delays[min(attempt, len(delays) - 1)]
             attempt += 1
             logger.warning(
-                "Sealed daemon child retryable memory pressure (%s); retry in %.1fs",
+                "Sealed daemon child retryable pressure (%s); retry in %.1fs",
                 type(exc).__name__,
                 delay,
             )

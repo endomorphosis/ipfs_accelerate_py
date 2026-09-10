@@ -965,6 +965,30 @@ def test_sealed_daemon_child_retries_memory_error() -> None:
     assert calls["count"] == 2
 
 
+class IOException(Exception):
+    """Stand-in for duckdb.IOException by class name."""
+
+
+def test_sealed_daemon_child_retries_ioexception() -> None:
+    calls = {"count": 0}
+
+    def main(_argv: list[str]) -> int:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise IOException("quack transport reset")
+        return 0
+
+    result = _run_daemon_main_with_retryable_memory_backoff(
+        main,
+        [],
+        sleep=lambda _delay: None,
+        backoff_seconds=(30.0,),
+    )
+    assert result == 0
+    assert calls["count"] == 2
+    assert "IOException" in implementation_supervisor_module.RETRYABLE_READINESS_ERROR_TYPES
+
+
 def test_sealed_daemon_child_non_retryable_error_fail_closes() -> None:
     def main(_argv: list[str]) -> int:
         raise RuntimeError("pin invalid")
