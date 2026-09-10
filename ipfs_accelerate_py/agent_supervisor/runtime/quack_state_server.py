@@ -1849,6 +1849,8 @@ class QuackStateServer:
     _identity: StateServerIdentity | None = field(default=None, init=False)
     _connection: Any | None = field(default=None, init=False)
     _transport_connection: Any | None = field(default=None, init=False)
+    _replica_source_descriptor: int | None = field(default=None, init=False, repr=False)
+    _replica_source_close_unproven: bool = field(default=False, init=False, repr=False)
     _owner: ExclusiveOwnerLease | None = field(default=None, init=False)
     _vault: TokenVault | None = field(default=None, init=False)
     _capability: QuackCapabilityReport | None = field(default=None, init=False)
@@ -2273,6 +2275,44 @@ class QuackStateServer:
                     pass
             raise
 
+    def _open_replica_source_anchor(self) -> None:
+        """Retain a canonical descriptor until the writer connection closes.
+
+        Closing any descriptor for this inode drops all of this process's
+        POSIX locks. Open once before the writer and use positional reads for
+        every refresh, including failed refreshes.
+        """
+        if self._replica_source_descriptor is not None:
+            raise QuackStateServerReadyError("replica source anchor already open")
+        self._replica_source_descriptor = os.open(
+            self.config.database_path,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
+        )
+        self._assert_replica_source_anchor()
+
+    def _assert_replica_source_anchor(self) -> int:
+        descriptor = self._replica_source_descriptor
+        if descriptor is None:
+            raise QuackStateServerReadyError("replica source anchor unavailable")
+        opened = os.fstat(descriptor)
+        named = os.stat(self.config.database_path, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or not stat.S_ISREG(named.st_mode)
+            or opened.st_uid != os.getuid()
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            raise QuackStateServerReadyError("replica source anchor identity differs")
+        return descriptor
+
+    def _close_replica_source_anchor(self) -> None:
+        # Call only after successful writer close (or before any writer opens).
+        if self._replica_source_close_unproven:
+            raise QuackStateServerReadyError("writer close remains unproven")
+        if self._replica_source_descriptor is not None:
+            os.close(self._replica_source_descriptor)
+            self._replica_source_descriptor = None
+
     def _copy_authoritative_read_replica(self) -> tuple[str, int]:
         """Checkpoint and atomically refresh the bounded replica file."""
 
@@ -2285,15 +2325,13 @@ class QuackStateServer:
         temporary = replica.with_name(
             f".{replica.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
         )
-        source_descriptor: int | None = None
         target_descriptor: int | None = None
+        temporary_identity: tuple[int, int] | None = None
         started = time.monotonic()
         try:
+            source_descriptor = self._assert_replica_source_anchor()
             self._connection.execute("CHECKPOINT")
-            source_descriptor = os.open(
-                source,
-                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
-            )
+            self._assert_replica_source_anchor()
             before = os.fstat(source_descriptor)
             if (
                 not stat.S_ISREG(before.st_mode)
@@ -2313,14 +2351,17 @@ class QuackStateServer:
                 | getattr(os, "O_CLOEXEC", 0),
                 0o600,
             )
+            created = os.fstat(target_descriptor)
+            temporary_identity = (created.st_dev, created.st_ino)
             digest = hashlib.sha256()
             copied = 0
             while copied < before.st_size:
                 if time.monotonic() - started > READ_REPLICA_COPY_TIMEOUT_SECONDS:
                     raise QuackStateServerReadyError("read-replica copy timed out")
-                chunk = os.read(
+                chunk = os.pread(
                     source_descriptor,
                     min(READ_REPLICA_COPY_CHUNK_BYTES, before.st_size - copied),
+                    copied,
                 )
                 if not chunk:
                     raise QuackStateServerReadyError(
@@ -2342,10 +2383,15 @@ class QuackStateServer:
                 raise QuackStateServerReadyError(
                     "authoritative database changed during replica copy"
                 )
+            self._assert_replica_source_anchor()
+            pending = os.stat(temporary, follow_symlinks=False)
+            if (pending.st_dev, pending.st_ino) != temporary_identity:
+                raise QuackStateServerReadyError("replica temporary identity differs")
             os.fsync(target_descriptor)
             os.close(target_descriptor)
             target_descriptor = None
             os.replace(temporary, replica)
+            temporary_identity = None
             os.chmod(replica, 0o600)
             directory_descriptor = os.open(
                 replica.parent,
@@ -2363,11 +2409,15 @@ class QuackStateServer:
                 f"read-replica refresh failed: {type(exc).__name__}"
             ) from exc
         finally:
-            if source_descriptor is not None:
-                os.close(source_descriptor)
             if target_descriptor is not None:
                 os.close(target_descriptor)
-            temporary.unlink(missing_ok=True)
+            if temporary_identity is not None:
+                try:
+                    pending = os.stat(temporary, follow_symlinks=False)
+                    if (pending.st_dev, pending.st_ino) == temporary_identity:
+                        temporary.unlink()
+                except FileNotFoundError:
+                    pass
 
     def _wait_for_transport_endpoint_closed(self) -> None:
         """Independently observe endpoint closure before replacing a replica."""
@@ -4367,6 +4417,8 @@ class QuackStateServer:
                 self._migration_report = migration
                 self._log("control-plane schema migration complete before ready")
 
+                if self._read_replica_enabled():
+                    self._open_replica_source_anchor()
                 connection = self._open_connection(
                     isolation_admission=isolation_admission
                 )
@@ -4506,8 +4558,9 @@ class QuackStateServer:
         try:
             if self._connection is not None and hasattr(self._connection, "close"):
                 self._connection.close()
+            self._close_replica_source_anchor()
         except Exception:
-            pass
+            self._replica_source_close_unproven = True
         self._connection = None
         try:
             if self._vault is not None:
@@ -4700,8 +4753,9 @@ class QuackStateServer:
             try:
                 if self._connection is not None and hasattr(self._connection, "close"):
                     self._connection.close()
+                self._close_replica_source_anchor()
             except Exception:
-                pass
+                self._replica_source_close_unproven = True
             self._connection = None
 
             if self._vault is not None:
