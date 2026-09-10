@@ -314,6 +314,16 @@ overwrite an executing runtime's files in place. Deploy tested watchdog fixes
 as a new immutable release with the installer --enable --defer-repair-restart;
 it restarts monitoring and lets this repair dispatcher adopt the new release
 after the job ends. Use the existing configured inventory and repair checkout.
+Native detached board launches from this temporary repair service must use a
+separate user systemd scope or the board's existing dedicated service. setsid
+and start_new_session do not escape this service's control group; it is killed
+when the coding job exits. Integrate runtime.durable_launch's
+delegate_repair_service_launch at the native operator entry before credential
+retirement or inherited admission descriptors. Re-run the complete native
+operator in the scope, retaining its exact source/owner/admission checks and
+propagating failure. Do not relax the repair service's KillMode or wrap an
+already sealed child in a new unqualified Python/module invocation. Verify
+that the board's actual cgroup survives the repair job's completion.
 Preserve board-specific external ownership and service overrides. Updating
 the watchdog configuration and staging a validated runtime release are within
 the user's authorization. Do not repeatedly publish diagnostic-only changes
