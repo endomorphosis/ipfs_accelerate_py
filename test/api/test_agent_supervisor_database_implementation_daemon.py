@@ -3998,7 +3998,7 @@ def test_production_protected_rearm_requires_native_fence_precondition(tmp_path)
         daemon.close()
 
 
-def test_missing_logical_completion_is_skipped_instead_of_fail_closed(
+def test_missing_logical_completion_defers_tick_without_new_dispatch(
     tmp_path: Path,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
@@ -4047,12 +4047,17 @@ def test_missing_logical_completion_is_skipped_instead_of_fail_closed(
         daemon.coordinator.abort_prepared_task_completion = (  # type: ignore[method-assign]
             missing_abort
         )
-        assert daemon.reconcile_prepared_task_completions() == []
+        with pytest.raises(DatabaseCoordinationNotReadyError):
+            daemon.reconcile_prepared_task_completions()
+        daemon.claim_next = lambda: pytest.fail("missing completion dispatched work")
+        result = daemon.run_once()
+        assert result["selection_idle_reason"] == "completion_evidence_unavailable"
+        assert result["implementation_result"] is None
     finally:
         daemon.close()
 
 
-def test_missing_logical_completion_during_unsettled_enumeration_is_skipped(
+def test_missing_logical_completion_during_enumeration_defers_tick(
     tmp_path: Path,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
@@ -4077,8 +4082,11 @@ def test_missing_logical_completion_during_unsettled_enumeration_is_skipped(
         daemon.coordinator.list_unsettled_task_completions = (  # type: ignore[method-assign]
             missing_enum
         )
-        assert daemon.reconcile_prepared_task_completions() == []
+        with pytest.raises(DatabaseCoordinationNotReadyError):
+            daemon.reconcile_prepared_task_completions()
+        daemon.claim_next = lambda: pytest.fail("missing completion dispatched work")
         result = daemon.run_once()
-        assert result["implementation_result"]["status"] == "succeeded"
+        assert result["selection_idle_reason"] == "completion_evidence_unavailable"
+        assert result["implementation_result"] is None
     finally:
         daemon.close()
