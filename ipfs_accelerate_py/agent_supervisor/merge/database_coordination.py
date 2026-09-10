@@ -1708,7 +1708,14 @@ class DatabaseCoordinator:
                 return self
             if not self._quack_transport:
                 self._path.parent.mkdir(parents=True, exist_ok=True)
-            connection = open_duckdb_connection(self._open_target)
+            # Local coordination files are sidecars, not the Quack-owned
+            # control board. Preferring the live owner URI against them
+            # logs unbound_to_database and falls back through a 30s
+            # exclusive lock, which stalls every serialized lane op.
+            connection = open_duckdb_connection(
+                self._open_target,
+                prefer_quack=bool(self._quack_transport),
+            )
             try:
                 if not self._quack_transport:
                     for statement in _split_sql_statements(_BOOKKEEPING_SQL):

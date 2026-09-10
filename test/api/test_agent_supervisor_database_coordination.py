@@ -2073,7 +2073,7 @@ def test_same_owner_reacquire_is_idempotent_without_idempotency_key(
         coordinator.close()
 
 
-def test_database_coordinator_retains_default_quack_preference(
+def test_database_coordinator_opens_local_file_without_quack_prefer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2091,7 +2091,7 @@ def test_database_coordinator_retains_default_quack_preference(
     )
     coordinator = open_database_coordinator(tmp_path / "coordination.duckdb")
     try:
-        assert captured == [None]
+        assert captured == [False]
         assert coordinator.is_open
     finally:
         coordinator.close()
