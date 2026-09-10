@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -13,6 +14,61 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.rescue import fleet_watchdog as fleet
 from ipfs_accelerate_py.agent_supervisor.rescue import live_board_probe
+
+
+def test_fifo_state_does_not_stall_other_board_observations(tmp_path):
+    directory = tmp_path / "fifo"
+    directory.mkdir()
+    os.mkfifo(directory / "state.json")
+    script = """
+import importlib.util, json, pathlib, sys, types
+package = types.ModuleType('isolated_fleet')
+package.__path__ = []
+sys.modules[package.__name__] = package
+for name in ('live_board_probe', 'fleet_watchdog'):
+    spec = importlib.util.spec_from_file_location(
+        'isolated_fleet.' + name, pathlib.Path(sys.argv[1]) / (name + '.py'))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+fleet = sys.modules['isolated_fleet.fleet_watchdog']
+boards = []
+for name in ('fifo', 'healthy'):
+    observation = dict(board_id=name, health='healthy', complete=False,
+                       busy=False, progress_token='task-1', reason_codes=[])
+    boards.append(dict(id=name, cwd=sys.argv[2], probe=dict(
+        argv=[sys.executable, '-c', 'print(' + repr(json.dumps(observation)) + ')'])))
+report = fleet.run_cycle(dict(state_dir=sys.argv[2], boards=boards), apply=False)
+assert report['boards']['fifo']['health'] == 'watchdog_error', report
+assert report['boards']['healthy']['health'] == 'healthy', report
+assert (pathlib.Path(sys.argv[2]) / 'fifo/state.json').is_fifo()
+"""
+    subprocess.run([sys.executable, "-c", script,
+                    str(Path(live_board_probe.__file__).parent), str(tmp_path)],
+                   check=True, timeout=5, capture_output=True)
+
+
+@pytest.mark.parametrize("raw", [b"{", b"[]", b" "])
+def test_bad_persisted_state_does_not_reset_backoff(tmp_path, raw):
+    directory = tmp_path / "spar"
+    directory.mkdir()
+    state = directory / "state.json"
+    state.write_bytes(raw)
+    with pytest.raises(ValueError):
+        fleet.tick_board(_board(tmp_path), tmp_path, apply=True,
+                         runner=lambda *a, **k: pytest.fail("invalid prior state must stop this board"))
+    assert state.read_bytes() == raw
+
+
+def test_persisted_state_missing_and_symlink_are_distinct(tmp_path):
+    path = tmp_path / "state.json"
+    assert fleet.read_json(path) == {}
+    target = tmp_path / "target.json"
+    target.write_text('{"attempts":7}')
+    path.symlink_to(target)
+    with pytest.raises(OSError):
+        fleet.read_json(path)
+    assert json.loads(target.read_text()) == {"attempts": 7}
 
 
 def _board(tmp_path, **changes):

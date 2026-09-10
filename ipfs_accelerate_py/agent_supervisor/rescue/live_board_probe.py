@@ -15,6 +15,7 @@ import json
 import os
 import signal
 import socket
+import stat
 import subprocess
 import tempfile
 import time
@@ -41,15 +42,41 @@ def _object(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def read_json(path: Path) -> dict[str, Any]:
-    """Read only regular bounded JSON; broken or concurrently replaced files fail closed."""
+def read_json_object(path: Path) -> dict[str, Any]:
+    """Read one bounded regular-file object, preserving failures for strict callers."""
+    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
-        if path.stat().st_size > MAX_JSON_BYTES:
-            return {}
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_JSON_BYTES:
+            raise ValueError(f"expected bounded regular JSON file: {path}")
+        chunks = []
+        remaining = MAX_JSON_BYTES + 1
+        while remaining:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+        raw = b"".join(chunks)
+        if (len(raw) > MAX_JSON_BYTES or len(raw) != before.st_size
+                or (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                != (after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
+            raise ValueError(f"JSON file changed or exceeded read bound: {path}")
+    finally:
+        os.close(descriptor)
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected JSON object: {path}")
+    return payload
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    """Invalid or unavailable observation metadata cannot establish board health."""
+    try:
+        return read_json_object(path)
+    except (OSError, ValueError, RecursionError):
         return {}
-    return _object(payload)
 
 
 def _age(value: Any, now: float) -> float | None:

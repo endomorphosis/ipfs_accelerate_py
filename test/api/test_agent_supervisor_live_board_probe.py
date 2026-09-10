@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -20,6 +23,101 @@ PROVIDER_BUSY = probe._provider_busy
 def _write(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value))
+
+
+def test_json_fifo_cannot_block_probe(tmp_path):
+    path = tmp_path / "status.json"
+    os.mkfifo(path)
+    script = """
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location('probe', sys.argv[1])
+probe = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(probe)
+assert probe.read_json(pathlib.Path(sys.argv[2])) == {}
+"""
+    # The timeout owns only this disposable reader, even before the repair.
+    subprocess.run([sys.executable, "-c", script, str(SOURCE), str(path)],
+                   check=True, timeout=3, capture_output=True)
+
+
+def test_json_symlink_is_not_status_evidence(tmp_path):
+    target = tmp_path / "target.json"
+    _write(target, {"lifecycle": "ready"})
+    path = tmp_path / "status.json"
+    path.symlink_to(target)
+    assert probe.read_json(path) == {}
+
+
+@pytest.mark.parametrize("raw", [b"{", b"\xff", b"[]", b"null",
+                                   b'{"nested":' + b"[" * 20000 + b"0" + b"]" * 20000 + b"}"],
+                         ids=["syntax", "encoding", "array", "null", "recursion"])
+def test_json_invalid_or_deep_document_is_unavailable(tmp_path, raw):
+    path = tmp_path / "status.json"
+    path.write_bytes(raw)
+    assert probe.read_json(path) == {}
+
+
+def test_json_size_bound_includes_exact_limit(tmp_path, monkeypatch):
+    path = tmp_path / "status.json"
+    raw = b'{"ready":true}'
+    monkeypatch.setattr(probe, "MAX_JSON_BYTES", len(raw))
+    path.write_bytes(raw)
+    assert probe.read_json(path) == {"ready": True}
+    path.write_bytes(raw + b" ")
+    assert probe.read_json(path) == {}
+
+
+def test_json_reader_rejects_change_during_read_and_closes_descriptor(tmp_path, monkeypatch):
+    path = tmp_path / "status.json"
+    original = b'{"ready":true}'
+    path.write_bytes(original)
+    read = os.read
+    observed = []
+
+    def race(fd, size):
+        result = read(fd, size)
+        if not observed:
+            observed.append(fd)
+            path.write_bytes(b'{"ready":null}')
+        return result
+
+    monkeypatch.setattr(probe.os, "read", race)
+    assert probe.read_json(path) == {}
+    assert observed
+    with pytest.raises(OSError):
+        os.fstat(observed[0])
+
+
+def test_json_read_is_bounded_when_file_grows_after_fstat(tmp_path, monkeypatch):
+    path = tmp_path / "status.json"
+    path.write_bytes(b"{}")
+    monkeypatch.setattr(probe, "MAX_JSON_BYTES", 64)
+    read = os.read
+    observed = []
+
+    def grow(fd, size):
+        if not observed:
+            path.write_bytes(b"{}" + b" " * 10000)
+        result = read(fd, size)
+        observed.append(len(result))
+        return result
+
+    monkeypatch.setattr(probe.os, "read", grow)
+    assert probe.read_json(path) == {}
+    assert observed
+    assert sum(observed) <= 65
+
+
+def test_json_regular_file_can_span_read_chunks(tmp_path):
+    path = tmp_path / "status.json"
+    value = {"message": "x" * (128 * 1024), "lifecycle": "ready"}
+    _write(path, value)
+    assert probe.read_json(path) == value
+
+
+def test_json_directory_and_missing_file_are_unavailable(tmp_path):
+    assert probe.read_json(tmp_path) == {}
+    assert probe.read_json(tmp_path / "missing.json") == {}
 
 
 @pytest.fixture

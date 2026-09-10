@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .live_board_probe import COMPLETED
+from .live_board_probe import COMPLETED, read_json_object
 
 SCHEMA = "agent-supervisor/fleet-watchdog@1"
 HEALTH = {"healthy", "degraded", "blocked", "stalled", "stopped", "unknown", "complete"}
@@ -51,12 +51,10 @@ def repair_hold_paths(board: dict[str, Any]) -> list[str]:
 
 
 def read_json(path: Path) -> dict[str, Any]:
-    if not path.exists():
+    try:
+        return read_json_object(path)
+    except FileNotFoundError:
         return {}
-    value = json.loads(path.read_text())
-    if not isinstance(value, dict):
-        raise ValueError(f"expected JSON object: {path}")
-    return value
 
 
 def write_json(path: Path, value: dict[str, Any]) -> None:
