@@ -1805,6 +1805,23 @@ def _config(path: Path) -> dict[str, Any]:
     return value
 
 
+def _delegate_repair_service_launch(arguments: Sequence[str]) -> int | None:
+    """Import the lifetime helper from this checkout before native admission."""
+    prior_path = list(sys.path)
+    try:
+        root = str(REPO_ROOT)
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        from ipfs_accelerate_py.agent_supervisor.runtime.durable_launch import (
+            delegate_repair_service_launch,
+        )
+        return delegate_repair_service_launch(
+            [sys.executable, str(Path(__file__).resolve()), *arguments]
+        )
+    finally:
+        sys.path[:] = prior_path
+
+
 def _emit(value: Mapping[str, Any]) -> int:
     secrets = {
         str(secret)
@@ -29738,9 +29755,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw_arguments = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(raw_arguments)
     error_redaction_secrets: set[str] = set()
     try:
+        if args.command == "launch" and not args.foreground:
+            delegated = _delegate_repair_service_launch(raw_arguments)
+            if delegated is not None:
+                return delegated
         config_path = args.config if args.config.is_absolute() else REPO_ROOT / args.config
         config = _config(config_path)
         if args.command == "validate-dependencies":
