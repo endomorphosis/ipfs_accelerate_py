@@ -15,6 +15,12 @@ cases can instead be healed on the **same attempt**:
 
 This module is pure planning. The implementation daemon owns workspace
 mutations, provider invocation, and revalidation.
+
+Qualification board commands (``--output`` / ``--qualification-output``) are
+already writers. When they fail because a sealed prior-task executable does
+not yet understand those flags, or because the implementer recaimed that
+executable, auto-rescue must materialize declared receipts and skip Grok
+instead of looping extra-path restore.
 """
 
 from __future__ import annotations
@@ -93,6 +99,13 @@ _PID_MARKER_FLAKE_NODE_NAMES = frozenset(
     }
 )
 _MATERIALIZE_ALIASES = ("materialize", "write", "generate")
+_OUTPUT_FLAG_RE = re.compile(
+    r"(?i)(?:^|\s)(--output|--qualification-output)(?:=|\s|$)"
+)
+_UNRECOGNIZED_ARGS_RE = re.compile(
+    r"unrecognized arguments|the following arguments are required",
+    re.IGNORECASE,
+)
 
 
 class AutoRescueAction(str, Enum):
@@ -305,7 +318,12 @@ def derive_materialize_commands(
     derived: list[str] = []
     for raw in validation_commands:
         command = str(raw or "").strip()
-        if not command or not _VALIDATE_TOKEN_RE.search(command):
+        if not command:
+            continue
+        # Board qualification CLIs are already writers (`--output`).
+        if _OUTPUT_FLAG_RE.search(command) and command not in derived:
+            derived.append(command)
+        if not _VALIDATE_TOKEN_RE.search(command):
             continue
         for alias in _MATERIALIZE_ALIASES:
             candidate = _VALIDATE_TOKEN_RE.sub(alias, command, count=1)
@@ -328,6 +346,106 @@ def derive_materialize_commands(
                         derived.append(text)
                 break
     return tuple(derived)
+
+
+def _failure_blob(validation_result: Mapping[str, Any]) -> str:
+    review = _failure_review_projection(validation_result)
+    return _ANSI_RE.sub(
+        "",
+        "\n".join(
+            (
+                str(validation_result.get("failure_head") or ""),
+                str(validation_result.get("stdout") or ""),
+                str(validation_result.get("stderr") or ""),
+                str(review.get("failure_head") or ""),
+                str(review.get("stderr") or ""),
+            )
+        ),
+    )
+
+
+def _unrecognized_args_on_undeclared_executable(
+    validation_result: Mapping[str, Any],
+    expected_outputs: Sequence[str],
+    failed_commands: Sequence[str],
+) -> bool:
+    """True when a sealed prior-task executable rejected qualification flags.
+
+    ASEH-070..073 validate ``paired_harness.py`` (ASEH-013's declared output).
+    Looping Grok to recaim that file cannot satisfy write_scope.
+    """
+
+    if not _UNRECOGNIZED_ARGS_RE.search(_failure_blob(validation_result)):
+        return False
+    expected = {
+        str(item).replace("\\", "/").lstrip("./")
+        for item in expected_outputs
+        if str(item).strip()
+    }
+    output_flags = {"--output", "--qualification-output"}
+    invoked: list[str] = []
+    for command in failed_commands:
+        try:
+            argv = shlex.split(str(command or ""))
+        except ValueError:
+            argv = str(command or "").split()
+        skip_next = False
+        for index, token in enumerate(argv):
+            if skip_next:
+                skip_next = False
+                continue
+            if token in output_flags:
+                skip_next = True
+                continue
+            if token.startswith("--output=") or token.startswith("--qualification-output="):
+                continue
+            normalized = str(token).replace("\\", "/").lstrip("./")
+            if normalized.endswith(".py"):
+                invoked.append(normalized)
+    if not invoked:
+        return bool(expected)
+    if not expected:
+        return True
+    for script in invoked:
+        if script in expected:
+            return False
+        if any(
+            script.endswith("/" + item) or item.endswith("/" + script)
+            for item in expected
+        ):
+            return False
+    return True
+
+
+def _extra_path_recaim_of_undeclared_outputs(
+    finding_codes: Sequence[str],
+    reason_codes: Sequence[str],
+    denied_paths: Sequence[str],
+    expected_outputs: Sequence[str],
+) -> bool:
+    """True when the implementer mutated paths outside declared outputs."""
+
+    if not denied_paths:
+        return False
+    if not (
+        "path_outside_scope" in finding_codes
+        or "scope_expansion_denied" in reason_codes
+        or "full_diff_path_outside_scope" in finding_codes
+    ):
+        return False
+    expected = {
+        str(item).replace("\\", "/").lstrip("./")
+        for item in expected_outputs
+        if str(item).strip()
+    }
+    for path in denied_paths:
+        normalized = str(path).replace("\\", "/").lstrip("./")
+        if normalized in expected:
+            continue
+        if is_undeclared_helper_path(normalized, expected_outputs):
+            continue
+        return True
+    return False
 
 
 def plan_automatic_implementation_rescue(
@@ -485,10 +603,23 @@ def plan_automatic_implementation_rescue(
             missing_expected_outputs=missing,
         )
 
+    writer_failed = _unrecognized_args_on_undeclared_executable(
+        result,
+        expected,
+        failed_commands or declared_validation_commands,
+    )
+    extra_path_recaim = _extra_path_recaim_of_undeclared_outputs(
+        finding_codes,
+        reason_codes,
+        denied_paths,
+        expected,
+    )
     incomplete = bool(
         missing
         or "incomplete_expected_outputs" in reason_codes
         or "expected_output_ignored_or_unstaged" in finding_codes
+        or writer_failed
+        or extra_path_recaim
     )
     proposal_failed = (
         str(result.get("reason") or "")
@@ -505,6 +636,8 @@ def plan_automatic_implementation_rescue(
         and bool(materialize_commands)
         and (
             bool(missing)
+            or writer_failed
+            or extra_path_recaim
             or (
                 incomplete
                 and not expected_outputs_present_on_disk
@@ -600,6 +733,21 @@ def plan_automatic_implementation_rescue(
             reason_codes=reason_codes,
             failed_commands=failed_commands,
             expected_outputs=expected,
+            missing_expected_outputs=missing,
+        )
+    if writer_failed or extra_path_recaim:
+        return AutoRescuePlan(
+            action=AutoRescueAction.NONE,
+            reason=(
+                "sealed_executable_missing_qualification_flags"
+                if writer_failed
+                else "extra_path_recaim_skip_grok"
+            ),
+            finding_codes=finding_codes,
+            reason_codes=reason_codes,
+            failed_commands=failed_commands,
+            expected_outputs=expected,
+            materialize_commands=materialize_commands,
             missing_expected_outputs=missing,
         )
     if (

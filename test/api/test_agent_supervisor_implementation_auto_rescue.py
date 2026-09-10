@@ -518,6 +518,122 @@ def test_plan_still_rescues_when_a_declared_output_test_failed() -> None:
     assert plan.action is AutoRescueAction.INLINE_PROVIDER_RESCUE
 
 
+def test_derive_materialize_commands_keeps_qualification_output_writers() -> None:
+    commands = derive_materialize_commands(
+        (
+            "python3 benchmarks/agent_supervisor/efficiency_state_hardening/"
+            "paired_harness.py --cohort hermetic --minimum-tasks 60 "
+            "--output benchmarks/agent_supervisor/efficiency_state_hardening/"
+            "results/hermetic.json --qualification-output docs/architecture/"
+            "agent_supervisor_efficiency_state_hardening_inventory/"
+            "hermetic_qualification.json --allow-honest-nonpromotion",
+        )
+    )
+    assert commands
+    assert "--output" in commands[0]
+    assert "--qualification-output" in commands[0]
+
+
+def test_plan_materializes_qualification_cli_instead_of_recaiming_prior_harness() -> None:
+    validation = (
+        "python3 benchmarks/agent_supervisor/efficiency_state_hardening/"
+        "paired_harness.py --cohort hermetic --minimum-tasks 60 "
+        "--output benchmarks/agent_supervisor/efficiency_state_hardening/"
+        "results/hermetic.json --qualification-output docs/architecture/"
+        "agent_supervisor_efficiency_state_hardening_inventory/"
+        "hermetic_qualification.json --allow-honest-nonpromotion"
+    )
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "error": "validation_command_failed",
+            "failure_head": (
+                "paired_harness.py: error: unrecognized arguments: "
+                "--cohort hermetic --qualification-output"
+            ),
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": ["validation_command_failed"],
+                "failed_commands": [validation],
+                "missing_expected_outputs": [
+                    "benchmarks/agent_supervisor/efficiency_state_hardening/"
+                    "results/hermetic.json",
+                    "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/"
+                    "hermetic_qualification.json",
+                ],
+            },
+        },
+        expected_outputs=(
+            "benchmarks/agent_supervisor/efficiency_state_hardening/results/hermetic.json",
+            "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/"
+            "hermetic_qualification.json",
+        ),
+        validation_commands=(validation,),
+        expected_outputs_present_on_disk=False,
+    )
+    assert plan.action is AutoRescueAction.MATERIALIZE_AND_STAGE
+    assert validation in plan.materialize_commands
+
+
+def test_plan_skips_grok_when_qualification_flags_are_unrecognized_after_materialize() -> None:
+    validation = (
+        "python3 benchmarks/agent_supervisor/efficiency_state_hardening/"
+        "paired_harness.py --cohort hermetic --output results/hermetic.json "
+        "--qualification-output inventory/hermetic_qualification.json"
+    )
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "error": "validation_command_failed",
+            "stderr": "error: unrecognized arguments: --cohort hermetic",
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": ["validation_command_failed"],
+                "failed_commands": [validation],
+            },
+        },
+        expected_outputs=(
+            "benchmarks/agent_supervisor/efficiency_state_hardening/results/hermetic.json",
+            "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/"
+            "hermetic_qualification.json",
+        ),
+        validation_commands=(validation,),
+        expected_outputs_present_on_disk=True,
+        materialize_rescue_used=True,
+        stage_rescue_used=True,
+    )
+    assert plan.action is AutoRescueAction.NONE
+    assert plan.reason == "sealed_executable_missing_qualification_flags"
+
+
+def test_plan_skips_grok_when_implementer_recaims_prior_task_output() -> None:
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "error": "proposal_validation_failed",
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": ["proposal_gate_failed"],
+                "finding_codes": ["path_outside_scope"],
+                "denied_paths": [
+                    "benchmarks/agent_supervisor/efficiency_state_hardening/"
+                    "paired_harness.py"
+                ],
+            },
+        },
+        expected_outputs=(
+            "benchmarks/agent_supervisor/efficiency_state_hardening/results/hermetic.json",
+            "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/"
+            "hermetic_qualification.json",
+        ),
+        expected_outputs_present_on_disk=True,
+        materialize_rescue_used=True,
+        stage_rescue_used=True,
+    )
+    assert plan.action is AutoRescueAction.NONE
+    assert plan.reason == "extra_path_recaim_skip_grok"
+
+
 def test_inline_provider_rescue_prompt_includes_failure_evidence() -> None:
     prompt = build_inline_provider_rescue_prompt(
         base_prompt="Implement DCR-013 outputs.",
