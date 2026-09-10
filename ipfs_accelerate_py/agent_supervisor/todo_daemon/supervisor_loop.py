@@ -12,7 +12,13 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 from .core import ManagedDaemonSpec, pid_alive, read_json
 from .specs import env_float, env_int, env_value
-from .supervisor import SupervisorStatusContext, heartbeat_snapshot, worktree_phase_worker_status
+from .supervisor import (
+    SupervisorStatusContext,
+    descendant_processes,
+    heartbeat_snapshot,
+    process_listing_is_grok_runner,
+    worktree_phase_worker_status,
+)
 from .supervisor_runtime import (
     RestartPolicy,
     SupervisedChild,
@@ -69,9 +75,57 @@ def failed_child_termination_should_keep_running(
         "control_plane_source_changed",
         "control_plane_reload_deferred",
         "extra_gate_in_progress_preserve_worker",
+        "control_plane_source_identity_cid_only",
     }:
         return True
     return reason.startswith("extra_gate_")
+
+
+def _supervised_child_has_grok_cli_runner(child: Any) -> bool:
+    """True when grok_cli_runner is still parent-linked under ``child``."""
+
+    try:
+        pid = int(getattr(child, "pid", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 1:
+        return False
+    try:
+        for item in descendant_processes(pid):
+            if process_listing_is_grok_runner(item):
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def extra_gate_grok_must_keep_supervisor(
+    decision: SupervisorLoopDecision,
+    *,
+    child_still_alive: bool,
+    child: Any | None = None,
+) -> bool:
+    """Keep the supervisor attached when extra-gate grok is in the child tree.
+
+    Lane-0 supervisor 459540 had keep-running-before-recycle but still
+    terminated on a non-extra-gate recycle reason, then
+    ``supervised_child_termination_unproven`` exited and master
+    restarting-exited killed PCTDD-006 grok. Official unstick is rearm,
+    never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    if failed_child_termination_should_keep_running(
+        decision,
+        child_still_alive=child_still_alive,
+    ):
+        return True
+    reason = str(getattr(decision, "reason", "") or "")
+    if reason in {"operator_stop", "operator_requested"}:
+        return False
+    if not child_still_alive:
+        return False
+    return _supervised_child_has_grok_cli_runner(child)
 
 
 WatchdogQuiescentStatusPredicate = Callable[[Mapping[str, Any]], bool]
@@ -575,12 +629,17 @@ class SupervisorLoop:
                     break
                 self._safe_write_status("running", child=child, run_id=run_id, log_path=log_path)
                 if self.monotonic() - child_started_at >= self.config.watchdog_startup_grace_seconds:
+                    # Watchdog quiesce can reap the daemon before the
+                    # post-decision poll. Extra-gate keep-running must use
+                    # pre-watchdog liveness so control_plane_source_changed
+                    # cannot fall through to terminate/termination_blocked.
+                    child_alive_before_watchdog = True
                     decision = self.watchdog_decision(child)
                     if decision.action == "stop":
-                        if failed_child_termination_should_keep_running(
+                        if extra_gate_grok_must_keep_supervisor(
                             decision,
-                            child_still_alive=_poll_child_exit(child)
-                            is None,
+                            child_still_alive=child_alive_before_watchdog,
+                            child=child,
                         ):
                             # Do not SIGTERM a live extra-gate child on
                             # control_plane_source_changed. Lane-0 STOP then
@@ -598,10 +657,10 @@ class SupervisorLoop:
                                 self.last_exit_code = 0
                                 stop_requested = True
                                 break
-                            if failed_child_termination_should_keep_running(
+                            if extra_gate_grok_must_keep_supervisor(
                                 decision,
-                                child_still_alive=_poll_child_exit(child)
-                                is None,
+                                child_still_alive=child_alive_before_watchdog,
+                                child=child,
                             ):
                                 continue
                             final_status = "termination_blocked"
@@ -614,6 +673,16 @@ class SupervisorLoop:
                         stop_requested = True
                         break
                     if decision.action == "recycle":
+                        if extra_gate_grok_must_keep_supervisor(
+                            decision,
+                            child_still_alive=child_alive_before_watchdog,
+                            child=child,
+                        ):
+                            # Recycle used to terminate first. Extra-gate
+                            # grok in a dedicated session was SIGTERM-killed
+                            # before keep-running could attach. Official
+                            # unstick is rearm, never CAS.
+                            continue
                         self.last_recycle_reason = decision.reason
                         self._safe_write_status(
                             "recycling",
@@ -635,10 +704,10 @@ class SupervisorLoop:
                                 self.last_exit_code = 0
                                 recycled = True
                                 break
-                            if failed_child_termination_should_keep_running(
+                            if extra_gate_grok_must_keep_supervisor(
                                 decision,
-                                child_still_alive=_poll_child_exit(child)
-                                is None,
+                                child_still_alive=child_alive_before_watchdog,
+                                child=child,
                             ):
                                 continue
                             final_status = "termination_blocked"

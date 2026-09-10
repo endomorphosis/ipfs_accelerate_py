@@ -155,6 +155,7 @@ from .supervisor import (
     active_codex_exec_workers,
     descendant_processes,
     fence_ordinary_provider_runner,
+    process_listing_is_grok_runner,
     worktree_phase_worker_status,
 )
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
@@ -7107,6 +7108,50 @@ class PortalImplementationSupervisor:
 
         return _read_control_plane_source_snapshot()
 
+    @staticmethod
+    def _control_plane_source_identity_is_cid_only(
+        status: Mapping[str, Any] | None,
+    ) -> bool:
+        """True when source_id drifted but git tree and HEAD revision match.
+
+        Dirty CONTROL_PLANE_SOURCE_PATHS hashes change ``source_id`` while
+        ``HEAD:ipfs_accelerate_py/agent_supervisor`` and ``HEAD`` stay put.
+        That kept ``control_plane_update_pending`` true, then extra-gate
+        preserve flapped and quiesce killed PCTDD-006/034 grok. Extra-gate
+        aliases still cannot bypass ``safe_to_restart=False``.
+        """
+
+        if not isinstance(status, Mapping):
+            return False
+        loaded_id = str(status.get("control_plane_source_id") or "").strip()
+        current_id = str(
+            status.get("control_plane_current_source_id") or ""
+        ).strip()
+        loaded_tree = str(
+            status.get("control_plane_source_tree_id") or ""
+        ).strip()
+        current_tree = str(
+            status.get("control_plane_current_source_tree_id") or ""
+        ).strip()
+        loaded_rev = str(
+            status.get("control_plane_source_revision") or ""
+        ).strip()
+        current_rev = str(
+            status.get("control_plane_current_source_revision") or ""
+        ).strip()
+        if not (
+            loaded_id
+            and current_id
+            and loaded_tree
+            and current_tree
+            and loaded_rev
+            and current_rev
+        ):
+            return False
+        if loaded_tree != current_tree or loaded_rev != current_rev:
+            return False
+        return loaded_id != current_id
+
     def _control_plane_status_projection(self) -> dict[str, Any]:
         now_monotonic = time.monotonic()
         probe_interval = max(1.0, float(self.config.check_interval))
@@ -7125,7 +7170,32 @@ class PortalImplementationSupervisor:
             self._loaded_control_plane_source.get("source_id") or ""
         )
         current_id = str(current.get("source_id") or "")
+        loaded_tree = str(
+            self._loaded_control_plane_source.get(
+                "control_plane_tree_id"
+            )
+            or ""
+        )
+        current_tree = str(current.get("control_plane_tree_id") or "")
+        loaded_rev = str(
+            self._loaded_control_plane_source.get(
+                "repository_revision"
+            )
+            or ""
+        )
+        current_rev = str(current.get("repository_revision") or "")
         pending = not loaded_id or not current_id or loaded_id != current_id
+        if pending and self._control_plane_source_identity_is_cid_only(
+            {
+                "control_plane_source_id": loaded_id,
+                "control_plane_current_source_id": current_id,
+                "control_plane_source_tree_id": loaded_tree,
+                "control_plane_current_source_tree_id": current_tree,
+                "control_plane_source_revision": loaded_rev,
+                "control_plane_current_source_revision": current_rev,
+            }
+        ):
+            pending = False
         if pending and not self._control_plane_update_detected_at:
             self._control_plane_update_detected_at = utc_now()
         elif not pending:
@@ -7134,24 +7204,10 @@ class PortalImplementationSupervisor:
             "control_plane_source_schema": CONTROL_PLANE_SOURCE_SCHEMA,
             "control_plane_source_id": loaded_id,
             "control_plane_current_source_id": current_id,
-            "control_plane_source_tree_id": str(
-                self._loaded_control_plane_source.get(
-                    "control_plane_tree_id"
-                )
-                or ""
-            ),
-            "control_plane_current_source_tree_id": str(
-                current.get("control_plane_tree_id") or ""
-            ),
-            "control_plane_source_revision": str(
-                self._loaded_control_plane_source.get(
-                    "repository_revision"
-                )
-                or ""
-            ),
-            "control_plane_current_source_revision": str(
-                current.get("repository_revision") or ""
-            ),
+            "control_plane_source_tree_id": loaded_tree,
+            "control_plane_current_source_tree_id": current_tree,
+            "control_plane_source_revision": loaded_rev,
+            "control_plane_current_source_revision": current_rev,
             "control_plane_update_pending": pending,
             "control_plane_update_detected_at": (
                 self._control_plane_update_detected_at
@@ -9962,6 +10018,34 @@ class PortalImplementationSupervisor:
                 )
                 return SupervisorLoopDecision.keep_running()
 
+            if self._control_plane_source_identity_is_cid_only(
+                control_plane_status
+            ):
+                # Old supervisors already latched pending=True on dirty-file
+                # CID churn while git tree/revision matched, then quiesce
+                # killed extra-gate grok. Do not enter the portal fence.
+                # Extra-gate aliases still cannot bypass
+                # safe_to_restart=False.
+                deferred = {
+                    **control_plane_status,
+                    "control_plane_update_pending": False,
+                    "control_plane_reload_deferred": True,
+                    "control_plane_reload_deferred_reason": (
+                        "control_plane_source_identity_cid_only"
+                    ),
+                    "control_plane_reload_quiescence": {
+                        "attempted": False,
+                        "quiesced": False,
+                        "reason": "pre_quiescence_cid_only_identity_deferred",
+                    },
+                }
+                self._set_loop_status_fields(_loop, deferred)
+                self._record_event(
+                    "supervisor_control_plane_reload_deferred",
+                    deferred,
+                )
+                return SupervisorLoopDecision.keep_running()
+
             quiescence: dict[str, Any] | None = None
 
             def defer_reload(
@@ -10088,6 +10172,9 @@ class PortalImplementationSupervisor:
                             self._live_in_progress_worker_must_preserve(
                                 extra_gate_state,
                                 child_pid=int(getattr(_child, "pid", 0) or 0),
+                            )
+                            or self._supervised_tree_has_live_grok(
+                                int(getattr(_child, "pid", 0) or 0)
                             )
                         )
                         if extra_gate_active:
@@ -16539,30 +16626,52 @@ class PortalImplementationSupervisor:
         if workers:
             return True
         pid = int(child_pid or 0)
-        if pid <= 0:
+        if self._supervised_tree_has_live_grok(pid):
+            return True
+        try:
+            probe_pid = int(pid or 0)
+            if probe_pid <= 1:
+                probe_pid = int(self._recorded_managed_daemon_pid() or 0)
+            if probe_pid <= 1:
+                probe_pid = int(os.getpid())
+            return bool(active_codex_exec_workers(probe_pid, mapping))
+        except Exception:
+            return False
+
+    def _supervised_tree_has_live_grok(self, child_pid: int | None = None) -> bool:
+        """True when grok_cli_runner is still in this daemon or supervisor tree.
+
+        Idle DuckDB reload projections authorized quiesce while extra-gate
+        grok was live because ``ps`` cmdline was empty and preserve skipped
+        the procfs argv. Official unstick is rearm, never CAS. Extra-gate
+        aliases still cannot bypass ``safe_to_restart=False``.
+        """
+
+        roots: list[int] = []
+        pid = int(child_pid or 0)
+        if pid <= 1:
             try:
                 pid = int(self._recorded_managed_daemon_pid() or 0)
             except Exception:
                 pid = 0
-        if pid <= 0:
+        if pid > 1:
+            roots.append(pid)
+        try:
+            supervisor_pid = int(os.getpid())
+        except (TypeError, ValueError):
+            supervisor_pid = 0
+        if supervisor_pid > 1 and supervisor_pid not in roots:
+            roots.append(supervisor_pid)
+        if not roots:
             return False
         try:
-            for item in descendant_processes(pid):
-                cmd = str(item.get("cmdline") or "")
-                if not cmd:
-                    continue
-                lowered = cmd.lower()
-                if "grok_cli_runner" in lowered:
-                    return True
-                argv0 = cmd.split()[0] if cmd.split() else ""
-                if os.path.basename(argv0).lower() == "grok":
-                    return True
-        except Exception:
-            pass
-        try:
-            return bool(active_codex_exec_workers(pid, mapping))
+            for root in roots:
+                for item in descendant_processes(root):
+                    if process_listing_is_grok_runner(item):
+                        return True
         except Exception:
             return False
+        return False
 
     def _nested_extra_gate_portal_must_preserve_worker(
         self,
@@ -16632,6 +16741,28 @@ class PortalImplementationSupervisor:
             if require_live_runner:
                 continue
             if index >= mid_worktree_window:
+                continue
+            # Mid-worktree extra-gate without a runner only while this
+            # lane's managed daemon is still alive. After owner teardown,
+            # stale PCTDD-005 portal with runner=None kept preserve True,
+            # remaining_pid pointed at dead 317326, and lane-2 looped
+            # agentic_maintenance_deferred / mutation_fence_unproven.
+            # Official unstick is rearm after relaunch, never CAS.
+            try:
+                identity = load_supervised_child_identity(
+                    self._managed_daemon_identity_path()
+                )
+            except Exception:
+                identity = None
+            try:
+                daemon_alive = (
+                    identity is not None
+                    and supervised_child_identity_liveness(identity)
+                    is OwnerLiveness.ALIVE
+                )
+            except Exception:
+                daemon_alive = False
+            if not daemon_alive:
                 continue
             if self._extra_gate_portal_state_must_preserve_worker(payload):
                 return True
@@ -17317,14 +17448,18 @@ class PortalImplementationSupervisor:
         )
         active: list[str] = []
         entries: list[os.DirEntry[str]] = []
+        live_count = 0
         try:
             with os.scandir(inbox) as iterator:
                 for entry in iterator:
                     entries.append(entry)
-                    if len(entries) > MUTATION_MAX_DIRECTORY_ENTRIES:
-                        raise RuntimeError(
-                            "Quack mutation inbox population exceeds its bound"
-                        )
+                    match = allowed_name.fullmatch(entry.name)
+                    if match and match.group(1) in {"request", "processing"}:
+                        live_count += 1
+                        if live_count > MUTATION_MAX_DIRECTORY_ENTRIES:
+                            raise RuntimeError(
+                                "Quack mutation inbox population exceeds its bound"
+                            )
         except OSError as exc:
             raise RuntimeError("Quack mutation inbox cannot be observed") from exc
         for entry in entries:
@@ -25344,8 +25479,13 @@ class PortalImplementationSupervisor:
                 )
             except Exception:
                 nested_live_runner = False
-        if preserve_worker and (
-            grok_workers or pid_running or nested_live_runner
+        # Do not gate the tree scan on portal preserve_worker. Idle DuckDB
+        # projections set preserve_worker False, then quiesce SIGTERM-killed
+        # PCTDD-034 grok while ordinary_provider_runner_receipt_absent.
+        tree_has_grok = self._supervised_tree_has_live_grok(live_pid or None)
+        if tree_has_grok or (
+            preserve_worker
+            and (grok_workers or pid_running or nested_live_runner)
         ):
             # Restart run_once used the pid file only and SIGTERM-killed
             # leftover extra-gate grok named by identity. Extra-gate aliases

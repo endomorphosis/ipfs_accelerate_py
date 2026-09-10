@@ -4204,13 +4204,24 @@ class QuackStateServer:
                 raise QuackStateServerMutationError("inbox_symlink_refused")
             os.chmod(inbox, 0o700)
             entries = tuple(inbox.iterdir())
-            if len(entries) > MUTATION_MAX_DIRECTORY_ENTRIES:
+            # Settled .done.json receipts from a long campaign must not
+            # crash the owner. PCTDD g9 gen 104 died on
+            # inbox_population_exceeded with 4097 done files and no live
+            # requests, then master exited. Extra-gate aliases still
+            # cannot bypass safe_to_restart=False.
+            live_entries = tuple(
+                path
+                for path in entries
+                if MUTATION_REQUEST_NAME.fullmatch(path.name)
+                or MUTATION_PROCESSING_NAME.fullmatch(path.name)
+            )
+            if len(live_entries) > MUTATION_MAX_DIRECTORY_ENTRIES:
                 raise QuackStateServerMutationError("inbox_population_exceeded")
             self._recover_stale_mutation_claims(inbox)
             if self._lifecycle is not ServerLifecycle.READY:
                 return 0
             serviced = 0
-            for request_path in sorted(entries, key=lambda item: item.name):
+            for request_path in sorted(live_entries, key=lambda item: item.name):
                 if serviced >= max_requests:
                     break
                 match = MUTATION_REQUEST_NAME.fullmatch(request_path.name)

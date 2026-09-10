@@ -18,10 +18,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server as qu
 from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as duckdb_state_module
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     FakeQuackTransport,
+    MUTATION_MAX_DIRECTORY_ENTRIES,
     MUTATION_REQUEST_NAME,
     ProcessBirthIdentity,
     QUACK_ISOLATION_RECEIPT_SCHEMA,
     QuackStateServerIsolationError,
+    QuackStateServerMutationError,
     QuackStateServerReadyError,
     build_server,
 )
@@ -638,6 +640,51 @@ def test_authenticated_bundle_is_atomic_and_exact_replay_is_idempotent(tmp_path:
         server.stop()
     with DatabaseTaskSource(database, install_schema=False) as source:
         assert source.projection_matches_events() is True
+
+
+def test_settled_done_receipts_do_not_crash_owner_on_inbox_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Done receipts must not latch inbox_population_exceeded.
+
+    PCTDD g9 gen 104 died serving 4097 leftover .done.json files with no
+    live requests, then master exited while PCTDD-005 grok was live.
+    Extra-gate aliases still cannot bypass safe_to_restart=False.
+    """
+
+    monkeypatch.setattr(quack_server_module, "MUTATION_MAX_DIRECTORY_ENTRIES", 2)
+    server, _identity, token, _database = _server(tmp_path)
+    request = _transition_request(server, token, session_id="lane:one", owner_id="one")
+    inbox = server.mutation_inbox_path()
+    inbox.mkdir(parents=True, exist_ok=True)
+    try:
+        for index in range(3):
+            (inbox / f"baguqeera{'a' * 44}{index}.done.json").write_text(
+                "{}\n", encoding="utf-8"
+            )
+        _publish(server, request)
+        assert server.service_mutation_inbox() == 1
+        assert _done(server, request)["ok"] is True
+    finally:
+        server.stop()
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+    assert MUTATION_MAX_DIRECTORY_ENTRIES == 4_096
+    assert QuackStateServerMutationError("inbox_population_exceeded").code == (
+        "inbox_population_exceeded"
+    )
 
 
 def test_two_remote_bundles_have_one_winner_and_typed_loser(tmp_path: Path) -> None:

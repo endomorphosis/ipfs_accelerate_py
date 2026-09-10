@@ -2769,12 +2769,15 @@ def test_supervisor_loop_preserves_markers_when_termination_is_unproven(
     assert identity_path.read_text(encoding="utf-8") == "unavailable\n"
 
 
-def test_failed_child_termination_keeps_running_for_control_plane_source_changed() -> None:
+def test_failed_child_termination_keeps_running_for_control_plane_source_changed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor,
     )
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
         SupervisorLoopDecision,
+        extra_gate_grok_must_keep_supervisor,
         failed_child_termination_should_keep_running,
     )
 
@@ -2801,6 +2804,376 @@ def test_failed_child_termination_keeps_running_for_control_plane_source_changed
         )
         is False
     )
+    recycle = SupervisorLoopDecision.recycle(
+        "extra_gate_in_progress_preserve_worker"
+    )
+    assert (
+        failed_child_termination_should_keep_running(
+            recycle, child_still_alive=True
+        )
+        is True
+    )
+    cid_only = SupervisorLoopDecision.stop(
+        "control_plane_source_identity_cid_only"
+    )
+    assert (
+        failed_child_termination_should_keep_running(
+            cid_only, child_still_alive=True
+        )
+        is True
+    )
+    stale = SupervisorLoopDecision.recycle("stale_child")
+    grok_child = SupervisedChild(
+        pid=459540,
+        command=("python", "worker.py"),
+        log_path=Path("child.log"),
+        child_pid_path=Path("child.pid"),
+    )
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "descendant_processes",
+        lambda pid: (
+            [
+                {
+                    "pid": 718853,
+                    "cmdline": (
+                        "python3 -m "
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+                    ),
+                }
+            ]
+            if int(pid) == 459540
+            else []
+        ),
+    )
+    assert (
+        extra_gate_grok_must_keep_supervisor(
+            stale, child_still_alive=True, child=grok_child
+        )
+        is True
+    )
+    assert (
+        extra_gate_grok_must_keep_supervisor(
+            SupervisorLoopDecision.stop("operator_stop"),
+            child_still_alive=True,
+            child=grok_child,
+        )
+        is False
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_supervisor_loop_recycle_does_not_terminate_live_extra_gate_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recycle must keep-running before terminate when extra-gate grok is live.
+
+    The recycle path used to SIGTERM first. Extra-gate grok in a dedicated
+    session died, then keep-running never ran. Extra-gate aliases still
+    cannot bypass safe_to_restart=False.
+    """
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    spec = ManagedDaemonSpec(
+        name="identity-required-daemon",
+        schema="test.identity-required-daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=("python", "worker.py"),
+        status_path=state_dir / "daemon-status.json",
+        supervisor_status_path=state_dir / "supervisor-status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure-status.json",
+        ensure_check_path=state_dir / "ensure-check.json",
+        supervisor_lock_path=state_dir / "supervisor.lock",
+    )
+    child = SupervisedChild(
+        pid=11,
+        command=("python", "worker.py"),
+        log_path=state_dir / "child.log",
+        child_pid_path=state_dir / "child.pid",
+    )
+    launches = {"n": 0}
+
+    def fake_launch(_spec, **_kwargs):
+        launches["n"] += 1
+        return child
+
+    polls = {"n": 0}
+
+    def fake_poll(_child):
+        polls["n"] += 1
+        return None if polls["n"] < 8 else 0
+
+    terminates = {"n": 0}
+
+    def fake_terminate(*_args, **_kwargs):
+        terminates["n"] += 1
+        raise AssertionError("extra-gate recycle must not terminate grok")
+
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "adopt_or_launch_supervised_child",
+        fake_launch,
+    )
+    monkeypatch.setattr(supervisor_loop_module, "_poll_child_exit", fake_poll)
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "terminate_supervised_child",
+        fake_terminate,
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=child.command,
+            log_prefix="child",
+            heartbeat_seconds=0.01,
+            poll_seconds=0.01,
+            watchdog_startup_grace_seconds=0,
+            max_restarts=1,
+        ),
+        watchdog_hook=lambda *_args: SupervisorLoopDecision.recycle(
+            "extra_gate_in_progress_preserve_worker"
+        ),
+        sleep=lambda _seconds: None,
+    )
+
+    result = loop.run()
+
+    assert terminates["n"] == 0
+    assert result.status != "termination_blocked"
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_supervisor_loop_stale_recycle_keeps_live_grok_descendants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-extra-gate recycle reasons must not fence a live grok child.
+
+    Lane-0 459540 recycled on a non-extra-gate reason, then
+    supervised_child_termination_unproven exited and killed PCTDD-006 grok.
+    Extra-gate aliases still cannot bypass safe_to_restart=False.
+    """
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    spec = ManagedDaemonSpec(
+        name="identity-required-daemon",
+        schema="test.identity-required-daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=("python", "worker.py"),
+        status_path=state_dir / "daemon-status.json",
+        supervisor_status_path=state_dir / "supervisor-status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure-status.json",
+        ensure_check_path=state_dir / "ensure-check.json",
+        supervisor_lock_path=state_dir / "supervisor.lock",
+    )
+    child = SupervisedChild(
+        pid=459540,
+        command=("python", "worker.py"),
+        log_path=state_dir / "child.log",
+        child_pid_path=state_dir / "child.pid",
+    )
+
+    def fake_launch(_spec, **_kwargs):
+        return child
+
+    polls = {"n": 0}
+
+    def fake_poll(_child):
+        polls["n"] += 1
+        return None if polls["n"] < 8 else 0
+
+    def fake_terminate(*_args, **_kwargs):
+        raise AssertionError("stale recycle must not terminate extra-gate grok")
+
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "adopt_or_launch_supervised_child",
+        fake_launch,
+    )
+    monkeypatch.setattr(supervisor_loop_module, "_poll_child_exit", fake_poll)
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "terminate_supervised_child",
+        fake_terminate,
+    )
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "descendant_processes",
+        lambda pid: (
+            [
+                {
+                    "pid": 718853,
+                    "cmdline": (
+                        "python3 -m "
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+                    ),
+                }
+            ]
+            if int(pid) == 459540
+            else []
+        ),
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=child.command,
+            log_prefix="child",
+            heartbeat_seconds=0.01,
+            poll_seconds=0.01,
+            watchdog_startup_grace_seconds=0,
+            max_restarts=1,
+        ),
+        watchdog_hook=lambda *_args: SupervisorLoopDecision.recycle(
+            "stale_child"
+        ),
+        sleep=lambda _seconds: None,
+    )
+
+    result = loop.run()
+
+    assert result.status != "termination_blocked"
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_supervisor_loop_stop_uses_pre_watchdog_liveness_for_extra_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Quiesce during watchdog must not disable extra-gate keep-running.
+
+    control_plane_source_changed STOP quiesced the daemon, the post-decision
+    poll saw a dead child, keep-running was False, and termination_blocked
+    exited the supervisor. Extra-gate aliases still cannot bypass
+    safe_to_restart=False.
+    """
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    spec = ManagedDaemonSpec(
+        name="identity-required-daemon",
+        schema="test.identity-required-daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=("python", "worker.py"),
+        status_path=state_dir / "daemon-status.json",
+        supervisor_status_path=state_dir / "supervisor-status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure-status.json",
+        ensure_check_path=state_dir / "ensure-check.json",
+        supervisor_lock_path=state_dir / "supervisor.lock",
+    )
+    child = SupervisedChild(
+        pid=12,
+        command=("python", "worker.py"),
+        log_path=state_dir / "child.log",
+        child_pid_path=state_dir / "child.pid",
+    )
+    launches = {"n": 0}
+
+    def fake_launch(_spec, **_kwargs):
+        launches["n"] += 1
+        return child
+
+    terminates = {"n": 0}
+
+    def fake_terminate(*_args, **_kwargs):
+        terminates["n"] += 1
+        raise AssertionError(
+            "control_plane_source_changed must not terminate extra-gate grok"
+        )
+
+    polls = {"n": 0}
+
+    def fake_poll(_child):
+        polls["n"] += 1
+        # Stay alive through the first watchdog STOP so keep-running can
+        # skip terminate, then exit so the loop relaunches instead of
+        # hanging. Extra-gate aliases still cannot bypass
+        # safe_to_restart=False.
+        return None if polls["n"] < 6 else 0
+
+    polls_after_watchdog = {"n": 0}
+
+    def watchdog_hook(*_args):
+        polls_after_watchdog["n"] += 1
+        return SupervisorLoopDecision.stop(
+            "control_plane_source_changed",
+            status="control_plane_reload_required",
+        )
+
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "adopt_or_launch_supervised_child",
+        fake_launch,
+    )
+    monkeypatch.setattr(supervisor_loop_module, "_poll_child_exit", fake_poll)
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "terminate_supervised_child",
+        fake_terminate,
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=child.command,
+            log_prefix="child",
+            heartbeat_seconds=0.01,
+            poll_seconds=0.01,
+            watchdog_startup_grace_seconds=0,
+            max_restarts=1,
+        ),
+        watchdog_hook=watchdog_hook,
+        sleep=lambda _seconds: None,
+    )
+
+    result = loop.run()
+
+    assert terminates["n"] == 0
+    assert polls_after_watchdog["n"] >= 1
+    assert result.status != "termination_blocked"
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,

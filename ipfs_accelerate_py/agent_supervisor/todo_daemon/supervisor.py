@@ -300,6 +300,43 @@ def descendant_processes(root_pid: Any) -> list[JsonDict]:
     return found
 
 
+def process_listing_is_grok_runner(item: Mapping[str, Any] | None) -> bool:
+    """True when a descendant listing is grok_cli_runner or grok argv0.
+
+    ``ps`` cmdline can be empty or truncated while procfs argv still names
+    the extra-gate runner. Lane-3 idle DuckDB projection then fenced
+    PCTDD-034 because preserve skipped empty cmdline. Extra-gate aliases
+    still cannot bypass ``safe_to_restart=False``.
+    """
+
+    if not isinstance(item, Mapping):
+        return False
+    blobs: list[str] = []
+    cmdline = item.get("cmdline")
+    if isinstance(cmdline, str) and cmdline:
+        blobs.append(cmdline)
+    elif isinstance(cmdline, (list, tuple)):
+        blobs.extend(str(part) for part in cmdline if part)
+    argv = item.get("argv")
+    if isinstance(argv, (list, tuple)):
+        blobs.extend(str(part) for part in argv if part)
+    elif isinstance(argv, str) and argv:
+        blobs.append(argv)
+    lowered = " ".join(blobs).lower()
+    if "grok_cli_runner" in lowered:
+        return True
+
+    def _argv0_is_grok(value: Any) -> bool:
+        if isinstance(value, str) and value:
+            first = value.split()[0] if value.split() else ""
+            return os.path.basename(first).lower() == "grok"
+        if isinstance(value, (list, tuple)) and value:
+            return os.path.basename(str(value[0] or "")).lower() == "grok"
+        return False
+
+    return _argv0_is_grok(cmdline) or _argv0_is_grok(argv)
+
+
 def _process_command_argv(pid: Any) -> tuple[str, ...] | None:
     """Read one exact Linux argv without accepting lossy process-table text."""
 
