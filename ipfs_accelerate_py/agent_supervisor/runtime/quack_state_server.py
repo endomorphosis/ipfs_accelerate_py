@@ -2384,15 +2384,25 @@ class QuackStateServer:
                     "authoritative database changed during replica copy"
                 )
             self._assert_replica_source_anchor()
-            pending = os.stat(temporary, follow_symlinks=False)
-            if (pending.st_dev, pending.st_ino) != temporary_identity:
-                raise QuackStateServerReadyError("replica temporary identity differs")
+            os.fchmod(target_descriptor, 0o600)
             os.fsync(target_descriptor)
-            os.close(target_descriptor)
-            target_descriptor = None
+            # Keep the created descriptor through promotion. A replaced name or
+            # truncated output must never acknowledge the original copy digest.
+            completed = os.fstat(target_descriptor)
+            pending = os.stat(temporary, follow_symlinks=False)
+            if any(
+                not stat.S_ISREG(observed.st_mode)
+                or observed.st_uid != os.getuid()
+                or (observed.st_dev, observed.st_ino) != temporary_identity
+                or observed.st_size != copied
+                for observed in (completed, pending)
+            ):
+                raise QuackStateServerReadyError(
+                    "read-replica temporary entry changed before promotion"
+                )
             os.replace(temporary, replica)
             temporary_identity = None
-            os.chmod(replica, 0o600)
+            promoted = os.fstat(target_descriptor)
             directory_descriptor = os.open(
                 replica.parent,
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0),
@@ -2401,6 +2411,22 @@ class QuackStateServer:
                 os.fsync(directory_descriptor)
             finally:
                 os.close(directory_descriptor)
+            published = os.stat(replica, follow_symlinks=False)
+            for observed in (os.fstat(target_descriptor), published):
+                if (
+                    not stat.S_ISREG(observed.st_mode)
+                    or observed.st_uid != os.getuid()
+                    or (observed.st_dev, observed.st_ino) != (created.st_dev, created.st_ino)
+                    or observed.st_size != copied
+                    or any(
+                        getattr(observed, name) != getattr(promoted, name)
+                        for name in stable_fields
+                    )
+                ):
+                    raise QuackStateServerReadyError(
+                        "read-replica changed during final directory sync"
+                    )
+            self._assert_replica_source_anchor()
             return f"sha256:{digest.hexdigest()}", copied
         except QuackStateServerError:
             raise
