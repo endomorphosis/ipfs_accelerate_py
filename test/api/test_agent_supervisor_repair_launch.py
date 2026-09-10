@@ -180,3 +180,16 @@ def test_selected_job_completed_or_removed_before_run_is_not_resurrected(launch,
     assert read_json(path) == before
     if status == "missing":
         assert not path.exists()
+
+
+def test_package_disappearing_during_native_probe_does_not_charge_work(launch, monkeypatch):
+    config, board, path, executable = launch
+    def command(spec, **kwargs):
+        if spec["argv"][0] == "systemctl":
+            return {"returncode": 4, "stdout": "inactive"}
+        executable.unlink()
+        return {"returncode": 0, "stdout": json.dumps({"health": "blocked"})}
+    monkeypatch.setattr(repair, "command", command)
+    assert repair.run_job(config, board, path)["status"] == "launch_deferred"
+    job = read_json(path)
+    assert job["attempts"] == 13 and "report_path" not in job
