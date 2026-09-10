@@ -10507,6 +10507,24 @@ class DatabasePortalExecutionBridge:
             return str(implementation.get("reason") or "portal_execution_deferred")
         returncode = implementation.get("returncode")
         if isinstance(returncode, int) and not isinstance(returncode, bool) and returncode != 0:
+            validation = implementation.get("validation_result")
+            if (
+                isinstance(validation, Mapping)
+                and validation.get("attempted") is True
+                and validation.get("passed") is False
+                and validation.get("error") == "proposal_validation_failed"
+                and validation.get("reason") in (
+                    "scoped_test_secret_remediation_proposal_unchanged",
+                    "scoped_test_secret_remediation_proposal_rejected",
+                    "scoped_test_secret_remediation_test_semantics_not_preserved",
+                )
+            ):
+                # These are failed acceptance gates, even if the provider
+                # process exited successfully. Do not collapse them to the
+                # generic provider-exit class used by recovery predicates.
+                # In particular, empty outer execution-receipt tables do
+                # not erase the nested Portal provider's execution.
+                return str(validation["reason"])
             return str(implementation.get("reason") or "portal_provider_failed")
         if implementation.get("skipped") is True:
             return str(implementation.get("reason") or "portal_execution_skipped")
