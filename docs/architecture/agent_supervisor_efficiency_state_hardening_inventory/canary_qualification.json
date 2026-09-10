@@ -1,0 +1,97 @@
+{
+  "admitted": true,
+  "allow_honest_nonpromotion": false,
+  "allow_not_admitted": true,
+  "arms": [
+    "direct_minimal_orchestration_baseline",
+    "sealed_current_supervisor_baseline",
+    "candidate_optimized_supervisor"
+  ],
+  "audit_overhead": {
+    "reason_code": "not_yet_measured",
+    "truth_state": "unavailable"
+  },
+  "authority": false,
+  "behavior_coverage": {},
+  "canary_admitted": false,
+  "cohort": "canary",
+  "controls": {},
+  "disposition": "not_admitted",
+  "equal_control_fields": [
+    "repository_revision",
+    "objective",
+    "task_inputs",
+    "acceptance_tests",
+    "available_providers_and_models",
+    "price_accounting",
+    "resource_limits",
+    "maximum_retries",
+    "human_intervention_policy"
+  ],
+  "escaped_seeds": [],
+  "explicit_unavailable_fields": [
+    "audit_overhead",
+    "pair_count",
+    "safety.escaped_critical_seeded_defects",
+    "safety.live_cohort",
+    "safety.simulated_as_live_outcomes"
+  ],
+  "hermetic_sufficient_for_production_promotion": false,
+  "identity": "baguqeeracxauns6v57mqdsvdlwowbp7lb7npjnrp2swzyvjc66qtugh2326q",
+  "interface": "AsehPairedQualification@1",
+  "live": false,
+  "minimum_tasks": 1,
+  "objective_id": "ASEH-G080",
+  "pair_count": {
+    "reason_code": "not_yet_measured",
+    "truth_state": "unavailable"
+  },
+  "policy_identity": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1",
+  "population_kind": "new_live_shadow_canary",
+  "production_qualified": false,
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "promotion_authorized": false,
+  "qualification": false,
+  "quality": {
+    "escaped_selected_test_false_negatives": [],
+    "observed_selected_test_false_negatives": []
+  },
+  "reasons": [
+    "shadow_not_qualified",
+    "zero_candidate_mutation"
+  ],
+  "repository_commit": "fadcbe90c776698871e380fb7285c03fbdf5977f",
+  "repository_tree": "d879202f67a9ff9b799fd7f2bffde78141c963ec",
+  "results_identity": "baguqeerafrpcbygly43e3wappb267ydavuu2wr2w5llnoxjdg4umci7ls4ma",
+  "safety": {
+    "escaped_critical_seeded_defects": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    },
+    "live_cohort": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    },
+    "simulated_as_live_outcomes": {
+      "reason_code": "not_yet_measured",
+      "truth_state": "unavailable"
+    }
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-canary-qualification@1",
+  "schema_version": 1,
+  "statistics": {},
+  "task_id": "ASEH-073",
+  "validator_command": [
+    "python3",
+    "benchmarks/agent_supervisor/efficiency_state_hardening/paired_harness.py",
+    "--cohort",
+    "canary",
+    "--require-shadow-receipt",
+    "benchmarks/agent_supervisor/efficiency_state_hardening/results/live_shadow.json",
+    "--output",
+    "benchmarks/agent_supervisor/efficiency_state_hardening/results/canary.json",
+    "--qualification-output",
+    "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/canary_qualification.json",
+    "--allow-not-admitted"
+  ]
+}
