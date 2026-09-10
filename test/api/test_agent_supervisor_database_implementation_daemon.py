@@ -2471,6 +2471,51 @@ def test_live_owner_auto_rearms_zero_provider_portal_claim_failure(
         daemon.close()
 
 
+def test_verified_source_rearms_new_zero_provider_settlement_after_lifetime_budget(
+    tmp_path: Path,
+) -> None:
+    source = {"source_head": "a" * 40, "source_tree": "b" * 40}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-source-qualified-rearm",
+        provider_fn=lambda _attempt: (_ for _ in ()).throw(
+            DatabasePortalBridgeError("embedded-store claim without live owner")
+        ),
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.authority_mode = "quack"
+        first = daemon.run_once()
+        assert first["implementation_result"]["status"] == "blocked"
+        task_cid = daemon.get_attempt(first["attempt_id"]).task_cid
+        first_settlement = daemon.task_source.get(task_cid).body[
+            "completion_receipt"
+        ]["settlement_id"]
+        second = daemon.run_once()
+        assert second.get("portal_failure_rearms")
+        task = daemon.task_source.get(task_cid)
+        if str(task.status or "") != "blocked":
+            daemon.run_once()
+            task = daemon.task_source.get(task_cid)
+        assert task is not None and task.status == "blocked"
+        second_settlement = task.body["completion_receipt"]["settlement_id"]
+        assert second_settlement != first_settlement
+        idle = daemon.run_once()
+        assert idle["selection_idle_reason"] == "no_ready_tasks"
+        assert idle.get("portal_failure_rearms") == []
+        rearms = daemon.reconcile_recoverable_portal_failure_rearms(
+            recovery_source_validator=lambda: dict(source),
+        )
+        assert len(rearms) == 1
+        assert rearms[0]["reason"] == "live_owner_zero_provider_portal_claim_failure"
+        assert rearms[0]["settlement_id"] == second_settlement
+        retried = daemon.task_source.get(rearms[0]["task_cid"])
+        assert retried is not None and retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
 def test_terminal_portal_failure_coordination_response_loss_replays_exactly_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

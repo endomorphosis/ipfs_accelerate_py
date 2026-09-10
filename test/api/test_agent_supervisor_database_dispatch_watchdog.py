@@ -708,6 +708,71 @@ def test_database_watchdog_rearms_idle_blocked_portal_frontier(
     ]
 
 
+def test_database_watchdog_rearms_idle_frontier_when_blocked_probe_is_empty(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": True,
+            "reason": "authoritative_readiness_observed",
+            "task_source_revision": 41,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+            "blocked_recoverable_task_ids": [],
+            "same_shard_blocked_recoverable_task_ids": [],
+        },
+    )
+    rearm_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_rearm_blocked_recoverable_portal_frontier",
+        lambda: rearm_calls.append({"ok": True})
+        or {
+            "attempted": True,
+            "reason": DATABASE_BLOCKED_PORTAL_FRONTIER_REASON,
+            "rearmed_task_ids": ["SAWM-008"],
+            "rearm_count": 1,
+        },
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "continue"
+    assert rearm_calls == [{"ok": True}]
+    assert events[0][0] == "idle_blocked_recoverable_portal_frontier"
+    assert events[0][1]["blocked_recoverable_portal_frontier_rearm"][
+        "rearm_count"
+    ] == 1
+
+
+def test_sealed_portal_recovery_source_uses_control_plane_pin(tmp_path) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    pin = SimpleNamespace(source_head="a" * 40, source_tree="b" * 40)
+    supervisor.config.accepted_control_plane_pin = pin
+    supervisor.config.plan_bound_source_head = ""
+    supervisor.config.plan_bound_source_tree = ""
+    supervisor.config.configured_board_live_admission = None
+
+    assert supervisor._sealed_portal_recovery_source() == {
+        "source_head": "a" * 40,
+        "source_tree": "b" * 40,
+    }
+
+
 def test_database_watchdog_preserves_child_when_readiness_is_unavailable(
     tmp_path,
     monkeypatch,

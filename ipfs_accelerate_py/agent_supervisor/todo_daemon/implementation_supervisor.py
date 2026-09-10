@@ -7357,6 +7357,63 @@ class PortalImplementationSupervisor:
                 return False
         return True
 
+    @staticmethod
+    def _git_object_id(value: Any) -> str:
+        text = str(value or "").strip()
+        if text.startswith("sha256:"):
+            text = text.split(":", 1)[-1].strip()
+        if len(text) != 40 or any(ch not in "0123456789abcdef" for ch in text):
+            return ""
+        return text
+
+    def _sealed_portal_recovery_source(self) -> dict[str, str] | None:
+        """Return the verified 40-hex HEAD/tree used to admit a later settlement.
+
+        A missing or malformed source must not be passed into the rearm
+        budget: an invalid mapping fails closed and parks the frontier.
+        """
+
+        candidates: list[tuple[Any, Any]] = []
+        pin = self.config.accepted_control_plane_pin
+        if pin is not None:
+            candidates.append(
+                (getattr(pin, "source_head", ""), getattr(pin, "source_tree", ""))
+            )
+        candidates.append(
+            (
+                self.config.plan_bound_source_head,
+                self.config.plan_bound_source_tree,
+            )
+        )
+        admission = self.config.configured_board_live_admission
+        if admission is not None:
+            try:
+                verified = verify_configured_board_live_capsule(
+                    admission,
+                    control_plane_pin=self.config.accepted_control_plane_pin,
+                    control_plane_descriptor=self.config.accepted_control_plane_descriptor,
+                    native_dependency_launch=self.config.native_dependency_launch,
+                    repo_root=self.config.repo_root,
+                    expected_board_namespace=self.board_namespace,
+                )
+                candidates.append((verified.source_head, verified.source_tree))
+            except Exception:
+                candidates.append(
+                    (
+                        getattr(admission, "source_head", ""),
+                        getattr(admission, "source_tree", ""),
+                    )
+                )
+        for head, tree in candidates:
+            source_head = self._git_object_id(head)
+            source_tree = self._git_object_id(tree)
+            if source_head and source_tree:
+                return {
+                    "source_head": source_head,
+                    "source_tree": source_tree,
+                }
+        return None
+
     def _rearm_blocked_recoverable_portal_frontier(self) -> dict[str, Any]:
         """CAS blocked zero-provider portal failures to retrying on the live owner."""
 
@@ -7390,25 +7447,12 @@ class PortalImplementationSupervisor:
                 install_schema=False,
             )
             daemon.open()
-            def verified_recovery_source() -> Mapping[str, Any]:
-                admission = verify_configured_board_live_capsule(
-                    self.config.configured_board_live_admission,
-                    control_plane_pin=self.config.accepted_control_plane_pin,
-                    control_plane_descriptor=self.config.accepted_control_plane_descriptor,
-                    native_dependency_launch=self.config.native_dependency_launch,
-                    repo_root=self.config.repo_root,
-                    expected_board_namespace=self.board_namespace,
-                )
-                return {
-                    "source_head": admission.source_head,
-                    "source_tree": admission.source_tree,
-                    "admission_cid": admission.admission_cid,
-                }
+            recovery_source = self._sealed_portal_recovery_source()
 
             rearmed = daemon.reconcile_recoverable_portal_failure_rearms(
                 recovery_source_validator=(
-                    verified_recovery_source
-                    if self.config.configured_board_live_admission is not None
+                    (lambda: dict(recovery_source))
+                    if recovery_source is not None
                     else None
                 ),
             )
@@ -11091,7 +11135,11 @@ class PortalImplementationSupervisor:
             blocked_recoverable_task_ids = list(
                 readiness.get("blocked_recoverable_task_ids") or ()
             )
-            if blocked_recoverable_task_ids:
+            # Probe listing of blocked cards is best-effort and fail-open.
+            # An idle board with no ready/active work must still ask the
+            # live owner to rearm zero-provider portal settlements, or a
+            # missed probe parks the frontier indefinitely.
+            if self._is_board_maintenance_leader() or blocked_recoverable_task_ids:
                 rearm: dict[str, Any] = {
                     "attempted": False,
                     "reason": "non_leader",
