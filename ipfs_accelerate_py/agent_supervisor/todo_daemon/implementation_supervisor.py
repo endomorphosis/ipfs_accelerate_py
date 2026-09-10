@@ -159,7 +159,12 @@ from .supervisor import (
     descendant_processes,
     worktree_phase_worker_status,
 )
-from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
+from .supervisor_loop import (
+    SupervisorLoop,
+    SupervisorLoopConfig,
+    SupervisorLoopDecision,
+    clear_dead_child_pass_heartbeat,
+)
 from .supervisor_runtime import (
     SUPERVISED_CHILD_IDENTITY_PATH_ENV,
     SUPERVISED_CHILD_OWNER_SCOPE_ENV,
@@ -10746,6 +10751,12 @@ class PortalImplementationSupervisor:
                 or result.last_exit_code == 78
             ):
                 self._typed_fail_closed_recovery_count += 1
+                leftover = clear_dead_child_pass_heartbeat(self.config.state_dir)
+                if leftover.get("cleared"):
+                    self._record_event(
+                        "dead_child_pass_heartbeat_cleared",
+                        leftover,
+                    )
             else:
                 self._typed_fail_closed_recovery_count = 0
 

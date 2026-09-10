@@ -52,6 +52,83 @@ class SupervisorLoopDecision:
         return cls(action="stop", reason=reason, status=status)
 
 
+def clear_dead_child_pass_heartbeat(
+    directory: Path | str,
+    *,
+    idle_reason: str = TYPED_FAIL_CLOSED_RECYCLE_REASON,
+) -> dict[str, Any]:
+    """Drop leftover pass-heartbeat claims after a typed fail-closed child.
+
+    A later outer recovery pass overwrites supervisor status to
+    ``agentic_maintenance_completed``. Observers that only skip
+    ``typed_child_blocker`` then treat the dead child's claim as frozen
+    work. Clear the claim only when the heartbeat PID is gone so a live
+    worker is not unstalled.
+    """
+
+    root = Path(directory)
+    cleared: list[str] = []
+    skipped_live: list[str] = []
+    try:
+        paths = list(root.glob("*_database_daemon_pass_heartbeat.json"))
+    except OSError:
+        return {
+            "cleared": cleared,
+            "skipped_live": skipped_live,
+            "reason": "glob_failed",
+        }
+    for path in paths:
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if not str(payload.get("active_task_id") or "").strip():
+            continue
+        birth = payload.get("process_birth")
+        pid = 0
+        if isinstance(birth, Mapping):
+            try:
+                pid = int(birth.get("pid") or 0)
+            except (TypeError, ValueError):
+                pid = 0
+        if pid > 1 and pid_alive(pid):
+            skipped_live.append(str(path))
+            continue
+        payload["active_task_id"] = ""
+        payload["claimed_task_cid"] = ""
+        if not str(payload.get("selection_idle_reason") or "").strip():
+            payload["selection_idle_reason"] = idle_reason
+        temporary = path.with_name(
+            f".{path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp"
+        )
+        try:
+            temporary.write_text(
+                json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            os.replace(temporary, path)
+        except OSError:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+            continue
+        cleared.append(str(path))
+    return {
+        "cleared": cleared,
+        "skipped_live": skipped_live,
+        "reason": (
+            "leftover_fail_closed_heartbeat"
+            if cleared
+            else "no_dead_child_pass_heartbeat"
+        ),
+    }
+
+
 WatchdogQuiescentStatusPredicate = Callable[[Mapping[str, Any]], bool]
 
 
@@ -275,6 +352,11 @@ class SupervisorLoop:
             extra=payload_extra,
         )
         self._persist_supervisor_pid_file()
+
+    def _clear_dead_child_pass_heartbeat(self) -> dict[str, Any]:
+        """Drop leftover pass-heartbeat claims after a typed fail-closed child."""
+
+        return clear_dead_child_pass_heartbeat(self.config.spec.daemon_dir)
 
     def _safe_write_status(
         self,
@@ -674,6 +756,7 @@ class SupervisorLoop:
             and final_status == TYPED_CHILD_BLOCKER_STATUS
         ):
             extra = {"exact_source_worktree": True}
+            self._clear_dead_child_pass_heartbeat()
         self._safe_write_status(
             final_status,
             child=None,

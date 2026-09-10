@@ -2264,6 +2264,55 @@ def test_operator_admits_process_dead_generation_47_stale_ready_owner() -> None:
     assert "_m69_published_owner_is_process_dead" in validate_source
 
 
+def test_operator_does_not_kill_coordinator_for_leftover_fail_closed_heartbeat() -> None:
+    """Leftover typed-78 claims unstall in-place. Never recycle the coordinator."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_leftover_fail_closed_heartbeat_test",
+    )
+    admitted = operator._admit_leftover_fail_closed_heartbeat_unstall(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=True,
+        supervisor_alive=True,
+        daemon_alive=False,
+        last_exit_code=78,
+        leftover_active_task_id="SAWM-008",
+        leftover_heartbeat_pid_alive=False,
+    )
+    live_worker = operator._admit_leftover_fail_closed_heartbeat_unstall(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=True,
+        supervisor_alive=True,
+        daemon_alive=True,
+        last_exit_code=78,
+        leftover_active_task_id="SAWM-008",
+        leftover_heartbeat_pid_alive=True,
+    )
+    dead_master = operator._admit_leftover_fail_closed_heartbeat_unstall(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=False,
+        supervisor_alive=True,
+        daemon_alive=False,
+        last_exit_code=78,
+        leftover_active_task_id="SAWM-008",
+        leftover_heartbeat_pid_alive=False,
+    )
+    assert admitted["admitted"] is True
+    assert admitted["kill_coordinator"] is False
+    assert admitted["action"] == "clear_leftover_fail_closed_heartbeat"
+    assert admitted["reason"] == "leftover_fail_closed_heartbeat"
+    assert live_worker["admitted"] is False
+    assert live_worker["kill_coordinator"] is False
+    assert live_worker["reason"] == "live_worker_claim_preserved"
+    assert dead_master["admitted"] is False
+    assert dead_master["kill_coordinator"] is False
+    assert dead_master["reason"] == "healthy_coordinator_owns_in_wave_relaunch"
+
+
 def test_operator_does_not_kill_coordinator_for_isolated_dead_lane() -> None:
     """Isolated dead lanes require in-wave relaunch, never coordinator kill."""
 

@@ -54,6 +54,7 @@ from .supervisor_recovery import (
     RecoveryActionObservation,
 )
 from ..runtime.scheduler_metrics import scheduler_snapshot, scheduler_state_events
+from ..todo_daemon.supervisor_loop import clear_dead_child_pass_heartbeat
 
 logger = logging.getLogger(__name__)
 
@@ -1734,6 +1735,25 @@ class SupervisorWatchdog:
         heartbeat_check: Mapping[str, Any],
     ) -> dict[str, Any] | None:
         policy = self.autonomous_unstall_policy or self._manifest_unstall_policy(manifest)
+        leftover_fail_closed = (
+            heartbeat_check.get("last_exit_code") == 78
+            and bool(pid_check.get("alive"))
+        )
+        if leftover_fail_closed:
+            leftover = clear_dead_child_pass_heartbeat(state_dir)
+            if leftover.get("cleared"):
+                return {
+                    "recovered": True,
+                    "quarantined": False,
+                    "work_complete": False,
+                    "reason": "leftover_fail_closed_heartbeat",
+                    "cleared": leftover.get("cleared"),
+                }
+            return {
+                "recovered": False,
+                "quarantined": False,
+                "reason": "typed_fail_closed_exit",
+            }
         if policy is None or not policy.enabled:
             return None
         if published_owner_process_dead(manifest, repo_root=self.repo_root):
@@ -2104,6 +2124,26 @@ class SupervisorWatchdog:
             if typed_fail_closed:
                 report["action"] = "typed_child_blocker"
                 report["reason"] = "typed_fail_closed_exit"
+                if alive:
+                    leftover_unstall = self._watchdog_unstall(
+                        manifest=manifest,
+                        lane=lane,
+                        lane_started=lane_started,
+                        bundle_key=str(bundle_key),
+                        state_dir=state_dir,
+                        state_prefix=str(state_prefix),
+                        pid_check=pid_check,
+                        heartbeat_check=heartbeat_check,
+                    )
+                    if leftover_unstall is not None:
+                        report["autonomous_unstall"] = leftover_unstall
+                        if leftover_unstall.get("reason") == (
+                            "leftover_fail_closed_heartbeat"
+                        ) and leftover_unstall.get("recovered"):
+                            report["action"] = (
+                                "leftover_fail_closed_heartbeat_cleared"
+                            )
+                            report["reason"] = "leftover_fail_closed_heartbeat"
 
             if needs_restart and published_owner_process_dead(
                 manifest, repo_root=self.repo_root
