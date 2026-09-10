@@ -10021,6 +10021,17 @@ class PortalImplementationSupervisor:
             def finish_reload(
                 database_projection: Mapping[str, Any],
             ) -> SupervisorLoopDecision:
+                if self._live_in_progress_worker_must_preserve(
+                    child_pid=int(getattr(_child, "pid", 0) or 0),
+                ):
+                    # Lane-0 recorded update_detected then STOP while 005
+                    # grok_cli_runner was still live; master restarting-exited
+                    # with zero preserving extra-gate lines. Extra-gate
+                    # aliases still cannot bypass safe_to_restart=False.
+                    return defer_reload(
+                        "extra_gate_in_progress_preserve_worker",
+                        database_projection=database_projection,
+                    )
                 detail = {
                     **control_plane_status,
                     "control_plane_reload_deferred": False,
@@ -10163,6 +10174,18 @@ class PortalImplementationSupervisor:
                                     reason,
                                     database_projection=database_projection,
                                     active_task_id=state.active_task_id,
+                                )
+                            if self._live_in_progress_worker_must_preserve(
+                                state,
+                                child_pid=int(getattr(_child, "pid", 0) or 0),
+                            ):
+                                return defer_reload(
+                                    "extra_gate_in_progress_preserve_worker",
+                                    database_projection=database_projection,
+                                    active_task_id=str(
+                                        getattr(state, "active_task_id", "")
+                                        or ""
+                                    ),
                                 )
                             return finish_reload(database_projection)
                 except Exception as exc:
@@ -16523,6 +16546,19 @@ class PortalImplementationSupervisor:
                 pid = 0
         if pid <= 0:
             return False
+        try:
+            for item in descendant_processes(pid):
+                cmd = str(item.get("cmdline") or "")
+                if not cmd:
+                    continue
+                lowered = cmd.lower()
+                if "grok_cli_runner" in lowered:
+                    return True
+                argv0 = cmd.split()[0] if cmd.split() else ""
+                if os.path.basename(argv0).lower() == "grok":
+                    return True
+        except Exception:
+            pass
         try:
             return bool(active_codex_exec_workers(pid, mapping))
         except Exception:

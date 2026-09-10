@@ -577,6 +577,15 @@ class SupervisorLoop:
                 if self.monotonic() - child_started_at >= self.config.watchdog_startup_grace_seconds:
                     decision = self.watchdog_decision(child)
                     if decision.action == "stop":
+                        if failed_child_termination_should_keep_running(
+                            decision,
+                            child_still_alive=_poll_child_exit(child)
+                            is None,
+                        ):
+                            # Do not SIGTERM a live extra-gate child on
+                            # control_plane_source_changed. Lane-0 STOP then
+                            # termination_blocked killed PCTDD-005 grok.
+                            continue
                         final_status = decision.status or "stopped"
                         self.last_recycle_reason = decision.reason
                         stopped = terminate_supervised_child(
