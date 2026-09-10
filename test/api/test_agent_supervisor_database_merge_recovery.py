@@ -725,3 +725,152 @@ def test_merge_and_recovery_share_task_worktree_fence_coordinates(
     finally:
         queue.close()
         recovery.close()
+
+
+@pytest.mark.parametrize("boundary", ["begin", "commit"])
+def test_queue_settlement_transaction_failure_never_reports_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    queue, _ = _open_queue(tmp_path)
+    try:
+        current, _run, _attempt = _happy_path_to_accepted(queue, _enqueue(queue, 0))
+        connection = queue._connection
+        error = RuntimeError(f"owner {boundary} unavailable")
+        with monkeypatch.context() as patch:
+            if boundary == "begin":
+                execute = connection.execute
+
+                def fail_begin(sql, *args, **kwargs):
+                    if sql == "BEGIN TRANSACTION":
+                        raise error
+                    return execute(sql, *args, **kwargs)
+
+                patch.setattr(connection, "execute", fail_begin)
+            else:
+                def fail_commit():
+                    raise error
+
+                patch.setattr(connection, "commit", fail_commit)
+            with pytest.raises(RuntimeError) as caught:
+                queue.settle(current)
+            assert caught.value is error
+        # Reopen the actual database: neither a receipt nor a cleared claim
+        # may survive an uncommitted settlement.
+        queue.close()
+        queue.open()
+        persisted = queue.get_entry(current.entry_id)
+        assert persisted == current
+        assert connection is not queue._connection
+        assert queue._connection.execute(
+            "SELECT COUNT(*) FROM settlement_receipts"
+        ).fetchone()[0] == 0
+        receipt = queue.settle(current)
+        assert queue.get_settlement(receipt.settlement_id) == receipt
+    finally:
+        queue.close()
+
+
+def test_queue_settlement_lost_commit_response_requires_idempotent_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, _ = _open_queue(tmp_path)
+    try:
+        current, _run, _attempt = _happy_path_to_accepted(queue, _enqueue(queue, 0))
+        connection = queue._connection
+        commit = connection.commit
+        error = RuntimeError("owner committed but response was lost")
+
+        def lose_response():
+            commit()
+            raise error
+
+        with monkeypatch.context() as patch:
+            patch.setattr(connection, "commit", lose_response)
+            with pytest.raises(RuntimeError) as caught:
+                queue.settle(current)
+            assert caught.value is error
+        queue.close()
+        queue.open()
+        persisted = queue.get_entry(current.entry_id)
+        assert persisted.status is EntryStatus.SETTLED
+        receipt = queue.settle(current)
+        assert receipt.settlement_id == persisted.settlement_id
+        assert queue._connection.execute(
+            "SELECT COUNT(*) FROM settlement_receipts"
+        ).fetchone()[0] == 1
+    finally:
+        queue.close()
+
+
+def test_queue_rejects_inherited_transaction_without_committing_it(tmp_path: Path) -> None:
+    queue, _ = _open_queue(tmp_path)
+    try:
+        connection = queue._connection
+        connection.execute("BEGIN TRANSACTION")
+        with pytest.raises(DatabaseMergeQueueError, match="already has a transaction"):
+            _enqueue(queue, 0)
+        assert connection.in_transaction
+        connection.rollback()
+        assert queue.list_entries() == ()
+    finally:
+        queue.close()
+
+
+def test_queue_failed_rollback_retires_uncertain_connection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, _ = _open_queue(tmp_path)
+    try:
+        current, _run, _attempt = _happy_path_to_accepted(queue, _enqueue(queue, 0))
+        connection = queue._connection
+        error = RuntimeError("owner commit failed")
+
+        def fail_commit():
+            raise error
+
+        def fail_rollback():
+            raise RuntimeError("owner rollback failed")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(connection, "commit", fail_commit)
+            patch.setattr(connection, "rollback", fail_rollback)
+            with pytest.raises(RuntimeError) as caught:
+                queue.settle(current)
+            assert caught.value is error
+            assert not queue.is_open
+        queue.open()
+        assert queue.get_entry(current.entry_id) == current
+        assert queue._connection.execute(
+            "SELECT COUNT(*) FROM settlement_receipts"
+        ).fetchone()[0] == 0
+    finally:
+        queue.close()
+
+
+def test_queue_open_commit_failure_does_not_publish_open_handle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge import database_merge_queue as module
+
+    real_open = module.open_duckdb_connection
+    error = RuntimeError("owner initialization commit failed")
+
+    def failed_open(path):
+        connection = real_open(path)
+
+        def fail_commit():
+            raise error
+
+        monkeypatch.setattr(connection, "commit", fail_commit)
+        return connection
+
+    queue = DatabaseMergeQueue(tmp_path / "merge_queue.duckdb")
+    with monkeypatch.context() as patch:
+        patch.setattr(module, "open_duckdb_connection", failed_open)
+        with pytest.raises(RuntimeError) as caught:
+            queue.open()
+        assert caught.value is error
+        assert not queue.is_open
+        assert queue._connection is None
+    queue.open()
+    queue.close()
