@@ -3719,7 +3719,7 @@ def test_unknown_callback_without_landed_outputs_never_reopens_or_requeues(
         daemon.close()
 
 
-def test_unknown_callback_without_merge_source_requeues_instead_of_operator_review(
+def test_unknown_callback_missing_source_diagnostic_cannot_authorize_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3792,14 +3792,21 @@ def test_unknown_callback_without_merge_source_requeues_instead_of_operator_revi
             "_strict_resume_rejection_receipt_matches",
             lambda *args, **kwargs: True,
         )
-        outcome = daemon._reopen_unimplemented_unknown_callback_task(quarantined)
-        assert outcome is not None
-        assert outcome["reopened"] is True
-        assert outcome["operator_review_required"] is False
-        assert outcome["reason"] == "unknown_callback_no_merge_source_requeued"
-        updated = daemon.task_source.get("task:cid:001")
-        assert updated is not None
-        assert updated.status == "retrying"
+        for _ in range(2):
+            outcome = daemon._reopen_unimplemented_unknown_callback_task(quarantined)
+            assert outcome is not None
+            assert outcome["reopened"] is False
+            assert outcome["changed"] is False
+            assert outcome["operator_review_required"] is True
+            assert outcome["reason"] == "post_commit_recovery_evidence_rejected"
+            assert outcome["diagnostic_reason_code"] == "source_count_rejected"
+            updated = daemon.task_source.get("task:cid:001")
+            assert updated is not None
+            assert updated.status == "quarantined"
+            assert updated.revision == quarantined.revision
+            assert updated.body["completion_receipt"] == quarantined.body["completion_receipt"]
+            assert daemon.task_source.get_queue_entry(updated.task_cid) is None
+        assert daemon.list_running_attempts() == []
     finally:
         daemon.close()
 
