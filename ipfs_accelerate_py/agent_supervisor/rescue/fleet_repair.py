@@ -617,6 +617,11 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     except Exception:
         initial = {"board_id": board["id"], "health": "unknown"}
     initial_at = time.time()
+    # Native probes can take up to 90 seconds. Recheck immediately before
+    # claiming the slot, since a package upgrade may occur during that read.
+    unavailable = _launch_preflight(policy)
+    if unavailable:
+        return _defer_unstarted_job(path, policy, unavailable, selection=selection)
     directory = path.parent
     with lock(directory / "queue.lock") as acquired:
         if not acquired:
