@@ -777,7 +777,7 @@ def test_database_board_producer_cannot_mutate_markdown(tmp_path, commit_outputs
     )
     assert result == []
     assert todo.read_text() == "# Sealed board\n"
-    assert events[-1][1]["reason"] == "database_authority_requires_native_board_mutation"
+    assert events[-1][1]["reason"] == "immutable_database_authority_projection"
 
 
 def test_sealed_portal_recovery_source_requires_verified_capsule(tmp_path, monkeypatch):

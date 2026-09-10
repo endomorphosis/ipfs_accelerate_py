@@ -11624,17 +11624,37 @@ class PortalImplementationSupervisor:
     ):
         """Serialize a committed generated-board update with checkout mutations."""
 
-        # Database task definitions belong to their typed state owner. Legacy
-        # producers append Markdown cards and can invalidate a sealed board;
-        # a checkout lease does not grant task-definition mutation authority.
-        if operation == "generated_board_update" and self._database_authority_enabled():
+        database_program = self.config.database_program
+        database_projection_producers = {
+            "guardrail-release",
+            "dependency-guardrail",
+            "reconciliation-guardrail",
+            "retry-budget",
+        }
+        if (
+            producer in database_projection_producers
+            and database_program is not None
+            and database_program.authority_mode == "quack"
+            and database_program.task_source_kind == "duckdb"
+        ):
             payload = {
                 "producer": producer,
-                "reason": "database_authority_requires_native_board_mutation",
-                "operation": operation,
+                "authority_mode": database_program.authority_mode,
+                "task_source_kind": database_program.task_source_kind,
+                "todo_path": str(self.config.todo_path),
+                "reason": "immutable_database_authority_projection",
+                "canonical_blocks_mutated": False,
             }
-            self._record_event("generated_board_update_deferred", payload)
-            return deferred_result(payload) if deferred_result is not None else []
+            self._record_event(
+                "generated_board_mutation_suppressed",
+                payload,
+            )
+            return (
+                deferred_result(payload)
+                if deferred_result is not None
+                else []
+            )
+
         if not commit_outputs:
             return callback()
         current_lease = self._current_supervisor_checkout_lease()
