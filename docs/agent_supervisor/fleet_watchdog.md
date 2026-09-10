@@ -278,6 +278,26 @@ snapshots, parse-cache lookup, and content-hash/AST-CID/state-root references.
 Each request is bound to one repository; parsing admits at most eight files and
 32 KiB of source, with bounded request/result sizes and owner-lock admission.
 
+Long-lived supervisors can construct a client from the compiled fleet deployment:
+
+```python
+from pathlib import Path
+from ipfs_accelerate_py.agent_supervisor.analysis.derived_coordination import DerivedCoordinationClient
+
+client = DerivedCoordinationClient.from_fleet_deployment(
+    Path.home() / ".local/state/ipfs-quack-fleet/deployment.json",
+    repository_id="git:my-repository",
+    client_id="supervisor:my-lane",
+)
+```
+
+Each explicit operation rereads the managed owner's credential and attaches a
+fresh repository-scoped session. The same client object therefore survives owner
+replacement and credential rotation without retaining an expired grant. Failed
+requests are returned to the caller and never replayed automatically. Missing,
+invalid, or unavailable owner bindings fail closed; clients never open the DuckDB
+file. Deployment and credential reads require bounded regular files.
+
 The service uses the existing exclusive owner's DuckDB handle. Clients do not
 open database files. AST evidence and content hashes deduplicate across trees;
 conflicting hashes under the same snapshot identity fail. Reference records do

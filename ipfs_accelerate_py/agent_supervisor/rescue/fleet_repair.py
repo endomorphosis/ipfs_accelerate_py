@@ -329,6 +329,11 @@ certificates. Use the repository-scoped derived artifact registry with exact
 source tree/input hashes, producer revision and configuration digest. Stored
 artifact references remain unverified; proof/certificate registration cannot
 replace independent validation or authorize task completion.
+Where a compiled managed fleet deployment is installed, use
+DerivedCoordinationClient.from_fleet_deployment with the exact repository scope.
+It refreshes owner credentials per operation without replaying failed writes or
+opening a local database. Shared owner availability does not itself admit that
+owner into a sealed board's semantic or completion authority.
 Reuse the existing federation, DuckLake projection and typed state-owner APIs.
 Preserve the existing semantic truth owner and exact cross-instance claims,
 leases, fences and receipt bindings. Do not silently fall back to independent

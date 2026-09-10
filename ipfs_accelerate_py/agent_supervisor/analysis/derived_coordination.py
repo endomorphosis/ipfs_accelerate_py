@@ -284,3 +284,17 @@ class DerivedCoordinationClient:
             return connection.derived_coordination(payload)
         finally:
             connection.close()
+
+    @classmethod
+    def from_fleet_deployment(cls, deployment_path: Path, *, repository_id: str,
+                             client_id: str, timeout_seconds: float = 5) -> "DerivedCoordinationClient":
+        """Reconnect through current owner credentials on each explicit call.
+
+        No credential is retained across owner restarts, and a failed request
+        is never replayed. Native admission still binds every new session.
+        """
+        from ..runtime.derived_fleet_client import fleet_connection_factory
+
+        return cls(repository_id=repository_id, connection_factory=fleet_connection_factory(
+            deployment_path, repository_id=repository_id, client_id=client_id,
+            timeout_seconds=timeout_seconds))
