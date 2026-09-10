@@ -1632,6 +1632,10 @@ def build_portal_implementation_daemon_from_args(
         strict_task_sharding=bool(getattr(parsed, "strict_task_sharding", False)),
         maintenance_interval_seconds=getattr(parsed, "maintenance_interval_seconds", None),
     )
+    if not hasattr(daemon, "isolate_merge_queue_to_task_projection"):
+        # 74555b11c reads this flag in merged-worktree cleanup; the daemon
+        # class never initialized it, so ASEH-061 terminalized on AttributeError.
+        daemon.isolate_merge_queue_to_task_projection = False
     return daemon, ImplementationDaemonRunContext(parsed=parsed, **state_paths)
 
 
@@ -1673,7 +1677,7 @@ def build_database_implementation_daemon_from_args(
     task_source_kind = (
         program.task_source_kind if program is not None else "duckdb"
     )
-    return DatabaseImplementationDaemon(
+    daemon = DatabaseImplementationDaemon(
         database_path=resolved_db,
         coordination_path=db_paths["coordination_path"],
         execution_path=db_paths["execution_path"],
@@ -1721,6 +1725,9 @@ def build_database_implementation_daemon_from_args(
             getattr(parsed, "board_namespace", "") or ""
         ),
     )
+    if not hasattr(daemon, "isolate_merge_queue_to_task_projection"):
+        daemon.isolate_merge_queue_to_task_projection = False
+    return daemon
 
 
 def _run_hooks(
