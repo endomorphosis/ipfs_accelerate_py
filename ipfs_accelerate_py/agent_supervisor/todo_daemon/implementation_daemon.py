@@ -125920,6 +125920,16 @@ class DatabaseImplementationDaemon:
                 self._consecutive_embedded_sidecar_reopens = 0
             return result
         except Exception as exc:
+            from .completion_deferral import missing_completion_deferral
+
+            completion_wait = missing_completion_deferral(exc)
+            if completion_wait is not None:
+                # Preserve completed prefix operations as observations, but do
+                # not claim a complete write count or manufacture settlement.
+                completion_wait["recovery_prefix"] = dict(
+                    self._idle_recovery_prefix or {}
+                )
+                return completion_wait
             recovered = self._reopen_unusable_embedded_sidecars(exc)
             if recovered is not None:
                 # A poisoned connection proves that a prior transaction's
