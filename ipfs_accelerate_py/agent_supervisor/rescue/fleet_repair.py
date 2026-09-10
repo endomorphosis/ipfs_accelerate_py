@@ -333,6 +333,11 @@ a terminal dead-owner lifecycle. Preserve unknown callback workspaces and refs;
 task-isolated Portal workers do not have peer cleanup authority. Database
 supervisor cleanup requires its exact canonical completion proof, rechecked at
 the mutation boundary. Already missing source is not proof of no effects.
+Before a necessary native source cutover, check whether the accepted runtime
+contains the published callback-worktree retention guard. If absent, include a
+compatible tested backport in that qualification; an upstream main fix alone
+does not protect an older deployed runtime. Preserve executing providers and
+record deferred adoption explicitly when no qualified idle boundary exists.
 Preserve board-specific external ownership and service overrides. Updating
 the watchdog configuration and staging a validated runtime release are within
 the user's authorization. Do not repeatedly publish diagnostic-only changes
