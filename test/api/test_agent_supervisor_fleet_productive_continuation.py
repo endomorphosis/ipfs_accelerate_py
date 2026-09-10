@@ -92,6 +92,7 @@ def run(queued, monkeypatch, before, after, *, code=0, during=None, seconds=2000
             return code
 
     monkeypatch.setattr(repair, "command", command)
+    monkeypatch.setattr(repair.shutil, "which", lambda executable: "/test/" + executable)
     monkeypatch.setattr(repair.time, "time", lambda: clock[0])
     monkeypatch.setattr(repair.subprocess, "Popen", Process)
     result = repair.run_job(config, board, path)

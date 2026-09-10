@@ -165,6 +165,7 @@ def test_run_job_keeps_backoff_for_idle_healthy_probe(tmp_path, monkeypatch):
         def wait(self, timeout):
             return 0
     monkeypatch.setattr(repair, "command", command)
+    monkeypatch.setattr(repair.shutil, "which", lambda executable: "/test/" + executable)
     monkeypatch.setattr(repair.subprocess, "Popen", Process)
     result = repair.run_job(cfg, board, path)
     durable = read_json(path)

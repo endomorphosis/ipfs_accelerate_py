@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import signal
 import stat
 import subprocess
@@ -541,6 +542,41 @@ def runtime_update_pending(config: dict[str, Any]) -> bool:
     return bool(desired and Path(desired).resolve() != Path(__file__).resolve().parents[3])
 
 
+def _launch_preflight(policy: dict[str, Any]) -> str | None:
+    """Detect unavailable launch infrastructure before charging coding work."""
+    if not Path(policy["cwd"]).is_dir():
+        return "repair_checkout_unavailable"
+    for executable in ("systemd-run", policy["argv"][0]):
+        if shutil.which(executable) is None:
+            return "repair_executable_unavailable"
+    return None
+
+
+def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
+                        *, attempt: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Retry a known pre-exec failure; never infer non-execution from job text."""
+    with lock(path.parent / "queue.lock") as acquired:
+        if not acquired:
+            return {"status": "queue_busy"}
+        job = read_json(path)
+        if attempt is not None:
+            if job.get("status") != "running" or _attempt_identity(job) != attempt:
+                return {"status": "completion_superseded"}
+            # Popen raised before creating a child. No coding work consumed this
+            # slot; retain its paths/identity in the launch failure audit below.
+            job["attempts"] = max(0, job.get("attempts", 1) - 1)
+        now = time.time()
+        retry = max(30, min(300, policy.get("launch_retry_seconds", 60)))
+        failure = {"reason": reason, "observed_at": now, "attempt": attempt}
+        job.update(status="queued", next_attempt_at=now + retry,
+                   launch_failures=job.get("launch_failures", 0) + 1,
+                   last_launch_failure=failure)
+        write_json(path, job)
+        return {"board_id": job.get("board_id", path.parent.name),
+                "status": "launch_deferred", "reason": reason,
+                "next_attempt_at": job["next_attempt_at"]}
+
+
 def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[str, Any]:
     policy = config["repair_worker"]
     if hold_paths(board):
@@ -552,6 +588,9 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
                    cwd=policy["cwd"], timeout=10)
     if live["stdout"].strip() in {"active", "activating", "deactivating"}:
         return {"status": "existing_repair_job_running"}
+    unavailable = _launch_preflight(policy)
+    if unavailable:
+        return _defer_unstarted_job(path, policy, unavailable)
     # A worker report cannot supply its own productive-repair baseline.
     from .fleet_watchdog import normalize_probe
     try:
@@ -598,7 +637,12 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         return {"status": "operator_hold", "board_id": board["id"]}
     with prompt.open("rb") as inp, log_path.open("wb") as log:
         os.chmod(log_path, 0o600)
-        process = subprocess.Popen(argv, stdin=inp, stdout=log, stderr=log)
+        try:
+            process = subprocess.Popen(argv, stdin=inp, stdout=log, stderr=log)
+        except OSError as exc:
+            return _defer_unstarted_job(path, policy,
+                                       f"launcher_spawn_failed:{type(exc).__name__}",
+                                       attempt=attempt)
         try:
             returncode = process.wait(timeout=policy.get("timeout_seconds", 2400) + 90)
         except subprocess.TimeoutExpired:
