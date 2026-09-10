@@ -63,6 +63,28 @@ def _attempt_identity(job: dict[str, Any]) -> dict[str, Any]:
     return {key: job.get(key) for key in ("attempts", "last_started_at", "report_path")}
 
 
+def _accepted_task_progress(before: dict[str, Any], after: dict[str, Any]) -> bool:
+    prior, current = repair_evidence(before), repair_evidence(after)
+    if prior.get("native_admitted") is not True or current.get("native_admitted") is not True:
+        return False
+    return (any(field in prior and field in current and current[field] > prior[field]
+                for field in ("completed", "receipts"))
+            or ("unsettled_goals" in prior and "unsettled_goals" in current
+                and current["unsettled_goals"] < prior["unsettled_goals"]))
+
+
+def _current_recovery_incident(incident: dict[str, Any], state: dict[str, Any],
+                               board_id: str, now: float) -> dict[str, Any]:
+    """A recovered endpoint does not clear a current watchdog task stall."""
+    sample = state.get("observation", {})
+    observed = state.get("observed_at")
+    if (state.get("board_id") == board_id and state.get("health") == "stalled"
+            and isinstance(sample, dict) and sample.get("board_id") == board_id
+            and type(observed) in (int, float) and 0 <= now - observed <= 180):
+        return {**incident, "observation": {**sample, "health": "stalled"}}
+    return incident
+
+
 def _productive_evidence(prior: dict[str, Any], current: dict[str, Any]) -> bool:
     # A partial fix grants another coding pass, never completion or budget reset.
     return (prior.get("native_admitted") is True
@@ -169,7 +191,8 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
                                 and fresh.get("completion_candidate") is not True
                                 and isinstance(fresh.get("details"), dict)
                                 and fresh.get("details", {}).get("authenticated_task_observation") is True)
-            verification = (verify_job_recovery(board, current.get("latest_incident", {}), fresh,
+            incident = _current_recovery_incident(current.get("latest_incident", {}), state, board["id"], now)
+            verification = (verify_job_recovery(board, incident, fresh,
                             root / board["id"] / "publication") if admitted_healthy else {"verified": False})
             if verification["verified"]:
                 current.update(status="verified_healthy", verification=verification,
@@ -460,8 +483,9 @@ def verify_job_recovery(board: dict[str, Any], incident: dict[str, Any],
         return {"verified": False, "reason": "board_not_healthy"}
     prior = incident.get("observation", {})
     stalled = prior.get("health") == "stalled" or "no_task_progress" in prior.get("reason_codes", [])
-    token = observation.get("progress_token")
-    progressed = bool(token and token != prior.get("progress_token"))
+    # Task revision, retry, cursor, source-head and heartbeat churn cannot prove
+    # progress through a stall. Use admitted accepted-task/goal evidence.
+    progressed = _accepted_task_progress(prior, observation)
     if stalled and observation.get("busy") is not True and not progressed:
         return {"verified": False, "reason": "task_progress_not_verified"}
     return {"verified": True, "reason": "task_progress_verified" if progressed else "runtime_health_verified"}
@@ -577,6 +601,8 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         board = next(b for b in current_config["boards"] if b["id"] == board["id"])
     fresh = command(board["probe"], cwd=board["cwd"], timeout=90)
     observation = normalize_probe(board["id"], fresh)
+    incident = _current_recovery_incident(incident, read_json(
+        Path(config["state_dir"]) / board["id"] / "state.json"), board["id"], time.time())
     verification = verify_job_recovery(
         board, incident, observation,
         Path(config["state_dir"]) / board["id"] / "publication",

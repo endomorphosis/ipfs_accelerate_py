@@ -105,7 +105,7 @@ def test_repair_prompt_preserves_authority_and_llama_stop(tmp_path):
     ("healthy", False, "old", False),
     ("healthy", False, None, False),
     ("healthy", True, "old", True),
-    ("healthy", False, "new", True),
+    ("healthy", False, "new", False),
     ("blocked", True, "new", False),
 ])
 def test_stall_recovery_requires_task_progress(tmp_path, health, busy, token, verified):

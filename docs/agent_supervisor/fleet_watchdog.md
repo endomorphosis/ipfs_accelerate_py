@@ -334,6 +334,10 @@ the next attempt receives the preserved, bounded continuation context and an
 explicit missing-report diagnostic. Report reads remain confined to the same
 board directory and reject symlinks. This preserves recovery instructions;
 it does not reset retry budgets or treat a worker's report as completion evidence.
+Recovery of an idle task stall requires admitted completed-task, completion-
+receipt, or goal-settlement advancement. Cursor, retry-revision, and source-head
+changes do not qualify. A fresh watchdog stall also remains in force when the
+original repair concerned an endpoint that has since become reachable.
 
 A quarantined merge candidate can be retired after a newer implementation has
 been accepted using `MergeQueue.supersede_quarantined`. The caller must supply

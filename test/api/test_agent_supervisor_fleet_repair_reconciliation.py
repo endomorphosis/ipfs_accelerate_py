@@ -102,6 +102,51 @@ def test_unauthenticated_task_count_cannot_advance_queue(queue):
     assert read_json(path)["next_attempt_at"] == 22600
 
 
+@pytest.mark.parametrize("progress", [False, True])
+def test_endpoint_recovery_does_not_clear_a_current_idle_task_stall(queue, progress):
+    config, _, path, job = queue
+    # The old repair concerned an unavailable owner. A new idle task stall
+    # remains after its endpoint starts answering again.
+    job["latest_incident"] = {"observation": observation(health="degraded", admitted=False)}
+    job["latest_probe"] = job["latest_incident"]["observation"]
+    write_json(path, job)
+    stalled = observation(health="stalled", busy=False)
+    cache(config, stalled)
+    fresh = observation(health="healthy", busy=False, completed=20 if progress else 19,
+                        progress_token="cursor-and-retry-churn")
+    repair.reconcile_queued_jobs(config, 2000, runner=lambda *a, **kw: probe(fresh))
+    assert read_json(path)["status"] == ("verified_healthy" if progress else "queued")
+    if not progress:
+        assert read_json(path)["attempts"] == 7
+        # Restored native admission can earn a bounded continuation, but never
+        # clear the incident or reset its attempt budget.
+        assert read_json(path)["next_attempt_at"] >= 1800
+
+
+@pytest.mark.parametrize("change", ["token", "head", "blocked", "unadmitted", "completed", "receipts", "goals"])
+def test_stall_recovery_requires_admitted_task_acceptance_or_goal_settlement(tmp_path, change):
+    before = observation(health="stalled", busy=False)
+    before["details"].update(completion_receipt_count=19, unsettled_goal_count=3)
+    after = copy.deepcopy(before)
+    after.update(health="healthy", progress_token="new", busy=False)
+    if change == "head": after["details"]["source_heads"] = {".": "successor"}
+    if change == "blocked": after["details"]["blocked_task_ids"] = ["retry-loop"]
+    if change in {"completed", "unadmitted"}: after["details"]["task_counts"]["completed"] = 20
+    if change == "unadmitted": after["details"]["authenticated_task_observation"] = False
+    if change == "receipts": after["details"]["completion_receipt_count"] = 20
+    if change == "goals": after["details"]["unsettled_goal_count"] = 2
+    result = repair.verify_job_recovery({}, {"observation": before}, after, tmp_path)
+    assert result["verified"] is (change in {"completed", "receipts", "goals"})
+
+
+@pytest.mark.parametrize("change", [{"board_id": "other"}, {"observed_at": 0}, {"observed_at": 3000}, {"health": "healthy"}])
+def test_stale_or_foreign_stall_does_not_override_incident(change):
+    incident = {"observation": observation(health="degraded")}
+    state = {"board_id": "pctdd", "health": "stalled", "observed_at": 1900,
+             "observation": observation(health="stalled"), **change}
+    assert repair._current_recovery_incident(incident, state, "pctdd", 2000) == incident
+
+
 @pytest.mark.parametrize("at", [1000, 2100])
 def test_stale_or_future_watchdog_sample_does_not_select_probe(queue, at):
     config, _, _, _ = queue
