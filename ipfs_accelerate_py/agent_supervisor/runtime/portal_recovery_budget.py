@@ -12,19 +12,20 @@ def portal_recovery_budget_consumed(
     settlement_id: str,
     accepted_source: Mapping[str, object] | None = None,
 ) -> bool:
+    keys = ("source_head", "source_tree")
+    def valid_source(source):
+        return isinstance(source, Mapping) and all(
+            type(source.get(key)) is str and len(source[key]) == 40
+            and all(ch in "0123456789abcdef" for ch in source[key])
+            for key in keys
+        )
     history = tuple(events)
+    if accepted_source is not None and (not valid_source(accepted_source) or not settlement_id):
+        return True
     if not history:
         return False
     # Keep the original lifetime budget when no sealed source was verified.
     if accepted_source is None:
-        return True
-    keys = ("source_head", "source_tree")
-    if any(
-        type(accepted_source.get(key)) is not str
-        or len(accepted_source[key]) != 40
-        or any(ch not in "0123456789abcdef" for ch in accepted_source[key])
-        for key in keys
-    ) or not settlement_id:
         return True
     for event in history:
         if not isinstance(event, Mapping) or not event.get("settlement_id"):
@@ -34,7 +35,7 @@ def portal_recovery_budget_consumed(
             return True
         prior = event.get("accepted_recovery_source")
         if prior is not None:
-            if not isinstance(prior, Mapping) or any(key not in prior for key in keys):
+            if not valid_source(prior):
                 return True
             if all(prior[key] == accepted_source[key] for key in keys):
                 return True
