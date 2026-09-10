@@ -51767,7 +51767,7 @@ class PortalImplementationDaemon:
     def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
         """Continuously drain inactive worktrees whose branches are already merged."""
 
-        if self.isolate_merge_queue_to_task_projection:
+        if self._database_attempt_authority is not None:
             # This worker owns one disposable task projection, not the board's
             # acceptance state. A peer's terminal lifecycle may only prove
             # dead-owner fencing while its callback outcome remains unknown.

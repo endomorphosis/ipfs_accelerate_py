@@ -30,15 +30,13 @@ work or prove that an unknown callback had no effect. Such recovery still needs
 the original preserved source and the existing native completion/no-effect proof.
 Do not reset a quarantine or rerun a callback based on a missing worktree.
 
-Validation includes real Git worktrees at the merge target, a controlled-restart
-terminal lifecycle, real immutable Portal attempt bindings, failed and changing
-canonical reads, and exact completed rescue cleanup with its branch retained.
+## Older SAWM native runtime backport
 
-## Older native runtime backport
-
-This native deployment predates the shared pool mutation guard API. It retains
-all database candidates from background cleanup, including verified completed
-rescues, until the guarded runtime has been qualified. It still uses the native
-completion verifier to distinguish unsettled work from completed leftovers.
-Normal exact task and merge-queue completion cleanup continues through its
-existing handlers. No pool guard is emulated or bypassed.
+This deployment predates both the canonical cleanup verifier and the shared
+pool mutation guard API. Its database supervisor therefore retains all
+background candidates before taking a cleanup lease. Its Portal daemon uses
+its native database-attempt authority binding to disable peer cleanup.
+Exact task and merge-queue completion cleanup keeps its existing handlers.
+No absent verifier is emulated and no completion is inferred from ancestry.
+The compatibility tests exercise both native entry points and verify retained
+source evidence. The full guarded verifier remains available on upstream main.

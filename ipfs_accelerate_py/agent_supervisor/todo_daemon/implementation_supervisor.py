@@ -16914,6 +16914,17 @@ class PortalImplementationSupervisor:
     def cleanup_backlogged_worktrees(self) -> dict[str, Any]:
         """Remove inactive implementation worktrees whose branches are already merged."""
 
+        if self.config.database_program is not None:
+            # This runtime predates canonical receipt verification at the pool
+            # mutation boundary. Retain all database callback evidence until
+            # that guarded runtime is qualified; ancestry is not acceptance.
+            return {
+                "attempted": False,
+                "reason": "canonical_cleanup_requires_guarded_runtime",
+                "removed_count": 0,
+                "skipped_count": 0,
+            }
+
         lock_path = self._repo_merge_lock_path()
         lock_metadata = self._supervisor_checkout_lock_metadata(
             operation="cleanup_backlogged_worktrees",
@@ -17055,26 +17066,6 @@ class PortalImplementationSupervisor:
                     payload=skip,
                 )
                 continue
-            # A terminal process lifecycle and merged baseline do not settle
-            # an unknown canonical callback. Ask the existing native verifier.
-            completion_proof = self._canonical_completed_reconciliation_task(
-                branch=branch,
-            )
-            if completion_proof.get("applicable") is True:
-                # This older runtime predates the guarded pool mutation API.
-                # Preserve the candidate until that runtime is qualified;
-                # exact task/queue completion cleanup remains available.
-                skipped.append({
-                    "path": str(path), "branch": branch,
-                    "reason": (
-                        "canonical_cleanup_requires_guarded_runtime"
-                        if completion_proof.get("verified") is True
-                        else "canonical_completion_required_for_cleanup"
-                    ),
-                    "completion_proof": completion_proof,
-                })
-                continue
-
             dirty = self._git_status_short(path) if path.exists() else []
             if not path.exists():
                 skipped.append(
