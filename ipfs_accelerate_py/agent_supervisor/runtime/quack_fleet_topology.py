@@ -180,7 +180,7 @@ def systemd_unit(owner_argv: Sequence[str], *, role: str) -> str:
     return ("[Unit]\nDescription=Quack fleet " + role + " owner\n"
             "StartLimitIntervalSec=1800\nStartLimitBurst=4\n\n[Service]\nType=simple\n"
             "ExecStart=" + command + "\nRestart=on-failure\nRestartSec=60\n"
-            "KillMode=mixed\nTimeoutStopSec=120\nUMask=0077\n\n[Install]\nWantedBy=default.target\n")
+            "KillMode=mixed\nTimeoutStopSec=120\nSendSIGKILL=no\nUMask=0077\n\n[Install]\nWantedBy=default.target\n")
 
 
 def attach_typed_instance(

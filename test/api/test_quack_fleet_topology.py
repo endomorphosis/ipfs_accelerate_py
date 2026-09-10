@@ -115,6 +115,14 @@ def test_systemd_render_preserves_literal_argument_values():
         fleet.systemd_unit(["/tmp/evil\nExecStart=x"], role="aggregate_control")
 
 
+@pytest.mark.parametrize("role", fleet.ROLES)
+def test_managed_owner_timeout_cannot_force_kill_retained_writer(role):
+    unit = fleet.systemd_unit(["/usr/bin/python3", "/tmp/native-owner.py"], role=role)
+    assert "\nKillMode=mixed\n" in unit
+    assert "\nTimeoutStopSec=120\n" in unit
+    assert "\nSendSIGKILL=no\n" in unit
+
+
 def test_attach_rejects_foreign_managed_socket_before_transport(topology, tmp_path):
     result = compile(topology, tmp_path)
     with pytest.raises(fleet.FleetTopologyError, match="socket differs"):
