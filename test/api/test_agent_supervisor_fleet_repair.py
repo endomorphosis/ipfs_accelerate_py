@@ -173,6 +173,42 @@ def test_run_job_keeps_backoff_for_idle_healthy_probe(tmp_path, monkeypatch):
     assert durable["next_attempt_at"] > time.time()
     assert durable["verification"]["reason"] == "task_progress_not_verified"
     assert durable["report_path"] != str(prior_report)
+    assert durable["last_valid_report_path"] == str(prior_report)
+    # This worker returned zero without writing its promised report. The next
+    # attempt must retain the actual previous instructions and retry budget.
+    result = repair.run_job(cfg, board, path)
+    assert result["status"] == "queued"
+    durable = read_json(path)
+    assert durable["attempts"] == 4
+    assert durable["last_valid_report_path"] == str(prior_report)
+
+
+@pytest.mark.parametrize("latest", [None, "{incomplete", "{}", "[]"])
+def test_reportless_worker_keeps_last_usable_context(tmp_path, latest):
+    old, new = tmp_path / "report-old.json", tmp_path / "report-new.json"
+    write_json(old, {"status": "blocked", "next_action": "recover exact callback provenance"})
+    if latest is not None:
+        new.write_text(latest)
+    job = {"report_path": str(new), "last_valid_report_path": str(old)}
+    context = repair._continuation_context(job, tmp_path)
+    assert context["path"] == str(old)
+    assert context["continuation"]["next_action"] == "recover exact callback provenance"
+    assert "latest_report_unavailable" in context
+    write_json(new, {"status": "blocked", "next_action": "new independently observed incident"})
+    assert repair._continuation_context(job, tmp_path)["path"] == str(new)
+
+
+def test_remembered_report_does_not_escape_its_board(tmp_path):
+    other = tmp_path / "another-board.json"
+    write_json(other, {"next_action": "foreign context"})
+    board = tmp_path / "board"
+    board.mkdir()
+    job = {"report_path": str(board / "missing.json"), "last_valid_report_path": str(other)}
+    assert "continuation" not in repair._continuation_context(job, board)
+    link = board / "report-link.json"
+    link.symlink_to(other)
+    job["last_valid_report_path"] = str(link)
+    assert "continuation" not in repair._continuation_context(job, board)
 
 
 def test_prior_report_continuation_is_bounded_and_confined(tmp_path):

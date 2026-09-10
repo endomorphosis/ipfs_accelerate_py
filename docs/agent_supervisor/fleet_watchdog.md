@@ -328,6 +328,13 @@ peer receives a 120-second capability for identity and fleet-observation queries
 only. It cannot append observations, mutate a board, or open the derived writer
 service with that credential. Admission modes and credentials remain distinct.
 
+Repair jobs retain the last usable report path before launching a successor.
+If that worker is interrupted or returns without writing a complete report,
+the next attempt receives the preserved, bounded continuation context and an
+explicit missing-report diagnostic. Report reads remain confined to the same
+board directory and reject symlinks. This preserves recovery instructions;
+it does not reset retry budgets or treat a worker's report as completion evidence.
+
 A quarantined merge candidate can be retired after a newer implementation has
 been accepted using `MergeQueue.supersede_quarantined`. The caller must supply
 an exact, content-addressed review and an independent current-acceptance

@@ -271,6 +271,20 @@ def _prior_report_context(path: str | None, directory: Path) -> dict[str, Any]:
             "error": "prior_report_too_large" if len(raw) > 1024 * 1024 else "prior_report_not_object"}
 
 
+def _continuation_context(job: dict[str, Any], directory: Path) -> dict[str, Any]:
+    """Keep the last usable report across interrupted or reportless workers."""
+    latest = _prior_report_context(job.get("report_path"), directory)
+    if latest.get("continuation"):
+        return latest
+    remembered = job.get("last_valid_report_path")
+    if remembered and remembered != job.get("report_path"):
+        previous = _prior_report_context(remembered, directory)
+        if previous.get("continuation"):
+            return {**previous, "latest_report_unavailable": {
+                "path": latest.get("path"), "error": latest.get("error", "empty_continuation")}}
+    return latest
+
+
 def repair_prompt(board: dict[str, Any], incident: dict[str, Any], config: dict[str, Any],
                   report: Path, prior_report: dict[str, Any] | None = None) -> str:
     return f"""You are the persistent repair worker for the user's DuckDB taskboard watchdog.
@@ -516,7 +530,9 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         now = time.time()
         attempts = job.get("attempts", 0) + 1
         incident = job["latest_incident"]
-        prior_report = _prior_report_context(job.get("report_path"), directory)
+        prior_report = _continuation_context(job, directory)
+        if prior_report.get("continuation"):
+            job["last_valid_report_path"] = prior_report["path"]
         stamp = f"{int(now)}-{attempts}"
         report = directory / f"report-{stamp}.json"
         log_path = directory / f"worker-{stamp}.log"
