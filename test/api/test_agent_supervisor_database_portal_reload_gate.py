@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import time
 from contextlib import contextmanager, nullcontext
@@ -3085,6 +3086,42 @@ def test_restarting_stale_or_exited_preserves_extra_gate_via_supervisor_pid(
             {"daemon_pid": 2681548},
         )
         is True
+    )
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_sigterm_defers_when_extra_gate_grok_is_live() -> None:
+    """SIGTERM must not SystemExit 143 while extra-gate grok is live.
+
+    Fleet watchdog / master restarting-exited SIGTERM'd lane-0/3
+    supervisors while grok 2233765/1577063 were live. Official unstick
+    is rearm, never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    live = SimpleNamespace(
+        _live_in_progress_worker_must_preserve=lambda: True,
+    )
+    idle = SimpleNamespace(
+        _live_in_progress_worker_must_preserve=lambda: False,
+    )
+    assert (
+        PortalImplementationSupervisor._sigterm_should_defer_for_extra_gate(
+            live, signal.SIGTERM
+        )
+        is True
+    )
+    assert (
+        PortalImplementationSupervisor._sigterm_should_defer_for_extra_gate(
+            live, signal.SIGINT
+        )
+        is False
+    )
+    assert (
+        PortalImplementationSupervisor._sigterm_should_defer_for_extra_gate(
+            idle, signal.SIGTERM
+        )
+        is False
     )
     _extra_gate_cannot_bypass_safe_to_restart()
 

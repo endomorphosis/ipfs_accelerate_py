@@ -91534,11 +91534,133 @@ class DatabaseImplementationDaemon:
             # grace only delayed 005/007 close and looped projection-not-
             # complete without grok. Official unstick is rearm, never CAS.
             return True
+        if self._extra_gate_same_alias_peer_grok_is_live(attempt):
+            # Lane-3 closed/failed PCTDD-005 on projection-not-complete
+            # while lane-2 grok 3814976 was still implementing, DuckDB
+            # blocked 005. Same-alias peer grok must keep in-flight.
+            # Official unstick is rearm, never CAS. Extra-gate aliases
+            # still cannot bypass safe_to_restart=False.
+            return True
         # Grok is not live and the claim is not fresh. Close so official
         # unstick rearm → retrying → dispatch can run. Never CAS.
         # Do not keep forever just because this process owns the claim or
         # consumed_before_worker_start is sticky (005/007 looped
         # "Portal task projection is not complete" without grok).
+        return False
+
+    def _extra_gate_peer_lanes_root(self) -> Path | None:
+        """Locate sibling lane dirs without JSON projection authority.
+
+        Production DuckDB daemons pass ``state_path=None`` unless
+        ``require_json_projections``. Lane-1 then force-blocked PCTDD-034
+        on projection-not-complete while lane-3 grok 1577063 was live.
+        Official unstick is rearm, never CAS. Extra-gate aliases still
+        cannot bypass ``safe_to_restart=False``.
+        """
+
+        candidates: list[Any] = [getattr(self, "state_path", None)]
+        bridge = getattr(self, "_database_portal_bridge", None)
+        if bridge is not None:
+            candidates.append(getattr(bridge, "attempt_root", None))
+        for raw in candidates:
+            if not raw:
+                continue
+            try:
+                root = Path(raw).resolve().parent.parent
+            except (OSError, TypeError, ValueError):
+                continue
+            if root.is_dir():
+                return root
+        return None
+
+    def _extra_gate_same_alias_peer_grok_is_live(self, attempt: Any) -> bool:
+        """True when another lane's nested portal still has this extra-gate grok."""
+
+        alias = str(
+            getattr(attempt, "task_alias", "")
+            or getattr(attempt, "task_id", "")
+            or ""
+        ).strip()
+        if not alias:
+            body = getattr(attempt, "body", None)
+            if isinstance(body, Mapping):
+                alias = str(
+                    body.get("task_alias") or body.get("task_id") or ""
+                ).strip()
+        if not alias or not self._task_alias_is_extra_gate(attempt):
+            return False
+        lanes_root = DatabaseImplementationDaemon._extra_gate_peer_lanes_root(
+            self
+        )
+        if lanes_root is None or not lanes_root.is_dir():
+            return False
+        try:
+            lane_dirs = tuple(lanes_root.iterdir())
+        except OSError:
+            return False
+        for lane_dir in lane_dirs:
+            if not lane_dir.is_dir():
+                continue
+            try:
+                attempt_roots = tuple(lane_dir.glob("*_database_portal_attempts"))
+            except OSError:
+                continue
+            for attempts_root in attempt_roots:
+                if not attempts_root.is_dir():
+                    continue
+                try:
+                    children = tuple(attempts_root.iterdir())
+                except OSError:
+                    continue
+                for child in children:
+                    if not child.is_dir():
+                        continue
+                    binding_alias = ""
+                    binding_path = child / "database-attempt-binding.json"
+                    try:
+                        if binding_path.is_file():
+                            binding = json.loads(
+                                binding_path.read_text(encoding="utf-8")
+                            )
+                            if isinstance(binding, Mapping):
+                                binding_alias = str(
+                                    binding.get("task_alias") or ""
+                                )
+                    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                        binding_alias = ""
+                    portal_path = child / "portal-task-state.json"
+                    portal: Mapping[str, Any] = {}
+                    try:
+                        if portal_path.is_file():
+                            loaded = json.loads(
+                                portal_path.read_text(encoding="utf-8")
+                            )
+                            if isinstance(loaded, Mapping):
+                                portal = loaded
+                    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                        portal = {}
+                    active = str(portal.get("active_task_id") or "")
+                    if alias not in {binding_alias, active}:
+                        continue
+                    runner = portal.get("active_provider_runner")
+                    if not isinstance(runner, Mapping):
+                        runner = {}
+                    try:
+                        runner_pid = int(runner.get("pid") or 0)
+                    except (TypeError, ValueError):
+                        runner_pid = 0
+                    if runner_pid <= 1:
+                        continue
+                    try:
+                        if not process_is_running(runner_pid):
+                            continue
+                    except Exception:
+                        continue
+                    if self._extra_gate_runner_pid_is_this_daemon_child(
+                        runner_pid
+                    ):
+                        return True
+                    return True
         return False
 
     def _extra_gate_attempt_is_within_launch_grace(
@@ -91864,6 +91986,11 @@ class DatabaseImplementationDaemon:
         receipt = dict(
             getattr(task, "body", {}).get("completion_receipt") or {}
         )
+        if self._extra_gate_same_alias_peer_grok_is_live(task):
+            # Lane-3 claimed PCTDD-005 while lane-2 grok was live and
+            # force-blocked it on projection-not-complete. Extra-gate
+            # aliases still cannot bypass safe_to_restart=False.
+            return True
         if self._extra_gate_retry_receipt_is_claimable(task, receipt):
             # Official extra-gate unstick: unknown-outcome rearm or a later
             # ordinary retry receipt is the new claim authority.  Compact

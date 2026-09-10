@@ -6426,6 +6426,9 @@ def test_extra_gate_incomplete_projection_closes_when_grok_is_dead(
         _extra_gate_attempt_is_within_launch_grace=lambda attempt: (
             Daemon._extra_gate_attempt_is_within_launch_grace(daemon, attempt)
         ),
+        _extra_gate_same_alias_peer_grok_is_live=lambda attempt: (
+            Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, attempt)
+        ),
         _now_ms=lambda: 1_000_000,
         _extra_gate_dead_runner_block_opens_generic_rearm=lambda task, receipt: (
             Daemon._extra_gate_dead_runner_block_opens_generic_rearm(
@@ -6673,6 +6676,156 @@ def test_extra_gate_incomplete_projection_closes_when_grok_is_dead(
         }
     )
 
+
+def test_extra_gate_incomplete_projection_keeps_same_alias_peer_grok(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Peer-lane extra-gate grok must not force-block the same alias.
+
+    Lane-3 failed PCTDD-005 on ``Portal task projection is not complete``
+    while lane-2 grok 3814976 was still implementing, DuckDB blocked 005.
+    Official unstick is rearm, never CAS. Extra-gate aliases still cannot
+    bypass ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    lanes = tmp_path / "state"
+    peer = lanes / "lane-2" / "pctdd_lane_2_database_portal_attempts" / "abc"
+    peer.mkdir(parents=True)
+    (peer / "database-attempt-binding.json").write_text(
+        json.dumps({"task_alias": "PCTDD-005"}),
+        encoding="utf-8",
+    )
+    (peer / "portal-task-state.json").write_text(
+        json.dumps(
+            {
+                "active_task_id": "PCTDD-005",
+                "active_provider_runner": {"pid": 3814976},
+            }
+        ),
+        encoding="utf-8",
+    )
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    daemon = SimpleNamespace(
+        process_instance_id="process:lane3",
+        state_path=lanes / "lane-3" / "pctdd_lane_3_task_state.json",
+        _task_alias_is_extra_gate=Daemon._task_alias_is_extra_gate,
+        _extra_gate_running_attempt_is_live_local=lambda _attempt: False,
+        _extra_gate_recorded_runner_pid=lambda _attempt: 0,
+        _extra_gate_recorded_runner_was_spawned_here=lambda _attempt: False,
+        _extra_gate_runner_pid_is_this_daemon_child=lambda _pid: False,
+        _extra_gate_claim_has_not_started_worker=lambda _attempt: True,
+        _extra_gate_attempt_is_within_launch_grace=lambda _attempt: False,
+        _extra_gate_same_alias_peer_grok_is_live=lambda attempt: (
+            Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, attempt)
+        ),
+    )
+    monkeypatch.setattr(daemon_module, "process_is_running", lambda pid: int(pid) == 3814976)
+    local = SimpleNamespace(task_alias="PCTDD-005", task_cid="task:cid:005", body={})
+    other = SimpleNamespace(task_alias="PCTDD-007", task_cid="task:cid:007", body={})
+    assert Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, local) is True
+    assert Daemon._extra_gate_incomplete_projection_is_in_flight(daemon, local) is True
+    assert Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, other) is False
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_peer_grok_finds_lanes_without_json_projection_state_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DuckDB daemons omit state_path; peer grok must still be visible.
+
+    Production ``use_projections=False`` passes ``state_path=None``. Lane-1
+    then claimed PCTDD-034 and force-blocked on projection-not-complete
+    while lane-3 grok 1577063 was live. Official unstick is rearm, never
+    CAS. Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    lanes = tmp_path / "state"
+    peer_attempts = (
+        lanes / "lane-3" / "pctdd_lane_3_database_portal_attempts" / "live034"
+    )
+    local_attempts = (
+        lanes / "lane-1" / "pctdd_lane_1_database_portal_attempts"
+    )
+    peer_attempts.mkdir(parents=True)
+    local_attempts.mkdir(parents=True)
+    (peer_attempts / "database-attempt-binding.json").write_text(
+        json.dumps({"task_alias": "PCTDD-034"}),
+        encoding="utf-8",
+    )
+    (peer_attempts / "portal-task-state.json").write_text(
+        json.dumps(
+            {
+                "active_task_id": "PCTDD-034",
+                "active_provider_runner": {"pid": 1577063},
+            }
+        ),
+        encoding="utf-8",
+    )
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    daemon = SimpleNamespace(
+        process_instance_id="process:lane1",
+        state_path=None,
+        _database_portal_bridge=SimpleNamespace(attempt_root=local_attempts),
+        _task_alias_is_extra_gate=Daemon._task_alias_is_extra_gate,
+        _extra_gate_running_attempt_is_live_local=lambda _attempt: False,
+        _extra_gate_recorded_runner_pid=lambda _attempt: 0,
+        _extra_gate_recorded_runner_was_spawned_here=lambda _attempt: False,
+        _extra_gate_runner_pid_is_this_daemon_child=lambda _pid: False,
+        _extra_gate_claim_has_not_started_worker=lambda _attempt: True,
+        _extra_gate_attempt_is_within_launch_grace=lambda _attempt: False,
+        _extra_gate_same_alias_peer_grok_is_live=lambda attempt: (
+            Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, attempt)
+        ),
+    )
+    monkeypatch.setattr(
+        daemon_module, "process_is_running", lambda pid: int(pid) == 1577063
+    )
+    task_id_only = SimpleNamespace(
+        task_alias="",
+        task_id="PCTDD-034",
+        task_cid="task:cid:034",
+        body={},
+    )
+    other = SimpleNamespace(
+        task_alias="PCTDD-007",
+        task_id="PCTDD-007",
+        task_cid="task:cid:007",
+        body={},
+    )
+    assert Daemon._extra_gate_peer_lanes_root(daemon) == lanes.resolve()
+    assert Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, task_id_only) is True
+    assert Daemon._extra_gate_incomplete_projection_is_in_flight(
+        daemon, task_id_only
+    ) is True
+    assert Daemon._automatic_claim_forbidden_current(daemon, task_id_only) is True
+    assert Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, other) is False
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
 
 
 def test_extra_gate_pre_dispatch_provider_error_defers_without_force_block(

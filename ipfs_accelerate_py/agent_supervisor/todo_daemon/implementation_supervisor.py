@@ -9545,6 +9545,23 @@ class PortalImplementationSupervisor:
 
         def request_stop(signum: int, _frame: object) -> None:
             nonlocal stop_signal
+            if self._sigterm_should_defer_for_extra_gate(signum):
+                # Fleet watchdog / master restarting-exited SIGTERM'd
+                # lane-0/3 (SystemExit 143) while extra-gate grok was live.
+                # Keep the supervisor; do not fence the grok tree.
+                # Extra-gate aliases still cannot bypass
+                # safe_to_restart=False.
+                try:
+                    self._record_event(
+                        "supervisor_signal_deferred",
+                        {
+                            "signal": int(signum),
+                            "reason": "extra_gate_in_progress_preserve_worker",
+                        },
+                    )
+                except Exception:
+                    pass
+                return
             stop_signal = signum
             raise SystemExit(128 + signum)
 
@@ -16584,6 +16601,25 @@ class PortalImplementationSupervisor:
             return False
         active = str(state.get("active_task_id") or "")
         return active in {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
+
+    def _sigterm_should_defer_for_extra_gate(self, signum: int) -> bool:
+        """True when SIGTERM must not fence a live extra-gate grok.
+
+        Fleet watchdog / master restarting-exited SIGTERM'd lane-0/3
+        (SystemExit 143) while grok 2233765/1577063 were live. Official
+        unstick is rearm, never CAS. Extra-gate aliases still cannot
+        bypass ``safe_to_restart=False``.
+        """
+
+        try:
+            if int(signum) != int(signal.SIGTERM):
+                return False
+        except (TypeError, ValueError):
+            return False
+        try:
+            return bool(self._live_in_progress_worker_must_preserve())
+        except Exception:
+            return False
 
     def _live_in_progress_worker_must_preserve(
         self,
