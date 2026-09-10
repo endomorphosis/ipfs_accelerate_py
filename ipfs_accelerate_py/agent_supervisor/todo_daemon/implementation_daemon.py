@@ -59994,6 +59994,11 @@ class PortalImplementationDaemon:
             task_id=task.task_id,
             attempt=int(attempt),
             expected_outputs=expected_outputs,
+            task_owned_paths=(
+                tuple(completion_scope)
+                if completion_scope is not None
+                else self._proposal_scope_paths(task)
+            ),
             validation_commands=tuple(task.validation),
             validation_result=review_validation_result,
             workspace_path=workspace_path,
