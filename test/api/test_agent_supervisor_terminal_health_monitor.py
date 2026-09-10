@@ -121,3 +121,69 @@ def test_retained_observation_preserves_outage_budget(monkeypatch):
         "reason_code": "authoritative_status_unavailable_two_samples",
         "error_type": "ASEHHealthQueryFailure",
     }]
+
+
+def test_refresh_request_consumed_only_by_existing_retained_sampler(monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.runtime.owner_observation_request import (
+        OwnerObservationRequests, observation_scope,
+    )
+    request_scope = observation_scope(
+        program_id=operator.PROGRAM, owner_identity={"generation": 1},
+        source_head="a" * 40, source_tree="b" * 40,
+        launch_admission_id="sha256:test",
+    )
+    requests = OwnerObservationRequests(request_scope)
+    stop, failed = threading.Event(), threading.Event()
+    requests.pending.set()
+    pairs = []
+    caller_thread = threading.get_ident()
+
+    def sample(*args):
+        assert threading.get_ident() == caller_thread
+        assert not requests.pending.is_set()
+        return {"observed_at": 2.0, "authority": {"available": True}}
+
+    def receipt(*args, **kwargs):
+        pairs.append(kwargs["samples"])
+        assert kwargs["last_progress_at"] == 0.5
+        return terminal_receipt()
+
+    monkeypatch.setattr(operator, "_status_sample", sample)
+    monkeypatch.setattr(operator, "_authoritative_progress_between", lambda *a: False)
+    monkeypatch.setattr(operator, "_health_receipt", receipt)
+    monkeypatch.setattr(operator, "_atomic_json", lambda *a: stop.set())
+    try:
+        operator._status_monitor_loop(
+            SimpleNamespace(payload={}), {"status_receipt": "unused"}, None, None,
+            launched_at=0.0, previous={"observed_at": 1.0}, last_progress_at=0.5,
+            stop=SimpleNamespace(wait=lambda _: stop.is_set(), is_set=stop.is_set),
+            failure={}, failure_event=failed, observation_requests=requests,
+        )
+    finally:
+        requests.close()
+    assert len(pairs) == 1
+    assert pairs[0][0]["observed_at"] == 1.0
+    assert pairs[0][1]["observed_at"] == 2.0
+    assert not failed.is_set()
+
+
+def test_old_owner_launch_has_no_refresh_admission(monkeypatch):
+    from pathlib import Path
+    launch = {"schema": "ipfs_accelerate_py/agent-supervisor/aseh-owner-launch@1"}
+    launch["receipt_cid"] = operator._identity(launch)
+    monkeypatch.setattr(operator, "_load", lambda p: (object(), {}))
+    monkeypatch.setattr(operator, "_paths", lambda b: {"evidence": Path("unused")})
+    monkeypatch.setattr(operator, "_secure_runtime_json", lambda *a, **k: launch)
+    with pytest.raises(operator.OperatorError, match="no observation request route"):
+        operator.request_status_refresh(Path("unused"))
+
+
+def test_repeated_refresh_requests_do_not_reset_outage_budget(monkeypatch):
+    original = operator._status_monitor_loop
+    starts = []
+    requests = SimpleNamespace(sample_started=lambda: starts.append(len(starts)))
+    def with_requests(*args, **kwargs):
+        return original(*args, **kwargs, observation_requests=requests)
+    monkeypatch.setattr(operator, "_status_monitor_loop", with_requests)
+    test_retained_observation_preserves_outage_budget(monkeypatch)
+    assert len(starts) == 3
