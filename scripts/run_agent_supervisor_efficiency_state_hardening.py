@@ -92167,7 +92167,11 @@ def _post_admission_health_action(
         return "continue", "", next_edges
     if receipt.get("terminal") is True:
         if receipt.get("healthy") is True:
-            return "stop", "", 0
+            # Task terminality does not end the owner or scheduler lifetime.
+            # Keep sampling their authority until native shutdown; otherwise
+            # the final receipt expires and maintenance/closeout loses its
+            # live witness while these processes still hold custody.
+            return "continue", "", 0
         return "fail", "authoritative_terminal_not_admitted", unhealthy_edges
     if receipt.get("healthy") is True:
         return "continue", "", 0

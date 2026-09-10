@@ -9151,7 +9151,7 @@ def test_aseh_sealed_receipt_validation_command_grammar_is_bounded() -> None:
 @pytest.mark.parametrize(
     ("command", "expected_stdout"),
     [
-        (aseh_operator.REPAIR_TRANSITION_VALIDATIONS[0], "8 passed"),
+        (aseh_operator.REPAIR_TRANSITION_VALIDATIONS[0], "13 passed"),
         (
             aseh_operator
             .REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_VALIDATIONS[0],
