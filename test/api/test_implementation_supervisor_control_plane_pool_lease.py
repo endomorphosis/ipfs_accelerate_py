@@ -15,7 +15,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     current_process_birth,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS,
     DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+    _projection_immutable_digest,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTaskState,
@@ -103,12 +105,28 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
     lock_path = pool_path.with_suffix(".lock")
     _write_json(lock_path, {"pid": os.getpid(), "created_at_epoch": 1.0})
 
+    projection = "\n".join((
+        "# Database attempt projection (non-authoritative)",
+        "## VRIF-010 Active native validation",
+        "- Status: ready",
+        f"- Database task CID: {task_cid}",
+        f"- Database attempt ID: {attempt_id}",
+        "- Database claim ID: claim:vrif-010",
+        f"- Canonical task CID: {task_cid}",
+        "- Canonical task key: task-key:vrif-010",
+        "- Projection authority: false",
+        "- Validation: python3 -m pytest -q test_native_contract.py",
+        "",
+    ))
+    projection_path = attempt_dir / "task-projection.md"
+    projection_path.write_text(projection, encoding="utf-8")
     binding = {
         "schema": DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
         "interface": "DatabasePortalExecutionBridge@1",
         "attempt_id": attempt_id,
         "claim_id": "claim:vrif-010",
         "task_cid": task_cid,
+        "canonical_task_key": "task-key:vrif-010",
         "task_alias": "VRIF-010",
         "goal_cid": "goal:vrif",
         "plan_cid": "plan:vrif",
@@ -116,9 +134,11 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         "fencing_token": 1,
         "fence_epoch": 1,
         "lease_id": "database-lease-vrif-010",
-        "task_body_digest": "sha256:body",
-        "projection_seed_digest": "sha256:seed",
-        "projection_immutable_digest": "sha256:projection",
+        "task_body_digest": "sha256:" + "a" * 64,
+        "task_contract_digest": "sha256:" + "b" * 64,
+        "repository_tree_id": "repository-tree:vrif",
+        "projection_seed_digest": "sha256:" + hashlib.sha256(projection.encode()).hexdigest(),
+        "projection_immutable_digest": _projection_immutable_digest(projection),
         "authoritative_task_store": "duckdb",
         "projection_authority": False,
     }
@@ -135,6 +155,7 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         ).hexdigest()
     )
     binding_path = attempt_dir / "database-attempt-binding.json"
+    assert set(binding) == DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS
     _write_json(binding_path, binding)
     nested_state_path = attempt_dir / "portal-task-state.json"
     PortalTaskState(
@@ -176,6 +197,7 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         "pool_path": pool_path,
         "lock_path": lock_path,
         "binding_path": binding_path,
+        "projection_path": projection_path,
         "nested_state_path": nested_state_path,
         "lifecycle_path": lifecycle_store.workspace_path_for(workspace),
         "workspace": workspace,
@@ -227,6 +249,7 @@ def test_database_pool_lease_accepts_adopted_parent_pid_drift(
     activity = fixture["supervisor"]._active_managed_database_pool_lease(fixture["child"])
 
     assert activity is not None
+    assert activity["activity_verification"] == "verified"
     assert activity["task_id"] == "VRIF-010"
     assert activity["lease_pid"] == str(os.getpid())
 
@@ -377,6 +400,8 @@ def test_watchdog_threads_one_exact_census_into_both_stuck_checks(
     [
         "idle",
         "initializing",
+        "expired",
+        "missing_lock",
         "peer",
         "dead",
         "dead_child",
@@ -405,6 +430,11 @@ def test_database_pool_lease_never_defers_without_exact_corroboration(
     elif case == "initializing":
         pool["state"] = "initializing"
         _write_json(fixture["pool_path"], pool)
+    elif case == "expired":
+        pool["state"] = "expired"
+        _write_json(fixture["pool_path"], pool)
+    elif case == "missing_lock":
+        fixture["lock_path"].unlink()
     elif case == "peer":
         pool["lease_pid"] = os.getppid()
         _write_json(fixture["pool_path"], pool)
@@ -451,3 +481,72 @@ def test_database_pool_lease_never_defers_without_exact_corroboration(
         fixture["nested_state_path"].write_text("[]\n", encoding="utf-8")
 
     assert fixture["supervisor"]._active_managed_database_pool_lease(fixture["child"]) is None
+
+
+@pytest.mark.parametrize("case", [
+    "unknown_field", "missing_field", "unknown_schema", "task", "attempt", "claim",
+    "canonical_key", "negative_fence", "boolean_fence", "contract_digest", "body_digest",
+    "binding_digest", "projection_digest", "projection_missing", "state_task", "state_attempt",
+])
+def test_invalid_task_evidence_never_proves_live_lease_quiescence(tmp_path, monkeypatch, case):
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    binding = json.loads(fixture["binding_path"].read_text())
+    if case == "unknown_field":
+        binding["future_native_field"] = "not admitted"
+    elif case == "missing_field":
+        binding.pop("task_contract_digest")
+    elif case == "unknown_schema":
+        binding["schema"] += "/future"
+    elif case in {"task", "attempt", "claim"}:
+        binding[{"task": "task_cid", "attempt": "attempt_id", "claim": "claim_id"}[case]] = "foreign"
+    elif case == "canonical_key":
+        binding["canonical_task_key"] = "task-key:foreign"
+    elif case == "negative_fence":
+        binding["fence_epoch"] = -1
+    elif case == "boolean_fence":
+        binding["fencing_token"] = True
+    elif case == "contract_digest":
+        binding["task_contract_digest"] = "sha256:malformed"
+    elif case == "body_digest":
+        binding["task_body_digest"] = "sha256:malformed"
+    elif case == "projection_digest":
+        binding["projection_immutable_digest"] = "sha256:" + "f" * 64
+    elif case == "projection_missing":
+        fixture["projection_path"].unlink()
+    elif case in {"state_task", "state_attempt"}:
+        state = json.loads(fixture["nested_state_path"].read_text())
+        state["active_task_id" if case == "state_task" else "active_attempt"] = "foreign" if case == "state_task" else 2
+        _write_json(fixture["nested_state_path"], state)
+    body = dict(binding)
+    body.pop("binding_id")
+    binding["binding_id"] = "sha256:" + hashlib.sha256(json.dumps(
+        body, ensure_ascii=False, separators=(",", ":"), sort_keys=True,
+    ).encode()).hexdigest()
+    if case == "binding_digest":
+        binding["binding_id"] = "sha256:" + "0" * 64
+    _write_json(fixture["binding_path"], binding)
+    assert supervisor._active_managed_database_pool_lease(fixture["child"]) is None
+
+    supervisor._loaded_control_plane_source = {"source_id": "old", "repository_revision": "old"}
+    monkeypatch.setattr(supervisor, "_control_plane_source_snapshot", lambda: {
+        "source_id": "new", "repository_revision": "new",
+    })
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(supervisor, "_active_validation_subprocess_exists", lambda: False)
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    original_state = fixture["state_path"].read_bytes()
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, fixture["child"], {})
+    assert decision.action == "continue"
+    fields = loop.config.status_extra_fields
+    assert fields["control_plane_reload_deferred_reason"] == "live_managed_database_pool_quiescence_unresolved"
+    assert fields["control_plane_reload_deferred_task_id"] == ""
+    assert fields["control_plane_reload_attempt_budget_consumed"] is False
+    assert fields["control_plane_reload_provider_invocation_consumed"] is False
+    assert fixture["state_path"].read_bytes() == original_state
+
+    # Once that exact lease is absent, unverified archived flags cannot defer.
+    fixture["lock_path"].unlink()
+    released = supervisor._supervisor_loop_watchdog_decision(loop, fixture["child"], {})
+    assert released.action == "stop"
+    assert released.reason == "control_plane_source_changed"
