@@ -1405,13 +1405,30 @@ class TypedDatabaseTaskSource:
     ) -> TaskExecutionRoutePolicy:
         """Seal all current tasks and modes from one generation-stable read."""
 
+        _snapshot, policy = self.seal_execution_route_snapshot(execution_modes)
+        return policy
+
+    def seal_execution_route_snapshot(
+        self,
+        execution_modes: Mapping[str, str],
+    ) -> tuple[TaskSourceSnapshot, TaskExecutionRoutePolicy]:
+        """Bind launch observation and policy to the same stable typed read.
+
+        Separate calls to ``snapshot`` and ``seal_execution_route_policy`` can
+        observe different revisions, even when both reads independently pass
+        generation validation. This pair uses one bounded snapshot operation;
+        owner failures and concurrent-write exhaustion still fail closed.
+        The returned projection grants neither source adoption nor completion.
+        """
+
         row, records, revision = self._snapshot_material()
         snapshot = self._snapshot_from_material(row, records, revision)
-        return TaskExecutionRoutePolicy.seal(
+        policy = TaskExecutionRoutePolicy.seal(
             snapshot=snapshot,
             tasks=tuple(record for record, _identity in records),
             execution_modes=execution_modes,
         )
+        return snapshot, policy
 
     def _validate_execution_route_policy_population(self) -> None:
         policy = self._execution_route_policy
