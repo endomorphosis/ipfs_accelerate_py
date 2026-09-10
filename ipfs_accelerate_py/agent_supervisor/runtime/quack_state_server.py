@@ -2462,13 +2462,24 @@ class InProcessQuackTransport:
     def _open_probe_connection(self) -> Any:
         if self._probe_connection_factory is not None:
             return self._probe_connection_factory()
+        probe = None
         try:
             import duckdb
 
-            probe = duckdb.connect(database=":memory:")
+            probe = duckdb.connect(
+                database=":memory:",
+                config={"threads": 1, "memory_limit": DEFAULT_MEMORY_LIMIT},
+            )
             self._load_quack(probe)
             return probe
         except Exception as exc:
+            # A failed LOAD still leaves a native handle and worker pool.
+            # Release that handle before a later readiness attempt retries.
+            if probe is not None:
+                try:
+                    probe.close()
+                except Exception:
+                    pass
             raise QuackStateServerReadyError(
                 "could not open distinct Quack readiness client"
             ) from exc

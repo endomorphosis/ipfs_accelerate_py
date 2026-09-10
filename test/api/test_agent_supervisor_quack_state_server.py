@@ -3046,3 +3046,71 @@ def test_config_rejects_raw_token_as_secret_handle(tmp_path: Path) -> None:
             state_dir=tmp_path / "state",
             secret_handle="raw-not-a-handle",
         )
+
+
+@pytest.mark.parametrize("load_fails", [False, True])
+def test_distinct_readiness_client_is_bounded_before_load(monkeypatch, load_fails):
+    import duckdb
+
+    native_connect = duckdb.connect
+    clients = []
+    observations = []
+
+    def connect(*args, **kwargs):
+        client = native_connect(*args, **kwargs)
+        clients.append(client)
+        return client
+
+    def load(client):
+        observations.append(client.execute(
+            "SELECT current_setting('threads'), current_setting('memory_limit')"
+        ).fetchone())
+        if load_fails:
+            raise RuntimeError("injected extension load failure")
+
+    monkeypatch.setattr(duckdb, "connect", connect)
+    transport = InProcessQuackTransport()
+    monkeypatch.setattr(transport, "_load_quack", load)
+    if load_fails:
+        for _ in range(2):
+            with pytest.raises(QuackStateServerReadyError) as error:
+                transport._open_probe_connection()
+            assert isinstance(error.value.__cause__, RuntimeError)
+            with pytest.raises(duckdb.ConnectionException):
+                clients[-1].execute("SELECT 1")
+    else:
+        client = transport._open_probe_connection()
+        try:
+            assert client is clients[0]
+            assert client.execute("SELECT 1").fetchone() == (1,)
+        finally:
+            client.close()
+    assert len(observations) == (2 if load_fails else 1)
+    assert all(row[0] == 1 and row[1] == "244.1 MiB" for row in observations)
+
+
+def test_distinct_readiness_load_error_survives_close_failure(monkeypatch):
+    import duckdb
+
+    closed = []
+
+    class Client:
+        def close(self):
+            closed.append(True)
+            raise RuntimeError("close failure")
+
+    def connect(*args, **kwargs):
+        assert kwargs["config"] == {"threads": 1, "memory_limit": "256MB"}
+        return Client()
+
+    monkeypatch.setattr(duckdb, "connect", connect)
+    transport = InProcessQuackTransport()
+
+    def load(_client):
+        raise ValueError("load failure")
+
+    monkeypatch.setattr(transport, "_load_quack", load)
+    with pytest.raises(QuackStateServerReadyError) as error:
+        transport._open_probe_connection()
+    assert isinstance(error.value.__cause__, ValueError)
+    assert closed == [True]
