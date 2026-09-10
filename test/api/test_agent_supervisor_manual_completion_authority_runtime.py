@@ -421,7 +421,9 @@ def test_scheduler_passes_only_unverified_staged_manual_tasks_to_daemon(
     assert not supervisor._managed_daemon_matches_command_line(
         " ".join(stale_epoch_command)
     )
-    daemon_args = daemon_module.parse_args(command[4:])
+    daemon_args = daemon_module.parse_args(
+        command[command.index("--interval") :]
+    )
     monkeypatch.setattr(
         daemon_module.PortalImplementationDaemon,
         "_git_ref_exists",

@@ -17,7 +17,7 @@ from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor.entrypoints import (
     local_profile as local_profile_module,
 )
-from ipfs_accelerate_py.agent_supervisor.entrypoints import (
+from ipfs_accelerate_py.agent_supervisor.control import (
     provider_attempt_store as provider_attempt_store_module,
 )
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
@@ -407,8 +407,13 @@ def test_codex_effect_is_created_then_cas_claimed_before_start(
     source_auth = tmp_path / "auth.json"
     source_auth.write_text("{}", encoding="utf-8")
     source_auth.chmod(0o600)
-    fake_home_path = tmp_path / "codex-home"
+    fake_home_path = tmp_path / "asref-codex-home-test"
     fake_home_path.mkdir()
+    monkeypatch.setattr(
+        grok_cli_runner_module.tempfile,
+        "gettempdir",
+        lambda: str(tmp_path),
+    )
     events: list[str] = []
 
     class FakeHome:
@@ -424,7 +429,34 @@ def test_codex_effect_is_created_then_cas_claimed_before_start(
         cidfile = lease_root / "container.cid"
         provider_home = fake_home_path
         prompt_path = tmp_path / "prompt.txt"
-        _watchdog = SimpleNamespace(pid=os.getpid())
+        _watchdog = SimpleNamespace(
+            pid=os.getpid(),
+            start_ticks=grok_cli_runner_module._runner_process_start_ticks(
+                os.getpid()
+            ),
+        )
+
+        def bind_isolation_image(self, image_id: str) -> None:
+            assert image_id == grok_cli_runner_module._CODEX_TASK_TOOLCHAIN_IMAGE_ID
+
+        def take_provider_start_stdin(self) -> io.BytesIO:
+            # The production lease returns one end of its anonymous provider
+            # start channel.  This ordering test replaces Popen, so a bounded
+            # file-like stand-in is sufficient while retaining the current
+            # lease interface and close handoff.
+            return io.BytesIO()
+
+        def capture_running_termination_fence(self) -> None:
+            return None
+
+        def finish_provider_input(self, prompt: str) -> None:
+            assert prompt == "prompt"
+
+        def _abort_provider_start(self) -> None:
+            return None
+
+        def _durable_cas_state(self) -> str:
+            return "absent"
 
         def mark_cas_owned(self) -> None:
             events.append("mark_cas_owned")
@@ -1433,7 +1465,9 @@ def test_docker_cleanup_watchdog_launch_is_python_isolated(
     captured: dict[str, object] = {}
     real_popen = grok_cli_runner_module.subprocess.Popen
 
-    class FakeWatchdog:
+    class FakeLauncher:
+        returncode = 0
+
         def poll(self) -> None:
             return None
 
@@ -1441,10 +1475,29 @@ def test_docker_cleanup_watchdog_launch_is_python_isolated(
             assert timeout > 0
             return 0
 
-    def fake_popen(command: list[str], **kwargs: object) -> FakeWatchdog:
+        def kill(self) -> None:
+            pytest.fail("admitted cleanup launcher was killed")
+
+    class FakeWatchdog:
+        pid = 424242
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, *, timeout: float) -> int:
+            assert timeout > 0
+            return 0
+
+        def terminate(self) -> None:
+            pytest.fail("admitted cleanup watchdog was terminated")
+
+        def kill(self) -> None:
+            pytest.fail("admitted cleanup watchdog was killed")
+
+    def fake_popen(command: list[str], **kwargs: object) -> FakeLauncher:
         captured["command"] = command
         captured.update(kwargs)
-        return FakeWatchdog()
+        return FakeLauncher()
 
     monkeypatch.setattr(grok_cli_runner_module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(
@@ -1452,18 +1505,35 @@ def test_docker_cleanup_watchdog_launch_is_python_isolated(
         "_remove_exact_docker_container",
         lambda **_kwargs: None,
     )
+    monkeypatch.setattr(
+        grok_cli_runner_module,
+        "_read_detached_docker_cleanup_watchdog",
+        lambda *_args, **_kwargs: FakeWatchdog(),
+    )
+    provider_home = tmp_path / "asref-codex-home-test"
+    provider_home.mkdir(mode=0o700)
+    prompt_path = tmp_path / "asref-grok-prompt-test"
+    prompt_path.write_text("test", encoding="utf-8")
+    prompt_path.chmod(0o600)
     lease = grok_cli_runner_module._DockerContainerLease.create(
         "/usr/bin/docker",
         provider="codex",
-        provider_home=tmp_path / "asref-codex-home-test",
-        prompt_path=tmp_path / "asref-grok-prompt-test",
+        provider_home=provider_home,
+        prompt_path=prompt_path,
     )
     try:
         command = captured["command"]
         assert isinstance(command, list)
-        assert command[:2] == [grok_cli_runner_module.sys.executable, "-I"]
-        assert command[2] == str(Path(grok_cli_runner_module.__file__).resolve())
-        assert command[3] == grok_cli_runner_module._DOCKER_CLEANUP_WATCHDOG_ARG
+        assert command[:3] == [
+            grok_cli_runner_module.sys.executable,
+            "-I",
+            "-B",
+        ]
+        assert command[3] == str(Path(grok_cli_runner_module.__file__).resolve())
+        assert command[4] == (
+            grok_cli_runner_module._DOCKER_CLEANUP_WATCHDOG_LAUNCHER_ARG
+        )
+        assert grok_cli_runner_module._DOCKER_CLEANUP_WATCHDOG_ARG in command
         assert captured["cwd"] == "/"
         assert captured["env"] == {
             "PATH": "/usr/bin:/bin",
@@ -1471,9 +1541,10 @@ def test_docker_cleanup_watchdog_launch_is_python_isolated(
         }
         assert captured["start_new_session"] is True
         assert captured["close_fds"] is True
-        assert captured["pass_fds"] == ()
+        assert command[5] == "--control-fd"
+        assert captured["pass_fds"] == (int(command[6]),)
         isolation_probe = real_popen(
-            [*command[:2], "-c", "pass"],
+            [*command[:3], "-c", "pass"],
             stdin=grok_cli_runner_module.subprocess.DEVNULL,
             stdout=grok_cli_runner_module.subprocess.DEVNULL,
             stderr=grok_cli_runner_module.subprocess.DEVNULL,

@@ -1,0 +1,631 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/aseh-task-efficiency-receipt@1",
+  "title": "ASEH task efficiency receipt",
+  "description": "Closed telemetry receipt for one supervisor task. Missing values remain unavailable. Measured, estimated, unavailable, attempted, observed, verified, and simulated are distinct typed states. Unknown fields, floats, and out-of-bound integers fail closed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "identity",
+    "model_use",
+    "compute",
+    "cost",
+    "work",
+    "quality",
+    "evidence_state",
+    "terminal",
+    "explicit_unavailable_fields",
+    "receipt_cid"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ipfs_accelerate_py/agent-supervisor/aseh-task-efficiency-receipt@1"
+    },
+    "schema_version": { "const": 1 },
+    "identity": { "$ref": "#/$defs/identity" },
+    "model_use": { "$ref": "#/$defs/modelUse" },
+    "compute": { "$ref": "#/$defs/compute" },
+    "cost": { "$ref": "#/$defs/cost" },
+    "work": { "$ref": "#/$defs/work" },
+    "quality": { "$ref": "#/$defs/quality" },
+    "evidence_state": { "$ref": "#/$defs/evidenceState" },
+    "terminal": { "$ref": "#/$defs/terminal" },
+    "explicit_unavailable_fields": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fieldPath" },
+      "uniqueItems": true,
+      "maxItems": 256
+    },
+    "receipt_cid": { "$ref": "#/$defs/cid" }
+  },
+  "$defs": {
+    "cid": {
+      "type": "string",
+      "minLength": 21,
+      "maxLength": 128,
+      "pattern": "^b[a-z2-7]{20,}$"
+    },
+    "gitOid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "utcTimestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "nfcString": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[^\\u0000]+$"
+    },
+    "fieldPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[a-z][a-z0-9_.]*$"
+    },
+    "boundedInt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000000000000
+    },
+    "positiveInt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000000000000000
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "count",
+        "tokens",
+        "bytes",
+        "seconds_millionths",
+        "microusd",
+        "compute_units",
+        "ratio_millionths"
+      ]
+    },
+    "reasonCode": {
+      "type": "string",
+      "enum": [
+        "not_reported",
+        "sensor_absent",
+        "provider_omitted",
+        "collection_failed",
+        "permission_denied",
+        "hardware_absent",
+        "not_applicable",
+        "not_yet_measured",
+        "fixture_only",
+        "deadline_elapsed",
+        "not_sealed",
+        "not_admitted"
+      ]
+    },
+    "estimatorMethod": {
+      "type": "string",
+      "enum": [
+        "token_price_snapshot",
+        "provider_quote",
+        "local_compute_model",
+        "manual_audit"
+      ]
+    },
+    "identityRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^(unavailable|b[a-z2-7]{20,}|sha256:[0-9a-f]{64})$"
+    },
+    "modelClass": {
+      "type": "string",
+      "enum": [
+        "deterministic",
+        "local_small_model",
+        "local_medium_model",
+        "remote_standard_model",
+        "remote_frontier_model",
+        "human"
+      ]
+    },
+    "patchDisposition": {
+      "type": "string",
+      "enum": ["accepted", "rejected", "quarantined", "reverted"]
+    },
+    "taskOutcome": {
+      "type": "string",
+      "enum": [
+        "succeeded",
+        "failed",
+        "retried",
+        "rescued",
+        "conflicted",
+        "human_escalated",
+        "quarantined",
+        "compensated"
+      ]
+    },
+    "populationKind": {
+      "type": "string",
+      "enum": [
+        "hermetic_development",
+        "historical_exact_tree_replay",
+        "new_live_shadow_canary"
+      ]
+    },
+    "unavailableEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truth_state", "reason_code"],
+      "properties": {
+        "truth_state": { "const": "unavailable" },
+        "reason_code": { "$ref": "#/$defs/reasonCode" }
+      }
+    },
+    "simulatedEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truth_state", "fixture_id", "reason_code"],
+      "properties": {
+        "truth_state": { "const": "simulated" },
+        "fixture_id": { "$ref": "#/$defs/nfcString" },
+        "reason_code": { "$ref": "#/$defs/reasonCode" }
+      }
+    },
+    "measuredQuantity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truth_state", "value", "unit", "sensor_id"],
+      "properties": {
+        "truth_state": { "const": "measured" },
+        "value": { "$ref": "#/$defs/boundedInt" },
+        "unit": { "$ref": "#/$defs/unit" },
+        "sensor_id": { "$ref": "#/$defs/nfcString" }
+      }
+    },
+    "estimatedQuantity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "truth_state",
+        "value",
+        "unit",
+        "estimator_id",
+        "method",
+        "price_snapshot_identity"
+      ],
+      "properties": {
+        "truth_state": { "const": "estimated" },
+        "value": { "$ref": "#/$defs/boundedInt" },
+        "unit": { "$ref": "#/$defs/unit" },
+        "estimator_id": { "$ref": "#/$defs/nfcString" },
+        "method": { "$ref": "#/$defs/estimatorMethod" },
+        "price_snapshot_identity": { "$ref": "#/$defs/identityRef" }
+      }
+    },
+    "quantityObservation": {
+      "oneOf": [
+        { "$ref": "#/$defs/measuredQuantity" },
+        { "$ref": "#/$defs/estimatedQuantity" },
+        { "$ref": "#/$defs/unavailableEvidence" },
+        { "$ref": "#/$defs/simulatedEvidence" }
+      ]
+    },
+    "reportedCharge": {
+      "oneOf": [
+        { "$ref": "#/$defs/measuredQuantity" },
+        { "$ref": "#/$defs/unavailableEvidence" },
+        { "$ref": "#/$defs/simulatedEvidence" }
+      ]
+    },
+    "estimatedCharge": {
+      "oneOf": [
+        { "$ref": "#/$defs/estimatedQuantity" },
+        { "$ref": "#/$defs/unavailableEvidence" },
+        { "$ref": "#/$defs/simulatedEvidence" }
+      ]
+    },
+    "attemptedOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truth_state", "operation_id", "attempt_count"],
+      "properties": {
+        "truth_state": { "const": "attempted" },
+        "operation_id": { "$ref": "#/$defs/nfcString" },
+        "attempt_count": { "$ref": "#/$defs/positiveInt" }
+      }
+    },
+    "observedOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truth_state", "operation_id", "observer_id", "count"],
+      "properties": {
+        "truth_state": { "const": "observed" },
+        "operation_id": { "$ref": "#/$defs/nfcString" },
+        "observer_id": { "$ref": "#/$defs/nfcString" },
+        "count": { "$ref": "#/$defs/boundedInt" }
+      }
+    },
+    "verifiedOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "truth_state",
+        "operation_id",
+        "observer_id",
+        "count",
+        "verifier_id",
+        "verifier_receipt_cid"
+      ],
+      "properties": {
+        "truth_state": { "const": "verified" },
+        "operation_id": { "$ref": "#/$defs/nfcString" },
+        "observer_id": { "$ref": "#/$defs/nfcString" },
+        "count": { "$ref": "#/$defs/boundedInt" },
+        "verifier_id": { "$ref": "#/$defs/nfcString" },
+        "verifier_receipt_cid": { "$ref": "#/$defs/cid" }
+      }
+    },
+    "operationObservation": {
+      "oneOf": [
+        { "$ref": "#/$defs/attemptedOperation" },
+        { "$ref": "#/$defs/observedOperation" },
+        { "$ref": "#/$defs/verifiedOperation" },
+        { "$ref": "#/$defs/unavailableEvidence" },
+        { "$ref": "#/$defs/simulatedEvidence" }
+      ]
+    },
+    "observedIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truth_state", "value"],
+      "properties": {
+        "truth_state": { "const": "observed" },
+        "value": { "$ref": "#/$defs/nfcString" }
+      }
+    },
+    "verifiedIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truth_state", "value", "verifier_id", "verifier_receipt_cid"],
+      "properties": {
+        "truth_state": { "const": "verified" },
+        "value": { "$ref": "#/$defs/nfcString" },
+        "verifier_id": { "$ref": "#/$defs/nfcString" },
+        "verifier_receipt_cid": { "$ref": "#/$defs/cid" }
+      }
+    },
+    "attemptedIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truth_state", "operation_id"],
+      "properties": {
+        "truth_state": { "const": "attempted" },
+        "operation_id": { "$ref": "#/$defs/nfcString" }
+      }
+    },
+    "identityObservation": {
+      "oneOf": [
+        { "$ref": "#/$defs/observedIdentity" },
+        { "$ref": "#/$defs/verifiedIdentity" },
+        { "$ref": "#/$defs/attemptedIdentity" },
+        { "$ref": "#/$defs/unavailableEvidence" },
+        { "$ref": "#/$defs/simulatedEvidence" }
+      ]
+    },
+    "requestIds": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["truth_state", "values"],
+          "properties": {
+            "truth_state": { "const": "observed" },
+            "values": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/nfcString" },
+              "uniqueItems": true,
+              "maxItems": 256
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["truth_state", "values", "verifier_id", "verifier_receipt_cid"],
+          "properties": {
+            "truth_state": { "const": "verified" },
+            "values": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/nfcString" },
+              "uniqueItems": true,
+              "maxItems": 256
+            },
+            "verifier_id": { "$ref": "#/$defs/nfcString" },
+            "verifier_receipt_cid": { "$ref": "#/$defs/cid" }
+          }
+        },
+        { "$ref": "#/$defs/attemptedIdentity" },
+        { "$ref": "#/$defs/unavailableEvidence" },
+        { "$ref": "#/$defs/simulatedEvidence" }
+      ]
+    },
+    "providerReportedUsage": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "truth_state",
+            "input_tokens",
+            "output_tokens",
+            "cached_input_tokens",
+            "reasoning_tokens"
+          ],
+          "properties": {
+            "truth_state": { "const": "observed" },
+            "input_tokens": { "$ref": "#/$defs/quantityObservation" },
+            "output_tokens": { "$ref": "#/$defs/quantityObservation" },
+            "cached_input_tokens": { "$ref": "#/$defs/quantityObservation" },
+            "reasoning_tokens": { "$ref": "#/$defs/quantityObservation" }
+          }
+        },
+        { "$ref": "#/$defs/unavailableEvidence" },
+        { "$ref": "#/$defs/simulatedEvidence" }
+      ]
+    },
+    "callsByModelClass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deterministic",
+        "local_small_model",
+        "local_medium_model",
+        "remote_standard_model",
+        "remote_frontier_model",
+        "human"
+      ],
+      "properties": {
+        "deterministic": { "$ref": "#/$defs/quantityObservation" },
+        "local_small_model": { "$ref": "#/$defs/quantityObservation" },
+        "local_medium_model": { "$ref": "#/$defs/quantityObservation" },
+        "remote_standard_model": { "$ref": "#/$defs/quantityObservation" },
+        "remote_frontier_model": { "$ref": "#/$defs/quantityObservation" },
+        "human": { "$ref": "#/$defs/quantityObservation" }
+      }
+    },
+    "providerModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_id", "model_id", "model_revision", "model_class"],
+      "properties": {
+        "provider_id": { "$ref": "#/$defs/nfcString" },
+        "model_id": { "$ref": "#/$defs/nfcString" },
+        "model_revision": { "$ref": "#/$defs/identityObservation" },
+        "model_class": { "$ref": "#/$defs/modelClass" }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "task_cid",
+        "objective_id",
+        "objective_revision",
+        "repository_commit",
+        "repository_tree",
+        "policy_identity",
+        "context_pack_cid",
+        "interface_schema_identities",
+        "provider_model"
+      ],
+      "properties": {
+        "task_id": { "$ref": "#/$defs/nfcString" },
+        "task_cid": { "$ref": "#/$defs/cid" },
+        "objective_id": { "$ref": "#/$defs/nfcString" },
+        "objective_revision": { "$ref": "#/$defs/nfcString" },
+        "repository_commit": { "$ref": "#/$defs/gitOid" },
+        "repository_tree": { "$ref": "#/$defs/gitOid" },
+        "policy_identity": { "$ref": "#/$defs/nfcString" },
+        "context_pack_cid": { "$ref": "#/$defs/identityObservation" },
+        "interface_schema_identities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nfcString" },
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "provider_model": { "$ref": "#/$defs/providerModel" }
+      }
+    },
+    "modelUse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_tokens",
+        "output_tokens",
+        "cached_input_tokens",
+        "reasoning_tokens",
+        "number_of_calls",
+        "calls_by_model_class",
+        "safe_provider_request_ids",
+        "provider_reported_usage"
+      ],
+      "properties": {
+        "input_tokens": { "$ref": "#/$defs/quantityObservation" },
+        "output_tokens": { "$ref": "#/$defs/quantityObservation" },
+        "cached_input_tokens": { "$ref": "#/$defs/quantityObservation" },
+        "reasoning_tokens": { "$ref": "#/$defs/quantityObservation" },
+        "number_of_calls": { "$ref": "#/$defs/quantityObservation" },
+        "calls_by_model_class": { "$ref": "#/$defs/callsByModelClass" },
+        "safe_provider_request_ids": { "$ref": "#/$defs/requestIds" },
+        "provider_reported_usage": { "$ref": "#/$defs/providerReportedUsage" }
+      }
+    },
+    "compute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpu_seconds",
+        "gpu_seconds",
+        "peak_memory",
+        "wall_clock_duration",
+        "test_execution_time",
+        "prover_execution_time",
+        "static_analysis_time",
+        "indexing_retrieval_time",
+        "bytes_read",
+        "bytes_written",
+        "process_count",
+        "concurrency"
+      ],
+      "properties": {
+        "cpu_seconds": { "$ref": "#/$defs/quantityObservation" },
+        "gpu_seconds": { "$ref": "#/$defs/quantityObservation" },
+        "peak_memory": { "$ref": "#/$defs/quantityObservation" },
+        "wall_clock_duration": { "$ref": "#/$defs/quantityObservation" },
+        "test_execution_time": { "$ref": "#/$defs/quantityObservation" },
+        "prover_execution_time": { "$ref": "#/$defs/quantityObservation" },
+        "static_analysis_time": { "$ref": "#/$defs/quantityObservation" },
+        "indexing_retrieval_time": { "$ref": "#/$defs/quantityObservation" },
+        "bytes_read": { "$ref": "#/$defs/quantityObservation" },
+        "bytes_written": { "$ref": "#/$defs/quantityObservation" },
+        "process_count": { "$ref": "#/$defs/quantityObservation" },
+        "concurrency": { "$ref": "#/$defs/quantityObservation" }
+      }
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_reported_charge",
+        "token_based_estimated_charge",
+        "price_snapshot_identity",
+        "price_snapshot_timestamp",
+        "local_compute_units",
+        "audit_and_verification_overhead",
+        "cost_per_accepted_patch",
+        "cost_per_completed_task"
+      ],
+      "properties": {
+        "provider_reported_charge": { "$ref": "#/$defs/reportedCharge" },
+        "token_based_estimated_charge": { "$ref": "#/$defs/estimatedCharge" },
+        "price_snapshot_identity": { "$ref": "#/$defs/identityObservation" },
+        "price_snapshot_timestamp": { "$ref": "#/$defs/identityObservation" },
+        "local_compute_units": { "$ref": "#/$defs/reportedCharge" },
+        "audit_and_verification_overhead": { "$ref": "#/$defs/quantityObservation" },
+        "cost_per_accepted_patch": { "$ref": "#/$defs/quantityObservation" },
+        "cost_per_completed_task": { "$ref": "#/$defs/quantityObservation" }
+      }
+    },
+    "work": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tests_selected",
+        "tests_executed",
+        "full_suite_tests",
+        "type_static_schema_checks",
+        "proof_obligations_selected",
+        "proof_obligations_executed",
+        "proof_receipts_reused",
+        "retries",
+        "rescue_attempts",
+        "merge_conflicts",
+        "manual_recovery",
+        "human_interventions",
+        "final_task_outcome",
+        "validation_result",
+        "patch_disposition"
+      ],
+      "properties": {
+        "tests_selected": { "$ref": "#/$defs/operationObservation" },
+        "tests_executed": { "$ref": "#/$defs/operationObservation" },
+        "full_suite_tests": { "$ref": "#/$defs/operationObservation" },
+        "type_static_schema_checks": { "$ref": "#/$defs/operationObservation" },
+        "proof_obligations_selected": { "$ref": "#/$defs/operationObservation" },
+        "proof_obligations_executed": { "$ref": "#/$defs/operationObservation" },
+        "proof_receipts_reused": { "$ref": "#/$defs/operationObservation" },
+        "retries": { "$ref": "#/$defs/operationObservation" },
+        "rescue_attempts": { "$ref": "#/$defs/operationObservation" },
+        "merge_conflicts": { "$ref": "#/$defs/operationObservation" },
+        "manual_recovery": { "$ref": "#/$defs/operationObservation" },
+        "human_interventions": { "$ref": "#/$defs/operationObservation" },
+        "final_task_outcome": { "$ref": "#/$defs/taskOutcome" },
+        "validation_result": { "$ref": "#/$defs/operationObservation" },
+        "patch_disposition": { "$ref": "#/$defs/patchDisposition" }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted_patch_quality",
+        "false_positives",
+        "false_negatives",
+        "selected_test_false_negatives",
+        "quality_adjusted_cost",
+        "accepted_patch_rate"
+      ],
+      "properties": {
+        "accepted_patch_quality": { "$ref": "#/$defs/quantityObservation" },
+        "false_positives": { "$ref": "#/$defs/operationObservation" },
+        "false_negatives": { "$ref": "#/$defs/operationObservation" },
+        "selected_test_false_negatives": { "$ref": "#/$defs/operationObservation" },
+        "quality_adjusted_cost": { "$ref": "#/$defs/quantityObservation" },
+        "accepted_patch_rate": { "$ref": "#/$defs/quantityObservation" }
+      }
+    },
+    "evidenceState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "population_kind",
+        "live",
+        "simulated_as_live",
+        "estimated_as_measured",
+        "attempted_as_observed",
+        "observed_as_verified",
+        "unavailable_as_zero"
+      ],
+      "properties": {
+        "population_kind": { "$ref": "#/$defs/populationKind" },
+        "live": { "type": "boolean" },
+        "simulated_as_live": { "const": false },
+        "estimated_as_measured": { "const": false },
+        "attempted_as_observed": { "const": false },
+        "observed_as_verified": { "const": false },
+        "unavailable_as_zero": { "const": false }
+      }
+    },
+    "terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "final_task_outcome",
+        "validation_result",
+        "patch_disposition",
+        "time_to_terminal_outcome",
+        "terminalized",
+        "single_terminalization"
+      ],
+      "properties": {
+        "final_task_outcome": { "$ref": "#/$defs/taskOutcome" },
+        "validation_result": { "$ref": "#/$defs/operationObservation" },
+        "patch_disposition": { "$ref": "#/$defs/patchDisposition" },
+        "time_to_terminal_outcome": { "$ref": "#/$defs/quantityObservation" },
+        "terminalized": { "const": true },
+        "single_terminalization": { "const": true }
+      }
+    }
+  }
+}

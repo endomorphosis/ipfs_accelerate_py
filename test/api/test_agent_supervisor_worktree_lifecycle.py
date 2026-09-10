@@ -10,7 +10,9 @@ from pathlib import Path
 
 import ipfs_accelerate_py.agent_supervisor.worktree_lifecycle as lifecycle_module
 import pytest
-from ipfs_accelerate_py.agent_supervisor.control.control_contracts import EventCursor
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
+    EventCursor,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.campaign_leases import (
     CampaignLeaseCoordinator,
 )
@@ -285,6 +287,24 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
         store.reclaim_dead_owner_for_controlled_restart(
             dead_workspace,
             expected_state_dir=other_state,
+        )
+        is None
+    )
+    assert (
+        store.reclaim_dead_owner_for_controlled_restart(
+            dead_workspace,
+            expected_state_dir=lane_state,
+            expected_record_id="sha256:stale-observation",
+            expected_fence=dead_record.fence,
+        )
+        is None
+    )
+    assert (
+        store.reclaim_dead_owner_for_controlled_restart(
+            dead_workspace,
+            expected_state_dir=lane_state,
+            expected_record_id=dead_record.record_id,
+            expected_fence=dead_record.fence + 1,
         )
         is None
     )

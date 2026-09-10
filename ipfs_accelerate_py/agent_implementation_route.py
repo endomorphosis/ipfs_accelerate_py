@@ -5,26 +5,34 @@ from ``llm_router.py``. ``llm_router`` re-exports these names.
 """
 from __future__ import annotations
 
+import atexit
 import base64
 import binascii
 import fcntl
 import hashlib
 import hmac
 import io
+import importlib.machinery
+import importlib.util
 import json
+import mmap
 import os
 import re
 import secrets
 import shutil
 import stat as stat_module
+import struct
 import subprocess
 import sys
+import sysconfig
 import tempfile
+import threading
 import time
 import urllib.parse
 import uuid
 import zipfile
-from collections.abc import Mapping, Sequence
+from collections import OrderedDict
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -139,13 +147,13 @@ _AGENT_CONTROL_PLANE_MANIFEST_FILENAME = (
 )
 # Keep each sealed source leaf bounded while allowing the integrated supervisor
 # daemon to carry both scheduler and recovery authority surfaces.  The capsule
-# as a whole remains independently bounded by the 64 MiB archive limit.
+# as a whole remains independently bounded by the 128 MiB archive limit.
 _AGENT_CONTROL_PLANE_MAX_FILE_BYTES = 8 * 1024 * 1024
 _AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 # The capsule contains the complete supervisor Python closure.  Keep a bounded
 # allowance above its current size so reviewed feature additions do not make
 # an otherwise valid, content-addressed control plane impossible to seal.
-_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES = 80 * 1024 * 1024
+_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
 # The LGCVF live capsule is deliberately separate from the generic accepted
 # control-plane capsule above.  In particular, these limits and schemas must
 # never widen ``accepted-control-plane@2``: the live capsule also carries the
@@ -184,15 +192,72 @@ _LGCVF_LIVE_EXTENSION_ROLES = {
     "httpfs": ("quack_transport_dependency", "load_only"),
     "ducklake": ("non_authoritative_projection_only", "projection_only"),
 }
+_AGENT_NATIVE_DEPENDENCY_PIN_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.native-dependency-pin@1"
+)
+_AGENT_NATIVE_DEPENDENCY_DESCRIPTOR_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.native-dependency-descriptor@1"
+)
+_AGENT_NATIVE_DEPENDENCY_LAUNCH_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.native-dependency-launch@1"
+)
+_AGENT_NATIVE_DEPENDENCY_MODULE = "_duckdb"
+_AGENT_NATIVE_DEPENDENCY_PUBLIC_ALIAS = "duckdb"
+_AGENT_NATIVE_DEPENDENCY_DISTRIBUTION = "duckdb"
+_AGENT_NATIVE_DEPENDENCY_MAX_BYTES = 64 * 1024 * 1024
+_AGENT_NATIVE_DEPENDENCY_MAX_JSON_BYTES = 32 * 1024
+_AGENT_NATIVE_DEPENDENCY_MAX_DYNAMIC_BYTES = 64 * 1024
+_AGENT_NATIVE_DEPENDENCY_MAX_STRING_TABLE_BYTES = 16 * 1024 * 1024
+_AGENT_NATIVE_DEPENDENCY_MAX_NEEDED = 128
+_AGENT_NATIVE_DEPENDENCY_MEMFD_NAME = "ipfs-accelerate-duckdb"
+_AGENT_NATIVE_DEPENDENCY_SEALED_MODE = 0o500
+_AGENT_NATIVE_DEPENDENCY_PRELOAD_LOCK = threading.Lock()
+_AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED = False
+_AGENT_NATIVE_DEPENDENCY_ACTIVE_LAUNCH: (
+    AgentSupervisorNativeDependencyLaunch | None
+) = None
+AGENT_SUPERVISOR_CURRENT_DUCKDB_PIN_JSON = (
+    '{"dependency_id":"sha256:d188aa384c68b59420bace9dfe1f8e06254865f73b4f6739f5254bcbc94c71a9",'
+    '"distribution_name":"duckdb","distribution_version":"1.5.5",'
+    '"elf_abi_version":0,"elf_class_bits":64,"elf_dt_needed":['
+    '"libdl.so.2","libpthread.so.0","libstdc++.so.6","libm.so.6",'
+    '"libgcc_s.so.1","libc.so.6"],"elf_endianness":"little",'
+    '"elf_flags":0,"elf_ident_version":1,"elf_machine":183,'
+    '"elf_object_type":3,"elf_object_version":1,"elf_osabi":3,'
+    '"engine_version":"v1.5.5","extension_filename":'
+    '"_duckdb.cpython-312-aarch64-linux-gnu.so","module_name":"_duckdb",'
+    '"payload_sha256":"sha256:60ba180312ca4d6fcf14ebded76efcc1775485e69dcf89ec8f45653a5892a5ef",'
+    '"platform_machine":"aarch64","platform_name":"linux",'
+    '"public_alias":"duckdb","python_cache_tag":"cpython-312",'
+    '"python_executable_sha256":"sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",'
+    '"python_soabi":"cpython-312-aarch64-linux-gnu","schema":'
+    '"ipfs_accelerate_py.agent_supervisor.native-dependency-pin@1",'
+    '"size_bytes":54541064}'
+)
+_AGENT_CONTROL_PLANE_TRUSTED_GIT = Path("/usr/bin/git")
+_AGENT_CONTROL_PLANE_TRUSTED_GIT_IDENTITY: tuple[int, ...] | None = None
 # Non-supervisor roots plus the security-critical supervisor modules called out
 # explicitly for auditability.  Capsule construction additionally walks and
-# hashes the complete ``agent_supervisor`` Python source tree on every build and
+# hashes the complete ``agent_supervisor`` Python source tree plus every
+# canonical ``task_sources/sql/*.sql`` migration on every build and
 # verification, so a newly added or indirect daemon/runner dependency cannot
 # fall outside the pin.  Candidate worktrees are never roots.
+_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY = (
+    "ipfs_accelerate_py/agent_supervisor/task_sources/sql"
+)
+_AGENT_CONTROL_PLANE_REQUIRED_SQL_FILES = (
+    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/0001_control_plane.sql",
+    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/"
+    "0002_causal_event_federation_core.sql",
+    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/"
+    "0003_state_server_restart_identity.sql",
+    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/0004_hash_observations.sql",
+)
 _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "ipfs_accelerate_py/__init__.py",
     "ipfs_accelerate_py/llm_router.py",
     "ipfs_accelerate_py/agent_implementation_route.py",
+    "ipfs_accelerate_py/_hash_resources.py",
     "ipfs_accelerate_py/router_deps.py",
     "ipfs_accelerate_py/common/__init__.py",
     "ipfs_accelerate_py/common/meta_model_api.py",
@@ -218,8 +283,10 @@ _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/validation/__init__.py",
     "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+    *_AGENT_CONTROL_PLANE_REQUIRED_SQL_FILES,
     "scripts/ops/agent_supervisor/configured_board_scheduler.py",
     "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
 )
 _LGCVF_LIVE_REQUIRED_SUPERPROJECT_FILES = (
     *_AGENT_CONTROL_PLANE_RELATIVE_FILES,
@@ -965,6 +1032,139 @@ class AgentImplementationSealedControlPlane:
     seals: int
     capsule_id: str
 
+
+@dataclass(frozen=True, slots=True)
+class AgentSupervisorNativeDependencyPin:
+    """Path-free reviewed content and ABI identity for the DuckDB extension.
+
+    The ordered ``DT_NEEDED`` names are part of this identity, but the bytes of
+    the platform's default system libraries are not.  The protected launcher
+    must remove every ``LD_*`` variable; the default system loader and ABI
+    closure are then an explicit trusted-host boundary.
+    """
+
+    schema: str
+    dependency_id: str
+    module_name: str
+    public_alias: str
+    distribution_name: str
+    distribution_version: str
+    engine_version: str
+    extension_filename: str
+    python_cache_tag: str
+    python_soabi: str
+    platform_name: str
+    platform_machine: str
+    python_executable_sha256: str
+    payload_sha256: str
+    size_bytes: int
+    elf_class_bits: int
+    elf_endianness: str
+    elf_ident_version: int
+    elf_osabi: int
+    elf_abi_version: int
+    elf_object_type: int
+    elf_machine: int
+    elf_object_version: int
+    elf_flags: int
+    elf_dt_needed: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "schema": self.schema,
+            "dependency_id": self.dependency_id,
+            "module_name": self.module_name,
+            "public_alias": self.public_alias,
+            "distribution_name": self.distribution_name,
+            "distribution_version": self.distribution_version,
+            "engine_version": self.engine_version,
+            "extension_filename": self.extension_filename,
+            "python_cache_tag": self.python_cache_tag,
+            "python_soabi": self.python_soabi,
+            "platform_name": self.platform_name,
+            "platform_machine": self.platform_machine,
+            "python_executable_sha256": self.python_executable_sha256,
+            "payload_sha256": self.payload_sha256,
+            "size_bytes": self.size_bytes,
+            "elf_class_bits": self.elf_class_bits,
+            "elf_endianness": self.elf_endianness,
+            "elf_ident_version": self.elf_ident_version,
+            "elf_osabi": self.elf_osabi,
+            "elf_abi_version": self.elf_abi_version,
+            "elf_object_type": self.elf_object_type,
+            "elf_machine": self.elf_machine,
+            "elf_object_version": self.elf_object_version,
+            "elf_flags": self.elf_flags,
+            "elf_dt_needed": list(self.elf_dt_needed),
+        }
+
+    def to_json(self) -> str:
+        return _agent_native_canonical_json(self.as_dict())
+
+
+@dataclass(frozen=True, slots=True)
+class AgentSupervisorNativeDependencyDescriptor:
+    """Parent-observed identity for one sealed fd propagated across exec."""
+
+    schema: str
+    descriptor: int
+    st_dev: int
+    st_ino: int
+    st_mode: int
+    st_uid: int
+    st_nlink: int
+    size_bytes: int
+    payload_sha256: str
+    seals: int
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "schema": self.schema,
+            "descriptor": self.descriptor,
+            "st_dev": self.st_dev,
+            "st_ino": self.st_ino,
+            "st_mode": self.st_mode,
+            "st_uid": self.st_uid,
+            "st_nlink": self.st_nlink,
+            "size_bytes": self.size_bytes,
+            "payload_sha256": self.payload_sha256,
+            "seals": self.seals,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AgentSupervisorNativeDependencyLaunch:
+    """Explicit accepted-pin and sealed-fd propagation envelope.
+
+    ``accepted_authorization_id`` is only an equality binding to authority that
+    the caller has already authenticated.  Constructing or preloading this DTO
+    never creates that authority; the protected launcher must verify the signed
+    acceptance artifact before it spawns a process with this envelope.
+    """
+
+    schema: str
+    accepted_authorization_id: str
+    pin: AgentSupervisorNativeDependencyPin
+    descriptor: AgentSupervisorNativeDependencyDescriptor
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "schema": self.schema,
+            "accepted_authorization_id": self.accepted_authorization_id,
+            "pin": self.pin.as_dict(),
+            "descriptor": self.descriptor.as_dict(),
+        }
+
+    def to_json(self) -> str:
+        return _agent_native_canonical_json(self.as_dict())
+
+    @property
+    def pass_fds(self) -> tuple[int, ...]:
+        return (self.descriptor.descriptor,)
+
+    @property
+    def bootstrap_arguments(self) -> tuple[str, str]:
+        return (str(self.descriptor.descriptor), self.to_json())
 
 @dataclass(frozen=True, slots=True)
 class AgentImplementationInvocationBinding:
@@ -3042,18 +3242,23 @@ def _agent_effect_launch_details_valid(
     cleanup_body = {
         key: item for key, item in cleanup.items() if key != "receipt_id"
     }
+    cleanup_root = lease_root.parent
     if (
         cleanup.get("schema")
         != "ipfs_accelerate_py.agent_supervisor.provider-effect-cleanup@1"
         or cleanup.get("lease_root") != str(lease_root)
         or cleanup.get("docker_config") != str(config_path)
         or cleanup.get("cidfile") != str(cidfile_path)
-        or lease_root.parent != Path(tempfile.gettempdir()).resolve()
+        # This validates immutable receipt semantics, so it must remain true
+        # after an admitted cleanup legitimately retires the private root.
+        # Live ownership, mode, symlink, and inode checks belong to the
+        # recorded-effect mutation paths and their durable @6 binding.
+        or not cleanup_root.is_absolute()
         or not provider_home.is_absolute()
-        or provider_home.parent != lease_root.parent
+        or provider_home.parent != cleanup_root
         or not provider_home.name.startswith("asref-codex-home-")
         or not prompt_path.is_absolute()
-        or prompt_path.parent != lease_root.parent
+        or prompt_path.parent != cleanup_root
         or not prompt_path.name.startswith("asref-grok-prompt-")
         or (workspace_path and provider_home.is_relative_to(Path(workspace_path)))
         or (workspace_path and prompt_path.is_relative_to(Path(workspace_path)))
@@ -4175,6 +4380,7 @@ class AgentImplementationRouteInvocation:
 
 _AGENT_IMPLEMENTATION_MAX_SESSION_BYTES = 16 * 1024 * 1024
 _AGENT_IMPLEMENTATION_MAX_STREAM_EVENT_BYTES = 64 * 1024
+_AGENT_IMPLEMENTATION_MAX_SESSION_NAMESPACE_BYTES = 255
 _AGENT_IMPLEMENTATION_BALANCE_EXHAUSTED_MESSAGE = (
     "API error (status 402 Payment Required): Grok Build usage balance exhausted"
 )
@@ -4203,6 +4409,18 @@ AGENT_IMPLEMENTATION_QUOTA_VERIFIER_DISALLOWED_TOOLS = (
     "use_tool,call_mcp_tool,list_mcp_resources,list_mcp_resource_templates,"
     "read_mcp_resource,fetch_mcp_resource,task,Agent,memory,lsp,spawn_subagent"
 )
+
+
+def _agent_implementation_directory_identity(
+    metadata: os.stat_result,
+) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_nlink,
+        metadata.st_uid,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -4663,6 +4881,92 @@ def _agent_native_quota_session_paths(
         return None
     return directory / "updates.jsonl", directory / "summary.json", workspace
 
+def _agent_implementation_quota_session_directory(
+    *,
+    grok_home: Path,
+    expected_session_id: str,
+    verifier_workspace: Path | str | None,
+) -> tuple[Path, tuple[int, ...]] | None:
+    """Select one exact native session layout without searching provider state."""
+
+    sessions = grok_home / "sessions"
+    legacy_session = sessions / expected_session_id
+    conflicting_sessions: tuple[Path, ...] = ()
+    if verifier_workspace is None:
+        # Grok clients before the workspace namespace stored sessions directly
+        # under ``sessions``.  Keep that bounded compatibility path only when
+        # no workspace identity was supplied; it must not weaken a current
+        # workspace-bound verifier invocation.
+        selected = legacy_session
+    else:
+        raw_workspace = Path(verifier_workspace)
+        if not raw_workspace.is_absolute() or ".." in raw_workspace.parts:
+            return None
+        try:
+            workspace = resolve_agent_implementation_private_state_path(
+                raw_workspace
+            )
+            workspace_before = workspace.lstat()
+            workspace_resolved = workspace.resolve(strict=True)
+            workspace_after = workspace.lstat()
+        except (OSError, ValueError):
+            return None
+        if (
+            workspace != workspace_resolved
+            or _agent_implementation_directory_identity(workspace_before)
+            != _agent_implementation_directory_identity(workspace_after)
+            or not stat_module.S_ISDIR(workspace_before.st_mode)
+            or workspace_before.st_uid != os.geteuid()
+        ):
+            return None
+        try:
+            # Grok CLI 1.0.5 uses JavaScript ``encodeURIComponent`` semantics
+            # for the absolute workspace component of its session directory.
+            namespace = quote(
+                os.fspath(workspace_resolved),
+                safe="!'()*-._~",
+            )
+        except UnicodeError:
+            return None
+        if (
+            not namespace
+            or "/" in namespace
+            or len(namespace.encode("ascii"))
+            > _AGENT_IMPLEMENTATION_MAX_SESSION_NAMESPACE_BYTES
+        ):
+            return None
+        selected = sessions / namespace / expected_session_id
+        # The same session identity in the legacy location would make layout
+        # selection ambiguous.  Fail closed rather than prefer either record.
+        conflicting_sessions = (legacy_session,)
+
+    try:
+        for conflict in conflicting_sessions:
+            try:
+                conflict.lstat()
+            except FileNotFoundError:
+                continue
+            return None
+        selected = resolve_agent_implementation_private_state_path(selected)
+        selected_before = selected.lstat()
+        selected_resolved = selected.resolve(strict=True)
+        selected_after = selected.lstat()
+    except (OSError, ValueError):
+        return None
+    selected_identity = _agent_implementation_directory_identity(
+        selected_before
+    )
+    if (
+        selected != selected_resolved
+        or selected_identity
+        != _agent_implementation_directory_identity(selected_after)
+        or not stat_module.S_ISDIR(selected_before.st_mode)
+        or selected_before.st_uid != os.geteuid()
+    ):
+        return None
+    return selected, selected_identity
+
+
 
 def validate_agent_implementation_quota_evidence(
     *,
@@ -4742,6 +5046,15 @@ def validate_agent_implementation_quota_evidence(
     if session_paths is None:
         return None
     record, summary_path, scoped_workspace = session_paths
+    selected_record = record
+    selected_session = _agent_implementation_quota_session_directory(
+        grok_home=home,
+        expected_session_id=expected_session_id,
+        verifier_workspace=verifier_workspace,
+    )
+    if selected_session is None:
+        return None
+    session_directory, session_identity = selected_session
     try:
         home_resolved = home.resolve(strict=True)
         transcript_read = _read_stable_agent_implementation_evidence_file(
@@ -4900,6 +5213,13 @@ def validate_agent_implementation_quota_evidence(
         or latest_failure not in _AGENT_IMPLEMENTATION_NATIVE_QUOTA_FAILURES
         or terminal_verdict not in _AGENT_IMPLEMENTATION_QUOTA_VERIFIER_RESULTS
     ):
+        return None
+    selected_session_after = _agent_implementation_quota_session_directory(
+        grok_home=home,
+        expected_session_id=expected_session_id,
+        verifier_workspace=verifier_workspace,
+    )
+    if selected_session_after != (session_directory, session_identity):
         return None
     evidence_body: dict[str, object] = {
         "schema": _AGENT_IMPLEMENTATION_QUOTA_EVIDENCE_SCHEMA,
@@ -7091,6 +7411,1397 @@ def resolve_agent_implementation_route(
     )
 
 
+def _agent_native_canonical_json(value: Mapping[str, object]) -> str:
+    return json.dumps(
+        dict(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
+
+
+def _agent_native_exact_string(
+    value: object,
+    name: str,
+    *,
+    maximum_characters: int = 255,
+) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > maximum_characters
+        or value != value.strip()
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+    ):
+        raise ValueError(f"native dependency {name} is invalid")
+    return value
+
+
+def _agent_native_integer(
+    value: object,
+    name: str,
+    *,
+    minimum: int = 0,
+    maximum: int = (1 << 63) - 1,
+) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not minimum <= value <= maximum
+    ):
+        raise ValueError(f"native dependency {name} is invalid")
+    return value
+
+
+def _agent_native_required_seals() -> int:
+    names = (
+        "F_GET_SEALS",
+        "F_ADD_SEALS",
+        "F_SEAL_WRITE",
+        "F_SEAL_SHRINK",
+        "F_SEAL_GROW",
+        "F_SEAL_SEAL",
+    )
+    if any(not hasattr(fcntl, name) for name in names):
+        raise ValueError("native dependency memfd sealing is unavailable")
+    return (
+        fcntl.F_SEAL_WRITE
+        | fcntl.F_SEAL_SHRINK
+        | fcntl.F_SEAL_GROW
+        | fcntl.F_SEAL_SEAL
+    )
+
+
+@dataclass(frozen=True)
+class _AgentImmutableVerification:
+    descriptor: int
+    identity: tuple[int, ...]
+    digest: str
+    size_bytes: int
+
+
+# The duplicate descriptors pin the actual immutable objects, preventing inode
+# reuse from turning a previous verification into authority for new bytes.
+# Neither mutable file metadata nor an on-disk receipt is a cache authority.
+_AGENT_IMMUTABLE_VERIFICATION_MAX_ENTRIES = 4
+_AGENT_IMMUTABLE_VERIFICATION_MAX_BYTES = 128 * 1024 * 1024
+_AGENT_IMMUTABLE_VERIFICATIONS: OrderedDict[
+    tuple[object, ...], _AgentImmutableVerification
+] = OrderedDict()
+_AGENT_IMMUTABLE_VERIFICATION_LOCK = threading.Lock()
+
+
+def _agent_immutable_descriptor_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return tuple(
+        int(getattr(metadata, name))
+        for name in (
+            "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+            "st_size", "st_mtime_ns", "st_ctime_ns",
+        )
+    )
+
+
+def _agent_clear_immutable_verifications() -> None:
+    with _AGENT_IMMUTABLE_VERIFICATION_LOCK:
+        while _AGENT_IMMUTABLE_VERIFICATIONS:
+            _, entry = _AGENT_IMMUTABLE_VERIFICATIONS.popitem(last=False)
+            os.close(entry.descriptor)
+
+
+def _agent_reset_immutable_verifications_after_fork() -> None:
+    global _AGENT_IMMUTABLE_VERIFICATION_LOCK
+    # A vanished parent thread may have held the inherited lock.  Child
+    # processes establish their own first verification and descriptor budget.
+    _AGENT_IMMUTABLE_VERIFICATION_LOCK = threading.Lock()
+    _agent_clear_immutable_verifications()
+
+
+atexit.register(_agent_clear_immutable_verifications)
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_agent_reset_immutable_verifications_after_fork)
+
+
+def _agent_verify_immutable_descriptor(
+    descriptor: int,
+    *,
+    expected_sha256: str,
+    maximum_bytes: int,
+    validation_key: tuple[object, ...] = ("sha256",),
+    validate: Callable[[int, int], str] | None = None,
+) -> None:
+    """Verify once per fully kernel-sealed object and exact validation policy.
+
+    All calls recheck seals, metadata, and the caller's expected digest.  A
+    cache hit cannot admit a writable file or a substituted descriptor.  The
+    optional validator binds additional semantics (the native ELF pin) before
+    admission; its complete expected policy belongs in ``validation_key``.
+    """
+
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", expected_sha256) is None:
+        raise ValueError("immutable descriptor expected digest is invalid")
+    required = _agent_native_required_seals()
+    retained = -1
+    try:
+        # Hash a held duplicate, so caller FD reuse cannot switch the object
+        # halfway through a read.  The public verifier also rechecks its FD.
+        retained = os.dup(descriptor)
+        os.set_inheritable(retained, False)
+        before = os.fstat(retained)
+        identity = _agent_immutable_descriptor_identity(before)
+        seals = int(fcntl.fcntl(retained, fcntl.F_GET_SEALS))
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or not 0 < before.st_size <= maximum_bytes
+            or seals & required != required
+        ):
+            raise ValueError("immutable descriptor is not fully sealed")
+        key = (identity, seals, validation_key)
+
+        def check_current_binding() -> None:
+            if (
+                _agent_immutable_descriptor_identity(os.fstat(retained)) != identity
+                or _agent_immutable_descriptor_identity(os.fstat(descriptor)) != identity
+                or int(fcntl.fcntl(retained, fcntl.F_GET_SEALS)) != seals
+                or int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS)) != seals
+            ):
+                raise ValueError("immutable descriptor identity changed")
+
+        def reuse_cached() -> bool:
+            # The caller holds the cache lock, but never waits for the process
+            # resource gate while holding it.  Warm hits need no global gate.
+            cached = _AGENT_IMMUTABLE_VERIFICATIONS.get(key)
+            if cached is not None:
+                if (
+                    _agent_immutable_descriptor_identity(os.fstat(cached.descriptor))
+                    != identity
+                    or int(fcntl.fcntl(cached.descriptor, fcntl.F_GET_SEALS)) != seals
+                ):
+                    del _AGENT_IMMUTABLE_VERIFICATIONS[key]
+                    os.close(cached.descriptor)
+                    cached = None
+            if cached is not None:
+                if cached.digest != expected_sha256:
+                    raise ValueError("immutable descriptor digest differs")
+                check_current_binding()
+                _AGENT_IMMUTABLE_VERIFICATIONS.move_to_end(key)
+                return True
+            return False
+
+        with _AGENT_IMMUTABLE_VERIFICATION_LOCK:
+            if reuse_cached():
+                return
+
+        from ._hash_resources import hashing_lock
+
+        # Keep one lock order across callers which already own the resource
+        # gate: resource -> cache.  Recheck after admission so racing misses
+        # still hash the object only once.
+        with hashing_lock(kind="sealed-bundle", exclusive=True):
+            with _AGENT_IMMUTABLE_VERIFICATION_LOCK:
+                if reuse_cached():
+                    return
+                check_current_binding()
+                if validate is None:
+                    digest = hashlib.sha256()
+                    offset = 0
+                    while offset < before.st_size:
+                        chunk = os.pread(
+                            retained, min(1024 * 1024, before.st_size - offset), offset
+                        )
+                        if not chunk:
+                            raise ValueError("immutable descriptor was truncated")
+                        digest.update(chunk)
+                        offset += len(chunk)
+                    observed_digest = "sha256:" + digest.hexdigest()
+                else:
+                    observed_digest = validate(retained, before.st_size)
+                if observed_digest != expected_sha256:
+                    raise ValueError("immutable descriptor digest differs")
+                check_current_binding()
+                if before.st_size <= _AGENT_IMMUTABLE_VERIFICATION_MAX_BYTES:
+                    while _AGENT_IMMUTABLE_VERIFICATIONS and (
+                        len(_AGENT_IMMUTABLE_VERIFICATIONS)
+                        >= _AGENT_IMMUTABLE_VERIFICATION_MAX_ENTRIES
+                        or sum(item.size_bytes for item in _AGENT_IMMUTABLE_VERIFICATIONS.values())
+                        + before.st_size > _AGENT_IMMUTABLE_VERIFICATION_MAX_BYTES
+                    ):
+                        _, evicted = _AGENT_IMMUTABLE_VERIFICATIONS.popitem(last=False)
+                        os.close(evicted.descriptor)
+                    if _AGENT_IMMUTABLE_VERIFICATION_MAX_ENTRIES > 0:
+                        _AGENT_IMMUTABLE_VERIFICATIONS[key] = _AgentImmutableVerification(
+                            retained, identity, expected_sha256, before.st_size
+                        )
+                        retained = -1
+    finally:
+        if retained >= 0:
+            os.close(retained)
+
+
+def _agent_native_python_executable_sha256() -> str:
+    """Hash the exact running executable through the kernel's process fd."""
+
+    try:
+        descriptor = os.open(
+            "/proc/self/exe",
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
+        )
+    except OSError as exc:
+        raise ValueError("native dependency Python executable is unavailable") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or not 0 < before.st_size <= _AGENT_NATIVE_DEPENDENCY_MAX_BYTES
+        ):
+            raise ValueError("native dependency Python executable is invalid")
+        digest = hashlib.sha256()
+        offset = 0
+        while offset < before.st_size:
+            chunk = os.pread(
+                descriptor,
+                min(64 * 1024, before.st_size - offset),
+                offset,
+            )
+            if not chunk:
+                break
+            digest.update(chunk)
+            offset += len(chunk)
+        after = os.fstat(descriptor)
+        final = os.stat("/proc/self/exe")
+    except OSError as exc:
+        raise ValueError("native dependency Python executable changed") from exc
+    finally:
+        os.close(descriptor)
+    identity = lambda item: (
+        item.st_dev,
+        item.st_ino,
+        item.st_mode,
+        item.st_uid,
+        item.st_gid,
+        item.st_nlink,
+        item.st_size,
+        item.st_mtime_ns,
+        item.st_ctime_ns,
+    )
+    if (
+        offset != before.st_size
+        or identity(before) != identity(after)
+        or (final.st_dev, final.st_ino, final.st_size)
+        != (before.st_dev, before.st_ino, before.st_size)
+    ):
+        raise ValueError("native dependency Python executable changed")
+    return "sha256:" + digest.hexdigest()
+
+
+def _agent_native_checked_range(
+    offset: int,
+    size: int,
+    total: int,
+    name: str,
+) -> tuple[int, int]:
+    if offset < 0 or size < 0 or offset > total or size > total - offset:
+        raise ValueError(f"native dependency ELF {name} is out of bounds")
+    return offset, offset + size
+
+
+def _agent_parse_native_dependency_elf(raw: bytes | mmap.mmap) -> dict[str, object]:
+    """Parse only the bounded ELF identity needed by native launch policy."""
+
+    if not isinstance(raw, (bytes, mmap.mmap)) or not 64 <= len(raw) <= _AGENT_NATIVE_DEPENDENCY_MAX_BYTES:
+        raise ValueError("native dependency ELF payload size is invalid")
+    ident = raw[:16]
+    if ident[:4] != b"\x7fELF" or ident[4] != 2 or ident[6] != 1:
+        raise ValueError("native dependency must be a current ELF64 payload")
+    if ident[5] == 1:
+        endian = "<"
+        endianness = "little"
+    elif ident[5] == 2:
+        endian = ">"
+        endianness = "big"
+    else:
+        raise ValueError("native dependency ELF byte order is invalid")
+    header_format = endian + "HHIQQQIHHHHHH"
+    if struct.calcsize(header_format) != 48:
+        raise ValueError("native dependency ELF parser is unavailable")
+    (
+        object_type,
+        machine,
+        object_version,
+        _entry,
+        program_offset,
+        section_offset,
+        flags,
+        header_size,
+        program_entry_size,
+        program_count,
+        section_entry_size,
+        section_count,
+        section_names_index,
+    ) = struct.unpack_from(header_format, raw, 16)
+    if (
+        object_type != 3
+        or object_version != 1
+        or header_size != 64
+        or program_entry_size != 56
+        or not 1 <= program_count <= 128
+        or program_count == 0xFFFF
+    ):
+        raise ValueError("native dependency ELF header identity is invalid")
+    program_start, program_end = _agent_native_checked_range(
+        program_offset,
+        program_entry_size * program_count,
+        len(raw),
+        "program header table",
+    )
+    if program_start < header_size:
+        raise ValueError("native dependency ELF tables overlap")
+    section_range: tuple[int, int] | None = None
+    if section_offset == 0:
+        if section_count != 0 or section_entry_size != 0 or section_names_index != 0:
+            raise ValueError("native dependency ELF section table is malformed")
+    else:
+        if (
+            section_entry_size != 64
+            or not 1 <= section_count <= 4096
+            or section_names_index >= section_count
+        ):
+            raise ValueError("native dependency ELF section table is malformed")
+        section_range = _agent_native_checked_range(
+            section_offset,
+            section_entry_size * section_count,
+            len(raw),
+            "section header table",
+        )
+        if not (
+            section_range[0] >= program_end
+            or section_range[1] <= program_start
+        ):
+            raise ValueError("native dependency ELF tables overlap")
+
+    program_format = endian + "IIQQQQQQ"
+    load_segments: list[tuple[int, int, int, int]] = []
+    dynamic_segments: list[tuple[int, int, int, int]] = []
+    for index in range(program_count):
+        fields = struct.unpack_from(
+            program_format,
+            raw,
+            program_offset + index * program_entry_size,
+        )
+        (
+            segment_type,
+            segment_flags,
+            file_offset,
+            virtual_address,
+            _physical_address,
+            file_size,
+            memory_size,
+            alignment,
+        ) = fields
+        if file_size > memory_size:
+            raise ValueError("native dependency ELF segment size is invalid")
+        _agent_native_checked_range(
+            file_offset,
+            file_size,
+            len(raw),
+            "segment",
+        )
+        if alignment not in {0, 1} and (
+            alignment & (alignment - 1)
+            or (virtual_address - file_offset) % alignment
+        ):
+            raise ValueError("native dependency ELF segment alignment is invalid")
+        if segment_type == 3:
+            raise ValueError("native dependency ELF must not contain PT_INTERP")
+        if segment_type == 0x6474E551 and segment_flags & 0x1:
+            raise ValueError("native dependency ELF stack must not be executable")
+        if segment_type == 1:
+            load_segments.append(
+                (file_offset, file_size, virtual_address, memory_size)
+            )
+        elif segment_type == 2:
+            dynamic_segments.append(
+                (file_offset, file_size, virtual_address, memory_size)
+            )
+    if not load_segments or len(dynamic_segments) != 1:
+        raise ValueError("native dependency ELF dynamic layout is invalid")
+    dynamic_offset, dynamic_size, dynamic_address, _dynamic_memory = (
+        dynamic_segments[0]
+    )
+    if (
+        not 16 <= dynamic_size <= _AGENT_NATIVE_DEPENDENCY_MAX_DYNAMIC_BYTES
+        or dynamic_size % 16
+    ):
+        raise ValueError("native dependency ELF dynamic table is invalid")
+    dynamic_range = (dynamic_offset, dynamic_offset + dynamic_size)
+    if dynamic_range[0] < program_end or (
+        section_range is not None
+        and not (
+            dynamic_range[1] <= section_range[0]
+            or dynamic_range[0] >= section_range[1]
+        )
+    ):
+        raise ValueError("native dependency ELF tables overlap")
+    dynamic_loads = [
+        (load_offset, load_address)
+        for load_offset, load_file_size, load_address, load_memory_size in load_segments
+        if (
+            dynamic_offset >= load_offset
+            and dynamic_offset + dynamic_size <= load_offset + load_file_size
+            and dynamic_address >= load_address
+            and dynamic_address + dynamic_size <= load_address + load_memory_size
+        )
+    ]
+    if (
+        len(dynamic_loads) != 1
+        or dynamic_offset - dynamic_loads[0][0]
+        != dynamic_address - dynamic_loads[0][1]
+    ):
+        raise ValueError("native dependency ELF dynamic table is not loadable")
+
+    dynamic_format = endian + "qQ"
+    string_table_addresses: list[int] = []
+    string_table_sizes: list[int] = []
+    needed_offsets: list[int] = []
+    forbidden_tags = {
+        15,  # DT_RPATH
+        29,  # DT_RUNPATH
+        0x6FFFFEFB,  # DT_DEPAUDIT
+        0x6FFFFEFC,  # DT_AUDIT
+        0x7FFFFFFD,  # DT_AUXILIARY
+        0x7FFFFFFF,  # DT_FILTER
+    }
+    null_index: int | None = None
+    entry_count = dynamic_size // 16
+    for index in range(entry_count):
+        tag, value = struct.unpack_from(
+            dynamic_format,
+            raw,
+            dynamic_offset + index * 16,
+        )
+        if null_index is not None:
+            if tag != 0 or value != 0:
+                raise ValueError("native dependency ELF dynamic tail is malformed")
+            continue
+        if tag == 0:
+            null_index = index
+        elif tag in forbidden_tags:
+            raise ValueError("native dependency ELF has an ambient loader path")
+        elif tag == 1:
+            needed_offsets.append(value)
+        elif tag == 5:
+            string_table_addresses.append(value)
+        elif tag == 10:
+            string_table_sizes.append(value)
+    if (
+        null_index is None
+        or len(string_table_addresses) != 1
+        or len(string_table_sizes) != 1
+        or not 1 <= len(needed_offsets) <= _AGENT_NATIVE_DEPENDENCY_MAX_NEEDED
+    ):
+        raise ValueError("native dependency ELF dynamic identity is invalid")
+    string_address = string_table_addresses[0]
+    string_size = string_table_sizes[0]
+    if not 1 <= string_size <= _AGENT_NATIVE_DEPENDENCY_MAX_STRING_TABLE_BYTES:
+        raise ValueError("native dependency ELF string table size is invalid")
+    string_candidates: list[int] = []
+    for load_offset, load_file_size, load_address, _load_memory_size in load_segments:
+        if (
+            string_address >= load_address
+            and string_address + string_size <= load_address + load_file_size
+        ):
+            candidate = load_offset + string_address - load_address
+            _agent_native_checked_range(
+                candidate,
+                string_size,
+                len(raw),
+                "dynamic string table",
+            )
+            string_candidates.append(candidate)
+    if len(string_candidates) != 1:
+        raise ValueError("native dependency ELF string table mapping is ambiguous")
+    string_offset = string_candidates[0]
+    string_range = (string_offset, string_offset + string_size)
+    if (
+        not (
+            string_range[1] <= dynamic_range[0]
+            or string_range[0] >= dynamic_range[1]
+        )
+        or string_range[0] < program_end
+        or (
+            section_range is not None
+            and not (
+                string_range[1] <= section_range[0]
+                or string_range[0] >= section_range[1]
+            )
+        )
+    ):
+        raise ValueError("native dependency ELF tables overlap")
+    string_table = raw[string_offset : string_offset + string_size]
+    needed: list[str] = []
+    for needed_offset in needed_offsets:
+        if needed_offset >= string_size:
+            raise ValueError("native dependency ELF DT_NEEDED is out of bounds")
+        end = string_table.find(b"\0", needed_offset)
+        if end < 0 or not 1 <= end - needed_offset <= 255:
+            raise ValueError("native dependency ELF DT_NEEDED is unterminated")
+        encoded = string_table[needed_offset:end]
+        try:
+            name = encoded.decode("ascii")
+        except UnicodeDecodeError as exc:
+            raise ValueError("native dependency ELF DT_NEEDED is invalid") from exc
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,254}", name) is None:
+            raise ValueError("native dependency ELF DT_NEEDED is invalid")
+        needed.append(name)
+    if len(set(needed)) != len(needed):
+        raise ValueError("native dependency ELF DT_NEEDED contains duplicates")
+    return {
+        "elf_class_bits": 64,
+        "elf_endianness": endianness,
+        "elf_ident_version": ident[6],
+        "elf_osabi": ident[7],
+        "elf_abi_version": ident[8],
+        "elf_object_type": object_type,
+        "elf_machine": machine,
+        "elf_object_version": object_version,
+        "elf_flags": flags,
+        "elf_dt_needed": tuple(needed),
+    }
+
+
+def _agent_read_stable_native_dependency_source(path: Path | str) -> bytes:
+    """Read mutable installation evidence without treating its mode as authority."""
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise ValueError("native dependency no-follow reads are unavailable")
+    lexical = resolve_agent_implementation_private_state_path(path)
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | nofollow
+    )
+    parent_descriptor = os.open(lexical.anchor, directory_flags)
+    try:
+        for component in lexical.parts[1:-1]:
+            child = os.open(component, directory_flags, dir_fd=parent_descriptor)
+            os.close(parent_descriptor)
+            parent_descriptor = child
+        descriptor = os.open(
+            lexical.name,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | nofollow,
+            dir_fd=parent_descriptor,
+        )
+    except OSError as exc:
+        os.close(parent_descriptor)
+        raise ValueError("native dependency source is unavailable") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or not 0 < before.st_size <= _AGENT_NATIVE_DEPENDENCY_MAX_BYTES
+        ):
+            raise ValueError("native dependency source is not stable evidence")
+        chunks: list[bytes] = []
+        offset = 0
+        while offset < before.st_size:
+            chunk = os.pread(
+                descriptor,
+                min(64 * 1024, before.st_size - offset),
+                offset,
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            offset += len(chunk)
+        after = os.fstat(descriptor)
+        final = os.stat(
+            lexical.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+    except OSError as exc:
+        raise ValueError("native dependency source changed") from exc
+    finally:
+        os.close(descriptor)
+        os.close(parent_descriptor)
+    identity = lambda item: (
+        item.st_dev,
+        item.st_ino,
+        item.st_mode,
+        item.st_uid,
+        item.st_gid,
+        item.st_nlink,
+        item.st_size,
+        item.st_mtime_ns,
+        item.st_ctime_ns,
+    )
+    raw = b"".join(chunks)
+    if (
+        len(raw) != before.st_size
+        or identity(before) != identity(after)
+        or identity(before) != identity(final)
+    ):
+        raise ValueError("native dependency source changed")
+    return raw
+
+
+def _agent_native_dependency_pin_for_bytes(
+    raw: bytes | mmap.mmap,
+    *,
+    extension_filename: str,
+    distribution_version: str,
+    engine_version: str,
+) -> AgentSupervisorNativeDependencyPin:
+    distribution_version = _agent_native_exact_string(
+        distribution_version,
+        "distribution_version",
+        maximum_characters=64,
+    )
+    engine_version = _agent_native_exact_string(
+        engine_version,
+        "engine_version",
+        maximum_characters=64,
+    )
+    extension_filename = _agent_native_exact_string(
+        extension_filename,
+        "extension_filename",
+    )
+    cache_tag = _agent_native_exact_string(
+        sys.implementation.cache_tag,
+        "python_cache_tag",
+    )
+    soabi = _agent_native_exact_string(
+        sysconfig.get_config_var("SOABI"),
+        "python_soabi",
+    )
+    extension_suffix = _agent_native_exact_string(
+        sysconfig.get_config_var("EXT_SUFFIX"),
+        "python_extension_suffix",
+    )
+    if extension_filename != _AGENT_NATIVE_DEPENDENCY_MODULE + extension_suffix:
+        raise ValueError("native dependency extension filename is invalid")
+    if not hasattr(os, "uname"):
+        raise ValueError("native dependency platform identity is unavailable")
+    elf = _agent_parse_native_dependency_elf(raw)
+    values: dict[str, object] = {
+        "schema": _AGENT_NATIVE_DEPENDENCY_PIN_SCHEMA,
+        "dependency_id": "",
+        "module_name": _AGENT_NATIVE_DEPENDENCY_MODULE,
+        "public_alias": _AGENT_NATIVE_DEPENDENCY_PUBLIC_ALIAS,
+        "distribution_name": _AGENT_NATIVE_DEPENDENCY_DISTRIBUTION,
+        "distribution_version": distribution_version,
+        "engine_version": engine_version,
+        "extension_filename": extension_filename,
+        "python_cache_tag": cache_tag,
+        "python_soabi": soabi,
+        "platform_name": sys.platform,
+        "platform_machine": os.uname().machine,
+        "python_executable_sha256": _agent_native_python_executable_sha256(),
+        "payload_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "size_bytes": len(raw),
+        **elf,
+    }
+    values["dependency_id"] = _content_addressed_mapping(
+        values,
+        identity_field="dependency_id",
+    )
+    pin = AgentSupervisorNativeDependencyPin(**values)  # type: ignore[arg-type]
+    return parse_agent_supervisor_native_dependency_pin(pin.as_dict())
+
+
+def inspect_agent_supervisor_native_dependency_source(
+    source_path: Path | str,
+    *,
+    distribution_version: str,
+    engine_version: str,
+) -> AgentSupervisorNativeDependencyPin:
+    """Return stable installation evidence that grants no launch authority.
+
+    The source may be owner/group writable (the observed wheel is mode 0775),
+    so this function deliberately does not bless RECORD, metadata, permissions,
+    or its own result.  An operator must authenticate and accept the returned
+    path-free pin separately before passing it to the sealing function.
+    """
+
+    lexical = resolve_agent_implementation_private_state_path(source_path)
+    raw = _agent_read_stable_native_dependency_source(lexical)
+    return _agent_native_dependency_pin_for_bytes(
+        raw,
+        extension_filename=lexical.name,
+        distribution_version=distribution_version,
+        engine_version=engine_version,
+    )
+
+
+def parse_agent_supervisor_native_dependency_pin(
+    value: object,
+) -> AgentSupervisorNativeDependencyPin:
+    """Strictly parse one closed, current-runtime native dependency pin."""
+
+    expected = {
+        "schema",
+        "dependency_id",
+        "module_name",
+        "public_alias",
+        "distribution_name",
+        "distribution_version",
+        "engine_version",
+        "extension_filename",
+        "python_cache_tag",
+        "python_soabi",
+        "platform_name",
+        "platform_machine",
+        "python_executable_sha256",
+        "payload_sha256",
+        "size_bytes",
+        "elf_class_bits",
+        "elf_endianness",
+        "elf_ident_version",
+        "elf_osabi",
+        "elf_abi_version",
+        "elf_object_type",
+        "elf_machine",
+        "elf_object_version",
+        "elf_flags",
+        "elf_dt_needed",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ValueError("native dependency pin fields are invalid")
+    strings = {
+        name: _agent_native_exact_string(
+            value.get(name),
+            name,
+            maximum_characters=64 if "version" in name else 255,
+        )
+        for name in (
+            "schema",
+            "dependency_id",
+            "module_name",
+            "public_alias",
+            "distribution_name",
+            "distribution_version",
+            "engine_version",
+            "extension_filename",
+            "python_cache_tag",
+            "python_soabi",
+            "platform_name",
+            "platform_machine",
+            "python_executable_sha256",
+            "payload_sha256",
+            "elf_endianness",
+        )
+    }
+    integers = {
+        name: _agent_native_integer(
+            value.get(name),
+            name,
+            minimum=1 if name in {"size_bytes", "elf_class_bits", "elf_machine"} else 0,
+            maximum=(
+                _AGENT_NATIVE_DEPENDENCY_MAX_BYTES
+                if name == "size_bytes"
+                else (1 << 32) - 1
+            ),
+        )
+        for name in (
+            "size_bytes",
+            "elf_class_bits",
+            "elf_ident_version",
+            "elf_osabi",
+            "elf_abi_version",
+            "elf_object_type",
+            "elf_machine",
+            "elf_object_version",
+            "elf_flags",
+        )
+    }
+    needed_value = value.get("elf_dt_needed")
+    if (
+        not isinstance(needed_value, list)
+        or not 1 <= len(needed_value) <= _AGENT_NATIVE_DEPENDENCY_MAX_NEEDED
+    ):
+        raise ValueError("native dependency elf_dt_needed is invalid")
+    needed = tuple(
+        _agent_native_exact_string(item, "elf_dt_needed")
+        for item in needed_value
+    )
+    if (
+        len(set(needed)) != len(needed)
+        or any(
+            re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,254}", item) is None
+            for item in needed
+        )
+    ):
+        raise ValueError("native dependency elf_dt_needed is invalid")
+    pin = AgentSupervisorNativeDependencyPin(
+        **strings,
+        **integers,
+        elf_dt_needed=needed,
+    )
+    expected_soabi = sysconfig.get_config_var("SOABI")
+    expected_suffix = sysconfig.get_config_var("EXT_SUFFIX")
+    if not hasattr(os, "uname"):
+        raise ValueError("native dependency runtime platform is unavailable")
+    machine_codes = {"aarch64": 183, "x86_64": 62}
+    expected_machine_code = machine_codes.get(os.uname().machine)
+    if (
+        pin.schema != _AGENT_NATIVE_DEPENDENCY_PIN_SCHEMA
+        or pin.module_name != _AGENT_NATIVE_DEPENDENCY_MODULE
+        or pin.public_alias != _AGENT_NATIVE_DEPENDENCY_PUBLIC_ALIAS
+        or pin.distribution_name != _AGENT_NATIVE_DEPENDENCY_DISTRIBUTION
+        or re.fullmatch(r"[0-9][0-9A-Za-z.+_-]{0,63}", pin.distribution_version)
+        is None
+        or re.fullmatch(r"v[0-9][0-9A-Za-z.+_-]{0,62}", pin.engine_version)
+        is None
+        or not isinstance(expected_soabi, str)
+        or not isinstance(expected_suffix, str)
+        or pin.extension_filename
+        != _AGENT_NATIVE_DEPENDENCY_MODULE + expected_suffix
+        or pin.python_cache_tag != sys.implementation.cache_tag
+        or pin.python_soabi != expected_soabi
+        or pin.platform_name != sys.platform
+        or pin.platform_machine != os.uname().machine
+        or pin.python_executable_sha256
+        != _agent_native_python_executable_sha256()
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", pin.payload_sha256) is None
+        or struct.calcsize("P") * 8 != 64
+        or pin.elf_class_bits != 64
+        or pin.elf_endianness != sys.byteorder
+        or pin.elf_ident_version != 1
+        or pin.elf_osabi not in {0, 3}
+        or not 0 <= pin.elf_abi_version <= 255
+        or pin.elf_object_type != 3
+        or expected_machine_code is None
+        or pin.elf_machine != expected_machine_code
+        or pin.elf_object_version != 1
+        or pin.dependency_id
+        != _content_addressed_mapping(
+            pin.as_dict(),
+            identity_field="dependency_id",
+        )
+    ):
+        raise ValueError("native dependency pin identity is invalid")
+    return pin
+
+
+def current_agent_supervisor_native_dependency_pin(
+) -> AgentSupervisorNativeDependencyPin:
+    """Return the one code-reviewed DuckDB 1.5.5 runtime pin."""
+
+    return parse_agent_supervisor_native_dependency_pin(
+        json.loads(AGENT_SUPERVISOR_CURRENT_DUCKDB_PIN_JSON)
+    )
+
+
+def _agent_parse_native_dependency_descriptor(
+    value: object,
+    *,
+    pin: AgentSupervisorNativeDependencyPin,
+) -> AgentSupervisorNativeDependencyDescriptor:
+    expected = {
+        "schema",
+        "descriptor",
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_nlink",
+        "size_bytes",
+        "payload_sha256",
+        "seals",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ValueError("native dependency descriptor fields are invalid")
+    descriptor = AgentSupervisorNativeDependencyDescriptor(
+        schema=_agent_native_exact_string(value.get("schema"), "descriptor schema"),
+        descriptor=_agent_native_integer(
+            value.get("descriptor"),
+            "descriptor",
+            minimum=3,
+            maximum=(1 << 20) - 1,
+        ),
+        st_dev=_agent_native_integer(value.get("st_dev"), "st_dev", minimum=1),
+        st_ino=_agent_native_integer(value.get("st_ino"), "st_ino", minimum=1),
+        st_mode=_agent_native_integer(
+            value.get("st_mode"),
+            "st_mode",
+            maximum=(1 << 32) - 1,
+        ),
+        st_uid=_agent_native_integer(
+            value.get("st_uid"),
+            "st_uid",
+            maximum=(1 << 32) - 1,
+        ),
+        st_nlink=_agent_native_integer(
+            value.get("st_nlink"),
+            "st_nlink",
+            maximum=(1 << 32) - 1,
+        ),
+        size_bytes=_agent_native_integer(
+            value.get("size_bytes"),
+            "descriptor size_bytes",
+            minimum=1,
+            maximum=_AGENT_NATIVE_DEPENDENCY_MAX_BYTES,
+        ),
+        payload_sha256=_agent_native_exact_string(
+            value.get("payload_sha256"),
+            "descriptor payload_sha256",
+        ),
+        seals=_agent_native_integer(
+            value.get("seals"),
+            "seals",
+            maximum=(1 << 32) - 1,
+        ),
+    )
+    required_seals = _agent_native_required_seals()
+    if (
+        descriptor.schema != _AGENT_NATIVE_DEPENDENCY_DESCRIPTOR_SCHEMA
+        or descriptor.st_mode
+        != stat_module.S_IFREG | _AGENT_NATIVE_DEPENDENCY_SEALED_MODE
+        or descriptor.st_uid != os.geteuid()
+        or descriptor.st_nlink != 0
+        or descriptor.size_bytes != pin.size_bytes
+        or descriptor.payload_sha256 != pin.payload_sha256
+        or descriptor.seals != required_seals
+    ):
+        raise ValueError("native dependency descriptor identity is invalid")
+    return descriptor
+
+
+def parse_agent_supervisor_native_dependency_launch(
+    value: object,
+) -> AgentSupervisorNativeDependencyLaunch:
+    """Strictly parse one launch envelope without minting its authority."""
+
+    if not isinstance(value, Mapping) or set(value) != {
+        "schema",
+        "accepted_authorization_id",
+        "pin",
+        "descriptor",
+    }:
+        raise ValueError("native dependency launch fields are invalid")
+    schema = _agent_native_exact_string(value.get("schema"), "launch schema")
+    authorization_id = _agent_native_exact_string(
+        value.get("accepted_authorization_id"),
+        "accepted_authorization_id",
+    )
+    pin = parse_agent_supervisor_native_dependency_pin(value.get("pin"))
+    descriptor = _agent_parse_native_dependency_descriptor(
+        value.get("descriptor"),
+        pin=pin,
+    )
+    if (
+        schema != _AGENT_NATIVE_DEPENDENCY_LAUNCH_SCHEMA
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", authorization_id) is None
+    ):
+        raise ValueError("native dependency launch identity is invalid")
+    return AgentSupervisorNativeDependencyLaunch(
+        schema=schema,
+        accepted_authorization_id=authorization_id,
+        pin=pin,
+        descriptor=descriptor,
+    )
+
+
+def _agent_parse_native_dependency_launch_json(
+    value: object,
+) -> AgentSupervisorNativeDependencyLaunch:
+    if (
+        not isinstance(value, str)
+        or not 0 < len(value) <= _AGENT_NATIVE_DEPENDENCY_MAX_JSON_BYTES
+        or len(value.encode("utf-8")) > _AGENT_NATIVE_DEPENDENCY_MAX_JSON_BYTES
+    ):
+        raise ValueError("native dependency launch JSON is invalid")
+
+    def reject_duplicates(
+        pairs: Sequence[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError("native dependency launch JSON has duplicate keys")
+            result[key] = item
+        return result
+
+    try:
+        decoded = json.loads(value, object_pairs_hook=reject_duplicates)
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("native dependency launch JSON is invalid") from exc
+    launch = parse_agent_supervisor_native_dependency_launch(decoded)
+    if launch.to_json() != value:
+        raise ValueError("native dependency launch JSON is not canonical")
+    return launch
+
+
+def _agent_native_dependency_descriptor_for_fd(
+    pin: AgentSupervisorNativeDependencyPin,
+    descriptor: int,
+) -> AgentSupervisorNativeDependencyDescriptor:
+    try:
+        metadata = os.fstat(descriptor)
+        seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+    except OSError as exc:
+        raise ValueError("native dependency sealed fd is unavailable") from exc
+    return _agent_parse_native_dependency_descriptor(
+        {
+            "schema": _AGENT_NATIVE_DEPENDENCY_DESCRIPTOR_SCHEMA,
+            "descriptor": descriptor,
+            "st_dev": metadata.st_dev,
+            "st_ino": metadata.st_ino,
+            "st_mode": metadata.st_mode,
+            "st_uid": metadata.st_uid,
+            "st_nlink": metadata.st_nlink,
+            "size_bytes": metadata.st_size,
+            "payload_sha256": pin.payload_sha256,
+            "seals": seals,
+        },
+        pin=pin,
+    )
+
+
+def seal_agent_supervisor_native_dependency(
+    source_path: Path | str,
+    *,
+    expected_pin: AgentSupervisorNativeDependencyPin | None = None,
+    accepted_authorization_id: str = "",
+) -> AgentSupervisorNativeDependencyLaunch:
+    """Seal bytes only against a separately accepted exact expected pin.
+
+    The opaque authorization identifier is copied from an acceptance artifact
+    that this function does not create or authenticate.  Production launchers
+    must verify that signed artifact and bind its ID before calling this API.
+    """
+
+    if not isinstance(expected_pin, AgentSupervisorNativeDependencyPin):
+        raise ValueError(  # noqa: TRY004
+            "an externally accepted native dependency pin is required"
+        )
+    pin = parse_agent_supervisor_native_dependency_pin(expected_pin.as_dict())
+    authorization_id = _agent_native_exact_string(
+        accepted_authorization_id,
+        "accepted_authorization_id",
+    )
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", authorization_id) is None:
+        raise ValueError("native dependency authorization identity is invalid")
+    lexical = resolve_agent_implementation_private_state_path(source_path)
+    raw = _agent_read_stable_native_dependency_source(lexical)
+    observed = _agent_native_dependency_pin_for_bytes(
+        raw,
+        extension_filename=lexical.name,
+        distribution_version=pin.distribution_version,
+        engine_version=pin.engine_version,
+    )
+    if observed != pin:
+        raise ValueError("native dependency source does not match the accepted pin")
+    if not hasattr(os, "memfd_create") or not hasattr(os, "MFD_ALLOW_SEALING"):
+        raise ValueError("native dependency memfd sealing is unavailable")
+    required_seals = _agent_native_required_seals()
+    descriptor = os.memfd_create(
+        _AGENT_NATIVE_DEPENDENCY_MEMFD_NAME,
+        flags=getattr(os, "MFD_CLOEXEC", 0) | os.MFD_ALLOW_SEALING,
+    )
+    try:
+        view = memoryview(raw)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise ValueError("native dependency memfd write failed")
+            view = view[written:]
+        os.fsync(descriptor)
+        os.fchmod(descriptor, _AGENT_NATIVE_DEPENDENCY_SEALED_MODE)
+        fcntl.fcntl(descriptor, fcntl.F_ADD_SEALS, required_seals)
+        binding = _agent_native_dependency_descriptor_for_fd(pin, descriptor)
+        launch = AgentSupervisorNativeDependencyLaunch(
+            schema=_AGENT_NATIVE_DEPENDENCY_LAUNCH_SCHEMA,
+            accepted_authorization_id=authorization_id,
+            pin=pin,
+            descriptor=binding,
+        )
+        verify_agent_supervisor_native_dependency_sealed_fd(launch)
+    except Exception:
+        os.close(descriptor)
+        raise
+    return launch
+
+
+def verify_agent_supervisor_native_dependency_sealed_fd(
+    launch: AgentSupervisorNativeDependencyLaunch,
+) -> str:
+    """Bind and verify one propagated, anonymous, fully sealed native fd."""
+
+    if not isinstance(launch, AgentSupervisorNativeDependencyLaunch):
+        raise ValueError(  # noqa: TRY004
+            "native dependency launch is invalid"
+        )
+    verified_launch = parse_agent_supervisor_native_dependency_launch(
+        launch.as_dict()
+    )
+    pin = verified_launch.pin
+    binding = verified_launch.descriptor
+    descriptor = binding.descriptor
+    required_seals = _agent_native_required_seals()
+    executable = f"/proc/self/fd/{descriptor}"
+    expected_target = f"/memfd:{_AGENT_NATIVE_DEPENDENCY_MEMFD_NAME} (deleted)"
+    try:
+        before = os.fstat(descriptor)
+        before_seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+        before_target = os.readlink(executable)
+        before_path = os.stat(executable)
+        before_observed = {
+            "schema": _AGENT_NATIVE_DEPENDENCY_DESCRIPTOR_SCHEMA,
+            "descriptor": descriptor,
+            "st_dev": before.st_dev,
+            "st_ino": before.st_ino,
+            "st_mode": before.st_mode,
+            "st_uid": before.st_uid,
+            "st_nlink": before.st_nlink,
+            "size_bytes": before.st_size,
+            "payload_sha256": binding.payload_sha256,
+            "seals": before_seals,
+        }
+        if (
+            before_observed != binding.as_dict()
+            or before_seals != required_seals
+            or before_target != expected_target
+            or (before_path.st_dev, before_path.st_ino, before_path.st_size)
+            != (before.st_dev, before.st_ino, before.st_size)
+        ):
+            raise ValueError("native dependency sealed fd identity changed")
+        def validate_native(held_descriptor: int, size_bytes: int) -> str:
+            # These bytes have all four kernel seals.  Mapping them read-only
+            # avoids simultaneously retaining a chunk list and its joined copy.
+            with mmap.mmap(held_descriptor, size_bytes, access=mmap.ACCESS_READ) as raw:
+                observed_pin = _agent_native_dependency_pin_for_bytes(
+                    raw,
+                    extension_filename=pin.extension_filename,
+                    distribution_version=pin.distribution_version,
+                    engine_version=pin.engine_version,
+                )
+            if observed_pin != pin:
+                raise ValueError("native dependency sealed payload does not match its pin")
+            return observed_pin.payload_sha256
+
+        _agent_verify_immutable_descriptor(
+            descriptor,
+            expected_sha256=pin.payload_sha256,
+            maximum_bytes=_AGENT_NATIVE_DEPENDENCY_MAX_BYTES,
+            validation_key=("native-elf-pin", pin),
+            validate=validate_native,
+        )
+        after = os.fstat(descriptor)
+        after_seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+        after_target = os.readlink(executable)
+        after_path = os.stat(executable)
+    except OSError as exc:
+        raise ValueError("native dependency sealed fd is unavailable") from exc
+    observed = {
+        "schema": _AGENT_NATIVE_DEPENDENCY_DESCRIPTOR_SCHEMA,
+        "descriptor": descriptor,
+        "st_dev": before.st_dev,
+        "st_ino": before.st_ino,
+        "st_mode": before.st_mode,
+        "st_uid": before.st_uid,
+        "st_nlink": before.st_nlink,
+        "size_bytes": before.st_size,
+        "payload_sha256": pin.payload_sha256,
+        "seals": before_seals,
+    }
+    metadata_identity = lambda item: (
+        item.st_dev,
+        item.st_ino,
+        item.st_mode,
+        item.st_uid,
+        item.st_gid,
+        item.st_nlink,
+        item.st_size,
+        item.st_mtime_ns,
+        item.st_ctime_ns,
+    )
+    if (
+        observed != binding.as_dict()
+        or before_seals != required_seals
+        or after_seals != required_seals
+        or before_target != expected_target
+        or after_target != expected_target
+        or metadata_identity(before) != metadata_identity(after)
+        or (before_path.st_dev, before_path.st_ino, before_path.st_size)
+        != (before.st_dev, before.st_ino, before.st_size)
+        or (after_path.st_dev, after_path.st_ino, after_path.st_size)
+        != (after.st_dev, after.st_ino, after.st_size)
+    ):
+        raise ValueError("native dependency sealed fd identity changed")
+    return executable
+
+
+def _agent_preload_supervisor_native_dependency_once(
+    launch: AgentSupervisorNativeDependencyLaunch,
+) -> object:
+    """Perform the single process-permitted native extension load."""
+
+    global _AGENT_NATIVE_DEPENDENCY_ACTIVE_LAUNCH
+    global _AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED
+
+    if not isinstance(launch, AgentSupervisorNativeDependencyLaunch):
+        raise ValueError(  # noqa: TRY004
+            "native dependency launch is invalid"
+        )
+    verified_launch = parse_agent_supervisor_native_dependency_launch(
+        launch.as_dict()
+    )
+    pin = verified_launch.pin
+    if pin.module_name in sys.modules or pin.public_alias in sys.modules:
+        raise ValueError("native dependency aliases are already present")
+    executable = verify_agent_supervisor_native_dependency_sealed_fd(
+        verified_launch
+    )
+    module: object | None = None
+    connection: object | None = None
+    try:
+        loader = importlib.machinery.ExtensionFileLoader(
+            _AGENT_NATIVE_DEPENDENCY_MODULE,
+            executable,
+        )
+        spec = importlib.util.spec_from_file_location(
+            _AGENT_NATIVE_DEPENDENCY_MODULE,
+            executable,
+            loader=loader,
+        )
+        if (
+            spec is None
+            or spec.loader is not loader
+            or spec.name != pin.module_name
+            or spec.origin != executable
+        ):
+            raise ValueError("native dependency extension spec is invalid")
+        # CPython extension module initialization cannot be reliably rolled
+        # back.  From this point onward the process is terminal for every
+        # second preload attempt, even when initialization or a later probe
+        # fails and the Python aliases can be removed.
+        _AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED = True
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[pin.module_name] = module
+        loader.exec_module(module)
+        if (
+            getattr(module, "__name__", None) != pin.module_name
+            or getattr(module, "__file__", None) != executable
+            or getattr(module, "__version__", None) != pin.distribution_version
+        ):
+            raise ValueError("native dependency module identity is invalid")
+        connect = getattr(module, "connect", None)
+        if not callable(connect):
+            raise ValueError(  # noqa: TRY004
+                "native dependency query API is unavailable"
+            )
+        connection = connect(":memory:")
+        execute = getattr(connection, "execute", None)
+        if not callable(execute):
+            raise ValueError(  # noqa: TRY004
+                "native dependency query API is unavailable"
+            )
+        engine_cursor = execute("SELECT version()")
+        engine_row = engine_cursor.fetchone()
+        query_cursor = execute("SELECT 42")
+        query_row = query_cursor.fetchone()
+        if engine_row != (pin.engine_version,) or query_row != (42,):
+            raise ValueError("native dependency in-memory probe failed")
+        verify_agent_supervisor_native_dependency_sealed_fd(verified_launch)
+        if sys.modules.get(pin.module_name) is not module:
+            raise ValueError("native dependency private alias changed")
+        sys.modules[pin.public_alias] = module
+        if sys.modules.get(pin.public_alias) is not module:
+            raise ValueError("native dependency public alias changed")
+        close = getattr(connection, "close", None)
+        if callable(close):
+            close()
+        connection = None
+    except Exception as exc:
+        close = getattr(connection, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:  # noqa: BLE001, S110
+                pass
+        if module is not None:
+            for name in (pin.module_name, pin.public_alias):
+                if sys.modules.get(name) is module:
+                    sys.modules.pop(name, None)
+        raise ValueError("native dependency preload failed closed") from exc
+    _AGENT_NATIVE_DEPENDENCY_ACTIVE_LAUNCH = verified_launch
+    return module
+
+
+def active_agent_supervisor_native_dependency_launch(
+) -> AgentSupervisorNativeDependencyLaunch:
+    """Return the exact successfully preloaded launch for nested sealed births."""
+
+    with _AGENT_NATIVE_DEPENDENCY_PRELOAD_LOCK:
+        launch = _AGENT_NATIVE_DEPENDENCY_ACTIVE_LAUNCH
+        if launch is None:
+            raise ValueError("native dependency has no active admitted launch")
+        verify_agent_supervisor_native_dependency_sealed_fd(launch)
+        if (
+            sys.modules.get(launch.pin.module_name)
+            is not sys.modules.get(launch.pin.public_alias)
+        ):
+            raise ValueError("native dependency active aliases drifted")
+        return launch
+
+
+def preload_agent_supervisor_native_dependency(
+    launch: AgentSupervisorNativeDependencyLaunch,
+) -> object:
+    """Load the verified DuckDB extension and expose its exact public alias.
+
+    This validates an already-authorized launch envelope; it does not verify or
+    create the external signed acceptance represented by its authorization ID.
+    Because CPython cannot safely unload an extension, any attempt that reaches
+    native module creation permanently denies every later preload in this
+    process, including after a failed identity or query probe.  This function
+    also refuses every ambient ``LD_*`` setting.  The external protected
+    launcher must remove those settings before exec, because code injected by
+    the process loader cannot be made safe after Python starts.
+    """
+
+    with _AGENT_NATIVE_DEPENDENCY_PRELOAD_LOCK:
+        if any(name.startswith("LD_") for name in os.environ):
+            raise ValueError(
+                "native dependency ambient loader environment is forbidden"
+            )
+        if _AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED:
+            raise ValueError("native dependency preload process is terminal")
+        return _agent_preload_supervisor_native_dependency_once(launch)
+
+
+def preload_agent_supervisor_native_dependency_from_bootstrap(
+    native_fd_text: str,
+    native_launch_json: str,
+) -> object:
+    """Consume the exact two argv values propagated by the sealed bootstrap.
+
+    The protected caller must first authenticate the signed acceptance artifact
+    and exact-match its content ID to ``accepted_authorization_id``.  This
+    deterministic helper only checks the bound launch bytes and native fd; it
+    never turns an evidence pin or opaque ID into authority.
+    """
+
+    if (
+        not isinstance(native_fd_text, str)
+        or re.fullmatch(r"[1-9][0-9]{0,6}", native_fd_text) is None
+    ):
+        raise ValueError("native dependency bootstrap fd is invalid")
+    descriptor = int(native_fd_text)
+    if descriptor < 3 or str(descriptor) != native_fd_text:
+        raise ValueError("native dependency bootstrap fd is invalid")
+    launch = _agent_parse_native_dependency_launch_json(native_launch_json)
+    if launch.descriptor.descriptor != descriptor:
+        raise ValueError("native dependency bootstrap fd was substituted")
+    return preload_agent_supervisor_native_dependency(launch)
+
 def _agent_read_stable_file(
     path: Path,
     *,
@@ -7211,8 +8922,9 @@ def _agent_control_plane_source_files(
 
     The daemon has a deliberately broad import graph.  Maintaining a hand-made
     transitive list would silently lose coverage when that graph grows, so the
-    accepted capsule binds the entire supervisor Python tree and then verifies
-    the origins of every already-imported supervisor module against that tree.
+    accepted capsule binds the entire supervisor Python tree, every canonical
+    tracked SQL migration, and then verifies the origins of every
+    already-imported supervisor module against that tree.
     """
 
     supervisor_root = root / "ipfs_accelerate_py" / "agent_supervisor"
@@ -7227,8 +8939,12 @@ def _agent_control_plane_source_files(
         raise ValueError(
             "accepted control-plane package tree is unavailable"
         ) from exc
+    sql_root = supervisor_root / "task_sources" / "sql"
     tree_files = tuple(
-        entry for entry in entries if entry.suffix == ".py"
+        entry
+        for entry in entries
+        if entry.suffix == ".py"
+        or (entry.parent == sql_root and entry.suffix == ".sql")
     )
     required_files = tuple(
         root / relative for relative in _AGENT_CONTROL_PLANE_RELATIVE_FILES
@@ -7245,6 +8961,7 @@ def _agent_control_plane_source_files(
         "ipfs_accelerate_py",
         "ipfs_accelerate_py.llm_router",
         "ipfs_accelerate_py.agent_implementation_route",
+        "ipfs_accelerate_py._hash_resources",
         "ipfs_accelerate_py.router_deps",
         "ipfs_accelerate_py.common",
         "ipfs_accelerate_py.common.meta_model_api",
@@ -7416,25 +9133,65 @@ def _agent_git_output(
 ) -> bytes:
     """Run one bounded, non-interactive Git identity/object query."""
 
-    git_environment = {
-        name: value
-        for name, value in os.environ.items()
-        if not name.startswith("GIT_")
-    }
-    git_environment.update(
-        {
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_TERMINAL_PROMPT": "0",
-            "GIT_NO_REPLACE_OBJECTS": "1",
-            "LC_ALL": "C",
-            "LANG": "C",
-        }
+    global _AGENT_CONTROL_PLANE_TRUSTED_GIT_IDENTITY
+    try:
+        lexical = os.lstat(_AGENT_CONTROL_PLANE_TRUSTED_GIT)
+        descriptor = os.open(
+            _AGENT_CONTROL_PLANE_TRUSTED_GIT,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            opened = os.fstat(descriptor)
+            digest = hashlib.sha256()
+            while True:
+                block = os.read(descriptor, 1024 * 1024)
+                if not block:
+                    break
+                digest.update(block)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        current = os.lstat(_AGENT_CONTROL_PLANE_TRUSTED_GIT)
+    except OSError as exc:
+        raise ValueError("trusted Git executable is unavailable") from exc
+    fields = (
+        "st_dev", "st_ino", "st_mode", "st_uid", "st_nlink", "st_size",
+        "st_mtime_ns", "st_ctime_ns",
     )
+    identity = tuple(int(getattr(opened, field)) for field in fields) + (
+        int.from_bytes(digest.digest(), "big"),
+    )
+    if (
+        not stat_module.S_ISREG(opened.st_mode)
+        or opened.st_uid != 0
+        or opened.st_nlink != 1
+        or opened.st_size <= 0
+        or stat_module.S_IMODE(opened.st_mode) & 0o022
+        or any(getattr(lexical, field) != getattr(opened, field) for field in fields)
+        or any(getattr(after, field) != getattr(opened, field) for field in fields)
+        or any(getattr(current, field) != getattr(opened, field) for field in fields)
+        or (
+            _AGENT_CONTROL_PLANE_TRUSTED_GIT_IDENTITY is not None
+            and _AGENT_CONTROL_PLANE_TRUSTED_GIT_IDENTITY != identity
+        )
+    ):
+        raise ValueError("trusted Git executable identity drifted")
+    _AGENT_CONTROL_PLANE_TRUSTED_GIT_IDENTITY = identity
+    git_environment = {
+        "PATH": "/usr/bin:/bin",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "LC_ALL": "C",
+        "LANG": "C",
+    }
     try:
         completed = subprocess.run(
             [
-                "git",
+                str(_AGENT_CONTROL_PLANE_TRUSTED_GIT),
                 "-c",
                 "core.quotepath=false",
                 "-c",
@@ -7489,6 +9246,7 @@ def _agent_control_plane_git_state(
         _agent_git_output(root, ("rev-parse", "--verify", "HEAD^{tree}"))
     ).strip()
     status = b""
+    records: list[bytes] = [b"H ok"]
     if not allow_dirty_worktree:
         status = _agent_git_output(
             root,
@@ -7499,11 +9257,19 @@ def _agent_control_plane_git_state(
                 "--untracked-files=all",
             ),
         )
+        index_flags = _agent_git_output(root, ("ls-files", "-v", "-z"))
+        records = index_flags.split(b"\0")
+        if records and records[-1] == b"":
+            records.pop()
     if (
         exact_top_level != root
         or head != expected_head
         or tree != expected_tree
         or status
+        or any(
+            len(record) < 3 or record[:2] != b"H " or not record[2:]
+            for record in records
+        )
     ):
         raise ValueError(
             "accepted control-plane source is not the exact clean Git generation"
@@ -7529,6 +9295,7 @@ def _agent_control_plane_head_payloads(
             "ipfs_accelerate_py",
             "scripts/ops/agent_supervisor/configured_board_scheduler.py",
             "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+            "scripts/run_agent_supervisor_efficiency_state_hardening.py",
         ),
         maximum_bytes=_AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES,
     )
@@ -7549,6 +9316,11 @@ def _agent_control_plane_head_payloads(
             or (
                 relative.startswith("ipfs_accelerate_py/agent_supervisor/")
                 and relative.endswith(".py")
+            )
+            or (
+                Path(relative).parent.as_posix()
+                == _AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY
+                and Path(relative).suffix == ".sql"
             )
         )
         if object_type != "blob" or mode not in {"100644", "100755"}:
@@ -7622,6 +9394,17 @@ def materialize_agent_implementation_control_plane_capsule(
         raise ValueError("accepted control-plane package differs from HEAD")
     for path in files:
         relative = str(path.relative_to(root))
+        if (
+            Path(relative).parent.as_posix()
+            == _AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY
+            and Path(relative).suffix == ".sql"
+        ):
+            # SQL is package data, not already-loaded executable source.  Its
+            # only admitted bytes come from the exact HEAD blobs above and are
+            # written 0400 into the private capsule.  Treating loose-checkout
+            # permission bits as resource authority would reject clean clones
+            # created under a collaborative umask without improving the seal.
+            continue
         if _agent_read_stable_file(
             path,
             allow_group_writable=allow_dirty_worktree,
@@ -7978,22 +9761,14 @@ def verify_agent_implementation_sealed_control_plane(
             or seals & required != required
         ):
             raise ValueError("accepted control-plane descriptor is not sealed")
-        chunks: list[bytes] = []
-        offset = 0
-        while offset < before.st_size:
-            chunk = os.pread(
-                descriptor,
-                min(64 * 1024, before.st_size - offset),
-                offset,
-            )
-            if not chunk:
-                break
-            chunks.append(chunk)
-            offset += len(chunk)
+        _agent_verify_immutable_descriptor(
+            descriptor,
+            expected_sha256=pin.archive_sha256,
+            maximum_bytes=_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES,
+        )
         after = os.fstat(descriptor)
     except OSError as exc:
         raise ValueError("accepted control-plane descriptor is unavailable") from exc
-    archive = b"".join(chunks)
     identity = lambda item: (
         item.st_dev,
         item.st_ino,
@@ -8005,10 +9780,7 @@ def verify_agent_implementation_sealed_control_plane(
         item.st_ctime_ns,
     )
     if (
-        len(archive) != before.st_size
-        or identity(before) != identity(after)
-        or "sha256:" + hashlib.sha256(archive).hexdigest()
-        != pin.archive_sha256
+        identity(before) != identity(after)
     ):
         raise ValueError("accepted control-plane sealed archive drifted")
     executable = f"/proc/self/fd/{descriptor}"

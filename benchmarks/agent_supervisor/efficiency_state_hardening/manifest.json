@@ -1,0 +1,177 @@
+{
+  "arms": {
+    "candidate_optimized_supervisor": {
+      "arm_id": "candidate_optimized_supervisor",
+      "constraints": [
+        "campaign_changes_only",
+        "shadow_before_mutation"
+      ],
+      "policy_identity": {
+        "truth_state": "observed",
+        "value": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1"
+      },
+      "shadow_before_mutation": true
+    },
+    "direct_minimal_orchestration_baseline": {
+      "arm_id": "direct_minimal_orchestration_baseline",
+      "constraints": [
+        "same_safe_isolation_and_acceptance_tests",
+        "no_candidate_context_pack_optimization",
+        "no_candidate_proof_or_test_reuse_optimization",
+        "same_available_model_and_provider_set",
+        "no_unsafe_direct_mutation"
+      ],
+      "policy_identity": {
+        "truth_state": "observed",
+        "value": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1"
+      },
+      "shadow_before_mutation": false
+    },
+    "sealed_current_supervisor_baseline": {
+      "arm_id": "sealed_current_supervisor_baseline",
+      "constraints": [
+        "exact_pre_campaign_policy",
+        "exact_pre_campaign_routing_behavior"
+      ],
+      "policy_identity": {
+        "truth_state": "observed",
+        "value": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1"
+      },
+      "shadow_before_mutation": false
+    }
+  },
+  "equal_controls": {
+    "acceptance_tests": "baguqeerajtjx2uf5nnpmyj5njj7nmtg5lsgecfabalz3o53kgv3jpu3vacia",
+    "available_providers_and_models": "baguqeera5wehcqr5rbuwrcgskjdhpt7d4oz32ks7oalbqa5iimevjpjstrha",
+    "human_intervention_policy": "baguqeeraijx5uvhi35valu2yfdtvrhq4oqxbzkjkxziwwsrgo7dmugi2sc7q",
+    "maximum_retries": 3,
+    "objective": "ASEH-G020",
+    "price_accounting": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+    "repository_revision": "729da9f8293ecfa046a0136381a3d3808f9ed140",
+    "resource_limits": "baguqeera3ndxb76ndwpggkigqukxf7grvanwyolsuq6w4ujwayucts6c2hka",
+    "task_inputs": "baguqeera2iqng4k6ldr75hhg2h6mhwbiv3ahn3j4kgojuwlzzafdua2nv5ma"
+  },
+  "explicit_unavailable_fields": [
+    "populations.historical_exact_tree_replay.count",
+    "populations.new_live_shadow_canary.count",
+    "populations.new_live_shadow_canary.enrollment_deadline"
+  ],
+  "hermetic_sufficient_for_production_promotion": false,
+  "identity": {
+    "environment_identity": {
+      "truth_state": "observed",
+      "value": "baguqeeraoiwpuyij56u66q36u6utp7fdggl3avccrsfsdrouhoife7jajmpq"
+    },
+    "objective_id": "ASEH-G020",
+    "objective_revision": "baguqeeray6iu7h6kiajjow44w3l6gexkiihui2423wrhtpou22thcm6sqhbq",
+    "policy_identity": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1",
+    "price_snapshot_identity": {
+      "truth_state": "observed",
+      "value": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a"
+    },
+    "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+    "repository_commit": "755f45475cc2d13dacd8b330036c1d597afeddde",
+    "repository_tree": "729da9f8293ecfa046a0136381a3d3808f9ed140"
+  },
+  "manifest_cid": "baguqeerazrm5jky6gf3eg4tsnilnpisw4y3r3kecx5hszmxahs5n37zemsrq",
+  "populations": {
+    "hermetic_development": {
+      "count": {
+        "sensor_id": "aseh-013-paired-harness",
+        "truth_state": "measured",
+        "unit": "count",
+        "value": 72
+      },
+      "minimum": 60,
+      "status": "sealed"
+    },
+    "historical_exact_tree_replay": {
+      "count": {
+        "reason_code": "not_sealed",
+        "truth_state": "unavailable"
+      },
+      "minimum": 20,
+      "required_outcomes": [
+        "successful",
+        "failed",
+        "retried",
+        "rescued",
+        "conflicted",
+        "human_escalated"
+      ],
+      "status": "unavailable"
+    },
+    "new_live_shadow_canary": {
+      "count": {
+        "reason_code": "not_sealed",
+        "truth_state": "unavailable"
+      },
+      "enrollment_deadline": {
+        "reason_code": "not_sealed",
+        "truth_state": "unavailable"
+      },
+      "enrollment_deadline_maximum_days": 30,
+      "minimum": 10,
+      "status": "unavailable"
+    }
+  },
+  "promotion_without_paired_campaign": false,
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-paired-benchmark-manifest@1",
+  "schema_version": 1,
+  "statistics": {
+    "accepted_patch_rate": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "ratio_millionths",
+      "value": 500000
+    },
+    "bootstrap_confidence_intervals": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "microusd",
+      "value": 150
+    },
+    "distribution_by_task_class": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "count",
+      "value": 12
+    },
+    "mean_difference": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "microusd",
+      "value": 991
+    },
+    "median_difference": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "microusd",
+      "value": 605
+    },
+    "outlier_analysis": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "count",
+      "value": 1
+    },
+    "per_task_ratios": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "ratio_millionths",
+      "value": 784742
+    },
+    "quality_adjusted_cost": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "microusd",
+      "value": 2760
+    },
+    "time_to_terminal_outcome": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "seconds_millionths",
+      "value": 92962
+    }
+  }
+}

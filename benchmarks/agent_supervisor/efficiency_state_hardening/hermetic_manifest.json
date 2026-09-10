@@ -1,0 +1,809 @@
+{
+  "arm_constraints": {
+    "candidate_optimized_supervisor": [
+      "campaign_changes_only",
+      "shadow_before_mutation"
+    ],
+    "direct_minimal_orchestration_baseline": [
+      "same_safe_isolation_and_acceptance_tests",
+      "no_candidate_context_pack_optimization",
+      "no_candidate_proof_or_test_reuse_optimization",
+      "same_available_model_and_provider_set",
+      "no_unsafe_direct_mutation"
+    ],
+    "sealed_current_supervisor_baseline": [
+      "exact_pre_campaign_policy",
+      "exact_pre_campaign_routing_behavior"
+    ]
+  },
+  "arms": [
+    "direct_minimal_orchestration_baseline",
+    "sealed_current_supervisor_baseline",
+    "candidate_optimized_supervisor"
+  ],
+  "authority": false,
+  "bootstrap_seed": 13,
+  "bounds": {
+    "max_bytes": 1048576,
+    "max_duration_us": 3600000000,
+    "max_quality_bps": 10000,
+    "max_retries": 32,
+    "max_tokens": 100000
+  },
+  "controls": {
+    "acceptance_tests": "baguqeerajtjx2uf5nnpmyj5njj7nmtg5lsgecfabalz3o53kgv3jpu3vacia",
+    "available_providers_and_models": "baguqeera5wehcqr5rbuwrcgskjdhpt7d4oz32ks7oalbqa5iimevjpjstrha",
+    "human_intervention_policy": "baguqeeraijx5uvhi35valu2yfdtvrhq4oqxbzkjkxziwwsrgo7dmugi2sc7q",
+    "maximum_retries": 3,
+    "objective": "ASEH-G020",
+    "price_accounting": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+    "repository_revision": "729da9f8293ecfa046a0136381a3d3808f9ed140",
+    "resource_limits": "baguqeera3ndxb76ndwpggkigqukxf7grvanwyolsuq6w4ujwayucts6c2hka",
+    "task_inputs": "baguqeera2iqng4k6ldr75hhg2h6mhwbiv3ahn3j4kgojuwlzzafdua2nv5ma"
+  },
+  "count": 72,
+  "equal_control_fields": [
+    "repository_revision",
+    "objective",
+    "task_inputs",
+    "acceptance_tests",
+    "available_providers_and_models",
+    "price_accounting",
+    "resource_limits",
+    "maximum_retries",
+    "human_intervention_policy"
+  ],
+  "fixtures": [
+    {
+      "bounded": true,
+      "bytes_bound": 4224,
+      "fixture_id": "aseh-h01",
+      "identity": "baguqeera2velwgutlmhxu3xshk5l22iymtvotewjem2iemsn52z7z73l5acq",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "schema_change",
+      "token_budget": 417
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 4352,
+      "fixture_id": "aseh-h02",
+      "identity": "baguqeerardd6oulxb3ower4lfx3iaabsbi7nrhp3fgqj34wx4gc7fl45ffqq",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "schema_change",
+      "token_budget": 434
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 4480,
+      "fixture_id": "aseh-h03",
+      "identity": "baguqeeradfvigbnqujdwapwtfohk5yd6djttlvjybjfq5cnmjp4dh7cqujiq",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "schema_change",
+      "token_budget": 451
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 4608,
+      "fixture_id": "aseh-h04",
+      "identity": "baguqeeranc66dpoax7xr65cvb563xokew7goykwpldhizxdytqtaccpzybka",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "schema_change",
+      "token_budget": 468
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 4736,
+      "fixture_id": "aseh-h05",
+      "identity": "baguqeera5ekycw4niblz77kf64kq46jjywl3vxj2icx5x5ykfk6pvtunxhaq",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "schema_change",
+      "token_budget": 485
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 4864,
+      "fixture_id": "aseh-h06",
+      "identity": "baguqeeraiej2wvxksbccca4nchnugvo6u5gub5oatt2c5ndgb2uvtatn3x6a",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "schema_change",
+      "token_budget": 502
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 4992,
+      "fixture_id": "aseh-h07",
+      "identity": "baguqeeragcjwmmvqn5mxvas7jsilkiucc33jyxpke2yeq3nozrebls4tmciq",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "bug_repair",
+      "token_budget": 519
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 5120,
+      "fixture_id": "aseh-h08",
+      "identity": "baguqeeratvjodqyejn46p5ez5hhvkngevn2daboi4wahx7ejuzwipawb7geq",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "bug_repair",
+      "token_budget": 536
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 5248,
+      "fixture_id": "aseh-h09",
+      "identity": "baguqeeranynu737n6vjz6oud3mtvtrbeageqj26wgzisiv3ljitus6tm3i3q",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "bug_repair",
+      "token_budget": 553
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 5376,
+      "fixture_id": "aseh-h10",
+      "identity": "baguqeera2e3fjszb2pblbz75kl2xocxwwwkhsgcvukjk3t77medlvo7mukaa",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "bug_repair",
+      "token_budget": 570
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 5504,
+      "fixture_id": "aseh-h11",
+      "identity": "baguqeeraniervkfvhkt4meifwzwshdh3r6pkmzw37cahy55s4yzd26b4ollq",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "bug_repair",
+      "token_budget": 587
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 5632,
+      "fixture_id": "aseh-h12",
+      "identity": "baguqeeraybt6g2emx7bgpzqtbwr5mcdbu3n4jmv5aerqmoyyernlmexmdrfa",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "bug_repair",
+      "token_budget": 604
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 5760,
+      "fixture_id": "aseh-h13",
+      "identity": "baguqeerayh7jb5kkmocaudzirdeowxtmvneyjeb4za2gtj5asuqvwstah4ua",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "feature_addition",
+      "token_budget": 621
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 5888,
+      "fixture_id": "aseh-h14",
+      "identity": "baguqeeraotwtgg3dnnw5gz7xrlmmjzm7aexbtdc5jlkrmfuezmdz2ivcxehq",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "feature_addition",
+      "token_budget": 638
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 6016,
+      "fixture_id": "aseh-h15",
+      "identity": "baguqeeralb6h3sv456ap633h4ubik3toi77xhetptprnu5cq72pchoeua26a",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "feature_addition",
+      "token_budget": 655
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 6144,
+      "fixture_id": "aseh-h16",
+      "identity": "baguqeerahpy2tfzprh6xmlhiwee5l4g37ulqh5hnmuwenwwd4ly6hbi2lk6a",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "feature_addition",
+      "token_budget": 672
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 6272,
+      "fixture_id": "aseh-h17",
+      "identity": "baguqeera2kn2rex25haxrkt5yayyk7zv4vwh2wbx3mpntp3lihbkeqnevloq",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "feature_addition",
+      "token_budget": 689
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 6400,
+      "fixture_id": "aseh-h18",
+      "identity": "baguqeerabw4jeiilnkgj6fnw6aagkggdqekpqjnwlf3mx5e6ll3r47jqnetq",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "feature_addition",
+      "token_budget": 706
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 6528,
+      "fixture_id": "aseh-h19",
+      "identity": "baguqeeraxme37pjul6u2v7pn3k7agoxsttm5fg4tcrrpewmtxq4b3zucp64a",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "proof_obligation",
+      "token_budget": 723
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 6656,
+      "fixture_id": "aseh-h20",
+      "identity": "baguqeera5gngjbjuc2fpa3o3ra72gnxjom5duwhr7qnrsmgsnadrpqt2iisa",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "proof_obligation",
+      "token_budget": 740
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 6784,
+      "fixture_id": "aseh-h21",
+      "identity": "baguqeeraem5r3sc4rjmqxtlw4azwmtg4h5czufq6iwgix5hc5veorsowipdq",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "proof_obligation",
+      "token_budget": 757
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 6912,
+      "fixture_id": "aseh-h22",
+      "identity": "baguqeerak5k33rjh6p6ctrcadesfx3il2tudzt3q2hr5dkwjp4vz7y7snlhq",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "proof_obligation",
+      "token_budget": 774
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 7040,
+      "fixture_id": "aseh-h23",
+      "identity": "baguqeerabraosmazpw25pvmufcthb4xi6pzifo6xxelrmtfqyn2cm7xb4p7a",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "proof_obligation",
+      "token_budget": 791
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 7168,
+      "fixture_id": "aseh-h24",
+      "identity": "baguqeeraxai4qyhyf2ahc6sufhjbi5obyw5n62k6xkgo4merg2ysulqif45q",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "proof_obligation",
+      "token_budget": 808
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 7296,
+      "fixture_id": "aseh-h25",
+      "identity": "baguqeera4g3j6xfjxe454okbqohkhtlecqmb37uyjs37d7o7wooaxcgsxt2q",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "test_selection",
+      "token_budget": 825
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 7424,
+      "fixture_id": "aseh-h26",
+      "identity": "baguqeerawbihidv4vmbf2ty6cbjqzgcw6n4vwifpkokgmzhhi3qam4rpt47q",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "test_selection",
+      "token_budget": 842
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 7552,
+      "fixture_id": "aseh-h27",
+      "identity": "baguqeeraizszx4zdddctfthoy3bofdkbvfkaosfww2na6izozgvo327ewsyq",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "test_selection",
+      "token_budget": 859
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 7680,
+      "fixture_id": "aseh-h28",
+      "identity": "baguqeeraaiom5juxi7q47bshw5kpso7za4qdawaykmgz7e7kpekcujcews7q",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "test_selection",
+      "token_budget": 876
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 7808,
+      "fixture_id": "aseh-h29",
+      "identity": "baguqeeragubiqoco4mvnlsghw5saijgxuxkrgfwr7adxapsrmqqnvxs3hl2q",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "test_selection",
+      "token_budget": 893
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 7936,
+      "fixture_id": "aseh-h30",
+      "identity": "baguqeera35odldxvkuljuhz3wppq5jedcfp33zogohm3fdtx5io34hm4dlra",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "test_selection",
+      "token_budget": 910
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 8064,
+      "fixture_id": "aseh-h31",
+      "identity": "baguqeeram24lrl3ats3xjlrcs6yg66vdi6ioa7wkg5lzwaw636zyzoi7rrva",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "recovery_replay",
+      "token_budget": 927
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 8192,
+      "fixture_id": "aseh-h32",
+      "identity": "baguqeera6wvolegcxdsxjdt7fz2w5wlwy7gry44rlvqpnw5fa7nev4tfaadq",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "recovery_replay",
+      "token_budget": 944
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 8320,
+      "fixture_id": "aseh-h33",
+      "identity": "baguqeerayboakvul23cwezcti5cpb47t57mgvush5ugehepwsdouxfbk4dha",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "recovery_replay",
+      "token_budget": 961
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 8448,
+      "fixture_id": "aseh-h34",
+      "identity": "baguqeeradllwow5ivt3dyvoj4tulw3ytas36lvctor34vjf7uajqm7q566zq",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "recovery_replay",
+      "token_budget": 978
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 8576,
+      "fixture_id": "aseh-h35",
+      "identity": "baguqeerayq53t6zyhzg3xyng3whivpenkvbsud35uim7ruqfkranmd6dvfwa",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "recovery_replay",
+      "token_budget": 995
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 8704,
+      "fixture_id": "aseh-h36",
+      "identity": "baguqeeralvizhuy5qd4pnu6aoi72libjiwmizbnccgklx24z4sjoabxvobtq",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "recovery_replay",
+      "token_budget": 1012
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 8832,
+      "fixture_id": "aseh-h37",
+      "identity": "baguqeeraoaod56akrmlt5vsiguoe4z5oecf4l5bjgwin7i4dfi2s36kkis4a",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "state_migration",
+      "token_budget": 1029
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 8960,
+      "fixture_id": "aseh-h38",
+      "identity": "baguqeera2cdeyhu6im7xhfft57eznx2fqcl7emk5mar5o4aidg2ldtkpaq6q",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "state_migration",
+      "token_budget": 1046
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 9088,
+      "fixture_id": "aseh-h39",
+      "identity": "baguqeera3ikgs6n755g34npdgkmcaxgqltikj3v4idccwk2unvhtpiwqxtoq",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "state_migration",
+      "token_budget": 1063
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 9216,
+      "fixture_id": "aseh-h40",
+      "identity": "baguqeeragwazpea7twrkgm43z4cwpxbcyed2vppoby3kpq2h6jxiy4g2kria",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "state_migration",
+      "token_budget": 1080
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 9344,
+      "fixture_id": "aseh-h41",
+      "identity": "baguqeeraag56maogpw7nwm5zyjwrwcdf64mxoqrctirsj6bvqiu7t6b5y3hq",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "state_migration",
+      "token_budget": 1097
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 9472,
+      "fixture_id": "aseh-h42",
+      "identity": "baguqeerapafifzazjgggrppnx5vjcvcp6lneet5bimdtjpld5h4gt4xnh4ra",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "state_migration",
+      "token_budget": 1114
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 9600,
+      "fixture_id": "aseh-h43",
+      "identity": "baguqeeranwxubmnpp2iulhntwhgjxr6ehac5sfrmkedu5kmyoyeg27io5jea",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "context_pack_build",
+      "token_budget": 1131
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 9728,
+      "fixture_id": "aseh-h44",
+      "identity": "baguqeeratiuqmdffpy4uoxv23v6vntwfufkv4ulo5m3sdn4t4qjwxunbd4wa",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "context_pack_build",
+      "token_budget": 1148
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 9856,
+      "fixture_id": "aseh-h45",
+      "identity": "baguqeera67eirkve36fxwvdz3qnzwuqvmnnkt4caughkodciqowj3freldea",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "context_pack_build",
+      "token_budget": 1165
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 9984,
+      "fixture_id": "aseh-h46",
+      "identity": "baguqeeras6o7jjqqh67vexy22pgycye5b3dag3ujbvocg7xf7xejqm5k2y4a",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "context_pack_build",
+      "token_budget": 1182
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 10112,
+      "fixture_id": "aseh-h47",
+      "identity": "baguqeera4fr2deaauu3qn6rruvbvkwghkynmvbopecbve63bttdpruyage5q",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "context_pack_build",
+      "token_budget": 1199
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 10240,
+      "fixture_id": "aseh-h48",
+      "identity": "baguqeeradahvyijpvdo5pxeh636yhmqba6j4jshjrq5oradzcgyabpjvfsvq",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "context_pack_build",
+      "token_budget": 1216
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 10368,
+      "fixture_id": "aseh-h49",
+      "identity": "baguqeerapxujvywnbykzftspa2jstcgvhhttltcdkfjszamtveby6n4oerda",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "routing_policy",
+      "token_budget": 1233
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 10496,
+      "fixture_id": "aseh-h50",
+      "identity": "baguqeeraakux6gdvw6d2wkfm6sl5hrkex7ta7fvjgwrzeo2etumhzx3c7bna",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "routing_policy",
+      "token_budget": 1250
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 10624,
+      "fixture_id": "aseh-h51",
+      "identity": "baguqeeray2wd23lhiw5m3cx6zcpr6zhbjaojim6fkatovegvz5wkzl6lmyma",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "routing_policy",
+      "token_budget": 1267
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 10752,
+      "fixture_id": "aseh-h52",
+      "identity": "baguqeeraz4vfoqs2ozzjpcf4zat5xqaxzlpj4ch7mtru7toua3eth2vvhheq",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "routing_policy",
+      "token_budget": 1284
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 10880,
+      "fixture_id": "aseh-h53",
+      "identity": "baguqeeraiveiuhstn2xk23kpqdn6gpk2gvpa37mekts2pwjsulur5nr4nhhq",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "routing_policy",
+      "token_budget": 1301
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 11008,
+      "fixture_id": "aseh-h54",
+      "identity": "baguqeerahhfdd6prvcjokbn7c62vr3ml6pde4g66zynlsxabxv5gmsxo5jbq",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "routing_policy",
+      "token_budget": 1318
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 11136,
+      "fixture_id": "aseh-h55",
+      "identity": "baguqeerad273w7fkasdu2se5k3n2jailvc6aa6q6rftrzbc2pjl3aptc6rlq",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "merge_conflict",
+      "token_budget": 1335
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 11264,
+      "fixture_id": "aseh-h56",
+      "identity": "baguqeerami3wpfl6mgene43uqtalk6iqa7qbcmyolex2uv7edaarqtbwk5qq",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "merge_conflict",
+      "token_budget": 1352
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 11392,
+      "fixture_id": "aseh-h57",
+      "identity": "baguqeerasidmurylkb7r4i76e7oq3usnk3nqhdfrfqto7pvxzczptbt5xavq",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "merge_conflict",
+      "token_budget": 1369
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 11520,
+      "fixture_id": "aseh-h58",
+      "identity": "baguqeeracxv7lu3nzprtb5pda2mapdfacqd34kg7l3oyj5a5vny3tcprw5tq",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "merge_conflict",
+      "token_budget": 1386
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 11648,
+      "fixture_id": "aseh-h59",
+      "identity": "baguqeeraqs5gmwatkdzxgk2i7cmwrbwr2gxttbvwpzb4ejlask7arbvpgmnq",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "merge_conflict",
+      "token_budget": 1403
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 11776,
+      "fixture_id": "aseh-h60",
+      "identity": "baguqeerandx3okwwlk6j4x3janskyqs6jfiwaps2jlogcxcsbdvuh7bbnusq",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "merge_conflict",
+      "token_budget": 1420
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 11904,
+      "fixture_id": "aseh-h61",
+      "identity": "baguqeera3pmyebempu5njfnxaw3gpjt2s5namp7g4vzji33cz2saa7dckwqa",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "human_escalation",
+      "token_budget": 1437
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 12032,
+      "fixture_id": "aseh-h62",
+      "identity": "baguqeera3iymrqdun3wiptxnmd5nk323yebrtx6u65simbjhiolcwvdrpwyq",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "human_escalation",
+      "token_budget": 1454
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 12160,
+      "fixture_id": "aseh-h63",
+      "identity": "baguqeera44mdkczakm7h6y6jtihug3jwtlbpmvhgrzwvihcqrzfatuuzhkhq",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "human_escalation",
+      "token_budget": 1471
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 12288,
+      "fixture_id": "aseh-h64",
+      "identity": "baguqeera47r35tk3ohnffywhuv27rayxzjww43rlay5ji4ggij66ggvyvz2q",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "human_escalation",
+      "token_budget": 1488
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 12416,
+      "fixture_id": "aseh-h65",
+      "identity": "baguqeerax2nbddfhwbreooeqzl4cxxttle7ndkdwyl46tkgnicwo6ogihn5q",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "human_escalation",
+      "token_budget": 1505
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 12544,
+      "fixture_id": "aseh-h66",
+      "identity": "baguqeerama66sqwxgw4mvvu7k7hqvq4qdrduieoit3bdeyocs7hpsvsekaka",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "human_escalation",
+      "token_budget": 1522
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 12672,
+      "fixture_id": "aseh-h67",
+      "identity": "baguqeerayeujvy2gk4xqe5vnxf53l6gilasmliaco4vubjexggl4rmukhiua",
+      "live": false,
+      "outcome": "succeeded",
+      "task_class": "retry_rescue",
+      "token_budget": 1539
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 12800,
+      "fixture_id": "aseh-h68",
+      "identity": "baguqeeraaad2z5gywfekoreiq5mcdrqrflq2isjpoxni5x5tiewghyh7ooeq",
+      "live": false,
+      "outcome": "failed",
+      "task_class": "retry_rescue",
+      "token_budget": 48000
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 12928,
+      "fixture_id": "aseh-h69",
+      "identity": "baguqeerabrzwqzoyp5utdswuiwdqb7o5u2bb4giciv4hwrov34dsqmatltka",
+      "live": false,
+      "outcome": "retried",
+      "task_class": "retry_rescue",
+      "token_budget": 1573
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 13056,
+      "fixture_id": "aseh-h70",
+      "identity": "baguqeeravqoxe5hq776q4bdrw6fv2mt7glqfuzfufocasubqwzacyoeakdga",
+      "live": false,
+      "outcome": "rescued",
+      "task_class": "retry_rescue",
+      "token_budget": 1590
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 13184,
+      "fixture_id": "aseh-h71",
+      "identity": "baguqeeragi44zlcjkhftraetdtn5jskmyio7z4e3h7pwgonfnpouh4m6bhma",
+      "live": false,
+      "outcome": "conflicted",
+      "task_class": "retry_rescue",
+      "token_budget": 1607
+    },
+    {
+      "bounded": true,
+      "bytes_bound": 13312,
+      "fixture_id": "aseh-h72",
+      "identity": "baguqeerasn3izcvhthpqobarzoc3b7ipmexzesvoevbnsaebwpayhjrhsvwa",
+      "live": false,
+      "outcome": "human_escalated",
+      "task_class": "retry_rescue",
+      "token_budget": 1624
+    }
+  ],
+  "hermetic_sufficient_for_production_promotion": false,
+  "identity": "baguqeeranymtdwei4y7guw2ttbwhdajpebrskxk4qtest5hfto4trs5hpsuq",
+  "interface": "AsehPairedHarness@1",
+  "live": false,
+  "minimum": 60,
+  "objective_id": "ASEH-G020",
+  "objective_revision": "baguqeeray6iu7h6kiajjow44w3l6gexkiihui2423wrhtpou22thcm6sqhbq",
+  "population_kind": "hermetic_development",
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "recipe_identity": "baguqeera2iqng4k6ldr75hhg2h6mhwbiv3ahn3j4kgojuwlzzafdua2nv5ma",
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-hermetic-fixture-manifest@1",
+  "schema_version": 1,
+  "status": "sealed",
+  "task_classes": [
+    "schema_change",
+    "bug_repair",
+    "feature_addition",
+    "proof_obligation",
+    "test_selection",
+    "recovery_replay",
+    "state_migration",
+    "context_pack_build",
+    "routing_policy",
+    "merge_conflict",
+    "human_escalation",
+    "retry_rescue"
+  ],
+  "task_id": "ASEH-013",
+  "vectors_identity": "baguqeera2iqng4k6ldr75hhg2h6mhwbiv3ahn3j4kgojuwlzzafdua2nv5ma",
+  "vectors_path": "benchmarks/agent_supervisor/efficiency_state_hardening/hermetic_vectors.jsonl",
+  "vectors_sha256": "sha256:9b8801a336e3b7d240e755fdbc481ccdc7dcc26e45124e413774ee850773232a"
+}

@@ -101,6 +101,38 @@ _FALSE_POSITIVE_COMPLETION_REOPEN_FIELDS = frozenset(
 _FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY = (
     "false_positive_completion_reopen"
 )
+FALSE_COMPLETION_RECOVERY_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/false-completion-recovery-observation@1"
+)
+FALSE_COMPLETION_COMPLETED_ROW_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/completed-merge-request-observation@1"
+)
+_FALSE_COMPLETION_RECOVERY_RECEIPT_FIELDS = frozenset(
+    {
+        "schema",
+        "request_id",
+        "canonical_task_id",
+        "canonical_task_key",
+        "dedupe_key",
+        "candidate_commit",
+        "target_repository_id",
+        "target_branch",
+        "observed_target_commit",
+        "candidate_integrated",
+        "completed_claim_generation",
+        "completed_finished_at",
+        "completed_row_digest",
+        "observation_method",
+        "observer_id",
+        "observed_at",
+        "reason",
+        "receipt_cid",
+    }
+)
+# Module-private capability held only by MergeTrain.  The queue cannot inspect
+# a process-wide file lease itself, so this seal prevents another controller
+# from treating the narrow terminal revival primitive as a public state API.
+_FALSE_COMPLETION_REVIVAL_CAPABILITY = object()
 MAX_MERGE_QUEUE_DEFERRAL_SECONDS = 3600.0
 MAX_MERGE_QUEUE_RECORDED_DEFERRALS = 32
 _MERGE_QUEUE_SCHEMA_SQL = """
@@ -880,6 +912,7 @@ class MergeRequest:
     claim_token: str = ""
     claim_generation: int = 0
     retry_not_before: float = 0.0
+    finished_at: float = 0.0
 
     @property
     def canonical_identity(self) -> str:
@@ -949,6 +982,7 @@ class MergeRequest:
             "claim_token": self.claim_token,
             "claim_generation": self.claim_generation,
             "retry_not_before": self.retry_not_before,
+            "finished_at": self.finished_at,
             "dedupe_key": self.dedupe_key,
         }
 
@@ -991,7 +1025,152 @@ class MergeRequest:
                 0.0,
                 _safe_float(data.get("retry_not_before"), 0.0),
             ),
+            finished_at=max(
+                0.0,
+                _safe_float(data.get("finished_at"), 0.0),
+            ),
         )
+
+
+def _sha256_content_id(payload: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        dict(payload),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def completed_request_digest(request: MergeRequest) -> str:
+    """Return the exact content identity of a supplied completed queue row."""
+
+    if not isinstance(request, MergeRequest) or request.status != "completed":
+        raise MergeQueueFenceError(
+            "completed-row digest requires a completed MergeRequest"
+        )
+    if request.finished_at <= 0 or not math.isfinite(request.finished_at):
+        raise MergeQueueFenceError(
+            "completed-row digest requires an exact finished_at observation"
+        )
+    return _sha256_content_id(
+        {
+            "schema": FALSE_COMPLETION_COMPLETED_ROW_SCHEMA,
+            "request_id": request.request_id,
+            "branch_name": request.branch_name,
+            "task_id": request.task_id,
+            "priority": request.priority,
+            "lane_id": request.lane_id,
+            "enqueued_at": request.enqueued_at,
+            "attempt": request.attempt,
+            "commit_sha": request.commit_sha,
+            "canonical_task_id": request.canonical_task_id,
+            "canonical_task_key": request.canonical_task_key,
+            "dedupe_key": request.dedupe_key,
+            "target_repository_id": request.target_repository_id,
+            "target_branch": request.target_branch,
+            "status": request.status,
+            "claimed_at": request.claimed_at,
+            "consumer_id": request.consumer_id,
+            "claim_generation": request.claim_generation,
+            "claim_token": request.claim_token,
+            "retry_not_before": request.retry_not_before,
+            "finished_at": request.finished_at,
+            "failure_count": request.failure_count,
+            "failure_reason": request.failure_reason,
+            "metadata": dict(request.metadata),
+        }
+    )
+
+
+def false_completion_recovery_receipt_cid(
+    receipt: Mapping[str, Any],
+) -> str:
+    """Compute the content id for an unsigned typed recovery observation."""
+
+    if not isinstance(receipt, Mapping):
+        raise TypeError("false-completion recovery receipt must be a mapping")
+    unsigned = dict(receipt)
+    unsigned.pop("receipt_cid", None)
+    return _sha256_content_id(unsigned)
+
+
+def validate_false_completion_recovery_receipt(
+    receipt: Mapping[str, Any],
+) -> str:
+    """Validate and return a typed false-completion observation's content id."""
+
+    if not isinstance(receipt, Mapping):
+        raise TypeError("false-completion recovery receipt must be a mapping")
+    payload = dict(receipt)
+    if frozenset(payload) != _FALSE_COMPLETION_RECOVERY_RECEIPT_FIELDS:
+        raise MergeQueueFenceError(
+            "false-completion recovery receipt fields are not exact"
+        )
+    if payload.get("schema") != FALSE_COMPLETION_RECOVERY_RECEIPT_SCHEMA:
+        raise MergeQueueFenceError(
+            "false-completion recovery receipt schema is invalid"
+        )
+    required_strings = (
+        "request_id",
+        "dedupe_key",
+        "candidate_commit",
+        "target_repository_id",
+        "target_branch",
+        "observed_target_commit",
+        "completed_row_digest",
+        "observer_id",
+        "reason",
+    )
+    if any(
+        not isinstance(payload.get(field), str)
+        or not str(payload[field]).strip()
+        for field in required_strings
+    ):
+        raise MergeQueueFenceError(
+            "false-completion recovery receipt identity is incomplete"
+        )
+    canonical_task_id = payload.get("canonical_task_id")
+    canonical_task_key = payload.get("canonical_task_key")
+    if (
+        not isinstance(canonical_task_id, str)
+        or not isinstance(canonical_task_key, str)
+        or not (canonical_task_id.strip() or canonical_task_key.strip())
+    ):
+        raise MergeQueueFenceError(
+            "false-completion recovery canonical identity is incomplete"
+        )
+    if payload.get("observation_method") != "git_merge_base_is_ancestor":
+        raise MergeQueueFenceError(
+            "false-completion recovery observation method is invalid"
+        )
+    if payload.get("candidate_integrated") is not False:
+        raise MergeQueueFenceError(
+            "false-completion recovery receipt must observe non-integration"
+        )
+    generation = payload.get("completed_claim_generation")
+    if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
+        raise MergeQueueFenceError(
+            "false-completion recovery claim generation is invalid"
+        )
+    for field in ("completed_finished_at", "observed_at"):
+        value = payload.get(field)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) <= 0
+        ):
+            raise MergeQueueFenceError(
+                f"false-completion recovery {field} is invalid"
+            )
+    receipt_cid = str(payload.get("receipt_cid") or "")
+    expected = false_completion_recovery_receipt_cid(payload)
+    if receipt_cid != expected:
+        raise MergeQueueFenceError(
+            "false-completion recovery receipt content id is invalid"
+        )
+    return receipt_cid
 
 
 def _safe_float(value: Any, default: float) -> float:
@@ -2718,6 +2897,277 @@ class MergeQueue:
         receipt_path = self._write_stage_receipt(revived)
         return replace(revived, file_path=receipt_path)
 
+    def revive_false_completed(
+        self,
+        request: MergeRequest,
+        *,
+        recovery_receipt: Mapping[str, Any],
+        _consumer_capability: object | None = None,
+    ) -> MergeRequest:
+        """Atomically return one exact false completion to ``pending``.
+
+        This is a narrow recovery primitive, not a general terminal-state
+        editor.  The caller must hold the canonical merge-train consumer lease
+        for this queue and must first prove that the completed candidate is not
+        integrated into the exact target.  A typed, target-bound durable row is
+        required; a bare request id never grants revival authority.
+
+        The sole admitted mutation is ``completed -> pending``.  Repeating the
+        same exact request after that transition is idempotent, while an
+        ordinary pending row or any other state is rejected.  Original
+        completion metadata remains intact and an append-only, content-
+        identified observation receipt preserves the exact terminal row which
+        was invalidated.  The caller must supply that row's claim generation
+        and finished-at observation; the mutation CAS fences both values.
+        """
+
+        if _consumer_capability is not _FALSE_COMPLETION_REVIVAL_CAPABILITY:
+            raise MergeQueueFenceError(
+                "false-completion revival requires merge-train consumer authority"
+            )
+        if not isinstance(request, MergeRequest):
+            raise TypeError("false-completion revival requires a MergeRequest")
+        receipt_payload = dict(recovery_receipt)
+        receipt_cid = validate_false_completion_recovery_receipt(
+            receipt_payload
+        )
+        if (
+            not self.target_repository_id
+            or not self.target_branch
+            or not request.has_target_binding
+            or request.status != "completed"
+        ):
+            raise MergeQueueFenceError(
+                "false-completion revival requires an exact target-bound "
+                "completed request"
+            )
+        receipt_bindings = (
+            str(receipt_payload["request_id"]),
+            str(receipt_payload["canonical_task_id"]),
+            str(receipt_payload["canonical_task_key"]),
+            str(receipt_payload["dedupe_key"]),
+            str(receipt_payload["candidate_commit"]),
+            str(receipt_payload["target_repository_id"]),
+            str(receipt_payload["target_branch"]),
+        )
+        request_bindings = (
+            request.request_id,
+            request.canonical_task_id,
+            request.canonical_task_key,
+            request.dedupe_key,
+            request.commit_sha,
+            request.target_repository_id,
+            request.target_branch,
+        )
+        if receipt_bindings != request_bindings:
+            raise MergeQueueFenceError(
+                "false-completion recovery receipt identity differs"
+            )
+        if (
+            int(receipt_payload["completed_claim_generation"])
+            != request.claim_generation
+            or float(receipt_payload["completed_finished_at"])
+            != request.finished_at
+            or str(receipt_payload["completed_row_digest"])
+            != completed_request_digest(request)
+        ):
+            raise MergeQueueFenceError(
+                "false-completion recovery receipt does not bind the supplied "
+                "completed row"
+            )
+
+        now = self._clock()
+        revived_row: DuckDBRow | None = None
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT * FROM merge_requests WHERE request_id=?",
+                    (request.request_id,),
+                ).fetchone()
+                if row is None:
+                    connection.rollback()
+                    raise MergeQueueFenceError(
+                        "false-completion revival request is absent"
+                    )
+                self._require_row_target(
+                    row,
+                    operation="revive_false_completed",
+                    request_id=request.request_id,
+                )
+                durable = self._request_from_row(row)
+                supplied_identity = (
+                    request.request_id,
+                    request.branch_name,
+                    request.task_id,
+                    request.priority,
+                    request.lane_id,
+                    request.commit_sha,
+                    request.canonical_task_id,
+                    request.canonical_task_key,
+                    request.dedupe_key,
+                    request.target_repository_id,
+                    request.target_branch,
+                )
+                durable_identity = (
+                    durable.request_id,
+                    durable.branch_name,
+                    durable.task_id,
+                    durable.priority,
+                    durable.lane_id,
+                    durable.commit_sha,
+                    durable.canonical_task_id,
+                    durable.canonical_task_key,
+                    durable.dedupe_key,
+                    durable.target_repository_id,
+                    durable.target_branch,
+                )
+                if (
+                    not durable.has_target_binding
+                    or supplied_identity != durable_identity
+                ):
+                    connection.rollback()
+                    raise MergeQueueFenceError(
+                        "false-completion revival request identity differs"
+                    )
+
+                request_metadata = json.loads(row["metadata_json"] or "{}")
+                raw_revivals = request_metadata.get(
+                    "false_completion_revivals"
+                )
+                if raw_revivals is None:
+                    revivals: list[Any] = []
+                elif isinstance(raw_revivals, list):
+                    revivals = raw_revivals
+                else:
+                    connection.rollback()
+                    raise MergeQueueFenceError(
+                        "false-completion revival audit metadata is malformed"
+                    )
+                recovery_identity = {
+                    "request_id": durable.request_id,
+                    "dedupe_key": durable.dedupe_key,
+                    "candidate_commit": durable.commit_sha,
+                    "canonical_task_id": durable.canonical_task_id,
+                    "target_repository_id": durable.target_repository_id,
+                    "target_branch": durable.target_branch,
+                }
+                if str(row["status"]) == "pending":
+                    latest = revivals[-1] if revivals else None
+                    if not (
+                        isinstance(latest, Mapping)
+                        and latest.get("recovery_identity")
+                        == recovery_identity
+                        and latest.get("recovery_receipt_id")
+                        == receipt_cid
+                        and latest.get("recovery_receipt")
+                        == receipt_payload
+                        and latest.get("previous_claim_generation")
+                        == request.claim_generation
+                        and latest.get("previous_finished_at")
+                        == request.finished_at
+                        and latest.get("previous_completed_row_digest")
+                        == receipt_payload["completed_row_digest"]
+                    ):
+                        connection.rollback()
+                        raise MergeQueueFenceError(
+                            "pending request is not this false-completion revival"
+                        )
+                    connection.commit()
+                    revived_row = row
+                elif str(row["status"]) != "completed":
+                    connection.rollback()
+                    raise MergeQueueFenceError(
+                        "false-completion revival requires completed state"
+                    )
+                else:
+                    durable_finished_at = float(row["finished_at"] or 0)
+                    durable_claim_generation = int(
+                        row["claim_generation"] or 0
+                    )
+                    if (
+                        durable_claim_generation != request.claim_generation
+                        or durable_finished_at != request.finished_at
+                        or completed_request_digest(durable)
+                        != receipt_payload["completed_row_digest"]
+                    ):
+                        connection.rollback()
+                        raise MergeQueueFenceError(
+                            "false-completion completed-row fence is stale"
+                        )
+                    revivals.append(
+                        {
+                            "at": now,
+                            "reason": str(receipt_payload["reason"]),
+                            "recovery_identity": recovery_identity,
+                            "recovery_receipt_id": receipt_cid,
+                            "recovery_receipt": receipt_payload,
+                            "previous_completed_row_digest": receipt_payload[
+                                "completed_row_digest"
+                            ],
+                            "previous_finished_at": float(
+                                row["finished_at"] or 0
+                            ),
+                            "previous_claim_generation": int(
+                                row["claim_generation"] or 0
+                            ),
+                            "previous_failure_count": int(
+                                row["failure_count"] or 0
+                            ),
+                            "previous_failure_reason": str(
+                                row["failure_reason"] or ""
+                            ),
+                            "previous_completion": request_metadata.get(
+                                "completion"
+                            ),
+                        }
+                    )
+                    request_metadata["false_completion_revivals"] = revivals
+                    updated = connection.execute(
+                        """UPDATE merge_requests
+                           SET status='pending', enqueued_at=?, metadata_json=?,
+                               claimed_at=0, consumer_id='', claim_token='',
+                               claim_generation=claim_generation + 1,
+                               retry_not_before=0, finished_at=0, updated_at=?
+                           WHERE request_id=? AND status='completed'
+                             AND claim_generation=? AND finished_at=?""",
+                        (
+                            now,
+                            json.dumps(
+                                request_metadata,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                            now,
+                            request.request_id,
+                            request.claim_generation,
+                            request.finished_at,
+                        ),
+                    )
+                    if updated.rowcount != 1:
+                        connection.rollback()
+                        raise MergeQueueFenceError(
+                            "false-completion revival CAS conflicted"
+                        )
+                    revived_row = connection.execute(
+                        "SELECT * FROM merge_requests WHERE request_id=?",
+                        (request.request_id,),
+                    ).fetchone()
+                    connection.commit()
+            except Exception:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                raise
+        if revived_row is None:
+            raise MergeQueueFenceError(
+                "false-completion revival produced no durable row"
+            )
+        revived = self._request_from_row(revived_row)
+        receipt_path = self._write_stage_receipt(revived)
+        return replace(revived, file_path=receipt_path)
+
     def quarantined_requests(
         self,
         *,
@@ -2773,6 +3223,7 @@ class MergeQueue:
         reopen_schema: str = "",
         reopen_reason: str = "",
         before_request_id: str = "",
+        ordered_by_request_id: bool = False,
     ) -> tuple[MergeRequest, ...]:
         """Return a bounded target-bound completion snapshot.
 
@@ -2842,6 +3293,9 @@ class MergeQueue:
             completion_parameters += (false_reopen_reason,)
         cursor_sql = " AND request_id < ?" if cursor else ""
         cursor_parameters = (cursor,) if cursor else ()
+        ordered_for_recovery = bool(
+            schema or reason or cursor or ordered_by_request_id
+        )
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM merge_requests "
@@ -3345,6 +3799,7 @@ class MergeQueue:
             "claim_token": row["claim_token"],
             "claim_generation": row["claim_generation"],
             "retry_not_before": row["retry_not_before"],
+            "finished_at": row["finished_at"],
         }
         request = MergeRequest.from_dict(payload)
         return replace(request, file_path=self._stage_path(request))

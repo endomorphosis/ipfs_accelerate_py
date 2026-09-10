@@ -228,6 +228,42 @@ def _stdout_is_exact_grok_quota_failure(value: bytearray) -> bool:
     return verified_quota
 
 
+def _publish_native_cli_logs(
+    command: Sequence[str],
+    *,
+    return_code: int | None,
+    stdout: bytearray | bytes = b"",
+    stderr: bytearray | bytes = b"",
+) -> None:
+    """Copy grok/codex/claude/gemini CLI output onto the supervisor log volume."""
+
+    try:
+        from ..runtime.provider_isolation import (
+            DEFAULT_PROVIDER_ISOLATION_BACKEND,
+            PROVIDER_ISOLATION_BACKEND_ENV,
+            publish_provider_cli_logs,
+        )
+
+        executable = Path(str(command[0] or "")).name.casefold() if command else "grok"
+        captured = (
+            bytes(stderr).decode("utf-8", errors="replace")
+            + "\n"
+            + bytes(stdout).decode("utf-8", errors="replace")
+        )
+        backend = str(
+            os.environ.get(PROVIDER_ISOLATION_BACKEND_ENV, "") or ""
+        ).strip() or DEFAULT_PROVIDER_ISOLATION_BACKEND
+        publish_provider_cli_logs(
+            backend=backend,
+            provider=executable,
+            identity={"command": executable},
+            returncode=return_code,
+            captured_output=captured,
+        )
+    except Exception:
+        return
+
+
 def _native_cli_failure(
     command: Sequence[str],
     *,
@@ -431,6 +467,12 @@ def _run_native_cli_process(
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 terminate_family(process)
+                _publish_native_cli_logs(
+                    command,
+                    return_code=124,
+                    stdout=captures["stdout"],
+                    stderr=captures["stderr"],
+                )
                 raise RuntimeError("legacy native provider timed out")
             events = selector.select(timeout=min(remaining, 0.1))
             for key, _mask in events:
@@ -445,6 +487,12 @@ def _run_native_cli_process(
                 total_captured += len(chunk)
                 if total_captured > _MAX_NATIVE_CLI_CAPTURE_BYTES:
                     terminate_family(process)
+                    _publish_native_cli_logs(
+                        command,
+                        return_code=1,
+                        stdout=captures["stdout"],
+                        stderr=captures["stderr"],
+                    )
                     raise RuntimeError(
                         "legacy native provider output exceeds capture bound"
                     )
@@ -453,9 +501,21 @@ def _run_native_cli_process(
             return_code = process.wait(timeout=max(0.01, deadline - time.monotonic()))
         except subprocess.TimeoutExpired as exc:
             terminate_family(process)
+            _publish_native_cli_logs(
+                command,
+                return_code=124,
+                stdout=captures["stdout"],
+                stderr=captures["stderr"],
+            )
             raise RuntimeError("legacy native provider timed out") from exc
         if return_code != 0:
             terminate_family(process)
+            _publish_native_cli_logs(
+                command,
+                return_code=return_code,
+                stdout=captures["stdout"],
+                stderr=captures["stderr"],
+            )
             raise _native_cli_failure(
                 command,
                 return_code=return_code,
@@ -476,7 +536,19 @@ def _run_native_cli_process(
             stdout = bytes(captures["stdout"]).decode("utf-8", errors="strict")
             stderr = bytes(captures["stderr"]).decode("utf-8", errors="strict")
         except UnicodeDecodeError as exc:
+            _publish_native_cli_logs(
+                command,
+                return_code=return_code,
+                stdout=captures["stdout"],
+                stderr=captures["stderr"],
+            )
             raise RuntimeError("legacy native provider output is not UTF-8") from exc
+        _publish_native_cli_logs(
+            command,
+            return_code=return_code,
+            stdout=captures["stdout"],
+            stderr=captures["stderr"],
+        )
         return stdout, stderr
     except BaseException:
         if process is not None:

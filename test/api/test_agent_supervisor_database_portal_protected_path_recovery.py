@@ -366,6 +366,55 @@ def test_real_portal_producer_binds_local_identity_in_recovery_artifacts(
     for artifact in (active, incident, mutation):
         assert artifact["canonical_task_key"] == local_identity.canonical_task_key
         assert artifact["canonical_task_cid"] == local_identity.canonical_task_cid
+def test_content_preserving_nlink_thrash_auto_clears(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, _record, paths, protected, _created = _recovery_fixture(tmp_path)
+    _bind_real_portal_factory(bridge)
+    extra = protected.with_name(protected.name + ".worktree-link")
+    os.link(protected, extra)
+    active_path = paths.root / "implementation-protected-path-active.json"
+    incident_path = paths.root / "implementation-protected-path-incident.json"
+    active = json.loads(active_path.read_text(encoding="utf-8"))
+    identity = active["snapshot"]["shared_checkout"]["paths"]["docs/protected.md"]
+    after = dict(identity)
+    after["links"] = int(protected.stat().st_nlink)
+    incident = json.loads(incident_path.read_text(encoding="utf-8"))
+    incident["mutations"] = [
+        {
+            "scope": "shared_checkout",
+            "path": "docs/protected.md",
+            "change": "identity_changed",
+            "before": identity,
+            "after": after,
+        }
+    ]
+    incident_path.write_text(
+        json.dumps(incident, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=paths.task_projection,
+        state_path=paths.state,
+        strategy_path=paths.strategy,
+        events_path=paths.events,
+        implementation_log_dir=paths.implementation_logs,
+        repo_root=bridge.repository_root,
+        worktree_root=bridge.worktree_root,
+        implement=True,
+        implementation_command="must-not-run",
+        implementation_protected_paths=("docs/protected.md",),
+    )
+    plan = daemon._plan_auto_clear_ephemeral_protected_path_deletions(incident)
+    assert plan is not None
+    assert plan["class_codes"] == ["content_preserving_identity_thrash"]
+    guard = daemon._build_protected_path_auto_clear_guard(
+        incident=incident,
+        active=json.loads(active_path.read_text(encoding="utf-8")),
+        auto_plan=plan,
+    )
+    assert guard is not None
+    assert guard["class_codes"] == ["content_preserving_identity_thrash"]
 
 
 def test_recovers_only_exact_disposed_workspace_and_replays(

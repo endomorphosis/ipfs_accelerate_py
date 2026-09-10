@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -1057,6 +1058,110 @@ def test_worktree_pool_reclaims_dead_leased_and_initializing_entries(
         "dead_lease_owner",
     )
     assert pool.metrics["reclaimed_dead_leases"] == 2
+    assert fresh.release(reusable=False)["released"] is True
+
+
+def test_worktree_pool_discard_removes_locked_missing_registration_and_sidecar(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    pool = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+    lease = pool.acquire(
+        cache_key="locked-missing",
+        base_ref="main",
+        branch_name="implementation/locked-missing",
+    )
+    state_path = worktree_root / ".pool-state" / f"{lease.entry_id}.json"
+    lock_path = worktree_root / ".pool-state" / f"{lease.entry_id}.lock"
+
+    _git(
+        repo,
+        "worktree",
+        "lock",
+        "--reason",
+        "initializing",
+        str(lease.path),
+    )
+    shutil.rmtree(lease.path)
+    registered_before = _git(repo, "worktree", "list", "--porcelain")
+    assert f"worktree {lease.path}" in registered_before.splitlines()
+    assert "locked initializing" in registered_before.splitlines()
+
+    release = lease.release(reusable=False)
+
+    assert release["released"] is True
+    assert release["discard"]["removed"] is True
+    assert release["discard"]["registered"] is False
+    assert release["discard"]["state_preserved"] is False
+    assert not state_path.exists()
+    assert not lock_path.exists()
+    registered_after = _git(repo, "worktree", "list", "--porcelain")
+    assert f"worktree {lease.path}" not in registered_after.splitlines()
+
+
+def test_worktree_pool_discard_preserves_state_until_registry_is_verified(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    pool = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+    lease = pool.acquire(
+        cache_key="registry-verification",
+        base_ref="main",
+        branch_name="implementation/registry-verification",
+    )
+    state_path = worktree_root / ".pool-state" / f"{lease.entry_id}.json"
+    original_run = pool._run
+
+    def fail_registry(command, *, cwd):
+        if tuple(command) == ("git", "worktree", "list", "--porcelain"):
+            return CommandResult(
+                command=tuple(command),
+                returncode=128,
+                stdout="",
+                stderr="injected registry verification failure",
+            )
+        return original_run(command, cwd=cwd)
+
+    monkeypatch.setattr(pool, "_run", fail_registry)
+    deferred = lease.release(reusable=False)
+
+    assert deferred["released"] is False
+    assert deferred["deferred"] is True
+    assert deferred["retryable"] is True
+    assert deferred["discard"]["reason"] == "worktree_registry_unverifiable"
+    assert deferred["discard"]["state_preserved"] is True
+    assert state_path.exists()
+    assert pool.metrics["discarded_entries"] == 0
+
+    dead_state = json.loads(state_path.read_text(encoding="utf-8"))
+    dead_state["lease_pid"] = 2_147_483_642
+    state_path.write_text(json.dumps(dead_state), encoding="utf-8")
+    fresh = pool.acquire(
+        cache_key="registry-verification-fresh",
+        base_ref="main",
+        branch_name="implementation/registry-verification-fresh",
+    )
+    assert "dead_lease_owner" not in fresh.invalidation_reasons
+    assert pool.metrics["reclaimed_dead_leases"] == 0
+    assert state_path.exists()
+
+    monkeypatch.setattr(pool, "_run", original_run)
+    settled = lease.release(reusable=False)
+    assert settled["released"] is True
+    assert settled["discard"]["removed"] is True
+    assert not state_path.exists()
+    assert pool.metrics["discarded_entries"] == 1
     assert fresh.release(reusable=False)["released"] is True
 
 
