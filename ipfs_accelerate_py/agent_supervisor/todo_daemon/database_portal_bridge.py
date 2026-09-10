@@ -5285,37 +5285,6 @@ class DatabasePortalExecutionBridge:
         return receipt
 
     @staticmethod
-    def _extra_gate_incomplete_projection_needs_provider(
-        binding: Mapping[str, Any],
-        paths: DatabasePortalAttemptPaths,
-    ) -> bool:
-        """True when extra-gate should retry provider instead of waiting.
-
-        After max Portal passes the leftover projection is incomplete and
-        grok is dead, execute used to raise acceptance Deferred and the
-        outer daemon kept the claim without dispatching. Extra-gate aliases
-        still cannot bypass ``safe_to_restart=False``.
-        """
-
-        alias = str(binding.get("task_alias") or "")
-        if alias not in {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}:
-            return False
-        try:
-            payload = json.loads(paths.state.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
-            return True
-        if not isinstance(payload, Mapping):
-            return True
-        runner = payload.get("active_provider_runner")
-        if not isinstance(runner, Mapping):
-            return True
-        try:
-            pid = int(runner.get("pid") or 0)
-        except (TypeError, ValueError):
-            pid = 0
-        return not (pid > 1 and _shared_pid_alive(pid))
-
-    @staticmethod
     def _prepare_private_event_log(paths: DatabasePortalAttemptPaths) -> None:
         """Create the attempt-local active journal with owner-only write mode."""
 
@@ -5525,21 +5494,9 @@ class DatabasePortalExecutionBridge:
                     ):
                         raise DatabasePortalBridgeDeferred(failure)
                     raise DatabasePortalBridgeError(failure)
-            needs_provider = getattr(
-                self,
-                "_extra_gate_incomplete_projection_needs_provider",
-                None,
-            )
-            if callable(needs_provider) and needs_provider(binding, paths):
-                # Leftover incomplete projection made execute wait for
-                # acceptance instead of launching grok (005/034 in_progress
-                # with no worker). A partial class load raised
-                # AttributeError and burned 005. Official unstick is
-                # provider-route deferral → retry dispatch, never CAS.
-                raise DatabasePortalProviderRouteDeferred(
-                    "extra_gate_incomplete_projection_needs_provider",
-                    backoff_seconds=20,
-                )
+            # The final bounded pass may have completed the projection. Only
+            # the canonical receipt validator can accept it or defer recovery;
+            # absent runner metadata is not pre-dispatch retry authority.
             return self._acceptance_receipt(
                 attempt=attempt,
                 paths=paths,

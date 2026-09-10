@@ -16711,3 +16711,41 @@ def test_run_once_prioritizes_tampered_route_cooldown_over_retry_exhaustion(
         assert callback_calls == []
     finally:
         successor.close()
+
+
+@pytest.mark.parametrize("alias", ["PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034", "LGSWF-004"])
+def test_last_bounded_portal_pass_uses_canonical_acceptance(tmp_path, alias):
+    record = _record()
+    record.task_alias = alias
+    pins = (*database_portal_bridge_module.DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            database_portal_bridge_module.DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN)
+    record.task_cid = next((p["task_cid"] for p in pins if p["task_alias"] == alias), record.task_cid)
+    attempt = replace(_attempt(), task_alias=alias, task_cid=record.task_cid)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(get_task=lambda cid: record if cid == record.task_cid else None),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=_CompletingPortal,
+        max_passes=1,
+    )
+    receipt = bridge.run_provider(attempt)
+    assert receipt["accepted"] is True
+    assert bridge.validate_effect(attempt, bridge.apply_effect(attempt, receipt))["outcome"] == "passed"
+
+
+@pytest.mark.parametrize("alias", ["PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034", "LGSWF-004"])
+def test_incomplete_portal_is_not_predispatch_authority(tmp_path, alias):
+    record = _record()
+    record.task_alias = alias
+    pins = (*database_portal_bridge_module.DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            database_portal_bridge_module.DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN)
+    record.task_cid = next((p["task_cid"] for p in pins if p["task_alias"] == alias), record.task_cid)
+    attempt = replace(_attempt(), task_alias=alias, task_cid=record.task_cid)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(get_task=lambda cid: record if cid == record.task_cid else None),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda *_: SimpleNamespace(run_once=lambda: {}, close=lambda: None),
+        max_passes=1,
+    )
+    with pytest.raises(DatabasePortalBridgeDeferred, match="Portal task projection is not complete") as caught:
+        bridge.run_provider(attempt)
+    assert type(caught.value) is DatabasePortalBridgeDeferred
