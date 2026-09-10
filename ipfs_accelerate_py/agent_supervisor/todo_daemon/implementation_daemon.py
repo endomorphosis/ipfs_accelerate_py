@@ -73417,36 +73417,31 @@ class DatabaseImplementationDaemon:
 
             if isinstance(exc, DatabaseCoordinationNotReadyError):
                 evidence = dict(getattr(exc, "evidence", {}) or {})
-                if str(evidence.get("reason") or "") == "completion_missing":
-                    try:
-                        self.commit_phase(
-                            attempt
-                            if isinstance(attempt, DatabaseTaskAttempt)
-                            else self.get_attempt(
-                                str(
-                                    getattr(attempt, "attempt_id", "")
-                                    or attempt
-                                )
-                            )
-                            or attempt,
-                            ATTEMPT_PHASE_FAILED,
-                            body={
-                                "reason": "completion_missing",
-                                "claim_id": str(evidence.get("claim_id") or ""),
-                            },
-                        )
-                    except Exception:
-                        pass
+                current = (
+                    attempt if isinstance(attempt, DatabaseTaskAttempt)
+                    else self.get_attempt(str(attempt))
+                )
+                if (str(evidence.get("reason") or "") == "completion_missing"
+                        and current is not None
+                        and all(type(evidence.get(key)) is str and evidence[key] == value
+                                for key, value in {
+                                    "task_cid": current.task_cid,
+                                    "claim_id": current.claim_id,
+                                    "attempt_id": current.attempt_id,
+                                }.items())):
+                    # Missing logical completion is unresolved cross-store
+                    # authority, not proof of provider failure or no effects.
+                    # Keep the exact execution/callback/claim state intact;
+                    # only the native reconciliation protocol may settle it.
                     return {
                         "resumed": False,
+                        "deferred": True,
                         "reason": "completion_missing",
-                        "attempt_id": str(
-                            getattr(attempt, "attempt_id", "") or ""
-                        ),
-                        "task_alias": str(
-                            getattr(attempt, "task_alias", "") or ""
-                        ),
-                        "status": "failed",
+                        "attempt_id": current.attempt_id,
+                        "task_alias": current.task_alias,
+                        "status": "completion_reconciliation_deferred",
+                        "task_state_changed": False,
+                        "provider_replay_authorized": False,
                     }
             if not isinstance(exc, DatabasePortalBridgeError):
                 raise
@@ -73568,9 +73563,15 @@ class DatabaseImplementationDaemon:
         running = self.list_running_attempts()
         if running:
             result = self._resume_attempt_without_process_crash(running[0])
+            missing_completion_deferred = (
+                result.get("reason") == "completion_missing"
+                and result.get("deferred") is True
+                and result.get("task_state_changed") is False
+            )
+            writes = reconciliation_write_count + (0 if missing_completion_deferred else 1)
             return {
-                "unchanged": False,
-                "write_count": 1 + reconciliation_write_count,
+                "unchanged": writes == 0,
+                "write_count": writes,
                 "active_task_id": running[0].task_alias or running[0].task_cid,
                 "implementation_result": result,
                 "authority_mode": self.authority_mode,

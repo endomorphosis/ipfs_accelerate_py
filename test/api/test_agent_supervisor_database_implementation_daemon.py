@@ -4050,3 +4050,55 @@ def test_missing_logical_completion_is_skipped_instead_of_fail_closed(
         assert daemon.reconcile_prepared_task_completions() == []
     finally:
         daemon.close()
+
+
+@pytest.mark.parametrize("mismatch", [None, "task_cid", "claim_id", "attempt_id", "reason"])
+def test_missing_completion_defers_exact_attempt_without_fabricating_failure(
+    tmp_path: Path, monkeypatch, mismatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinationNotReadyError,
+    )
+    provider_calls = []
+    daemon = _open_daemon(tmp_path, provider_calls=provider_calls)
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(attempt, "context")
+        attempt, _, _ = daemon.run_provider(attempt)
+        assert len(provider_calls) == 1
+        evidence = {"task_cid": attempt.task_cid, "claim_id": attempt.claim_id,
+                    "attempt_id": attempt.attempt_id, "reason": "completion_missing"}
+        if mismatch is not None:
+            evidence[mismatch] = "foreign"
+        before_attempt = daemon.get_attempt(attempt.attempt_id).to_dict()
+        before_claim = daemon.coordinator.get_task_claim(attempt.claim_id).to_dict()
+        before_task = daemon.task_source.get(attempt.task_cid).to_dict()
+        before_phases = daemon.phase_history(attempt.attempt_id)
+        def unavailable(*args, **kwargs):
+            raise DatabaseCoordinationNotReadyError("missing logical completion", evidence=evidence)
+        monkeypatch.setattr(daemon, "resume_attempt", unavailable)
+        if mismatch is None:
+            for _ in range(2):
+                result = daemon._resume_attempt_without_process_crash(attempt)
+                assert result["status"] == "completion_reconciliation_deferred"
+                assert result["deferred"] is True
+                assert result["task_state_changed"] is False
+                assert result["provider_replay_authorized"] is False
+            for method in ("reconcile_prepared_task_completions", "reconcile_terminal_portal_failures",
+                           "reconcile_expired_running_attempts", "reconcile_recoverable_portal_failure_rearms"):
+                monkeypatch.setattr(daemon, method, lambda: [])
+            pass_result = daemon.run_once()
+            assert pass_result["write_count"] == 0
+            assert pass_result["unchanged"] is True
+        else:
+            with pytest.raises(DatabaseCoordinationNotReadyError):
+                daemon._resume_attempt_without_process_crash(attempt)
+        assert daemon.get_attempt(attempt.attempt_id).to_dict() == before_attempt
+        assert daemon.coordinator.get_task_claim(attempt.claim_id).to_dict() == before_claim
+        assert daemon.task_source.get(attempt.task_cid).to_dict() == before_task
+        assert daemon.phase_history(attempt.attempt_id) == before_phases
+        assert len(provider_calls) == 1
+    finally:
+        daemon.close()
