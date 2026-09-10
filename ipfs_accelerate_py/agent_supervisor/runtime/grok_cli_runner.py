@@ -10101,12 +10101,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                                 raise ValueError(
                                     "protected terminal recovery outcome is invalid"
                                 )
-                            try:
-                                _release_recorded_codex_effect_cleanup(
-                                    existing.effect_launch_receipt
-                                )
-                            except FileNotFoundError:
-                                pass
+                            _release_recorded_codex_effect_cleanup(
+                                existing.effect_launch_receipt,
+                                terminal_observer=recovery_store,
+                                terminal_reservation=existing,
+                            )
                             print(
                                 render_agent_implementation_route_outcome(
                                     terminal_outcome
@@ -10852,6 +10851,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 returncode=returncode,
                 outcome=terminal_outcome,
                 completion_capability=completion_capability,
+                terminal_cleanup_evidence=(
+                    _recorded_codex_terminal_cleanup_evidence(
+                        attempt_reservation.effect_launch_receipt
+                    )
+                ),
             )
             completed_terminal_outcome = terminal_outcome
 
@@ -10910,6 +10914,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             if not adopted.adoption_authorized:
                 if adopted.reservation.terminal:
                     terminal = adopted.reservation
+                    _release_recorded_codex_effect_cleanup(
+                        terminal.effect_launch_receipt,
+                        terminal_observer=attempt_store,
+                        terminal_reservation=terminal,
+                    )
                     if terminal.terminal_outcome:
                         print(
                             render_route_outcome_record(
@@ -11045,9 +11054,16 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 returncode=fallback_returncode,
                 outcome=terminal_outcome,
                 completion_capability=completion_capability,
+                terminal_cleanup_evidence=(
+                    _recorded_codex_terminal_cleanup_evidence(
+                        attempt_reservation.effect_launch_receipt
+                    )
+                ),
             )
             _release_recorded_codex_effect_cleanup(
-                attempt_reservation.effect_launch_receipt
+                attempt_reservation.effect_launch_receipt,
+                terminal_observer=attempt_store,
+                terminal_reservation=attempt_reservation,
             )
             print(
                 render_route_outcome_record(terminal_outcome),
@@ -11119,6 +11135,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 return preflight_returncode
             attempt_reservation = existing_reservation
             if attempt_reservation is not None and attempt_reservation.terminal:
+                _release_recorded_codex_effect_cleanup(
+                    attempt_reservation.effect_launch_receipt,
+                    terminal_observer=attempt_store,
+                    terminal_reservation=attempt_reservation,
+                )
                 if attempt_reservation.terminal_outcome:
                     print(
                         render_route_outcome_record(
