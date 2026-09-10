@@ -6990,6 +6990,211 @@ def test_terminal_receipt_validation_failure_preserves_dispatch_fence(
         daemon.close()
 
 
+def test_extra_gate_disposition_mismatch_is_terminal_repair_retry_authority() -> None:
+    """PCTDD-034 leftover must not fail-close extra-gate home-lane recon.
+
+    Lane-0 idled on database_portal_reconciliation_blocked because extra-gate
+    034 raised terminal phase changed its actual database disposition.
+    Official unstick is rearm, never CAS. Extra-gate aliases still cannot
+    bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    extra_gate = SimpleNamespace(
+        task_alias="PCTDD-034",
+        task_cid="baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
+    )
+    ordinary = SimpleNamespace(
+        task_alias="PCTDD-001",
+        task_cid="task:cid:001",
+    )
+    mismatch = DatabaseImplementationConflictError(
+        "terminal phase changed its actual database disposition"
+    )
+    floats = DatabaseImplementationConflictError(
+        "canonical proof contracts cannot contain floats"
+    )
+    assert (
+        Daemon._extra_gate_terminal_repair_is_disposition_mismatch_retry(
+            extra_gate, mismatch
+        )
+        is True
+    )
+    assert (
+        Daemon._extra_gate_terminal_repair_is_disposition_mismatch_retry(
+            extra_gate, floats
+        )
+        is False
+    )
+    assert (
+        Daemon._extra_gate_terminal_repair_is_disposition_mismatch_retry(
+            ordinary, mismatch
+        )
+        is False
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_later_epoch_extra_gate_skips_terminal_landed_manual_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Later-epoch extra-gate must not stay behind manual_authority.
+
+    After grok-killed restarts, extra-gate 005/006/007/034 were blocked with
+    terminal_landed_candidate_manual_authority_required and daemons idled
+    no_ready_tasks. Official unstick is generic rearm, never CAS. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    pin = DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:later-epoch-extra-gate-rearm",
+        max_task_attempts=2,
+    )
+    task = SimpleNamespace(
+        task_cid=str(pin["task_cid"]),
+        task_alias="PCTDD-005",
+        status="blocked",
+        revision=int(pin["blocked_task_revision"]) + 14,
+        body={
+            "completion_receipt": {
+                "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                "operation": "database_unknown_outcome_blocked",
+                "reason": "callback_authority_incomplete_blocked",
+                "forced_block": True,
+                "authority_outcome": "unknown",
+                "retry_exhausted": True,
+                "unknown_outcome_rearm_count": 1,
+                "terminal_reconciliation": {"schema": "later-epoch"},
+            }
+        },
+    )
+    generic_calls: list[str] = []
+    try:
+        daemon._database_portal_bridge = object()
+        monkeypatch.setattr(
+            daemon.task_source,
+            "list_tasks",
+            lambda **_kwargs: SimpleNamespace(tasks=(task,)),
+        )
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(
+            daemon,
+            "_automatic_claim_forbidden_current",
+            lambda _task: True,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_reconcile_one_blocked_terminal_landed_task",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("later-epoch extra-gate must skip terminal-landed")
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_database_portal_no_provider_rearm_evidence",
+            lambda task, receipt: generic_calls.append(str(task.task_alias)),
+        )
+        def _cas(task_cid: str, **kwargs: object) -> None:
+            assert str(kwargs.get("new_status") or "") != "completed"
+
+        monkeypatch.setattr(daemon, "_cas_task_status_database", _cas)
+
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert not any(
+            item.get("reason")
+            == "terminal_landed_candidate_manual_authority_required"
+            for item in outcomes
+        )
+        assert generic_calls == ["PCTDD-005"]
+        assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+            {
+                "safe_to_restart": False,
+                "blocked": True,
+                "quiesced": False,
+                "reconciled": False,
+                "reason": "database_portal_retained_reconciliation_blocked",
+            }
+        )
+    finally:
+        daemon.close()
+
+
+def test_later_epoch_extra_gate_non_retry_budget_receipt_opens_generic_rearm() -> None:
+    """Dirty-candidate leftover must not skip extra-gate generic rearm.
+
+    Post-G-fix daemons still idled no_ready_tasks because extra-gate DuckDB
+    receipts lacked DATABASE_RETRY_BUDGET_SCHEMA so the generic scan continued
+    before later-epoch. Official unstick is rearm, never CAS. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    pin = DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    task = SimpleNamespace(
+        task_cid=str(pin["task_cid"]),
+        task_alias="PCTDD-005",
+        status="blocked",
+        revision=int(pin["blocked_task_revision"]) + 14,
+        body={"completion_receipt": {"reason": "dirty_candidate_retry_credit_prerequisite_unavailable"}},
+    )
+    daemon = object.__new__(daemon_module.DatabaseImplementationDaemon)
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        task,
+        dict(task.body["completion_receipt"]),
+        no_provider_evidence=None,
+    ) is True
+    sealed = SimpleNamespace(
+        task_cid=str(pin["task_cid"]),
+        task_alias="PCTDD-005",
+        status="blocked",
+        revision=int(pin["blocked_task_revision"]),
+        body=task.body,
+    )
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        sealed,
+        dict(task.body["completion_receipt"]),
+        no_provider_evidence=None,
+    ) is False
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
 def test_invalid_terminal_receipt_never_enters_retry_mutation_fence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

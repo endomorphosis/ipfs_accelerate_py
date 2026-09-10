@@ -7686,7 +7686,14 @@ def stop_tracks(
     grace_seconds: float = 10.0,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
-    """Stop exact marker-bound wrapper trees and verify no descendants remain."""
+    """Stop exact marker-bound wrapper trees and verify no descendants remain.
+
+    Extra-gate grok descendants are left running. SIGINT ``finally`` used
+    to fence every lane tree with zero preserving extra-gate lines, so a
+    fleet-ensure teardown killed in-progress extra-gate grok. Official
+    unstick is rearm, never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
 
     stopped: list[int] = []
     removed_runtime_markers: list[str] = []
@@ -7694,6 +7701,28 @@ def stop_tracks(
     _emit(output, "stopping supervisor wrapper and managed daemons")
     for track in tracks:
         process = processes.get(track.name)
+        resolved = track.resolve(repo_root)
+        daemon_fields = daemon_pid_health_fields(
+            resolved.daemon_pid_path,
+            cleanup_stale_marker=False,
+        )
+        if _restarting_track_must_preserve_extra_gate_grok(
+            process,
+            daemon_fields,
+        ):
+            daemon_pid = daemon_fields.get("daemon_pid") or daemon_fields.get(
+                "stale_daemon_pid"
+            )
+            _emit(
+                output,
+                (
+                    f"preserving extra-gate grok descendants for "
+                    f"{track.name} old_pid="
+                    f"{getattr(process, 'pid', None) or 'none'} "
+                    f"daemon_pid={daemon_pid or 'unknown'}"
+                ),
+            )
+            continue
         fenced, member_pids = _terminate_managed_process(
             process,
             grace_seconds=grace_seconds,
@@ -7712,7 +7741,6 @@ def stop_tracks(
             except subprocess.TimeoutExpired:
                 pass
         if fenced and process is not None:
-            resolved = track.resolve(repo_root)
             if _remove_stale_pid_marker_if_unchanged(
                 resolved.supervisor_pid_path,
                 process.pid,
