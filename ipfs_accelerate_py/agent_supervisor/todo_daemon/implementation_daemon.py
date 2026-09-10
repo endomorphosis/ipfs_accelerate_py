@@ -70267,6 +70267,10 @@ class DatabaseImplementationDaemon:
           settlement lives on the control task (no lane-local sidecar).
         """
 
+        if recovery_source_validator is not None and self.authority_mode != "quack":
+            raise DatabaseImplementationAuthorityError(
+                "source-qualified recovery requires the live Quack authority"
+            )
         list_tasks = getattr(self.task_source, "list_tasks", None)
         if not callable(list_tasks):
             return []

@@ -3653,3 +3653,34 @@ def test_portal_database_attempt_binder_rejects_invalid_ordinal(
         )
 
     assert daemon._database_attempt_authority is None
+
+
+def test_portal_rearm_new_source_retains_once_per_source_and_settlement_budget(tmp_path):
+    def provider(_attempt):
+        raise DatabasePortalBridgeError("closed bridge failure")
+    daemon = _open_daemon(tmp_path, session="session:source-recovery", provider_fn=provider)
+    source = {"source_head": "a" * 40, "source_tree": "b" * 40}
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        daemon.authority_mode = "quack"
+        second = daemon.run_once()
+        assert len(second["portal_failure_rearms"]) == 1
+        assert second["implementation_result"]["status"] == "blocked"
+        assert daemon.reconcile_recoverable_portal_failure_rearms() == []
+        task = daemon.task_source.get(first["task_cid"])
+        def rejected_source():
+            raise ValueError("sealed admission rejected")
+        with pytest.raises(ValueError, match="sealed admission rejected"):
+            daemon.reconcile_recoverable_portal_failure_rearms(recovery_source_validator=rejected_source)
+        assert daemon.task_source.get(task.task_cid).revision == task.revision
+        rearmed = daemon.reconcile_recoverable_portal_failure_rearms(recovery_source_validator=lambda: source)
+        assert len(rearmed) == 1
+        assert rearmed[0]["accepted_recovery_source"] == source
+        third = daemon.run_once()
+        assert third["implementation_result"]["status"] == "blocked"
+        assert daemon.reconcile_recoverable_portal_failure_rearms(recovery_source_validator=lambda: source) == []
+        other = {"source_head": "c" * 40, "source_tree": "d" * 40}
+        assert len(daemon.reconcile_recoverable_portal_failure_rearms(recovery_source_validator=lambda: other)) == 1
+    finally:
+        daemon.close()
