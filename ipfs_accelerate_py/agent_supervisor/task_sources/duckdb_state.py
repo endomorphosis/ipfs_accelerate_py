@@ -130,6 +130,10 @@ class DuckDBConnectionPolicyError(RuntimeError):
     """A DuckDB connection did not enforce the supervisor's sealed policy."""
 
 
+class DuckDBOwnerRetiredError(RuntimeError):
+    """The owner froze an uncertain shared handle pending new qualification."""
+
+
 class QuackTransportContentionError(DuckDBConnectionPolicyError):
     """Loopback Quack ATTACH failed because the owner was busy or contended."""
 
@@ -652,6 +656,7 @@ class DuckDBConnection:
         self._closed = False
         self._closing_owner = 0
         self._poisoned = False
+        self._owner_binding_retired = False
         self._memory_limit = memory_limit
         self._threads = threads
         self._quack_owner = bool(quack_owner)
@@ -721,6 +726,7 @@ class DuckDBConnection:
         instance._closed = False
         instance._closing_owner = 0
         instance._poisoned = False
+        instance._owner_binding_retired = False
         instance._memory_limit = DEFAULT_MEMORY_LIMIT
         instance._threads = 1
         instance._quack_owner = False
@@ -743,6 +749,24 @@ class DuckDBConnection:
         with self._execution_condition:
             return self._transaction_active
 
+    def retire_owner_binding(self) -> None:
+        """Freeze this shared handle without closing, rolling back, or reopening it.
+
+        Only the owner calls this after an uncertain borrowed transaction. The
+        signal is sticky for this wrapper, wakes excluded peers, and disables
+        all implicit recovery. A qualified replacement needs a new owner and
+        connection; explicit owner shutdown may still close this handle.
+        """
+        with self._execution_condition:
+            self._owner_binding_retired = True
+            self._execution_condition.notify_all()
+
+    def _require_owner_binding_not_retired_locked(self) -> None:
+        if getattr(self, "_owner_binding_retired", False):
+            raise DuckDBOwnerRetiredError(
+                "DuckDB owner binding is retired after an uncertain borrowed transaction"
+            )
+
     def _wait_for_transaction_turn_locked(self) -> int:
         """Wait until this thread may use the shared native connection."""
 
@@ -750,6 +774,7 @@ class DuckDBConnection:
         while (
             not self._closed
             and not self._poisoned
+            and not getattr(self, "_owner_binding_retired", False)
             and (
                 (
                     self._transaction_active
@@ -770,6 +795,7 @@ class DuckDBConnection:
         self._execution_condition.notify_all()
 
     def _require_usable_locked(self) -> None:
+        self._require_owner_binding_not_retired_locked()
         thread_id = threading.get_ident()
         if (
             self._closed
@@ -800,6 +826,7 @@ class DuckDBConnection:
 
         return (
             not self._closed
+            and not getattr(self, "_owner_binding_retired", False)
             and not bool(getattr(self, "_pooled", False))
             and self.path is not None
             and not self._closing_owner
@@ -929,6 +956,7 @@ class DuckDBConnection:
         evict_uri = ""
         try:
             with self._execution_condition:
+                self._require_owner_binding_not_retired_locked()
                 thread_id = threading.get_ident()
                 if ends_transaction:
                     if (
@@ -1100,6 +1128,7 @@ class DuckDBConnection:
 
     def commit(self) -> None:
         with self._execution_condition:
+            self._require_owner_binding_not_retired_locked()
             thread_id = threading.get_ident()
             if self._context_depth and self._context_owner != thread_id:
                 raise DuckDBConnectionPolicyError(
@@ -1128,6 +1157,7 @@ class DuckDBConnection:
         evict_uri = ""
         try:
             with self._execution_condition:
+                self._require_owner_binding_not_retired_locked()
                 thread_id = threading.get_ident()
                 if self._context_depth and self._context_owner != thread_id:
                     raise DuckDBConnectionPolicyError(
@@ -1171,6 +1201,7 @@ class DuckDBConnection:
             if (
                 self._transaction_active
                 and self._transaction_lock_owner != thread_id
+                and not getattr(self, "_owner_binding_retired", False)
             ):
                 raise DuckDBConnectionPolicyError(
                     "DuckDB transaction is owned by another thread"
@@ -1211,6 +1242,68 @@ class DuckDBConnection:
                     self._closed = True
                     self._closing_owner = 0
                     self._execution_condition.notify_all()
+
+    def reconnect_exclusive_owner(self) -> None:
+        """Replace the native handle without dropping the exclusive file lock.
+
+        Same-process recovery cannot open a second ``DuckDBConnection`` onto
+        this path: ``exclusive_file_lock`` uses a thread RLock keyed by the
+        lock file.  A peer that still owns a transaction makes ``close()``
+        raise, so the 30s thread-lock wait fails.  Reconnecting the native
+        owner keeps the already-held lock.
+        """
+
+        if self.path is None or self._lock_context is None:
+            raise DuckDBConnectionPolicyError(
+                "exclusive owner reconnect requires a file-owning handle"
+            )
+        import duckdb
+
+        if self._preload_quack_for_state_owner:
+            connector = connect_duckdb_quack_owner_with_policy
+        elif self._quack_owner:
+            connector = connect_duckdb_with_quack_owner_policy
+        else:
+            connector = connect_duckdb_with_policy
+        with self._execution_condition:
+            self._require_owner_binding_not_retired_locked()
+            self._poison_locked()
+            self._closed = False
+            self._poisoned = False
+            self._closing_owner = 0
+            self._execution_condition.notify_all()
+        native = connector(
+            duckdb,
+            self.path,
+            configuration={
+                "threads": self._threads,
+                "memory_limit": self._memory_limit,
+            },
+        )
+        with self._execution_condition:
+            if getattr(self, "_owner_binding_retired", False):
+                # Retirement can arrive while the connector runs outside this
+                # lock. Dispose only of its unpublished result; never replace
+                # the frozen owner handle or clear the sticky retirement flag.
+                try:
+                    native.close()
+                finally:
+                    self._poisoned = True
+                    self._execution_condition.notify_all()
+                self._require_owner_binding_not_retired_locked()
+            if self._connection is not None:
+                try:
+                    native.close()
+                except Exception:
+                    pass
+                raise DuckDBConnectionPolicyError(
+                    "exclusive owner reconnected concurrently"
+                )
+            self._connection = native
+            self._closed = False
+            self._poisoned = False
+            _register_duckdb_wrapper(self, native)
+            self._execution_condition.notify_all()
 
     def _release_quack_attach_session(self) -> None:
         raise DuckDBConnectionPolicyError(

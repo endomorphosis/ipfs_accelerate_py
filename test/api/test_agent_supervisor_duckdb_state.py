@@ -732,3 +732,41 @@ def test_merge_resolver_migration_preserves_epoch_precision(
     assert is_sqlite_database(source)
     assert migrated["acquired_at"] == acquired_at
     assert migrated["lease_expires_at"] == lease_expires_at
+
+
+def test_retirement_does_not_publish_an_inflight_reconnect(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state
+
+    connection = duckdb_state.open_duckdb_connection(tmp_path / "retired.duckdb")
+    prepared = threading.Event()
+    release = threading.Event()
+    candidates = []
+    connector = duckdb_state.connect_duckdb_with_policy
+
+    def paused_connector(*args, **kwargs):
+        candidate = connector(*args, **kwargs)
+        candidates.append(candidate)
+        prepared.set()
+        assert release.wait(3)
+        return candidate
+
+    monkeypatch.setattr(duckdb_state, "connect_duckdb_with_policy", paused_connector)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(connection.reconnect_exclusive_owner)
+            assert prepared.wait(3)
+            connection.retire_owner_binding()
+            release.set()
+            with pytest.raises(duckdb_state.DuckDBOwnerRetiredError):
+                future.result(timeout=3)
+        assert connection._connection is None
+        assert connection._owner_binding_retired
+        with pytest.raises(Exception, match="closed"):
+            candidates[0].execute("SELECT 1")
+        with pytest.raises(duckdb_state.DuckDBOwnerRetiredError):
+            connection.execute("SELECT 1")
+    finally:
+        release.set()
+        connection.close()
