@@ -16229,6 +16229,15 @@ errors = []
 mode_counts = {}
 for path in files:
     try:
+        observed = os.stat(path, follow_symlinks=False)
+        mode = stat.S_IMODE(observed.st_mode)
+        if (
+            stat.S_ISREG(observed.st_mode)
+            and observed.st_nlink == 1
+            and observed.st_uid in {0, os.geteuid()}
+            and mode & 0o022
+        ):
+            os.chmod(path, mode & ~0o022)
         module._agent_read_stable_file(path)
         mode = oct(stat.S_IMODE(os.stat(path, follow_symlinks=False).st_mode))
         mode_counts[mode] = mode_counts.get(mode, 0) + 1

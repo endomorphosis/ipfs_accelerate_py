@@ -2072,6 +2072,39 @@ def test_operator_m70_refuses_to_stop_live_generation_48_owner() -> None:
     assert 0 < stop_m70 < refuse < stop_m69
 
 
+def test_operator_m70_live_owner_retired_token_does_not_demand_quack_start() -> None:
+    """Live gen-48 plus a retired handoff must wait for rearm, not quack-start."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m70_live_owner_retired_token_test",
+    )
+    live_source = inspect.getsource(operator._live_preflight)
+    dead_source = inspect.getsource(operator._m70_published_owner_is_process_dead)
+    wait_token = "M70 generation-48 owner is live but the one-time client"
+    unavailable = "M70 generation-48 owner is unavailable; run the sealed"
+    assert wait_token in live_source
+    assert "do not quack-start and " in live_source
+    assert "do not mint generation 49" in live_source
+    assert "_M70_LIVE_OWNER_RETIRED_TOKEN_WAIT_SECONDS" in live_source
+    assert live_source.index("not _m70_published_owner_is_process_dead") < (
+        live_source.index(wait_token)
+    )
+    assert live_source.index(wait_token) < live_source.index(unavailable)
+    assert "_quack_owner_cmdline_matches" in dead_source
+    quack_source = (
+        REPO_ROOT
+        / "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py"
+    ).read_text(encoding="utf-8")
+    assert "def _coordinator_cmdline_matches(" in quack_source
+    assert "if not _coordinator_cmdline_matches(int(pid)):" in quack_source
+    validator_source = (
+        REPO_ROOT
+        / "scripts/validate_semantic_addressed_world_model_dependencies.py"
+    ).read_text(encoding="utf-8")
+    assert "os.chmod(path, mode & ~0o022)" in validator_source
+
+
 def test_m69_live_preflight_contract_accepts_mappingproxy_authority() -> None:
     """M69 must authorize stopped gen-46 vault restart to generation 47."""
 
@@ -2477,12 +2510,20 @@ def test_operator_admits_master_down_coordinator_recycle() -> None:
     assert "_coordinator_pid_alive" in prepare_source
 
 
-def test_operator_wave_pid_blocks_master_down_recycle(tmp_path: Path) -> None:
+def test_operator_wave_pid_blocks_master_down_recycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A live plan-bound wave.pid is the coordinator even if master.pid is gone."""
 
     operator = _load(
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         "sawm_operator_wave_pid_master_down_test",
+    )
+    monkeypatch.setattr(
+        operator,
+        "_coordinator_cmdline_matches",
+        lambda pid: pid == os.getpid(),
     )
     run_dir = tmp_path / "run-r2-m27"
     state = run_dir / "state"
@@ -2522,6 +2563,33 @@ def test_operator_wave_pid_blocks_master_down_recycle(tmp_path: Path) -> None:
     assert dead["prepared"] is True
     assert dead["admission"]["admitted"] is True
     assert dead["admission"]["reason"] == "master_down_coordinator_recycle"
+
+
+def test_operator_coordinator_pid_alive_requires_matching_cmdline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reused live PID in wave.pid is not a SAWM coordinator."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_coordinator_cmdline_liveness_test",
+    )
+    run_dir = tmp_path / "run-r2-m27"
+    state = run_dir / "state"
+    state.mkdir(parents=True)
+    wave = state / "configured-board-wave.pid"
+    wave.write_text(f"{os.getpid()}\n", encoding="utf-8")
+    monkeypatch.setattr(operator, "_coordinator_cmdline_matches", lambda _pid: False)
+    assert operator._coordinator_pid_alive(run_dir) is False
+    assert operator._authoritative_coordinator_pid_path(run_dir) == wave
+    monkeypatch.setattr(
+        operator,
+        "_coordinator_cmdline_matches",
+        lambda pid: pid == os.getpid(),
+    )
+    assert operator._coordinator_pid_alive(run_dir) is True
+    assert operator._authoritative_coordinator_pid_path(run_dir) == wave
 
 
 def test_operator_overlays_live_run_dir_without_dirtying_pin(tmp_path: Path) -> None:
