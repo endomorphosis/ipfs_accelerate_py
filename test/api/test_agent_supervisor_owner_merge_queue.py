@@ -874,3 +874,151 @@ def test_uncertain_queue_transaction_freezes_other_gateway_services_without_reop
                 "SELECT * FROM merge_requests ORDER BY request_id"
             ).fetchall()
         ]
+
+
+def test_dequeue_claims_only_eligible_bound_work_without_reaping(owner, monkeypatch):
+    gateway, conn, bind, attach, retained, original, files, queue_dir = owner
+    bind()
+    api, _ = attach()
+    # Even expired retained claims cannot be recovered by the new operation.
+    gateway._legacy_merge_queue_service._queue._clock = lambda: 2000000000.0
+    delayed = request(enqueue(api, "task:delayed"))
+    conn.execute(
+        "UPDATE merge_requests SET retry_not_before=? WHERE request_id=?",
+        [2100000000.0, delayed["request_id"]],
+    )
+    recovery = request(enqueue(api, "task:recovery"))
+    # Retained queue-authored recovery metadata cannot be created by enqueue.
+    metadata = dict(recovery["metadata"])
+    metadata[merge_queue._FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY] = {"required": True}
+    conn.execute(
+        "UPDATE merge_requests SET metadata_json=? WHERE request_id=?",
+        [json.dumps(metadata), recovery["request_id"]],
+    )
+    lower = request(enqueue(api, "task:lower", priority="P2"))
+    eligible = request(enqueue(api, "task:eligible", priority="P0"))
+    monkeypatch.setattr(
+        merge_queue, "open_duckdb_connection", lambda *a, **k: pytest.fail("second file open")
+    )
+    claimed = request(api.call("dequeue"))
+    assert claimed["request_id"] == eligible["request_id"]
+    assert claimed["consumer_id"] == "consumer:one"
+    assert claimed["claim_token"] and claimed["claim_generation"] == 1
+    next_claim = request(api.call("dequeue"))
+    assert next_claim["request_id"] == lower["request_id"]
+    assert request(api.call("dequeue")) is None
+    assert request(api.call("get", request_id=delayed["request_id"]))["status"] == "pending"
+    assert request(api.call("get", request_id=recovery["request_id"]))["status"] == "pending"
+    assert original == [
+        tuple(row[index] for index in range(len(row)))
+        for row in conn.execute(
+            "SELECT * FROM merge_requests WHERE task_id IN "
+            "('task:unbound','task:other','task:retained') ORDER BY request_id"
+        ).fetchall()
+    ]
+    assert files == {
+        str(path.relative_to(queue_dir)): path.read_bytes() for path in queue_dir.rglob("*.json")
+    }
+
+
+@pytest.mark.parametrize("policy", [{"max_processing": 1}, {"max_worktree_bytes": 1}])
+def test_dequeue_preserves_owner_capacity_policy(owner, policy):
+    _, _, bind, attach, *_ = owner
+    bind(**policy)
+    api, _ = attach()
+    added = request(enqueue(api, metadata_json='{"worktree_bytes": 100}'))
+    assert request(api.call("dequeue")) is None
+    assert request(api.call("get", request_id=added["request_id"]))["status"] == "pending"
+
+
+@pytest.mark.parametrize(
+    "arguments", [{"consumer_id": "other"}, {"limit": 2}, {"request_id": "unknown"}]
+)
+def test_dequeue_has_no_client_policy_or_consumer_override(owner, arguments):
+    _, _, bind, attach, *_ = owner
+    bind()
+    api, _ = attach()
+    added = request(enqueue(api))
+    with pytest.raises(TypedStateOwnerError):
+        api.call("dequeue", **arguments)
+    assert request(api.call("get", request_id=added["request_id"]))["status"] == "pending"
+
+
+def test_dequeue_requires_separately_admitted_operation(owner):
+    _, _, bind, attach, *_ = owner
+    bind()
+    api, _ = attach(operations=SERVICE_OPERATIONS - {"legacy.merge_queue.dequeue"})
+    added = request(enqueue(api))
+    with pytest.raises(TypedStateOwnerError):
+        api.call("dequeue")
+    assert request(api.call("get", request_id=added["request_id"]))["status"] == "pending"
+
+
+def test_dequeue_rejects_corrupt_identity_before_claim_commit(owner):
+    _, conn, bind, attach, *_ = owner
+    bind()
+    api, _ = attach()
+    added = request(enqueue(api))
+    conn.execute(
+        "UPDATE merge_requests SET dedupe_key='corrupt' WHERE request_id=?", [added["request_id"]]
+    )
+
+    def current_row():
+        row = conn.execute(
+            "SELECT * FROM merge_requests WHERE request_id=?", [added["request_id"]]
+        ).fetchone()
+        return tuple(row[index] for index in range(len(row)))
+
+    before = current_row()
+    with pytest.raises(TypedStateOwnerError):
+        api.call("dequeue")
+    assert current_row() == before
+    assert not conn.in_transaction
+
+
+@pytest.mark.parametrize("denial", ["revoke", "expire", "detach"])
+def test_dequeue_admission_lost_after_claim_rolls_back(owner, monkeypatch, denial):
+    gateway, conn, bind, attach, *_ = owner
+    bind()
+    api, grant = attach()
+    added = request(enqueue(api))
+    real_execute = conn._execute_once
+    before = [
+        tuple(row[i] for i in range(len(row)))
+        for row in real_execute("SELECT * FROM merge_requests ORDER BY request_id", None).fetchall()
+    ]
+    commits = []
+
+    def execute(sql, parameters=None):
+        result = real_execute(sql, parameters)
+        if sql.strip().upper().startswith("UPDATE MERGE_REQUESTS"):
+            if denial == "revoke":
+                gateway.revoke_grant(grant.grant_id)
+            elif denial == "expire":
+                with gateway._grants_lock:
+                    for token in tuple(gateway._grants):
+                        gateway._grants[token] = replace(grant, issued_at=1, expires_at=1001)
+            else:
+                real_execute(
+                    "UPDATE client_sessions SET status='detached' WHERE session_id=?",
+                    [api.connection.session_id],
+                )
+        if sql.strip().upper() == "COMMIT":
+            commits.append(sql)
+        return result
+
+    monkeypatch.setattr(conn, "_execute_once", execute)
+    with pytest.raises(TypedStateOwnerError):
+        api.call("dequeue")
+    assert not commits and not conn.in_transaction
+    assert not gateway._legacy_merge_queue_service._retired
+    assert before == [
+        tuple(row[i] for i in range(len(row)))
+        for row in real_execute("SELECT * FROM merge_requests ORDER BY request_id", None).fetchall()
+    ]
+    assert (
+        real_execute(
+            "SELECT status FROM merge_requests WHERE request_id=?", [added["request_id"]]
+        ).fetchone()[0]
+        == "pending"
+    )

@@ -537,7 +537,7 @@ _STATUS_SESSION_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
 _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
         *("legacy.merge_queue." + operation for operation in (
-            "get", "enqueue", "claim", "owns_claim", "complete", "requeue", "quarantine"
+            "get", "enqueue", "claim", "dequeue", "owns_claim", "complete", "requeue", "quarantine"
         )),
         *_EVENT_WAIT_SERVICE_OPERATIONS,
         *_EAAEF_COMMAND_SERVICE_OPERATIONS,
