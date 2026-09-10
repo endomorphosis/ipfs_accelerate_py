@@ -17,6 +17,41 @@ def test_new_source_allows_one_distinct_settled_failure():
     assert not portal_recovery_budget_consumed(history, settlement_id="later", accepted_source=OTHER)
 
 
+def test_source_rearm_limit_allows_later_distinct_settlement_until_cap():
+    history = [
+        {"settlement_id": "old"},
+        {"settlement_id": "first", "accepted_recovery_source": SOURCE},
+    ]
+    assert not portal_recovery_budget_consumed(
+        history,
+        settlement_id="second",
+        accepted_source=SOURCE,
+        source_rearm_limit=4,
+    )
+    history.append(
+        {"settlement_id": "second", "accepted_recovery_source": SOURCE}
+    )
+    assert not portal_recovery_budget_consumed(
+        history,
+        settlement_id="third",
+        accepted_source=SOURCE,
+        source_rearm_limit=4,
+    )
+    history.extend(
+        {
+            "settlement_id": name,
+            "accepted_recovery_source": SOURCE,
+        }
+        for name in ("third", "fourth")
+    )
+    assert portal_recovery_budget_consumed(
+        history,
+        settlement_id="fifth",
+        accepted_source=SOURCE,
+        source_rearm_limit=4,
+    )
+
+
 def test_same_settlement_never_rearms_again_even_with_new_source():
     assert portal_recovery_budget_consumed(
         [{"settlement_id": "same", "accepted_recovery_source": SOURCE}],

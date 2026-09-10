@@ -3971,6 +3971,42 @@ def test_portal_rearm_new_source_retains_once_per_source_and_settlement_budget(t
         daemon.close()
 
 
+def test_portal_rearm_same_source_admits_later_settlement_within_attempt_budget(
+    tmp_path: Path,
+) -> None:
+    class _BoundedProvider:
+        max_task_attempts = 4
+
+        def provider(self, _attempt: DatabaseTaskAttempt) -> dict[str, object]:
+            raise DatabasePortalBridgeError("closed bridge failure")
+
+    holder = _BoundedProvider()
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:attempt-budget-recovery",
+        provider_fn=holder.provider,
+    )
+    source = {"source_head": "a" * 40, "source_tree": "b" * 40}
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        daemon.authority_mode = "quack"
+        first = daemon.reconcile_recoverable_portal_failure_rearms(
+            recovery_source_validator=lambda: source
+        )
+        assert len(first) == 1
+        second_pass = daemon.run_once()
+        assert second_pass["implementation_result"]["status"] == "blocked"
+        later = daemon.reconcile_recoverable_portal_failure_rearms(
+            recovery_source_validator=lambda: source
+        )
+        assert len(later) == 1
+        assert later[0]["accepted_recovery_source"] == source
+        assert later[0]["settlement_id"] != first[0]["settlement_id"]
+    finally:
+        daemon.close()
+
+
 def test_production_protected_rearm_requires_native_fence_precondition(tmp_path):
     def provider(attempt):
         raise DatabasePortalBridgeDeferred("implementation_protected_path_mutated")

@@ -70209,6 +70209,24 @@ class DatabaseImplementationDaemon:
         ).hexdigest()
         return str(receipt.get("failure_payload_digest") or "") == expected
 
+    def _portal_recovery_source_rearm_limit(self) -> int:
+        """Return how many distinct settlements one sealed source may rearm.
+
+        Zero-provider parking used a lifetime of one rearm per source. A later
+        grok/codex attempt that actually ran and failed with remaining
+        ``max_task_attempts`` must still be able to retry on that same source.
+        Unbound daemons keep the original one-rearm lifetime.
+        """
+
+        portal = getattr(self._provider_fn, "__self__", None)
+        try:
+            attempts = int(getattr(portal, "max_task_attempts", 0) or 0)
+        except (TypeError, ValueError):
+            return 1
+        if isinstance(getattr(portal, "max_task_attempts", 0), bool) or attempts < 1:
+            return 1
+        return attempts
+
     def _automatic_portal_failure_rearm_recorded(
         self, *, task_cid: str, settlement_id: str = "",
         accepted_source: Mapping[str, Any] | None = None,
@@ -70225,7 +70243,10 @@ class DatabaseImplementationDaemon:
         except (ValueError, TypeError):
             return True
         return portal_recovery_budget_consumed(
-            history, settlement_id=settlement_id, accepted_source=accepted_source,
+            history,
+            settlement_id=settlement_id,
+            accepted_source=accepted_source,
+            source_rearm_limit=self._portal_recovery_source_rearm_limit(),
         )
 
     @staticmethod
