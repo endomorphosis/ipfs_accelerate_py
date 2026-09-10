@@ -6990,17 +6990,11 @@ def test_terminal_receipt_validation_failure_preserves_dispatch_fence(
         daemon.close()
 
 
-def test_extra_gate_mutation_fence_timeout_does_not_crash_daemon_pass(
+def test_invalid_terminal_receipt_never_enters_retry_mutation_fence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """write-transaction.lock timeout skip-defers extra-gate rearm.
-
-    Lane-3 crashed while CAS-rearming blocked PCTDD-034 because another
-    lane held the owner mutation fence. Extra-gate leftover stays retry
-    authority; the daemon must continue ordinary dispatch. Extra-gate
-    aliases still cannot bypass safe_to_restart=False.
-    """
+    """Keep the terminal barrier before acquiring any retry authority."""
 
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor,
@@ -7085,27 +7079,23 @@ def test_extra_gate_mutation_fence_timeout_does_not_crash_daemon_pass(
             lambda _recon: [],
         )
         result = daemon.run_once()
-        assert result.get("selection_idle_reason") != (
+        assert result.get("selection_idle_reason") == (
             "database_portal_reconciliation_blocked"
         )
-        assert result.get("claimed_task_cid") == "task:cid:001"
-        assert provider_calls == ["task:cid:001"]
+        assert result.get("claimed_task_cid") in (None, "")
+        assert provider_calls == []
     finally:
         daemon.close()
 
 
-def test_extra_gate_missing_nested_state_does_not_fail_close_daemon_pass(
+@pytest.mark.parametrize("alias", ["PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"])
+@pytest.mark.parametrize("failure", ["missing_state", "launch_birth", "fenced_runner_open_claim"])
+def test_unresolved_callback_never_opens_ordinary_dispatch(
+    alias: str, failure: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Missing extra-gate portal-task-state.json is retry authority.
-
-    Recycle-during-in_progress left PCTDD-006 nested_state.present=False
-    and provider_forbidden_terminal_recovery_state_invalid. Hash-home
-    lane-0 then fail-closed the whole pass, so retrying extra-gate work
-    never spawned grok. Ordinary dispatch must continue. Extra-gate
-    aliases still cannot bypass safe_to_restart=False.
-    """
+    """Absent state or a dead provider is not closed callback authority."""
 
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor,
@@ -7173,12 +7163,21 @@ def test_extra_gate_missing_nested_state_does_not_fail_close_daemon_pass(
             }
         ],
     }
-    assert (
-        daemon_module.DatabaseImplementationDaemon._portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
-            recon
-        )
-        is True
-    )
+    item = recon["attempts"][0]
+    item["task_alias"] = alias
+    if failure == "launch_birth":
+        item["nested_state"] = {
+            "active": True, "active_phase": "implementing",
+            "active_phase_detail": "provider_launch_birth",
+        }
+    elif failure == "fenced_runner_open_claim":
+        item["provider_runner_fence"] = {
+            "applicable": True, "fenced": True, "safe_to_restart": True,
+            "reason": "ordinary_provider_runner_exact_birth_fenced",
+        }
+        item["portal_reconciliation"] = {
+            "blocked": True, "reason": "task_claim_reconciliation_blocked",
+        }
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,
@@ -7213,11 +7212,11 @@ def test_extra_gate_missing_nested_state_does_not_fail_close_daemon_pass(
             lambda _recon: [],
         )
         result = daemon.run_once()
-        assert result.get("selection_idle_reason") != (
+        assert result.get("selection_idle_reason") == (
             "database_portal_reconciliation_blocked"
         )
-        assert result.get("claimed_task_cid") == "task:cid:001"
-        assert provider_calls == ["task:cid:001"]
+        assert result.get("claimed_task_cid") in (None, "")
+        assert provider_calls == []
     finally:
         daemon.close()
 

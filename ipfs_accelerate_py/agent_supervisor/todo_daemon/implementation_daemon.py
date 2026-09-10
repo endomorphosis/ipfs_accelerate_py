@@ -92769,122 +92769,6 @@ class DatabaseImplementationDaemon:
         )
 
     @staticmethod
-    def _portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
-        reconciliation: Mapping[str, Any],
-    ) -> bool:
-        """True when the only blocked nested attempts are extra-gate launch zombies.
-
-        A dead ``provider_launch_birth`` must not fail-close the whole home
-        lane pass.  Sibling extra-gate unknown-outcome rearm is retry
-        authority, not completable landed work.
-        """
-
-        extra_gate = {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
-        blocked = [
-            item
-            for item in (reconciliation.get("attempts") or ())
-            if isinstance(item, Mapping) and item.get("blocked") is True
-        ]
-        if not blocked:
-            return False
-        for item in blocked:
-            nested = item.get("nested_state")
-            if not isinstance(nested, Mapping):
-                return False
-            if (
-                str(item.get("task_alias") or "") not in extra_gate
-                or item.get("reason")
-                != "nested_portal_attempt_reconciliation_blocked"
-            ):
-                return False
-            if (
-                nested.get("active") is True
-                and nested.get("active_phase") == "implementing"
-                and nested.get("active_phase_detail") == "provider_launch_birth"
-            ):
-                continue
-            portal = item.get("portal_reconciliation")
-            fence = item.get("provider_runner_fence")
-            if not (
-                nested.get("active") is False
-                and isinstance(fence, Mapping)
-                and fence.get("applicable") is True
-                and fence.get("fenced") is True
-                and fence.get("safe_to_restart") is True
-                and fence.get("reason")
-                == "ordinary_provider_runner_exact_birth_fenced"
-                and isinstance(portal, Mapping)
-                and portal.get("blocked") is True
-                and portal.get("reason")
-                in {
-                    "implementation_worker_still_active",
-                    "task_claim_reconciliation_blocked",
-                }
-            ):
-                return False
-        return True
-
-    @staticmethod
-    def _portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
-        reconciliation: Mapping[str, Any],
-    ) -> bool:
-        """True when extra-gate leftover nested portal state is missing.
-
-        Recycle-during-in_progress kills grok before portal-task-state.json
-        is written. ``provider_forbidden_terminal_recovery`` then fail-closes
-        the whole hash-home pass on ``missing_state_file``. That leftover is
-        retry/rearm authority, not completable landed work and not a tamper
-        fail-close. Extra-gate aliases still cannot bypass
-        ``safe_to_restart=False``.
-        """
-
-        extra_gate = {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
-        blocked = [
-            item
-            for item in (reconciliation.get("attempts") or ())
-            if isinstance(item, Mapping) and item.get("blocked") is True
-        ]
-        if not blocked:
-            return False
-        for item in blocked:
-            if (
-                str(item.get("task_alias") or "") not in extra_gate
-                or item.get("reason")
-                != "nested_portal_attempt_reconciliation_blocked"
-            ):
-                return False
-            nested = item.get("nested_state")
-            fence = item.get("provider_runner_fence")
-            portal = item.get("portal_reconciliation")
-            if not (
-                isinstance(nested, Mapping)
-                and isinstance(fence, Mapping)
-                and isinstance(portal, Mapping)
-            ):
-                return False
-            terminal = portal.get("provider_forbidden_terminal_recovery")
-            if not (
-                nested.get("present") is False
-                and nested.get("active") is False
-                and fence.get("applicable") is False
-                and fence.get("fenced") is False
-                and fence.get("safe_to_restart") is True
-                and fence.get("reason")
-                == "ordinary_provider_runner_receipt_absent"
-                and portal.get("blocked") is True
-                and portal.get("reason")
-                == "provider_forbidden_terminal_recovery_blocked"
-                and isinstance(terminal, Mapping)
-                and terminal.get("reason")
-                == "provider_forbidden_terminal_recovery_state_invalid"
-                and terminal.get("state_reason") == "missing_state_file"
-                and terminal.get("provider_dispatched") is False
-                and terminal.get("implementation_dispatched") is False
-            ):
-                return False
-        return True
-
-    @staticmethod
     def _retained_recovery_pair_is_exact_for_attempt(
         task: Any,
         attempt: "DatabaseTaskAttempt",
@@ -108514,122 +108398,24 @@ class DatabaseImplementationDaemon:
                 )
             )
             if portal_startup_reconciliation.get("blocked") is True:
-                extra_gate_retry_authority = (
-                    self._portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
+                # Missing state and fenced processes do not close a callback.
+                # Keep the same reconciliation barrier for every task.
+                return {
+                    "unchanged": False,
+                    "write_count": 1,
+                    "active_task_id": "",
+                    "selection_idle_reason": (
+                        "database_portal_reconciliation_blocked"
+                    ),
+                    "implementation_result": None,
+                    "authority_mode": self.authority_mode,
+                    "task_source_kind": self.task_source_kind,
+                    "markdown_status_writes": self._markdown_status_writes,
+                    "projections_required": False,
+                    "database_portal_reconciliation": dict(
                         portal_startup_reconciliation
-                    )
-                    or self._portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
-                        portal_startup_reconciliation
-                    )
-                )
-                if extra_gate_retry_authority:
-                    try:
-                        unknown_outcome_rearms = (
-                            self.reconcile_blocked_unknown_outcome_tasks()
-                        )
-                    except TimeoutError as exc:
-                        if not self._mutation_fence_lock_timeout(exc):
-                            raise
-                        # Extra-gate rearm is retry authority. A mutation-fence
-                        # timeout must not fail-close the home/off-home daemon.
-                        unknown_outcome_rearms = [
-                            {
-                                "rearmed": False,
-                                "blocked": False,
-                                "reason": (
-                                    "database_portal_owner_mutation_fence_unavailable"
-                                ),
-                            }
-                        ]
-                    actionable_unknown_outcome_rearms = [
-                        item
-                        for item in unknown_outcome_rearms
-                        if not _read_only_terminal_candidate_quarantine(item)
-                        and item.get("reason")
-                        != "database_portal_owner_mutation_fence_unavailable"
-                    ]
-                    if actionable_unknown_outcome_rearms:
-                        return {
-                            "unchanged": False,
-                            "write_count": max(
-                                1, len(actionable_unknown_outcome_rearms)
-                            ),
-                            "active_task_id": "",
-                            "selection_idle_reason": (
-                                "database_unknown_outcomes_rearmed"
-                                if any(
-                                    item.get("rearmed") is True
-                                    for item in unknown_outcome_rearms
-                                )
-                                else "database_no_provider_rearm_recovery_fenced"
-                            ),
-                            "implementation_result": None,
-                            "authority_mode": self.authority_mode,
-                            "task_source_kind": self.task_source_kind,
-                            "markdown_status_writes": (
-                                self._markdown_status_writes
-                            ),
-                            "projections_required": False,
-                            "unknown_outcome_rearms": unknown_outcome_rearms,
-                            "database_portal_reconciliation": dict(
-                                portal_startup_reconciliation
-                            ),
-                        }
-                    try:
-                        owner_expired_attempts = (
-                            self.reconcile_expired_running_attempts(
-                                apply_selection=False
-                            )
-                        )
-                    except TimeoutError as exc:
-                        if not self._mutation_fence_lock_timeout(exc):
-                            raise
-                        owner_expired_attempts = []
-                    if owner_expired_attempts:
-                        return {
-                            "unchanged": False,
-                            "write_count": len(owner_expired_attempts),
-                            "active_task_id": "",
-                            "selection_idle_reason": (
-                                "database_expired_attempts_reconciled"
-                            ),
-                            "implementation_result": None,
-                            "authority_mode": self.authority_mode,
-                            "task_source_kind": self.task_source_kind,
-                            "markdown_status_writes": (
-                                self._markdown_status_writes
-                            ),
-                            "projections_required": False,
-                            "unknown_outcome_rearms": unknown_outcome_rearms,
-                            "expired_attempt_reconciliations": (
-                                owner_expired_attempts
-                            ),
-                            "database_portal_reconciliation": dict(
-                                portal_startup_reconciliation
-                            ),
-                        }
-                    # Extra-gate nested-state-changed leftover is retry
-                    # authority. Continue to ordinary dispatch so home or
-                    # off-home daemons can claim extra-gate retrying work.
-                    # Extra-gate aliases still cannot bypass
-                    # safe_to_restart=False at prelaunch.
-                else:
-                    return {
-                        "unchanged": False,
-                        "write_count": 1,
-                        "active_task_id": "",
-                        "selection_idle_reason": (
-                            "database_portal_reconciliation_blocked"
-                        ),
-                        "implementation_result": None,
-                        "authority_mode": self.authority_mode,
-                        "task_source_kind": self.task_source_kind,
-                        "markdown_status_writes": self._markdown_status_writes,
-                        "projections_required": False,
-                        "database_portal_reconciliation": dict(
-                            portal_startup_reconciliation
-                        ),
-                    }
+                    ),
+                }
             if (
                 portal_startup_reconciliation.get("repair_batch_pending")
                 is True
@@ -108744,99 +108530,31 @@ class DatabaseImplementationDaemon:
                 # just classified the predecessor's callback as unknown must
                 # not use its own process identity to rearm and redispatch in
                 # the same pass.
-                extra_gate_retry_authority = (
-                    self._portal_reconciliation_is_extra_gate_provider_launch_birth_zombie(
+                return {
+                    "unchanged": False,
+                    "write_count": max(
+                        1,
+                        int(
+                            portal_startup_reconciliation.get(
+                                "reconciled_attempt_count"
+                            )
+                            or 0
+                        ),
+                    ),
+                    "active_task_id": "",
+                    "selection_idle_reason": (
+                        "database_portal_reconciliation_completed"
+                    ),
+                    "implementation_result": None,
+                    "authority_mode": self.authority_mode,
+                    "task_source_kind": self.task_source_kind,
+                    "markdown_status_writes": self._markdown_status_writes,
+                    "projections_required": False,
+                    "database_portal_reconciliation": dict(
                         portal_startup_reconciliation
-                    )
-                    or self._portal_reconciliation_is_extra_gate_missing_nested_state_retry_authority(
-                        portal_startup_reconciliation
-                    )
-                )
-                if extra_gate_retry_authority:
-                    # Extra-gate leftover is retry authority even when the
-                    # historical audit page still requires continuation.
-                    # Rearm here; do not claim in this same pass.
-                    try:
-                        unknown_outcome_rearms = (
-                            self.reconcile_blocked_unknown_outcome_tasks()
-                        )
-                    except TimeoutError as exc:
-                        if not self._mutation_fence_lock_timeout(exc):
-                            raise
-                        unknown_outcome_rearms = [
-                            {
-                                "rearmed": False,
-                                "blocked": False,
-                                "reason": (
-                                    "database_portal_owner_mutation_fence_unavailable"
-                                ),
-                            }
-                        ]
-                    actionable_unknown_outcome_rearms = [
-                        item
-                        for item in unknown_outcome_rearms
-                        if not _read_only_terminal_candidate_quarantine(item)
-                        and item.get("reason")
-                        != "database_portal_owner_mutation_fence_unavailable"
-                    ]
-                    if actionable_unknown_outcome_rearms:
-                        return {
-                            "unchanged": False,
-                            "write_count": max(
-                                1, len(actionable_unknown_outcome_rearms)
-                            ),
-                            "active_task_id": "",
-                            "selection_idle_reason": (
-                                "database_unknown_outcomes_rearmed"
-                                if any(
-                                    item.get("rearmed") is True
-                                    for item in unknown_outcome_rearms
-                                )
-                                else "database_no_provider_rearm_recovery_fenced"
-                            ),
-                            "implementation_result": None,
-                            "authority_mode": self.authority_mode,
-                            "task_source_kind": self.task_source_kind,
-                            "markdown_status_writes": (
-                                self._markdown_status_writes
-                            ),
-                            "projections_required": False,
-                            "unknown_outcome_rearms": unknown_outcome_rearms,
-                            "database_portal_reconciliation": dict(
-                                portal_startup_reconciliation
-                            ),
-                        }
-                    # Extra-gate leftover with nothing to rearm is retry
-                    # authority. Continue to ordinary dispatch so home or
-                    # off-home daemons can claim extra-gate retrying work.
-                    # Extra-gate aliases still cannot bypass
-                    # safe_to_restart=False at prelaunch.
-                else:
-                    return {
-                        "unchanged": False,
-                        "write_count": max(
-                            1,
-                            int(
-                                portal_startup_reconciliation.get(
-                                    "reconciled_attempt_count"
-                                )
-                                or 0
-                            ),
-                        ),
-                        "active_task_id": "",
-                        "selection_idle_reason": (
-                            "database_portal_reconciliation_completed"
-                        ),
-                        "implementation_result": None,
-                        "authority_mode": self.authority_mode,
-                        "task_source_kind": self.task_source_kind,
-                        "markdown_status_writes": self._markdown_status_writes,
-                        "projections_required": False,
-                        "database_portal_reconciliation": dict(
-                            portal_startup_reconciliation
-                        ),
-                        "unknown_outcome_rearms": [],
-                    }
+                    ),
+                    "unknown_outcome_rearms": [],
+                }
 
         extra_gate_owned_outside: list[Any] = []
         if self._database_portal_bridge is not None:
