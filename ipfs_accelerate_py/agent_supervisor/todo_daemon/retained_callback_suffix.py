@@ -21,6 +21,8 @@ from ..task_sources.typed_state_owner import (
 
 SOURCE_REASON = "Portal completion source canonical task key mismatches"
 GUARD_REASON = "retained callback recovery requires exact source seed before dispatch"
+EVIDENCE_REASON = "post-merge completion recovery seed evidence changed"
+GENERATION_REASON = "post-merge completion recovery seed target generation changed"
 PREFLIGHT_REASON = "validation_project_dependency_preflight_failed"
 IDENTITY = frozenset(
     {
@@ -40,16 +42,10 @@ ROUTE = frozenset(
         "execution_route_origin_revision",
     }
 )
-EXECUTION = frozenset(
-    {"execution_phase", "execution_revision", "execution_finished_at_ms"}
-)
+EXECUTION = frozenset({"execution_phase", "execution_revision", "execution_finished_at_ms"})
 CONTROL = frozenset({"control_expected_revision", "control_expected_status"})
 TERMINAL = (
-    IDENTITY
-    | ROUTE
-    | EXECUTION
-    | CONTROL
-    | {"operation", "reason", "retryable", "coordination"}
+    IDENTITY | ROUTE | EXECUTION | CONTROL | {"operation", "reason", "retryable", "coordination"}
 )
 RETRY = (
     IDENTITY
@@ -108,13 +104,19 @@ def verified_suffix(
         or digest != content_identity(value)
         or not isinstance(rows, list)
         or len(rows) < control_revision
-        or any(
-            not isinstance(x, Mapping) or set(x) != {"revision", "status", "body"}
-            for x in rows
-        )
+        or any(not isinstance(x, Mapping) or set(x) != {"revision", "status", "body"} for x in rows)
         or [x["revision"] for x in rows] != list(range(1, len(rows) + 1))
     ):
         return None
+    terminal = rows[control_revision - 1]["body"]
+    if isinstance(terminal, Mapping) and isinstance(terminal.get("completion_receipt"), Mapping):
+        if terminal["completion_receipt"].get("reason") in {EVIDENCE_REASON, GENERATION_REASON}:
+            return _verified_generation_suffix(
+                history,
+                task_cid=task_cid,
+                task_alias=task_alias,
+                control_revision=control_revision,
+            )
     chain = rows[control_revision - 8 : control_revision]
     if [x["status"] for x in chain] != [
         "blocked",
@@ -131,13 +133,9 @@ def verified_suffix(
         return None
     bodies = [dict(x["body"]) for x in chain]
     receipts = [x.pop("completion_receipt", None) for x in bodies]
-    if any(x != bodies[0] for x in bodies[1:]) or any(
-        not isinstance(x, Mapping) for x in receipts
-    ):
+    if any(x != bodies[0] for x in bodies[1:]) or any(not isinstance(x, Mapping) for x in receipts):
         return None
-    source, rearm, middle, middle_admitted, retry, current, admitted, terminal = (
-        receipts
-    )
+    source, rearm, middle, middle_admitted, retry, current, admitted, terminal = receipts
     source_revision = control_revision - 7
     if (
         set(source) != TERMINAL
@@ -210,10 +208,7 @@ def verified_suffix(
     for receipt in (rearm, retry):
         if (
             receipt["queue_reason"]
-            != "database_portal_retry:"
-            + receipt["attempt_id"]
-            + ":"
-            + receipt["reason"]
+            != "database_portal_retry:" + receipt["attempt_id"] + ":" + receipt["reason"]
             or not isinstance(receipt["queue_receipt"], Mapping)
             or type(receipt["queue_reused"]) is not bool
             or type(receipt["retry_not_before_ms"]) is not int
@@ -357,3 +352,125 @@ def verified_seed_predecessor(
         "status": "retrying",
         "body": {**context["semantic_body"], "completion_receipt": dict(predecessor)},
     }
+
+
+def _verified_generation_suffix(history, *, task_cid, task_alias, control_revision):
+    """A retained seed, exact consumer admission and pre-effect terminal.
+
+    This is historical provenance only. The runtime must also reproduce every
+    physical phase, the current expired fence, and a fresh descendant qualification.
+    """
+    if control_revision < 12:
+        return None
+    rows = history["revisions"]
+    prior_revision = control_revision - 4
+    prior = verified_suffix(
+        history, task_cid=task_cid, task_alias=task_alias, control_revision=prior_revision
+    )
+    if prior is None:
+        return None
+    chain = rows[prior_revision:control_revision]
+    if [r["status"] for r in chain] != ["retrying", "in_progress", "in_progress", "blocked"]:
+        return None
+    bodies = [dict(r["body"]) for r in chain if isinstance(r["body"], Mapping)]
+    if len(bodies) != 4:
+        return None
+    receipts = [b.pop("completion_receipt", None) for b in bodies]
+    if any(b != prior["semantic_body"] for b in bodies) or any(
+        not isinstance(r, Mapping) for r in receipts
+    ):
+        return None
+    recovery, claim, admitted, terminal = receipts
+    seed = recovery.get("post_merge_completion_recovery_seed")
+    if not isinstance(seed, Mapping):
+        return None
+    from .implementation_daemon import (
+        DatabaseImplementationAuthorityError,
+        DatabaseImplementationDaemon,
+    )
+
+    try:
+        DatabaseImplementationDaemon._verified_post_merge_completion_recovery_seed(
+            object.__new__(DatabaseImplementationDaemon), seed
+        )
+    except (DatabaseImplementationAuthorityError, ValueError, TypeError):
+        return None
+    if not verified_seed_predecessor(
+        history, task_cid=task_cid, task_alias=task_alias, seed=seed, predecessor=recovery
+    ):
+        return None
+    if seed["recovery_control_revision"] != prior_revision:
+        return None
+    carried = {
+        "post_merge_completion_recovery_seed",
+        "post_merge_completion_recovery_source_attempt_id",
+    }
+    if (
+        set(claim) != CLAIM | carried
+        or set(terminal) != TERMINAL
+        or claim.get("post_merge_completion_recovery_seed") != seed
+        or claim.get("post_merge_completion_recovery_source_attempt_id") != seed["attempt_id"]
+        or claim.get("operation") != "database_claim"
+        or claim.get("claim_phase_schema") != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        or claim.get("claimed_from_revision") != prior_revision + 1
+        or dict(admitted)
+        != {
+            **claim,
+            "operation": "database_attempt_admitted",
+            "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+            "admitted_from_revision": prior_revision + 2,
+            "attempt_execution_phase": "claimed",
+            "attempt_execution_revision": 1,
+        }
+        or terminal.get("operation") != "database_portal_terminal_failure"
+        or terminal.get("reason") not in {EVIDENCE_REASON, GENERATION_REASON}
+        or terminal.get("retryable") is not False
+        or terminal.get("control_expected_revision") != control_revision - 1
+        or terminal.get("control_expected_status") != "in_progress"
+        or terminal.get("execution_phase") != "failed"
+        or terminal.get("execution_revision") != 3
+        or type(terminal.get("execution_finished_at_ms")) is not int
+        or terminal["execution_finished_at_ms"] <= 0
+        or not isinstance(terminal.get("coordination"), Mapping)
+        or any(claim.get(k) != terminal.get(k) for k in IDENTITY | ROUTE)
+        or any(
+            claim.get(k) != prior["current_claim"].get(k)
+            for k in ROUTE
+            | {
+                "strict_task_sharding",
+                "idle_lane_work_stealing",
+                "task_prefix",
+                "task_shard_count",
+                "task_shard_index",
+            }
+        )
+        or any(
+            type(claim.get(k)) is not int or claim[k] != prior["current_receipt"][k] + 1
+            for k in ("attempt_number", "fencing_token", "fence_epoch")
+        )
+        or any(
+            type(claim.get(k)) is not str
+            or not claim[k]
+            or claim[k] in {prior["current_receipt"][k], seed[k]}
+            for k in ("attempt_id", "claim_id", "lease_id")
+        )
+        or claim.get("owner_session_id") != prior["current_receipt"]["owner_session_id"]
+    ):
+        return None
+    try:
+        _validated_database_claim_process_attestation(claim)
+    except (TypedStateOwnerAuthorizationError, ValueError, TypeError):
+        return None
+    result = {
+        **prior,
+        "recovery_control_revision": control_revision,
+        "current_receipt": dict(terminal),
+        "current_claim": dict(claim),
+        "generation_refresh": True,
+        "source_seed": dict(seed),
+        "generation_predecessor": dict(recovery),
+        "prior_terminals": [*prior.get("prior_terminals", []), prior["current_receipt"]],
+    }
+    result.pop("context_id", None)
+    result["context_id"] = content_identity(result)
+    return result

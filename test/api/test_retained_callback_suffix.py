@@ -350,7 +350,8 @@ def test_native_seed_admission_and_actual_dispatch_boundary(mutation):
         assert calls == []
 
 
-def test_retained_suffix_uses_current_real_claim_for_atomic_cas(tmp_path, monkeypatch):
+@pytest.mark.parametrize("generation_refresh", [False, True])
+def test_retained_suffix_uses_current_real_claim_for_atomic_cas(tmp_path, monkeypatch, generation_refresh):
     """The original source cannot replace the latest claim as CAS authority.
 
     The matcher has independent captured-native tests above. This test injects
@@ -442,6 +443,16 @@ def test_retained_suffix_uses_current_real_claim_for_atomic_cas(tmp_path, monkey
             lambda raw, **kwargs: dict(raw),
         )
         evidence = _callback_integration_recovery_evidence(d, source)
+        if generation_refresh:
+            context["generation_refresh"] = True
+            context["source_seed"] = d._build_post_merge_completion_recovery_seed(
+                attempt=source, task_revision=original.revision,
+                recovery_control_revision=before.revision - 1, evidence=evidence,
+                qualified_target_commit="f" * 40, qualification_kind="callback_integration",
+                qualification_receipt_id="receipt:old", recovery_evidence_id="sha256:"+"a"*64,
+                terminal_reason=SOURCE_REASON,
+            )
+            d._post_merge_completion_target_advanced = lambda *args, **kwargs: True
         result = d.recover_blocked_post_merge_declared_outputs(evidence)
         assert result["recovered"] and result["changed"]
         after = d.task_source.get(source.task_cid)

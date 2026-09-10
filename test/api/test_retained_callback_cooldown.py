@@ -302,7 +302,8 @@ def _write(path, value):
 @pytest.mark.parametrize(
     "mutation", [None, "live_history", "live_queue", "payload_floor"]
 )
-def test_exclusive_owner_forward_write_and_replay(tmp_path, monkeypatch, mutation):
+@pytest.mark.parametrize("generation_refresh", [False, True])
+def test_exclusive_owner_forward_write_and_replay(tmp_path, monkeypatch, mutation, generation_refresh):
     import duckdb
 
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
@@ -323,8 +324,14 @@ def test_exclusive_owner_forward_write_and_replay(tmp_path, monkeypatch, mutatio
         _typed_task_source,
     )
 
-    task, h, q = fixture()
-    payload, _after = forward(task, h, q)
+    if generation_refresh:
+        from test.api.test_retained_callback_generation import refresh_queue_fixture
+        task, h, q = refresh_queue_fixture()
+        payload = payload_from_binding(build_binding(task=task, history=h, prior_queue=q))
+    else:
+        task, h, q = fixture()
+        payload, _after = forward(task, h, q)
+    floor = 5 if generation_refresh else 4
     database = tmp_path / "control.duckdb"
     _seed(database)
     connection = duckdb.connect(str(database))
@@ -334,7 +341,7 @@ def test_exclusive_owner_forward_write_and_replay(tmp_path, monkeypatch, mutatio
             task["task_cid"],
             task["task_alias"],
             "retrying",
-            16,
+            task["revision"],
             json.dumps(task["body"]),
         ],
     )
@@ -403,14 +410,14 @@ def test_exclusive_owner_forward_write_and_replay(tmp_path, monkeypatch, mutatio
             assert len(repairs) == 1 and repairs[0]["changed"] is True
             assert source.record_task_retry_cooldown(**payload).changed is False
             task_record = source.get_task(task["task_cid"])
-            assert task_record.revision == 16 and task_record.body == task["body"]
+            assert task_record.revision == task["revision"] and task_record.body == task["body"]
             entry = source.validate_retrying_task_cooldown(
                 task["task_cid"],
                 expected_attempt_identity={
                     k: task["body"]["completion_receipt"][k] for k in IDENTITY
                 },
             )
-            assert entry.attempt == 4
+            assert entry.attempt == floor
             from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
                 DatabaseImplementationDaemon,
             )
@@ -418,7 +425,7 @@ def test_exclusive_owner_forward_write_and_replay(tmp_path, monkeypatch, mutatio
             daemon = object.__new__(DatabaseImplementationDaemon)
             daemon.open = lambda: daemon
             daemon._task_source = source
-            assert daemon._typed_authoritative_attempt_floor(task_record) == 4
+            assert daemon._typed_authoritative_attempt_floor(task_record) == floor
     finally:
         source.close()
         server.stop()
@@ -428,7 +435,7 @@ def test_exclusive_owner_forward_write_and_replay(tmp_path, monkeypatch, mutatio
     try:
         assert source.record_task_retry_cooldown(**payload).changed is False
         entry = source.validate_retrying_task_cooldown(task["task_cid"])
-        assert entry.attempt == 4
+        assert entry.attempt == floor
         assert source.repair_retrying_cooldown_bindings() == ()
     finally:
         source.close()

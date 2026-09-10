@@ -91,6 +91,9 @@ _LARGE_STATE_COMMAND_TEXT_FIELDS: Final[TypingMapping[str, frozenset[str]]] = (
                     "expected_control_receipt_json",
                 }
             ),
+            "task.retry.cooldown.record": frozenset(
+                {"extension_json", "retained_callback_binding"}
+            ),
             "task.claim.reservation.recover": frozenset({"body_json"}),
             "task.blocked.retry.recover": frozenset({"body_json"}),
             "task.execution_route.post_commit.recover": frozenset(

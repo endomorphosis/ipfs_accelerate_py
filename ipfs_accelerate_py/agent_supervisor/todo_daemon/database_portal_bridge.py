@@ -28887,6 +28887,18 @@ class DatabasePortalExecutionBridge:
             "callback_integration": "callback_requalification_receipt_id",
         }[str(value["qualification_kind"])]
         if (
+            value["qualification_kind"] == "callback_integration"
+            and isinstance(evidence, Mapping)
+            and evidence.get("schema") == expected_schema
+            and evidence.get("request_id") == value["request_id"]
+            and evidence.get("candidate_commit") == value["candidate_commit"]
+            and isinstance(qualification, Mapping)
+            and evidence.get(expected_target_field) != value["qualified_target_commit"]
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed target generation changed"
+            )
+        if (
             not isinstance(evidence, Mapping)
             or evidence.get("schema") != expected_schema
             or evidence.get("evidence_id") != value["recovery_evidence_id"]

@@ -101525,7 +101525,7 @@ class DatabaseImplementationDaemon:
         raw: Mapping[str, Any],
         context: Mapping[str, Any],
     ) -> bool:
-        if context.get("receiver_suffix") is True:
+        if context.get("receiver_suffix") is True and not context.get("generation_refresh"):
             attempt = context["source_attempt"]
             return (raw.get("task_cid") == attempt.task_cid
                     and raw.get("task_alias") == attempt.task_alias
@@ -103549,7 +103549,6 @@ class DatabaseImplementationDaemon:
         native coordination fence. It is not coordination or transition authority.
         """
         from .retained_callback_suffix import (
-            GUARD_REASON,
             IDENTITY,
             PREFLIGHT_REASON,
             SOURCE_REASON,
@@ -103574,12 +103573,13 @@ class DatabaseImplementationDaemon:
         }:
             return None
         attempts = []
-        for name, reason in (
-            ("source_receipt", SOURCE_REASON),
-            ("middle_receipt", PREFLIGHT_REASON),
-            ("current_receipt", GUARD_REASON),
-        ):
-            receipt = context[name]
+        physical_receipts = [
+            ("source_receipt", context["source_receipt"], SOURCE_REASON),
+            ("middle_receipt", context["middle_receipt"], PREFLIGHT_REASON),
+            *[("prior_terminal", r, r["reason"]) for r in context.get("prior_terminals", [])],
+            ("current_receipt", context["current_receipt"], context["current_receipt"]["reason"]),
+        ]
+        for name, receipt, reason in physical_receipts:
             attempt = self.get_attempt(receipt["attempt_id"])
             if (
                 attempt is None
@@ -103629,7 +103629,14 @@ class DatabaseImplementationDaemon:
             # No provider phase or effect phase may have been committed in either
             # successor; the original completion is still independently validated.
             attempts.append(attempt)
-        source, _middle, current = attempts
+        source, current = attempts[0], attempts[-1]
+        if context.get("generation_refresh"):
+            try:
+                consumed = self._post_merge_completion_consumer_seed(current)
+            except DatabaseImplementationAuthorityError:
+                return None
+            if consumed != context["source_seed"] or not self._post_merge_completion_target_advanced(consumed):
+                return None
         if (
             not self._local_attempt_is_exact_latest(current)
             or any(a.task_cid == task.task_cid for a in self.list_running_attempts())
@@ -103676,7 +103683,9 @@ class DatabaseImplementationDaemon:
                              if isinstance(candidate_body, Mapping) else None)
         if (require_current_blocked and isinstance(candidate_receipt, Mapping)
                 and candidate_receipt.get("reason")
-                == "retained callback recovery requires exact source seed before dispatch"):
+                in {"retained callback recovery requires exact source seed before dispatch",
+                    "post-merge completion recovery seed evidence changed",
+                    DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON}):
             return self._retained_callback_suffix_context(task)
 
         task_cid = str(getattr(task, "task_cid", "") or "")
@@ -116183,7 +116192,11 @@ class DatabaseImplementationDaemon:
                         == "database_portal_typed_deferral_budget_exhausted"
                         or (receipt.get("operation") == "database_portal_terminal_failure"
                             and receipt.get("reason") ==
-                            "retained callback recovery requires exact source seed before dispatch"))
+                            "retained callback recovery requires exact source seed before dispatch")
+                        or (receipt.get("operation") == "database_portal_terminal_failure"
+                            and receipt.get("reason") in {
+                                "post-merge completion recovery seed evidence changed",
+                                DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON}))
             ):
                 continue
             crash_context = (
@@ -117499,6 +117512,7 @@ class DatabaseImplementationDaemon:
             )
             and (
                 (crash_context.get("receiver_suffix") is True
+                 and not crash_context.get("generation_refresh")
                  and qualification_kind == "callback_integration"
                  and qualification_receipt.get("current_target_commit") == qualified_target_commit)
                 or (crash_requalification_matches
