@@ -2616,3 +2616,52 @@ def test_database_pool_lease_rejects_malformed_current_binding_fields(
     assert fixture["supervisor"]._active_managed_database_pool_lease(
         fixture["child"]
     ) is None
+
+
+@pytest.mark.parametrize("damage", ["missing_binding", "unknown_field", "missing_projection", "malformed_state"])
+def test_reload_preserves_live_pool_with_unresolved_task_evidence(tmp_path, monkeypatch, damage):
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    if damage == "missing_binding":
+        fixture["binding_path"].unlink()
+    elif damage == "unknown_field":
+        binding = json.loads(fixture["binding_path"].read_text())
+        binding["unrecognized_authority"] = True
+        _write_json(fixture["binding_path"], binding)
+    elif damage == "missing_projection":
+        fixture["projection_path"].unlink()
+    else:
+        (fixture["binding_path"].parent / "portal-task-state.json").write_text("{malformed")
+    assert supervisor._active_managed_database_pool_lease(fixture["child"]) is None
+    assert supervisor._database_worktree_status_projection(fixture["child"], {}) is None
+    supervisor._loaded_control_plane_source = {"source_id": "old", "repository_revision": "old"}
+    monkeypatch.setattr(supervisor, "_control_plane_source_snapshot", lambda: {"source_id": "new", "repository_revision": "new"})
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(supervisor, "_active_validation_subprocess_exists", lambda: False)
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, fixture["child"], {})
+    assert decision.action == "continue"
+    assert loop.config.status_extra_fields["control_plane_reload_deferred_reason"] == "live_managed_database_pool_quiescence_unresolved"
+    assert loop.config.status_extra_fields["control_plane_reload_deferred_task_id"] == ""
+    # A PID alone cannot preserve a reload once canonical lifecycle custody is gone.
+    fixture["lifecycle_path"].unlink()
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, fixture["child"], {})
+    assert decision.action == "stop"
+
+
+@pytest.mark.parametrize("mutation", ["pool", "lifecycle"])
+def test_reload_rechecks_unresolved_lease_custody(tmp_path, monkeypatch, mutation):
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+
+    def rejected_binding(*args, **kwargs):
+        if mutation == "pool":
+            pool = dict(fixture["pool"])
+            pool["state"] = "idle"
+            _write_json(fixture["pool_path"], pool)
+        else:
+            fixture["lifecycle_path"].unlink()
+        return None
+
+    monkeypatch.setattr(supervisor, "_validated_managed_database_lifecycle_binding", rejected_binding)
+    assert supervisor._managed_database_pool_reload_activity(fixture["child"]) is None
