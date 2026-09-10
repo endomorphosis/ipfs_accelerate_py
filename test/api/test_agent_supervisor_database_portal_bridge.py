@@ -19377,3 +19377,34 @@ def test_post_merge_seed_claim_diagnostic_preserves_rejection(
         )
     assert str(caught.value) == expected
     assert not (tmp_path / "attempts").exists()
+
+
+@pytest.mark.parametrize("alias", ["PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034", "LGSWF-004"])
+def test_last_bounded_portal_pass_uses_canonical_acceptance(tmp_path, alias):
+    record = _record()
+    record.task_alias = alias
+    attempt = replace(_attempt(), task_alias=alias, task_cid=record.task_cid)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=_CompletingPortal,
+        max_passes=1,
+    )
+    receipt = bridge.run_provider(attempt)
+    assert receipt["accepted"] is True
+
+
+@pytest.mark.parametrize("alias", ["PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034", "LGSWF-004"])
+def test_incomplete_portal_is_not_predispatch_authority(tmp_path, alias):
+    record = _record()
+    record.task_alias = alias
+    attempt = replace(_attempt(), task_alias=alias, task_cid=record.task_cid)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda *_: SimpleNamespace(run_once=lambda: {}, close=lambda: None),
+        max_passes=1,
+    )
+    with pytest.raises(DatabasePortalBridgeDeferred, match="portal_execution_incomplete") as caught:
+        bridge.run_provider(attempt)
+    assert type(caught.value) is DatabasePortalBridgeDeferred
