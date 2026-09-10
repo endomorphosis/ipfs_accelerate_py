@@ -21651,6 +21651,21 @@ class PortalImplementationSupervisor:
                     payload=skip,
                 )
                 continue
+            # An ancestor can still be an unresolved callback's pristine
+            # baseline. Only the board's exact native completion receipt can
+            # make a database task workspace eligible for background disposal.
+            completion_proof = self._canonical_completed_reconciliation_task(
+                branch=branch,
+            )
+            if (completion_proof.get("applicable") is True
+                    and completion_proof.get("verified") is not True):
+                skipped.append({
+                    "path": str(path), "branch": branch,
+                    "reason": "canonical_completion_required_for_cleanup",
+                    "completion_proof": completion_proof,
+                })
+                continue
+
             dirty = self._git_status_short(path) if path.exists() else []
             observed_status = list(dirty)
             if not path.exists():
@@ -21773,8 +21788,24 @@ class PortalImplementationSupervisor:
                         }
                     )
                     continue
+                if completion_proof.get("applicable") is True:
+                    current_completion = self._canonical_completed_reconciliation_task(
+                        branch=branch,
+                    )
+                    if (current_completion.get("verified") is not True
+                            or current_completion != completion_proof):
+                        skipped.append({
+                            "path": str(path), "branch": branch,
+                            "reason": "canonical_completion_changed_before_cleanup",
+                            "completion_proof": current_completion,
+                        })
+                        continue
+                remove_argv = ["git", "worktree", "remove"]
+                if completion_proof.get("applicable") is not True:
+                    remove_argv.append("--force")
+                remove_argv.append(str(path))
                 remove = subprocess.run(
-                    ["git", "worktree", "remove", "--force", str(path)],
+                    remove_argv,
                     cwd=repo_root,
                     text=True,
                     capture_output=True,
@@ -21783,6 +21814,7 @@ class PortalImplementationSupervisor:
                 branch_delete: dict[str, Any] = {}
                 if (
                     remove.returncode == 0
+                    and completion_proof.get("applicable") is not True
                     and self._worktree_branch_can_delete_after_merge(branch)
                     and branch_merged
                 ):
@@ -21810,7 +21842,9 @@ class PortalImplementationSupervisor:
                     "stdout": remove.stdout[-4000:],
                     "stderr": remove.stderr[-4000:],
                     "branch_delete": branch_delete,
+                    "branch_preserved": completion_proof.get("applicable") is True,
                     "dirty_redundancy": dirty_redundancy,
+                    "completion_proof": completion_proof,
                 }
             )
 
