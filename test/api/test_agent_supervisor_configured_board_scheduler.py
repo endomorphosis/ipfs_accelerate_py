@@ -10297,29 +10297,19 @@ def test_preflight_accepts_exact_committed_binding_then_rejects_drift(
     assert submodule_check["detail"][0]["exact_worktree"] is False
 
 
-def test_preflight_recycles_master_down_from_dirty_committed_head(
-    tmp_path: Path,
-) -> None:
+def test_leftover_lane_status_does_not_admit_dirty_source(tmp_path: Path) -> None:
     repo, config_path = _seed_configured_repo(tmp_path)
     board = load_configured_board(config_path, repo_root=repo)
     lane = repo / "data/configured-board/state/lane-0"
     lane.mkdir(parents=True)
-    (lane / "sawm_lane_0_supervisor_status.json").write_text(
-        "{}\n", encoding="utf-8"
-    )
-    _write(repo / "docs/plan.md", "dirty plan\n")
+    (lane / "sawm_lane_0_supervisor_status.json").write_text("{}\n")
+    _write(repo / "docs/plan.md", "unqualified source change\n")
 
     report = preflight_configured_board(board)
 
-    assert report["valid"] is True, report["errors"]
-    check = next(
-        item for item in report["checks"] if item["name"] == "checkout_clean"
-    )
-    assert check["passed"] is True
-    assert check["detail"]["master_down_recycle"] is True
-    assert "checkout_clean:ignored_for_master_down_head_recycle" in report[
-        "warnings"
-    ]
+    assert report["valid"] is False
+    check = next(item for item in report["checks"] if item["name"] == "checkout_clean")
+    assert check["passed"] is False
 
 
 def test_preflight_accepts_only_descendant_submodule_progress(
