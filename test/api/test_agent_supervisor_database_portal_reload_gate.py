@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import time
 from contextlib import contextmanager, nullcontext
@@ -258,6 +259,25 @@ def _stable_control_plane_projection() -> dict[str, object]:
         "control_plane_current_source_revision": "same-revision",
         "control_plane_update_pending": False,
         "control_plane_update_detected_at": "",
+        "control_plane_reload_deferred": False,
+        "control_plane_reload_deferred_reason": "",
+        "control_plane_reload_deferred_task_id": "",
+    }
+
+
+def _cid_only_control_plane_projection() -> dict[str, object]:
+    """Dirty-file source_id CID churn with unchanged git tree/revision."""
+
+    return {
+        "control_plane_source_schema": "control-plane-source@1",
+        "control_plane_source_id": "loaded-cid",
+        "control_plane_current_source_id": "current-cid",
+        "control_plane_source_tree_id": "same-tree",
+        "control_plane_current_source_tree_id": "same-tree",
+        "control_plane_source_revision": "same-revision",
+        "control_plane_current_source_revision": "same-revision",
+        "control_plane_update_pending": True,
+        "control_plane_update_detected_at": "2026-09-10T12:11:08Z",
         "control_plane_reload_deferred": False,
         "control_plane_reload_deferred_reason": "",
         "control_plane_reload_deferred_task_id": "",
@@ -1411,6 +1431,46 @@ def test_outer_owner_receipt_barrier_rejects_unsettled_quack_mutation(
     )
     assert barrier["active_request_count"] == 0
     assert barrier["active_processing_count"] == 0
+
+
+def test_outer_owner_receipt_barrier_ignores_settled_done_receipt_cap(
+    tmp_path,
+    monkeypatch,
+):
+    """Settled .done.json volume must not fence extra-gate prelaunch.
+
+    Lane-1/2 stayed agentic_maintenance_deferred on
+    database_portal_projection_inconclusive because 4101 leftover done
+    receipts exceeded MUTATION_MAX_DIRECTORY_ENTRIES, so PCTDD-005's
+    home shard never launched to rearm. Extra-gate aliases still cannot
+    bypass safe_to_restart=False.
+    """
+
+    repo = tmp_path / "repo"
+    inbox = repo / "state" / "quack-owner" / "mutations"
+    inbox.mkdir(parents=True, mode=0o700)
+    inbox.chmod(0o700)
+    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(repo))
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_ID",
+        "state/control.duckdb",
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server as quack_mod
+
+    monkeypatch.setattr(quack_mod, "MUTATION_MAX_DIRECTORY_ENTRIES", 2)
+    for index in range(3):
+        done = inbox / ("b" + ("a" * 40) + chr(ord("c") + index) + ".done.json")
+        done.write_text("{}\n", encoding="utf-8")
+        done.chmod(0o600)
+
+    barrier = (
+        PortalImplementationSupervisor._database_portal_mutation_inbox_barrier(
+            "state/control.duckdb"
+        )
+    )
+    assert barrier["active_request_count"] == 0
+    assert barrier["active_processing_count"] == 0
+    _extra_gate_cannot_bypass_safe_to_restart()
 
 
 @pytest.mark.parametrize(
@@ -2728,6 +2788,56 @@ def test_later_epoch_005_unknown_block_opens_generic_rearm() -> None:
         receipt,
         no_provider_evidence=None,
     ) is False
+    dispatch_unknown = dict(receipt)
+    dispatch_unknown["reason"] = "provider_dispatch_outcome_unknown"
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        task,
+        dispatch_unknown,
+        no_provider_evidence=None,
+    ) is True
+    unpinned = SimpleNamespace(
+        task_cid="baguqeeraunpinned-extra-gate-034",
+        task_alias="PCTDD-034",
+        status="blocked",
+        revision=99,
+        body={},
+    )
+    unpinned_receipt = {
+        "operation": "database_unknown_outcome_blocked",
+        "reason": "extra_gate_incomplete_projection_dead_runner",
+        "forced_block": True,
+        "authority_outcome": "unknown",
+        "retry_exhausted": True,
+    }
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        unpinned,
+        unpinned_receipt,
+        no_provider_evidence=None,
+    ) is True
+    assert daemon._extra_gate_dead_runner_block_opens_generic_rearm(
+        unpinned,
+        unpinned_receipt,
+    ) is True
+    retry_exhausted = dict(unpinned_receipt)
+    retry_exhausted["operation"] = "database_retry_exhausted"
+    retry_exhausted["reason"] = "portal_provider_failed"
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        unpinned,
+        retry_exhausted,
+        no_provider_evidence=None,
+    ) is True
+    ordinary = SimpleNamespace(
+        task_cid="baguqeeraordinary",
+        task_alias="PCTDD-001",
+        status="blocked",
+        revision=99,
+        body={},
+    )
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        ordinary,
+        unpinned_receipt,
+        no_provider_evidence=None,
+    ) is False
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,
@@ -2980,6 +3090,263 @@ def test_restarting_stale_or_exited_preserves_extra_gate_via_supervisor_pid(
     _extra_gate_cannot_bypass_safe_to_restart()
 
 
+def test_restarting_exited_preserves_extra_gate_via_nested_portal_identity_pid(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Daemon pid missing + grok reparented to init still preserves.
+
+    Lane-3 heartbeat logged daemon_status=missing, then master
+    ``restarting exited`` with zero preserving extra-gate lines and
+    SIGTERM-killed PCTDD-005 grok 583866 mid-validate. Official unstick
+    is rearm, never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        _restarting_track_must_preserve_extra_gate_grok,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
+        extra_gate_nested_portal_has_live_grok,
+    )
+
+    attempts = tmp_path / "pctdd_lane_3_database_portal_attempts" / "eaa5db1788a319d2"
+    attempts.mkdir(parents=True)
+    (attempts / "portal-task-state.json").write_text(
+        json.dumps(
+            {
+                "active_task_id": "PCTDD-005",
+                "implementation_in_progress": True,
+                "active_phase": "validating",
+                "active_provider_runner": {"pid": 583866},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop.pid_alive",
+        lambda pid: int(pid) == 583866,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner._pid_tree_has_grok_cli_runner",
+        lambda pid: False,
+    )
+    process = SimpleNamespace(
+        pid=4010103,
+        _agent_supervisor_lifecycle_profile=None,
+    )
+    assert extra_gate_nested_portal_has_live_grok(tmp_path) is True
+    assert (
+        _restarting_track_must_preserve_extra_gate_grok(
+            process,
+            {"daemon_pid": None, "daemon_status": "missing"},
+            state_dir=tmp_path,
+        )
+        is True
+    )
+    idle = tmp_path / "idle"
+    idle.mkdir()
+    assert extra_gate_nested_portal_has_live_grok(idle) is False
+    assert (
+        _restarting_track_must_preserve_extra_gate_grok(
+            process,
+            {"daemon_pid": None, "daemon_status": "missing"},
+            state_dir=idle,
+        )
+        is False
+    )
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_nested_portal_live_grok_not_hidden_by_newer_idle_claims(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Idle extra-gate claims must not hide an older live grok runner.
+
+    Lane-0 had 800+ attempt dirs; newest were idle PCTDD-006 claims with
+    runner=None while grok 3921346 sat in an older dir. Capping at 32
+    missed it and restarting-exited killed the worker. Official unstick
+    is rearm, never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
+        extra_gate_nested_portal_has_live_grok,
+    )
+
+    root = tmp_path / "pctdd_lane_0_database_portal_attempts"
+    root.mkdir()
+    for index in range(40):
+        child = root / f"idle{index:02d}"
+        child.mkdir()
+        (child / "portal-task-state.json").write_text(
+            json.dumps(
+                {
+                    "active_task_id": "PCTDD-006",
+                    "implementation_in_progress": False,
+                    "active_provider_runner": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+    live = root / "older_live_grok"
+    live.mkdir()
+    (live / "portal-task-state.json").write_text(
+        json.dumps(
+            {
+                "active_task_id": "PCTDD-006",
+                "implementation_in_progress": True,
+                "active_provider_runner": {"pid": 3921346},
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.utime(live, (0, 0))
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop.pid_alive",
+        lambda pid: int(pid) == 3921346,
+    )
+    assert extra_gate_nested_portal_has_live_grok(tmp_path) is True
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_sigterm_defers_when_extra_gate_grok_is_live() -> None:
+    """SIGTERM must not SystemExit 143 while extra-gate grok is live.
+
+    Fleet watchdog / master restarting-exited SIGTERM'd lane-0/3
+    supervisors while grok 2233765/1577063 were live. Official unstick
+    is rearm, never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    live = SimpleNamespace(
+        _live_in_progress_worker_must_preserve=lambda: True,
+    )
+    idle = SimpleNamespace(
+        _live_in_progress_worker_must_preserve=lambda: False,
+    )
+    assert (
+        PortalImplementationSupervisor._sigterm_should_defer_for_extra_gate(
+            live, signal.SIGTERM
+        )
+        is True
+    )
+    assert (
+        PortalImplementationSupervisor._sigterm_should_defer_for_extra_gate(
+            live, signal.SIGINT
+        )
+        is False
+    )
+    assert (
+        PortalImplementationSupervisor._sigterm_should_defer_for_extra_gate(
+            idle, signal.SIGTERM
+        )
+        is False
+    )
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_sigterm_defers_via_nested_portal_when_lane_state_empty(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """SIGTERM defer must use nested portal after lane state is cleared.
+
+    Lane-0 daemon_pid went missing, PortalTaskState.active_task_id was
+    empty, then SystemExit 143 killed PCTDD-006 grok 3921346. Official
+    unstick is rearm, never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    attempts = tmp_path / "pctdd_lane_0_database_portal_attempts" / "live006"
+    attempts.mkdir(parents=True)
+    (attempts / "portal-task-state.json").write_text(
+        json.dumps(
+            {
+                "active_task_id": "PCTDD-006",
+                "implementation_in_progress": True,
+                "active_provider_runner": {"pid": 3921346},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop.pid_alive",
+        lambda pid: int(pid) == 3921346,
+    )
+    supervisor = SimpleNamespace(
+        _live_in_progress_worker_must_preserve=lambda: False,
+        config=SimpleNamespace(state_dir=tmp_path),
+    )
+    assert (
+        PortalImplementationSupervisor._sigterm_should_defer_for_extra_gate(
+            supervisor, signal.SIGTERM
+        )
+        is True
+    )
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_stop_tracks_preserves_extra_gate_grok_on_sigint(tmp_path, monkeypatch) -> None:
+    """SIGINT finally-stop_tracks killed extra-gate grok.
+
+    Fleet-ensure SIGINT'd master; stop_tracks fenced every lane tree
+    with zero preserving extra-gate lines. Extra-gate aliases still
+    cannot bypass ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        SupervisorTrack,
+        stop_tracks,
+    )
+
+    terminate_calls: list[int] = []
+    lines: list[str] = []
+    state_dir = tmp_path / "state" / "lane-3"
+    state_dir.mkdir(parents=True)
+    daemon_pid_path = state_dir / "daemon.pid"
+    daemon_pid_path.write_text("2889716\n", encoding="utf-8")
+    track = SupervisorTrack(
+        name="parallel-content-sealing-proof-carrying-tdd-v1-3",
+        script_path=tmp_path / "script.py",
+        log_path=state_dir / "run.log",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        daemon_pid_path=daemon_pid_path,
+    )
+    process = SimpleNamespace(pid=2811015)
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner._restarting_track_must_preserve_extra_gate_grok",
+        lambda proc, fields: True,
+    )
+
+    def _fail_terminate(proc, *, grace_seconds):
+        terminate_calls.append(int(getattr(proc, "pid", 0) or 0))
+        return True, (int(getattr(proc, "pid", 0) or 0),)
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner._terminate_managed_process",
+        _fail_terminate,
+    )
+    payload = stop_tracks(
+        [track],
+        {track.name: process},  # type: ignore[dict-item]
+        repo_root=tmp_path,
+        grace_seconds=0.1,
+        output=lines.append,
+    )
+    assert terminate_calls == []
+    assert payload["stopped_count"] == 0
+    assert payload["all_trees_fenced"] is True
+    assert any(
+        "preserving extra-gate grok descendants for" in line
+        and track.name in line
+        for line in lines
+    )
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
 def test_source_reload_defers_without_quiesce_when_extra_gate_in_progress(
     tmp_path,
     monkeypatch,
@@ -3069,6 +3436,123 @@ def test_source_reload_defers_without_quiesce_when_extra_gate_in_progress(
             "reason": "database_portal_retained_reconciliation_blocked",
         }
     )
+
+
+def test_cid_only_source_identity_does_not_quiesce_extra_gate(
+    tmp_path,
+    monkeypatch,
+):
+    """Dirty-file CID churn must not fence extra-gate grok.
+
+    Lane-0/1 had matching git tree/revision with drifted source_id, then
+    extra_gate_in_progress_preserve_worker cleared and child_exited
+    PCTDD-006/034 grok. Official unstick is rearm, never CAS. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    config = _config(tmp_path)
+    state = PortalTaskState()
+    state.active_task_id = "PCTDD-006"
+    state.save(config.state_path)
+    supervisor = PortalImplementationSupervisor(config)
+
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        _cid_only_control_plane_projection,
+    )
+    monkeypatch.setattr(supervisor, "_record_event", lambda *_: None)
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        lambda: pytest.fail(
+            "CID-only identity must not enter the portal mutation fence"
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: pytest.fail(
+            "CID-only identity must not quiesce extra-gate grok"
+        ),
+    )
+
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=2304335),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert decision.reason != "control_plane_source_changed"
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_deferred_reason"
+    ] == "control_plane_source_identity_cid_only"
+    assert (
+        loop.config.status_extra_fields["control_plane_update_pending"]
+        is False
+    )
+    assert PortalImplementationSupervisor._control_plane_source_identity_is_cid_only(
+        _cid_only_control_plane_projection()
+    )
+    assert not PortalImplementationSupervisor._control_plane_source_identity_is_cid_only(
+        _changed_control_plane_projection()
+    )
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_control_plane_projection_clears_cid_only_pending(
+    tmp_path,
+    monkeypatch,
+):
+    """Projection must not latch pending when git tree/revision still match."""
+
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    supervisor._loaded_control_plane_source = {
+        "source_id": "loaded-cid",
+        "repository_revision": "same-revision",
+        "control_plane_tree_id": "same-tree",
+    }
+    supervisor._last_control_plane_source_probe_monotonic = 0.0
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_source_snapshot",
+        lambda: {
+            "source_id": "current-cid",
+            "repository_revision": "same-revision",
+            "control_plane_tree_id": "same-tree",
+        },
+    )
+
+    status = supervisor._control_plane_status_projection()
+
+    assert status["control_plane_update_pending"] is False
+    assert status["control_plane_source_id"] == "loaded-cid"
+    assert status["control_plane_current_source_id"] == "current-cid"
+    assert status["control_plane_source_tree_id"] == "same-tree"
+    assert status["control_plane_current_source_tree_id"] == "same-tree"
+    assert PortalImplementationSupervisor._control_plane_source_identity_is_cid_only(
+        {
+            "control_plane_source_id": status["control_plane_source_id"],
+            "control_plane_current_source_id": status[
+                "control_plane_current_source_id"
+            ],
+            "control_plane_source_tree_id": status[
+                "control_plane_source_tree_id"
+            ],
+            "control_plane_current_source_tree_id": status[
+                "control_plane_current_source_tree_id"
+            ],
+            "control_plane_source_revision": status[
+                "control_plane_source_revision"
+            ],
+            "control_plane_current_source_revision": status[
+                "control_plane_current_source_revision"
+            ],
+        }
+    )
+    _extra_gate_cannot_bypass_safe_to_restart()
 
 
 def test_watchdog_maintenance_preserves_extra_gate_in_progress(
@@ -3477,6 +3961,44 @@ def test_nested_extra_gate_dead_runner_does_not_preserve_worker(
     _extra_gate_cannot_bypass_safe_to_restart()
 
 
+def test_nested_extra_gate_stale_portal_without_runner_does_not_preserve_dead_daemon(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Stale nested extra-gate with runner=None must not block relaunch.
+
+    Lane-2 leftover PCTDD-005 portal had no runner after owner teardown,
+    preserve stayed True, remaining_pid 317326 was dead, and prelaunch
+    looped database_portal_owner_mutation_fence_unproven. Extra-gate
+    aliases still cannot bypass ``safe_to_restart=False``.
+    """
+
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    _write_nested_extra_gate_portal(
+        supervisor, task_id="PCTDD-005", runner_pid=None
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.process_is_running",
+        lambda _pid: False,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_recorded_managed_daemon_pid",
+        lambda: 317326,
+    )
+
+    assert supervisor._nested_extra_gate_portal_must_preserve_worker() is False
+    assert supervisor._live_in_progress_worker_must_preserve() is False
+    result = supervisor._terminate_managed_daemon_tree()
+    assert result.get("reason") != "extra_gate_in_progress_preserve_worker"
+    assert result["daemon_fence"]["reason"] != "extra_gate_in_progress_preserve_worker"
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
 def test_nested_extra_gate_live_runner_still_preserves_worker(
     tmp_path,
     monkeypatch,
@@ -3571,6 +4093,215 @@ def test_nested_extra_gate_live_runner_survives_newer_idle_attempts(
     result = supervisor._terminate_managed_daemon_tree()
     assert result["reason"] == "extra_gate_in_progress_preserve_worker"
     assert result["terminated"] is False
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_live_in_progress_preserves_supervisor_descendant_grok(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Grok parent-linked to the supervisor must preserve after daemon death.
+
+    control_plane_source_changed quiesced the recorded daemon pid. Extra-gate
+    grok_cli_runner stayed in the supervisor tree, preserve scanned only the
+    dead daemon pid, and finish_reload STOP killed the lane. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    supervisor_pid = os.getpid()
+
+    def fake_descendants(root):
+        if int(root) == supervisor_pid:
+            return [
+                {
+                    "pid": 1782422,
+                    "cmdline": (
+                        "python3 -m "
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner "
+                        "--workspace extra-gate"
+                    ),
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.descendant_processes",
+        fake_descendants,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_recorded_managed_daemon_pid",
+        lambda: 0,
+    )
+
+    assert supervisor._live_in_progress_worker_must_preserve(child_pid=None) is True
+    result = supervisor._terminate_managed_daemon_tree()
+    assert result["reason"] == "extra_gate_in_progress_preserve_worker"
+    assert result["terminated"] is False
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_process_listing_is_grok_runner_uses_procfs_argv() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (
+        process_listing_is_grok_runner,
+    )
+
+    assert process_listing_is_grok_runner(
+        {
+            "pid": 2586920,
+            "cmdline": "",
+            "argv": (
+                "/usr/bin/python3",
+                "-m",
+                "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+            ),
+        }
+    )
+    assert process_listing_is_grok_runner({"cmdline": "", "argv": ("/usr/bin/grok",)})
+    assert not process_listing_is_grok_runner({"cmdline": "", "argv": ("python3", "-m", "pytest")})
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_idle_reload_defers_argv_only_grok_without_task_state(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Idle DuckDB projection must not quiesce extra-gate grok hidden from ps.
+
+    Lane-3 reported database_portal_population_idle with empty task_ids while
+    PCTDD-034 grok 2586920 was live. Preserve skipped empty ``ps`` cmdline
+    and ordinary_provider_runner_receipt_absent fenced the daemon. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    config = _config(tmp_path)
+    supervisor = PortalImplementationSupervisor(config)
+    child_pid = 1982448
+
+    def fake_descendants(root):
+        if int(root) == child_pid:
+            return [
+                {
+                    "pid": 2586920,
+                    "cmdline": "",
+                    "argv": (
+                        "/usr/bin/python3",
+                        "-m",
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+                        "--workspace",
+                        "extra-gate",
+                    ),
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        _changed_control_plane_projection,
+    )
+    monkeypatch.setattr(supervisor, "_record_event", lambda *_: None)
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda *_a, **_k: [])
+    monkeypatch.setattr(supervisor, "_active_validation_subprocess_exists", lambda: False)
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.descendant_processes",
+        fake_descendants,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda *_args, **_kwargs: [],
+    )
+
+    @contextmanager
+    def portal_fence():
+        yield config.database_program
+
+    monkeypatch.setattr(supervisor, "_database_portal_reload_mutation_fence", portal_fence)
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection_fenced",
+        lambda _program: _authenticated_watchdog_projection(active=False),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: pytest.fail(
+            "argv-only extra-gate grok must not be quiesced on idle projection"
+        ),
+    )
+
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=child_pid),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert decision.reason != "control_plane_source_changed"
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_deferred_reason"
+    ] == "extra_gate_in_progress_preserve_worker"
+    assert supervisor._supervised_tree_has_live_grok(child_pid) is True
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_terminate_preserves_tree_grok_when_live_in_progress_is_false(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Terminate must not fence grok just because portal preserve_worker is false.
+
+    Watchdog extra_gate_active was False on an idle projection, then
+    _terminate_managed_daemon_tree gated its grok scan on preserve_worker
+    and SIGTERM-killed PCTDD-034. Extra-gate aliases still cannot bypass
+    safe_to_restart=False.
+    """
+
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    child_pid = 1982448
+    monkeypatch.setattr(supervisor, "_live_in_progress_worker_must_preserve", lambda *a, **k: False)
+    monkeypatch.setattr(supervisor, "_recorded_managed_daemon_pid", lambda: child_pid)
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.process_is_running",
+        lambda pid: int(pid) == child_pid,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.descendant_processes",
+        lambda root: (
+            [
+                {
+                    "pid": 2586920,
+                    "cmdline": "",
+                    "argv": (
+                        "/usr/bin/python3",
+                        "-m",
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+                    ),
+                }
+            ]
+            if int(root) == child_pid
+            else []
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_fence_recorded_managed_daemon",
+        lambda **_kwargs: pytest.fail("live extra-gate grok must not be fenced"),
+    )
+
+    result = supervisor._terminate_managed_daemon_tree()
+    assert result["terminated"] is False
+    assert result["reason"] == "extra_gate_in_progress_preserve_worker"
     _extra_gate_cannot_bypass_safe_to_restart()
 
 

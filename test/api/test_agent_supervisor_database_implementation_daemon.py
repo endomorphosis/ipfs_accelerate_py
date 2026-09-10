@@ -6414,6 +6414,9 @@ def test_extra_gate_incomplete_projection_closes_when_grok_is_dead(
         _extra_gate_recorded_runner_was_spawned_here=lambda attempt: (
             Daemon._extra_gate_recorded_runner_was_spawned_here(daemon, attempt)
         ),
+        _extra_gate_runner_pid_is_this_daemon_child=lambda pid: (
+            Daemon._extra_gate_runner_pid_is_this_daemon_child(pid)
+        ),
         _extra_gate_attempt_belongs_to_this_process=lambda attempt: (
             Daemon._extra_gate_attempt_belongs_to_this_process(daemon, attempt)
         ),
@@ -6422,6 +6425,9 @@ def test_extra_gate_incomplete_projection_closes_when_grok_is_dead(
         ),
         _extra_gate_attempt_is_within_launch_grace=lambda attempt: (
             Daemon._extra_gate_attempt_is_within_launch_grace(daemon, attempt)
+        ),
+        _extra_gate_same_alias_peer_grok_is_live=lambda attempt: (
+            Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, attempt)
         ),
         _now_ms=lambda: 1_000_000,
         _extra_gate_dead_runner_block_opens_generic_rearm=lambda task, receipt: (
@@ -6494,7 +6500,11 @@ def test_extra_gate_incomplete_projection_closes_when_grok_is_dead(
         task_alias="PCTDD-007",
         task_cid="task:cid:007",
         process_instance_id="process:live",
-        body={"process_instance_id": "process:live"},
+        started_at_ms=999_000,
+        body={
+            "process_instance_id": "process:live",
+            "started_at_ms": 999_000,
+        },
     )
     ordinary = SimpleNamespace(
         task_alias="PCTDD-008",
@@ -6505,14 +6515,31 @@ def test_extra_gate_incomplete_projection_closes_when_grok_is_dead(
         task_alias="PCTDD-005",
         task_cid="task:cid:005",
         process_instance_id="process:other",
+        started_at_ms=999_000,
         body={
             "process_instance_id": "process:other",
+            "started_at_ms": 999_000,
             "retry_budget": {
                 "retained_recovery_consumption": {
                     "consumed_before_worker_start": True,
                 }
             },
             "active_provider_runner": {"pid": 1592311, "owner_pid": 1366231},
+        },
+    )
+    stale_owned = SimpleNamespace(
+        task_alias="PCTDD-005",
+        task_cid="task:cid:005",
+        process_instance_id="process:live",
+        started_at_ms=1,
+        body={
+            "process_instance_id": "process:live",
+            "started_at_ms": 1,
+            "retry_budget": {
+                "retained_recovery_consumption": {
+                    "consumed_before_worker_start": True,
+                }
+            },
         },
     )
     blocked_034 = SimpleNamespace(
@@ -6547,6 +6574,23 @@ def test_extra_gate_incomplete_projection_closes_when_grok_is_dead(
         Daemon._extra_gate_incomplete_projection_is_in_flight(
             daemon, live_runner
         )
+        is False
+    )
+    spawned_here = SimpleNamespace(
+        task_alias="PCTDD-034",
+        task_cid="task:cid:034",
+        process_instance_id="process:other",
+        body={
+            "active_provider_runner": {
+                "pid": 2804560,
+                "owner_pid": os.getpid(),
+            }
+        },
+    )
+    assert (
+        Daemon._extra_gate_incomplete_projection_is_in_flight(
+            daemon, spawned_here
+        )
         is True
     )
     assert (
@@ -6564,8 +6608,29 @@ def test_extra_gate_incomplete_projection_closes_when_grok_is_dead(
         Daemon._extra_gate_incomplete_projection_is_in_flight(
             daemon, fresh_copied
         )
-        is True
+        is False
     )
+    assert (
+        Daemon._extra_gate_incomplete_projection_is_in_flight(
+            daemon, stale_owned
+        )
+        is False
+    )
+    unstarted = SimpleNamespace(
+        task_alias="PCTDD-005",
+        task_cid="task:cid:005",
+        process_instance_id="process:live",
+        body={
+            "process_instance_id": "process:live",
+            "retry_budget": {
+                "retained_recovery_consumption": {
+                    "consumed_before_worker_start": True,
+                }
+            },
+        },
+    )
+    assert Daemon._extra_gate_claim_has_not_started_worker(daemon, unstarted) is True
+    assert Daemon._extra_gate_running_attempt_is_live_local(daemon, unstarted) is False
     quack_exc = type("IOException", (Exception,), {})(
         "IO Error: Failed to send message: IO Error: Could not connect "
         "to server error for HTTP POST to 'http://127.0.0.1:27278/quack'"
@@ -6601,6 +6666,53 @@ def test_extra_gate_incomplete_projection_closes_when_grok_is_dead(
         )
         is True
     )
+    assert (
+        Daemon._extra_gate_dead_runner_block_opens_generic_rearm(
+            daemon,
+            blocked_034,
+            {"reason": "database_portal_retained_peer_writer_busy"},
+        )
+        is True
+    )
+    assert (
+        Daemon._extra_gate_dead_runner_block_opens_generic_rearm(
+            daemon,
+            ordinary,
+            {"reason": "database_portal_retained_peer_writer_busy"},
+        )
+        is False
+    )
+    inflight_034 = SimpleNamespace(
+        task_alias="PCTDD-034",
+        status="in_progress",
+        body={},
+    )
+    inflight_005 = SimpleNamespace(
+        task_alias="PCTDD-005",
+        status="in_progress",
+        body={},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_extra_gate_same_alias_peer_grok_is_live",
+        lambda task: str(getattr(task, "task_alias", "")) == "PCTDD-005",
+    )
+    assert (
+        Daemon._extra_gate_dead_runner_block_opens_generic_rearm(
+            daemon,
+            inflight_034,
+            {},
+        )
+        is True
+    )
+    assert (
+        Daemon._extra_gate_dead_runner_block_opens_generic_rearm(
+            daemon,
+            inflight_005,
+            {},
+        )
+        is False
+    )
     assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
         {
             "safe_to_restart": False,
@@ -6611,6 +6723,201 @@ def test_extra_gate_incomplete_projection_closes_when_grok_is_dead(
         }
     )
 
+
+def test_extra_gate_incomplete_projection_keeps_same_alias_peer_grok(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Peer-lane extra-gate grok must not force-block the same alias.
+
+    Lane-3 failed PCTDD-005 on ``Portal task projection is not complete``
+    while lane-2 grok 3814976 was still implementing, DuckDB blocked 005.
+    Official unstick is rearm, never CAS. Extra-gate aliases still cannot
+    bypass ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    lanes = tmp_path / "state"
+    peer = lanes / "lane-2" / "pctdd_lane_2_database_portal_attempts" / "abc"
+    peer.mkdir(parents=True)
+    (peer / "database-attempt-binding.json").write_text(
+        json.dumps({"task_alias": "PCTDD-005"}),
+        encoding="utf-8",
+    )
+    (peer / "portal-task-state.json").write_text(
+        json.dumps(
+            {
+                "active_task_id": "PCTDD-005",
+                "active_provider_runner": {"pid": 3814976},
+            }
+        ),
+        encoding="utf-8",
+    )
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    daemon = SimpleNamespace(
+        process_instance_id="process:lane3",
+        state_path=lanes / "lane-3" / "pctdd_lane_3_task_state.json",
+        _task_alias_is_extra_gate=Daemon._task_alias_is_extra_gate,
+        _extra_gate_running_attempt_is_live_local=lambda _attempt: False,
+        _extra_gate_recorded_runner_pid=lambda _attempt: 0,
+        _extra_gate_recorded_runner_was_spawned_here=lambda _attempt: False,
+        _extra_gate_runner_pid_is_this_daemon_child=lambda _pid: False,
+        _extra_gate_claim_has_not_started_worker=lambda _attempt: True,
+        _extra_gate_attempt_is_within_launch_grace=lambda _attempt: False,
+        _extra_gate_same_alias_peer_grok_is_live=lambda attempt: (
+            Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, attempt)
+        ),
+    )
+    monkeypatch.setattr(daemon_module, "process_is_running", lambda pid: int(pid) == 3814976)
+    local = SimpleNamespace(task_alias="PCTDD-005", task_cid="task:cid:005", body={})
+    other = SimpleNamespace(task_alias="PCTDD-007", task_cid="task:cid:007", body={})
+    assert Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, local) is True
+    assert Daemon._extra_gate_incomplete_projection_is_in_flight(daemon, local) is True
+    assert Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, other) is False
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_peer_grok_finds_lanes_without_json_projection_state_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DuckDB daemons omit state_path; peer grok must still be visible.
+
+    Production ``use_projections=False`` passes ``state_path=None``. Lane-1
+    then claimed PCTDD-034 and force-blocked on projection-not-complete
+    while lane-3 grok 1577063 was live. Official unstick is rearm, never
+    CAS. Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    lanes = tmp_path / "state"
+    peer_attempts = (
+        lanes / "lane-3" / "pctdd_lane_3_database_portal_attempts" / "live034"
+    )
+    local_attempts = (
+        lanes / "lane-1" / "pctdd_lane_1_database_portal_attempts"
+    )
+    peer_attempts.mkdir(parents=True)
+    local_attempts.mkdir(parents=True)
+    (peer_attempts / "database-attempt-binding.json").write_text(
+        json.dumps({"task_alias": "PCTDD-034"}),
+        encoding="utf-8",
+    )
+    (peer_attempts / "portal-task-state.json").write_text(
+        json.dumps(
+            {
+                "active_task_id": "PCTDD-034",
+                "active_provider_runner": {"pid": 1577063},
+            }
+        ),
+        encoding="utf-8",
+    )
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    daemon = SimpleNamespace(
+        process_instance_id="process:lane1",
+        state_path=None,
+        _database_portal_bridge=SimpleNamespace(attempt_root=local_attempts),
+        _task_alias_is_extra_gate=Daemon._task_alias_is_extra_gate,
+        _extra_gate_running_attempt_is_live_local=lambda _attempt: False,
+        _extra_gate_recorded_runner_pid=lambda _attempt: 0,
+        _extra_gate_recorded_runner_was_spawned_here=lambda _attempt: False,
+        _extra_gate_runner_pid_is_this_daemon_child=lambda _pid: False,
+        _extra_gate_claim_has_not_started_worker=lambda _attempt: True,
+        _extra_gate_attempt_is_within_launch_grace=lambda _attempt: False,
+        _extra_gate_same_alias_peer_grok_is_live=lambda attempt: (
+            Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, attempt)
+        ),
+    )
+    monkeypatch.setattr(
+        daemon_module, "process_is_running", lambda pid: int(pid) == 1577063
+    )
+    task_id_only = SimpleNamespace(
+        task_alias="",
+        task_id="PCTDD-034",
+        task_cid="task:cid:034",
+        body={},
+    )
+    other = SimpleNamespace(
+        task_alias="PCTDD-007",
+        task_id="PCTDD-007",
+        task_cid="task:cid:007",
+        body={},
+    )
+    assert Daemon._extra_gate_peer_lanes_root(daemon) == lanes.resolve()
+    assert Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, task_id_only) is True
+    assert Daemon._extra_gate_incomplete_projection_is_in_flight(
+        daemon, task_id_only
+    ) is True
+    assert Daemon._automatic_claim_forbidden_current(daemon, task_id_only) is True
+    assert Daemon._extra_gate_same_alias_peer_grok_is_live(daemon, other) is False
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_extra_gate_unstarted_failure_does_not_retry_exhaust() -> None:
+    """Projection-not-complete before grok must not DuckDB-block extra-gate.
+
+    Lane-1/2 force-blocked PCTDD-007/034 on Portal task projection is not
+    complete after grok never started. Official unstick is rearm →
+    retrying, never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    assert (
+        Daemon._extra_gate_unstarted_failure_is_retry_exhausted(
+            force_block=True,
+            retained_one_shot_consumed=True,
+            extra_gate_unstarted_one_shot=True,
+            attempts_used=1,
+            retry_cap=2,
+        )
+        is False
+    )
+    assert (
+        Daemon._extra_gate_unstarted_failure_is_retry_exhausted(
+            force_block=True,
+            retained_one_shot_consumed=True,
+            extra_gate_unstarted_one_shot=False,
+            attempts_used=1,
+            retry_cap=2,
+        )
+        is True
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
 
 
 def test_extra_gate_pre_dispatch_provider_error_defers_without_force_block(
@@ -6986,6 +7293,320 @@ def test_terminal_receipt_validation_failure_preserves_dispatch_fence(
         )
         assert result.get("claimed_task_cid") in (None, "")
         assert provider_calls == []
+    finally:
+        daemon.close()
+
+
+def test_extra_gate_disposition_mismatch_is_terminal_repair_retry_authority() -> None:
+    """PCTDD-034 leftover must not fail-close extra-gate home-lane recon.
+
+    Lane-0 idled on database_portal_reconciliation_blocked because extra-gate
+    034 raised terminal phase changed its actual database disposition.
+    Official unstick is rearm, never CAS. Extra-gate aliases still cannot
+    bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    Daemon = daemon_module.DatabaseImplementationDaemon
+    extra_gate = SimpleNamespace(
+        task_alias="PCTDD-034",
+        task_cid="baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
+    )
+    ordinary = SimpleNamespace(
+        task_alias="PCTDD-001",
+        task_cid="task:cid:001",
+    )
+    mismatch = DatabaseImplementationConflictError(
+        "terminal phase changed its actual database disposition"
+    )
+    floats = DatabaseImplementationConflictError(
+        "canonical proof contracts cannot contain floats"
+    )
+    assert (
+        Daemon._extra_gate_terminal_repair_is_disposition_mismatch_retry(
+            extra_gate, mismatch
+        )
+        is True
+    )
+    assert (
+        Daemon._extra_gate_terminal_repair_is_disposition_mismatch_retry(
+            extra_gate, floats
+        )
+        is False
+    )
+    assert (
+        Daemon._extra_gate_terminal_repair_is_disposition_mismatch_retry(
+            ordinary, mismatch
+        )
+        is False
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_later_epoch_extra_gate_skips_terminal_landed_manual_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Later-epoch extra-gate must not stay behind manual_authority.
+
+    After grok-killed restarts, extra-gate 005/006/007/034 were blocked with
+    terminal_landed_candidate_manual_authority_required and daemons idled
+    no_ready_tasks. Official unstick is generic rearm, never CAS. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    pin = DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:later-epoch-extra-gate-rearm",
+        max_task_attempts=2,
+    )
+    task = SimpleNamespace(
+        task_cid=str(pin["task_cid"]),
+        task_alias="PCTDD-005",
+        status="blocked",
+        revision=int(pin["blocked_task_revision"]) + 14,
+        body={
+            "completion_receipt": {
+                "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                "operation": "database_unknown_outcome_blocked",
+                "reason": "callback_authority_incomplete_blocked",
+                "forced_block": True,
+                "authority_outcome": "unknown",
+                "retry_exhausted": True,
+                "unknown_outcome_rearm_count": 1,
+                "terminal_reconciliation": {"schema": "later-epoch"},
+            }
+        },
+    )
+    generic_calls: list[str] = []
+    try:
+        daemon._database_portal_bridge = object()
+        monkeypatch.setattr(
+            daemon.task_source,
+            "list_tasks",
+            lambda **_kwargs: SimpleNamespace(tasks=(task,)),
+        )
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(
+            daemon,
+            "_automatic_claim_forbidden_current",
+            lambda _task: True,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_reconcile_one_blocked_terminal_landed_task",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("later-epoch extra-gate must skip terminal-landed")
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_database_portal_no_provider_rearm_evidence",
+            lambda task, receipt: generic_calls.append(str(task.task_alias)),
+        )
+        def _cas(task_cid: str, **kwargs: object) -> None:
+            assert str(kwargs.get("new_status") or "") != "completed"
+
+        monkeypatch.setattr(daemon, "_cas_task_status_database", _cas)
+
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert not any(
+            item.get("reason")
+            == "terminal_landed_candidate_manual_authority_required"
+            for item in outcomes
+        )
+        assert generic_calls == ["PCTDD-005"]
+        assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+            {
+                "safe_to_restart": False,
+                "blocked": True,
+                "quiesced": False,
+                "reconciled": False,
+                "reason": "database_portal_retained_reconciliation_blocked",
+            }
+        )
+    finally:
+        daemon.close()
+
+
+def test_later_epoch_extra_gate_non_retry_budget_receipt_opens_generic_rearm() -> None:
+    """Dirty-candidate leftover must not skip extra-gate generic rearm.
+
+    Post-G-fix daemons still idled no_ready_tasks because extra-gate DuckDB
+    receipts lacked DATABASE_RETRY_BUDGET_SCHEMA so the generic scan continued
+    before later-epoch. Official unstick is rearm, never CAS. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    pin = DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    task = SimpleNamespace(
+        task_cid=str(pin["task_cid"]),
+        task_alias="PCTDD-005",
+        status="blocked",
+        revision=int(pin["blocked_task_revision"]) + 14,
+        body={"completion_receipt": {"reason": "dirty_candidate_retry_credit_prerequisite_unavailable"}},
+    )
+    daemon = object.__new__(daemon_module.DatabaseImplementationDaemon)
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        task,
+        dict(task.body["completion_receipt"]),
+        no_provider_evidence=None,
+    ) is True
+    sealed = SimpleNamespace(
+        task_cid=str(pin["task_cid"]),
+        task_alias="PCTDD-005",
+        status="blocked",
+        revision=int(pin["blocked_task_revision"]),
+        body=task.body,
+    )
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        sealed,
+        dict(task.body["completion_receipt"]),
+        no_provider_evidence=None,
+    ) is False
+    unpinned = SimpleNamespace(
+        task_cid="baguqeeraunpinned-extra-gate-034",
+        task_alias="PCTDD-034",
+        status="blocked",
+        revision=99,
+        body={"completion_receipt": {"reason": "dirty_candidate_retry_credit_prerequisite_unavailable"}},
+    )
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        unpinned,
+        dict(unpinned.body["completion_receipt"]),
+        no_provider_evidence=None,
+    ) is True
+    assert daemon._extra_gate_later_epoch_unknown_block_opens_generic_rearm(
+        unpinned,
+        dict(unpinned.body["completion_receipt"]),
+        no_provider_evidence={"schema": "leftover-no-provider-fence"},
+    ) is True
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_shared_fence_does_not_starve_extra_gate_generic_rearm(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Leftover shared fence must not skip extra-gate blocked rearm.
+
+    reconcile_blocked_unknown_outcome_tasks returned after shared/saga
+    recovery so extra-gate stayed DuckDB-blocked and daemons idled
+    no_ready_tasks. Official unstick is rearm, never CAS. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    pin = DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:shared-fence-extra-gate-rearm",
+        max_task_attempts=2,
+    )
+    task = SimpleNamespace(
+        task_cid=str(pin["task_cid"]),
+        task_alias="PCTDD-005",
+        status="blocked",
+        revision=int(pin["blocked_task_revision"]) + 14,
+        body={
+            "completion_receipt": {
+                "reason": "dirty_candidate_retry_credit_prerequisite_unavailable"
+            }
+        },
+    )
+    listed: list[dict[str, object]] = []
+    try:
+        daemon._database_portal_bridge = object()
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_blocked_terminal_landed_tasks",
+            lambda: [
+                {
+                    "task_cid": str(pin["task_cid"]),
+                    "reason": "terminal_landed_candidate_manual_authority_required",
+                    "blocked": True,
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_reconcile_shared_no_provider_rearm_fences",
+            lambda: [{"task_cid": "shared-fence", "rearmed": True}],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_reconcile_database_no_provider_rearm_sagas",
+            lambda: [{"task_cid": "saga", "rearmed": True}],
+        )
+        def _list_tasks(**kwargs: object) -> SimpleNamespace:
+            listed.append(dict(kwargs))
+            return SimpleNamespace(tasks=(task,))
+
+        monkeypatch.setattr(daemon.task_source, "list_tasks", _list_tasks)
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(
+            daemon,
+            "_automatic_claim_forbidden_current",
+            lambda _task: True,
+        )
+
+        def _cas(task_cid: str, **kwargs: object) -> None:
+            assert str(kwargs.get("new_status") or "") != "completed"
+
+        monkeypatch.setattr(daemon, "_cas_task_status_database", _cas)
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+        assert listed, "shared fence must not skip extra-gate blocked scan"
+        assert any(item.get("task_cid") == "shared-fence" for item in outcomes)
+        assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+            {
+                "safe_to_restart": False,
+                "blocked": True,
+                "quiesced": False,
+                "reconciled": False,
+                "reason": "database_portal_retained_reconciliation_blocked",
+            }
+        )
     finally:
         daemon.close()
 

@@ -1334,6 +1334,118 @@ def test_unknown_or_live_unhealthy_owner_fences_and_fails_closed(
     assert events[-1] == "owner.shutdown"
 
 
+def test_unhealthy_owner_defers_fence_when_extra_gate_grok_is_live(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unhealthy-not-dead owner must not fence extra-gate grok.
+
+    Inf PCTDD master treated one unhealthy health() as campaign teardown,
+    fenced tracks, refused recovery, and shutdown Quack while PCTDD-006/034
+    grok were live. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    events: list[str] = []
+    lines: list[str] = []
+    lifecycle = _Lifecycle(events, ["unhealthy", "healthy", "healthy"])
+    _patch_track_runtime(monkeypatch, events)
+    monkeypatch.setattr(
+        runner,
+        "_restarting_track_must_preserve_extra_gate_grok",
+        lambda *_args, **_kwargs: True,
+    )
+
+    result = runner.run_supervisor_tracks(
+        [_track(tmp_path)],
+        repo_root=tmp_path,
+        common_args=(),
+        duration_seconds=0.08,
+        heartbeat_interval_seconds=0.005,
+        managed_quack_owner=lifecycle,
+        output=lines.append,
+    )
+
+    assert result["completed"] is True
+    assert "refusing a competing owner" not in str(result.get("blocked") or "")
+    assert "owner.recover" not in events
+    assert events[-2:] == ["track.stop", "owner.shutdown"]
+    assert any("preserving extra-gate grok descendants" in line for line in lines)
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_failed_owner_recovery_retries_when_extra_gate_grok_is_live(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed recover_after_fence must not exit the inf master over live grok.
+
+    Inbox-cap owner crash then 'authenticated later generation' blocked the
+    PCTDD master while PCTDD-005 grok 972440 was still live. Official unstick
+    is rearm, never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    events: list[str] = []
+    lines: list[str] = []
+
+    class _RetryLifecycle(_Lifecycle):
+        def recover_after_fence(self) -> dict[str, object]:
+            self.events.append("owner.recover")
+            self.recovery_count += 1
+            if self.recovery_count == 1:
+                return {"recovered": False}
+            return {"recovered": True, "generation": 2}
+
+    lifecycle = _RetryLifecycle(events, ["dead", "dead", "healthy"])
+    _patch_track_runtime(monkeypatch, events)
+    monkeypatch.setattr(
+        runner,
+        "_managed_tracks_must_preserve_extra_gate_grok",
+        lambda *_args, **_kwargs: True,
+    )
+
+    result = runner.run_supervisor_tracks(
+        [_track(tmp_path)],
+        repo_root=tmp_path,
+        common_args=(),
+        duration_seconds=0.12,
+        heartbeat_interval_seconds=0.005,
+        managed_quack_owner=lifecycle,
+        output=lines.append,
+    )
+
+    assert result["completed"] is True
+    assert lifecycle.recovery_count >= 2
+    assert "authenticated later generation" not in str(result.get("blocked") or "")
+    assert any("retrying owner recovery" in line for line in lines)
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
 def test_intentional_shutdown_cannot_bounce_owner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
