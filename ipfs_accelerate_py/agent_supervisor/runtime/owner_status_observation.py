@@ -271,6 +271,7 @@ class OwnerStatusObservation:
     def __init__(self, server: Any, *, program_id: str, configuration: Mapping[str, Any],
                  source_head: str, source_tree: str, task_registry: Mapping[str, str]):
         self.server = server
+        self.drain = None
         self.database = Path(server.config.database_path).resolve()
         self.registry = dict(task_registry)
         if not self.registry or len(self.registry) > MAX_TASKS or len(set(self.registry.values())) != len(self.registry):
@@ -304,6 +305,9 @@ class OwnerStatusObservation:
             finally:
                 os.close(fd)
             os.replace(temporary, descriptor)
+            if program_id == "semantic-addressed-world-model-v1":
+                from .native_dispatch_drain import NativeDrainService
+                self.drain = NativeDrainService(self, configuration)
         except BaseException:
             self.close()
             raise
@@ -317,6 +321,8 @@ class OwnerStatusObservation:
                     pass
 
     def close(self) -> None:
+        if self.drain is not None:
+            self.drain.close()
         try:
             self.listener.close()
         except OSError:
@@ -368,6 +374,8 @@ class OwnerStatusObservation:
         return observed
 
     def poll(self) -> None:
+        if self.drain is not None:
+            self.drain.poll()
         # This optional diagnostic channel cannot shut down the native owner.
         if self.listener.fileno() < 0:
             # The owner loop can recreate a closed listener from its retained

@@ -1822,6 +1822,21 @@ def _owner_status_observation_runtime() -> Any:
         sys.path[:] = prior_path
 
 
+def _native_dispatch_drain_runtime() -> Any:
+    """The operator control client must come from this same source checkout."""
+    prior_path = list(sys.path)
+    try:
+        sys.path.insert(0, str(REPO_ROOT))
+        from ipfs_accelerate_py.agent_supervisor.runtime import native_dispatch_drain
+        if Path(native_dispatch_drain.__file__).resolve() != (
+            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/runtime/native_dispatch_drain.py"
+        ).resolve():
+            raise OperatorError("native dispatch runtime source differs")
+        return native_dispatch_drain
+    finally:
+        sys.path[:] = prior_path
+
+
 def _delegate_repair_service_launch(arguments: Sequence[str]) -> int | None:
     """Import the lifetime helper from this checkout before native admission."""
     prior_path = list(sys.path)
@@ -29832,9 +29847,11 @@ def build_parser() -> argparse.ArgumentParser:
     for command in (
         "validate-dependencies", "validate-board", "materialize", "render", "check",
         "quack-start", "quack-status", "quack-ready", "quack-stop", "status",
-        "quack-recover-stale", "preflight", "dry-run",
+        "quack-recover-stale", "preflight", "dry-run", "drain-request", "drain-status",
     ):
         sub.add_parser(command)
+    release = sub.add_parser("drain-release")
+    release.add_argument("--request-id", required=True)
     launch = sub.add_parser("launch")
     launch.add_argument("--foreground", action="store_true")
     launch.add_argument("--duration-seconds", type=float, default=float("inf"))
@@ -29852,6 +29869,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return delegated
         config_path = args.config if args.config.is_absolute() else REPO_ROOT / args.config
         config = _config(config_path)
+        if args.command in {"drain-request", "drain-status", "drain-release"}:
+            dispatch_runtime = _native_dispatch_drain_runtime()
+            source = _isolated_exact_source_git("rev-parse", "HEAD", "HEAD^{tree}", cwd=REPO_ROOT, timeout=10)
+            identities = source.stdout.splitlines()
+            if source.returncode != 0 or len(identities) != 2:
+                raise OperatorError("native dispatch source binding unavailable")
+            owner = config["quack_owner"]
+            client = dispatch_runtime.NativeDispatchClient(database=REPO_ROOT / owner["database_path"],
+                state_dir=REPO_ROOT / owner["state_dir"], configuration=config,
+                source_head=identities[0], source_tree=identities[1])
+            master = dispatch_runtime._master(_authoritative_coordinator_pid_path(REPO_ROOT / config["runtime_paths"]["root"]))
+            return _emit(client.exchange(args.command.removeprefix("drain-"), {
+                "master_birth": master, "request_id": getattr(args, "request_id", ""),
+            }))
         if args.command == "status":
             owner = config["quack_owner"]
             population = _materializer().build_population(REPO_ROOT)

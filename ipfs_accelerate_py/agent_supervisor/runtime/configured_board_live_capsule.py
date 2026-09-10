@@ -487,7 +487,7 @@ def parse_configured_board_live_capsule_admission(
 
 
 def _stable_regular_bytes(path: Path, *, maximum: int = 8 * 1024 * 1024) -> bytes:
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0) | os.O_NONBLOCK
     descriptor = os.open(path, flags)
     try:
         before = os.fstat(descriptor)

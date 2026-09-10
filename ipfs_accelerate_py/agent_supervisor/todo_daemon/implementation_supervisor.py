@@ -10884,6 +10884,12 @@ class PortalImplementationSupervisor:
 
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
+        child_env = {}
+        if getattr(self.config.configured_board_live_admission, "board_namespace", "") == "semantic-addressed-world-model-v1":
+            child_env = {
+                SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(self._managed_daemon_identity_path()),
+                SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(self._managed_daemon_owner_scope(), sort_keys=True),
+            }
         prefix = self.config.state_prefix
         proof_rollout_status_fields = self._proof_rollout_status_fields()
         autonomous_unstall_status = self._autonomous_unstall_status()
@@ -10943,6 +10949,7 @@ class PortalImplementationSupervisor:
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
+            child_env=child_env,
             log_prefix=f"{prefix}_implementation_daemon",
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
@@ -10983,6 +10990,7 @@ class PortalImplementationSupervisor:
         _child: Any,
         _current_status: dict[str, Any],
     ) -> SupervisorLoopDecision:
+        self._refresh_native_dispatch_child(_child)
         self._refresh_loop_proof_rollout_status(_loop)
         control_plane_status = self._control_plane_status_projection()
         self._set_loop_status_fields(_loop, control_plane_status)
@@ -20458,6 +20466,39 @@ class PortalImplementationSupervisor:
             else []
         )
         return merged
+
+    def _refresh_native_dispatch_child(self, child: Any) -> None:
+        try:
+            from .supervisor_runtime import (
+                SupervisedChild, load_supervised_child_identity,
+                _supervised_child_identity_matches_handle,
+            )
+            from ..runtime.native_dispatch_drain import _birth, from_native_admission
+            if (not isinstance(child, SupervisedChild) or child.identity_path is None
+                    or child.identity_process_birth is None
+                    or tuple(child.command) != tuple(self._build_daemon_command())):
+                return
+            identity = load_supervised_child_identity(child.identity_path)
+            if (not _supervised_child_identity_matches_handle(child, identity)
+                    or dict(identity.owner_scope) != self._managed_daemon_owner_scope()):
+                return
+            expected = {"pid": child.pid,
+                "start_time_ticks": child.identity_process_birth.start_time_ticks,
+                "boot_id": child.identity_process_birth.boot_id}
+            if _birth(child.pid) != expected:
+                return
+            client = getattr(self, "_native_dispatch_control", None)
+            if client is None:
+                client = from_native_admission(
+                    admission=self.config.configured_board_live_admission,
+                    repo_root=self.config.repo_root,
+                )
+                self._native_dispatch_control = client
+            if client is not None:
+                client.register_daemon(expected, hashlib.sha256(("\0".join(child.command) + "\0").encode()).hexdigest())
+        except Exception:
+            # Failed observation cannot discard or terminate a retained child.
+            pass
 
     def _start_daemon(self) -> subprocess.Popen[str]:
         self.ensure_managed_daemon_pid_file()

@@ -70815,6 +70815,15 @@ class DatabaseImplementationDaemon:
         self._last_claim_withdrawal = {}
         self._last_orphan_claim_reconciliations = ()
         self._last_unsettled_quarantine_task_cids = ()
+        self._last_native_dispatch_boundary = {}
+        dispatch_control = getattr(self, "_native_dispatch_control", None)
+        if dispatch_control is not None:
+            # This is solely the NEW claim boundary. Reconciliation and resume
+            # of admitted obligations keep their existing native semantics.
+            boundary = dispatch_control.before_claim()
+            self._last_native_dispatch_boundary = dict(boundary)
+            if boundary.get("new_dispatch_permitted") is not True:
+                return None
         self.sync_ready_tasks_into_coordination()
         orphan_reconciliations = self._requeue_expired_owned_claims()
         self._last_orphan_claim_reconciliations = tuple(orphan_reconciliations)
@@ -73506,6 +73515,9 @@ class DatabaseImplementationDaemon:
     def _run_once_impl(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
+        dispatch_control = getattr(self, "_native_dispatch_control", None)
+        if dispatch_control is not None:
+            dispatch_control.reconciliation_started()
         completion_reconciliations = self.reconcile_prepared_task_completions()
         portal_failure_reconciliations = self.reconcile_terminal_portal_failures()
         expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
@@ -73519,6 +73531,9 @@ class DatabaseImplementationDaemon:
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
         if running:
+            dispatch_control = getattr(self, "_native_dispatch_control", None)
+            if dispatch_control is not None:
+                dispatch_control.retained_work(running[0])
             result = self._resume_attempt_without_process_crash(running[0])
             return {
                 "unchanged": False,
@@ -73563,7 +73578,9 @@ class DatabaseImplementationDaemon:
                 + (1 if withdrawal else 0),
                 "active_task_id": "",
                 "selection_idle_reason": (
-                    "claim_withdrawn_control_not_dispatchable"
+                    str(getattr(self, "_last_native_dispatch_boundary", {}).get("reason"))
+                    if getattr(self, "_last_native_dispatch_boundary", {}).get("new_dispatch_permitted") is False
+                    else "claim_withdrawn_control_not_dispatchable"
                     if withdrawal
                     else (
                         "unsettled_portal_failure_quarantine"
@@ -74332,6 +74349,11 @@ def main(argv: list[str] | None = None) -> None:
             task_shard_count=args.task_shard_count,
             task_shard_index=args.task_shard_index,
             strict_task_sharding=args.strict_task_sharding,
+        )
+        from ..runtime.native_dispatch_drain import from_native_admission
+        daemon._native_dispatch_control = from_native_admission(
+            admission=_IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION,
+            repo_root=REPO_ROOT,
         )
         bind_database_portal_execution_from_args(
             daemon,

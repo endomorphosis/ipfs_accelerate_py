@@ -9778,6 +9778,10 @@ def run_supervisor_tracks(
             "sealed accepted control plane is foreign to this runner profile"
         )
     resolved_repo_root = repo_root.resolve()
+    from .native_dispatch_drain import from_native_admission
+    dispatch_control = from_native_admission(
+        admission=configured_board_live_admission, repo_root=resolved_repo_root,
+    )
     if plan_bound_children:
         track_positions = {
             track.name: index for index, track in enumerate(managed_tracks)
@@ -9983,6 +9987,16 @@ def run_supervisor_tracks(
         relaunch_admitted_live_capsule: bool = False,
     ) -> subprocess.Popen[bytes]:
         """Start one track and retain the birth epoch for status fencing."""
+
+        while dispatch_control is not None:
+            boundary = dispatch_control.coordinator_boundary(processes)
+            if boundary.get("new_dispatch_permitted") is True:
+                break
+            if deadline is not None and time.monotonic() >= deadline:
+                raise SupervisorRunWindowExpired()
+            # Keep existing children/callbacks alive. A pause is never routed
+            # through the force-capable native teardown helper.
+            time.sleep(0.1)
 
         # The installed SIGTERM/SIGINT handlers raise for orderly shutdown.
         # Temporarily record those signals without raising from immediately
@@ -10534,6 +10548,11 @@ def run_supervisor_tracks(
                 # A finite run window never authorizes a fresh child birth at
                 # or after its deadline.  Teardown below owns existing trees.
                 break
+            if dispatch_control is not None:
+                boundary = dispatch_control.coordinator_boundary(processes)
+                if boundary.get("new_dispatch_permitted") is not True:
+                    _emit(output, str(boundary.get("reason", "native_dispatch_observation_unavailable")))
+                    continue
             observations: list[tuple[Any, ...]] = []
             for track in tuple(managed_tracks):
                 if track.name in isolated_restart_tracks:
