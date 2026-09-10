@@ -73301,6 +73301,9 @@ class DatabaseImplementationDaemon:
         # the task would falsify immutable failure history or let ancestry
         # stand in for task-scoped acceptance.
 
+        from ..merge.database_coordination import DatabaseCoordinationNotReadyError
+
+        self._portal_failure_reconciliation_deferrals = []
         connection = self._require_connection()
         rows = connection.execute(
             """
@@ -73340,7 +73343,27 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationAuthorityError(
                     "failed Portal attempt lost its exact claim history"
                 )
-            coordination = self._fail_coordination_claim(claim, receipt)
+            try:
+                coordination = self._fail_coordination_claim(claim, receipt)
+            except DatabaseCoordinationNotReadyError as exc:
+                if not self._completion_missing_matches_attempt(exc, current):
+                    raise
+                # A missing logical failure row cannot replay an otherwise
+                # terminal exact claim. Keep every durable record and expose
+                # the integrity blocker; it grants no retry or reconstruction.
+                self._portal_failure_reconciliation_deferrals.append({
+                    "reason": "completion_missing",
+                    "task_cid": current.task_cid,
+                    "claim_id": current.claim_id,
+                    "attempt_id": current.attempt_id,
+                    "task_state_changed": False,
+                    "provider_replay_authorized": False,
+                })
+                logger.warning(
+                    "Deferring exact failed settlement with missing logical completion task=%s attempt=%s",
+                    current.task_cid, current.attempt_id,
+                )
+                continue
             control = self._settle_portal_failure_control_task(
                 current,
                 receipt,
@@ -73371,6 +73394,20 @@ class DatabaseImplementationDaemon:
                 )
             reconciled.append(result)
         return reconciled
+
+    @staticmethod
+    def _completion_missing_matches_attempt(
+        error: BaseException, attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        evidence = getattr(error, "evidence", None)
+        return (isinstance(evidence, Mapping)
+                and evidence.get("reason") == "completion_missing"
+                and all(type(evidence.get(key)) is str and evidence[key] == value
+                        for key, value in {
+                            "task_cid": attempt.task_cid,
+                            "claim_id": attempt.claim_id,
+                            "attempt_id": attempt.attempt_id,
+                        }.items()))
 
     def _resume_attempt_without_process_crash(
         self,
@@ -73429,19 +73466,11 @@ class DatabaseImplementationDaemon:
             )
 
             if isinstance(exc, DatabaseCoordinationNotReadyError):
-                evidence = dict(getattr(exc, "evidence", {}) or {})
                 current = (
                     attempt if isinstance(attempt, DatabaseTaskAttempt)
                     else self.get_attempt(str(attempt))
                 )
-                if (str(evidence.get("reason") or "") == "completion_missing"
-                        and current is not None
-                        and all(type(evidence.get(key)) is str and evidence[key] == value
-                                for key, value in {
-                                    "task_cid": current.task_cid,
-                                    "claim_id": current.claim_id,
-                                    "attempt_id": current.attempt_id,
-                                }.items())):
+                if current is not None and self._completion_missing_matches_attempt(exc, current):
                     # Missing logical completion is unresolved cross-store
                     # authority, not proof of provider failure or no effects.
                     # Keep the exact execution/callback/claim state intact;
@@ -73592,6 +73621,9 @@ class DatabaseImplementationDaemon:
                 "markdown_status_writes": self._markdown_status_writes,
                 "projections_required": False,
                 "control_schema_evidence": dict(self.control_schema_evidence),
+                "portal_failure_reconciliation_deferrals": list(
+                    getattr(self, "_portal_failure_reconciliation_deferrals", [])
+                ),
                 "completion_reconciliations": completion_reconciliations,
                 "portal_failure_reconciliations": (
                     portal_failure_reconciliations
@@ -73642,6 +73674,9 @@ class DatabaseImplementationDaemon:
                 "markdown_status_writes": self._markdown_status_writes,
                 "projections_required": False,
                 "control_schema_evidence": dict(self.control_schema_evidence),
+                "portal_failure_reconciliation_deferrals": list(
+                    getattr(self, "_portal_failure_reconciliation_deferrals", [])
+                ),
                 "completion_reconciliations": completion_reconciliations,
                 "portal_failure_reconciliations": (
                     portal_failure_reconciliations
@@ -73667,6 +73702,9 @@ class DatabaseImplementationDaemon:
             "markdown_status_writes": self._markdown_status_writes,
             "projections_required": False,
             "control_schema_evidence": dict(self.control_schema_evidence),
+            "portal_failure_reconciliation_deferrals": list(
+                getattr(self, "_portal_failure_reconciliation_deferrals", [])
+            ),
             "completion_reconciliations": completion_reconciliations,
             "portal_failure_reconciliations": portal_failure_reconciliations,
             "expired_attempt_reconciliations": expired_attempt_reconciliations,

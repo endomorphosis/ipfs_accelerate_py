@@ -4134,3 +4134,73 @@ def test_missing_logical_completion_during_unsettled_enumeration_is_skipped(
         assert result["implementation_result"]["status"] == "succeeded"
     finally:
         daemon.close()
+
+
+
+@pytest.mark.parametrize("case", [None, "other_task", "task_cid", "claim_id", "attempt_id", "reason"])
+def test_missing_failed_settlement_completion_defers_only_exact_attempt(
+    tmp_path: Path, monkeypatch, case,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import DatabaseCoordinationNotReadyError
+    calls = []
+    def failed_provider(attempt):
+        calls.append(attempt.attempt_id)
+        if case == "other_task" and len(calls) > 1:
+            return {"status": "ok"}
+        raise DatabasePortalBridgeError("terminal bridge failure")
+    daemon = _open_daemon(tmp_path, provider_fn=failed_provider)
+    try:
+        daemon.materialize_population(_population(2 if case == "other_task" else 1))
+        first = daemon.run_once()
+        attempt = daemon.get_attempt(first["attempt_id"])
+        assert attempt is not None and attempt.status == "failed"
+        # Rehearse incomplete cross-store history, only in these fresh fixture
+        # databases: settlement state survived, logical completion and the
+        # final execution event did not. This is integrity loss, not optional
+        # absence, and does not authorize rebuilding either receipt.
+        daemon._require_connection().execute(
+            "DELETE FROM daemon_execution_events WHERE event_type = ? AND attempt_id = ?",
+            ["terminal_portal_failure_settled", attempt.attempt_id],
+        )
+        daemon.coordinator._require().execute(
+            "DELETE FROM task_completions WHERE task_cid = ?", [attempt.task_cid]
+        )
+        before = daemon.get_attempt(attempt.attempt_id).to_dict()
+        claim = daemon.coordinator.get_task_claim(attempt.claim_id).to_dict()
+        task = daemon.task_source.get(attempt.task_cid).to_dict()
+        phases = daemon.phase_history(attempt.attempt_id)
+        if case not in (None, "other_task"):
+            evidence = {"reason": "completion_missing", "task_cid": attempt.task_cid,
+                        "claim_id": attempt.claim_id, "attempt_id": attempt.attempt_id}
+            evidence[case] = "foreign"
+            def mismatch(*args, **kwargs):
+                raise DatabaseCoordinationNotReadyError("foreign integrity failure", evidence=evidence)
+            monkeypatch.setattr(daemon, "_fail_coordination_claim", mismatch)
+            with pytest.raises(DatabaseCoordinationNotReadyError):
+                daemon.run_once()
+            return
+        second = daemon.run_once()
+        if case == "other_task":
+            assert second["implementation_result"]["status"] == "succeeded"
+            assert second["attempt_id"] != attempt.attempt_id
+            assert len(calls) == 2
+        else:
+            assert second["unchanged"] is True
+            assert second["write_count"] == 0
+        assert second["portal_failure_reconciliations"] == []
+        assert second["portal_failure_reconciliation_deferrals"] == [{
+            "reason": "completion_missing", "task_cid": attempt.task_cid,
+            "claim_id": attempt.claim_id, "attempt_id": attempt.attempt_id,
+            "task_state_changed": False, "provider_replay_authorized": False,
+        }]
+        assert daemon.get_attempt(attempt.attempt_id).to_dict() == before
+        assert daemon.coordinator.get_task_claim(attempt.claim_id).to_dict() == claim
+        assert daemon.task_source.get(attempt.task_cid).to_dict() == task
+        assert daemon.phase_history(attempt.attempt_id) == phases
+        assert calls.count(attempt.attempt_id) == 1
+        assert daemon.coordinator._require().execute(
+            "SELECT COUNT(*) FROM task_completions WHERE task_cid = ?",
+            [attempt.task_cid],
+        ).fetchone()[0] == 0
+    finally:
+        daemon.close()
