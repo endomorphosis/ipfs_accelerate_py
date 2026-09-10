@@ -36,6 +36,7 @@ import stat
 import threading
 import time
 import uuid
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -82,7 +83,6 @@ from ..task_sources.control_plane_schema import (
     install_control_plane_schema,
 )
 from ..task_sources.database_task_source import (
-    DatabaseTaskSource,
     execute_quack_owner_command,
     quack_owner_command_error_code,
 )
@@ -113,7 +113,6 @@ from ..task_sources.duckdb_state import (
     QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
     QUACK_OWNER_MUTATION_RESULT_SCHEMA,
     DuckDBConnection,
-    clear_owner_board_unstall_bounce,
     open_duckdb_connection,
     open_quack_state_owner_connection,
     quack_owner_command_response,
@@ -125,8 +124,12 @@ from ..task_sources.duckdb_state import (
 from ..task_sources.intent_repository import (
     COMPLETION_EVIDENCE_SCHEMA,
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    PRODUCTION_AUTHORITY_PATH,
+    PRODUCTION_CUTOVER_TASK_ID,
     QUEUE_ENTRY_SCHEMA,
     IntentRepository,
+    IntentRepositoryCompatibilityWarning,
+    IntentRepositoryUnsupportedPathError,
     missing_current_evidence_on,
 )
 from ..task_sources.quack_capabilities import (
@@ -434,6 +437,10 @@ class QuackStateServerMutationError(QuackStateServerError):
 
 class QuackStateServerIsolationError(QuackStateServerError):
     """The external-access owner mode lacks an admitted isolation receipt."""
+
+
+class QuackStateServerCompatibilityError(QuackStateServerError):
+    """A legacy/independent write path was refused by the sole owner."""
 
 
 # ---------------------------------------------------------------------------
@@ -2436,12 +2443,7 @@ class InProcessQuackTransport:
             try:
                 import duckdb
 
-                # Readiness must fit the owner's CPU/memory allocation even
-                # when a failed probe needs a fresh extension client.
-                client = duckdb.connect(
-                    ":memory:",
-                    config={"threads": 1, "memory_limit": DEFAULT_MEMORY_LIMIT},
-                )
+                client = duckdb.connect(":memory:")
                 try:
                     client.execute("LOAD quack")
                     for sql, params in query_attempts:
@@ -3101,6 +3103,11 @@ class QuackStateServer:
     )
     _outbox_drain_count: int = field(default=0, init=False)
     _outbox_last_error_type: str = field(default="", init=False)
+    _maintenance_paused: bool = field(default=False, init=False, repr=False)
+    _maintenance_secret_handle: str = field(default="", init=False, repr=False)
+    _maintenance_reconciliation: dict[str, Any] | None = field(
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.config, QuackStateServerConfig):
@@ -3273,13 +3280,7 @@ class QuackStateServer:
                 )
             self._assert_database_namespace()
             identity = self._identity
-            repository = IntentRepository(
-                self.config.database_path,
-                bound_connection=self._connection,
-                owner_id="quack-state-owner",
-                session_id=f"quack-owner-{identity.generation}",
-                install_schema=False,
-            )
+            repository = self._bound_intent_repository()
             try:
                 try:
                     result = execute_quack_owner_command(
@@ -5201,6 +5202,32 @@ class QuackStateServer:
                 self._read_replica_observation["live"] = False
             raise
 
+    def _bound_intent_repository(
+        self,
+        connection: Any | None = None,
+    ) -> IntentRepository:
+        """Return the sole production IntentRepository on this owner's connection."""
+
+        identity = self._identity
+        bound = self._connection if connection is None else connection
+        if identity is None or bound is None:
+            raise QuackStateServerNotRunningError(
+                "bound IntentRepository requires a live owner identity and connection"
+            )
+        return IntentRepository(
+            self.config.database_path,
+            bound_connection=bound,
+            owner_id="quack-state-owner",
+            session_id=f"quack-owner-{identity.generation}",
+            install_schema=False,
+            fencing_epoch=max(1, int(identity.fence_epoch or identity.generation or 1)),
+            generation=max(1, int(identity.generation or 1)),
+            repository_id=str(identity.repository_id or f"repository:{identity.store_id}"),
+            tree_id=str(identity.generation),
+            authentication_subject_id=str(identity.server_id),
+            authentication_binding_id=f"grant-binding:{identity.server_id}:{identity.generation}",
+        )
+
     def _unstall_stale_board_gates(self, connection: Any) -> None:
         """Reconcile and unstall through the one bound intent authority.
 
@@ -5214,13 +5241,7 @@ class QuackStateServer:
             raise QuackStateServerReadyError(
                 "board recovery requires the exact starting owner identity"
             )
-        repository = IntentRepository(
-            self.config.database_path,
-            bound_connection=connection,
-            owner_id="quack-state-owner",
-            session_id=f"quack-owner-{identity.generation}",
-            install_schema=False,
-        )
+        repository = self._bound_intent_repository(connection)
         try:
             recovery = repository.reconcile_legacy_stale_unstall_projection_drift()
             if recovery.changed:
@@ -5229,16 +5250,12 @@ class QuackStateServer:
                     "board projection recovery "
                     f"candidates={len(candidates)} event_id={recovery.event_id}"
                 )
-            # DatabaseTaskSource also rearms isolate_merge_queue leftover
-            # blocked rows that IntentRepository stale-in-progress skips.
-            source = DatabaseTaskSource(intent=repository)
-            result = source.unstall_stale_in_progress_tasks(
+            result = repository.unstall_stale_in_progress_tasks(
                 orphan_previous_generation=True
             )
             repository.assert_projection_matches_events()
         finally:
             repository.close()
-        clear_owner_board_unstall_bounce()
         unstalled = result.get("unstalled") or []
         sanitized = result.get("sanitized_malformed_validation_retry_seeds") or []
         if not unstalled and not sanitized:
@@ -6551,13 +6568,7 @@ class QuackStateServer:
                     serviced += 1
                     continue
 
-                repository = IntentRepository(
-                    self.config.database_path,
-                    bound_connection=self._connection,
-                    owner_id="quack-state-owner",
-                    session_id=f"quack-owner-{self._identity.generation}",
-                    install_schema=False,
-                )
+                repository = self._bound_intent_repository()
                 try:
                     try:
                         self._assert_database_namespace()
@@ -6684,6 +6695,182 @@ class QuackStateServer:
             )
             self._assert_database_namespace()
             return MappingProxyType({"serviced": serviced})
+
+    def bound_intent_repository(self) -> IntentRepository:
+        """Public sole-authority IntentRepository bound to this owner."""
+
+        with self._lock:
+            if self._lifecycle not in {ServerLifecycle.READY, ServerLifecycle.STARTING}:
+                raise QuackStateServerNotRunningError(
+                    "bound IntentRepository requires a live state owner"
+                )
+            return self._bound_intent_repository()
+
+    def production_authority_path(self) -> tuple[str, str, str]:
+        """ASEH-061 production path: repository, typed owner, host."""
+
+        return PRODUCTION_AUTHORITY_PATH
+
+    def pause_for_maintenance(self) -> Mapping[str, Any]:
+        """Owner-paused cutover: refuse compatibility mutations until resume."""
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "maintenance pause requires a ready state owner"
+                )
+            handle = ""
+            if self._identity is not None:
+                handle = str(self._identity.secret_handle or "")
+            self._maintenance_paused = True
+            self._maintenance_secret_handle = handle
+            self._maintenance_reconciliation = None
+            self._log("owner paused for ASEH-061 staged maintenance")
+            return MappingProxyType(
+                {
+                    "paused": True,
+                    "task_id": PRODUCTION_CUTOVER_TASK_ID,
+                    "secret_handle": handle,
+                    "generation": (
+                        int(self._identity.generation) if self._identity is not None else 0
+                    ),
+                    "production_authority_path": list(PRODUCTION_AUTHORITY_PATH),
+                }
+            )
+
+    def reconcile_after_authenticated_restart(self) -> Mapping[str, Any]:
+        """Replay recovery through the bound IntentRepository after restart."""
+
+        with self._lock:
+            if (
+                self._lifecycle not in {ServerLifecycle.READY, ServerLifecycle.STARTING}
+                or self._connection is None
+                or self._identity is None
+            ):
+                raise QuackStateServerNotRunningError(
+                    "restart reconciliation requires the live owner identity"
+                )
+            repository = self._bound_intent_repository()
+            try:
+                drift = repository.reconcile_legacy_stale_unstall_projection_drift()
+                unstall = repository.unstall_stale_in_progress_tasks(
+                    orphan_previous_generation=True
+                )
+                snapshot = repository.assert_projection_matches_events()
+                projection = repository.export_owner_restart_snapshot()
+            finally:
+                repository.close()
+            receipt = {
+                "schema": "ipfs_accelerate_py/agent-supervisor/owner-restart-reconciliation@1",
+                "task_id": PRODUCTION_CUTOVER_TASK_ID,
+                "drift_changed": bool(drift.changed),
+                "unstalled": len(unstall.get("unstalled") or []),
+                "event_watermark": int(snapshot.event_watermark),
+                "projection_cid": snapshot.projection_cid,
+                "secret_handle": str(self._identity.secret_handle or ""),
+                "generation": int(self._identity.generation),
+                "owner_session_id": str(projection.get("owner_session_id") or ""),
+                "authority": list(PRODUCTION_AUTHORITY_PATH),
+            }
+            self._maintenance_reconciliation = dict(receipt)
+            return MappingProxyType(receipt)
+
+    def resume_after_reconciliation(
+        self,
+        *,
+        secret_handle: str = "",
+    ) -> Mapping[str, Any]:
+        """Reopen claims only after restart reconciliation of this owner."""
+
+        with self._lock:
+            if not self._maintenance_paused:
+                raise QuackStateServerControlError(
+                    "resume requires an owner-paused maintenance window"
+                )
+            if self._maintenance_reconciliation is None:
+                raise QuackStateServerControlError(
+                    "resume requires authenticated restart reconciliation"
+                )
+            expected = self._maintenance_secret_handle
+            provided = str(secret_handle or expected)
+            if expected and provided != expected:
+                raise QuackStateServerControlError(
+                    "resume requires the same external credential handle"
+                )
+            self._maintenance_paused = False
+            self._log("owner resumed after ASEH-061 reconciliation")
+            return MappingProxyType(
+                {
+                    "paused": False,
+                    "resumed": True,
+                    "reconciliation": dict(self._maintenance_reconciliation),
+                }
+            )
+
+    def reject_unsupported_legacy_path(
+        self,
+        *,
+        operation: str,
+        caller: str = "",
+    ) -> None:
+        """Warn and refuse an independent writer on the live owner."""
+
+        with self._lock:
+            if self._connection is None or self._identity is None:
+                warnings.warn(
+                    f"compatibility adapter rejected {operation} from "
+                    f"{caller or 'unknown'}; use IntentRepository through the typed Quack owner",
+                    IntentRepositoryCompatibilityWarning,
+                    stacklevel=2,
+                )
+                raise QuackStateServerCompatibilityError(
+                    f"unsupported compatibility path {operation} failed closed"
+                )
+            repository = self._bound_intent_repository()
+            try:
+                repository.reject_unsupported_legacy_path(
+                    operation=operation,
+                    caller=caller,
+                )
+            except IntentRepositoryUnsupportedPathError as exc:
+                raise QuackStateServerCompatibilityError(str(exc)) from exc
+            finally:
+                repository.close()
+
+    def route_legacy_api(
+        self,
+        operation: str,
+        /,
+        *args: Any,
+        caller: str = "",
+        **kwargs: Any,
+    ) -> Any:
+        """Route a supported legacy API through the bound IntentRepository."""
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "legacy API routing requires a ready typed Quack owner"
+                )
+            if self._maintenance_paused:
+                raise QuackStateServerCompatibilityError(
+                    "legacy API routing is paused until restart reconciliation"
+                )
+            repository = self._bound_intent_repository()
+            try:
+                try:
+                    result = repository.route_legacy_api(
+                        operation,
+                        *args,
+                        caller=caller or "QuackStateServer.route_legacy_api",
+                        **kwargs,
+                    )
+                except IntentRepositoryUnsupportedPathError as exc:
+                    raise QuackStateServerCompatibilityError(str(exc)) from exc
+                self._assert_database_namespace()
+                return result
+            finally:
+                repository.close()
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -7743,6 +7930,7 @@ __all__ = (
     "QuackStateServer",
     "QuackStateServerBindError",
     "QuackStateServerCapabilityError",
+    "QuackStateServerCompatibilityError",
     "QuackStateServerConfig",
     "QuackStateServerControlError",
     "QuackStateServerError",
