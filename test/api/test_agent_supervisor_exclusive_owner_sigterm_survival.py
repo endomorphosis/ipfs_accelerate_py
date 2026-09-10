@@ -166,6 +166,51 @@ def test_stop_signal_handlers_survive_external_sigterm_ignores_sigterm() -> None
     assert signal.getsignal(signal.SIGTERM) == prior
 
 
+def test_post_admission_continues_parallel_scope_when_recovery_is_not_admitted() -> None:
+    scoped = {
+        "healthy": False,
+        "blocked": True,
+        "stuck": False,
+        "terminal": False,
+        "scheduler_alive": True,
+        "owner_ready": True,
+        "broker_ready": True,
+        "blocked_recovery_admitted": False,
+        "blocked_recovery_scope": "parallel_startup",
+    }
+    assert aseh_operator._post_admission_health_action(
+        scoped,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
+    working = {**scoped, "blocked_recovery_scope": "parallel_work"}
+    assert aseh_operator._post_admission_health_action(
+        working,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("continue", "")
+    halted = {**scoped, "blocked_recovery_scope": ""}
+    assert aseh_operator._post_admission_health_action(
+        halted,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("fail", "authoritative_board_blocked")
+    mutated = {
+        **scoped,
+        "blocked_recovery_scope": "parallel_work",
+        "source_identity_admitted": False,
+    }
+    assert aseh_operator._post_admission_health_action(
+        mutated,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("fail", "authoritative_board_blocked")
+
+
 def test_call_stop_signal_handlers_accepts_two_argument_test_double() -> None:
     from contextlib import nullcontext
 

@@ -78,9 +78,9 @@ HARD_DENY_REASON_CODES = frozenset(
 )
 
 _VALIDATE_TOKEN_RE = re.compile(r"(?i)(?<![A-Za-z0-9_])validate(?![A-Za-z0-9_])")
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 _FAILED_NODE_RE = re.compile(
-    r"^FAILED\s+(\S+::\S+)",
-    re.MULTILINE,
+    r"FAILED\s+(\S+::\S+)",
 )
 _MATERIALIZE_ALIASES = ("materialize", "write", "generate")
 
@@ -163,13 +163,16 @@ def _failed_test_nodeids(validation_result: Mapping[str, Any]) -> tuple[str, ...
     review = _failure_review_projection(validation_result)
     collected = list(_as_str_tuple(validation_result.get("failed_tests") or ()))
     collected.extend(_as_str_tuple(review.get("failed_tests") or ()))
-    blob = "\n".join(
-        (
-            str(validation_result.get("failure_head") or ""),
-            str(validation_result.get("stdout") or ""),
-            str(validation_result.get("stderr") or ""),
-            str(review.get("failure_head") or ""),
-        )
+    blob = _ANSI_RE.sub(
+        "",
+        "\n".join(
+            (
+                str(validation_result.get("failure_head") or ""),
+                str(validation_result.get("stdout") or ""),
+                str(validation_result.get("stderr") or ""),
+                str(review.get("failure_head") or ""),
+            )
+        ),
     )
     for match in _FAILED_NODE_RE.finditer(blob):
         collected.append(match.group(1))
