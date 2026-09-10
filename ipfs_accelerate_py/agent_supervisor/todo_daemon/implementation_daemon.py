@@ -73674,8 +73674,38 @@ class DatabaseImplementationDaemon:
                 exc = DatabasePortalBridgeError(reason)
             from ..merge.database_coordination import (
                 DatabaseCoordinationNotReadyError,
+                DatabaseCoordinationStaleFenceError,
             )
 
+            if isinstance(exc, DatabaseCoordinationStaleFenceError):
+                try:
+                    self.commit_phase(
+                        attempt
+                        if isinstance(attempt, DatabaseTaskAttempt)
+                        else self.get_attempt(
+                            str(
+                                getattr(attempt, "attempt_id", "")
+                                or attempt
+                            )
+                        )
+                        or attempt,
+                        ATTEMPT_PHASE_FAILED,
+                        body={"reason": "stale_fence"},
+                        require_live_claim=False,
+                    )
+                except Exception:
+                    pass
+                return {
+                    "resumed": False,
+                    "reason": "stale_fence",
+                    "attempt_id": str(
+                        getattr(attempt, "attempt_id", "") or ""
+                    ),
+                    "task_alias": str(
+                        getattr(attempt, "task_alias", "") or ""
+                    ),
+                    "status": "failed",
+                }
             if isinstance(exc, DatabaseCoordinationNotReadyError):
                 evidence = dict(getattr(exc, "evidence", {}) or {})
                 if str(evidence.get("reason") or "") == "completion_missing":
@@ -73813,7 +73843,10 @@ class DatabaseImplementationDaemon:
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
-        from ..merge.database_coordination import DatabaseCoordinationNotReadyError
+        from ..merge.database_coordination import (
+            DatabaseCoordinationNotReadyError,
+            DatabaseCoordinationStaleFenceError,
+        )
 
         try:
             completion_reconciliations = self.reconcile_prepared_task_completions()
@@ -73822,6 +73855,15 @@ class DatabaseImplementationDaemon:
             )
             expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
             portal_failure_rearms = self.reconcile_recoverable_portal_failure_rearms()
+        except DatabaseCoordinationStaleFenceError as exc:
+            logger.warning(
+                "Skipping run_once reconciliation with stale fence: %s",
+                exc,
+            )
+            completion_reconciliations = []
+            portal_failure_reconciliations = []
+            expired_attempt_reconciliations = []
+            portal_failure_rearms = []
         except DatabaseCoordinationNotReadyError as exc:
             evidence = dict(getattr(exc, "evidence", {}) or {})
             if str(evidence.get("reason") or "") != "completion_missing":
