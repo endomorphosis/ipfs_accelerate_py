@@ -53,7 +53,12 @@ PCSM_027_OBSERVED_PORTAL_TASK_CID = (
     "baguqeera7swojthhh6pfwqqiswos4cjb36pb3rmwlgdw7rxkacu5si2wsi7q"
 )
 PCSM_027_DATABASE_ATTEMPT_ID = "attempt:7a81388546b64c40a9f01c2fc9479425"
-
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalTaskState,
+)
 
 def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,7 +66,6 @@ def _write_json(path: Path, payload: Any) -> None:
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-
 
 def _write_recommitted_binding(path: Path, payload: dict[str, Any]) -> None:
     body = dict(payload)
@@ -80,7 +84,6 @@ def _write_recommitted_binding(path: Path, payload: dict[str, Any]) -> None:
     )
     _write_json(path, payload)
 
-
 def _recommit_projection_identity_change(fixture: dict[str, Any]) -> None:
     projection = fixture["projection_path"].read_text(encoding="utf-8")
     changed = projection.replace(
@@ -95,7 +98,6 @@ def _recommit_projection_identity_change(fixture: dict[str, Any]) -> None:
     )
     binding["projection_immutable_digest"] = _projection_immutable_digest(changed)
     _write_recommitted_binding(fixture["binding_path"], binding)
-
 
 def _seed_active_database_pool_lease(
     tmp_path: Path,
@@ -309,7 +311,6 @@ def _seed_active_database_pool_lease(
         "lifecycle": lifecycle,
     }
 
-
 def _release_completed_fixture_callback(fixture: dict[str, Any]) -> None:
     """Finish the fixture callback and release its exact owned lifecycle/lease."""
     lifecycle = fixture["lifecycle"]
@@ -331,7 +332,6 @@ def _release_completed_fixture_callback(fixture: dict[str, Any]) -> None:
     idle = dict(fixture["pool"], state="idle", lease_pid=0, branch="")
     _write_json(fixture["pool_path"], idle)
     fixture["lock_path"].unlink()
-
 
 def _seed_live_unprojected_database_attempt(
     tmp_path: Path,
@@ -380,7 +380,6 @@ def _seed_live_unprojected_database_attempt(
     )
     fixture["implementation_lock_path"] = implementation_lock_path
     return fixture
-
 
 def _seed_live_database_portal_callback_gap(
     tmp_path: Path,
@@ -462,7 +461,6 @@ def _seed_live_database_portal_callback_gap(
     )
     return fixture
 
-
 def _clone_database_portal_callback_gap_attempt(
     fixture: dict[str, Any],
 ) -> Path:
@@ -518,7 +516,6 @@ def _clone_database_portal_callback_gap_attempt(
     _write_json(attempt_dir / "implementation.lock", implementation_lock)
     return attempt_dir
 
-
 def test_supervisor_loop_config_binds_managed_child_identity_to_lane(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -541,7 +538,6 @@ def test_supervisor_loop_config_binds_managed_child_identity_to_lane(
     assert owner_scope["state_dir"] == str(fixture["state_path"].parent.resolve())
     assert owner_scope["state_prefix"] == "vrif_lane_2"
 
-
 def test_database_pool_lease_accepts_adopted_parent_pid_drift(
     tmp_path: Path,
 ) -> None:
@@ -563,7 +559,6 @@ def test_database_pool_lease_accepts_adopted_parent_pid_drift(
     assert activity is not None
     assert activity["task_id"] == "VRIF-010"
     assert activity["lease_pid"] == str(os.getpid())
-
 
 def test_database_worktree_status_projection_tracks_grok_and_recycles_after_grace(
     tmp_path: Path,
@@ -597,8 +592,7 @@ def test_database_worktree_status_projection_tracks_grok_and_recycles_after_grac
         ]
     ]
     monkeypatch.setattr(
-        worker_watchdog,
-        "descendant_processes",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop.procfs_descendant_processes",
         lambda _pid: list(workers[0]),
     )
     clock = [100.0]
@@ -639,7 +633,6 @@ def test_database_worktree_status_projection_tracks_grok_and_recycles_after_grac
     assert expired.reason == "worktree_phase_without_active_child"
     assert expired.detail["worker_absence_age_seconds"] == threshold + 1.0
     assert fixture["nested_state_path"].read_bytes() == nested_before
-
 
 @pytest.mark.parametrize(
     "case",
@@ -692,8 +685,7 @@ def test_database_worktree_status_projection_rejects_unproved_evidence(
         lambda: ["python", "-m", "managed-daemon"],
     )
     monkeypatch.setattr(
-        worker_watchdog,
-        "descendant_processes",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop.procfs_descendant_processes",
         lambda _pid: [
             {
                 "pid": 4321,
@@ -707,10 +699,11 @@ def test_database_worktree_status_projection_rejects_unproved_evidence(
     decision = loop.default_watchdog(child, {})
 
     assert decision.action == "continue"
-    assert loop._last_worker_status["required"] is False
+    assert loop._last_worker_status["required"] is None
     assert loop._last_worker_status["phase"] == ""
-    assert loop._last_worker_status.get("active_worker_count", 0) == 0
-
+    assert loop._last_worker_status["active_worker_count"] is None
+    assert loop._last_worker_status["worker_metrics_available"] is False
+    assert loop._last_worker_status["worker_metrics_unavailable_reason"] == "worktree_projection_unavailable"
 
 @pytest.mark.parametrize("projection_failure", ("exception", "non_mapping"))
 def test_worktree_status_projection_failure_does_not_fallback_to_outer_phase(
@@ -752,10 +745,10 @@ def test_worktree_status_projection_failure_does_not_fallback_to_outer_phase(
     decision = loop.default_watchdog(fixture["child"], outer_status)
 
     assert decision.action == "continue"
-    assert loop._last_worker_status["required"] is False
+    assert loop._last_worker_status["required"] is None
     assert loop._last_worker_status["phase"] == ""
-    assert loop._last_worker_status.get("active_worker_count", 0) == 0
-
+    assert loop._last_worker_status["active_worker_count"] is None
+    assert loop._last_worker_status["worker_metrics_available"] is False
 
 def test_control_plane_reload_defers_for_exact_nested_database_pool_lease(
     tmp_path: Path,
@@ -824,7 +817,6 @@ def test_control_plane_reload_defers_for_exact_nested_database_pool_lease(
     )
     assert fixture["state_path"].read_bytes() == original_state
 
-
 def test_watchdog_defers_stale_outer_task_for_exact_nested_database_activity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -857,7 +849,7 @@ def test_watchdog_defers_stale_outer_task_for_exact_nested_database_activity(
     monkeypatch.setattr(
         supervisor,
         "_run_once_with_maintenance",
-        lambda _update_phase: pytest.fail(
+        lambda _update_phase, *, worker_status=None: pytest.fail(
             "stale outer projection entered watchdog maintenance"
         ),
     )
@@ -883,7 +875,6 @@ def test_watchdog_defers_stale_outer_task_for_exact_nested_database_activity(
     )
     assert fixture["state_path"].read_bytes() == original_outer
     assert fixture["nested_state_path"].read_bytes() == original_nested
-
 
 def test_watchdog_defers_exact_child_validation_with_string_cmdline(
     tmp_path: Path,
@@ -934,7 +925,7 @@ def test_watchdog_defers_exact_child_validation_with_string_cmdline(
     monkeypatch.setattr(
         supervisor,
         "_run_once_with_maintenance",
-        lambda _update_phase: pytest.fail(
+        lambda _update_phase, *, worker_status=None: pytest.fail(
             "live exact-child validation entered watchdog maintenance"
         ),
     )
@@ -952,7 +943,6 @@ def test_watchdog_defers_exact_child_validation_with_string_cmdline(
     assert loop.config.status_extra_fields["watchdog_database_validation_active"] is True
     assert observed_pids
     assert set(observed_pids) == {fixture["child"].pid}
-
 
 def test_watchdog_same_task_stale_attempt_preserves_live_pool_custody(
     tmp_path: Path,
@@ -984,7 +974,7 @@ def test_watchdog_same_task_stale_attempt_preserves_live_pool_custody(
     monkeypatch.setattr(
         supervisor,
         "_run_once_with_maintenance",
-        lambda _update_phase: pytest.fail("live pool custody entered maintenance"),
+        lambda _update_phase, *, worker_status=None: pytest.fail("live pool custody entered maintenance"),
     )
     original_nested = fixture["nested_state_path"].read_bytes()
     loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
@@ -1003,7 +993,6 @@ def test_watchdog_same_task_stale_attempt_preserves_live_pool_custody(
     assert fixture["pool_path"].read_bytes() == original_pool
     assert loop.config.status_extra_fields["watchdog_database_quiescence_unresolved"] is False
     assert loop.config.status_extra_fields["watchdog_database_recovery_deferred_reason"] == "active_database_custody"
-
 
 @pytest.mark.parametrize("case", ("stale_nested_phase", "no_live_descendant"))
 def test_watchdog_stale_phase_or_missing_descendant_preserves_live_pool_custody(
@@ -1044,7 +1033,7 @@ def test_watchdog_stale_phase_or_missing_descendant_preserves_live_pool_custody(
     monkeypatch.setattr(
         supervisor,
         "_run_once_with_maintenance",
-        lambda _update_phase: pytest.fail("live pool custody entered maintenance"),
+        lambda _update_phase, *, worker_status=None: pytest.fail("live pool custody entered maintenance"),
     )
     original_nested = fixture["nested_state_path"].read_bytes()
     loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
@@ -1061,7 +1050,6 @@ def test_watchdog_stale_phase_or_missing_descendant_preserves_live_pool_custody(
     assert fixture["pool_path"].read_bytes() == original_pool
     assert loop.config.status_extra_fields["watchdog_database_quiescence_unresolved"] is False
     assert loop.config.status_extra_fields["watchdog_database_recovery_deferred_reason"] == "active_database_custody"
-
 
 def test_watchdog_attribution_timeout_does_not_release_live_pool_custody(
     tmp_path: Path,
@@ -1099,7 +1087,7 @@ def test_watchdog_attribution_timeout_does_not_release_live_pool_custody(
     monkeypatch.setattr(
         supervisor,
         "_run_once_with_maintenance",
-        lambda _update_phase: pytest.fail("live pool custody entered maintenance"),
+        lambda _update_phase, *, worker_status=None: pytest.fail("live pool custody entered maintenance"),
     )
     original_nested = fixture["nested_state_path"].read_bytes()
     loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
@@ -1138,8 +1126,6 @@ def test_watchdog_attribution_timeout_does_not_release_live_pool_custody(
     assert loop.config.status_extra_fields["watchdog_database_quiescence_unresolved"] is False
     assert loop.config.status_extra_fields["watchdog_database_recovery_deferred_reason"] == "active_database_custody"
 
-
-
 def test_watchdog_recovery_resumes_after_verified_callback_and_custody_release(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1169,7 +1155,7 @@ def test_watchdog_recovery_resumes_after_verified_callback_and_custody_release(
     monkeypatch.setattr(
         supervisor,
         "_run_once_with_maintenance",
-        lambda _update_phase: {
+        lambda _update_phase, *, worker_status=None: {
             "stuck": True,
             "reason": "no progress on active task VRIF-009",
             "active_task_id": "VRIF-009",
@@ -1204,7 +1190,6 @@ def test_watchdog_recovery_resumes_after_verified_callback_and_custody_release(
     assert loop.config.status_extra_fields["watchdog_database_provider_active"] is False
     assert loop.config.status_extra_fields["watchdog_database_validation_active"] is False
 
-
 def test_watchdog_attribution_helper_error_preserves_unknown_custody(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1229,7 +1214,7 @@ def test_watchdog_attribution_helper_error_preserves_unknown_custody(
     monkeypatch.setattr(
         supervisor,
         "_run_once_with_maintenance",
-        lambda _update_phase: pytest.fail("unknown custody entered maintenance"),
+        lambda _update_phase, *, worker_status=None: pytest.fail("unknown custody entered maintenance"),
     )
     loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
 
@@ -1246,7 +1231,6 @@ def test_watchdog_attribution_helper_error_preserves_unknown_custody(
     assert loop.config.status_extra_fields["watchdog_database_validation_active"] is False
     assert loop.config.status_extra_fields["watchdog_database_evidence_error"] == "OSError"
     assert loop.config.status_extra_fields["watchdog_database_recovery_deferred_reason"] == "database_custody_read_failed"
-
 
 @pytest.mark.parametrize(
     "case",
@@ -1296,7 +1280,7 @@ def test_watchdog_preserves_unresolved_attribution_only_with_live_custody(
     monkeypatch.setattr(
         supervisor,
         "_run_once_with_maintenance",
-        lambda _update_phase: {
+        lambda _update_phase, *, worker_status=None: {
             "stuck": True,
             "reason": "no progress on active task VRIF-009",
             "active_task_id": "VRIF-009",
@@ -1319,7 +1303,6 @@ def test_watchdog_preserves_unresolved_attribution_only_with_live_custody(
         assert decision.reason == "no progress on active task VRIF-009"
     assert loop.config.status_extra_fields["watchdog_attribution_deferred"] is False
     assert loop.config.status_extra_fields["watchdog_database_activity_task_id"] == ""
-
 
 @pytest.mark.parametrize("lifecycle_state", ("preparing", "active", "settling"))
 def test_control_plane_reload_defers_for_exact_live_database_nonterminal_claim(
@@ -1384,7 +1367,6 @@ def test_control_plane_reload_defers_for_exact_live_database_nonterminal_claim(
     assert released.reason == "control_plane_source_changed"
     assert fixture["state_path"].read_bytes() == original_state
 
-
 def test_database_portal_callback_gap_accepts_exact_live_two_identity_attempt(
     tmp_path: Path,
 ) -> None:
@@ -1420,7 +1402,6 @@ def test_database_portal_callback_gap_accepts_exact_live_two_identity_attempt(
     }
     assert activity["database_task_cid"] != activity["task_cid"]
     assert activity["database_attempt"] != activity["attempt"]
-
 
 def test_control_plane_reload_defers_for_exact_database_portal_callback_gap(
     tmp_path: Path,
@@ -1465,7 +1446,6 @@ def test_control_plane_reload_defers_for_exact_database_portal_callback_gap(
         == "PCSM-043"
     )
     assert fixture["state_path"].read_bytes() == original_state
-
 
 @pytest.mark.parametrize(
     "case",
@@ -1605,7 +1585,6 @@ def test_database_portal_callback_gap_never_defers_without_exact_evidence(
         is None
     )
 
-
 def test_database_portal_callback_gap_rejects_record_change_during_verification(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1639,7 +1618,6 @@ def test_database_portal_callback_gap_rejects_record_change_during_verification(
         is None
     )
 
-
 def _seed_stale_predecessor_projection(
     fixture: dict[str, Any],
     *,
@@ -1654,7 +1632,6 @@ def _seed_stale_predecessor_projection(
     state.implementation_in_progress = True
     state.save(fixture["state_path"])
     return fixture["state_path"].read_bytes()
-
 
 def test_watchdog_maintenance_defers_for_database_portal_callback_gap(
     tmp_path: Path,
@@ -1693,7 +1670,6 @@ def test_watchdog_maintenance_defers_for_database_portal_callback_gap(
     assert maintenance_calls == []
     assert fixture["state_path"].read_bytes() == original_state
 
-
 @pytest.mark.parametrize("recycle_result", ("stuck", "checkout_repair"))
 def test_watchdog_rereads_database_callback_gap_before_recycle(
     tmp_path: Path,
@@ -1728,7 +1704,7 @@ def test_watchdog_rereads_database_callback_gap_before_recycle(
         ),
     )
 
-    def maintenance(update: object) -> dict[str, Any]:
+    def maintenance(update: object, *, worker_status=None) -> dict[str, Any]:
         maintenance_calls.append(update)
         state = PortalTaskState.load(fixture["nested_state_path"])
         now = datetime.now(UTC).isoformat()
@@ -1758,7 +1734,6 @@ def test_watchdog_rereads_database_callback_gap_before_recycle(
 
     assert decision.action == "continue"
     assert len(maintenance_calls) == 1
-
 
 def test_watchdog_checkout_repair_recycles_after_projection_clears(
     tmp_path: Path,
@@ -1804,7 +1779,7 @@ def test_watchdog_checkout_repair_recycles_after_projection_clears(
         ),
     )
 
-    def maintenance(_update: object) -> dict[str, Any]:
+    def maintenance(_update: object, *, worker_status=None) -> dict[str, Any]:
         repaired = PortalTaskState.load(fixture["state_path"])
         repaired.active_task_id = ""
         repaired.active_task_cid = ""
@@ -1833,7 +1808,6 @@ def test_watchdog_checkout_repair_recycles_after_projection_clears(
     assert decision.reason == "main_checkout_merge_state_repaired"
     assert PortalTaskState.load(fixture["state_path"]).active_task_id == ""
     assert observed_task_ids == ["PCSM-027"]
-
 
 @pytest.mark.parametrize(
     "case",
@@ -1882,7 +1856,7 @@ def test_watchdog_unverified_post_maintenance_state_cannot_override_stuck(
         ),
     )
 
-    def maintenance(_update: object) -> dict[str, Any]:
+    def maintenance(_update: object, *, worker_status=None) -> dict[str, Any]:
         path = fixture["state_path"]
         if case == "missing":
             path.unlink()
@@ -1923,7 +1897,6 @@ def test_watchdog_unverified_post_maintenance_state_cannot_override_stuck(
     assert decision.reason == "no progress on active task PCSM-027"
     assert observed_task_ids == ["PCSM-027"]
 
-
 def test_watchdog_state_change_during_post_maintenance_load_cannot_override_stuck(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1961,7 +1934,7 @@ def test_watchdog_state_change_during_post_maintenance_load_cannot_override_stuc
     monkeypatch.setattr(
         supervisor,
         "_run_once_with_maintenance",
-        lambda _update: {
+        lambda _update, *, worker_status=None: {
             "main_checkout_repair": {"repaired": False},
             "stuck": True,
             "reason": "no progress on active task PCSM-027",
@@ -2013,7 +1986,6 @@ def test_watchdog_state_change_during_post_maintenance_load_cannot_override_stuc
     assert observed_task_ids == ["PCSM-027"]
     assert changed_load_count == 1
 
-
 def test_watchdog_rereads_repaired_projection_before_stuck_recycle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2049,7 +2021,7 @@ def test_watchdog_rereads_repaired_projection_before_stuck_recycle(
         ),
     )
 
-    def maintenance(_update: object) -> dict[str, Any]:
+    def maintenance(_update: object, *, worker_status=None) -> dict[str, Any]:
         repaired = PortalTaskState.load(fixture["state_path"])
         repaired.active_task_id = ""
         repaired.active_task_cid = ""
@@ -2078,7 +2050,6 @@ def test_watchdog_rereads_repaired_projection_before_stuck_recycle(
 
     assert decision.action == "continue"
     assert observed_task_ids == ["PCSM-027", ""]
-
 
 def test_watchdog_recycles_when_post_maintenance_projection_remains_stuck(
     tmp_path: Path,
@@ -2120,7 +2091,7 @@ def test_watchdog_recycles_when_post_maintenance_projection_remains_stuck(
     monkeypatch.setattr(
         supervisor,
         "_run_once_with_maintenance",
-        lambda _update: {
+        lambda _update, *, worker_status=None: {
             "main_checkout_repair": {"repaired": False},
             "stuck": True,
             "reason": "initial stale projection",
@@ -2138,7 +2109,6 @@ def test_watchdog_recycles_when_post_maintenance_projection_remains_stuck(
     assert decision.action == "recycle"
     assert decision.reason == "fresh projection still stuck"
     assert observed_task_ids == ["PCSM-027", "PCSM-027"]
-
 
 def test_watchdog_maintenance_defers_for_exact_nested_database_pool_lease(
     tmp_path: Path,
@@ -2172,7 +2142,6 @@ def test_watchdog_maintenance_defers_for_exact_nested_database_pool_lease(
     assert decision.action == "continue"
     assert maintenance_calls == []
     assert fixture["state_path"].read_bytes() == original_state
-
 
 def test_watchdog_defers_at_pcsm_024_to_pcsm_027_two_identity_successor_boundary(
     tmp_path: Path,
@@ -2229,7 +2198,6 @@ def test_watchdog_defers_at_pcsm_024_to_pcsm_027_two_identity_successor_boundary
     assert maintenance_calls == []
     assert fixture["state_path"].read_bytes() == original_state
 
-
 @pytest.mark.parametrize("lifecycle_state", ("preparing", "active", "settling"))
 def test_watchdog_maintenance_defers_for_exact_live_database_nonterminal_claim(
     tmp_path: Path,
@@ -2268,7 +2236,6 @@ def test_watchdog_maintenance_defers_for_exact_live_database_nonterminal_claim(
     assert maintenance_calls == []
     assert fixture["state_path"].read_bytes() == original_state
 
-
 def test_watchdog_maintenance_resumes_without_exact_database_corroboration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2295,7 +2262,7 @@ def test_watchdog_maintenance_resumes_without_exact_database_corroboration(
         ),
     )
 
-    def _maintenance(update: object) -> dict[str, Any]:
+    def _maintenance(update: object, *, worker_status=None) -> dict[str, Any]:
         maintenance_calls.append(update)
         return {
             "main_checkout_repair": {"repaired": False},
@@ -2317,7 +2284,6 @@ def test_watchdog_maintenance_resumes_without_exact_database_corroboration(
 
     assert decision.action == "continue"
     assert len(maintenance_calls) == 1
-
 
 @pytest.mark.parametrize(
     "case",
@@ -2362,7 +2328,7 @@ def test_watchdog_preserves_live_custody_without_projection_identity_bridge(
         ),
     )
 
-    def _maintenance(update: object) -> dict[str, Any]:
+    def _maintenance(update: object, *, worker_status=None) -> dict[str, Any]:
         maintenance_calls.append(update)
         return {
             "main_checkout_repair": {"repaired": False},
@@ -2385,7 +2351,6 @@ def test_watchdog_preserves_live_custody_without_projection_identity_bridge(
     assert fixture["pool_path"].read_bytes() == original_pool
     assert fixture["lifecycle_path"].read_bytes() == original_lifecycle
     assert fixture["nested_state_path"].read_bytes() == original_nested
-
 
 @pytest.mark.parametrize(
     "case",
@@ -2456,7 +2421,6 @@ def test_database_nonterminal_claim_never_defers_without_exact_corroboration(
         )
         is None
     )
-
 
 @pytest.mark.parametrize(
     "case",
@@ -2633,6 +2597,85 @@ def test_database_pool_lease_never_defers_without_exact_corroboration(
 
     assert fixture["supervisor"]._active_managed_database_pool_lease(fixture["child"]) is None
 
+@pytest.mark.parametrize(
+    "case",
+    [
+        "idle",
+        "initializing",
+        "peer",
+        "dead",
+        "dead_child",
+        "missing_child_birth_identity",
+        "mismatched_child_birth_identity",
+        "mismatched_lifecycle_stable_identity",
+        "malformed_pool",
+        "foreign_root",
+        "pid_only",
+        "malformed_lifecycle",
+        "terminal_lifecycle",
+        "malformed_binding",
+        "malformed_nested_state",
+    ],
+)
+def test_database_pool_lease_never_defers_without_exact_corroboration_aseh(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    pool = dict(fixture["pool"])
+    if case == "idle":
+        pool.update({"state": "idle", "lease_pid": 0, "branch": ""})
+        _write_json(fixture["pool_path"], pool)
+        fixture["lock_path"].unlink()
+    elif case == "initializing":
+        pool["state"] = "initializing"
+        _write_json(fixture["pool_path"], pool)
+    elif case == "peer":
+        pool["lease_pid"] = os.getppid()
+        _write_json(fixture["pool_path"], pool)
+        _write_json(fixture["lock_path"], {"pid": os.getppid()})
+    elif case == "dead":
+        pool["lease_pid"] = 2**30 - 1
+        _write_json(fixture["pool_path"], pool)
+        _write_json(fixture["lock_path"], {"pid": 2**30 - 1})
+    elif case == "dead_child":
+        fixture["child"].pid = 2**30 - 1
+    elif case == "missing_child_birth_identity":
+        fixture["child"].identity_process_birth = None
+    elif case == "mismatched_child_birth_identity":
+        observed = fixture["child"].identity_process_birth
+        fixture["child"].identity_process_birth = ProcessBirthIdentity(
+            pid=observed.pid,
+            start_time_ticks=observed.start_time_ticks + 1,
+            boot_id=observed.boot_id,
+            parent_pid=observed.parent_pid,
+        )
+    elif case == "mismatched_lifecycle_stable_identity":
+        lifecycle = json.loads(fixture["lifecycle_path"].read_text(encoding="utf-8"))
+        lifecycle["owner"]["boot_id"] = "foreign-boot-id"
+        _write_json(fixture["lifecycle_path"], lifecycle)
+    elif case == "malformed_pool":
+        fixture["pool_path"].write_text("{", encoding="utf-8")
+    elif case == "foreign_root":
+        foreign = fixture["repo"] / "foreign-workspace"
+        foreign.mkdir()
+        pool["path"] = str(foreign)
+        _write_json(fixture["pool_path"], pool)
+    elif case == "pid_only":
+        fixture["lifecycle_path"].unlink()
+    elif case == "malformed_lifecycle":
+        fixture["lifecycle_path"].write_text("[]\n", encoding="utf-8")
+    elif case == "terminal_lifecycle":
+        lifecycle = json.loads(fixture["lifecycle_path"].read_text(encoding="utf-8"))
+        lifecycle["state"] = "terminal"
+        lifecycle["terminal_reason"] = "finished"
+        _write_json(fixture["lifecycle_path"], lifecycle)
+    elif case == "malformed_binding":
+        fixture["binding_path"].write_text("[]\n", encoding="utf-8")
+    elif case == "malformed_nested_state":
+        fixture["nested_state_path"].write_text("[]\n", encoding="utf-8")
+
+    assert fixture["supervisor"]._active_managed_database_pool_lease(fixture["child"]) is None
 
 @pytest.mark.parametrize("field,value", [
     ("canonical_task_key", ""),
@@ -2651,7 +2694,6 @@ def test_database_pool_lease_rejects_malformed_current_binding_fields(
     assert fixture["supervisor"]._active_managed_database_pool_lease(
         fixture["child"]
     ) is None
-
 
 @pytest.mark.parametrize("damage", ["missing_binding", "unknown_field", "missing_projection", "malformed_state"])
 def test_reload_preserves_live_pool_with_unresolved_task_evidence(tmp_path, monkeypatch, damage):
@@ -2683,7 +2725,6 @@ def test_reload_preserves_live_pool_with_unresolved_task_evidence(tmp_path, monk
     decision = supervisor._supervisor_loop_watchdog_decision(loop, fixture["child"], {})
     assert decision.action == "stop"
 
-
 @pytest.mark.parametrize("mutation", ["pool", "lifecycle"])
 def test_reload_rechecks_unresolved_lease_custody(tmp_path, monkeypatch, mutation):
     fixture = _seed_active_database_pool_lease(tmp_path)
@@ -2700,7 +2741,6 @@ def test_reload_rechecks_unresolved_lease_custody(tmp_path, monkeypatch, mutatio
 
     monkeypatch.setattr(supervisor, "_validated_managed_database_lifecycle_binding", rejected_binding)
     assert supervisor._managed_database_pool_reload_activity(fixture["child"]) is None
-
 
 @pytest.mark.parametrize("phase", ("before_maintenance", "before_recycle"))
 @pytest.mark.parametrize(
@@ -2733,7 +2773,7 @@ def test_watchdog_custody_read_failure_defers_and_recovers_when_reads_resume(
         lambda *args, **kwargs: (lambda phase: None, lambda *args: None),
     )
 
-    def maintenance(update):
+    def maintenance(update, *, worker_status=None):
         maintenance_calls.append(update)
         return {"stuck": True, "reason": "stale outer task"}
 
@@ -2770,3 +2810,78 @@ def test_watchdog_custody_read_failure_defers_and_recovers_when_reads_resume(
     assert status["watchdog_database_recovery_deferred_reason"] == ""
     assert status["watchdog_database_evidence_error"] == ""
     assert all(fixture[name].read_bytes() == data for name, data in original.items())
+
+@pytest.mark.parametrize("include_observation", [True, False])
+def test_watchdog_threads_one_exact_census_into_both_stuck_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    include_observation: bool,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    # Maintenance is admitted only after the exact callback relinquishes
+    # custody; the fixture initially represents a live callback.
+    _release_completed_fixture_callback(fixture)
+    supervisor = fixture["supervisor"]
+    supervisor._last_supervisor_maintenance_at = 0.0
+    census = {
+        "worker_metrics_available": True,
+        "phase": "implementing",
+        "required": True,
+        "active_worker_count": 1,
+        "active_worker_pids": [8765],
+        "stalled_without_active_worker": False,
+    }
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    if include_observation:
+        loop._last_worker_status = census
+    expected = census if include_observation else {}
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        supervisor,
+        "_refresh_loop_proof_rollout_status",
+        lambda _loop: None,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        lambda: {"control_plane_update_pending": False},
+    )
+
+    def fake_is_stuck(_state, *, now_ts, worker_status):
+        assert now_ts > 0
+        seen["initial"] = worker_status
+        return False, ""
+
+    def fake_maintenance(_update_phase, *, worker_status=None):
+        seen["maintenance"] = worker_status
+        return {
+            "stuck": False,
+            "main_checkout_repair": {"repaired": False},
+        }
+
+    monkeypatch.setattr(supervisor, "is_stuck", fake_is_stuck)
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda *_args, **_kwargs: None,
+            lambda *_args, **_kwargs: None,
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        fake_maintenance,
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert seen["initial"] == expected
+    assert seen["maintenance"] == expected
+    assert seen["initial"] is seen["maintenance"]

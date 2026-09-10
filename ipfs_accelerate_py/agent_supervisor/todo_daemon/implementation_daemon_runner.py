@@ -2190,6 +2190,12 @@ def bind_database_portal_execution_from_args(
         post_commit_candidate_recovery_fn=(
             bridge.recover_post_commit_candidate
         ),
+        quack_preprojection_transport_recovery_fn=(
+            bridge.recover_quack_preprojection_transport_failure
+        ),
+        deterministic_reconciliation_fn=(
+            bridge.run_deterministic_reconciliation
+        ),
     )
     consumed_recovery_binder(bridge.recover_consumed_attempt_retry)
     protected_recovery_binder(protected_recovery)
@@ -2368,6 +2374,9 @@ def build_portal_implementation_daemon_from_args(
                 getattr(parsed, "merge_target_branch", "") or "HEAD"
             ),
             task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
+            board_namespace=str(
+                getattr(parsed, "board_namespace", "") or ""
+            ),
         )
         bind_database_portal_execution_from_args(
             daemon,
@@ -2469,6 +2478,10 @@ def build_portal_implementation_daemon_from_args(
             getattr(parsed, "worker_network_launch_authority_json", "") or ""
         ),
     )
+    if not hasattr(daemon, "isolate_merge_queue_to_task_projection"):
+        # 74555b11c reads this flag in merged-worktree cleanup; the daemon
+        # class never initialized it, so ASEH-061 terminalized on AttributeError.
+        daemon.isolate_merge_queue_to_task_projection = False
     return daemon, ImplementationDaemonRunContext(parsed=parsed, **state_paths)
 
 
@@ -2510,7 +2523,7 @@ def build_database_implementation_daemon_from_args(
     task_source_kind = (
         program.task_source_kind if program is not None else "duckdb"
     )
-    return DatabaseImplementationDaemon(
+    daemon = DatabaseImplementationDaemon(
         database_path=resolved_db,
         coordination_path=db_paths["coordination_path"],
         execution_path=db_paths["execution_path"],
@@ -2554,7 +2567,13 @@ def build_database_implementation_daemon_from_args(
         merge_target_ref=str(
             getattr(parsed, "merge_target_branch", "") or "HEAD"
         ),
+        board_namespace=str(
+            getattr(parsed, "board_namespace", "") or ""
+        ),
     )
+    if not hasattr(daemon, "isolate_merge_queue_to_task_projection"):
+        daemon.isolate_merge_queue_to_task_projection = False
+    return daemon
 
 
 def _run_hooks(

@@ -157,6 +157,12 @@ from ..task_sources.typed_state_owner import (
     TypedStateOwnerGateway,
     compact_default_owner_socket_path,
 )
+import warnings
+from typing import Any, ClassVar, Final, NoReturn, Protocol
+from ..task_sources.duckdb_state import DEFAULT_MEMORY_LIMIT, DUCKDB_CONNECTION_POLICY_SETTINGS, QUACK_MUTATION_COMPLETION_RECEIPT_INSERT, QUACK_MUTATION_DOMAIN_EVENT_INSERT, QUACK_MUTATION_EVIDENCE_DELETE, QUACK_MUTATION_EVIDENCE_INSERT, QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT, QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE, QUACK_MUTATION_QUEUE_BACKOFF, QUACK_MUTATION_TASK_REVISION_INSERT, QUACK_MUTATION_TASK_STATUS_CAS, QUACK_MUTATION_TASK_STATUS_TRANSITION, QUACK_MUTATION_VALIDATION_RECORD, QUACK_MUTATION_VALIDATION_RESULT_INSERT, QUACK_MUTATION_VALIDATION_RUN_INSERT, QUACK_OWNER_COMMAND_MAX_BYTES, QUACK_OWNER_COMMAND_REQUEST_SCHEMA, QUACK_OWNER_MUTATION_MAX_CLOCK_SKEW_MS, QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES, QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES, QUACK_OWNER_MUTATION_MAX_STEPS, QUACK_OWNER_MUTATION_PROTOCOL_REVISION, QUACK_OWNER_MUTATION_REQUEST_SCHEMA, QUACK_OWNER_MUTATION_REQUEST_TTL_MS, QUACK_OWNER_MUTATION_RESULT_SCHEMA, DuckDBConnection, open_duckdb_connection, open_quack_state_owner_connection, quack_owner_command_response, quack_owner_mutation_content_id, quack_owner_mutation_inbox_path, quack_owner_mutation_mac, validate_quack_owner_command_request
+from ..task_sources.intent_repository import COMPLETION_EVIDENCE_SCHEMA, DEFAULT_EVIDENCE_FRESHNESS_SECONDS, PRODUCTION_AUTHORITY_PATH, PRODUCTION_CUTOVER_TASK_ID, QUEUE_ENTRY_SCHEMA, IntentRepository, IntentRepositoryCompatibilityWarning, IntentRepositoryUnsupportedPathError, missing_current_evidence_on
+from ..task_sources.quack_owner_mutation import MAX_MUTATION_REQUEST_BYTES, MAX_MUTATION_RESULT_ROWS, QuackOwnerMutationEnvelopeError, build_mutation_result, mutation_envelope_exists_at, open_mutation_inbox_directory, parse_mutation_request, parse_mutation_result, read_envelope_at, unlink_mutation_envelope_at, write_envelope_atomic_at
+from ..task_sources.typed_state_owner import DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS, DATABASE_TASK_COMMANDS, HASH_OBSERVATION_SERVICE_OPERATION, MAX_GRANT_BROKER_FRAME_BYTES, TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND, TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION, TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT, TYPED_STATE_OWNER_GRANT_BROKER_CREDENTIAL_KINDS, TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA, TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV, TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV, TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME, TYPED_STATE_OWNER_SOCKET_ENV, TYPED_STATE_OWNER_SOCKET_FILENAME, TYPED_STATE_OWNER_TOKEN_FILENAME, OwnerClientGrant, TypedStateOwnerAuthorizationError, TypedStateOwnerDatabaseTaskCommandError, TypedStateOwnerGateway, _kernel_peer_identity, kernel_process_birth_id
 
 _UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
 
@@ -1419,9 +1425,11 @@ class _ExclusiveOwnerLeaseState:
         self.phase = "new"
         self.parent_fd: int | None = None
         self.lock_fd: int | None = None
+        self.descriptor_close_uncertain = False
         self.marker: OwnerMarker | None = None
         self.fence_token = ""
         self.owner_process_birth: ProcessBirthIdentity | None = None
+        self.canonical_path_fence: socket.socket | None = None
         # Separate cleanup/rebind authority from the globally one-shot
         # offline-writer -> state-owner binding gate.  A fresh receiver must
         # retain cleanup authority, but it must never become transfer-eligible
@@ -1776,6 +1784,11 @@ class ExclusiveOwnerLease:
         os.fsync(parent_fd)
 
     def _close_descriptors_locked(self) -> list[str]:
+        if self._state.descriptor_close_uncertain:
+            # close(2) can report an error after releasing the fd number.
+            # Reusing that integer could close another thread's new handle.
+            # Retain this cleanup authority until the process-exit boundary.
+            return ["descriptor_close_outcome_unknown"]
         failures: list[str] = []
         lock_fd = self._state.lock_fd
         if lock_fd is not None:
@@ -1787,6 +1800,7 @@ class ExclusiveOwnerLease:
                 os.close(lock_fd)
             except OSError as exc:
                 if exc.errno != errno.EBADF:
+                    self._state.descriptor_close_uncertain = True
                     failures.append(f"lock_close:{exc.errno}")
                 else:
                     self._state.lock_fd = None
@@ -1798,6 +1812,7 @@ class ExclusiveOwnerLease:
                 os.close(parent_fd)
             except OSError as exc:
                 if exc.errno != errno.EBADF:
+                    self._state.descriptor_close_uncertain = True
                     failures.append(f"directory_close:{exc.errno}")
                 else:
                     self._state.parent_fd = None
@@ -1806,11 +1821,22 @@ class ExclusiveOwnerLease:
         if self._state.lock_fd is None:
             self._state.phase = "released"
             self._state.owner_process_birth = None
+        if self._state.lock_fd is None and self._state.parent_fd is None:
+            path_fence = self._state.canonical_path_fence
+            if path_fence is not None:
+                try:
+                    path_fence.close()
+                except OSError as exc:
+                    failures.append(f"path_fence_close:{exc.errno}")
+                else:
+                    self._state.canonical_path_fence = None
         return failures
 
     def _discard_inherited_descriptors_locked(self) -> list[str]:
         """Close fork-inherited descriptors without unlocking the parent flock."""
 
+        if self._state.descriptor_close_uncertain:
+            return ["descriptor_close_outcome_unknown"]
         failures: list[str] = []
         lock_fd = self._state.lock_fd
         if lock_fd is not None:
@@ -1842,6 +1868,11 @@ class ExclusiveOwnerLease:
             self._state.phase = "fork-invalid"
             self._state.owner_process_birth = None
             self._state.authority_token = object()
+        if self._state.lock_fd is None and self._state.parent_fd is None:
+            path_fence = self._state.canonical_path_fence
+            if path_fence is not None:
+                path_fence.close()
+                self._state.canonical_path_fence = None
         return failures
 
     @property
@@ -1905,6 +1936,19 @@ class ExclusiveOwnerLease:
                 return False
             return True
 
+    @property
+    def _retained_local_handles(self) -> bool:
+        """Include partially closed namespace handles in cleanup custody."""
+        with self._state.gate:
+            return any(
+                handle is not None
+                for handle in (
+                    self._state.lock_fd,
+                    self._state.parent_fd,
+                    self._state.canonical_path_fence,
+                )
+            )
+
     def acquire(
         self,
         *,
@@ -1953,6 +1997,12 @@ class ExclusiveOwnerLease:
                 | getattr(os, "O_NOFOLLOW", 0)
             )
             try:
+                try:
+                    self._state.canonical_path_fence = _acquire_canonical_owner_path_fence(self.lock_path)
+                except BlockingIOError as exc:
+                    raise QuackStateServerOwnershipError(
+                        "second state-owner refused; canonical owner namespace is held"
+                    ) from exc
                 self._state.parent_fd = os.open(
                     self.lock_path.parent, parent_flags
                 )
@@ -2197,7 +2247,29 @@ class ExclusiveOwnerLease:
     def release(self, *, fence_token: str | None = None) -> None:
         with self._state.gate:
             self._require_authority_locked()
+            if self._state.lock_fd is not None and self._owning_process_matches_locked():
+                if not self._parent_path_matches_locked():
+                    raise QuackStateServerOwnershipError("owner lease directory identity changed")
+            self._release_retained_lease(fence_token=fence_token)
+
+    def _release_retained_lease(self, *, fence_token: str | None = None) -> None:
+        with self._state.gate:
+            self._require_authority_locked()
+            if self._state.descriptor_close_uncertain:
+                raise QuackStateServerControlError(
+                    "owner lease descriptor close outcome is unknown; "
+                    "local custody is retained until process exit"
+                )
             if self._state.lock_fd is None:
+                # A prior release may have closed the flock but failed to
+                # close its directory or canonical socket. Retain and retry
+                # those exact handles without touching marker authority.
+                failures = self._close_descriptors_locked()
+                if failures:
+                    raise QuackStateServerControlError(
+                        "owner lease descriptor teardown incomplete: "
+                        + ",".join(failures)
+                    )
                 return
             if not self._owning_process_matches_locked():
                 failures = self._discard_inherited_descriptors_locked()
@@ -2252,6 +2324,57 @@ class ExclusiveOwnerLease:
                 if observation_error is not None:
                     raise error from observation_error
                 raise error
+
+    def assert_stop_authority(self, *, server_id: str, fence_token: str) -> OwnerMarker:
+        """Observe exact current lease authority before any stop effects."""
+        with self._state.gate:
+            if (type(server_id) is not str or not server_id
+                or type(fence_token) is not str
+                or re.fullmatch(r"[0-9a-f]{32}", fence_token) is None):
+                raise QuackStateServerControlError("stop authority is malformed")
+            self.assert_canonical_parent()
+            current = self._corroborated_marker()
+            if (current is None or current.server_id != server_id
+                or current.fence_token != fence_token
+                or self._state.fence_token != fence_token):
+                raise QuackStateServerControlError("stop authority does not match the live owner fence")
+            return current
+
+    def bind_generation(self, generation: int) -> OwnerMarker:
+        """Bind the observed generation without losing transferred lease custody."""
+        with self._state.gate:
+            self._require_authority_locked()
+            self._require_owning_process_locked()
+            if type(generation) is not int or generation < 1:
+                raise QuackStateServerOwnershipError("owner generation binding is invalid")
+            current = self._corroborated_marker()
+            if current is None:
+                raise QuackStateServerOwnershipError("owner marker changed before generation binding")
+            rebound = self._rebind_held_marker_locked(
+                expected_server_id=current.server_id, server_id=current.server_id,
+                process_birth=current.process_birth, database_path=Path(current.database_path),
+                generation=generation,
+            )
+            if self._corroborated_marker() != rebound:
+                raise QuackStateServerOwnershipError("owner marker generation binding was not observed")
+            return rebound
+
+    def emergency_close_after_owner_shutdown(self) -> None:
+        """Release this birth's local custody after confirmed DB/listener closure."""
+        # release already preserves a foreign/changed marker while tearing down
+        # only the descriptors held by this exact, non-transferred authority.
+        try:
+            self._release_retained_lease()
+        except QuackStateServerControlError:
+            if self._retained_local_handles:
+                raise
+
+    def assert_canonical_parent(self) -> None:
+        with self._state.gate:
+            self._require_authority_locked()
+            self._require_owning_process_locked()
+            if self._state.phase != "held" or not self._lock_path_matches_locked():
+                raise QuackStateServerOwnershipError("owner lease namespace is no longer exact")
 
 
 # ---------------------------------------------------------------------------
@@ -2892,6 +3015,23 @@ class QuackStateServer:
     _outbox_drain_count: int = field(default=0, init=False)
     _outbox_last_error_type: str = field(default="", init=False)
 
+    _transport_connection_is_writer: bool = field(default=False, init=False)
+    _grant_broker: TypedStateOwnerGrantBroker | None = field(
+        default=None, init=False, repr=False
+    )
+    _grant_broker_secret_fd: int = field(default=-1, init=False, repr=False)
+    _database_namespace_anchor: _DatabaseNamespaceAnchor | None = field(
+        default=None, init=False, repr=False
+    )
+    _database_namespace_drifted: bool = field(
+        default=False, init=False, repr=False
+    )
+    _maintenance_paused: bool = field(default=False, init=False, repr=False)
+    _maintenance_secret_handle: str = field(default="", init=False, repr=False)
+    _maintenance_reconciliation: dict[str, Any] | None = field(
+        default=None, init=False, repr=False
+    )
+
     def __post_init__(self) -> None:
         if not isinstance(self.config, QuackStateServerConfig):
             raise TypeError("config must be QuackStateServerConfig")
@@ -3446,6 +3586,7 @@ class QuackStateServer:
         process_birth_id: str = "",
         allowed_operations: Sequence[str] = (),
         allowed_command_operations: Sequence[str] = (),
+        allowed_database_task_commands: Sequence[str] = (),
         tenant_id: str = "",
         federation_id: str = "",
         entity_scopes: Mapping[str, str] | None = None,
@@ -3459,6 +3600,7 @@ class QuackStateServer:
             process_birth_id=process_birth_id,
             allowed_operations=allowed_operations,
             allowed_command_operations=allowed_command_operations,
+            allowed_database_task_commands=allowed_database_task_commands,
             tenant_id=tenant_id,
             federation_id=federation_id,
             entity_scopes=entity_scopes,
@@ -3474,6 +3616,7 @@ class QuackStateServer:
         process_birth_id: str = "",
         allowed_operations: Sequence[str] = (),
         allowed_command_operations: Sequence[str] = (),
+        allowed_database_task_commands: Sequence[str] = (),
         tenant_id: str = "",
         federation_id: str = "",
         entity_scopes: Mapping[str, str] | None = None,
@@ -3497,6 +3640,7 @@ class QuackStateServer:
             process_birth_id=process_birth_id,
             allowed_operations=allowed_operations,
             allowed_command_operations=allowed_command_operations,
+            allowed_database_task_commands=allowed_database_task_commands,
             tenant_id=tenant_id,
             federation_id=federation_id,
             entity_scopes=entity_scopes,
@@ -3796,6 +3940,7 @@ class QuackStateServer:
             raise QuackStateServerReadyError(
                 "mutation inbox requires the live exclusive state owner"
             )
+        self._assert_database_namespace()
         if (
             isinstance(max_requests, bool)
             or not isinstance(max_requests, int)
@@ -3844,6 +3989,7 @@ class QuackStateServer:
                 )
         finally:
             os.close(inbox_fd)
+        self._assert_database_namespace()
         return tuple(summaries)
 
     def _process_mutation_request_at(
@@ -3860,6 +4006,7 @@ class QuackStateServer:
 
         assert self._connection is not None
         assert self._identity is not None
+        self._assert_database_namespace()
         error_code = ""
         error = ""
         columns: tuple[str, ...] = ()
@@ -3929,12 +4076,16 @@ class QuackStateServer:
                 now_ms=now_ms,
             )
             parameters = request["parameters"]
+            self._assert_database_namespace()
             if parameters is None:
                 result = self._connection.execute(request["sql"])
             else:
                 result = self._connection.execute(request["sql"], parameters)
+            self._assert_database_namespace()
             columns, rows, rowcount = self._mutation_result_rows(result)
             ok = True
+        except QuackStateServerOwnershipError:
+            raise
         except QuackOwnerMutationEnvelopeError as exc:
             error_code = exc.code
             error = str(exc)
@@ -3942,6 +4093,8 @@ class QuackStateServer:
             error_code = "execution_failed"
             error = f"owner mutation execution failed: {type(exc).__name__}"
         try:
+            if ok:
+                self._assert_database_namespace()
             response = build_mutation_result(
                 request_id=request_id,
                 store_id=self._identity.store_id,
@@ -4299,12 +4452,45 @@ class QuackStateServer:
 
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
+        anchor = self._assert_database_namespace()
+        replica = self.read_replica_path()
+        if replica.parent != anchor.directory_path:
+            self._database_namespace_failure(
+                "read-replica path is outside the retained parent"
+            )
+        replica_descriptor = -1
         isolation = isolation_admission
         try:
             import duckdb
 
+            replica_descriptor = os.open(
+                replica.name,
+                os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK,
+                dir_fd=anchor.directory_descriptor,
+            )
+            opened_replica = os.fstat(replica_descriptor)
+            named_replica = os.stat(
+                replica.name,
+                dir_fd=anchor.directory_descriptor,
+                follow_symlinks=False,
+            )
+            replica_identity = self._database_file_identity(opened_replica)
+            if (
+                replica_identity != self._database_file_identity(named_replica)
+                or not stat.S_ISREG(opened_replica.st_mode)
+                or opened_replica.st_uid != os.geteuid()
+                or opened_replica.st_nlink != 1
+            ):
+                raise QuackStateServerReadyError(
+                    "read-replica inode is not exact and private"
+                )
+            descriptor_path = Path("/proc/self/fd") / str(replica_descriptor)
+            if not descriptor_path.exists():
+                raise QuackStateServerReadyError(
+                    "descriptor-bound read-replica open is unavailable"
+                )
             connection = duckdb.connect(
-                str(self.read_replica_path()),
+                str(descriptor_path),
                 read_only=True,
                 config={
                     "autoinstall_known_extensions": "false",
@@ -4354,6 +4540,21 @@ class QuackStateServer:
                 raise QuackStateServerCapabilityError(
                     "read-only Quack transport did not seal the DuckDB policy"
                 )
+            after_replica = os.fstat(replica_descriptor)
+            current_replica = os.stat(
+                replica.name,
+                dir_fd=anchor.directory_descriptor,
+                follow_symlinks=False,
+            )
+            if (
+                self._database_file_identity(after_replica) != replica_identity
+                or self._database_file_identity(current_replica)
+                != replica_identity
+            ):
+                raise QuackStateServerReadyError(
+                    "read-replica namespace changed while opening"
+                )
+            self._assert_database_namespace()
             if isolation is not None:
                 self._log(
                     "isolated Quack owner mode admitted "
@@ -4367,32 +4568,45 @@ class QuackStateServer:
                 except Exception:
                     pass
             raise
+        finally:
+            if replica_descriptor >= 0:
+                os.close(replica_descriptor)
 
     def _copy_authoritative_read_replica(self) -> tuple[str, int]:
         """Checkpoint and atomically refresh the bounded replica file."""
 
         if self._connection is None:
             raise QuackStateServerReadyError("authoritative writer is unavailable")
+        anchor = self._assert_database_namespace()
         source = self.config.database_path
         replica = self.read_replica_path()
-        if source.parent != replica.parent or source == replica:
+        if (
+            source.parent != anchor.directory_path
+            or replica.parent != anchor.directory_path
+            or source == replica
+        ):
             raise QuackStateServerReadyError("read-replica path is outside owner root")
-        temporary = replica.with_name(
-            f".{replica.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-        )
+        temporary_name = f".{replica.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
         source_descriptor: int | None = None
         target_descriptor: int | None = None
         started = time.monotonic()
         try:
+            self._assert_database_namespace()
             self._connection.execute("CHECKPOINT")
+            anchor = self._assert_database_namespace()
             source_descriptor = os.open(
-                source,
-                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+                anchor.database_name,
+                os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
+                dir_fd=anchor.directory_descriptor,
             )
             before = os.fstat(source_descriptor)
             if (
-                not stat.S_ISREG(before.st_mode)
-                or before.st_uid != os.getuid()
+                anchor.database_identity is None
+                or self._database_file_identity(before)
+                != anchor.database_identity
+                or not stat.S_ISREG(before.st_mode)
+                or before.st_uid != os.geteuid()
+                or before.st_nlink != 1
                 or before.st_size <= 0
                 or before.st_size > READ_REPLICA_MAX_BYTES
             ):
@@ -4400,13 +4614,14 @@ class QuackStateServer:
                     "authoritative database is not an owner-only bounded regular file"
                 )
             target_descriptor = os.open(
-                temporary,
+                temporary_name,
                 os.O_WRONLY
                 | os.O_CREAT
                 | os.O_EXCL
-                | getattr(os, "O_NOFOLLOW", 0)
-                | getattr(os, "O_CLOEXEC", 0),
+                | os.O_NOFOLLOW
+                | os.O_CLOEXEC,
                 0o600,
+                dir_fd=anchor.directory_descriptor,
             )
             digest = hashlib.sha256()
             copied = 0
@@ -4437,19 +4652,18 @@ class QuackStateServer:
                 raise QuackStateServerReadyError(
                     "authoritative database changed during replica copy"
                 )
+            os.fchmod(target_descriptor, 0o600)
             os.fsync(target_descriptor)
             os.close(target_descriptor)
             target_descriptor = None
-            os.replace(temporary, replica)
-            os.chmod(replica, 0o600)
-            directory_descriptor = os.open(
-                replica.parent,
-                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0),
+            os.replace(
+                temporary_name,
+                replica.name,
+                src_dir_fd=anchor.directory_descriptor,
+                dst_dir_fd=anchor.directory_descriptor,
             )
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
+            os.fsync(anchor.directory_descriptor)
+            self._assert_database_namespace()
             return f"sha256:{digest.hexdigest()}", copied
         except QuackStateServerError:
             raise
@@ -4462,49 +4676,76 @@ class QuackStateServer:
                 os.close(source_descriptor)
             if target_descriptor is not None:
                 os.close(target_descriptor)
-            temporary.unlink(missing_ok=True)
+            try:
+                os.unlink(temporary_name, dir_fd=anchor.directory_descriptor)
+            except FileNotFoundError:
+                pass
 
     def _wait_for_transport_endpoint_closed(self) -> None:
         """Independently observe endpoint closure before replacing a replica."""
 
-        if not self._read_replica_enabled() or self._bound_port <= 0:
+        if self._bound_port <= 0:
             return
         deadline = time.monotonic() + READ_REPLICA_STOP_TIMEOUT_SECONDS
+        # Quack closes asynchronously. A tight connect loop can itself keep
+        # feeding the listener and prevent the shutdown it is trying to
+        # observe, so allow one scheduling turn and probe with bounded
+        # exponential spacing.
+        delay = 0.02
+        time.sleep(delay)
         while True:
             probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             probe.settimeout(0.05)
             try:
-                open_endpoint = probe.connect_ex(
+                observation = probe.connect_ex(
                     (self.config.host, self._bound_port)
-                ) == 0
+                )
             finally:
                 probe.close()
-            if not open_endpoint:
+            # Only a loopback refusal positively proves that no listener owns
+            # this address.  Timeouts, backlog exhaustion, routing errors, and
+            # other nonzero results are unknown rather than evidence of close.
+            if observation == errno.ECONNREFUSED:
                 return
             if time.monotonic() >= deadline:
                 raise QuackStateServerReadyError(
                     "stale Quack transport remained reachable during refresh"
                 )
-            time.sleep(0.01)
+            time.sleep(delay)
+            delay = min(delay * 2.0, 0.25)
 
     def _stop_transport_connection(self, *, observe_closed: bool) -> None:
         connection = self._transport_connection
-        if connection is None:
-            return
-        try:
-            if self.transport is not None:
-                self.transport.stop(connection)
-        finally:
-            if connection is not self._connection and hasattr(connection, "close"):
+        connection_is_writer = self._transport_connection_is_writer
+        stop_errors: list[Exception] = []
+        if connection is not None:
+            try:
+                if self.transport is not None:
+                    self.transport.stop(connection)
+            except Exception as exc:
+                stop_errors.append(exc)
+            if not connection_is_writer and hasattr(connection, "close"):
                 try:
                     connection.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    stop_errors.append(exc)
+        if observe_closed:
+            # Observation is the authority.  A transport API error does not
+            # prove the endpoint remained live, and a successful API return
+            # does not prove it closed.  Keep the exact transport handle until
+            # refusal is observed so a caller can retry shutdown after an API
+            # error without relying on process exit to recover the listener.
+            self._wait_for_transport_endpoint_closed()
+        if self._transport_connection is connection:
             self._transport_connection = None
+            self._transport_connection_is_writer = False
             if self._read_replica_observation:
                 self._read_replica_observation["live"] = False
-        if observe_closed:
-            self._wait_for_transport_endpoint_closed()
+        if stop_errors:
+            self._log(
+                "transport shutdown API warning after endpoint closure: "
+                + type(stop_errors[0]).__name__
+            )
 
     def _assert_live_identity_observation(
         self, observed: Mapping[str, Any]
@@ -4566,6 +4807,7 @@ class QuackStateServer:
             raise QuackStateServerReadyError(
                 "read-replica refresh lacks writer, identity, vault, or transport"
             )
+        self._assert_database_namespace()
         identity = self._identity
         token = self._vault.resolve(identity.secret_handle)
         if not self._read_replica_enabled():
@@ -4581,6 +4823,7 @@ class QuackStateServer:
                     public, surface_name="transport.start"
                 )
                 self._transport_connection = self._connection
+                self._transport_connection_is_writer = True
             observed = self.transport.live_query(
                 self._transport_connection,
                 identity=identity,
@@ -4607,6 +4850,7 @@ class QuackStateServer:
                 "refreshed_at_ms": int(self.clock() * 1000),
                 "live": True,
             }
+            self._assert_database_namespace()
             return dict(self._read_replica_observation)
 
         self._stop_transport_connection(observe_closed=True)
@@ -4616,6 +4860,7 @@ class QuackStateServer:
                 isolation_admission=self._isolation_admission
             )
             self._transport_connection = replica_connection
+            self._transport_connection_is_writer = False
             writer_meta = self._read_meta(self._connection)
             replica_meta = self._read_meta(replica_connection)
             if replica_meta != writer_meta:
@@ -4667,6 +4912,7 @@ class QuackStateServer:
                 "refreshed_at_ms": int(self.clock() * 1000),
                 "live": True,
             }
+            self._assert_database_namespace()
             return dict(self._read_replica_observation)
         except BaseException:
             try:
@@ -4719,20 +4965,52 @@ class QuackStateServer:
         if not self.config.allow_legacy_board_unstall:
             self._log("legacy board unstall disabled by task-authority policy")
             return
+        """Reconcile and unstall through the one bound intent authority.
+
+        Every operation occurs before transport/read-replica publication while
+        this process holds the exclusive owner fence.  Integrity failures are
+        startup failures; they are never converted to a warning.
+        """
+
+        identity = self._identity
+        if identity is None:
+            raise QuackStateServerReadyError(
+                "board recovery requires the exact starting owner identity"
+            )
+        repository = self._bound_intent_repository(connection)
         try:
-            result = unstall_stale_in_progress_tasks(connection)
-        except Exception as exc:
-            self._log(f"board unstall skipped: {type(exc).__name__}")
-            return
+            recovery = repository.reconcile_legacy_stale_unstall_projection_drift()
+            if recovery.changed:
+                candidates = recovery.details.get("candidates") or ()
+                self._log(
+                    "board projection recovery "
+                    f"candidates={len(candidates)} event_id={recovery.event_id}"
+                )
+            result = repository.unstall_stale_in_progress_tasks(
+                orphan_previous_generation=True
+            )
+            repository.assert_projection_matches_events()
+        finally:
+            repository.close()
         unstalled = result.get("unstalled") or []
-        if not unstalled:
+        sanitized = result.get("sanitized_malformed_validation_retry_seeds") or []
+        if not unstalled and not sanitized:
             return
         aliases = ",".join(
             str(item.get("task_alias") or item.get("task_cid") or "")
             for item in unstalled[:8]
             if isinstance(item, Mapping)
         )
-        self._log(f"board unstall gates={len(unstalled)} aliases={aliases}")
+        sanitized_aliases = ",".join(
+            str(item.get("task_alias") or item.get("task_cid") or "")
+            for item in sanitized[:8]
+            if isinstance(item, Mapping)
+        )
+        self._log(
+            f"board unstall gates={len(unstalled)} aliases={aliases} "
+            f"malformed_seed_unstalls={len(sanitized)} "
+            f"seed_aliases={sanitized_aliases}"
+        )
 
     def _read_meta(self, connection: Any) -> dict[str, str]:
         def get(key: str) -> str:
@@ -5700,6 +5978,7 @@ class QuackStateServer:
         self, request: Mapping[str, Any]
     ) -> tuple[list[int], dict[str, Any]]:
         assert self._connection is not None
+        self._assert_database_namespace()
         steps = request["steps"]
         self._connection.execute("BEGIN TRANSACTION")
         try:
@@ -5758,7 +6037,9 @@ class QuackStateServer:
                 if index == 0 and request["operation"] == QUACK_MUTATION_TASK_STATUS_TRANSITION and rowcount != 1:
                     raise QuackStateServerMutationError("cas_conflict")
                 rowcounts.append(rowcount)
+            self._assert_database_namespace()
             self._connection.execute("COMMIT")
+            self._assert_database_namespace()
             return rowcounts, self._settle_mutation_replica(
                 request, observed=observed
             )
@@ -5777,6 +6058,7 @@ class QuackStateServer:
     ) -> dict[str, Any]:
         """Require a fresh, live, exact replica projection before success."""
 
+        self._assert_database_namespace()
         result = dict(observed)
         try:
             result["read_replica"] = self._refresh_read_replica(
@@ -5785,6 +6067,9 @@ class QuackStateServer:
             # Status is the handle resolver's independently read freshness
             # binding and must settle before the signed mutation result.
             self._write_status_strict()
+            self._write_status()
+        except QuackStateServerOwnershipError:
+            raise
         except BaseException as exc:
             try:
                 self._stop_transport_connection(observe_closed=True)
@@ -5801,6 +6086,7 @@ class QuackStateServer:
                     "refresh_failure_class": type(exc).__name__,
                 },
             ) from exc
+        self._assert_database_namespace()
         return result
 
     @staticmethod
@@ -5875,6 +6161,8 @@ class QuackStateServer:
                     rowcounts=[1] * len(request["steps"]) if effects else [],
                     observed=observed,
                 )
+            except QuackStateServerOwnershipError:
+                raise
             except QuackStateServerMutationError as exc:
                 if request is not None:
                     self._write_mutation_result(
@@ -6435,6 +6723,8 @@ class QuackStateServer:
                     return self._identity
                 raise QuackStateServerError("server is starting without identity")
 
+            if self._owner is not None or self._database_namespace_anchor is not None:
+                raise QuackStateServerOwnershipError("prior failed owner retains database namespace authority")
             self._lifecycle = ServerLifecycle.STARTING
             self.config.state_dir.mkdir(parents=True, exist_ok=True)
             self.config.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -6525,6 +6815,9 @@ class QuackStateServer:
                 # The OS lease/fence is the exact single-writer gate.  No
                 # migration or database connection may be reached by a losing
                 # concurrent starter.
+                owner.assert_canonical_parent()
+                self._open_database_parent_anchor()
+                self._assert_database_namespace(require_database=False)
                 capability = self._admit_capability()
                 self._capability = capability
                 self._log(
@@ -6532,14 +6825,20 @@ class QuackStateServer:
                     f"fingerprint={capability.extension_fingerprint or 'none'}"
                 )
 
+                self._assert_database_namespace(require_database=False)
                 migration = self._ensure_migrated()
+                self._assert_database_namespace(require_database=False)
+                self._bind_database_inode_after_migration()
                 self._migration_report = migration
                 self._log("control-plane schema migration complete before ready")
 
+                self._assert_database_namespace()
                 connection = self._open_connection(
                     isolation_admission=isolation_admission
                 )
                 self._connection = connection
+                self._assert_database_namespace()
+                owner.assert_canonical_parent()
                 meta = self._read_meta(connection)
                 database_uuid = meta.get("database_uuid") or str(uuid.uuid4())
                 schema_fingerprint = meta.get("schema_fingerprint") or ""
@@ -6641,6 +6940,7 @@ class QuackStateServer:
                     transaction_lock=self._owner_transaction_lock,
                 )
                 status_bootstrap_token = gateway.configure_status_bootstrap()
+                gateway.bind_database_task_command_handler(self._gateway_execute_database_task_command)
                 gateway.start()
                 self._command_gateway = gateway
                 if self._event_wait is not None:
@@ -6656,6 +6956,7 @@ class QuackStateServer:
                     status_bootstrap_token,
                     mode=0o600,
                 )
+                self._assert_database_namespace()
                 self._lifecycle = ServerLifecycle.READY
                 # READY is a live remote claim: prove the authenticated Quack
                 # data path before publishing status or returning to a launcher.
@@ -6688,6 +6989,17 @@ class QuackStateServer:
         if self._event_wait is not None:
             self._event_wait.shutdown()
         try:
+            if self._grant_broker is not None:
+                self._grant_broker.stop()
+        finally:
+            self._grant_broker = None
+            if self._grant_broker_secret_fd >= 0:
+                try:
+                    os.close(self._grant_broker_secret_fd)
+                except OSError:
+                    pass
+                self._grant_broker_secret_fd = -1
+        try:
             if self._command_gateway is not None:
                 self._command_gateway.stop()
         except Exception:
@@ -6697,53 +7009,88 @@ class QuackStateServer:
             self.typed_command_token_path().unlink()
         except FileNotFoundError:
             pass
+        endpoint_closed = False
         try:
             self._stop_transport_connection(observe_closed=True)
-        except Exception:
-            pass
+            endpoint_closed = True
+        except Exception as exc:
+            self._log(
+                "emergency transport closure was not observed: "
+                + type(exc).__name__
+            )
+        database_closed = self._connection is None
         try:
-            if self._connection is not None and hasattr(self._connection, "close"):
-                self._connection.close()
-        except Exception:
-            pass
-        self._connection = None
+            self._close_authoritative_connection_observed()
+            database_closed = True
+        except Exception as exc:
+            self._log(
+                "emergency database closure was not observed: "
+                + type(exc).__name__
+            )
+        if not endpoint_closed:
+            try:
+                # Closing the owning connection can finish an asynchronous or
+                # failed transport stop.  Admit that outcome only from a fresh
+                # socket observation made after the database close attempt.
+                self._wait_for_transport_endpoint_closed()
+                endpoint_closed = True
+            except Exception:
+                pass
         try:
             if self._vault is not None:
                 self._vault.destroy()
         except Exception:
             pass
-        owner = self._owner
-        if owner is not None:
+        anchor = self._database_namespace_anchor
+        if endpoint_closed and database_closed and anchor is not None:
             try:
-                owner.release()
-            except Exception as exc:
-                self._log(
-                    "state-owner emergency release warning: "
-                    f"{type(exc).__name__}"
+                self._assert_database_namespace(
+                    require_database=anchor.database_descriptor >= 0
                 )
-            # Never discard the only cleanup authority while its descriptor is
-            # still open.  Marker/fence mismatch still closes the descriptor,
-            # reports the mismatch, and permits this reference to be cleared.
-            if not owner._lock_open:  # noqa: SLF001 - cleanup proof
-                self._owner = None
+            except (OSError, RuntimeError, ValueError) as exc:
+                self._database_namespace_drifted = True
+                self._log(
+                    "emergency database namespace authority retained: "
+                    + type(exc).__name__
+                )
+        if self._owner is not None:
+            if (
+                endpoint_closed
+                and database_closed
+                and not self._database_namespace_drifted
+            ):
+                try:
+                    self._owner.release()
+                except QuackStateServerOwnershipError as exc:
+                    self._database_namespace_drifted = True
+                    self._log(
+                        "emergency database namespace authority retained: "
+                        + type(exc).__name__
+                    )
+                except Exception:
+                    # Both externally relevant resources are now observed inert.
+                    # Do not leak the kernel path fence if marker cleanup fails.
+                    self._owner.emergency_close_after_owner_shutdown()
+                    self._owner = None
+                    self._close_database_namespace_anchor()
+                else:
+                    self._owner = None
+                    self._close_database_namespace_anchor()
+            else:
+                # Process exit remains a safe kernel cleanup boundary.  An
+                # in-process restart is not admitted while either external
+                # resource may still be live.
+                self._log(
+                    "emergency owner authority retained until endpoint and "
+                    "database closure and exact database namespace are observed"
+                )
+        elif endpoint_closed and database_closed:
+            self._close_database_namespace_anchor()
 
     def ready(self, *, retry_transient_birth: bool = True) -> dict[str, Any]:
-        """Return readiness observation or raise if not ready.
-
-        Ready requires:
-        * lifecycle is READY
-        * live transport query succeeds
-        * store / generation / schema / server identities match the published set
-
-        Periodic projection passes ``retry_transient_birth=False`` so a
-        contended loopback handshake cannot hold the owner lock for the
-        2.5s birth window and starve typed lane attach.
-        """
-
+        """Read the exact live identity under the owner transaction lock."""
         with self._owner_transaction_lock:
-            return self._ready_transaction_serialized(
-                retry_transient_birth=retry_transient_birth
-            )
+            return self._ready_transaction_serialized(retry_transient_birth=retry_transient_birth)
 
     def _ready_transaction_serialized(
         self,
@@ -6783,6 +7130,9 @@ class QuackStateServer:
                 or self._vault is None
             ):
                 raise QuackStateServerReadyError("state-owner missing connection/transport")
+            self._assert_database_namespace()
+            if self._grant_broker is not None and not self._grant_broker.alive():
+                raise QuackStateServerReadyError("configured supervisor credential broker is unavailable")
             gateway_health = (
                 {} if self._command_gateway is None
                 else self._command_gateway.capability()
@@ -6790,6 +7140,7 @@ class QuackStateServer:
             if (
                 self._command_gateway is None
                 or gateway_health.get("available") is not True
+                or gateway_health.get("database_task_command_bound") is not True
                 or gateway_health.get("last_observer_error_type")
             ):
                 raise QuackStateServerReadyError(
@@ -6884,6 +7235,7 @@ class QuackStateServer:
             }
             sanitized = sanitize_for_export(result, token=token)
             self._vault.assert_absent_from(sanitized, surface_name="ready")
+            self._assert_database_namespace()
             return sanitized
 
     def is_ready(self) -> bool:
@@ -6894,8 +7246,7 @@ class QuackStateServer:
             return False
 
     def checkpoint(self) -> dict[str, Any]:
-        """Force a clean DuckDB checkpoint while owning the database."""
-
+        """Checkpoint without interleaving another owner transaction."""
         with self._owner_transaction_lock:
             return self._checkpoint_transaction_serialized()
 
@@ -6908,7 +7259,11 @@ class QuackStateServer:
                     "checkpoint requires a ready state-owner"
                 )
             try:
+                self._assert_database_namespace()
                 self._connection.execute("CHECKPOINT")
+                self._assert_database_namespace()
+            except QuackStateServerOwnershipError:
+                raise
             except Exception as exc:
                 raise QuackStateServerError(
                     f"checkpoint failed: {type(exc).__name__}"
@@ -6922,24 +7277,30 @@ class QuackStateServer:
             return sanitize_for_export(receipt)
 
     def stop(self, *, fence_token: str | None = None) -> dict[str, Any]:
-        """Stop through the fenced control path and release exclusive ownership."""
-
+        """Stop through exact fenced authority and serialized lifecycle custody."""
         with self._lifecycle_gate:
             return self._stop_under_lifecycle_gate(fence_token=fence_token)
 
-    def _stop_under_lifecycle_gate(
-        self,
-        *,
-        fence_token: str | None = None,
-    ) -> dict[str, Any]:
-        # A typed client can retain this server's exact RLock across a
-        # transaction.  Quiesce and join every gateway client before waiting
-        # for that lock, so an abandoned transaction reaches its rollback
-        # finally block and queued clients cannot deadlock locked teardown.
-        gateway_stopped = self._command_gateway
-        if gateway_stopped is not None:
+    def _stop_under_lifecycle_gate(self, *, fence_token: str | None = None) -> dict[str, Any]:
+        # Authority admission is the first READY-owner action.  In particular,
+        # a stale or malformed control cannot stop the outbox, change lifecycle,
+        # close a broker/gateway/listener/database/vault, or shed the owner lock.
+        with self._lock:
+            if self._lifecycle is ServerLifecycle.STOPPED:
+                return {"stopped": True, "already": True}
+            if self._lifecycle is ServerLifecycle.CREATED:
+                if self._event_wait is not None:
+                    self._event_wait.shutdown()
+                self._lifecycle = ServerLifecycle.STOPPED
+                return {"stopped": True, "already": True}
+            admitted_identity, admitted_owner, expected_fence = (
+                self._admit_stop_before_effects(fence_token=fence_token)
+            )
+
+        gateway = self._command_gateway
+        if gateway is not None:
             try:
-                gateway_stopped.stop()
+                gateway.stop()
             except Exception as exc:
                 raise QuackStateServerControlError(
                     "typed command gateway could not quiesce before locked stop"
@@ -6957,103 +7318,119 @@ class QuackStateServer:
                 raise QuackStateServerControlError(
                     "outbox worker did not stop within its bounded deadline"
                 )
-        # Detach and stop the gateway without holding the lifecycle lock.  A
-        # client may be finishing a transaction while its commit observer
-        # briefly acquires that lock; joining it under the lock would invert
-        # the shared owner-transaction -> lifecycle order.
-        gateway: TypedStateOwnerGateway | None = None
         with self._lock:
             if self._lifecycle is ServerLifecycle.STOPPED:
                 return {"stopped": True, "already": True}
-            if self._lifecycle is ServerLifecycle.CREATED:
-                if self._event_wait is not None:
-                    self._event_wait.shutdown()
-                self._lifecycle = ServerLifecycle.STOPPED
-                return {"stopped": True, "already": True}
-            self._lifecycle = ServerLifecycle.STOPPING
-            gateway = self._command_gateway
-            self._command_gateway = None
-        if gateway is not None:
-            try:
-                gateway.stop()
-            except Exception as exc:
-                self._log(f"typed command gateway stop warning: {type(exc).__name__}")
-        with self._lock:
+
+            # Re-observe the exact admitted objects after the outbox join and
+            # before the first lifecycle/resource mutation.  The first check
+            # above makes rejection side-effect free; this check prevents a
+            # concurrent lifecycle replacement from consuming that admission.
+            self._assert_live_stop_authority(
+                identity=admitted_identity,
+                owner=admitted_owner,
+                server_id=admitted_identity.server_id,
+                fence_token=expected_fence,
+            )
+            self._assert_database_namespace()
+
             self._lifecycle = ServerLifecycle.STOPPING
             if self._event_wait is not None:
                 self._event_wait.shutdown()
             identity = self._identity
             owner = self._owner
-            expected_fence = fence_token
-            if expected_fence is None and owner is not None:
-                expected_fence = owner.fence_token
 
-            # Optional control-file fence for out-of-process stop requests.
-            control = _read_json(self.stop_control_path())
-            if control is not None:
-                control_fence = str(control.get("fence_token") or "")
-                if control_fence:
-                    expected_fence = control_fence
-                control_server = str(control.get("server_id") or "")
-                if (
-                    identity is not None
-                    and control_server
-                    and control_server != identity.server_id
-                ):
-                    raise QuackStateServerControlError(
-                        "stop control server_id does not match live owner"
-                    )
-
-            transport_stop_error: Exception | None = None
-            if (
-                self._command_gateway is not None
-                and self._command_gateway is not gateway_stopped
-            ):
-                raise QuackStateServerControlError(
-                    "typed command gateway changed inside the lifecycle gate"
-                )
-            self._command_gateway = None
             try:
-                self.typed_command_token_path().unlink()
-            except FileNotFoundError:
-                pass
+                if self._grant_broker is not None:
+                    self._grant_broker.stop()
+                    self._grant_broker = None
+                if self._grant_broker_secret_fd >= 0:
+                    os.close(self._grant_broker_secret_fd)
+                    self._grant_broker_secret_fd = -1
+                if self._command_gateway is not gateway:
+                    raise QuackStateServerControlError("typed command gateway changed inside lifecycle gate")
+                self._command_gateway = None
+                try:
+                    self.typed_command_token_path().unlink()
+                except FileNotFoundError:
+                    pass
+            except Exception as exc:
+                self._log(f"typed command gateway stop warning: {type(exc).__name__}")
 
+            endpoint_closed = False
             try:
                 self._stop_transport_connection(observe_closed=True)
+                endpoint_closed = True
             except Exception as exc:
-                transport_stop_error = exc
-                self._log(f"transport stop failed: {type(exc).__name__}")
+                self._log(
+                    "transport closure was not observed: "
+                    + type(exc).__name__
+                )
 
             try:
                 if self._connection is not None and identity is not None:
+                    self._assert_database_namespace()
                     self._mark_server_stopped(self._connection, identity)
-                    try:
-                        self._connection.execute("CHECKPOINT")
-                    except Exception:
-                        pass
+                    self._assert_database_namespace()
+                    self._connection.execute("CHECKPOINT")
+                    self._assert_database_namespace()
+            except QuackStateServerOwnershipError:
+                raise
             except Exception as exc:
                 self._log(f"stop bookkeeping warning: {type(exc).__name__}")
 
+            database_closed = self._connection is None
             try:
-                if self._connection is not None and hasattr(self._connection, "close"):
-                    self._connection.close()
-            except Exception:
-                pass
-            self._connection = None
+                self._close_authoritative_connection_observed()
+                database_closed = True
+            except Exception as exc:
+                self._log(
+                    "database closure was not observed: "
+                    + type(exc).__name__
+                )
+
+            if not endpoint_closed:
+                try:
+                    self._wait_for_transport_endpoint_closed()
+                    endpoint_closed = True
+                except Exception:
+                    pass
 
             if self._vault is not None:
                 self._vault.destroy()
 
-            release_error: Exception | None = None
+            if not endpoint_closed or not database_closed:
+                # Never exchange an uncertain external shutdown for a second
+                # owner.  Keeping both the inode lock and abstract path fence
+                # forces a retry (or process exit) after the resources are inert.
+                raise QuackStateServerControlError(
+                    "state-owner shutdown closure was not positively observed"
+                )
+
+            # Connection close and endpoint observation may run user/native
+            # teardown code. Recheck the retained database inode after those
+            # boundaries before releasing its canonical ownership fence.
+            self._assert_database_namespace()
             if owner is not None:
                 try:
                     owner.release(fence_token=expected_fence)
-                except Exception as exc:
-                    release_error = exc
-                if not owner._lock_open:  # noqa: SLF001 - release proof
+                except QuackStateServerOwnershipError:
+                    # Namespace drift is never permission to shed the retained
+                    # kernel/file capabilities, even after resources closed.
+                    raise
+                except QuackStateServerControlError:
+                    # A stale or incorrect fence is never permission to shed
+                    # the ownership capability, even though shutdown began.
+                    raise
+                except BaseException:
+                    # Listener and database handles were closed above.  Release
+                    # only the now-inert local authority so a path/marker error
+                    # cannot wedge a later safe restart in this same process.
+                    owner.emergency_close_after_owner_shutdown()
                     self._owner = None
-            if release_error is not None:
-                raise release_error
+                    raise
+            self._owner = None
+            self._close_database_namespace_anchor()
 
             if identity is not None:
                 self._identity = identity.with_status("stopped")
@@ -7068,10 +7445,6 @@ class QuackStateServer:
                 "server_id": identity.server_id if identity else "",
                 "at": _utc_iso(),
             }
-            if transport_stop_error is not None:
-                raise QuackStateServerControlError(
-                    "Quack transport stop did not prove listener termination"
-                ) from transport_stop_error
             return sanitize_for_export(receipt)
 
     def request_stop(self, *, fence_token: str | None = None) -> dict[str, Any]:
@@ -7083,8 +7456,14 @@ class QuackStateServer:
                     "cannot request stop without a live owner"
                 )
             token = fence_token or self._owner.fence_token
+            self._assert_live_stop_authority(
+                identity=self._identity,
+                owner=self._owner,
+                server_id=self._identity.server_id,
+                fence_token=token,
+            )
             payload = {
-                "schema": "ipfs_accelerate_py/agent-supervisor/quack-stop-request@1",
+                "schema": CONTROL_STOP_REQUEST_SCHEMA,
                 "server_id": self._identity.server_id,
                 "fence_token": token,
                 "requested_at": _utc_iso(),
@@ -7150,6 +7529,32 @@ class QuackStateServer:
                         "raw_sql_permitted": False,
                     }
                 ),
+                "configured_supervisor_credential_broker": {
+                    "available": bool(
+                        self._grant_broker is not None
+                        and self._grant_broker.alive()
+                    ),
+                    "server_owned": True,
+                    "socket_path": (
+                        str(self._grant_broker.socket_path)
+                        if self._grant_broker is not None
+                        else ""
+                    ),
+                    "credential_published": False,
+                    "task_mutation_path": (
+                        "typed_state_owner_database_task_command"
+                    ),
+                    "last_error_type": (
+                        str(
+                            self._grant_broker.capability().get(
+                                "last_error_type"
+                            )
+                            or ""
+                        )
+                        if self._grant_broker is not None
+                        else ""
+                    ),
+                },
             }
             token = None
             if self._vault is not None:
@@ -7238,6 +7643,882 @@ class QuackStateServer:
             raise QuackStateServerTokenError("argv would contain auth token")
         return argv
 
+    def _gateway_execute_database_task_command(
+        self,
+        command: str,
+        payload: Mapping[str, Any],
+        request_id: str,
+        grant: OwnerClientGrant,
+    ) -> Mapping[str, Any]:
+        """Run one typed task command on the exclusive owner connection."""
+
+        if command not in grant.allowed_database_task_commands:
+            raise TypedStateOwnerAuthorizationError(
+                "database-task command is outside the owner grant"
+            )
+        # The gateway already holds its exclusive connection lock. Bound the
+        # opposite lifecycle-lock ordering so shutdown wins without waiting on
+        # a client thread indefinitely; no mutation starts after STOPPING.
+        if not self._lock.acquire(timeout=0.25):
+            raise QuackStateServerNotRunningError(
+                "state owner is entering a lifecycle transition"
+            )
+        try:
+            if (
+                self._lifecycle is not ServerLifecycle.READY
+                or self._connection is None
+                or self._identity is None
+            ):
+                raise QuackStateServerNotRunningError(
+                    "database-task command requires a ready state owner"
+                )
+            self._assert_database_namespace()
+            identity = self._identity
+            repository = self._bound_intent_repository()
+            try:
+                try:
+                    result = execute_quack_owner_command(
+                        repository,
+                        command,
+                        payload,
+                        request_id=request_id,
+                        store_id=identity.store_id,
+                        store_generation=str(identity.generation),
+                    )
+                    self._assert_database_namespace()
+                except QuackStateServerOwnershipError:
+                    raise
+                except Exception as exc:
+                    raise TypedStateOwnerDatabaseTaskCommandError(
+                        quack_owner_command_error_code(exc)
+                    ) from exc
+            finally:
+                repository.close()
+            try:
+                self._refresh_read_replica()
+                self._write_status()
+            except BaseException as refresh_exc:
+                # The effect may already be durable. Withdraw readiness so a
+                # caller cannot mistake a stale replica for current truth.
+                try:
+                    self._stop_transport_connection(observe_closed=True)
+                except Exception:
+                    pass
+                if self._read_replica_observation:
+                    self._read_replica_observation["live"] = False
+                self._lifecycle = ServerLifecycle.FAILED
+                self._log(
+                    "typed owner command replica publication failed: "
+                    + type(refresh_exc).__name__
+                )
+                try:
+                    self._write_status()
+                except Exception:
+                    pass
+                raise TypedStateOwnerDatabaseTaskCommandError(
+                    "read_replica_refresh_unknown_outcome"
+                ) from refresh_exc
+            self._assert_database_namespace()
+            return MappingProxyType(dict(result))
+        finally:
+            self._lock.release()
+
+    @staticmethod
+    def _database_directory_identity(
+        value: os.stat_result,
+    ) -> tuple[int, int, int, int]:
+        return (
+            int(value.st_dev),
+            int(value.st_ino),
+            int(value.st_mode),
+            int(value.st_uid),
+        )
+
+    @staticmethod
+    def _database_file_identity(
+        value: os.stat_result,
+    ) -> tuple[int, int, int, int, int]:
+        return (
+            int(value.st_dev),
+            int(value.st_ino),
+            int(value.st_mode),
+            int(value.st_uid),
+            int(value.st_nlink),
+        )
+
+    def _database_namespace_failure(self, reason: str) -> NoReturn:
+        self._database_namespace_drifted = True
+        raise QuackStateServerOwnershipError(
+            "authoritative database namespace drifted: " + reason
+        )
+
+    def _open_database_parent_anchor(self) -> _DatabaseNamespaceAnchor:
+        """Retain the exact canonical parent before migration can mutate it."""
+
+        if self._database_namespace_anchor is not None:
+            self._database_namespace_failure("parent anchor was opened twice")
+        required = ("O_CLOEXEC", "O_DIRECTORY", "O_NOFOLLOW")
+        if any(not hasattr(os, name) for name in required):
+            raise QuackStateServerOwnershipError(
+                "authoritative database namespace flags are unavailable"
+            )
+        parent = self.config.database_path.parent
+        descriptor = os.open(
+            parent,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW,
+        )
+        try:
+            opened = os.fstat(descriptor)
+            named = os.lstat(parent)
+            identity = self._database_directory_identity(opened)
+            if (
+                identity != self._database_directory_identity(named)
+                or not stat.S_ISDIR(opened.st_mode)
+                or opened.st_uid != os.geteuid()
+                or parent.resolve(strict=True) != parent
+                or self.config.database_path.name in {"", ".", ".."}
+            ):
+                raise QuackStateServerOwnershipError(
+                    "authoritative database parent is not exact and private"
+                )
+            anchor = _DatabaseNamespaceAnchor(
+                directory_descriptor=descriptor,
+                directory_path=parent,
+                directory_identity=identity,
+                database_name=self.config.database_path.name,
+            )
+            self._database_namespace_anchor = anchor
+            self._database_namespace_drifted = False
+            return anchor
+        except BaseException:
+            os.close(descriptor)
+            raise
+
+    def _assert_database_namespace(
+        self,
+        *,
+        require_database: bool = True,
+    ) -> _DatabaseNamespaceAnchor:
+        """Require retained descriptors and public names to remain identical."""
+
+        anchor = self._database_namespace_anchor
+        if anchor is None:
+            self._database_namespace_failure("parent anchor is absent")
+        try:
+            opened_parent = os.fstat(anchor.directory_descriptor)
+            named_parent = os.lstat(anchor.directory_path)
+        except OSError:
+            self._database_namespace_failure("parent is unavailable")
+        if (
+            self._database_directory_identity(opened_parent)
+            != anchor.directory_identity
+            or self._database_directory_identity(named_parent)
+            != anchor.directory_identity
+            or not stat.S_ISDIR(opened_parent.st_mode)
+            or anchor.directory_path != self.config.database_path.parent
+            or anchor.database_name != self.config.database_path.name
+            or anchor.directory_path.resolve(strict=True) != anchor.directory_path
+        ):
+            self._database_namespace_failure("parent name or inode changed")
+        if not require_database:
+            if anchor.database_descriptor < 0:
+                self._database_namespace_drifted = False
+            return anchor
+        if anchor.database_descriptor < 0 or anchor.database_identity is None:
+            self._database_namespace_failure("database inode anchor is absent")
+        try:
+            opened_database = os.fstat(anchor.database_descriptor)
+            named_database = os.stat(
+                anchor.database_name,
+                dir_fd=anchor.directory_descriptor,
+                follow_symlinks=False,
+            )
+            public_database = os.lstat(self.config.database_path)
+        except OSError:
+            self._database_namespace_failure("database name is unavailable")
+        expected = anchor.database_identity
+        if (
+            self._database_file_identity(opened_database) != expected
+            or self._database_file_identity(named_database) != expected
+            or self._database_file_identity(public_database) != expected
+            or not stat.S_ISREG(opened_database.st_mode)
+            or opened_database.st_uid != os.geteuid()
+            or opened_database.st_nlink != 1
+        ):
+            self._database_namespace_failure("database name or inode changed")
+        self._database_namespace_drifted = False
+        return anchor
+
+    def _bind_database_inode_after_migration(self) -> _DatabaseNamespaceAnchor:
+        """Bind the exact post-migration database inode for this owner lifetime."""
+
+        anchor = self._assert_database_namespace(require_database=False)
+        if anchor.database_descriptor >= 0 or anchor.database_identity is not None:
+            self._database_namespace_failure("database inode was bound twice")
+        flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
+        try:
+            descriptor = os.open(
+                anchor.database_name,
+                flags,
+                dir_fd=anchor.directory_descriptor,
+            )
+        except FileNotFoundError:
+            if self.connection_factory is None:
+                self._database_namespace_failure(
+                    "migration did not create the authoritative database"
+                )
+            # Injected connection factories are a hermetic test seam.  Give
+            # that seam a real private inode so namespace-fence tests exercise
+            # the same retained capability without claiming fake DB bytes live.
+            descriptor = os.open(
+                anchor.database_name,
+                os.O_RDWR
+                | os.O_CREAT
+                | os.O_EXCL
+                | os.O_CLOEXEC
+                | os.O_NOFOLLOW,
+                0o600,
+                dir_fd=anchor.directory_descriptor,
+            )
+            os.fsync(descriptor)
+            os.fsync(anchor.directory_descriptor)
+        except OSError:
+            self._database_namespace_failure("database inode could not be opened")
+        try:
+            opened = os.fstat(descriptor)
+            named = os.stat(
+                anchor.database_name,
+                dir_fd=anchor.directory_descriptor,
+                follow_symlinks=False,
+            )
+            public = os.lstat(self.config.database_path)
+            identity = self._database_file_identity(opened)
+            if (
+                identity != self._database_file_identity(named)
+                or identity != self._database_file_identity(public)
+                or not stat.S_ISREG(opened.st_mode)
+                or opened.st_uid != os.geteuid()
+                or opened.st_nlink != 1
+            ):
+                self._database_namespace_failure(
+                    "post-migration database inode is unsafe"
+                )
+            anchor.database_descriptor = descriptor
+            anchor.database_identity = identity
+            descriptor = -1
+            return self._assert_database_namespace()
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+
+    def _close_database_namespace_anchor(self) -> None:
+        """Close namespace capabilities only after every DB/endpoint is inert."""
+
+        anchor = self._database_namespace_anchor
+        if anchor is None:
+            return
+        if self._connection is not None or self._transport_connection is not None:
+            raise QuackStateServerControlError(
+                "database namespace anchor cannot close while owner resources live"
+            )
+        if anchor.database_descriptor >= 0:
+            os.close(anchor.database_descriptor)
+            anchor.database_descriptor = -1
+        os.close(anchor.directory_descriptor)
+        anchor.directory_descriptor = -1
+        self._database_namespace_anchor = None
+        self._database_namespace_drifted = False
+
+    def start_supervisor_grant_broker(self) -> Mapping[str, str]:
+        """Start the closed credential handoff for configured supervisors.
+
+        The broker is a facet of this exact owner process. It delivers the
+        strictly read-only Quack transport credential, a short-lived same-peer
+        grant for the six-command task vocabulary, or hash observations.
+        Callers cannot select operations, authority, paths, or scopes.
+        """
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "supervisor grant broker requires a ready state owner"
+                )
+            if self._grant_broker is not None:
+                raise QuackStateServerControlError(
+                    "supervisor grant broker is already running"
+                )
+            identity = self._identity
+            vault = self._vault
+            gateway = self._command_gateway
+        if identity is None or vault is None or gateway is None:
+            raise QuackStateServerControlError(
+                "Quack credential authority is unavailable"
+            )
+        bootstrap_secret = secrets.token_hex(32)
+        memfd_flags = int(getattr(os, "MFD_CLOEXEC", 0x0001)) | int(
+            getattr(os, "MFD_ALLOW_SEALING", 0x0002)
+        )
+        try:
+            secret_fd = os.memfd_create(
+                "ipfs-accelerate-state-grant", flags=memfd_flags
+            )
+            os.write(secret_fd, bootstrap_secret.encode("ascii"))
+            os.fchmod(secret_fd, 0o400)
+            seal_flags = (
+                int(getattr(fcntl, "F_SEAL_SEAL", 0x0001))
+                | int(getattr(fcntl, "F_SEAL_SHRINK", 0x0002))
+                | int(getattr(fcntl, "F_SEAL_GROW", 0x0004))
+                | int(getattr(fcntl, "F_SEAL_WRITE", 0x0008))
+            )
+            fcntl.fcntl(
+                secret_fd,
+                int(getattr(fcntl, "F_ADD_SEALS", 1033)),
+                seal_flags,
+            )
+        except (AttributeError, OSError):
+            try:
+                os.close(secret_fd)
+            except (NameError, OSError):
+                pass
+            raise QuackStateServerControlError(
+                "sealed typed-grant descriptor is unavailable"
+            ) from None
+
+        def resolve_credential(
+            credential_kind: str,
+            client_id: str,
+            process_birth_id: str,
+            peer_pid: int,
+        ) -> str:
+            if credential_kind == TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT:
+                return vault.resolve(identity.secret_handle)
+            if credential_kind == TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION:
+                token, _grant = gateway.issue_grant(
+                    client_id=client_id,
+                    process_birth_id=process_birth_id,
+                    allowed_operations=(HASH_OBSERVATION_SERVICE_OPERATION,),
+                    peer_pid=peer_pid,
+                    ttl_seconds=DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS,
+                )
+                return token
+            if (
+                credential_kind
+                == TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND
+            ):
+                token, _grant = gateway.issue_grant(
+                    client_id=client_id,
+                    process_birth_id=process_birth_id,
+                    allowed_operations=(),
+                    allowed_command_operations=(),
+                    allowed_database_task_commands=tuple(
+                        sorted(DATABASE_TASK_COMMANDS)
+                    ),
+                    peer_pid=peer_pid,
+                    ttl_seconds=DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS,
+                )
+                return token
+            raise QuackStateServerControlError(
+                "typed grant broker credential kind is not admitted"
+            )
+
+        broker = TypedStateOwnerGrantBroker(
+            socket_path=(
+                self.typed_command_socket_path().parent
+                / TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME
+            ),
+            bootstrap_secret=bootstrap_secret,
+            store_id=identity.store_id,
+            resolve_credential=resolve_credential,
+        )
+        try:
+            broker.start()
+        except BaseException:
+            os.close(secret_fd)
+            raise
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                broker.stop()
+                os.close(secret_fd)
+                raise QuackStateServerNotRunningError(
+                    "state owner stopped during grant-broker startup"
+                )
+            self._grant_broker = broker
+            self._grant_broker_secret_fd = secret_fd
+        self._write_status()
+        return MappingProxyType(
+            {
+                TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV: str(
+                    broker.socket_path
+                ),
+                TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV: str(secret_fd),
+                TYPED_STATE_OWNER_SOCKET_ENV: str(
+                    self.typed_command_socket_path()
+                ),
+            }
+        )
+
+    def _close_authoritative_connection_observed(self) -> None:
+        """Close the writer and retain its handle unless close returned."""
+
+        connection = self._connection
+        if connection is None:
+            return
+        close = getattr(connection, "close", None)
+        if not callable(close):
+            raise QuackStateServerControlError(
+                "authoritative database connection cannot be closed"
+            )
+        close()
+        self._connection = None
+
+    def _bound_intent_repository(
+        self,
+        connection: Any | None = None,
+    ) -> IntentRepository:
+        """Return the sole production IntentRepository on this owner's connection."""
+
+        identity = self._identity
+        bound = self._connection if connection is None else connection
+        if identity is None or bound is None:
+            raise QuackStateServerNotRunningError(
+                "bound IntentRepository requires a live owner identity and connection"
+            )
+        return IntentRepository(
+            self.config.database_path,
+            bound_connection=bound,
+            owner_id="quack-state-owner",
+            session_id=f"quack-owner-{identity.generation}",
+            install_schema=False,
+            fencing_epoch=max(1, int(identity.fence_epoch or identity.generation or 1)),
+            generation=max(1, int(identity.generation or 1)),
+            repository_id=str(identity.repository_id or f"repository:{identity.store_id}"),
+            tree_id=str(identity.generation),
+            authentication_subject_id=str(identity.server_id),
+            authentication_binding_id=f"grant-binding:{identity.server_id}:{identity.generation}",
+        )
+
+    def _process_typed_owner_commands(self, *, max_requests: int) -> int:
+        """Apply closed task commands through the canonical intent repository."""
+
+        assert self._connection is not None
+        assert self._identity is not None
+        assert self._vault is not None
+        self._assert_database_namespace()
+        token = self._vault.resolve(self._identity.secret_handle)
+        inbox_fd = self._prepare_mutation_inbox()
+        serviced = 0
+        try:
+            request_names = sorted(
+                name
+                for name in os.listdir(inbox_fd)
+                if TYPED_OWNER_COMMAND_REQUEST_NAME.fullmatch(name)
+            )[:max_requests]
+            for request_name in request_names:
+                match = TYPED_OWNER_COMMAND_REQUEST_NAME.fullmatch(request_name)
+                assert match is not None
+                request_id = match.group("request_id")
+                done_name = f"{request_id}.done.json"
+                if mutation_envelope_exists_at(inbox_fd, done_name):
+                    # A completion is the durable idempotency tombstone.  The
+                    # authenticated client retires both files after admission.
+                    continue
+                try:
+                    request = read_envelope_at(
+                        inbox_fd,
+                        request_name,
+                        max_bytes=QUACK_OWNER_COMMAND_MAX_BYTES,
+                    )
+                    if request.get("schema") != QUACK_OWNER_COMMAND_REQUEST_SCHEMA:
+                        raise QuackOwnerMutationEnvelopeError(
+                            "typed owner command schema is not admitted"
+                        )
+                    command, payload = validate_quack_owner_command_request(
+                        request,
+                        token=token,
+                        expected_request_id=request_id,
+                        expected_store_id=self._identity.store_id,
+                        expected_store_generation=str(self._identity.generation),
+                    )
+                except (
+                    OSError,
+                    ValueError,
+                    QuackOwnerMutationEnvelopeError,
+                ):
+                    # Unauthenticated input receives no signed oracle and is
+                    # removed so it cannot starve the bounded owner inbox.
+                    unlink_mutation_envelope_at(
+                        inbox_fd,
+                        request_name,
+                        missing_ok=True,
+                    )
+                    serviced += 1
+                    continue
+
+                repository = self._bound_intent_repository()
+                try:
+                    try:
+                        self._assert_database_namespace()
+                        result = execute_quack_owner_command(
+                            repository,
+                            command,
+                            payload,
+                            request_id=request_id,
+                            store_id=self._identity.store_id,
+                            store_generation=str(self._identity.generation),
+                        )
+                        self._assert_database_namespace()
+                    except QuackStateServerOwnershipError:
+                        raise
+                    except Exception as exc:
+                        response = quack_owner_command_response(
+                            request,
+                            token=token,
+                            error_code=quack_owner_command_error_code(exc),
+                            error_message="typed owner command rejected",
+                        )
+                    else:
+                        # The typed task command commits on the exclusive
+                        # writer connection.  Do not acknowledge that effect
+                        # while Quack still serves the pre-command snapshot:
+                        # strict claim admission immediately re-reads the task
+                        # and must observe the exact claim receipt/revision.
+                        # This is the same synchronous publication barrier used
+                        # by the closed mutation-bundle path.
+                        try:
+                            self._refresh_read_replica()
+                            self._write_status()
+                        except BaseException as refresh_exc:
+                            try:
+                                self._stop_transport_connection(
+                                    observe_closed=True
+                                )
+                            except Exception:
+                                pass
+                            if self._read_replica_observation:
+                                self._read_replica_observation["live"] = False
+                            self._lifecycle = ServerLifecycle.FAILED
+                            self._log(
+                                "typed owner command replica publication "
+                                "failed: " + type(refresh_exc).__name__
+                            )
+                            try:
+                                self._write_status()
+                            except Exception:
+                                pass
+                            # Publish no response: the exact signed request
+                            # remains durable and its owner-side idempotency
+                            # record permits recovery to replay publication
+                            # without replaying the effect.
+                            raise QuackStateServerMutationError(
+                                "read_replica_refresh_unknown_outcome",
+                                observed={
+                                    "canonical_effects_present": True,
+                                    "read_replica": dict(
+                                        self._read_replica_observation
+                                    ),
+                                    "refresh_failure_class": type(
+                                        refresh_exc
+                                    ).__name__,
+                                },
+                            ) from refresh_exc
+                        else:
+                            response = quack_owner_command_response(
+                                request,
+                                token=token,
+                                result=result,
+                            )
+                finally:
+                    repository.close()
+                self._assert_database_namespace()
+                write_envelope_atomic_at(
+                    inbox_fd,
+                    done_name,
+                    response,
+                    replace=False,
+                )
+                serviced += 1
+        finally:
+            os.close(inbox_fd)
+        self._assert_database_namespace()
+        return serviced
+
+    def service_database_task_command_inbox(
+        self,
+        *,
+        expected_store_generation: str,
+        max_requests: int = MUTATION_MAX_PER_PASS,
+    ) -> Mapping[str, int]:
+        """Apply closed DatabaseTaskSource commands on the owner connection.
+
+        The raw transport credential and writable DuckDB handle remain inside
+        this state-owner process. Callers provide only the sealed logical
+        generation; the inbox service accepts the closed task-command schema
+        and routes every effect through IntentRepository transition gates.
+        """
+
+        if type(max_requests) is not int or not 1 <= max_requests <= MUTATION_MAX_PER_PASS:
+            raise ValueError("task command service bound is invalid")
+        expected_generation = str(expected_store_generation or "").strip()
+        if not expected_generation:
+            raise QuackStateServerControlError(
+                "task command service lacks the logical store generation"
+            )
+        with self._lock:
+            if (
+                self._lifecycle is not ServerLifecycle.READY
+                or self._connection is None
+                or self._identity is None
+                or self._vault is None
+            ):
+                raise QuackStateServerNotRunningError("state-owner is not ready")
+            if str(self._identity.generation) != expected_generation:
+                raise QuackStateServerControlError(
+                    "task command logical generation is stale"
+                )
+            self._assert_database_namespace()
+            serviced = self._process_typed_owner_commands(
+                max_requests=max_requests,
+            )
+            self._assert_database_namespace()
+            return MappingProxyType({"serviced": serviced})
+
+    def bound_intent_repository(self) -> IntentRepository:
+        """Public sole-authority IntentRepository bound to this owner."""
+
+        with self._lock:
+            if self._lifecycle not in {ServerLifecycle.READY, ServerLifecycle.STARTING}:
+                raise QuackStateServerNotRunningError(
+                    "bound IntentRepository requires a live state owner"
+                )
+            return self._bound_intent_repository()
+
+    def production_authority_path(self) -> tuple[str, str, str]:
+        """ASEH-061 production path: repository, typed owner, host."""
+
+        return PRODUCTION_AUTHORITY_PATH
+
+    def pause_for_maintenance(self) -> Mapping[str, Any]:
+        """Owner-paused cutover: refuse compatibility mutations until resume."""
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "maintenance pause requires a ready state owner"
+                )
+            handle = ""
+            if self._identity is not None:
+                handle = str(self._identity.secret_handle or "")
+            self._maintenance_paused = True
+            self._maintenance_secret_handle = handle
+            self._maintenance_reconciliation = None
+            self._log("owner paused for ASEH-061 staged maintenance")
+            return MappingProxyType(
+                {
+                    "paused": True,
+                    "task_id": PRODUCTION_CUTOVER_TASK_ID,
+                    "secret_handle": handle,
+                    "generation": (
+                        int(self._identity.generation) if self._identity is not None else 0
+                    ),
+                    "production_authority_path": list(PRODUCTION_AUTHORITY_PATH),
+                }
+            )
+
+    def reconcile_after_authenticated_restart(self) -> Mapping[str, Any]:
+        """Replay recovery through the bound IntentRepository after restart."""
+
+        with self._lock:
+            if (
+                self._lifecycle not in {ServerLifecycle.READY, ServerLifecycle.STARTING}
+                or self._connection is None
+                or self._identity is None
+            ):
+                raise QuackStateServerNotRunningError(
+                    "restart reconciliation requires the live owner identity"
+                )
+            repository = self._bound_intent_repository()
+            try:
+                drift = repository.reconcile_legacy_stale_unstall_projection_drift()
+                unstall = repository.unstall_stale_in_progress_tasks(
+                    orphan_previous_generation=True
+                )
+                snapshot = repository.assert_projection_matches_events()
+                projection = repository.export_owner_restart_snapshot()
+            finally:
+                repository.close()
+            receipt = {
+                "schema": "ipfs_accelerate_py/agent-supervisor/owner-restart-reconciliation@1",
+                "task_id": PRODUCTION_CUTOVER_TASK_ID,
+                "drift_changed": bool(drift.changed),
+                "unstalled": len(unstall.get("unstalled") or []),
+                "event_watermark": int(snapshot.event_watermark),
+                "projection_cid": snapshot.projection_cid,
+                "secret_handle": str(self._identity.secret_handle or ""),
+                "generation": int(self._identity.generation),
+                "owner_session_id": str(projection.get("owner_session_id") or ""),
+                "authority": list(PRODUCTION_AUTHORITY_PATH),
+            }
+            self._maintenance_reconciliation = dict(receipt)
+            return MappingProxyType(receipt)
+
+    def resume_after_reconciliation(
+        self,
+        *,
+        secret_handle: str = "",
+    ) -> Mapping[str, Any]:
+        """Reopen claims only after restart reconciliation of this owner."""
+
+        with self._lock:
+            if not self._maintenance_paused:
+                raise QuackStateServerControlError(
+                    "resume requires an owner-paused maintenance window"
+                )
+            if self._maintenance_reconciliation is None:
+                raise QuackStateServerControlError(
+                    "resume requires authenticated restart reconciliation"
+                )
+            expected = self._maintenance_secret_handle
+            provided = str(secret_handle or expected)
+            if expected and provided != expected:
+                raise QuackStateServerControlError(
+                    "resume requires the same external credential handle"
+                )
+            self._maintenance_paused = False
+            self._log("owner resumed after ASEH-061 reconciliation")
+            return MappingProxyType(
+                {
+                    "paused": False,
+                    "resumed": True,
+                    "reconciliation": dict(self._maintenance_reconciliation),
+                }
+            )
+
+    def reject_unsupported_legacy_path(
+        self,
+        *,
+        operation: str,
+        caller: str = "",
+    ) -> None:
+        """Warn and refuse an independent writer on the live owner."""
+
+        with self._lock:
+            if self._connection is None or self._identity is None:
+                warnings.warn(
+                    f"compatibility adapter rejected {operation} from "
+                    f"{caller or 'unknown'}; use IntentRepository through the typed Quack owner",
+                    IntentRepositoryCompatibilityWarning,
+                    stacklevel=2,
+                )
+                raise QuackStateServerCompatibilityError(
+                    f"unsupported compatibility path {operation} failed closed"
+                )
+            repository = self._bound_intent_repository()
+            try:
+                repository.reject_unsupported_legacy_path(
+                    operation=operation,
+                    caller=caller,
+                )
+            except IntentRepositoryUnsupportedPathError as exc:
+                raise QuackStateServerCompatibilityError(str(exc)) from exc
+            finally:
+                repository.close()
+
+    def route_legacy_api(
+        self,
+        operation: str,
+        /,
+        *args: Any,
+        caller: str = "",
+        **kwargs: Any,
+    ) -> Any:
+        """Route a supported legacy API through the bound IntentRepository."""
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "legacy API routing requires a ready typed Quack owner"
+                )
+            if self._maintenance_paused:
+                raise QuackStateServerCompatibilityError(
+                    "legacy API routing is paused until restart reconciliation"
+                )
+            repository = self._bound_intent_repository()
+            try:
+                try:
+                    result = repository.route_legacy_api(
+                        operation,
+                        *args,
+                        caller=caller or "QuackStateServer.route_legacy_api",
+                        **kwargs,
+                    )
+                except IntentRepositoryUnsupportedPathError as exc:
+                    raise QuackStateServerCompatibilityError(str(exc)) from exc
+                self._assert_database_namespace()
+                return result
+            finally:
+                repository.close()
+
+    def _assert_live_stop_authority(
+        self,
+        *,
+        identity: StateServerIdentity,
+        owner: ExclusiveOwnerLease,
+        server_id: str,
+        fence_token: str,
+    ) -> OwnerMarker:
+        """Bind a stop capability to the lease, marker, and live identity."""
+
+        marker = owner.assert_stop_authority(
+            server_id=server_id,
+            fence_token=fence_token,
+        )
+        if (
+            self._identity is not identity
+            or self._owner is not owner
+            or identity.server_id != server_id
+            or marker.server_id != identity.server_id
+            or marker.process_birth != identity.process_birth
+            or int(marker.generation) != int(identity.generation)
+            or marker.database_path != str(self.config.database_path)
+        ):
+            raise QuackStateServerControlError(
+                "stop authority does not match the live state-owner identity"
+            )
+        return marker
+
+    def _admit_stop_before_effects(
+        self,
+        *,
+        fence_token: str | None,
+    ) -> tuple[StateServerIdentity, ExclusiveOwnerLease, str]:
+        """Select and validate one stop authority without mutating live state."""
+
+        identity = self._identity
+        owner = self._owner
+        if identity is None or owner is None:
+            raise QuackStateServerNotRunningError(
+                "stop requires a live owner identity and lease"
+            )
+        selected_fence = owner.fence_token if fence_token is None else fence_token
+        selected_server = identity.server_id
+        control = _read_stop_control(self.stop_control_path())
+        if control is not None:
+            control_fence = control["fence_token"]
+            if fence_token is not None and fence_token != control_fence:
+                raise QuackStateServerControlError(
+                    "explicit stop fence does not match stop control"
+                )
+            selected_fence = control_fence
+            selected_server = control["server_id"]
+        self._assert_live_stop_authority(
+            identity=identity,
+            owner=owner,
+            server_id=selected_server,
+            fence_token=selected_fence,
+        )
+        self._assert_database_namespace()
+        return identity, owner, selected_fence
+
 
 def reclaim_stale_owner_marker(
     *,
@@ -7251,52 +8532,72 @@ def reclaim_stale_owner_marker(
     """
 
     probe = liveness or (lambda birth: owner_liveness(birth))
-    payload = _read_json(Path(marker_path))
-    if payload is None:
-        return {"reclaimed": False, "reason": "no_marker"}
-    try:
-        marker = OwnerMarker.from_dict(payload)
-    except (TypeError, ValueError, KeyError):
-        # Corrupt marker: only reclaim under exclusive lock.
-        marker = None
-
+    marker_path = Path(marker_path)
     lock = Path(lock_path)
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    handle = lock.open("a+b")
+    handle: Any | None = None
     try:
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            handle = acquire_exclusive_owner_lock(lock)
         except BlockingIOError:
             return {"reclaimed": False, "reason": "lock_held"}
 
-        if marker is not None:
-            state = probe(marker.process_birth)
-            if state is OwnerLiveness.ALIVE:
-                return {
-                    "reclaimed": False,
-                    "reason": "owner_alive",
-                    "server_id": marker.server_id,
-                }
-            if state is OwnerLiveness.UNKNOWN:
-                return {
-                    "reclaimed": False,
-                    "reason": "owner_liveness_unknown",
-                    "server_id": marker.server_id,
-                }
+        # Never inspect a marker before acquiring the canonical lock.  In
+        # particular, an unlocked path read could follow a symlink or admit a
+        # name swap while merely trying to describe the presumed holder.
         try:
-            Path(marker_path).unlink()
+            marker = read_locked_owner_marker(handle, marker_path)
+        except QuackStateServerOwnershipError:
+            return {"reclaimed": False, "reason": "marker_invalid"}
+        if marker is None:
+            return {"reclaimed": False, "reason": "no_marker"}
+
+        state = probe(marker.process_birth)
+        if state is OwnerLiveness.ALIVE:
+            return {
+                "reclaimed": False,
+                "reason": "owner_alive",
+                "server_id": marker.server_id,
+            }
+        if state is OwnerLiveness.UNKNOWN:
+            return {
+                "reclaimed": False,
+                "reason": "owner_liveness_unknown",
+                "server_id": marker.server_id,
+            }
+
+        # Revalidate both the canonical parent and the exact marker content
+        # after the liveness observation.  A changed marker requires a fresh
+        # liveness decision and therefore cannot be reclaimed by this call.
+        handle.assert_canonical_parent()
+        try:
+            current = read_locked_owner_marker(handle, marker_path)
+        except QuackStateServerOwnershipError:
+            return {"reclaimed": False, "reason": "marker_changed"}
+        if current is None:
+            return {"reclaimed": False, "reason": "no_marker"}
+        if current != marker:
+            return {
+                "reclaimed": False,
+                "reason": "marker_changed",
+                "server_id": current.server_id,
+            }
+        try:
+            os.unlink(marker_path.name, dir_fd=handle.directory_fileno())
+            os.fsync(handle.directory_fileno())
         except FileNotFoundError:
             return {"reclaimed": False, "reason": "no_marker"}
+        handle.assert_canonical_parent()
         return {
             "reclaimed": True,
-            "reason": "stale_owner_dead" if marker else "corrupt_marker",
-            "server_id": marker.server_id if marker else "",
+            "reason": "stale_owner_dead",
+            "server_id": marker.server_id,
         }
     finally:
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        finally:
-            handle.close()
+        if handle is not None:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                handle.close()
 
 
 def build_server(
@@ -7411,3 +8712,1043 @@ __all__ = (
     "reclaim_stale_owner_marker",
     "sanitize_for_export",
 )
+
+OWNER_MARKER_MAX_BYTES: Final[int] = 64 * 1024
+
+CONTROL_STOP_REQUEST_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/quack-stop-request@1"
+)
+
+CONTROL_STOP_MAX_BYTES: Final[int] = 64 * 1024
+
+CONTROL_STOP_REQUEST_FIELDS: Final[frozenset[str]] = frozenset(
+    {"schema", "server_id", "fence_token", "requested_at"}
+)
+
+TYPED_OWNER_COMMAND_REQUEST_NAME: Final[re.Pattern[str]] = re.compile(
+    r"^(?P<request_id>[0-9a-f]{32})\.request\.json$"
+)
+
+class QuackStateServerCompatibilityError(QuackStateServerError):
+    """A legacy/independent write path was refused by the sole owner."""
+
+def _read_stop_control(path: Path) -> dict[str, str] | None:
+    """Read one exact private stop request without treating corruption as absence."""
+
+    required_flags = ("O_CLOEXEC", "O_NOFOLLOW")
+    if any(not hasattr(os, name) for name in required_flags):
+        raise QuackStateServerControlError(
+            "secure stop control read flags are unavailable"
+        )
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK,
+        )
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise QuackStateServerControlError(
+            "stop control path is unavailable or unsafe"
+        ) from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_size <= 0
+            or before.st_size > CONTROL_STOP_MAX_BYTES
+        ):
+            raise QuackStateServerControlError(
+                "stop control must be an owned private single-link regular file"
+            )
+        remaining = int(before.st_size)
+        chunks: list[bytes] = []
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 16 * 1024))
+            if not chunk:
+                raise QuackStateServerControlError(
+                    "stop control was truncated while read"
+                )
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise QuackStateServerControlError(
+                "stop control grew while read"
+            )
+        after = os.fstat(descriptor)
+        try:
+            named = os.lstat(path)
+        except OSError as exc:
+            raise QuackStateServerControlError(
+                "stop control name changed while read"
+            ) from exc
+    finally:
+        os.close(descriptor)
+
+    def identity(value: os.stat_result) -> tuple[int, ...]:
+        return (
+            value.st_dev,
+            value.st_ino,
+            value.st_mode,
+            value.st_uid,
+            value.st_nlink,
+            value.st_size,
+            value.st_mtime_ns,
+            value.st_ctime_ns,
+        )
+
+    if identity(before) != identity(after) or identity(before) != identity(named):
+        raise QuackStateServerControlError(
+            "stop control inode or metadata changed while read"
+        )
+    try:
+        payload = json.loads(
+            b"".join(chunks).decode("utf-8"),
+            object_pairs_hook=_mutation_duplicate_guard,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise QuackStateServerControlError(
+            "stop control content is invalid"
+        ) from exc
+    if (
+        type(payload) is not dict
+        or set(payload) != CONTROL_STOP_REQUEST_FIELDS
+        or payload.get("schema") != CONTROL_STOP_REQUEST_SCHEMA
+        or any(
+            type(payload.get(field)) is not str or not payload[field]
+            for field in ("server_id", "fence_token", "requested_at")
+        )
+        or re.fullmatch(r"[0-9a-f]{32}", payload["fence_token"]) is None
+        or re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z",
+            payload["requested_at"],
+        )
+        is None
+    ):
+        raise QuackStateServerControlError(
+            "stop control content is invalid"
+        )
+    return {
+        "schema": payload["schema"],
+        "server_id": payload["server_id"],
+        "fence_token": payload["fence_token"],
+        "requested_at": payload["requested_at"],
+    }
+
+def _mutation_duplicate_guard(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON key")
+        value[key] = item
+    return value
+
+def _owner_lock_stat_is_secure(info: os.stat_result) -> bool:
+    """Return whether ``info`` is the one admitted owner-lock file shape."""
+
+    return (
+        stat.S_ISREG(info.st_mode)
+        and info.st_uid == os.geteuid()
+        and info.st_nlink == 1
+        and stat.S_IMODE(info.st_mode) == 0o600
+    )
+
+def _assert_owner_lock_name_matches_descriptor(
+    *,
+    directory_descriptor: int,
+    lock_name: str,
+    lock_descriptor: int,
+) -> None:
+    """Fail closed unless one secure directory entry still names ``lock_descriptor``."""
+
+    descriptor_info = os.fstat(lock_descriptor)
+    try:
+        named_info = os.stat(
+            lock_name,
+            dir_fd=directory_descriptor,
+            follow_symlinks=False,
+        )
+    except OSError as exc:
+        raise QuackStateServerOwnershipError(
+            "exclusive owner lock name changed during acquisition"
+        ) from exc
+    if (
+        not _owner_lock_stat_is_secure(descriptor_info)
+        or not _owner_lock_stat_is_secure(named_info)
+        or (descriptor_info.st_dev, descriptor_info.st_ino)
+        != (named_info.st_dev, named_info.st_ino)
+    ):
+        raise QuackStateServerOwnershipError(
+            "exclusive owner lock inode or metadata changed during acquisition"
+        )
+
+def _acquire_canonical_owner_path_fence(lock_path: Path) -> socket.socket:
+    """Bind one per-path kernel mutex outside the replaceable filesystem tree."""
+
+    if not hasattr(socket, "AF_UNIX"):
+        raise QuackStateServerOwnershipError(
+            "canonical owner path fencing requires AF_UNIX"
+        )
+    material = os.fsencode(f"{os.geteuid()}\0{lock_path}")
+    address = (
+        b"\0ipfs-accelerate-quack-owner:"
+        + hashlib.sha256(material).hexdigest().encode("ascii")
+    )
+    channel = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    try:
+        channel.set_inheritable(False)
+        channel.bind(address)
+    except OSError as exc:
+        channel.close()
+        if exc.errno == errno.EADDRINUSE:
+            raise BlockingIOError(
+                errno.EWOULDBLOCK,
+                "canonical owner path fence is already held",
+            ) from exc
+        raise QuackStateServerOwnershipError(
+            "canonical owner path fence is unavailable"
+        ) from exc
+    return channel
+
+class _ExclusiveOwnerLockHandle:
+    """Own the lock inode, directory identity, and canonical kernel fence."""
+
+    __slots__ = (
+        "_canonical_path_fence",
+        "_directory_descriptor",
+        "_directory_path",
+        "_lock_descriptor",
+    )
+
+    def __init__(
+        self,
+        *,
+        lock_descriptor: int,
+        directory_descriptor: int,
+        directory_path: Path,
+        canonical_path_fence: socket.socket,
+    ) -> None:
+        self._lock_descriptor: int | None = lock_descriptor
+        self._directory_descriptor: int | None = directory_descriptor
+        self._directory_path: Path | None = directory_path
+        self._canonical_path_fence: socket.socket | None = canonical_path_fence
+
+    def fileno(self) -> int:
+        descriptor = self._lock_descriptor
+        if descriptor is None:
+            raise ValueError("I/O operation on closed owner lock")
+        return descriptor
+
+    @property
+    def closed(self) -> bool:
+        return self._lock_descriptor is None
+
+    def directory_fileno(self) -> int:
+        descriptor = self._directory_descriptor
+        if descriptor is None:
+            raise ValueError("I/O operation on closed owner lock directory")
+        return descriptor
+
+    @property
+    def directory_path(self) -> Path:
+        path = self._directory_path
+        if path is None:
+            raise ValueError("I/O operation on closed owner lock directory")
+        return path
+
+    def assert_canonical_parent(self) -> None:
+        """Fail unless the canonical parent name still resolves to our inode."""
+
+        directory_descriptor = self.directory_fileno()
+        directory_path = self.directory_path
+        opened = os.fstat(directory_descriptor)
+        try:
+            named = os.lstat(directory_path)
+        except OSError as exc:
+            raise QuackStateServerOwnershipError(
+                "exclusive owner lock directory name changed"
+            ) from exc
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or not stat.S_ISDIR(named.st_mode)
+            or opened.st_uid != os.geteuid()
+            or (opened.st_dev, opened.st_ino, opened.st_mode, opened.st_uid)
+            != (named.st_dev, named.st_ino, named.st_mode, named.st_uid)
+        ):
+            raise QuackStateServerOwnershipError(
+                "exclusive owner lock directory identity changed"
+            )
+
+    def close(self) -> None:
+        lock_descriptor = self._lock_descriptor
+        directory_descriptor = self._directory_descriptor
+        path_fence = self._canonical_path_fence
+        self._lock_descriptor = None
+        self._directory_descriptor = None
+        self._directory_path = None
+        self._canonical_path_fence = None
+        try:
+            if lock_descriptor is not None:
+                try:
+                    fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+                finally:
+                    os.close(lock_descriptor)
+        finally:
+            try:
+                if directory_descriptor is not None:
+                    os.close(directory_descriptor)
+            finally:
+                if path_fence is not None:
+                    path_fence.close()
+
+    def __enter__(self) -> _ExclusiveOwnerLockHandle:
+        return self
+
+    def __exit__(self, _exc_type: Any, _exc: Any, _traceback: Any) -> None:
+        self.close()
+
+def read_locked_owner_marker(
+    handle: Any,
+    marker_path: Path,
+) -> OwnerMarker | None:
+    """Read one owner marker relative to the exact locked parent descriptor."""
+
+    marker = Path(marker_path)
+    try:
+        directory_descriptor = int(handle.directory_fileno())
+        directory_path = Path(handle.directory_path)
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise QuackStateServerOwnershipError(
+            "owner marker read lacks the locked directory authority"
+        ) from exc
+    marker_parent = Path(os.path.abspath(os.fspath(marker.parent)))
+    if marker_parent != directory_path:
+        raise QuackStateServerOwnershipError(
+            "owner marker is outside the locked directory authority"
+        )
+    required_flags = ("O_CLOEXEC", "O_NOFOLLOW")
+    if any(not hasattr(os, name) for name in required_flags):
+        raise QuackStateServerOwnershipError(
+            "secure owner marker read flags are unavailable"
+        )
+    try:
+        descriptor = os.open(
+            marker.name,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=directory_descriptor,
+        )
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise QuackStateServerOwnershipError(
+            "owner marker path is unavailable or unsafe"
+        ) from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_size <= 0
+            or before.st_size > OWNER_MARKER_MAX_BYTES
+        ):
+            raise QuackStateServerOwnershipError(
+                "owner marker must be an owned private single-link regular file"
+            )
+        remaining = int(before.st_size)
+        chunks: list[bytes] = []
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 16 * 1024))
+            if not chunk:
+                raise QuackStateServerOwnershipError(
+                    "owner marker was truncated while read"
+                )
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise QuackStateServerOwnershipError(
+                "owner marker grew while read"
+            )
+        after = os.fstat(descriptor)
+        try:
+            named = os.stat(
+                marker.name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise QuackStateServerOwnershipError(
+                "owner marker name changed while read"
+            ) from exc
+    finally:
+        os.close(descriptor)
+
+    def identity(value: os.stat_result) -> tuple[int, ...]:
+        return (
+            value.st_dev,
+            value.st_ino,
+            value.st_mode,
+            value.st_uid,
+            value.st_nlink,
+            value.st_size,
+            value.st_mtime_ns,
+            value.st_ctime_ns,
+        )
+
+    if identity(before) != identity(after) or identity(before) != identity(named):
+        raise QuackStateServerOwnershipError(
+            "owner marker inode or metadata changed while read"
+        )
+    try:
+        payload = json.loads(
+            b"".join(chunks).decode("utf-8"),
+            object_pairs_hook=_mutation_duplicate_guard,
+        )
+        expected_fields = {
+            "schema",
+            "server_id",
+            "process_birth",
+            "database_path",
+            "started_at",
+            "fence_token",
+            "generation",
+        }
+        if type(payload) is not dict or set(payload) != expected_fields:
+            raise ValueError("owner marker fields are invalid")
+        parsed = OwnerMarker.from_dict(payload)
+        if parsed.to_dict() != payload:
+            raise ValueError("owner marker content is noncanonical")
+        return parsed
+    except (KeyError, TypeError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        raise QuackStateServerOwnershipError(
+            "owner marker content is invalid"
+        ) from exc
+
+def _write_locked_owner_marker(
+    handle: Any,
+    marker_path: Path,
+    marker: OwnerMarker,
+) -> None:
+    """Atomically publish one marker inside the exact locked parent inode."""
+
+    try:
+        handle.assert_canonical_parent()
+        directory_descriptor = int(handle.directory_fileno())
+        directory_path = Path(handle.directory_path)
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise QuackStateServerOwnershipError(
+            "owner marker write lacks the locked directory authority"
+        ) from exc
+    path = Path(marker_path)
+    if Path(os.path.abspath(os.fspath(path.parent))) != directory_path:
+        raise QuackStateServerOwnershipError(
+            "owner marker is outside the locked directory authority"
+        )
+    encoded = (
+        json.dumps(
+            marker.to_dict(),
+            sort_keys=True,
+            indent=2,
+            separators=(",", ": "),
+        ).encode("utf-8")
+        + b"\n"
+    )
+    if not encoded or len(encoded) > OWNER_MARKER_MAX_BYTES:
+        raise QuackStateServerOwnershipError("owner marker bytes are invalid")
+    temporary_name = "." + path.name + "." + secrets.token_hex(8)
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            temporary_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory_descriptor,
+        )
+        view = memoryview(encoded)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise OSError("owner marker write made no progress")
+            view = view[written:]
+        os.fchmod(descriptor, 0o600)
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        handle.assert_canonical_parent()
+        os.replace(
+            temporary_name,
+            path.name,
+            src_dir_fd=directory_descriptor,
+            dst_dir_fd=directory_descriptor,
+        )
+        os.fsync(directory_descriptor)
+        handle.assert_canonical_parent()
+        admitted = read_locked_owner_marker(handle, path)
+        if admitted != marker:
+            raise QuackStateServerOwnershipError(
+                "owner marker publication was not durably admitted"
+            )
+    except QuackStateServerOwnershipError:
+        raise
+    except OSError as exc:
+        raise QuackStateServerOwnershipError(
+            "owner marker cannot be securely published"
+        ) from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary_name, dir_fd=directory_descriptor)
+        except FileNotFoundError:
+            pass
+
+def acquire_exclusive_owner_lock(lock_path: Path) -> Any:
+    """Open, attest, and non-blockingly lock the canonical owner-lock inode.
+
+    The returned binary handle owns the advisory lock until it is closed (or
+    explicitly unlocked).  Opening relative to a no-follow directory
+    descriptor and repeating the name-to-descriptor identity check *after*
+    ``flock`` prevents admission through a symlink, hardlink, or
+    acquisition-time name replacement.  A per-UID, per-canonical-path abstract
+    Unix socket remains bound for the handle lifetime, so replacing either the
+    lock name or its whole parent cannot mint a second canonical authority.
+    The parent descriptor is retained for exact marker I/O and rename checks;
+    unrelated database paths do not contend on a shared directory lock.
+
+    ``BlockingIOError`` is preserved for ordinary lock contention.  An unsafe
+    path or identity race raises :class:`QuackStateServerOwnershipError`.
+    """
+
+    path = Path(os.path.abspath(os.fspath(lock_path)))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    required_flags = ("O_CLOEXEC", "O_DIRECTORY", "O_NOFOLLOW")
+    if any(not hasattr(os, name) for name in required_flags):
+        raise QuackStateServerOwnershipError(
+            "secure exclusive owner lock flags are unavailable"
+        )
+
+    try:
+        if path.parent.resolve(strict=True) != path.parent:
+            raise QuackStateServerOwnershipError(
+                "exclusive owner lock directory is aliased"
+            )
+    except OSError as exc:
+        raise QuackStateServerOwnershipError(
+            "exclusive owner lock directory is unavailable or unsafe"
+        ) from exc
+    path_fence = _acquire_canonical_owner_path_fence(path)
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        directory_descriptor = os.open(path.parent, directory_flags)
+    except OSError as exc:
+        path_fence.close()
+        raise QuackStateServerOwnershipError(
+            "exclusive owner lock directory is unavailable or unsafe"
+        ) from exc
+
+    lock_descriptor: int | None = None
+    lock_locked = False
+    try:
+        directory_info = os.fstat(directory_descriptor)
+        if (
+            not stat.S_ISDIR(directory_info.st_mode)
+            or directory_info.st_uid != os.geteuid()
+        ):
+            raise QuackStateServerOwnershipError(
+                "exclusive owner lock directory must be owned by the current user"
+            )
+        lock_flags = (
+            os.O_RDWR
+            | os.O_CREAT
+            | os.O_NONBLOCK
+            | os.O_NOFOLLOW
+            | os.O_CLOEXEC
+        )
+        try:
+            lock_descriptor = os.open(
+                path.name,
+                lock_flags,
+                0o600,
+                dir_fd=directory_descriptor,
+            )
+        except OSError as exc:
+            raise QuackStateServerOwnershipError(
+                "exclusive owner lock path is unavailable or unsafe"
+            ) from exc
+
+        initial_info = os.fstat(lock_descriptor)
+        if (
+            not stat.S_ISREG(initial_info.st_mode)
+            or initial_info.st_uid != os.geteuid()
+            or initial_info.st_nlink != 1
+        ):
+            raise QuackStateServerOwnershipError(
+                "exclusive owner lock must be an owned single-link regular file"
+            )
+        if stat.S_IMODE(initial_info.st_mode) != 0o600:
+            # Safely tighten legacy ``Path.open('a+b')`` locks, which were
+            # commonly created as 0644 through the process umask.  Only the
+            # already-attested owned, single-link regular descriptor is
+            # changed; the post-flock name check still rejects replacement.
+            os.fchmod(lock_descriptor, 0o600)
+        _assert_owner_lock_name_matches_descriptor(
+            directory_descriptor=directory_descriptor,
+            lock_name=path.name,
+            lock_descriptor=lock_descriptor,
+        )
+
+        fcntl.flock(lock_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_locked = True
+        _assert_owner_lock_name_matches_descriptor(
+            directory_descriptor=directory_descriptor,
+            lock_name=path.name,
+            lock_descriptor=lock_descriptor,
+        )
+        handle = _ExclusiveOwnerLockHandle(
+            lock_descriptor=lock_descriptor,
+            directory_descriptor=directory_descriptor,
+            directory_path=path.parent,
+            canonical_path_fence=path_fence,
+        )
+        lock_descriptor = None  # ownership transferred to ``handle``
+        directory_descriptor = None
+        path_fence = None
+        return handle
+    except BlockingIOError:
+        raise
+    except QuackStateServerOwnershipError:
+        raise
+    except OSError as exc:
+        raise QuackStateServerOwnershipError(
+            "exclusive owner lock could not be securely acquired"
+        ) from exc
+    finally:
+        if lock_descriptor is not None:
+            if lock_locked:
+                try:
+                    fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+                except OSError:
+                    pass
+            os.close(lock_descriptor)
+        if directory_descriptor is not None:
+            os.close(directory_descriptor)
+        if path_fence is not None:
+            path_fence.close()
+
+@dataclass
+class _DatabaseNamespaceAnchor:
+    """Retained parent and inode capabilities for the authoritative database."""
+
+    directory_descriptor: int
+    directory_path: Path
+    directory_identity: tuple[int, int, int, int]
+    database_name: str
+    database_descriptor: int = -1
+    database_identity: tuple[int, int, int, int, int] | None = None
+
+class TypedStateOwnerGrantBroker:
+    """Deliver one of two closed credentials across a private owner facet.
+
+    This is an in-process facet of the existing Quack state owner, not a new
+    state authority or daemon. It accepts no SQL, path, role, operation, or
+    caller-selected scope; only the closed read/task credential discriminator.
+    The sealed bootstrap descriptor and ``SO_PEERCRED`` bind delivery to an
+    admitted trusted process; credentials are never written to disk or
+    published in process metadata.
+    """
+
+    def __init__(
+        self,
+        *,
+        socket_path: Path,
+        bootstrap_secret: str,
+        store_id: str,
+        resolve_credential: Callable[[str, str, str, int], str],
+    ) -> None:
+        self.socket_path = Path(socket_path)
+        self._secret = str(bootstrap_secret)
+        self._store_id = str(store_id)
+        self._resolve_credential = resolve_credential
+        self._listener: socket.socket | None = None
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self._failed = threading.Event()
+        self._last_error_type = ""
+        self._clients_lock = threading.Lock()
+        self._clients: set[threading.Thread] = set()
+        self._channels: set[socket.socket] = set()
+        self._client_capacity = threading.BoundedSemaphore(16)
+        self._owner_uid = os.geteuid()
+        self._bound_socket_identity: tuple[int, int] | None = None
+
+    def _unlink_matching_socket(self, expected: os.stat_result) -> None:
+        """Unlink only the same observed same-UID socket inode."""
+
+        try:
+            current = os.lstat(self.socket_path)
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            raise QuackStateServerControlError(
+                "cannot reinspect typed grant broker socket"
+            ) from exc
+        if (
+            not stat.S_ISSOCK(current.st_mode)
+            or stat.S_ISLNK(current.st_mode)
+            or current.st_uid != self._owner_uid
+            or (current.st_dev, current.st_ino)
+            != (expected.st_dev, expected.st_ino)
+        ):
+            raise QuackStateServerControlError(
+                "typed grant broker socket changed during recovery"
+            )
+        self.socket_path.unlink()
+
+    def _recover_stale_socket(self, observed: os.stat_result) -> None:
+        """Recover a dead same-UID listener only after a failed connect probe."""
+
+        if (
+            not stat.S_ISSOCK(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != self._owner_uid
+        ):
+            raise QuackStateServerControlError(
+                "typed grant broker socket is not a same-UID socket"
+            )
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        probe.settimeout(0.25)
+        try:
+            probe.connect(str(self.socket_path))
+        except ConnectionRefusedError:
+            # A socket node with no listening endpoint is the only positive
+            # stale observation admitted for recovery.
+            self._unlink_matching_socket(observed)
+        except FileNotFoundError:
+            # Another same-UID recovery already retired it.
+            return
+        except OSError as exc:
+            raise QuackStateServerControlError(
+                "typed grant broker socket liveness is indeterminate"
+            ) from exc
+        else:
+            raise QuackStateServerControlError(
+                "typed grant broker socket already serves a live listener"
+            )
+        finally:
+            probe.close()
+
+    def start(self) -> None:
+        if self._thread is not None:
+            raise QuackStateServerControlError("typed grant broker already started")
+        self._stop.clear()
+        self._failed.clear()
+        self._last_error_type = ""
+        self.socket_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            observed = os.lstat(self.socket_path.parent)
+        except OSError as exc:
+            raise QuackStateServerControlError(
+                "typed grant broker state directory is unavailable"
+            ) from exc
+        if (
+            not stat.S_ISDIR(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != self._owner_uid
+        ):
+            raise QuackStateServerControlError(
+                "typed grant broker state directory is unsafe"
+            )
+        try:
+            socket_metadata = os.lstat(self.socket_path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise QuackStateServerControlError(
+                "cannot inspect typed grant broker socket"
+            ) from exc
+        else:
+            self._recover_stale_socket(socket_metadata)
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        bound = False
+        bound_metadata: os.stat_result | None = None
+        try:
+            listener.bind(str(self.socket_path))
+            bound = True
+            bound_metadata = os.lstat(self.socket_path)
+            if (
+                not stat.S_ISSOCK(bound_metadata.st_mode)
+                or bound_metadata.st_uid != self._owner_uid
+            ):
+                raise QuackStateServerControlError(
+                    "typed grant broker created an unsafe socket"
+                )
+            self._bound_socket_identity = (
+                bound_metadata.st_dev,
+                bound_metadata.st_ino,
+            )
+            os.chmod(self.socket_path, 0o600)
+            listener.listen(16)
+            listener.settimeout(0.25)
+        except BaseException:
+            listener.close()
+            if bound and bound_metadata is not None:
+                try:
+                    self._unlink_matching_socket(bound_metadata)
+                finally:
+                    self._bound_socket_identity = None
+            raise
+        self._listener = listener
+        self._thread = threading.Thread(
+            target=self._serve,
+            name="typed-state-owner-grant-broker",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        listener = self._listener
+        self._listener = None
+        if listener is not None:
+            listener.close()
+        thread = self._thread
+        self._thread = None
+        if thread is not None:
+            thread.join(timeout=2.0)
+        with self._clients_lock:
+            clients = tuple(self._clients)
+            channels = tuple(self._channels)
+        for channel in channels:
+            try:
+                channel.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                channel.close()
+            except OSError:
+                pass
+        for client in clients:
+            client.join(timeout=1.0)
+        try:
+            current = os.lstat(self.socket_path)
+        except FileNotFoundError:
+            current = None
+        if (
+            current is not None
+            and self._bound_socket_identity
+            == (current.st_dev, current.st_ino)
+        ):
+            self._unlink_matching_socket(current)
+        self._bound_socket_identity = None
+        self._secret = ""
+
+    def _latch_failure(self, exc: BaseException) -> None:
+        """Permanently make an owner-side broker fault unhealthy."""
+
+        with self._clients_lock:
+            if not self._last_error_type:
+                self._last_error_type = type(exc).__name__
+            self._failed.set()
+        listener = self._listener
+        if listener is not None:
+            try:
+                listener.close()
+            except OSError:
+                pass
+
+    def _serve(self) -> None:
+        while not self._stop.is_set():
+            listener = self._listener
+            if listener is None:
+                return
+            try:
+                channel, _ = listener.accept()
+            except TimeoutError:
+                continue
+            except OSError as exc:
+                if not self._stop.is_set() and not self._failed.is_set():
+                    self._latch_failure(exc)
+                return
+            if not self._client_capacity.acquire(blocking=False):
+                channel.close()
+                continue
+            client = threading.Thread(
+                target=self._serve_channel,
+                args=(channel,),
+                name="typed-state-owner-grant-client",
+                daemon=True,
+            )
+            with self._clients_lock:
+                self._clients.add(client)
+                self._channels.add(channel)
+            try:
+                client.start()
+            except BaseException as exc:
+                with self._clients_lock:
+                    self._clients.discard(client)
+                    self._channels.discard(channel)
+                self._client_capacity.release()
+                channel.close()
+                self._latch_failure(exc)
+                return
+
+    def _serve_channel(self, channel: socket.socket) -> None:
+        try:
+            self._serve_one(channel)
+        except BaseException as exc:
+            # Protocol and authorization denials are handled inside
+            # _serve_one. Anything escaping it is an owner-side fault.
+            self._latch_failure(exc)
+        finally:
+            try:
+                channel.close()
+            except OSError:
+                pass
+            current = threading.current_thread()
+            with self._clients_lock:
+                self._clients.discard(current)
+                self._channels.discard(channel)
+            self._client_capacity.release()
+
+    def alive(self) -> bool:
+        thread = self._thread
+        return bool(
+            thread is not None
+            and thread.is_alive()
+            and not self._failed.is_set()
+        )
+
+    def capability(self) -> Mapping[str, Any]:
+        return MappingProxyType(
+            {
+                "available": self.alive(),
+                "last_error_type": self._last_error_type,
+            }
+        )
+
+    @staticmethod
+    def _read_frame(channel: socket.socket) -> dict[str, Any]:
+        payload = bytearray()
+        while b"\n" not in payload:
+            chunk = channel.recv(4096)
+            if not chunk:
+                break
+            payload.extend(chunk)
+            if len(payload) > MAX_GRANT_BROKER_FRAME_BYTES:
+                raise QuackStateServerControlError(
+                    "typed grant broker request exceeds its closed bound"
+                )
+        try:
+            decoded = json.loads(bytes(payload).split(b"\n", 1)[0])
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise QuackStateServerControlError(
+                "typed grant broker request is malformed"
+            ) from exc
+        if not isinstance(decoded, dict):
+            raise QuackStateServerControlError(
+                "typed grant broker request must be an object"
+            )
+        return decoded
+
+    def _serve_one(self, channel: socket.socket) -> None:
+        response = {
+            "schema": TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA,
+            "credential_kind": "",
+            "ok": False,
+            "token": "",
+            "error_code": "grant_denied",
+        }
+        authorized_identity: tuple[str, str, str, int] | None = None
+        try:
+            channel.settimeout(0.5)
+            if getattr(socket, "SO_PEERCRED", None) is None:
+                self._latch_failure(
+                    QuackStateServerControlError(
+                        "kernel peer credentials are unavailable"
+                    )
+                )
+                return
+            peer_pid, peer_uid, peer_start_time = _kernel_peer_identity(channel)
+            request = self._read_frame(channel)
+            if set(request) != {
+                "schema",
+                "credential_kind",
+                "bootstrap_secret",
+                "client_id",
+                "process_birth_id",
+                "store_id",
+            }:
+                raise QuackStateServerControlError(
+                    "typed grant broker request has unknown fields"
+                )
+            client_id = str(request.get("client_id") or "").strip()
+            process_birth_id = str(request.get("process_birth_id") or "").strip()
+            credential_kind = str(request.get("credential_kind") or "").strip()
+            response["credential_kind"] = credential_kind
+            supplied_secret = str(request.get("bootstrap_secret") or "")
+            if (
+                request.get("schema") != TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA
+                or credential_kind
+                not in TYPED_STATE_OWNER_GRANT_BROKER_CREDENTIAL_KINDS
+                or request.get("store_id") != self._store_id
+                or peer_uid != self._owner_uid
+                or peer_pid < 1
+                or not 1 <= len(client_id) <= 256
+                or process_birth_id
+                != kernel_process_birth_id(
+                    peer_pid,
+                    start_time_ticks=peer_start_time,
+                )
+                or not hmac.compare_digest(supplied_secret, self._secret)
+            ):
+                raise QuackStateServerControlError(
+                    "typed grant broker request is unauthorized"
+                )
+            authorized_identity = (
+                credential_kind,
+                client_id,
+                process_birth_id,
+                peer_pid,
+            )
+        except (
+            OSError,
+            ValueError,
+            QuackStateServerError,
+            TypedStateOwnerAuthorizationError,
+        ):
+            # Malformed, disconnected, or unauthorized peers are expected
+            # denials and cannot poison delivery to later admitted clients.
+            authorized_identity = None
+        if authorized_identity is not None and not self._failed.is_set():
+            try:
+                token = self._resolve_credential(*authorized_identity)
+            except BaseException as exc:
+                self._latch_failure(exc)
+            else:
+                if (
+                    not isinstance(token, str)
+                    or not 8 <= len(token) <= 256
+                    or any(
+                        not character.isalnum() and character not in "_-"
+                        for character in token
+                    )
+                ):
+                    self._latch_failure(
+                        QuackStateServerControlError(
+                            "credential resolver returned invalid material"
+                        )
+                    )
+                else:
+                    response.update(
+                        {"ok": True, "token": token, "error_code": ""}
+                    )
+        encoded = canonical_json_bytes(response) + b"\n"
+        if len(encoded) <= MAX_GRANT_BROKER_FRAME_BYTES:
+            try:
+                channel.sendall(encoded)
+            except OSError:
+                pass

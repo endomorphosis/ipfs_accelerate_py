@@ -14,7 +14,8 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Iterator, Literal, Mapping
+import stat as stat_module
+from typing import Any, Callable, Final, Iterator, Literal, Mapping, Sequence
 
 try:
     import fcntl
@@ -1317,3 +1318,121 @@ def checkout_lock_owner_is_active(
         if not owner_module_stem or owner_module_stem not in command_line:
             return False
     return True
+
+
+UNHELD_GIT_CONTROL_LOCK_NAMES: Final = ("index.lock", "HEAD.lock")
+
+
+def git_lock_inode_is_open(
+    lock_path: Path,
+    *,
+    proc_root: Path = Path("/proc"),
+) -> bool | None:
+    """Return whether any process still holds ``lock_path`` open.
+
+    Git's lock files are empty even while a live ``update-ref`` /
+    ``update-index`` child owns them. After SIGTERM or reboot those fds
+    vanish and leftover 0-byte files brick exclusive-owner admission.
+    ``None`` means ``/proc`` could not prove the answer; callers fail closed.
+    """
+
+    try:
+        identity = lock_path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return None
+    if not stat_module.S_ISREG(identity.st_mode) or stat_module.S_ISLNK(
+        identity.st_mode
+    ):
+        return None
+    if not proc_root.exists():
+        return None
+    target = (int(identity.st_dev), int(identity.st_ino))
+    try:
+        entries = tuple(proc_root.iterdir())
+    except OSError:
+        return None
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        fd_dir = entry / "fd"
+        try:
+            descriptors = tuple(fd_dir.iterdir())
+        except OSError:
+            continue
+        for descriptor in descriptors:
+            try:
+                observed = os.stat(descriptor, follow_symlinks=True)
+            except OSError:
+                continue
+            if (int(observed.st_dev), int(observed.st_ino)) == target:
+                return True
+    return False
+
+
+def reclaim_unheld_empty_git_lock_files(
+    lock_paths: Sequence[Path],
+    *,
+    proc_root: Path = Path("/proc"),
+) -> dict[str, Any]:
+    """Unlink leftover empty Git control locks with no live file holder.
+
+    Non-empty lock files are left in place so a foreign/malformed lock still
+    fails closed. Empty unheld locks are the post-reboot / post-SIGTERM
+    git-guard leftover that otherwise raises ``candidate Git guard is
+    contended`` after a 10s wait.
+    """
+
+    removed: list[str] = []
+    skipped: list[dict[str, Any]] = []
+    for raw in lock_paths:
+        path = Path(raw)
+        try:
+            identity = path.lstat()
+        except FileNotFoundError:
+            skipped.append({"path": str(path), "reason": "absent"})
+            continue
+        except OSError as exc:
+            skipped.append(
+                {
+                    "path": str(path),
+                    "reason": "stat_failed",
+                    "error_type": type(exc).__name__,
+                }
+            )
+            continue
+        if (
+            not stat_module.S_ISREG(identity.st_mode)
+            or stat_module.S_ISLNK(identity.st_mode)
+            or identity.st_uid != os.geteuid()
+            or identity.st_nlink != 1
+        ):
+            skipped.append({"path": str(path), "reason": "unsafe_identity"})
+            continue
+        if int(identity.st_size) != 0:
+            skipped.append({"path": str(path), "reason": "nonempty"})
+            continue
+        holder = git_lock_inode_is_open(path, proc_root=proc_root)
+        if holder is None:
+            skipped.append({"path": str(path), "reason": "holder_unknown"})
+            continue
+        if holder is True:
+            skipped.append({"path": str(path), "reason": "held"})
+            continue
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            skipped.append({"path": str(path), "reason": "absent"})
+            continue
+        except OSError as exc:
+            skipped.append(
+                {
+                    "path": str(path),
+                    "reason": "unlink_failed",
+                    "error_type": type(exc).__name__,
+                }
+            )
+            continue
+        removed.append(str(path))
+    return {"removed": removed, "skipped": skipped}

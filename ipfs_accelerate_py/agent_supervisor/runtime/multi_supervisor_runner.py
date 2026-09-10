@@ -88,6 +88,15 @@ from ..core.wrapper_utils import (
 from ..merge.checkout_lock import serialized_lock_update
 from ..proof.formal_verification_contracts import content_identity
 from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
+import importlib.util
+import tempfile
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from ...llm_router import AgentImplementationControlPlanePin, AgentSupervisorNativeDependencyLaunch, active_agent_supervisor_native_dependency_launch, build_agent_implementation_control_plane_pin, load_agent_implementation_route_authorization, resolve_agent_implementation_route, parse_agent_supervisor_native_dependency_launch, verify_agent_supervisor_native_dependency_sealed_fd, verify_agent_implementation_sealed_control_plane
+from ..._hash_resources import hashing_lock
+from ..merge.worktree_lifecycle import OwnerLiveness, ProcessBirthIdentity as WorktreeProcessBirthIdentity, owner_liveness
+from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker, terminate_pid_tree
+from ..todo_daemon.supervisor_runtime import SupervisedChildIdentity, load_supervised_child_identity, read_process_command_argv, supervised_child_identity_liveness, supervised_child_identity_path
 
 OutputFn = Callable[[str], None]
 PLAN_BOUND_LAUNCH_GATE_MARKER = "--run-plan-bound-launch-gate"
@@ -236,7 +245,88 @@ _EAAEF_HOST_RECEIPT_DIR = (
     / "receipts"
     / "host_admission"
 )
-SEALED_CONTROL_PLANE_BOOTSTRAP = r'''import fcntl,hashlib,json,os,stat,sys
+SEALED_CONTROL_PLANE_BOOTSTRAP = r'''import array,ctypes,fcntl,hashlib,json,os,socket,stat,struct,sys,time
+from contextlib import contextmanager
+@contextmanager
+def _hash_budget():
+    # Same lock as _hash_resources, before any capsule code is trusted/imported.
+    path='/tmp/ipfs-accelerate-heavy-hash-'+str(os.geteuid())+'.lock'
+    lock=os.open(path,os.O_RDWR|os.O_CREAT|os.O_CLOEXEC|os.O_NOFOLLOW,0o600)
+    acquired=False
+    try:
+        metadata=os.fstat(lock)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid!=os.geteuid() or metadata.st_nlink!=1 or stat.S_IMODE(metadata.st_mode)&0o022: raise SystemExit(78)
+        deadline=time.monotonic()+60.0
+        while True:
+            try:
+                fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB); acquired=True; break
+            except BlockingIOError:
+                if time.monotonic()>=deadline: raise SystemExit(78)
+                time.sleep(0.05)
+        current=os.stat(path,follow_symlinks=False)
+        if (current.st_dev,current.st_ino)!=(metadata.st_dev,metadata.st_ino) or os.fstat(lock).st_nlink!=1: raise SystemExit(78)
+        yield
+    finally:
+        if acquired: fcntl.flock(lock,fcntl.LOCK_UN)
+        os.close(lock)
+def _state_authority_handoff():
+    names=('IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_ADDRESS','IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_PID','IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_START','IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_BOOT_ID','IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_LOSS_POLICY')
+    values={name:os.environ.get(name,'').strip() for name in names}
+    if not any(values.values()): return
+    if '--run-plan-bound-launch-gate' in sys.argv[1:]: return
+    if not all(values.values()) or not sys.platform.startswith('linux'): raise SystemExit(78)
+    try:
+        executable_fd=os.open('/proc/self/exe',getattr(os,'O_PATH',os.O_RDONLY)|getattr(os,'O_CLOEXEC',0))
+        executable_metadata=os.fstat(executable_fd); executable_path_metadata=os.stat('/proc/self/exe')
+    except OSError: raise SystemExit(78)
+    if not stat.S_ISREG(executable_metadata.st_mode) or executable_metadata.st_uid!=0 or executable_metadata.st_nlink!=1 or stat.S_IMODE(executable_metadata.st_mode)&0o022 or (executable_metadata.st_dev,executable_metadata.st_ino,executable_metadata.st_mode,executable_metadata.st_uid,executable_metadata.st_gid,executable_metadata.st_nlink,executable_metadata.st_size)!=(executable_path_metadata.st_dev,executable_path_metadata.st_ino,executable_path_metadata.st_mode,executable_path_metadata.st_uid,executable_path_metadata.st_gid,executable_path_metadata.st_nlink,executable_path_metadata.st_size):
+        os.close(executable_fd); raise SystemExit(78)
+    libc=ctypes.CDLL(None,use_errno=True)
+    if libc.prctl(4,0,0,0,0)!=0 or libc.prctl(3,0,0,0,0)!=0:
+        os.close(executable_fd); raise SystemExit(78)
+    try:
+        parent=int(values[names[1]]); parent_start=int(values[names[2]])
+        raw=open('/proc/self/stat','r',encoding='ascii').read(); fields=raw[raw.rfind(')')+2:].split()
+        own_parent=int(fields[1]); own_start=int(fields[19])
+        parent_raw=open('/proc/'+str(parent)+'/stat','r',encoding='ascii').read(); parent_fields=parent_raw[parent_raw.rfind(')')+2:].split()
+        observed_parent_start=int(parent_fields[19]); boot=open('/proc/sys/kernel/random/boot_id','r',encoding='ascii').read().strip()
+    except (OSError,IndexError,UnicodeError,ValueError): raise SystemExit(78)
+    policy=values[names[4]]
+    if own_parent!=parent or observed_parent_start!=parent_start or boot!=values[names[3]] or policy not in {'terminate_with_parent','independent_detached'}: raise SystemExit(78)
+    if policy=='terminate_with_parent':
+        if libc.prctl(1,15,0,0,0)!=0: raise SystemExit(78)
+        try:
+            after_raw=open('/proc/self/stat','r',encoding='ascii').read(); after_fields=after_raw[after_raw.rfind(')')+2:].split()
+            parent_after=int(after_fields[1]); parent_raw_after=open('/proc/'+str(parent)+'/stat','r',encoding='ascii').read(); parent_fields_after=parent_raw_after[parent_raw_after.rfind(')')+2:].split()
+            parent_start_after=int(parent_fields_after[19])
+        except (OSError,IndexError,UnicodeError,ValueError): raise SystemExit(78)
+        if parent_after!=parent or parent_start_after!=parent_start: raise SystemExit(78)
+    channel=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); received=[]
+    try:
+        channel.settimeout(10.0); channel.connect('\0'+values[names[0]])
+        peer=struct.unpack('3i',channel.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,struct.calcsize('3i')))
+        if peer[0]!=parent or peer[1]!=os.geteuid(): raise SystemExit(78)
+        request=json.dumps({'pid':os.getpid(),'parent_pid':parent,'start_time_ticks':own_start,'boot_id':boot,'address':values[names[0]],'parent_loss_policy':policy},sort_keys=True,separators=(',',':')).encode()+b'\n'
+        descriptors=array.array('i',[executable_fd])
+        channel.sendmsg([request],[(socket.SOL_SOCKET,socket.SCM_RIGHTS,descriptors.tobytes())])
+        os.close(executable_fd); executable_fd=-1
+        data,ancillary,flags,_=channel.recvmsg(1,socket.CMSG_SPACE(array.array('i').itemsize))
+        if data!=b'F' or flags&getattr(socket,'MSG_CTRUNC',0): raise SystemExit(78)
+        for level,kind,payload in ancillary:
+            if level==socket.SOL_SOCKET and kind==socket.SCM_RIGHTS:
+                descriptors=array.array('i'); descriptors.frombytes(payload[:len(payload)-(len(payload)%descriptors.itemsize)]); received.extend(descriptors)
+        if len(received)!=1: raise SystemExit(78)
+        secret_fd=int(received[0]); metadata=os.fstat(secret_fd)
+        required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid!=os.geteuid() or not 32<=metadata.st_size<=256 or fcntl.fcntl(secret_fd,fcntl.F_GET_SEALS)&required!=required: raise SystemExit(78)
+        os.set_inheritable(secret_fd,False); os.environ['IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD']=str(secret_fd)
+        for name in names: os.environ.pop(name,None)
+        channel.sendall(b'A')
+    except SystemExit: raise
+    except BaseException: raise SystemExit(78)
+    finally:
+        if executable_fd>=0: os.close(executable_fd)
+        channel.close()
 def _pairs(items):
     result={}
     for key,value in items:
@@ -245,48 +335,59 @@ def _pairs(items):
     return result
 try:
     fd=int(sys.argv.pop(1)); pin=json.loads(sys.argv.pop(1),object_pairs_hook=_pairs)
+    native_authorization=sys.argv.pop(1); native_fd=int(sys.argv.pop(1)); native_text=sys.argv.pop(1); system_text=sys.argv.pop(1)
     module=sys.argv.pop(1); expected_bootstrap=sys.argv.pop(1); expected_python=sys.argv.pop(1)
-    native_authority_gate=sys.argv.pop(1)
-    if fd<3 or type(pin) is not dict or set(pin)!={'schema','runner_path','runner_sha256','capsule_root','capsule_id','source_head','source_tree','archive_sha256'}: raise SystemExit(78)
+    if fd<3 or native_fd<3 or fd==native_fd or type(pin) is not dict or set(pin)!={'schema','runner_path','runner_sha256','capsule_root','capsule_id','source_head','source_tree','archive_sha256'}: raise SystemExit(78)
     if any(type(value) is not str or not value for value in pin.values()): raise SystemExit(78)
     if pin['schema']!='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2': raise SystemExit(78)
-    if module not in {'ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler','ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon'}: raise SystemExit(78)
-    if module in {'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon'}: raise SystemExit(78)
+    if module not in {'ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler','ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor'}: raise SystemExit(78)
+    if not sys.flags.isolated or not sys.flags.no_site or any(name.startswith(('LD_','DYLD_','PYTHON','PYTEST')) or name=='GLIBC_TUNABLES' for name in os.environ): raise SystemExit(78)
     command_line=open('/proc/self/cmdline','rb').read().split(b'\0')
     code_index=command_line.index(b'-c')+1
     if 'sha256:'+hashlib.sha256(command_line[code_index]).hexdigest()!=expected_bootstrap: raise SystemExit(78)
-    executable=os.open('/proc/self/exe',os.O_RDONLY|getattr(os,'O_CLOEXEC',0))
-    try:
-        executable_hash=hashlib.sha256()
-        while True:
-            block=os.read(executable,65536)
+    with _hash_budget():
+        executable=os.open('/proc/self/exe',os.O_RDONLY|getattr(os,'O_CLOEXEC',0))
+        try:
+            executable_hash=hashlib.sha256()
+            while True:
+                block=os.read(executable,65536)
+                if not block: break
+                executable_hash.update(block)
+        finally: os.close(executable)
+        if 'sha256:'+executable_hash.hexdigest()!=expected_python: raise SystemExit(78)
+        required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
+        metadata=os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size<=0 or fcntl.fcntl(fd,fcntl.F_GET_SEALS)&required!=required: raise SystemExit(78)
+        archive_hash=hashlib.sha256(); offset=0
+        while offset<metadata.st_size:
+            block=os.pread(fd,min(65536,metadata.st_size-offset),offset)
             if not block: break
-            executable_hash.update(block)
-    finally: os.close(executable)
-    if 'sha256:'+executable_hash.hexdigest()!=expected_python: raise SystemExit(78)
-    if native_authority_gate=='ipfs_accelerate_py.agent-supervisor.implementation-native-authority-admitted@1':
-        pass
-    else:
-        if native_authority_gate!='ipfs_accelerate_py.agent-supervisor.implementation-native-authority-no-go@1': raise SystemExit(78)
-        if module=='ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor': raise SystemExit(78)
-    required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
-    metadata=os.fstat(fd)
-    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size<=0 or fcntl.fcntl(fd,fcntl.F_GET_SEALS)&required!=required: raise SystemExit(78)
-    archive_hash=hashlib.sha256(); offset=0
-    while offset<metadata.st_size:
-        block=os.pread(fd,min(65536,metadata.st_size-offset),offset)
-        if not block: break
-        archive_hash.update(block); offset+=len(block)
-    if offset!=metadata.st_size or 'sha256:'+archive_hash.hexdigest()!=pin['archive_sha256']: raise SystemExit(78)
+            archive_hash.update(block); offset+=len(block)
+        if offset!=metadata.st_size or 'sha256:'+archive_hash.hexdigest()!=pin['archive_sha256']: raise SystemExit(78)
     archive='/proc/self/fd/'+str(fd)
     path_metadata=os.stat(archive)
     if (path_metadata.st_dev,path_metadata.st_ino)!=(metadata.st_dev,metadata.st_ino): raise SystemExit(78)
-    sys.path.insert(0,archive)
+    try: system=json.loads(system_text,object_pairs_hook=_pairs)
+    except BaseException: raise SystemExit(78)
+    if type(system) is not list or json.dumps(system,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)!=system_text: raise SystemExit(78)
+    expected_paths={'/usr/local/lib/python'+str(sys.version_info.major)+'.'+str(sys.version_info.minor)+'/dist-packages','/usr/lib/python3/dist-packages'}
+    observed_paths=[]
+    for item in system:
+        if type(item) is not dict or set(item)!={'path','st_dev','st_ino','st_mode','st_uid','st_nlink','st_mtime_ns','st_ctime_ns'} or type(item['path']) is not str or item['path'] not in expected_paths or any(type(item[name]) is not int for name in set(item)-{'path'}): raise SystemExit(78)
+        current=os.lstat(item['path']); identity=(current.st_dev,current.st_ino,current.st_mode,current.st_uid,current.st_nlink,current.st_mtime_ns,current.st_ctime_ns)
+        if identity!=tuple(item[name] for name in ('st_dev','st_ino','st_mode','st_uid','st_nlink','st_mtime_ns','st_ctime_ns')) or not stat.S_ISDIR(current.st_mode) or current.st_uid!=0 or stat.S_IMODE(current.st_mode)&0o022 or os.path.realpath(item['path'])!=item['path']: raise SystemExit(78)
+        observed_paths.append(item['path'])
+    if len(observed_paths)!=len(set(observed_paths)) or '/usr/lib/python3/dist-packages' not in observed_paths: raise SystemExit(78)
+    sys.path.insert(0,archive); sys.path.extend(observed_paths)
     import importlib,importlib.machinery,runpy,types
     import ipfs_accelerate_py as accepted_root
     prefix=archive+'/'
     root_origin=getattr(accepted_root,'__file__',None)
     if type(root_origin) is not str or not root_origin.startswith(prefix): raise SystemExit(78)
+    from ipfs_accelerate_py.agent_implementation_route import _agent_parse_native_dependency_launch_json,preload_agent_supervisor_native_dependency,verify_agent_supervisor_native_dependency_sealed_fd
+    native=_agent_parse_native_dependency_launch_json(native_text)
+    if native.accepted_authorization_id!=native_authorization or native.descriptor.descriptor!=native_fd or native.pin.python_executable_sha256!=expected_python or verify_agent_supervisor_native_dependency_sealed_fd(native)!='/proc/self/fd/'+str(native_fd): raise SystemExit(78)
+    preload_agent_supervisor_native_dependency(native)
     package_name='ipfs_accelerate_py.agent_supervisor'
     if any(name==package_name or name.startswith(package_name+'.') for name in sys.modules): raise SystemExit(78)
     package=importlib.import_module(package_name)
@@ -294,24 +395,26 @@ try:
     if type(package_origin) is not str or not package_origin.startswith(prefix): raise SystemExit(78)
     setattr(accepted_root,'agent_supervisor',package)
     if module in sys.modules: raise SystemExit(78)
+    specification=importlib.util.find_spec(module)
+    module_origin=getattr(specification,'origin',None)
+    if type(module_origin) is not str or not module_origin.startswith(prefix): raise SystemExit(78)
+    if module=='ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor':
+        from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import sealed_implementation_native_scope_allowed,parse_accepted_control_plane_pin
+        if not sealed_implementation_native_scope_allowed(pin=parse_accepted_control_plane_pin(json.dumps(pin)),argv=tuple(sys.argv[1:])): raise SystemExit(78)
+    _state_authority_handoff()
     namespace=runpy.run_module(module,run_name=module,alter_sys=True)
     if module in sys.modules: raise SystemExit(78)
     target_origin=namespace.get('__file__')
     if type(target_origin) is not str or not target_origin.startswith(prefix): raise SystemExit(78)
     for name,loaded in tuple(sys.modules.items()):
-        if name=='ipfs_accelerate_py' or name=='ipfs_accelerate_py.llm_router' or name.startswith('ipfs_accelerate_py.agent_supervisor'):
+        if name in {'ipfs_accelerate_py','ipfs_accelerate_py.llm_router','ipfs_accelerate_py.agent_implementation_route','ipfs_accelerate_py._hash_resources'} or name.startswith('ipfs_accelerate_py.agent_supervisor'):
             origin=getattr(loaded,'__file__',None)
             if type(origin) is not str or not origin.startswith(prefix): raise SystemExit(78)
     main=namespace.get('main')
     if not callable(main): raise SystemExit(78)
     raise SystemExit(main())
 except SystemExit: raise
-except BaseException as sealed_exc:
-    try:
-        sys.stderr.write('sealed-bootstrap: %s: %s\\n' % (type(sealed_exc).__name__, sealed_exc)); sys.stderr.flush()
-    except Exception:
-        pass
-    raise SystemExit(78)
+except BaseException: raise SystemExit(78)
 '''
 SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256 = (
     "sha256:"
@@ -965,39 +1068,92 @@ def verify_lgcvf_configured_board_live_context(
 
 
 def _python_executable_sha256(python_executable: str) -> tuple[str, str]:
-    executable = Path(python_executable).resolve(strict=True)
-    metadata = os.stat(executable, follow_symlinks=False)
-    if not stat.S_ISREG(metadata.st_mode):
-        raise ValueError("sealed control-plane Python executable is not regular")
-    digest = hashlib.sha256()
-    descriptor = os.open(
-        executable,
-        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
-    )
+    retained = retain_control_plane_interpreter(python_executable)
     try:
-        before = os.fstat(descriptor)
-        while True:
-            block = os.read(descriptor, 65_536)
-            if not block:
-                break
-            digest.update(block)
-        after = os.fstat(descriptor)
+        return retained.argv0, retained.sha256
     finally:
-        os.close(descriptor)
-    def identity(item):
-        return (
-            item.st_dev,
-            item.st_ino,
-            item.st_mode,
-            item.st_uid,
-            item.st_nlink,
-            item.st_size,
-            item.st_mtime_ns,
-            item.st_ctime_ns,
+        os.close(retained.descriptor)
+
+
+def sealed_implementation_native_scope_allowed(
+    *,
+    pin: AgentImplementationControlPlanePin,
+    argv: Sequence[str],
+) -> bool:
+    """Restrict native implementation entry to its exact source-bound board.
+
+    This supplies no acceptance: the caller must already hold the native signed
+    dependency and the ordinary plan/claim gates still authenticate their scope.
+    A namespace flag, absent profile, or admission word cannot bypass EAAEF's
+    additional host receipt. The configuration bytes must match the accepted
+    source and the configuration root subsequently checked by the native plan.
+    """
+
+    try:
+        names = (
+            "--scheduler-config", "--plan-bound-configuration-root",
+            "--board-namespace", "--plan-bound-accepted-tree-root",
+            "--plan-bound-source-head", "--plan-bound-source-tree",
         )
-    if identity(before) != identity(after) or identity(before) != identity(metadata):
-        raise ValueError("sealed control-plane Python executable changed")
-    return str(executable), "sha256:" + digest.hexdigest()
+        values = {name: _profile_option_values(argv, name) for name in names}
+        if any(len(value) != 1 or not value[0] for value in values.values()):
+            return False
+        if (
+            values["--plan-bound-source-head"] != (pin.source_head,)
+            or values["--plan-bound-source-tree"] != (pin.source_tree,)
+        ):
+            return False
+        root = _canonical_accepted_tree_root(Path(values["--plan-bound-accepted-tree-root"][0]))
+        config_path = Path(values["--scheduler-config"][0])
+        relative = config_path.relative_to(root) if config_path.is_absolute() else config_path
+        if not relative.parts or any(part in {".", ".."} for part in relative.parts):
+            return False
+        tree = _plan_bound_git(root, "--no-replace-objects", "rev-parse", f"{pin.source_head}^{{tree}}")
+        if tree.returncode or tree.stdout.strip() != pin.source_tree:
+            return False
+        entry = _plan_bound_git(root, "--no-replace-objects", "ls-tree", "-z", pin.source_tree, "--", relative.as_posix())
+        records = entry.stdout.split("\0")
+        if entry.returncode or len(records) != 2 or records[-1] != "":
+            return False
+        metadata, path = records[0].split("\t", 1)
+        mode, kind, oid = metadata.split(" ")
+        if mode not in {"100644", "100755"} or kind != "blob" or path != relative.as_posix():
+            return False
+        size = _plan_bound_git(root, "--no-replace-objects", "cat-file", "-s", oid)
+        if size.returncode or not 0 < int(size.stdout) <= 4_194_304:
+            return False
+        blob = _plan_bound_git(root, "--no-replace-objects", "cat-file", "blob", oid, input_bytes=b"")
+        if blob.returncode or len(blob.stdout) != int(size.stdout):
+            return False
+        payload_bytes = blob.stdout
+        hashed = _plan_bound_git(root, "hash-object", "--stdin", input_bytes=payload_bytes)
+        if hashed.returncode or hashed.stdout.decode("ascii").strip() != oid:
+            return False
+        payload = json.loads(payload_bytes.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
+        if type(payload) is not dict:
+            return False
+        namespace = payload.get("board_namespace")
+        if (
+            type(namespace) is not str or not namespace
+            or values["--board-namespace"] != (namespace,)
+            or payload.get("program_identifier") != namespace
+            or not isinstance(payload.get("schema"), str)
+            or not payload["schema"].startswith("ipfs_accelerate_py.agent_supervisor.")
+            or ".scheduler_config@" not in payload["schema"]
+            or values["--plan-bound-configuration-root"] != (
+                content_identity({"bytes_sha256": hashlib.sha256(payload_bytes).hexdigest()}),
+            )
+        ):
+            return False
+        if namespace == "external-agent-autonomous-execution-fabric-v1":
+            return _eaaef_host_receipt_admitted(
+                root, "EAAEF-191",
+                expected_source_head=pin.source_head,
+                expected_source_tree=pin.source_tree,
+            )
+        return True
+    except (OSError, UnicodeError, ValueError, RuntimeError, RecursionError, subprocess.SubprocessError):
+        return False
 
 
 def build_sealed_control_plane_module_command(
@@ -1008,14 +1164,16 @@ def build_sealed_control_plane_module_command(
     module_name: str,
     argv: Sequence[str],
     repo_root: Path | str | None = None,
+    retained_interpreter: RetainedControlPlaneInterpreter | None = None,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
+    accepted_native_authorization_id: str = "",
+    system_dependency_directories_json: str | None = None,
 ) -> list[str]:
-    """Build one isolated, sealed-fd module launch with self-verifying bytes.
+    """Build a sealed native launch; the child rechecks its scoped board gate.
 
-    The default bootstrap contract is ``implementation-native-authority-no-go@1``
-    and denies the implementation supervisor before repository import.  When
-    independently signed EAAEF-191 host evidence has already admitted the
-    native lane, pass ``repo_root`` so this builder selects
-    ``implementation-native-authority-admitted@1`` for that module only.
+    ``repo_root`` remains a compatibility input, never a native authority word.
+    The accepted source/configuration and EAAEF receipt restriction are checked
+    inside the sealed bootstrap before the implementation target receives custody.
     """
 
     if module_name not in SEALED_CONTROL_PLANE_MODULES:
@@ -1026,31 +1184,57 @@ def build_sealed_control_plane_module_command(
     )
     if verified_path != f"/proc/self/fd/{descriptor}":
         raise ValueError("sealed control-plane descriptor path drifted")
-    executable, executable_sha256 = _python_executable_sha256(python_executable)
-    native_gate = SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT
-    if (
-        repo_root is not None
-        and _eaaef_host_receipt_admitted(
-            Path(repo_root),
-            "EAAEF-191",
-            expected_source_head=pin.source_head,
-            expected_source_tree=pin.source_tree,
+    if retained_interpreter is None:
+        executable, executable_sha256 = _python_executable_sha256(
+            python_executable
         )
-        and module_name
-        == "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
+    else:
+        retained_interpreter = admit_retained_control_plane_interpreter(
+            descriptor=retained_interpreter.descriptor,
+            argv0=retained_interpreter.argv0,
+            expected_sha256=retained_interpreter.sha256,
+        )
+        executable = retained_interpreter.argv0
+        executable_sha256 = retained_interpreter.sha256
+    if native_dependency_launch is None:
+        raise ValueError("sealed control-plane native dependency is required")
+    native_path = verify_agent_supervisor_native_dependency_sealed_fd(
+        native_dependency_launch
+    )
+    native_descriptor = native_dependency_launch.descriptor.descriptor
+    if (
+        native_path != f"/proc/self/fd/{native_descriptor}"
+        or native_dependency_launch.pin.python_executable_sha256
+        != executable_sha256
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", accepted_native_authorization_id
+        )
+        is None
+        or native_dependency_launch.accepted_authorization_id
+        != accepted_native_authorization_id
     ):
-        native_gate = SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_ADMITTED_CONTRACT
+        raise ValueError("sealed control-plane native dependency drifted")
+    system_directories_json = (
+        system_dependency_directories_json
+        if system_dependency_directories_json is not None
+        else trusted_system_dependency_directories_json()
+    )
+    admit_trusted_system_dependency_directories(system_directories_json)
     return [
         executable,
         "-I",
+        "-S",
         "-c",
         SEALED_CONTROL_PLANE_BOOTSTRAP,
         str(descriptor),
         accepted_control_plane_pin_json(pin),
+        accepted_native_authorization_id,
+        str(native_descriptor),
+        native_dependency_launch.to_json(),
+        system_directories_json,
         module_name,
         SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256,
         executable_sha256,
-        native_gate,
         *[str(item) for item in argv],
     ]
 
@@ -1327,24 +1511,36 @@ def _plan_bound_positive_child_environment(
         "TZ",
         *_PLAN_BOUND_LIFECYCLE_ENV_NAMES,
         *_PLAN_BOUND_PROFILE_ENV_NAMES,
+        *TRUSTED_STATE_GRANT_BROKER_ENV_NAMES,
     }
+    trusted_home = str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
+    trusted_runtime = (
+        _trusted_duckdb_runtime_environment(
+            environment,
+            repository_root=Path(
+                str(environment.get(REPOSITORY_ROOT_ENV, "") or "")
+            ),
+        )
+        if trusted_home
+        else {}
+    )
     projected = {
         name: str(value)
         for name, value in environment.items()
         if name in allowed_names
     }
-    trusted_home = str(projected.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
-    if trusted_home:
-        repository_root = str(environment.get(REPOSITORY_ROOT_ENV, "") or "")
-        projected.update(
-            _trusted_duckdb_runtime_environment(
-                environment,
-                repository_root=Path(repository_root),
-            )
-        )
+    if trusted_runtime:
+        projected.update(trusted_runtime)
     else:
+        projected.pop("HOME", None)
         projected.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
         for name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+            projected.pop(name, None)
+    for name in tuple(projected):
+        if (
+            name.startswith(("PYTHON", "PYTEST", "LD_", "DYLD_"))
+            or name == "GLIBC_TUNABLES"
+        ):
             projected.pop(name, None)
     projected["PATH"] = "/usr/bin:/bin"
     return projected
@@ -1576,33 +1772,35 @@ def _trusted_duckdb_runtime_environment(
 
     trusted_home = str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
     python_user_base = str(environment.get(TRUSTED_PYTHON_USER_BASE_ENV, "") or "")
-    if not trusted_home or not python_user_base:
-        raise ValueError("trusted DuckDB HOME and Python user base must be paired")
+    if not trusted_home:
+        raise ValueError("trusted DuckDB HOME binding is absent")
     home = _validate_trusted_duckdb_home(
         trusted_home,
         repository_root=str(repository_root.resolve()),
         observed_home=str(environment.get("HOME", "") or ""),
     )
-    user_base = Path(python_user_base)
-    if (
-        "\x00" in python_user_base
-        or len(python_user_base.encode("utf-8")) > 4096
-        or not user_base.is_absolute()
-    ):
-        raise ValueError("trusted Python user base binding is incomplete")
-    try:
-        user_base_observed = os.lstat(user_base)
-        user_base_resolved = user_base.resolve(strict=True)
-    except (OSError, RuntimeError) as exc:
-        raise ValueError("trusted Python user base binding is unavailable") from exc
-    if (
-        user_base_resolved != user_base
-        or not stat.S_ISDIR(user_base_observed.st_mode)
-        or stat.S_ISLNK(user_base_observed.st_mode)
-        or user_base_observed.st_uid != os.geteuid()
-        or stat.S_IMODE(user_base_observed.st_mode) & 0o022
-    ):
-        raise ValueError("trusted Python user base binding is unsafe")
+    user_base: Path | None = None
+    if python_user_base:
+        user_base = Path(python_user_base)
+        if (
+            "\x00" in python_user_base
+            or len(python_user_base.encode("utf-8")) > 4096
+            or not user_base.is_absolute()
+        ):
+            raise ValueError("trusted Python user base binding is incomplete")
+        try:
+            user_base_observed = os.lstat(user_base)
+            user_base_resolved = user_base.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise ValueError("trusted Python user base binding is unavailable") from exc
+        if (
+            user_base_resolved != user_base
+            or not stat.S_ISDIR(user_base_observed.st_mode)
+            or stat.S_ISLNK(user_base_observed.st_mode)
+            or user_base_observed.st_uid != os.geteuid()
+            or stat.S_IMODE(user_base_observed.st_mode) & 0o022
+        ):
+            raise ValueError("trusted Python user base binding is unsafe")
     cache_root = home / ".cache"
     xdg_cache = cache_root / "xdg"
     cuda_cache = cache_root / "cuda"
@@ -1620,15 +1818,17 @@ def _trusted_duckdb_runtime_environment(
             or stat.S_IMODE(observed.st_mode) != 0o700
         ):
             raise ValueError("trusted runtime cache directory is unsafe")
-    return {
+    result = {
         "HOME": str(home),
         TRUSTED_DUCKDB_HOME_ENV: str(home),
-        TRUSTED_PYTHON_USER_BASE_ENV: str(user_base),
         TRUSTED_XDG_CACHE_HOME_ENV: str(xdg_cache),
         TRUSTED_CUDA_CACHE_PATH_ENV: str(cuda_cache),
         TRUSTED_CUDA_CACHE_DISABLE_ENV: "1",
         TRUSTED_PYTHONDONTWRITEBYTECODE_ENV: "1",
     }
+    if user_base is not None:
+        result[TRUSTED_PYTHON_USER_BASE_ENV] = str(user_base)
+    return result
 
 
 def _trusted_duckdb_profile_environment(
@@ -2273,6 +2473,18 @@ def provider_subprocess_environment(
         environment,
         secret_handle=handle,
     )
+    from .process_security import (
+        STATE_AUTHORITY_CREDENTIAL_NAMES,
+        STATE_AUTHORITY_DESCRIPTOR_SOCKET_ENV,
+        STATE_AUTHORITY_HANDOFF_ENV_NAMES,
+    )
+
+    for name in (
+        *STATE_AUTHORITY_CREDENTIAL_NAMES,
+        *STATE_AUTHORITY_HANDOFF_ENV_NAMES,
+        STATE_AUTHORITY_DESCRIPTOR_SOCKET_ENV,
+    ):
+        cleaned.pop(name, None)
     # Provider children also must not receive the supervisor's state-authority
     # bindings; they operate on worktree files only.
     for name in DATABASE_PROGRAM_ENV_NAMES:
@@ -2280,6 +2492,17 @@ def provider_subprocess_environment(
     cleaned.pop(QUACK_TOKEN_FILE_ENV, None)
     cleaned.pop(BOARD_EXTENSION_INSTALL_POLICY_ENV, None)
     cleaned.pop(REPOSITORY_ROOT_ENV, None)
+    for name in (
+        SEALED_NATIVE_DEPENDENCY_FD_ENV,
+        SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV,
+        SEALED_SYSTEM_DEPENDENCY_DIRS_ENV,
+    ):
+        cleaned.pop(name, None)
+    # Provider children operate on worktree files only.  Leaking a subset of
+    # the supervisor lifecycle identity makes grok_cli_runner fail-close on a
+    # partial Docker cleanup binding and quarantines the claim with no effect.
+    for name in _PLAN_BOUND_LIFECYCLE_ENV_NAMES:
+        cleaned.pop(name, None)
     cleaned.pop(PROVIDER_EXTERNAL_ISOLATION_ENV, None)
     trusted_home = str(cleaned.pop(TRUSTED_DUCKDB_HOME_ENV, "") or "")
     cleaned.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
@@ -4099,6 +4322,17 @@ def _strict_plan_bound_process_fence_observation(
     }
     stable_empty_scans = 0
     for _scan in range(max_scans):
+        session_state, _session_members = _kernel_session_members_once(
+            process_identity.session_id,
+            excluded_pids=(process_identity.pid,),
+        )
+        if session_state == "unknown":
+            return "unknown", None
+        if session_state == "alive":
+            # Unlike the public daemon sidecar, membership in the unique
+            # lane session is kernel-enforced.  A reparented, non-dumpable
+            # managed daemon therefore remains positive ALIVE evidence.
+            return "alive", None
         try:
             entries = tuple(Path("/proc").iterdir())
         except OSError:
@@ -5523,6 +5757,7 @@ def build_configured_multi_supervisor_cli_runner(
     tracks: Sequence[str] = (),
     common_args: Sequence[str] = (),
     detach: bool = False,
+    survive_external_sigterm: bool = False,
     database_program: DatabaseProgramConfig | None = None,
 ) -> ConfiguredMultiSupervisorCliRunner:
     """Build reusable multi-supervisor CLI argv from project-specific tracks."""
@@ -5590,6 +5825,8 @@ def build_configured_multi_supervisor_cli_runner(
         argv.append("--plan-bound-wave")
     for arg in common_args:
         argv.append(f"--common-arg={arg}")
+    if survive_external_sigterm:
+        argv.append("--survive-external-sigterm")
     if detach:
         argv.append("--detach")
     return ConfiguredMultiSupervisorCliRunner(tuple(argv))
@@ -6432,6 +6669,7 @@ def _adopt_or_create_current_master_pid_projection(pid_path: Path) -> None:
     Exact ESRCH quarantine matches the live-context recovery; live, unknown,
     or malformed projections still fail closed.
     """
+    """Adopt this runner or recover a proven-dead foreground predecessor."""
 
     path = Path(pid_path)
     expected = f"{os.getpid()}\n".encode("ascii")
@@ -6455,6 +6693,12 @@ def _adopt_or_create_current_master_pid_projection(pid_path: Path) -> None:
             # A dead leftover from a previous generation must not freeze
             # foreground relaunch. Detached launch already quarantines this
             # class; keep the same ESRCH-only reclaim for adopt-or-create.
+            # Foreground runners use the same audited recovery contract as a
+            # detached launch.  It admits only a same-UID, single-link regular
+            # legacy PID whose signal-zero probe returns ESRCH, then publishes
+            # the decision and outcome receipts around an atomic quarantine.
+            # Live, permission-denied, malformed, swapped, or ambiguous
+            # projections continue to fail closed before any child starts.
             _quarantine_stale_detached_master_pid_locked(path)
         descriptor, identity = _reserve_owned_pid_projection_locked(path)
         try:
@@ -8210,580 +8454,879 @@ def start_track(
     gate_read_fd: int | None = None
     gate_write_fd: int | None = None
     recovery_authorization_cid = ""
-    accepted_tree_root = _canonical_accepted_tree_root(Path(repo_root))
-    command = child_command
-    if plan_bound_dispatch:
-        accepted_roots = _profile_option_values(
-            resolved.extra_args,
-            "--plan-bound-accepted-tree-root",
-        )
-        configuration_roots = _profile_option_values(
-            resolved.extra_args,
-            "--plan-bound-configuration-root",
-        )
-        store_paths = _profile_option_values(
-            resolved.extra_args,
-            "--plan-revision-store-path",
-        )
-        source_heads = _profile_option_values(
-            resolved.extra_args,
-            "--plan-bound-source-head",
-        )
-        source_trees = _profile_option_values(
-            resolved.extra_args,
-            "--plan-bound-source-tree",
-        )
-        revision_cids = _profile_option_values(
-            resolved.extra_args,
-            "--plan-bound-revision-cid",
-        )
-        slice_ids = _profile_option_values(
-            resolved.extra_args,
-            "--plan-bound-slice-id",
-        )
-        lane_ids = _profile_option_values(
-            resolved.extra_args,
-            "--plan-bound-lane-id",
-        )
-        state_dirs = _profile_option_values(
-            resolved.extra_args,
-            "--state-dir",
-        )
-        state_prefixes = _profile_option_values(
-            resolved.extra_args,
-            "--state-prefix",
-        )
-        launch_args = (*common_args, *resolved.extra_args)
-        worktree_roots = _profile_option_values(
-            launch_args,
-            "--worktree-root",
-        )
-        merge_queue_roots = _profile_option_values(
-            launch_args,
-            "--merge-queue-dir",
-        )
-        canonical_repo_root = accepted_tree_root
-        if (
-            resolved.module_name
-            or len(accepted_roots) != 1
-            or Path(accepted_roots[0]) != canonical_repo_root
-            or Path(python_executable).resolve(strict=False)
-            != Path(sys.executable).resolve(strict=False)
-            or resolved.script_path
-            != accepted_tree_root / PLAN_BOUND_ACCEPTED_ENTRY_PATH
-            or len(configuration_roots) != 1
-            or not configuration_roots[0]
-            or len(store_paths) != 1
-            or len(source_heads) != 1
-            or len(source_trees) != 1
-            or len(revision_cids) != 1
-            or len(slice_ids) != 1
-            or len(lane_ids) != 1
-            or len(state_dirs) != 1
-            or len(state_prefixes) != 1
-        ):
-            raise ValueError(
-                "plan-bound dispatch is not pinned to the accepted tree entry"
+    retained_interpreter: RetainedControlPlaneInterpreter | None = None
+    native_dependency: AgentSupervisorNativeDependencyLaunch | None = None
+    system_dependency_directories = ""
+    authority_handoff = None
+    try:
+        accepted_tree_root = _canonical_accepted_tree_root(Path(repo_root))
+        command = child_command
+        if plan_bound_dispatch:
+            accepted_roots = _profile_option_values(
+                resolved.extra_args,
+                "--plan-bound-accepted-tree-root",
             )
-        if accepted_control_plane_pin is None:
-            raise ValueError(
-                "plan-bound dispatch requires a sealed accepted control plane"
+            configuration_roots = _profile_option_values(
+                resolved.extra_args,
+                "--plan-bound-configuration-root",
             )
-        verify_agent_implementation_sealed_control_plane(
-            accepted_control_plane_pin,
-            accepted_control_plane_descriptor,
-        )
-        if (
-            accepted_control_plane_pin.source_head != source_heads[0]
-            or accepted_control_plane_pin.source_tree != source_trees[0]
-        ):
-            raise ValueError(
-                "plan-bound slice differs from the accepted control-plane generation"
+            store_paths = _profile_option_values(
+                resolved.extra_args,
+                "--plan-revision-store-path",
             )
-        plan_store = _resolve_path(repo_root, Path(store_paths[0]))
-        state_dir = _resolve_path(repo_root, Path(state_dirs[0]))
-        if state_dir.parent != plan_store.parent:
-            raise ValueError(
-                "plan-bound state and store do not share the configured state root"
+            source_heads = _profile_option_values(
+                resolved.extra_args,
+                "--plan-bound-source-head",
             )
-        # Validate the lexical authority paths before PlanRevisionStore may
-        # resolve or create anything.  In particular, a dangling/intermediate
-        # symlink supplied as the store path must not redirect the first
-        # recovery read or create a directory outside the configured root.
-        for authority_path in (
-            resolved.script_path,
-            resolved.log_path,
-            resolved.supervisor_pid_path,
-            resolved.daemon_pid_path,
-            plan_store,
-        ):
-            _lexical_contained_path(
-                canonical_repo_root,
-                authority_path,
-                require_regular=authority_path == resolved.script_path,
+            source_trees = _profile_option_values(
+                resolved.extra_args,
+                "--plan-bound-source-tree",
             )
-        for runtime_path in (
-            resolved.log_path,
-            resolved.supervisor_pid_path,
-            resolved.daemon_pid_path,
-        ):
-            if runtime_path.parent != state_dir:
+            revision_cids = _profile_option_values(
+                resolved.extra_args,
+                "--plan-bound-revision-cid",
+            )
+            slice_ids = _profile_option_values(
+                resolved.extra_args,
+                "--plan-bound-slice-id",
+            )
+            lane_ids = _profile_option_values(
+                resolved.extra_args,
+                "--plan-bound-lane-id",
+            )
+            state_dirs = _profile_option_values(
+                resolved.extra_args,
+                "--state-dir",
+            )
+            state_prefixes = _profile_option_values(
+                resolved.extra_args,
+                "--state-prefix",
+            )
+            launch_args = (*common_args, *resolved.extra_args)
+            worktree_roots = _profile_option_values(
+                launch_args,
+                "--worktree-root",
+            )
+            merge_queue_roots = _profile_option_values(
+                launch_args,
+                "--merge-queue-dir",
+            )
+            canonical_repo_root = accepted_tree_root
+            if (
+                resolved.module_name
+                or len(accepted_roots) != 1
+                or Path(accepted_roots[0]) != canonical_repo_root
+                or Path(python_executable).resolve(strict=False)
+                != Path(sys.executable).resolve(strict=False)
+                or resolved.script_path
+                != accepted_tree_root / PLAN_BOUND_ACCEPTED_ENTRY_PATH
+                or len(configuration_roots) != 1
+                or not configuration_roots[0]
+                or len(store_paths) != 1
+                or len(source_heads) != 1
+                or len(source_trees) != 1
+                or len(revision_cids) != 1
+                or len(slice_ids) != 1
+                or len(lane_ids) != 1
+                or len(state_dirs) != 1
+                or len(state_prefixes) != 1
+            ):
                 raise ValueError(
-                    "plan-bound runtime projection escapes its configured lane state"
+                    "plan-bound dispatch is not pinned to the accepted tree entry"
                 )
-        # Reject a preplaced PID projection before PlanRevisionStore reads or
-        # Git identity probes can cross a subprocess boundary.  The later
-        # O_EXCL reservation repeats this under its update lock to close the
-        # check-to-create race.
-        with serialized_lock_update(resolved.supervisor_pid_path):
-            _require_absent_pid_projection(resolved.supervisor_pid_path)
-        from ..control.plan_execution_store import ProductionParallelPlanAdapter
-        from ..task_sources.plan_revision_store import PlanRevisionStore
-
-        plan_adapter = ProductionParallelPlanAdapter(
-            PlanRevisionStore(plan_store)
-        )
-        current_execution = plan_adapter.load_execution_lease(
-            revision_cid=revision_cids[0],
-            slice_id=slice_ids[0],
-            lane_id=lane_ids[0],
-        )
-        completed_cleanup_pending = (
-            current_execution is not None
-            and current_execution[1].phase == "merge_completed"
-            and _plan_bound_merge_completed_cleanup_pending(
-                current_execution[1],
-                repo_root=canonical_repo_root,
-            )
-        )
-        recovery_phase = (
-            current_execution is not None
-            and (
-                current_execution[1].phase
-                in {
-                    "proposal_ready",
-                    "merge_enqueue_prepared",
-                    "merge_enqueue_confirmed",
-                }
-                or completed_cleanup_pending
-            )
-        )
-        repository_head, repository_tree = _plan_bound_repository_identity(
-            accepted_tree_root
-        )
-        recovery_decision = None
-        recovery_runtime_roots: tuple[Path, ...] = ()
-        recovery_owner_bound_artifacts: tuple[Path, ...] = ()
-        recovery_artifacts: tuple[Mapping[str, Any], ...] = ()
-        recovery_runtime_bindings: tuple[Mapping[str, Any], ...] = ()
-        if recovery_phase:
-            if len(worktree_roots) != 1 or len(merge_queue_roots) != 1:
+            if accepted_control_plane_pin is None:
                 raise ValueError(
-                    "plan-bound recovery lacks exact configured runtime roots"
+                    "plan-bound dispatch requires a sealed accepted control plane"
                 )
-            worktree_root = _resolve_path(
-                canonical_repo_root,
-                Path(worktree_roots[0]),
+            verify_agent_implementation_sealed_control_plane(
+                accepted_control_plane_pin,
+                accepted_control_plane_descriptor,
             )
-            merge_queue_root = _resolve_path(
-                canonical_repo_root,
-                Path(merge_queue_roots[0]),
-            )
-            recovery_runtime_roots = (
-                plan_store.parent,
-                worktree_root,
-                merge_queue_root,
-            )
-            recovery_runtime_bindings = plan_adapter.recovery_runtime_bindings(
-                revision_cid=revision_cids[0],
-                slice_manifest_cid=current_execution[1].slice_manifest_cid,
-            )
-            workspace_paths = tuple(
-                _resolve_path(canonical_repo_root, Path(path))
-                for path in plan_adapter.recovery_workspace_paths(
-                    revision_cid=revision_cids[0],
-                    slice_manifest_cid=current_execution[1].slice_manifest_cid,
+            if (
+                accepted_control_plane_pin.source_head != source_heads[0]
+                or accepted_control_plane_pin.source_tree != source_trees[0]
+            ):
+                raise ValueError(
+                    "plan-bound slice differs from the accepted control-plane generation"
                 )
-            )
-            implementation_lock = state_dir / "implementation.lock"
-            launch_owned_paths = (
+            plan_store = _resolve_path(repo_root, Path(store_paths[0]))
+            state_dir = _resolve_path(repo_root, Path(state_dirs[0]))
+            if state_dir.parent != plan_store.parent:
+                raise ValueError(
+                    "plan-bound state and store do not share the configured state root"
+                )
+            # Validate the lexical authority paths before PlanRevisionStore may
+            # resolve or create anything.  In particular, a dangling/intermediate
+            # symlink supplied as the store path must not redirect the first
+            # recovery read or create a directory outside the configured root.
+            for authority_path in (
+                resolved.script_path,
                 resolved.log_path,
                 resolved.supervisor_pid_path,
+                resolved.daemon_pid_path,
+                plan_store,
+            ):
+                _lexical_contained_path(
+                    canonical_repo_root,
+                    authority_path,
+                    require_regular=authority_path == resolved.script_path,
+                )
+            for runtime_path in (
+                resolved.log_path,
+                resolved.supervisor_pid_path,
+                resolved.daemon_pid_path,
+            ):
+                if runtime_path.parent != state_dir:
+                    raise ValueError(
+                        "plan-bound runtime projection escapes its configured lane state"
+                    )
+            # Reject a preplaced PID projection before PlanRevisionStore reads or
+            # Git identity probes can cross a subprocess boundary.  The later
+            # O_EXCL reservation repeats this under its update lock to close the
+            # check-to-create race.
+            with serialized_lock_update(resolved.supervisor_pid_path):
+                _require_absent_pid_projection(resolved.supervisor_pid_path)
+            from ..control.plan_execution_store import ProductionParallelPlanAdapter
+            from ..task_sources.plan_revision_store import PlanRevisionStore
+
+            plan_adapter = ProductionParallelPlanAdapter(
+                PlanRevisionStore(plan_store)
             )
-            recovery_owner_bound_artifacts = (
-                implementation_lock,
-                *workspace_paths,
-                resolved.supervisor_pid_path.with_name(
-                    f".{resolved.supervisor_pid_path.name}.update.lock"
-                ),
-                *launch_owned_paths,
+            current_execution = plan_adapter.load_execution_lease(
+                revision_cid=revision_cids[0],
+                slice_id=slice_ids[0],
+                lane_id=lane_ids[0],
             )
-            recovery_artifacts = _snapshot_plan_bound_recovery_artifacts(
-                root=canonical_repo_root,
-                runtime_roots=(
+            completed_cleanup_pending = (
+                current_execution is not None
+                and current_execution[1].phase == "merge_completed"
+                and _plan_bound_merge_completed_cleanup_pending(
+                    current_execution[1],
+                    repo_root=canonical_repo_root,
+                )
+            )
+            recovery_phase = (
+                current_execution is not None
+                and (
+                    current_execution[1].phase
+                    in {
+                        "proposal_ready",
+                        "merge_enqueue_prepared",
+                        "merge_enqueue_confirmed",
+                    }
+                    or completed_cleanup_pending
+                )
+            )
+            repository_head, repository_tree = _plan_bound_repository_identity(
+                accepted_tree_root
+            )
+            recovery_decision = None
+            recovery_runtime_roots: tuple[Path, ...] = ()
+            recovery_owner_bound_artifacts: tuple[Path, ...] = ()
+            recovery_artifacts: tuple[Mapping[str, Any], ...] = ()
+            recovery_runtime_bindings: tuple[Mapping[str, Any], ...] = ()
+            if recovery_phase:
+                if len(worktree_roots) != 1 or len(merge_queue_roots) != 1:
+                    raise ValueError(
+                        "plan-bound recovery lacks exact configured runtime roots"
+                    )
+                worktree_root = _resolve_path(
+                    canonical_repo_root,
+                    Path(worktree_roots[0]),
+                )
+                merge_queue_root = _resolve_path(
+                    canonical_repo_root,
+                    Path(merge_queue_roots[0]),
+                )
+                recovery_runtime_roots = (
                     plan_store.parent,
                     worktree_root,
                     merge_queue_root,
-                ),
-                owner_bound_artifacts=recovery_owner_bound_artifacts,
-                runtime_bindings=recovery_runtime_bindings,
-                slice_id=slice_ids[0],
-                lane_id=lane_ids[0],
-                state_dir=state_dir,
-                state_prefix=state_prefixes[0],
-            )
-            recovery_authorization_cid, recovery_decision = (
-                plan_adapter.authorize_recovery_launch(
+                )
+                recovery_runtime_bindings = plan_adapter.recovery_runtime_bindings(
                     revision_cid=revision_cids[0],
+                    slice_manifest_cid=current_execution[1].slice_manifest_cid,
+                )
+                workspace_paths = tuple(
+                    _resolve_path(canonical_repo_root, Path(path))
+                    for path in plan_adapter.recovery_workspace_paths(
+                        revision_cid=revision_cids[0],
+                        slice_manifest_cid=current_execution[1].slice_manifest_cid,
+                    )
+                )
+                implementation_lock = state_dir / "implementation.lock"
+                launch_owned_paths = (
+                    resolved.log_path,
+                    resolved.supervisor_pid_path,
+                )
+                recovery_owner_bound_artifacts = (
+                    implementation_lock,
+                    *workspace_paths,
+                    resolved.supervisor_pid_path.with_name(
+                        f".{resolved.supervisor_pid_path.name}.update.lock"
+                    ),
+                    *launch_owned_paths,
+                )
+                recovery_artifacts = _snapshot_plan_bound_recovery_artifacts(
+                    root=canonical_repo_root,
+                    runtime_roots=(
+                        plan_store.parent,
+                        worktree_root,
+                        merge_queue_root,
+                    ),
+                    owner_bound_artifacts=recovery_owner_bound_artifacts,
+                    runtime_bindings=recovery_runtime_bindings,
                     slice_id=slice_ids[0],
                     lane_id=lane_ids[0],
-                    source_head=source_heads[0],
-                    source_tree=source_trees[0],
-                    repository_head=repository_head,
-                    repository_tree=repository_tree,
-                    runtime_artifacts=recovery_artifacts,
-                    launch_artifact_paths=tuple(
-                        sorted(
-                            path.relative_to(canonical_repo_root).as_posix()
-                            for path in launch_owned_paths
-                        )
+                    state_dir=state_dir,
+                    state_prefix=state_prefixes[0],
+                )
+                recovery_authorization_cid, recovery_decision = (
+                    plan_adapter.authorize_recovery_launch(
+                        revision_cid=revision_cids[0],
+                        slice_id=slice_ids[0],
+                        lane_id=lane_ids[0],
+                        source_head=source_heads[0],
+                        source_tree=source_trees[0],
+                        repository_head=repository_head,
+                        repository_tree=repository_tree,
+                        runtime_artifacts=recovery_artifacts,
+                        launch_artifact_paths=tuple(
+                            sorted(
+                                path.relative_to(canonical_repo_root).as_posix()
+                                for path in launch_owned_paths
+                            )
+                        ),
+                    )
+                )
+            _validate_plan_bound_accepted_tree(
+                accepted_tree_root=accepted_tree_root,
+                source_head=source_heads[0],
+                source_tree=source_trees[0],
+                control_plane_pin=accepted_control_plane_pin,
+                recovery_repository_head=(
+                    "" if recovery_decision is None else recovery_decision.repository_head
+                ),
+                recovery_repository_tree=(
+                    "" if recovery_decision is None else recovery_decision.repository_tree
+                ),
+                recovery_runtime_roots=recovery_runtime_roots,
+                recovery_owner_bound_artifacts=(
+                    recovery_owner_bound_artifacts
+                ),
+                recovery_artifacts=recovery_artifacts,
+                recovery_state_prefix=(
+                    state_prefixes[0] if recovery_decision is not None else ""
+                ),
+                recovery_runtime_bindings=recovery_runtime_bindings,
+                recovery_slice_id=(
+                    slice_ids[0] if recovery_decision is not None else ""
+                ),
+                recovery_lane_id=(
+                    lane_ids[0] if recovery_decision is not None else ""
+                ),
+                recovery_state_dir=(
+                    state_dir if recovery_decision is not None else None
+                ),
+            )
+            native_dependency, system_dependency_directories = (
+                admit_sealed_native_dependency_environment(os.environ)
+            )
+            retained_interpreter = retain_control_plane_interpreter(python_executable)
+            # The accepted-tree gate process cannot exec the requested supervisor
+            # until the parent captures its exact lifecycle birth and explicitly
+            # releases one byte.  Thus even a /proc identity failure cannot race a
+            # daemon preclaim or provider effect.
+            gate_read_fd, gate_write_fd = os.pipe()
+            supervisor_argv = [
+                *common_args,
+                *resolved.extra_args,
+                "--accepted-control-plane-pin-json",
+                accepted_control_plane_pin_json(accepted_control_plane_pin),
+                "--accepted-control-plane-fd",
+                str(accepted_control_plane_descriptor),
+            ]
+            if worker_network_launch_authority_json:
+                from .worker_network_dispatch import (
+                    EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
+                )
+
+                supervisor_argv.extend(
+                    [
+                        EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
+                        worker_network_launch_authority_json,
+                    ]
+                )
+            child_command = build_sealed_control_plane_module_command(
+                python_executable=retained_interpreter.argv0,
+                pin=accepted_control_plane_pin,
+                descriptor=accepted_control_plane_descriptor,
+                module_name=(
+                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                    "implementation_supervisor"
+                ),
+                argv=supervisor_argv,
+                repo_root=repo_root,
+                retained_interpreter=retained_interpreter,
+                native_dependency_launch=native_dependency,
+                accepted_native_authorization_id=native_dependency.accepted_authorization_id,
+                system_dependency_directories_json=system_dependency_directories,
+            )
+            gate_argv = [
+                PLAN_BOUND_LAUNCH_GATE_MARKER,
+                str(gate_read_fd),
+                str(accepted_tree_root),
+                accepted_control_plane_pin_json(accepted_control_plane_pin),
+                str(accepted_control_plane_descriptor),
+                recovery_authorization_cid or "-",
+                str(retained_interpreter.descriptor),
+                retained_interpreter.argv0,
+                retained_interpreter.sha256,
+                configured_board_live_seal_config or "-",
+                "--",
+                *child_command,
+            ]
+            command = build_sealed_control_plane_module_command(
+                python_executable=retained_interpreter.argv0,
+                pin=accepted_control_plane_pin,
+                descriptor=accepted_control_plane_descriptor,
+                module_name=PLAN_BOUND_LAUNCH_GATE_MODULE,
+                argv=gate_argv,
+                retained_interpreter=retained_interpreter,
+                native_dependency_launch=native_dependency,
+                accepted_native_authorization_id=native_dependency.accepted_authorization_id,
+                system_dependency_directories_json=system_dependency_directories,
+            )
+        elif lgcvf_live_dispatch:
+            assert configured_board_live_context is not None
+            gate_read_fd, gate_write_fd = os.pipe()
+            supervisor_argv = [
+                *common_args,
+                *resolved.extra_args,
+                "--database-owner-session-id",
+                lgcvf_owner_session_id,
+                _LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_FLAG,
+                LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH,
+                "--configured-board-live-capsule-pin-json",
+                configured_board_live_context.capsule_pin_json,
+                "--configured-board-live-capsule-fd",
+                str(configured_board_live_context.capsule_descriptor),
+                "--configured-board-live-admission-json",
+                configured_board_live_context.admission_json,
+                "--configured-board-live-native-launch-json",
+                configured_board_live_context.native_launch_json,
+                "--configured-board-live-native-fd",
+                str(configured_board_live_context.native_descriptor),
+            ]
+            child_command = build_lgcvf_configured_board_live_module_command(
+                python_executable=python_executable,
+                capsule_pin_json=(
+                    configured_board_live_context.capsule_pin_json
+                ),
+                capsule_descriptor=(
+                    configured_board_live_context.capsule_descriptor
+                ),
+                admission_json=configured_board_live_context.admission_json,
+                native_launch_json=(
+                    configured_board_live_context.native_launch_json
+                ),
+                native_descriptor=(
+                    configured_board_live_context.native_descriptor
+                ),
+                module_name=(
+                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                    "implementation_supervisor"
+                ),
+                argv=supervisor_argv,
+            )
+            gate_argv = [
+                LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MARKER,
+                str(gate_read_fd),
+                str(accepted_tree_root),
+                configured_board_live_context.capsule_pin_json,
+                str(configured_board_live_context.capsule_descriptor),
+                configured_board_live_context.admission_json,
+                configured_board_live_context.native_launch_json,
+                str(configured_board_live_context.native_descriptor),
+                "--",
+                *child_command,
+            ]
+            command = build_lgcvf_configured_board_live_module_command(
+                python_executable=python_executable,
+                capsule_pin_json=(
+                    configured_board_live_context.capsule_pin_json
+                ),
+                capsule_descriptor=(
+                    configured_board_live_context.capsule_descriptor
+                ),
+                admission_json=configured_board_live_context.admission_json,
+                native_launch_json=(
+                    configured_board_live_context.native_launch_json
+                ),
+                native_descriptor=(
+                    configured_board_live_context.native_descriptor
+                ),
+                module_name=LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MODULE,
+                argv=gate_argv,
+            )
+        if state_owner_bootstrap_fd is not None:
+            lane_parents = {
+                resolved.log_path.parent,
+                resolved.supervisor_pid_path.parent,
+                resolved.daemon_pid_path.parent,
+                *(
+                    (resolved.supervisor_status_path.parent,)
+                    if resolved.supervisor_status_path is not None
+                    else ()
+                ),
+            }
+            if len(lane_parents) != 1:
+                raise ValueError(
+                    "state-owner bootstrap runtime projections must share one lane"
+                )
+            _seal_state_owner_bootstrap_lane_directory(next(iter(lane_parents)))
+        else:
+            resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
+            resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
+        pid_reservation_fd: int | None = None
+        pid_reservation_identity: tuple[int, int] | None = None
+        live_daemon_termination_authority: (
+            _LgcvfLiveDaemonTerminationAuthority | None
+        ) = None
+        configuration_root = "sha256:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "command": command,
+                    "configured_board_live_seal_verification_cid": (
+                        ""
+                        if live_seal_verification is None
+                        else live_seal_verification["verification_cid"]
+                    ),
+                    "bootstrap_admission_receipt_cid": (
+                        ""
+                        if live_seal_verification is None
+                        else live_seal_verification[
+                            "bootstrap_admission_receipt_cid"
+                        ]
+                    ),
+                    "configured_board_capsule_cid": (
+                        ""
+                        if live_seal_verification is None
+                        else live_seal_verification[
+                            "configured_board_capsule_cid"
+                        ]
+                    ),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
+        run_root = state_root / "lifecycle-runs" / resolved.name
+        status_path = _inferred_supervisor_status_path(resolved)
+        profile_environment_values = dict(
+            _lgcvf_configured_board_live_profile_environment(os.environ)
+            if lgcvf_live_dispatch
+            else (
+                _plan_bound_profile_environment(os.environ)
+                if plan_bound_dispatch
+                else ()
+            )
+        )
+        if not lgcvf_live_dispatch:
+            profile_environment_values.update(
+                _trusted_duckdb_profile_environment(
+                    os.environ,
+                    repository_root=repo_root,
+                )
+            )
+        profile_environment = tuple(sorted(profile_environment_values.items()))
+        profile = LifecycleProfile(
+            target_id=f"supervisor-track:{resolved.name}",
+            run_id=(
+                "multi-supervisor:"
+                + hashlib.sha256(
+                    f"{repo_root.resolve()}:{resolved.name}".encode()
+                ).hexdigest()
+            ),
+            configuration_root=configuration_root,
+            repository_root=str(repo_root.resolve()),
+            state_root=str(state_root),
+            run_root=str(run_root),
+            argv=tuple(command),
+            cwd=str(repo_root.resolve()),
+            environment=profile_environment,
+            health_path=(
+                str(status_path.resolve(strict=False))
+                if status_path is not None
+                and _path_within(status_path.resolve(strict=False), state_root)
+                else ""
+            ),
+        )
+        launch_environment = profile.launch_environment(0)
+        # Resource policy is non-secret and follows the host's supervisor handoff.
+        # An explicit sealed profile value takes precedence over ambient defaults.
+        for name in HASH_RESOURCE_ENV_NAMES:
+            if name not in launch_environment and str(os.environ.get(name, "") or "").strip():
+                launch_environment[name] = os.environ[name]
+        # Both ordinary configured-board tracks and plan-bound tracks need the
+        # live owner socket plus sealed broker descriptor. Lifecycle profiles are
+        # positive projections, so ambient inheritance cannot supply these later.
+        launch_environment.update(
+            {
+                name: os.environ[name]
+                for name in (
+                    STATE_OWNER_SOCKET_ENV,
+                    *TRUSTED_STATE_GRANT_BROKER_ENV_NAMES,
+                )
+                if str(os.environ.get(name, "") or "").strip()
+            }
+        )
+        if native_dependency is None and not lgcvf_live_dispatch:
+            admitted_native = optional_active_sealed_native_dependency(os.environ)
+            if admitted_native is not None:
+                native_dependency, system_dependency_directories = admitted_native
+        native_pass_fds: tuple[int, ...] = ()
+        if native_dependency is not None:
+            launch_environment.update(
+                sealed_native_dependency_environment(
+                    native_dependency,
+                    system_dependency_directories_json=(
+                        system_dependency_directories
                     ),
                 )
             )
-        _validate_plan_bound_accepted_tree(
-            accepted_tree_root=accepted_tree_root,
-            source_head=source_heads[0],
-            source_tree=source_trees[0],
-            control_plane_pin=accepted_control_plane_pin,
-            recovery_repository_head=(
-                "" if recovery_decision is None else recovery_decision.repository_head
-            ),
-            recovery_repository_tree=(
-                "" if recovery_decision is None else recovery_decision.repository_tree
-            ),
-            recovery_runtime_roots=recovery_runtime_roots,
-            recovery_owner_bound_artifacts=(
-                recovery_owner_bound_artifacts
-            ),
-            recovery_artifacts=recovery_artifacts,
-            recovery_state_prefix=(
-                state_prefixes[0] if recovery_decision is not None else ""
-            ),
-            recovery_runtime_bindings=recovery_runtime_bindings,
-            recovery_slice_id=(
-                slice_ids[0] if recovery_decision is not None else ""
-            ),
-            recovery_lane_id=(
-                lane_ids[0] if recovery_decision is not None else ""
-            ),
-            recovery_state_dir=(
-                state_dir if recovery_decision is not None else None
-            ),
-        )
-        # The accepted-tree gate process cannot exec the requested supervisor
-        # until the parent captures its exact lifecycle birth and explicitly
-        # releases one byte.  Thus even a /proc identity failure cannot race a
-        # daemon preclaim or provider effect.
-        gate_read_fd, gate_write_fd = os.pipe()
-        supervisor_argv = [
-            *common_args,
-            *resolved.extra_args,
-            "--accepted-control-plane-pin-json",
-            accepted_control_plane_pin_json(accepted_control_plane_pin),
-            "--accepted-control-plane-fd",
-            str(accepted_control_plane_descriptor),
-        ]
-        if worker_network_launch_authority_json:
-            from .worker_network_dispatch import (
-                EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
+            native_pass_fds = (native_dependency.descriptor.descriptor,)
+        if plan_bound_dispatch or lgcvf_live_dispatch:
+            # Isolated absolute-script launch bootstraps only its own accepted
+            # repository root.  Build a positive environment in the parent before
+            # the interpreter is born; clearing loader knobs in the bootstrap
+            # would be too late for LD_PRELOAD.  The sealed native dependency's
+            # DT_NEEDED resolution is intentionally bounded to the host's default
+            # system ABI, not caller-provided loader/search configuration.
+            # HOME, Python user-base, and cache bindings enter this profile only
+            # through _trusted_duckdb_profile_environment, which derives them from
+            # the independently admitted marker. They are not ambient allowlist
+            # members, but they are valid sealed profile fields at this boundary.
+            route_names = {
+                *_PLAN_BOUND_PROFILE_ENV_NAMES,
+                QUACK_TOKEN_FILE_ENV,
+                BOARD_EXTENSION_INSTALL_POLICY_ENV,
+                "HOME",
+                TRUSTED_PYTHON_USER_BASE_ENV,
+                *TRUSTED_RUNTIME_CACHE_ENV_NAMES,
+            }
+            explicit_profile = dict(profile.environment)
+            disallowed_profile_names = set(explicit_profile) - route_names
+            if disallowed_profile_names:
+                raise ValueError(
+                    "plan-bound lifecycle profile contains non-route environment"
+                )
+            launch_environment = (
+                _lgcvf_configured_board_live_positive_child_environment(
+                    launch_environment,
+                    common_args=common_args,
+                )
+                if lgcvf_live_dispatch
+                else _plan_bound_positive_child_environment(launch_environment)
             )
-
-            supervisor_argv.extend(
-                [
-                    EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
-                    worker_network_launch_authority_json,
-                ]
+        if plan_bound_dispatch:
+            launch_environment.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
+            assert native_dependency is not None
+            launch_environment.update(
+                sealed_native_dependency_environment(
+                    native_dependency,
+                    system_dependency_directories_json=system_dependency_directories,
+                )
             )
-        child_command = build_sealed_control_plane_module_command(
-            python_executable=python_executable,
-            pin=accepted_control_plane_pin,
-            descriptor=accepted_control_plane_descriptor,
-            module_name=(
-                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-                "implementation_supervisor"
-            ),
-            argv=supervisor_argv,
-            repo_root=repo_root,
-        )
-        gate_argv = [
-            PLAN_BOUND_LAUNCH_GATE_MARKER,
-            str(gate_read_fd),
-            str(accepted_tree_root),
-            accepted_control_plane_pin_json(accepted_control_plane_pin),
-            str(accepted_control_plane_descriptor),
-            recovery_authorization_cid or "-",
-            configured_board_live_seal_config or "-",
-            "--",
-            *child_command,
-        ]
-        command = build_sealed_control_plane_module_command(
-            python_executable=python_executable,
-            pin=accepted_control_plane_pin,
-            descriptor=accepted_control_plane_descriptor,
-            module_name=PLAN_BOUND_LAUNCH_GATE_MODULE,
-            argv=gate_argv,
-        )
-    elif lgcvf_live_dispatch:
-        assert configured_board_live_context is not None
-        gate_read_fd, gate_write_fd = os.pipe()
-        supervisor_argv = [
-            *common_args,
-            *resolved.extra_args,
-            "--database-owner-session-id",
-            lgcvf_owner_session_id,
-            _LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_FLAG,
-            LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH,
-            "--configured-board-live-capsule-pin-json",
-            configured_board_live_context.capsule_pin_json,
-            "--configured-board-live-capsule-fd",
-            str(configured_board_live_context.capsule_descriptor),
-            "--configured-board-live-admission-json",
-            configured_board_live_context.admission_json,
-            "--configured-board-live-native-launch-json",
-            configured_board_live_context.native_launch_json,
-            "--configured-board-live-native-fd",
-            str(configured_board_live_context.native_descriptor),
-        ]
-        child_command = build_lgcvf_configured_board_live_module_command(
-            python_executable=python_executable,
-            capsule_pin_json=(
-                configured_board_live_context.capsule_pin_json
-            ),
-            capsule_descriptor=(
-                configured_board_live_context.capsule_descriptor
-            ),
-            admission_json=configured_board_live_context.admission_json,
-            native_launch_json=(
-                configured_board_live_context.native_launch_json
-            ),
-            native_descriptor=(
-                configured_board_live_context.native_descriptor
-            ),
-            module_name=(
-                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-                "implementation_supervisor"
-            ),
-            argv=supervisor_argv,
-        )
-        gate_argv = [
-            LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MARKER,
-            str(gate_read_fd),
-            str(accepted_tree_root),
-            configured_board_live_context.capsule_pin_json,
-            str(configured_board_live_context.capsule_descriptor),
-            configured_board_live_context.admission_json,
-            configured_board_live_context.native_launch_json,
-            str(configured_board_live_context.native_descriptor),
-            "--",
-            *child_command,
-        ]
-        command = build_lgcvf_configured_board_live_module_command(
-            python_executable=python_executable,
-            capsule_pin_json=(
-                configured_board_live_context.capsule_pin_json
-            ),
-            capsule_descriptor=(
-                configured_board_live_context.capsule_descriptor
-            ),
-            admission_json=configured_board_live_context.admission_json,
-            native_launch_json=(
-                configured_board_live_context.native_launch_json
-            ),
-            native_descriptor=(
-                configured_board_live_context.native_descriptor
-            ),
-            module_name=LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MODULE,
-            argv=gate_argv,
-        )
-    if state_owner_bootstrap_fd is not None:
-        lane_parents = {
-            resolved.log_path.parent,
-            resolved.supervisor_pid_path.parent,
-            resolved.daemon_pid_path.parent,
-            *(
-                (resolved.supervisor_status_path.parent,)
-                if resolved.supervisor_status_path is not None
-                else ()
-            ),
-        }
-        if len(lane_parents) != 1:
-            raise ValueError(
-                "state-owner bootstrap runtime projections must share one lane"
+        if lgcvf_live_dispatch:
+            assert configured_board_live_context is not None
+            configured_board_live_context = verify_lgcvf_configured_board_live_context(
+                capsule_pin_json=configured_board_live_context.capsule_pin_json,
+                capsule_descriptor=configured_board_live_context.capsule_descriptor,
+                admission_json=configured_board_live_context.admission_json,
+                native_launch_json=configured_board_live_context.native_launch_json,
+                native_descriptor=configured_board_live_context.native_descriptor,
             )
-        _seal_state_owner_bootstrap_lane_directory(next(iter(lane_parents)))
-    else:
+            live_daemon_termination_authority = (
+                _lgcvf_live_daemon_termination_authority(
+                    profile=profile,
+                    context=configured_board_live_context,
+                    supervisor_argv=supervisor_argv,
+                )
+            )
         resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
         resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
-    pid_reservation_fd: int | None = None
-    pid_reservation_identity: tuple[int, int] | None = None
-    live_daemon_termination_authority: (
-        _LgcvfLiveDaemonTerminationAuthority | None
-    ) = None
-    configuration_root = "sha256:" + hashlib.sha256(
-        json.dumps(
-            {
-                "command": command,
-                "configured_board_live_seal_verification_cid": (
-                    ""
-                    if live_seal_verification is None
-                    else live_seal_verification["verification_cid"]
-                ),
-                "bootstrap_admission_receipt_cid": (
-                    ""
-                    if live_seal_verification is None
-                    else live_seal_verification[
-                        "bootstrap_admission_receipt_cid"
-                    ]
-                ),
-                "configured_board_capsule_cid": (
-                    ""
-                    if live_seal_verification is None
-                    else live_seal_verification[
-                        "configured_board_capsule_cid"
-                    ]
-                ),
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-        ).encode("utf-8")
-    ).hexdigest()
-    state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
-    run_root = state_root / "lifecycle-runs" / resolved.name
-    status_path = _inferred_supervisor_status_path(resolved)
-    profile_environment_values = dict(
-        _lgcvf_configured_board_live_profile_environment(os.environ)
-        if lgcvf_live_dispatch
-        else (
-            _plan_bound_profile_environment(os.environ)
-            if plan_bound_dispatch
-            else ()
-        )
-    )
-    if not lgcvf_live_dispatch:
-        profile_environment_values.update(
-            _trusted_duckdb_profile_environment(
-                os.environ,
-                repository_root=repo_root,
-            )
-        )
-    profile_environment = tuple(sorted(profile_environment_values.items()))
-    profile = LifecycleProfile(
-        target_id=f"supervisor-track:{resolved.name}",
-        run_id=(
-            "multi-supervisor:"
-            + hashlib.sha256(
-                f"{repo_root.resolve()}:{resolved.name}".encode()
-            ).hexdigest()
-        ),
-        configuration_root=configuration_root,
-        repository_root=str(repo_root.resolve()),
-        state_root=str(state_root),
-        run_root=str(run_root),
-        argv=tuple(command),
-        cwd=str(repo_root.resolve()),
-        environment=profile_environment,
-        health_path=(
-            str(status_path.resolve(strict=False))
-            if status_path is not None
-            and _path_within(status_path.resolve(strict=False), state_root)
-            else ""
-        ),
-    )
-    launch_environment = profile.launch_environment(0)
-    if plan_bound_dispatch or lgcvf_live_dispatch:
-        # Isolated absolute-script launch bootstraps only its own accepted
-        # repository root.  Build a positive environment in the parent before
-        # the interpreter is born; clearing loader knobs in the bootstrap
-        # would be too late for LD_PRELOAD.  The sealed native dependency's
-        # DT_NEEDED resolution is intentionally bounded to the host's default
-        # system ABI, not caller-provided loader/search configuration.
-        # HOME, Python user-base, and cache bindings enter this profile only
-        # through _trusted_duckdb_profile_environment, which derives them from
-        # the independently admitted marker. They are not ambient allowlist
-        # members, but they are valid sealed profile fields at this boundary.
-        route_names = {
-            *_PLAN_BOUND_PROFILE_ENV_NAMES,
-            QUACK_TOKEN_FILE_ENV,
-            BOARD_EXTENSION_INSTALL_POLICY_ENV,
-            "HOME",
-            TRUSTED_PYTHON_USER_BASE_ENV,
-            *TRUSTED_RUNTIME_CACHE_ENV_NAMES,
-        }
-        explicit_profile = dict(profile.environment)
-        disallowed_profile_names = set(explicit_profile) - route_names
-        if disallowed_profile_names:
-            raise ValueError(
-                "plan-bound lifecycle profile contains non-route environment"
-            )
-        launch_environment = (
-            _lgcvf_configured_board_live_positive_child_environment(
-                launch_environment,
-                common_args=common_args,
-            )
-            if lgcvf_live_dispatch
-            else _plan_bound_positive_child_environment(launch_environment)
-        )
-    if lgcvf_live_dispatch:
-        assert configured_board_live_context is not None
-        configured_board_live_context = verify_lgcvf_configured_board_live_context(
-            capsule_pin_json=configured_board_live_context.capsule_pin_json,
-            capsule_descriptor=configured_board_live_context.capsule_descriptor,
-            admission_json=configured_board_live_context.admission_json,
-            native_launch_json=configured_board_live_context.native_launch_json,
-            native_descriptor=configured_board_live_context.native_descriptor,
-        )
-        live_daemon_termination_authority = (
-            _lgcvf_live_daemon_termination_authority(
-                profile=profile,
-                context=configured_board_live_context,
-                supervisor_argv=supervisor_argv,
-            )
-        )
-    resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
-    resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
-    if lgcvf_live_dispatch:
-        assert configured_board_live_context is not None
-        (
-            pid_reservation_fd,
-            pid_reservation_identity,
-        ) = _reserve_lgcvf_live_supervisor_pid_projection(
-            resolved.supervisor_pid_path,
-            lane_name=lgcvf_owner_session_id,
-            admission_id=(
-                configured_board_live_context.admission.admission_id
-            ),
-        )
-    elif plan_bound_dispatch:
-        (
-            pid_reservation_fd,
-            pid_reservation_identity,
-        ) = _reserve_owned_pid_projection(resolved.supervisor_pid_path)
-    try:
-        out_handle = resolved.log_path.open("ab")
-    except BaseException:
-        if pid_reservation_fd is not None:
-            os.close(pid_reservation_fd)
-        if pid_reservation_identity is not None:
-            _discard_reserved_pid_projection(
-                resolved.supervisor_pid_path,
+        if lgcvf_live_dispatch:
+            assert configured_board_live_context is not None
+            (
+                pid_reservation_fd,
                 pid_reservation_identity,
+            ) = _reserve_lgcvf_live_supervisor_pid_projection(
+                resolved.supervisor_pid_path,
+                lane_name=lgcvf_owner_session_id,
+                admission_id=(
+                    configured_board_live_context.admission.admission_id
+                ),
             )
-        raise
-    try:
+        elif plan_bound_dispatch:
+            (
+                pid_reservation_fd,
+                pid_reservation_identity,
+            ) = _reserve_owned_pid_projection(resolved.supervisor_pid_path)
         try:
-            if lgcvf_live_dispatch:
-                assert configured_board_live_context is not None
+            out_handle = resolved.log_path.open("ab")
+        except BaseException:
+            if pid_reservation_fd is not None:
+                os.close(pid_reservation_fd)
+            if pid_reservation_identity is not None:
+                _discard_reserved_pid_projection(
+                    resolved.supervisor_pid_path,
+                    pid_reservation_identity,
+                )
+            raise
+        from .process_security import (
+            STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
+            prepare_state_authority_child_handoff,
+        )
+
+        try:
+            authority_handoff = prepare_state_authority_child_handoff(
+                launch_environment,
+                parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
+            )
+            try:
+                cleanup_directory_anchor = (
+                    _open_durable_cleanup_directory_anchor(run_root)
+                )
+            except BaseException:
+                authority_handoff.close()
+                raise
+            authority_descriptors = authority_handoff.pass_fds
+        except BaseException:
+            out_handle.close()
+            if gate_read_fd is not None:
+                os.close(gate_read_fd)
+            if gate_write_fd is not None:
+                os.close(gate_write_fd)
+            if pid_reservation_fd is not None:
+                os.close(pid_reservation_fd)
+            if pid_reservation_identity is not None:
+                _discard_reserved_pid_projection(
+                    resolved.supervisor_pid_path,
+                    pid_reservation_identity,
+                )
+            raise
+        process: subprocess.Popen[bytes] | None = None
+        try:
+            try:
+                if lgcvf_live_dispatch:
+                    assert configured_board_live_context is not None
+                    configured_board_live_context = (
+                        verify_lgcvf_configured_board_live_context(
+                            capsule_pin_json=(
+                                configured_board_live_context.capsule_pin_json
+                            ),
+                            capsule_descriptor=(
+                                configured_board_live_context.capsule_descriptor
+                            ),
+                            admission_json=(
+                                configured_board_live_context.admission_json
+                            ),
+                            native_launch_json=(
+                                configured_board_live_context.native_launch_json
+                            ),
+                            native_descriptor=(
+                                configured_board_live_context.native_descriptor
+                            ),
+                        )
+                    )
+                process = subprocess.Popen(
+                    command,
+                    executable=(
+                        retained_interpreter.executable_path
+                        if retained_interpreter is not None else None
+                    ),
+                    cwd=repo_root,
+                    env=launch_environment,
+                    stdin=subprocess.DEVNULL,
+                    stdout=out_handle,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                    pass_fds=tuple(sorted({
+                        *authority_descriptors,
+                        *native_pass_fds,
+                        *(configured_board_live_context.pass_fds if lgcvf_live_dispatch else ()),
+                        *(descriptor for descriptor in (
+                            gate_read_fd,
+                            accepted_control_plane_descriptor if plan_bound_dispatch else None,
+                            retained_interpreter.descriptor if retained_interpreter is not None else None,
+                            lgcvf_bootstrap_descriptor,
+                            generic_bootstrap_descriptor,
+                            state_owner_bootstrap_fd,
+                        ) if descriptor is not None and descriptor >= 3),
+                    })),
+                )
+                process._agent_supervisor_cleanup_directory_anchor = cleanup_directory_anchor
+                process._agent_supervisor_cleanup_directory_anchor_required = True
+                if not (plan_bound_dispatch or lgcvf_live_dispatch):
+                    authority_handoff.deliver(process)
+            except BaseException as exc:
+                authority_handoff.close()
+                fenced = process is None or process.poll() is not None
+                if not fenced:
+                    fenced = _fence_failed_owned_process_birth(process)
+                if not fenced:
+                    # A failed credential exchange must retain the same
+                    # custody as a failed ordinary birth observation. Never
+                    # discard a still-owned tree or its cleanup anchor.
+                    process._agent_supervisor_lifecycle_profile = profile
+                    process._agent_supervisor_birth_admission_failed = True
+                    for descriptor in (gate_read_fd, gate_write_fd):
+                        if descriptor is not None:
+                            try:
+                                os.close(descriptor)
+                            except OSError:
+                                pass
+                    gate_read_fd = gate_write_fd = None
+                    marker_published = False
+                    try:
+                        if pid_reservation_fd is not None:
+                            _publish_reserved_pid_projection(
+                                resolved.supervisor_pid_path,
+                                pid_reservation_fd,
+                                pid_reservation_identity,
+                                int(process.pid),
+                            )
+                        else:
+                            resolved.supervisor_pid_path.write_text(
+                                f"{process.pid}\n", encoding="utf-8"
+                            )
+                        marker_published = True
+                    except (OSError, ValueError):
+                        pass
+                    finally:
+                        if pid_reservation_fd is not None:
+                            try:
+                                os.close(pid_reservation_fd)
+                            except OSError:
+                                pass
+                            pid_reservation_fd = None
+                    raise UnadmittedSupervisorProcessBirthError(
+                        "supervisor credential handoff failed and its tree remains unfenced",
+                        process=process,
+                        profile=profile,
+                        track_name=resolved.name,
+                        marker_path=resolved.supervisor_pid_path,
+                        marker_published=marker_published,
+                    ) from exc
+                try:
+                    os.close(cleanup_directory_anchor.descriptor)
+                except OSError:
+                    pass
+                if gate_read_fd is not None:
+                    os.close(gate_read_fd)
+                if gate_write_fd is not None:
+                    os.close(gate_write_fd)
+                if pid_reservation_fd is not None:
+                    os.close(pid_reservation_fd)
+                if pid_reservation_identity is not None:
+                    _discard_reserved_pid_projection(
+                        resolved.supervisor_pid_path,
+                        pid_reservation_identity,
+                    )
+                raise
+        finally:
+            out_handle.close()
+        if process is None:
+            raise AssertionError("managed process launch returned no child")
+        if gate_read_fd is not None:
+            os.close(gate_read_fd)
+        # Popen is only an observation handle.  The immutable profile is what lets
+        # stop/restart rediscover children that have detached or been reparented.
+        process._agent_supervisor_lifecycle_profile = profile
+        if lgcvf_live_dispatch:
+            if live_daemon_termination_authority is None:
+                raise AssertionError("LGCVF live daemon termination authority is absent")
+            process._agent_supervisor_live_daemon_termination_authority = (
+                live_daemon_termination_authority
+            )
+        if plan_bound_dispatch:
+            if gate_write_fd is None:
+                raise AssertionError("plan-bound launch gate was not created")
+            try:
+                # Capture the exact process birth while the accepted-tree gate is
+                # still blocking the requested supervisor command.
+                process_identity = LinuxProcessAdapter()._identity(  # noqa: SLF001
+                    int(process.pid), profile
+                )
+                if not isinstance(process_identity, ProcessIdentity):
+                    raise ProcessIdentityMismatch(
+                        "plan-bound launch returned no typed process identity"
+                    )
+                process._agent_supervisor_process_identity = process_identity
+                birth_cid = _persist_plan_bound_process_birth(
+                    profile=profile,
+                    process_identity=process_identity,
+                    repo_root=Path(repo_root).resolve(),
+                )
+                process._agent_supervisor_process_birth_cid = birth_cid
+                if (
+                    pid_reservation_fd is None
+                    or pid_reservation_identity is None
+                ):
+                    raise AssertionError(
+                        "plan-bound PID projection was not reserved"
+                    )
+                _publish_reserved_pid_projection(
+                    resolved.supervisor_pid_path,
+                    pid_reservation_fd,
+                    pid_reservation_identity,
+                    int(process.pid),
+                )
+                os.close(pid_reservation_fd)
+                pid_reservation_fd = None
+                if os.write(
+                    gate_write_fd, PLAN_BOUND_LAUNCH_GATE_SUCCESS
+                ) != len(PLAN_BOUND_LAUNCH_GATE_SUCCESS):
+                    raise OSError("plan-bound launch gate release was incomplete")
+                authority_handoff.deliver(
+                    process,
+                    expected_executable_descriptor=retained_interpreter.descriptor,
+                    expected_argv=child_command,
+                )
+            except Exception as exc:
+                try:
+                    os.close(gate_write_fd)
+                except OSError:
+                    pass
+                gate_write_fd = None
+                all_trees_fenced = _fence_unreleased_plan_bound_process(process)
+                if pid_reservation_fd is not None:
+                    try:
+                        os.close(pid_reservation_fd)
+                    except OSError:
+                        pass
+                    pid_reservation_fd = None
+                if pid_reservation_identity is not None:
+                    _discard_reserved_pid_projection(
+                        resolved.supervisor_pid_path,
+                        pid_reservation_identity,
+                    )
+                raise PlanBoundProcessBirthError(
+                    "plan-bound process birth capture failed; launch remained gated",
+                    pid=int(process.pid),
+                    profile=profile,
+                    all_trees_fenced=all_trees_fenced,
+                ) from exc
+            finally:
+                if gate_write_fd is not None:
+                    os.close(gate_write_fd)
+        elif lgcvf_live_dispatch:
+            if gate_write_fd is None or configured_board_live_context is None:
+                raise AssertionError("LGCVF live launch gate was not created")
+            try:
                 configured_board_live_context = (
                     verify_lgcvf_configured_board_live_context(
                         capsule_pin_json=(
@@ -8803,326 +9346,201 @@ def start_track(
                         ),
                     )
                 )
-            process = subprocess.Popen(
-                command,
-                cwd=repo_root,
-                env=launch_environment,
-                stdin=subprocess.DEVNULL,
-                stdout=out_handle,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-                pass_fds=tuple(
-                    sorted(
-                        descriptor
-                        for descriptor in {
-                            *(
-                                (gate_read_fd,)
-                                if gate_read_fd is not None
-                                else ()
-                            ),
-                            *(
-                                (lgcvf_bootstrap_descriptor,)
-                                if lgcvf_bootstrap_descriptor >= 3
-                                else ()
-                            ),
-                            *(
-                                configured_board_live_context.pass_fds
-                                if lgcvf_live_dispatch
-                                and configured_board_live_context is not None
-                                else ()
-                            ),
-                            *(
-                                (accepted_control_plane_descriptor,)
-                                if plan_bound_dispatch
-                                and accepted_control_plane_descriptor >= 3
-                                else ()
-                            ),
-                            *(
-                                (generic_bootstrap_descriptor,)
-                                if generic_bootstrap_descriptor >= 3
-                                else ()
-                            ),
-                        }
-                        if descriptor >= 3
+                process_identity = _capture_lgcvf_live_gated_process_identity(
+                    process,
+                    profile,
+                )
+                if not isinstance(process_identity, ProcessIdentity):
+                    raise ProcessIdentityMismatch(
+                        "LGCVF live launch returned no typed process identity"
                     )
-                    if (
-                        (plan_bound_dispatch or lgcvf_live_dispatch)
-                        and gate_read_fd is not None
-                    )
-                    else (
-                        (state_owner_bootstrap_fd,)
-                        if state_owner_bootstrap_fd is not None
-                        else (
-                            (generic_bootstrap_descriptor,)
-                            if generic_bootstrap_descriptor >= 3
-                            else ()
-                        )
-                    )
-                ),
-            )
-        except BaseException:
-            if gate_read_fd is not None:
-                os.close(gate_read_fd)
-            if gate_write_fd is not None:
-                os.close(gate_write_fd)
-            if pid_reservation_fd is not None:
+                process._agent_supervisor_process_identity = process_identity
+                process._agent_supervisor_live_admission_id = (
+                    configured_board_live_context.admission.admission_id
+                )
+                process._agent_supervisor_live_capsule_id = getattr(
+                    configured_board_live_context.capsule_pin,
+                    "capsule_id",
+                )
+                if (
+                    pid_reservation_fd is None
+                    or pid_reservation_identity is None
+                ):
+                    raise AssertionError("LGCVF live PID projection was not reserved")
+                _publish_reserved_pid_projection(
+                    resolved.supervisor_pid_path,
+                    pid_reservation_fd,
+                    pid_reservation_identity,
+                    int(process.pid),
+                )
                 os.close(pid_reservation_fd)
-            if pid_reservation_identity is not None:
-                _discard_reserved_pid_projection(
-                    resolved.supervisor_pid_path,
-                    pid_reservation_identity,
-                )
-            raise
-    finally:
-        out_handle.close()
-    if gate_read_fd is not None:
-        os.close(gate_read_fd)
-    # Popen is only an observation handle.  The immutable profile is what lets
-    # stop/restart rediscover children that have detached or been reparented.
-    process._agent_supervisor_lifecycle_profile = profile
-    if lgcvf_live_dispatch:
-        if live_daemon_termination_authority is None:
-            raise AssertionError("LGCVF live daemon termination authority is absent")
-        process._agent_supervisor_live_daemon_termination_authority = (
-            live_daemon_termination_authority
-        )
-    if plan_bound_dispatch:
-        if gate_write_fd is None:
-            raise AssertionError("plan-bound launch gate was not created")
-        try:
-            # Capture the exact process birth while the accepted-tree gate is
-            # still blocking the requested supervisor command.
-            process_identity = LinuxProcessAdapter()._identity(  # noqa: SLF001
-                int(process.pid), profile
-            )
-            if not isinstance(process_identity, ProcessIdentity):
-                raise ProcessIdentityMismatch(
-                    "plan-bound launch returned no typed process identity"
-                )
-            process._agent_supervisor_process_identity = process_identity
-            birth_cid = _persist_plan_bound_process_birth(
-                profile=profile,
-                process_identity=process_identity,
-                repo_root=Path(repo_root).resolve(),
-            )
-            process._agent_supervisor_process_birth_cid = birth_cid
-            if (
-                pid_reservation_fd is None
-                or pid_reservation_identity is None
-            ):
-                raise AssertionError(
-                    "plan-bound PID projection was not reserved"
-                )
-            _publish_reserved_pid_projection(
-                resolved.supervisor_pid_path,
-                pid_reservation_fd,
-                pid_reservation_identity,
-                int(process.pid),
-            )
-            os.close(pid_reservation_fd)
-            pid_reservation_fd = None
-            if os.write(
-                gate_write_fd, PLAN_BOUND_LAUNCH_GATE_SUCCESS
-            ) != len(PLAN_BOUND_LAUNCH_GATE_SUCCESS):
-                raise OSError("plan-bound launch gate release was incomplete")
-        except Exception as exc:
-            try:
-                os.close(gate_write_fd)
-            except OSError:
-                pass
-            gate_write_fd = None
-            all_trees_fenced = _fence_unreleased_plan_bound_process(process)
-            if pid_reservation_fd is not None:
+                pid_reservation_fd = None
+                if os.write(
+                    gate_write_fd,
+                    LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_SUCCESS,
+                ) != len(LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_SUCCESS):
+                    raise OSError("LGCVF live launch gate release was incomplete")
+                authority_handoff.deliver(process, expected_argv=child_command)
+            except Exception as exc:
                 try:
-                    os.close(pid_reservation_fd)
+                    os.close(gate_write_fd)
                 except OSError:
                     pass
-                pid_reservation_fd = None
-            if pid_reservation_identity is not None:
-                _discard_reserved_pid_projection(
-                    resolved.supervisor_pid_path,
-                    pid_reservation_identity,
-                )
-            raise PlanBoundProcessBirthError(
-                "plan-bound process birth capture failed; launch remained gated",
-                pid=int(process.pid),
-                profile=profile,
-                all_trees_fenced=all_trees_fenced,
-            ) from exc
-        finally:
-            if gate_write_fd is not None:
-                os.close(gate_write_fd)
-    elif lgcvf_live_dispatch:
-        if gate_write_fd is None or configured_board_live_context is None:
-            raise AssertionError("LGCVF live launch gate was not created")
-        try:
-            configured_board_live_context = (
-                verify_lgcvf_configured_board_live_context(
-                    capsule_pin_json=(
-                        configured_board_live_context.capsule_pin_json
-                    ),
-                    capsule_descriptor=(
-                        configured_board_live_context.capsule_descriptor
-                    ),
-                    admission_json=(
-                        configured_board_live_context.admission_json
-                    ),
-                    native_launch_json=(
-                        configured_board_live_context.native_launch_json
-                    ),
-                    native_descriptor=(
-                        configured_board_live_context.native_descriptor
-                    ),
-                )
-            )
-            process_identity = _capture_lgcvf_live_gated_process_identity(
-                process,
-                profile,
-            )
-            if not isinstance(process_identity, ProcessIdentity):
-                raise ProcessIdentityMismatch(
-                    "LGCVF live launch returned no typed process identity"
-                )
-            process._agent_supervisor_process_identity = process_identity
-            process._agent_supervisor_live_admission_id = (
-                configured_board_live_context.admission.admission_id
-            )
-            process._agent_supervisor_live_capsule_id = getattr(
-                configured_board_live_context.capsule_pin,
-                "capsule_id",
-            )
-            if (
-                pid_reservation_fd is None
-                or pid_reservation_identity is None
-            ):
-                raise AssertionError("LGCVF live PID projection was not reserved")
-            _publish_reserved_pid_projection(
-                resolved.supervisor_pid_path,
-                pid_reservation_fd,
-                pid_reservation_identity,
-                int(process.pid),
-            )
-            os.close(pid_reservation_fd)
-            pid_reservation_fd = None
-            if os.write(
-                gate_write_fd,
-                LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_SUCCESS,
-            ) != len(LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_SUCCESS):
-                raise OSError("LGCVF live launch gate release was incomplete")
-        except Exception as exc:
+                gate_write_fd = None
+                all_trees_fenced = _fence_unreleased_plan_bound_process(process)
+                if pid_reservation_fd is not None:
+                    try:
+                        os.close(pid_reservation_fd)
+                    except OSError:
+                        pass
+                    pid_reservation_fd = None
+                if pid_reservation_identity is not None:
+                    _discard_reserved_pid_projection(
+                        resolved.supervisor_pid_path,
+                        pid_reservation_identity,
+                    )
+                raise LgcvfConfiguredBoardLiveProcessBirthError(
+                    "LGCVF live process birth capture failed; launch remained gated",
+                    pid=int(process.pid),
+                    profile=profile,
+                    all_trees_fenced=all_trees_fenced,
+                ) from exc
+            finally:
+                if gate_write_fd is not None:
+                    os.close(gate_write_fd)
+        else:
             try:
-                os.close(gate_write_fd)
-            except OSError:
-                pass
-            gate_write_fd = None
-            all_trees_fenced = _fence_unreleased_plan_bound_process(process)
-            if pid_reservation_fd is not None:
+                process_identity = _capture_owned_popen_birth(
+                    process,
+                    profile,
+                )
+            except (
+                OSError,
+                UnicodeError,
+                ValueError,
+                ProcessLookupError,
+                ProcessIdentityMismatch,
+            ) as exc:
+                fenced = _reap_uncaptured_owned_popen(process)
+                detail = (
+                    "legacy supervisor process birth capture failed "
+                    f"(direct_child_fenced={str(fenced).lower()})"
+                )
+                if fenced:
+                    raise ProcessIdentityMismatch(detail) from exc
+                setattr(
+                    process,
+                    "_agent_supervisor_birth_admission_failed",
+                    True,
+                )
+                marker_published = False
                 try:
-                    os.close(pid_reservation_fd)
+                    resolved.supervisor_pid_path.write_text(
+                        f"{process.pid}\n",
+                        encoding="utf-8",
+                    )
+                    marker_published = True
                 except OSError:
                     pass
-                pid_reservation_fd = None
-            if pid_reservation_identity is not None:
-                _discard_reserved_pid_projection(
-                    resolved.supervisor_pid_path,
-                    pid_reservation_identity,
-                )
-            raise LgcvfConfiguredBoardLiveProcessBirthError(
-                "LGCVF live process birth capture failed; launch remained gated",
-                pid=int(process.pid),
-                profile=profile,
-                all_trees_fenced=all_trees_fenced,
-            ) from exc
-        finally:
-            if gate_write_fd is not None:
-                os.close(gate_write_fd)
-    else:
-        try:
-            process_identity = _capture_owned_popen_birth(
-                process,
-                profile,
-            )
-        except (
-            OSError,
-            UnicodeError,
-            ValueError,
-            ProcessLookupError,
-            ProcessIdentityMismatch,
-        ) as exc:
-            fenced = _reap_uncaptured_owned_popen(process)
-            detail = (
-                "legacy supervisor process birth capture failed "
-                f"(direct_child_fenced={str(fenced).lower()})"
-            )
-            if fenced:
-                raise ProcessIdentityMismatch(detail) from exc
+                raise UnadmittedSupervisorProcessBirthError(
+                    detail,
+                    process=process,
+                    profile=profile,
+                    track_name=resolved.name,
+                    marker_path=resolved.supervisor_pid_path,
+                    marker_published=marker_published,
+                ) from exc
             setattr(
                 process,
-                "_agent_supervisor_birth_admission_failed",
-                True,
+                "_agent_supervisor_process_identity",
+                process_identity,
             )
-            marker_published = False
-            try:
-                resolved.supervisor_pid_path.write_text(
-                    f"{process.pid}\n",
-                    encoding="utf-8",
+            resolved.supervisor_pid_path.write_text(
+                f"{process.pid}\n", encoding="utf-8"
+            )
+        if plan_bound_dispatch:
+            if not isinstance(process_identity, ProcessIdentity):
+                raise ProcessIdentityMismatch(
+                    "plan-bound managed daemon fence lacks the lane birth"
                 )
-                marker_published = True
-            except OSError:
-                pass
-            raise UnadmittedSupervisorProcessBirthError(
-                detail,
-                process=process,
-                profile=profile,
-                track_name=resolved.name,
-                marker_path=resolved.supervisor_pid_path,
-                marker_published=marker_published,
-            ) from exc
-        setattr(
-            process,
-            "_agent_supervisor_process_identity",
-            process_identity,
+            try:
+                process._agent_supervisor_managed_daemon_kernel_fence = (
+                    _managed_daemon_kernel_fence_for_track(
+                        resolved,
+                        repo_root=repo_root,
+                        launch_argv=(*common_args, *resolved.extra_args),
+                        process_identity=process_identity,
+                    )
+                )
+            except Exception as exc:
+                fenced, _members = _terminate_managed_process(
+                    process,
+                    grace_seconds=1.0,
+                )
+                if fenced:
+                    _remove_stale_pid_marker_if_unchanged(
+                        resolved.supervisor_pid_path,
+                        int(process.pid),
+                    )
+                raise PlanBoundProcessBirthError(
+                    "plan-bound daemon kernel fence construction failed",
+                    pid=int(process.pid),
+                    profile=profile,
+                    all_trees_fenced=fenced,
+                ) from exc
+        _emit(
+            output,
+            f"started {resolved.name} supervisor pid={process.pid} script={resolved.script_path} log={resolved.log_path}",
         )
-        resolved.supervisor_pid_path.write_text(
-            f"{process.pid}\n", encoding="utf-8"
-        )
-    _emit(
-        output,
-        f"started {resolved.name} supervisor pid={process.pid} script={resolved.script_path} log={resolved.log_path}",
-    )
-    return process
+        return process
+    finally:
+        if authority_handoff is not None:
+            authority_handoff.close()
+        if retained_interpreter is not None:
+            os.close(retained_interpreter.descriptor)
 
 
 def _fence_unreleased_plan_bound_process(
     process: subprocess.Popen[bytes],
 ) -> bool:
-    """Reap a still-gated root that was never allowed to exec its child.
+    """Fence the exact owned session/group, including a post-gate fork."""
 
-    Before the gate byte, the accepted-tree helper performs no fork or exec.
-    Closing its only authorization writer therefore makes the exact
-    marker-bound tree contain only this owned Popen root, which is then reaped
-    synchronously (and terminated/killed if it does not consume EOF).
-    """
-
+    identity = getattr(
+        process,
+        "_agent_supervisor_process_identity",
+        None,
+    )
     try:
-        process.wait(timeout=1.0)
-    except subprocess.TimeoutExpired:
-        try:
-            process.terminate()
-        except OSError:
-            pass
-        try:
-            process.wait(timeout=1.0)
-        except subprocess.TimeoutExpired:
-            try:
-                process.kill()
-            except OSError:
-                pass
+        if not isinstance(identity, ProcessIdentity):
+            fenced = _fence_failed_owned_process_birth(process)
             try:
                 process.wait(timeout=1.0)
             except subprocess.TimeoutExpired:
                 return False
-    return process.poll() is not None
+            return bool(fenced and process.poll() is not None)
+        if (
+            identity.pid != int(process.pid)
+            or identity.process_group_id != int(process.pid)
+            or identity.session_id != int(process.pid)
+        ):
+            return False
+        fenced = terminate_pid_tree(
+            int(process.pid),
+            grace_seconds=1.0,
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=int(process.pid),
+            expected_root_start_time_ticks=(
+                identity.start_time_ticks
+            ),
+        )
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            return False
+        return bool(fenced and process.poll() is not None)
+    except (OSError, ProcessIdentityMismatch, RuntimeError):
+        return False
 
 
 def _path_within(path: Path, root: Path) -> bool:
@@ -13037,17 +13455,73 @@ def stop_tracks(
     grace_seconds: float = 10.0,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
-    """Stop exact marker-bound wrapper trees and verify no descendants remain."""
+    """Stop exact marker-bound wrapper trees and verify no descendants remain.
+
+    Lane shutdowns run concurrently so the bounded grace consumed by one slow
+    or unverifiable tree cannot delay cooperative termination of another lane.
+    Each worker still delegates exclusively to the existing lifecycle-profile
+    and immutable process-birth checks in ``_terminate_managed_process``; an
+    exception never becomes authority to signal a bare PID.
+    """
 
     stopped: list[int] = []
     removed_runtime_markers: list[str] = []
     all_fenced = True
     _emit(output, "stopping supervisor wrapper and managed daemons")
+
+    # Submit every exact managed tree before waiting for any one result.  The
+    # previous serialized loop let one lane consume the caller's shutdown
+    # window while later lanes had not even received cooperative termination.
+    # A dedicated worker per bounded configured lane keeps the wall-clock
+    # bound at the slowest lane rather than the sum of all lane grace periods.
+    termination_results: dict[
+        str,
+        tuple[bool, tuple[int, ...], str],
+    ] = {}
+    managed = [
+        (track, process)
+        for track in tracks
+        if (process := processes.get(track.name)) is not None
+    ]
+    if managed:
+        with ThreadPoolExecutor(
+            max_workers=len(managed),
+            thread_name_prefix="agent-supervisor-stop",
+        ) as executor:
+            pending = [
+                (
+                    track,
+                    executor.submit(
+                        _terminate_managed_process,
+                        process,
+                        grace_seconds=grace_seconds,
+                    ),
+                )
+                for track, process in managed
+            ]
+            for track, future in pending:
+                try:
+                    fenced, member_pids = future.result()
+                except Exception as exc:
+                    # Preserve fail-closed lifecycle semantics while allowing
+                    # every independently identified lane to finish fencing.
+                    termination_results[track.name] = (
+                        False,
+                        (),
+                        type(exc).__name__,
+                    )
+                else:
+                    termination_results[track.name] = (
+                        bool(fenced),
+                        tuple(member_pids),
+                        "",
+                    )
+
     for track in tracks:
         process = processes.get(track.name)
-        fenced, member_pids = _terminate_managed_process(
-            process,
-            grace_seconds=grace_seconds,
+        fenced, member_pids, error_type = termination_results.get(
+            track.name,
+            (True, (), ""),
         )
         # The managed termination helper owns both the grace window and exact
         # wrapper reap.  Keep this independent observation so a future or
@@ -13087,6 +13561,20 @@ def stop_tracks(
                     "could not verify managed daemon shutdown for "
                     f"{track.name} daemon_pid={daemon_pid or 'unknown'}",
                 )
+        if fenced:
+            stopped.extend(member_pids)
+        elif process is not None:
+            all_fenced = False
+            error_suffix = (
+                f" error_type={error_type}" if error_type else ""
+            )
+            _emit(
+                output,
+                (
+                    "could not verify complete shutdown for "
+                    f"{track.name} pid={process.pid}{error_suffix}"
+                ),
+            )
         if fenced and process is not None:
             assert resolved is not None
             if _remove_stale_pid_marker_if_unchanged(
@@ -13836,9 +14324,18 @@ def run_supervisor_tracks(
     configured_board_live_admission_json: str = "",
     configured_board_live_native_launch_json: str = "",
     configured_board_live_native_fd: int = -1,
+    survive_external_sigterm: bool = False,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
-    """Run and supervise multiple tracks for the requested duration."""
+    """Run and supervise multiple tracks for the requested duration.
+
+    ``survive_external_sigterm`` is for exclusive owners whose lifetime is
+    bound to the board, not to the invoking job.  Session compaction, cron
+    cgroup teardown, and worker ``killpg`` can deliver SIGTERM to that
+    wrapper.  Ignoring SIGTERM after the handler is installed keeps the
+    owner alive so leftover ``in_progress`` work can finish; SIGINT still
+    stops the run.
+    """
 
     managed_tracks = list(tracks)
     live_profile_required = _configured_board_live_seal_required(
@@ -14051,8 +14548,17 @@ def run_supervisor_tracks(
                 resolved_master_pid
             )
     processes: dict[str, subprocess.Popen[bytes]] = {}
+    sigterm_checkpoint_pending = False
 
     def _handle_signal(signum: int, _frame: object) -> None:
+        nonlocal sigterm_checkpoint_pending
+        if survive_external_sigterm and signum == signal.SIGTERM:
+            sigterm_checkpoint_pending = True
+            _emit(
+                output,
+                "ignored external SIGTERM after exclusive-owner identity",
+            )
+            return
         raise SupervisorRunInterrupted(f"received signal {signum}")
 
     previous_term = signal.getsignal(signal.SIGTERM)
@@ -14267,6 +14773,43 @@ def run_supervisor_tracks(
                 max(0.0, deadline - time.monotonic()),
             )
             time.sleep(sleep_for)
+            if sigterm_checkpoint_pending:
+                sigterm_checkpoint_pending = False
+                try:
+                    from .interrupted_validation_checkpoint import (
+                        snapshot_dirty_worktrees,
+                    )
+
+                    worktree_values = _profile_option_values(
+                        tuple(common_args),
+                        "--worktree-root",
+                    )
+                    worktree_root = (
+                        Path(worktree_values[0])
+                        if worktree_values
+                        else resolved_repo_root / "data" / "aseh" / "worktrees"
+                    )
+                    if not worktree_root.is_absolute():
+                        worktree_root = resolved_repo_root / worktree_root
+                    checkpointed = snapshot_dirty_worktrees(
+                        resolved_repo_root,
+                        worktree_root,
+                    )
+                    _emit(
+                        output,
+                        (
+                            "checkpointed interrupted validation "
+                            f"worktrees={checkpointed}"
+                        ),
+                    )
+                except Exception as exc:  # noqa: BLE001 - never crash the owner
+                    _emit(
+                        output,
+                        (
+                            "interrupted validation checkpoint failed: "
+                            f"{type(exc).__name__}"
+                        ),
+                    )
             for track in tuple(managed_tracks):
                 if track.name in bounded_finished_tracks:
                     continue
@@ -14359,6 +14902,17 @@ def run_supervisor_tracks(
                         " ".join(heartbeat_parts),
                     )
                     if supervisor_fields.get("restart_supervisor"):
+                        if (
+                            supervisor_fields.get(
+                                "supervisor_status_generation_reason"
+                            )
+                            == "status_missing"
+                        ):
+                            # A live wrapper child with a one-sample empty
+                            # status file is a torn heartbeat, not a dead
+                            # generation. Restarting it SIGTERMs sibling
+                            # lanes when the process tree cannot be fenced.
+                            continue
                         daemon_pid = daemon_fields.get("daemon_pid")
                         _emit(
                             output,
@@ -15009,6 +15563,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "task transfers."
         ),
     )
+    parser.add_argument(
+        "--survive-external-sigterm",
+        action="store_true",
+        help=(
+            "Keep an exclusive owner running after an external SIGTERM. "
+            "SIGINT still stops the run."
+        ),
+    )
     parser.add_argument("--detach", action="store_true")
     return parser
 
@@ -15069,6 +15631,17 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
         "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
         *_without_detach(argv),
     ]
+    from .process_security import (
+        STATE_AUTHORITY_PARENT_LOSS_DETACHED,
+        prepare_state_authority_child_handoff,
+    )
+
+    launch_environment = dict(os.environ)
+    authority_handoff = prepare_state_authority_child_handoff(
+        launch_environment,
+        parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_DETACHED,
+    )
+    authority_descriptors = authority_handoff.pass_fds
     process: subprocess.Popen[bytes] | None = None
     descriptor = -1
     reservation_identity: tuple[int, int] | None = None
@@ -15090,11 +15663,14 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
                 process = subprocess.Popen(
                     command,
                     cwd=args.repo_root,
+                    env=launch_environment,
                     stdin=subprocess.DEVNULL,
                     stdout=out_handle,
                     stderr=subprocess.STDOUT,
                     start_new_session=True,
+                    pass_fds=authority_descriptors,
                 )
+                authority_handoff.deliver(process)
             finally:
                 out_handle.close()
             _publish_reserved_pid_projection(
@@ -15104,6 +15680,7 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
                 int(process.pid),
             )
         except BaseException:
+            authority_handoff.close()
             if process is not None and process.poll() is None:
                 try:
                     os.killpg(int(process.pid), signal.SIGTERM)
@@ -15380,325 +15957,42 @@ def _run_lgcvf_configured_board_live_launch_gate(
 
 
 def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
-    """Release exactly one accepted-tree child after parent birth capture."""
+    """Retain the exact gate interpreter through its final sealed exec."""
 
     tokens = tuple(str(item) for item in argv)
-    if len(tokens) < 8:
-        return _plan_bound_gate_fail("gate argv is too short")
-    if tokens[5] == "--":
-        live_config = "-"
-        child_offset = 6
-    elif len(tokens) >= 9 and tokens[6] == "--":
-        live_config = tokens[5]
-        child_offset = 7
-    else:
-        return _plan_bound_gate_fail("gate argv separator is invalid")
-    try:
-        gate_fd = int(tokens[0])
-        control_plane_pin = parse_accepted_control_plane_pin(tokens[2])
-        control_plane_descriptor = int(tokens[3])
-        recovery_authorization_cid = tokens[4]
-        verify_agent_implementation_sealed_control_plane(
-            control_plane_pin,
-            control_plane_descriptor,
-        )
-    except ValueError as exc:
-        return _plan_bound_gate_fail(f"control-plane pin rejected: {exc}")
-    try:
-        accepted_tree_root = _canonical_accepted_tree_root(Path(tokens[1]))
-    except ValueError as exc:
-        return _plan_bound_gate_fail(f"accepted tree root rejected: {exc}")
-    child_command = list(tokens[child_offset:])
-    try:
-        expected_prefix = build_sealed_control_plane_module_command(
-            python_executable=child_command[0],
-            pin=control_plane_pin,
-            descriptor=control_plane_descriptor,
-            module_name=(
-                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-                "implementation_supervisor"
-            ),
-            argv=(),
-            repo_root=accepted_tree_root,
-        )
-    except (IndexError, OSError, ValueError) as exc:
-        return _plan_bound_gate_fail(f"child prefix build failed: {exc}")
-    prefix_length = len(expected_prefix)
-    if child_command[:prefix_length] != expected_prefix:
-        return _plan_bound_gate_fail("child command prefix mismatch")
-    child_argv = child_command[prefix_length:]
-    try:
-        source_heads = _profile_option_values(
-            child_argv,
-            "--plan-bound-source-head",
-        )
-        source_trees = _profile_option_values(
-            child_argv,
-            "--plan-bound-source-tree",
-        )
-        child_roots = _profile_option_values(
-            child_argv,
-            "--plan-bound-accepted-tree-root",
-        )
-        store_paths = _profile_option_values(
-            child_argv,
-            "--plan-revision-store-path",
-        )
-        revision_cids = _profile_option_values(
-            child_argv,
-            "--plan-bound-revision-cid",
-        )
-        slice_ids = _profile_option_values(
-            child_argv,
-            "--plan-bound-slice-id",
-        )
-        lane_ids = _profile_option_values(
-            child_argv,
-            "--plan-bound-lane-id",
-        )
-        state_dirs = _profile_option_values(child_argv, "--state-dir")
-        state_prefixes = _profile_option_values(child_argv, "--state-prefix")
-        worktree_roots = _profile_option_values(child_argv, "--worktree-root")
-        merge_queue_roots = _profile_option_values(
-            child_argv,
-            "--merge-queue-dir",
-        )
-        from .worker_network_dispatch import (
-            EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
-        )
-
-        worker_network_launch_authorities = _profile_option_values(
-            child_argv,
-            EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
-        )
-    except ValueError as exc:
-        return _plan_bound_gate_fail(f"child argv profile rejected: {exc}")
-    if (
-        gate_fd < 3
-        or control_plane_descriptor < 3
-        or gate_fd == control_plane_descriptor
-        or "--plan-bound-dispatch" not in child_argv
-        or child_roots != (str(accepted_tree_root),)
-        or len(store_paths) != 1
-        or len(revision_cids) != 1
-        or len(slice_ids) != 1
-        or len(lane_ids) != 1
-        or len(source_heads) != 1
-        or len(source_trees) != 1
-        or len(state_prefixes) != 1
-        or not recovery_authorization_cid
-        or (
-            source_heads[0],
-            source_trees[0],
-        )
-        != (
-            control_plane_pin.source_head,
-            control_plane_pin.source_tree,
-        )
+    if len(tokens) < 11 or not (
+        tokens[8] == "--"
+        or (len(tokens) >= 12 and tokens[9] == "--")
     ):
-        return _plan_bound_gate_fail("child argv bindings are incomplete")
+        return 78
     try:
-        while True:
-            try:
-                authorization = os.read(gate_fd, 1)
-                break
-            except InterruptedError:
-                continue
-    except OSError as exc:
-        return _plan_bound_gate_fail(f"gate fd read failed: {exc}")
+        retained_interpreter = admit_retained_control_plane_interpreter(
+            descriptor=int(tokens[5]),
+            argv0=tokens[6],
+            expected_sha256=tokens[7],
+        )
+    except (OSError, ValueError):
+        return 78
+    try:
+        running = os.stat("/proc/self/exe")
+        retained = os.fstat(retained_interpreter.descriptor)
+        if (running.st_dev, running.st_ino) != (
+            retained.st_dev,
+            retained.st_ino,
+        ):
+            return 78
+        os.set_inheritable(retained_interpreter.descriptor, False)
+        return _run_plan_bound_launch_gate_with_interpreter(
+            tokens,
+            retained_interpreter=retained_interpreter,
+        )
+    except OSError:
+        return 78
     finally:
         try:
-            os.close(gate_fd)
+            os.close(retained_interpreter.descriptor)
         except OSError:
             pass
-    if authorization != PLAN_BOUND_LAUNCH_GATE_SUCCESS:
-        return _plan_bound_gate_fail("parent birth authorization was not granted")
-    try:
-        recovery_repository_head = ""
-        recovery_repository_tree = ""
-        recovery_runtime_roots: tuple[Path, ...] = ()
-        recovery_owner_bound_artifacts: tuple[Path, ...] = ()
-        recovery_artifacts: tuple[Mapping[str, Any], ...] = ()
-        recovery_runtime_bindings: tuple[Mapping[str, Any], ...] = ()
-        if recovery_authorization_cid != "-":
-            from ..control.plan_execution_store import (
-                ProductionParallelPlanAdapter,
-            )
-            from ..task_sources.plan_revision_store import PlanRevisionStore
-
-            store_path = _resolve_path(
-                accepted_tree_root,
-                Path(store_paths[0]),
-            )
-            _lexical_contained_path(accepted_tree_root, store_path)
-            if (
-                len(state_dirs) != 1
-                or len(worktree_roots) != 1
-                or len(merge_queue_roots) != 1
-            ):
-                return _plan_bound_gate_fail("recovery runtime roots are incomplete")
-            state_dir = _resolve_path(
-                accepted_tree_root,
-                Path(state_dirs[0]),
-            )
-            if state_dir.parent != store_path.parent:
-                return _plan_bound_gate_fail("recovery state dir is not under the store parent")
-            recovery_runtime_roots = (
-                store_path.parent,
-                _resolve_path(
-                    accepted_tree_root,
-                    Path(worktree_roots[0]),
-                ),
-                _resolve_path(
-                    accepted_tree_root,
-                    Path(merge_queue_roots[0]),
-                ),
-            )
-            plan_adapter = ProductionParallelPlanAdapter(
-                PlanRevisionStore(store_path)
-            )
-            recovery = plan_adapter.load_recovery_launch(
-                revision_cid=revision_cids[0],
-                slice_id=slice_ids[0],
-                lane_id=lane_ids[0],
-                authorization_cid=recovery_authorization_cid,
-            )
-            execution = plan_adapter.load_execution_lease(
-                revision_cid=revision_cids[0],
-                slice_id=slice_ids[0],
-                lane_id=lane_ids[0],
-            )
-            if (
-                recovery.source_head != source_heads[0]
-                or recovery.source_tree != source_trees[0]
-                or execution is None
-                or execution[0] != recovery.execution_lease_cid
-            ):
-                return _plan_bound_gate_fail("recovery launch identity drifted")
-            recovery_repository_head = recovery.repository_head
-            recovery_repository_tree = recovery.repository_tree
-            recovery_artifacts = recovery.runtime_artifacts
-            recovery_runtime_bindings = plan_adapter.recovery_runtime_bindings(
-                revision_cid=revision_cids[0],
-                slice_manifest_cid=recovery.slice_manifest_cid,
-            )
-            recovery_owner_bound_artifacts = (
-                state_dir / "implementation.lock",
-                *(
-                    _resolve_path(accepted_tree_root, Path(path))
-                    for path in plan_adapter.recovery_workspace_paths(
-                        revision_cid=revision_cids[0],
-                        slice_manifest_cid=recovery.slice_manifest_cid,
-                    )
-                ),
-                *(
-                    _resolve_path(accepted_tree_root, Path(path))
-                    for path in recovery.launch_artifact_paths
-                ),
-            )
-        _validate_plan_bound_accepted_tree(
-            accepted_tree_root=accepted_tree_root,
-            source_head=source_heads[0],
-            source_tree=source_trees[0],
-            control_plane_pin=control_plane_pin,
-            recovery_repository_head=recovery_repository_head,
-            recovery_repository_tree=recovery_repository_tree,
-            recovery_runtime_roots=recovery_runtime_roots,
-            recovery_owner_bound_artifacts=(
-                recovery_owner_bound_artifacts
-            ),
-            recovery_artifacts=recovery_artifacts,
-            recovery_state_prefix=(
-                state_prefixes[0] if recovery_repository_head else ""
-            ),
-            recovery_runtime_bindings=recovery_runtime_bindings,
-            recovery_slice_id=(
-                slice_ids[0] if recovery_repository_head else ""
-            ),
-            recovery_lane_id=(
-                lane_ids[0] if recovery_repository_head else ""
-            ),
-            recovery_state_dir=(
-                state_dir if recovery_repository_head else None
-            ),
-        )
-        if live_config != "-":
-            live_verification = _verify_eaaef_configured_board_birth(
-                repo_root=accepted_tree_root,
-                live_config=live_config,
-                accepted_control_plane_pin=control_plane_pin,
-            )
-            # The birth re-opens the source-addressed ticket before any new
-            # dispatch prerequisite is allowed to reject the child.  This
-            # preserves swap-at-birth detection even when propagation is
-            # absent or stale.
-            if len(worker_network_launch_authorities) != 1:
-                return _plan_bound_gate_fail(
-                    "worker-network launch authority count is not one"
-                )
-            _assert_eaaef_operational_child_profile(
-                common_args=child_command,
-                track_args=(),
-                repo_root=Path(accepted_tree_root),
-                operational=DatabaseProgramConfig.from_mapping(
-                    live_verification["operational_database_program"]
-                ),
-                command_fabric=live_verification[
-                    "operational_command_fabric"
-                ],
-                worker_network_policy=live_verification[
-                    "worker_network_authorization_policy"
-                ],
-                worker_principal_did=str(
-                    live_verification.get("provider_worker_principal_did") or ""
-                ),
-                provider_principal_did=str(
-                    live_verification.get("provider_principal_did") or ""
-                ),
-                forbidden_bootstrap_paths=live_verification[
-                    "forbidden_bootstrap_database_paths"
-                ],
-                expected_source_head=str(
-                    live_verification.get("source_head") or ""
-                ),
-                expected_source_tree=str(
-                    live_verification.get("source_tree") or ""
-                ),
-            )
-            from .worker_network_dispatch import (
-                build_worker_network_launch_authority,
-                canonical_worker_network_launch_authority_json,
-            )
-
-            expected_worker_authority = (
-                canonical_worker_network_launch_authority_json(
-                    build_worker_network_launch_authority(
-                        live_verification,
-                        accepted_control_plane_pin=control_plane_pin,
-                        require_admitted=True,
-                    ),
-                    accepted_control_plane_pin=control_plane_pin,
-                    require_admitted=True,
-                )
-            )
-            if worker_network_launch_authorities != (
-                expected_worker_authority,
-            ):
-                return _plan_bound_gate_fail(
-                    "worker-network launch authority mismatch"
-                )
-        elif worker_network_launch_authorities:
-            return _plan_bound_gate_fail(
-                "worker-network launch authority present without live seal"
-            )
-    except Exception as exc:
-        return _plan_bound_gate_fail(f"{type(exc).__name__}: {exc}")
-    try:
-        environment = _plan_bound_positive_child_environment(os.environ)
-        os.execvpe(child_command[0], child_command, environment)
-    except OSError as exc:
-        return _plan_bound_gate_fail(f"exec failed: {exc}")
-    return _plan_bound_gate_fail("exec returned")
 
 
 def _supervisor_run_exit_code(
@@ -15723,6 +16017,16 @@ def _supervisor_run_exit_code(
 
 
 def main(argv: list[str] | None = None) -> int:
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    if args_list[:1] == [LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MARKER]:
+        return _run_lgcvf_configured_board_live_launch_gate(args_list[1:])
+    if args_list[:1] == [CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_GATE_MARKER]:
+        return 78
+    if args_list[:1] == [PLAN_BOUND_LAUNCH_GATE_MARKER]:
+        # The accepted-tree gate must remain authority-free.  It preserves the
+        # one-shot handoff environment across its final exec; the sealed target
+        # hardens and redeems the descriptor only after that exec boundary.
+        return _run_plan_bound_launch_gate(args_list[1:])
     from .process_security import (
         capture_state_authority_credentials,
         harden_state_authority_process,
@@ -15730,16 +16034,6 @@ def main(argv: list[str] | None = None) -> int:
 
     harden_state_authority_process()
     capture_state_authority_credentials()
-    args_list = list(sys.argv[1:] if argv is None else argv)
-    if args_list[:1] == [LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MARKER]:
-        return _run_lgcvf_configured_board_live_launch_gate(args_list[1:])
-    if args_list[:1] == [CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_GATE_MARKER]:
-        return 78
-    if args_list[:1] == [PLAN_BOUND_LAUNCH_GATE_MARKER]:
-        try:
-            return _run_plan_bound_launch_gate(args_list[1:])
-        except Exception as exc:
-            return _plan_bound_gate_fail(f"{type(exc).__name__}: {exc}")
     parser = build_arg_parser()
     args = parser.parse_args(args_list)
     if (
@@ -15896,6 +16190,7 @@ def main(argv: list[str] | None = None) -> int:
             configured_board_live_native_fd=(
                 args.configured_board_live_native_fd
             ),
+            survive_external_sigterm=bool(args.survive_external_sigterm),
             output=output,
         )
     return _supervisor_run_exit_code(
@@ -15946,3 +16241,3781 @@ def casf_select_tracks_for_frontier(
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+@dataclass(frozen=True)
+class RetainedControlPlaneInterpreter:
+    """Exact executable descriptor retained across authority-bearing exec."""
+
+    descriptor: int
+    argv0: str
+    executable_path: str
+    sha256: str
+    identity: tuple[int, int, int, int, int, int, int, int]
+
+SEALED_SYSTEM_DEPENDENCY_DIRS_ENV = (
+    "IPFS_ACCELERATE_AGENT_SEALED_SYSTEM_DEPENDENCY_DIRS_JSON"
+)
+
+SEALED_NATIVE_DEPENDENCY_FD_ENV = (
+    "IPFS_ACCELERATE_AGENT_SEALED_NATIVE_DEPENDENCY_FD"
+)
+
+SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV = (
+    "IPFS_ACCELERATE_AGENT_SEALED_NATIVE_DEPENDENCY_LAUNCH_JSON"
+)
+
+_DOCKER_CLEANUP_WATCHDOG_ARG = "--internal-docker-cleanup-watchdog"
+
+_DOCKER_CLEANUP_WATCHDOG_LAUNCHER_ARG = (
+    "--internal-docker-cleanup-watchdog-launcher"
+)
+
+_DOCKER_CLEANUP_CONTAINER_RE = re.compile(
+    r"ipfs-accelerate-(?:grok|codex)-[0-9]+-[0-9a-f]{32}"
+)
+
+_DOCKER_CLEANUP_INSPECTION_MAX_BYTES = 256 * 1024
+
+_DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
+
+_DOCKER_CLEANUP_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/docker-cleanup-binding@6"
+)
+
+_DOCKER_CREATE_JOURNAL_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/docker-create-journal@4"
+)
+
+_DOCKER_CLEANUP_BINDING_DIRECTORY = "provider-cleanup-bindings"
+
+_DOCKER_CREATE_JOURNAL_NAME = "create-journal.json"
+
+_DOCKER_PRIVATE_CONTROL_MAX_BYTES = 512 * 1024
+
+_DOCKER_CLEANUP_STABLE_ENTRY_RE = re.compile(
+    r"[0-9a-f]{64}\.(?:json|authority|complete|lock|remove-dispatched)"
+)
+
+_DOCKER_CLEANUP_ATOMIC_TEMP_RE = re.compile(
+    r"\.(?P<target>[0-9a-f]{64}\."
+    r"(?:json|authority|complete|lock|remove-dispatched))\."
+    r"(?P<nonce>[0-9a-f]{16})"
+)
+
+_DOCKER_CLEANUP_PUBLICATION_WAIT_SECONDS = 0.5
+
+_DOCKER_CLEANUP_PUBLICATION_POLL_SECONDS = 0.01
+
+@dataclass(frozen=True)
+class _DurableDockerCleanupBinding:
+    docker_bin: str
+    provider: str
+    container_name: str
+    cleanup_root: Path
+    cleanup_root_identity: Mapping[str, int]
+    lease_root: Path
+    docker_config: Path
+    cidfile: Path
+    provider_home: Path
+    prompt_path: Path
+    effect_observation: Mapping[str, str]
+    create_command_id: str
+    create_cwd: Path
+    create_environment_id: str
+    termination_fence: Mapping[str, object]
+    binding_state: str
+    path_identities: Mapping[str, Mapping[str, int]]
+    runner_pid: int
+    runner_start_ticks: int
+    watchdog_pid: int
+    watchdog_start_ticks: int
+    boot_id: str
+    record_path: Path
+    record_device: int
+    record_inode: int
+    record_id: str
+
+    @property
+    def binding(self) -> tuple[str, str, str]:
+        return self.docker_bin, self.container_name, str(self.lease_root)
+
+@dataclass(frozen=True)
+class _DurableCleanupDirectoryAnchor:
+    """Parent-held identity for the cleanup binding namespace.
+
+    The accepted runner creates and opens this directory before any child can
+    publish a provider effect.  Shutdown scans use the retained descriptor and
+    also require the public path to resolve to the same inode.  Renaming the
+    directory therefore produces UNKNOWN instead of an apparently empty scan.
+    """
+
+    descriptor: int
+    path: Path
+    device: int
+    inode: int
+    mode: int
+    uid: int
+
+def _cleanup_directory_stat_identity(
+    metadata: os.stat_result,
+) -> tuple[int, int, int, int]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(metadata.st_uid),
+    )
+
+def _open_durable_cleanup_directory_anchor(
+    run_root: Path,
+) -> _DurableCleanupDirectoryAnchor:
+    """Create and retain the one cleanup namespace used by a managed track."""
+
+    resolved_run_root = Path(run_root)
+    resolved_run_root.mkdir(parents=True, mode=0o700, exist_ok=True)
+    if (
+        resolved_run_root.resolve(strict=True) != resolved_run_root.absolute()
+        or not stat.S_ISDIR(os.lstat(resolved_run_root).st_mode)
+    ):
+        raise ValueError("managed lifecycle run root is aliased")
+    directory = resolved_run_root / _DOCKER_CLEANUP_BINDING_DIRECTORY
+    directory.mkdir(mode=0o700, exist_ok=True)
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(directory, flags)
+    try:
+        opened = os.fstat(descriptor)
+        current = os.lstat(directory)
+        if (
+            directory.resolve(strict=True) != directory.absolute()
+            or _cleanup_directory_stat_identity(opened)
+            != _cleanup_directory_stat_identity(current)
+            or not stat.S_ISDIR(opened.st_mode)
+            or opened.st_uid != os.geteuid()
+            or stat.S_IMODE(opened.st_mode) != 0o700
+        ):
+            raise ValueError("durable Docker cleanup directory is not private")
+        return _DurableCleanupDirectoryAnchor(
+            descriptor=descriptor,
+            path=directory,
+            device=int(opened.st_dev),
+            inode=int(opened.st_ino),
+            mode=int(opened.st_mode),
+            uid=int(opened.st_uid),
+        )
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+def _validate_durable_cleanup_directory_anchor(
+    anchor: _DurableCleanupDirectoryAnchor,
+    *,
+    expected_path: Path,
+) -> os.stat_result:
+    """Require both the retained descriptor and public name to remain exact."""
+
+    if anchor.path != expected_path:
+        raise ValueError("durable Docker cleanup anchor path drifted")
+    try:
+        opened = os.fstat(anchor.descriptor)
+        current = os.lstat(expected_path)
+    except OSError as exc:
+        raise ValueError("durable Docker cleanup anchor is unavailable") from exc
+    expected = (anchor.device, anchor.inode, anchor.mode, anchor.uid)
+    if (
+        _cleanup_directory_stat_identity(opened) != expected
+        or _cleanup_directory_stat_identity(current) != expected
+        or not stat.S_ISDIR(opened.st_mode)
+        or opened.st_uid != os.geteuid()
+        or stat.S_IMODE(opened.st_mode) != 0o700
+        or expected_path.resolve(strict=True) != expected_path.absolute()
+    ):
+        raise ValueError("durable Docker cleanup anchor identity drifted")
+    return opened
+
+def _docker_control_identity(value: Mapping[str, object]) -> str:
+    return "sha256:" + hashlib.sha256(
+        json.dumps(
+            dict(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+def _control_plane_interpreter_identity(
+    item: os.stat_result,
+) -> tuple[int, int, int, int, int, int, int, int]:
+    return (
+        int(item.st_dev),
+        int(item.st_ino),
+        int(item.st_mode),
+        int(item.st_uid),
+        int(item.st_nlink),
+        int(item.st_size),
+        int(item.st_mtime_ns),
+        int(item.st_ctime_ns),
+    )
+
+def admit_retained_control_plane_interpreter(
+    *,
+    descriptor: int,
+    argv0: str,
+    expected_sha256: str,
+) -> RetainedControlPlaneInterpreter:
+    """Validate an inherited exact interpreter without reopening its name."""
+
+    with hashing_lock(kind="trusted-executable", exclusive=True):
+        return _admit_retained_control_plane_interpreter_unlocked(
+            descriptor=descriptor, argv0=argv0, expected_sha256=expected_sha256
+        )
+
+def _admit_retained_control_plane_interpreter_unlocked(
+    *, descriptor: int, argv0: str, expected_sha256: str,
+) -> RetainedControlPlaneInterpreter:
+    if (
+        isinstance(descriptor, bool)
+        or not isinstance(descriptor, int)
+        or descriptor < 3
+        or not isinstance(argv0, str)
+        or not Path(argv0).is_absolute()
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", expected_sha256) is None
+    ):
+        raise ValueError("retained control-plane interpreter binding is invalid")
+    try:
+        before = os.fstat(descriptor)
+        digest = hashlib.sha256()
+        offset = 0
+        while offset < before.st_size:
+            block = os.pread(
+                descriptor,
+                min(1024 * 1024, before.st_size - offset),
+                offset,
+            )
+            if not block:
+                break
+            digest.update(block)
+            offset += len(block)
+        after = os.fstat(descriptor)
+        executable_path = f"/proc/self/fd/{descriptor}"
+        proc = os.stat(executable_path)
+    except OSError as exc:
+        raise ValueError(
+            "retained control-plane interpreter is unavailable"
+        ) from exc
+    identity = _control_plane_interpreter_identity(before)
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or before.st_uid != 0
+        or before.st_nlink != 1
+        or before.st_size <= 0
+        or before.st_size > 128 * 1024 * 1024
+        or stat.S_IMODE(before.st_mode) & 0o022
+        or stat.S_IMODE(before.st_mode) & 0o111 == 0
+        or offset != before.st_size
+        or _control_plane_interpreter_identity(after) != identity
+        or (int(proc.st_dev), int(proc.st_ino)) != identity[:2]
+        or "sha256:" + digest.hexdigest() != expected_sha256
+    ):
+        raise ValueError("retained control-plane interpreter identity drifted")
+    return RetainedControlPlaneInterpreter(
+        descriptor=descriptor,
+        argv0=argv0,
+        executable_path=executable_path,
+        sha256=expected_sha256,
+        identity=identity,
+    )
+
+def retain_control_plane_interpreter(
+    python_executable: str,
+) -> RetainedControlPlaneInterpreter:
+    """Open, hash, and retain the exact root-owned Python executable."""
+
+    with hashing_lock(kind="trusted-executable", exclusive=True):
+        return _retain_control_plane_interpreter_unlocked(python_executable)
+
+def _retain_control_plane_interpreter_unlocked(
+    python_executable: str,
+) -> RetainedControlPlaneInterpreter:
+    executable = Path(python_executable).resolve(strict=True)
+    lexical = os.lstat(executable)
+    descriptor = os.open(
+        executable,
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
+    try:
+        before = os.fstat(descriptor)
+        digest = hashlib.sha256()
+        offset = 0
+        while offset < before.st_size:
+            block = os.pread(
+                descriptor,
+                min(1024 * 1024, before.st_size - offset),
+                offset,
+            )
+            if not block:
+                break
+            digest.update(block)
+            offset += len(block)
+        after = os.fstat(descriptor)
+        current = os.lstat(executable)
+        identity = _control_plane_interpreter_identity(before)
+        if (
+            _control_plane_interpreter_identity(lexical) != identity
+            or _control_plane_interpreter_identity(after) != identity
+            or _control_plane_interpreter_identity(current) != identity
+        ):
+            raise ValueError("sealed control-plane Python executable changed")
+        return admit_retained_control_plane_interpreter(
+            descriptor=descriptor,
+            argv0=str(executable),
+            expected_sha256="sha256:" + digest.hexdigest(),
+        )
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+def trusted_system_dependency_directories_json() -> str:
+    """Attest only fixed root-owned system package directories, without `.pth`."""
+
+    candidates = (
+        Path(
+            f"/usr/local/lib/python{sys.version_info.major}."
+            f"{sys.version_info.minor}/dist-packages"
+        ),
+        Path("/usr/lib/python3/dist-packages"),
+    )
+    records: list[dict[str, object]] = []
+    for path in candidates:
+        if not path.exists():
+            continue
+        before = os.lstat(path)
+        resolved = path.resolve(strict=True)
+        after = os.lstat(path)
+        identity = lambda value: (
+            int(value.st_dev), int(value.st_ino), int(value.st_mode),
+            int(value.st_uid), int(value.st_nlink), int(value.st_mtime_ns),
+            int(value.st_ctime_ns),
+        )
+        if (
+            resolved != path
+            or identity(before) != identity(after)
+            or not stat.S_ISDIR(before.st_mode)
+            or before.st_uid != 0
+            or stat.S_IMODE(before.st_mode) & 0o022
+        ):
+            raise ValueError("system dependency directory is not trusted")
+        records.append(
+            {
+                "path": str(path),
+                "st_dev": int(before.st_dev),
+                "st_ino": int(before.st_ino),
+                "st_mode": int(before.st_mode),
+                "st_uid": int(before.st_uid),
+                "st_nlink": int(before.st_nlink),
+                "st_mtime_ns": int(before.st_mtime_ns),
+                "st_ctime_ns": int(before.st_ctime_ns),
+            }
+        )
+    if not records or not any(
+        item["path"] == "/usr/lib/python3/dist-packages" for item in records
+    ):
+        raise ValueError("required system dependency directory is unavailable")
+    return json.dumps(
+        records,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
+
+def admit_trusted_system_dependency_directories(value: str) -> tuple[str, ...]:
+    """Recheck an exact directory attestation without executing site hooks."""
+
+    expected = trusted_system_dependency_directories_json()
+    if not isinstance(value, str) or value != expected:
+        raise ValueError("system dependency directory attestation drifted")
+    payload = json.loads(value)
+    return tuple(str(item["path"]) for item in payload)
+
+def sealed_native_dependency_environment(
+    launch: AgentSupervisorNativeDependencyLaunch,
+    *,
+    system_dependency_directories_json: str,
+) -> dict[str, str]:
+    verify_agent_supervisor_native_dependency_sealed_fd(launch)
+    admit_trusted_system_dependency_directories(
+        system_dependency_directories_json
+    )
+    return {
+        SEALED_NATIVE_DEPENDENCY_FD_ENV: str(launch.descriptor.descriptor),
+        SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV: launch.to_json(),
+        SEALED_SYSTEM_DEPENDENCY_DIRS_ENV: system_dependency_directories_json,
+    }
+
+def admit_sealed_native_dependency_environment(
+    environment: Mapping[str, str],
+) -> tuple[AgentSupervisorNativeDependencyLaunch, str]:
+    try:
+        descriptor = int(environment[SEALED_NATIVE_DEPENDENCY_FD_ENV])
+        text_value = environment[SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV]
+        system_value = environment[SEALED_SYSTEM_DEPENDENCY_DIRS_ENV]
+        payload = json.loads(text_value, object_pairs_hook=_reject_duplicate_json_keys)
+        launch = parse_agent_supervisor_native_dependency_launch(payload)
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        raise ValueError("sealed native dependency environment is invalid") from exc
+    if (
+        launch.to_json() != text_value
+        or launch.descriptor.descriptor != descriptor
+        or verify_agent_supervisor_native_dependency_sealed_fd(launch)
+        != f"/proc/self/fd/{descriptor}"
+    ):
+        raise ValueError("sealed native dependency environment drifted")
+    if launch != active_agent_supervisor_native_dependency_launch():
+        raise ValueError("sealed native dependency is not the active launch")
+    admit_trusted_system_dependency_directories(system_value)
+    return launch, system_value
+
+def optional_active_sealed_native_dependency(
+    environment: Mapping[str, str],
+) -> tuple[AgentSupervisorNativeDependencyLaunch, str] | None:
+    """Return the active sealed DuckDB launch when the parent forwarded it.
+
+    Absence of every native-launch field is a no-op so hermetic tests that
+    never admitted DuckDB keep their current birth.  A partial envelope is
+    still fail-closed through ``admit_sealed_native_dependency_environment``.
+    """
+
+    fd_text = str(environment.get(SEALED_NATIVE_DEPENDENCY_FD_ENV, "") or "").strip()
+    launch_text = str(
+        environment.get(SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV, "") or ""
+    ).strip()
+    dirs_text = str(
+        environment.get(SEALED_SYSTEM_DEPENDENCY_DIRS_ENV, "") or ""
+    ).strip()
+    if not fd_text and not launch_text and not dirs_text:
+        return None
+    return admit_sealed_native_dependency_environment(environment)
+
+def preload_sealed_native_dependency_from_environment(
+    environment: Mapping[str, str] | None = None,
+) -> object | None:
+    """Load the sealed DuckDB public alias before a cold supervisor import."""
+
+    source = os.environ if environment is None else environment
+    fd_text = str(source.get(SEALED_NATIVE_DEPENDENCY_FD_ENV, "") or "").strip()
+    launch_text = str(
+        source.get(SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV, "") or ""
+    ).strip()
+    if not fd_text and not launch_text:
+        return None
+    from ipfs_accelerate_py.agent_implementation_route import (
+        preload_agent_supervisor_native_dependency_from_bootstrap,
+    )
+
+    return preload_agent_supervisor_native_dependency_from_bootstrap(
+        fd_text,
+        launch_text,
+    )
+
+def apply_sealed_native_dependency_to_child_environment(
+    environment: MutableMapping[str, str],
+    *,
+    parent_environment: Mapping[str, str] | None = None,
+) -> tuple[int, ...]:
+    """Copy an already-preloaded native launch into a child env and pass_fds."""
+
+    source = os.environ if parent_environment is None else parent_environment
+    admitted = optional_active_sealed_native_dependency(source)
+    if admitted is None:
+        return ()
+    launch, directories = admitted
+    environment.update(
+        sealed_native_dependency_environment(
+            launch,
+            system_dependency_directories_json=directories,
+        )
+    )
+    return (launch.descriptor.descriptor,)
+
+@dataclass(frozen=True)
+class _ManagedDaemonKernelFence:
+    """Trusted parent projection for one lane's untrusted daemon markers.
+
+    The sidecar remains same-UID writable and is therefore never authority by
+    itself.  Signalling additionally requires an exact live birth in the
+    immutable outer lane session, a dedicated daemon process group, the exact
+    tracked owner scope, and exact procfs argv.
+    """
+
+    pid_path: Path
+    identity_path: Path
+    owner_scope: Mapping[str, str] | None
+    root_session_id: int
+    state_dir_option: str
+    state_prefix: str
+    todo_path_option: str | None
+    daemon_entrypoint: str
+
+STATE_GRANT_BROKER_SOCKET_ENV = (
+    "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET"
+)
+
+STATE_GRANT_BROKER_SECRET_FD_ENV = (
+    "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD"
+)
+
+TRUSTED_STATE_GRANT_BROKER_ENV_NAMES: tuple[str, ...] = (
+    STATE_GRANT_BROKER_SOCKET_ENV,
+    STATE_GRANT_BROKER_SECRET_FD_ENV,
+)
+
+HASH_RESOURCE_ENV_NAMES: tuple[str, ...] = (
+    "IPFS_HASH_CACHE_TTL_SECONDS",
+    "IPFS_HASH_MAX_WORKERS",
+    "IPFS_HASH_LOCK_TIMEOUT_SECONDS",
+)
+
+def _managed_daemon_kernel_fence_for_track(
+    track: SupervisorTrack,
+    *,
+    repo_root: Path,
+    launch_argv: Sequence[str],
+    process_identity: ProcessIdentity,
+) -> _ManagedDaemonKernelFence:
+    """Build the parent-trusted daemon scope for one plan-bound lane."""
+
+    if (
+        process_identity.process_group_id != process_identity.pid
+        or process_identity.session_id != process_identity.pid
+    ):
+        raise ProcessIdentityMismatch(
+            "plan-bound lane root does not own a dedicated lifecycle session"
+        )
+
+    def last_option(name: str) -> str:
+        values = _profile_option_values(launch_argv, name)
+        if not values:
+            raise ValueError(f"plan-bound daemon fence lacks {name}")
+        return values[-1]
+
+    resolved = track.resolve(repo_root)
+    raw_state_dir = last_option("--state-dir")
+    raw_state_prefix = last_option("--state-prefix")
+    raw_todo_path = last_option("--todo-path")
+    state_dir = _resolve_path(repo_root, Path(raw_state_dir))
+    todo_path = _resolve_path(repo_root, Path(raw_todo_path))
+    if (
+        state_dir.resolve(strict=False)
+        != resolved.daemon_pid_path.parent.resolve(strict=False)
+        or not raw_state_prefix
+    ):
+        raise ValueError("plan-bound daemon marker scope differs from its lane")
+    daemon_entrypoint = (
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon"
+    )
+    owner_scope = {
+        "repo_root": str(repo_root.resolve(strict=False)),
+        "state_dir": str(state_dir.resolve(strict=False)),
+        "state_prefix": raw_state_prefix,
+        "todo_path": str(todo_path.resolve(strict=False)),
+        "daemon_entrypoint": daemon_entrypoint,
+        "lifecycle_session_id": str(process_identity.session_id),
+        "process_group_policy": "dedicated_group_inherited_session",
+    }
+    return _ManagedDaemonKernelFence(
+        pid_path=resolved.daemon_pid_path,
+        identity_path=supervised_child_identity_path(
+            resolved.daemon_pid_path
+        ),
+        owner_scope=owner_scope,
+        root_session_id=process_identity.session_id,
+        state_dir_option=raw_state_dir,
+        state_prefix=raw_state_prefix,
+        todo_path_option=raw_todo_path,
+        daemon_entrypoint=daemon_entrypoint,
+    )
+
+def _managed_daemon_kernel_fence_from_profile(
+    profile: LifecycleProfile,
+    process_identity: ProcessIdentity,
+) -> _ManagedDaemonKernelFence:
+    """Reconstruct the same trusted projection from immutable launch state."""
+
+    def last_option(name: str) -> str:
+        values = _profile_option_values(profile.argv, name)
+        if not values:
+            raise ValueError(f"plan-bound daemon fence lacks {name}")
+        return values[-1]
+
+    state_dir_option = last_option("--state-dir")
+    state_prefix = last_option("--state-prefix")
+    todo_path_values = _profile_option_values(profile.argv, "--todo-path")
+    if len(todo_path_values) > 1:
+        raise ValueError("plan-bound daemon fence has duplicate --todo-path")
+    todo_path_option = todo_path_values[0] if todo_path_values else None
+    state_dir = _resolve_path(
+        Path(profile.repository_root),
+        Path(state_dir_option),
+    )
+    todo_path = (
+        _resolve_path(Path(profile.repository_root), Path(todo_path_option))
+        if todo_path_option is not None
+        else None
+    )
+    if (
+        process_identity.process_group_id != process_identity.pid
+        or process_identity.session_id != process_identity.pid
+        or state_dir.resolve(strict=False)
+        != Path(profile.state_root).resolve(strict=False)
+        or not state_prefix
+    ):
+        raise ValueError("plan-bound daemon profile kernel scope is invalid")
+    daemon_entrypoint = (
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon"
+    )
+    pid_path = state_dir / f"{state_prefix}_managed_daemon.pid"
+    return _ManagedDaemonKernelFence(
+        pid_path=pid_path,
+        identity_path=supervised_child_identity_path(pid_path),
+        owner_scope=(
+            {
+                "repo_root": str(
+                    Path(profile.repository_root).resolve(strict=False)
+                ),
+                "state_dir": str(state_dir.resolve(strict=False)),
+                "state_prefix": state_prefix,
+                "todo_path": str(todo_path.resolve(strict=False)),
+                "daemon_entrypoint": daemon_entrypoint,
+                "lifecycle_session_id": str(process_identity.session_id),
+                "process_group_policy": (
+                    "dedicated_group_inherited_session"
+                ),
+            }
+            if todo_path is not None
+            else None
+        ),
+        root_session_id=process_identity.session_id,
+        state_dir_option=state_dir_option,
+        state_prefix=state_prefix,
+        todo_path_option=todo_path_option,
+        daemon_entrypoint=daemon_entrypoint,
+    )
+
+def _kernel_session_members_once(
+    session_id: int,
+    *,
+    excluded_pids: Sequence[int] = (),
+) -> tuple[str, tuple[tuple[int, int, int], ...]]:
+    """Observe non-zombie births in one Linux session without procfs environ.
+
+    A session can only be joined by descendants already in that session.  The
+    lane root creates it at birth, so membership is a kernel ownership fact
+    even when a credential-bearing process is deliberately non-dumpable.
+    """
+
+    if session_id <= 1:
+        return "unknown", ()
+    excluded = {int(item) for item in excluded_pids}
+    try:
+        entries = tuple(Path("/proc").iterdir())
+    except OSError:
+        return "unknown", ()
+    members: list[tuple[int, int, int]] = []
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if pid in excluded:
+            continue
+        try:
+            metadata = os.stat(entry, follow_symlinks=False)
+            if int(metadata.st_uid) != os.geteuid():
+                continue
+            raw = (entry / "stat").read_text(encoding="ascii")
+            closing = raw.rfind(")")
+            fields = raw[closing + 2 :].split()
+            state = fields[0]
+            process_group = int(fields[2])
+            observed_session = int(fields[3])
+            start_ticks = int(fields[19])
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        except (OSError, IndexError, UnicodeError, ValueError):
+            return "unknown", ()
+        if closing < 0 or start_ticks <= 0:
+            return "unknown", ()
+        if state == "Z" or observed_session != int(session_id):
+            continue
+        members.append((pid, start_ticks, process_group))
+    return ("alive" if members else "dead"), tuple(sorted(members))
+
+def _managed_daemon_command_matches_kernel_fence(
+    command: Sequence[str],
+    binding: _ManagedDaemonKernelFence,
+) -> bool:
+    tokens = tuple(str(item) for item in command)
+    if binding.daemon_entrypoint not in tokens:
+        return False
+
+    def exact_option(name: str, expected: str) -> bool:
+        return _profile_option_values(tokens, name) == (expected,)
+
+    return bool(
+        binding.todo_path_option is not None
+        and
+        exact_option("--state-dir", binding.state_dir_option)
+        and exact_option("--state-prefix", binding.state_prefix)
+        and exact_option("--todo-path", binding.todo_path_option)
+    )
+
+def _managed_daemon_kernel_fence_observation(
+    binding: _ManagedDaemonKernelFence,
+    *,
+    root_identity: ProcessIdentity,
+) -> tuple[str, SupervisedChildIdentity | None]:
+    """Return ALIVE/DEAD/UNKNOWN for one exact kernel-bound daemon birth."""
+
+    if (
+        root_identity.session_id != binding.root_session_id
+        or root_identity.process_group_id != root_identity.pid
+    ):
+        return "unknown", None
+    try:
+        pid_bytes, _pid_evidence = _read_stable_regular_bytes(
+            binding.pid_path,
+            max_bytes=32,
+        )
+        identity_payload, _identity_evidence = _read_stable_regular_json(
+            binding.identity_path,
+            max_bytes=1_048_576,
+        )
+    except _StableArtifactReadError:
+        return "unknown", None
+
+    session_state, session_members = _kernel_session_members_once(
+        binding.root_session_id,
+        excluded_pids=(root_identity.pid,),
+    )
+    if pid_bytes is None and identity_payload is None:
+        return (
+            ("dead", None)
+            if session_state == "dead"
+            else ("unknown", None)
+        )
+    if pid_bytes is None or identity_payload is None:
+        return "unknown", None
+    if re.fullmatch(rb"[1-9][0-9]*\n", pid_bytes) is None:
+        return "unknown", None
+    marker_pid = int(pid_bytes[:-1])
+    identity = SupervisedChildIdentity.from_dict(identity_payload)
+    if (
+        identity is None
+        or identity.process_birth.pid != marker_pid
+        or binding.owner_scope is None
+        or dict(identity.owner_scope) != dict(binding.owner_scope)
+        or not _managed_daemon_command_matches_kernel_fence(
+            identity.command,
+            binding,
+        )
+    ):
+        return "unknown", None
+    liveness = supervised_child_identity_liveness(identity)
+    if liveness is OwnerLiveness.UNKNOWN:
+        return "unknown", identity
+    if liveness is OwnerLiveness.DEAD:
+        return (
+            ("dead", identity)
+            if session_state == "dead"
+            else ("unknown", identity)
+        )
+    try:
+        parent, process_group, session, start_ticks = (
+            LinuxProcessAdapter._stat(marker_pid)  # noqa: SLF001
+        )
+    except (FileNotFoundError, ProcessLookupError):
+        return "unknown", identity
+    except (OSError, UnicodeError, ValueError):
+        return "unknown", identity
+    if (
+        start_ticks != identity.process_birth.start_time_ticks
+        or process_group != marker_pid
+        or session != binding.root_session_id
+        or not any(
+            member_pid == marker_pid and member_start == start_ticks
+            for member_pid, member_start, _member_group in session_members
+        )
+        or read_process_command_argv(marker_pid) != identity.command
+    ):
+        return "unknown", identity
+    # ``parent`` may be the lane root, a subreaper, or init after a crash.  It
+    # is deliberately not used as authority; exact inherited session
+    # membership survives all three cases.
+    del parent
+    return "alive", identity
+
+def _fence_managed_daemon_from_kernel_binding(
+    binding: _ManagedDaemonKernelFence,
+    *,
+    root_identity: ProcessIdentity,
+    grace_seconds: float,
+) -> bool:
+    """Fence one exact daemon group; never signal an unproven marker PID."""
+
+    state, identity = _managed_daemon_kernel_fence_observation(
+        binding,
+        root_identity=root_identity,
+    )
+    if state == "dead":
+        return True
+    if state != "alive" or identity is None:
+        return False
+    # Close a sidecar/PID-reuse race immediately before signalling.  The
+    # second observation also repeats exact proc argv and kernel-session proof.
+    repeated_state, repeated_identity = (
+        _managed_daemon_kernel_fence_observation(
+            binding,
+            root_identity=root_identity,
+        )
+    )
+    if (
+        repeated_state != "alive"
+        or repeated_identity is None
+        or repeated_identity.record_id != identity.record_id
+        or repeated_identity.process_birth != identity.process_birth
+    ):
+        return False
+    fenced = terminate_pid_tree(
+        identity.process_birth.pid,
+        grace_seconds=max(0.0, float(grace_seconds)),
+        freeze_first=True,
+        require_gone=True,
+        owned_process_group_id=identity.process_birth.pid,
+        expected_root_start_time_ticks=(
+            identity.process_birth.start_time_ticks
+        ),
+    )
+    if not fenced:
+        return False
+    for _scan in range(3):
+        final_state, _final_identity = (
+            _managed_daemon_kernel_fence_observation(
+                binding,
+                root_identity=root_identity,
+            )
+        )
+        if final_state == "dead":
+            return True
+        if final_state == "unknown":
+            return False
+        time.sleep(0.02)
+    return False
+
+def _capture_owned_popen_process_identity(
+    process: subprocess.Popen[bytes],
+    *,
+    profile: LifecycleProfile,
+    command: Sequence[str],
+    launch_environment: Mapping[str, str],
+) -> ProcessIdentity:
+    """Capture an exact direct-child birth even after it becomes opaque.
+
+    Credential-bearing supervisor entries deliberately become non-dumpable.
+    A fast child can do so between ``Popen`` returning and the parent's
+    ``/proc/<pid>/environ`` read.  The parent still has stronger authority
+    than a later PID lookup: it created this exact direct child with a new
+    session and supplied the complete immutable profile environment.
+
+    Prefer the ordinary marker read.  Permission denial alone selects the
+    owned-child fallback, which binds two stable ``/proc/stat`` observations,
+    the direct-parent relationship, the dedicated process group/session, the
+    supplied profile, and the kernel boot identity.  This direct-child proof
+    also covers an accepted entry that clears its inherited marker projection;
+    later/adopted PIDs and PID reuse never fall back.
+    """
+
+    adapter = LinuxProcessAdapter()
+    try:
+        return adapter._identity(int(process.pid), profile)  # noqa: SLF001
+    except (PermissionError, ProcessIdentityMismatch):
+        pass
+
+    if not sys.platform.startswith("linux") or not Path("/proc").is_dir():
+        raise ProcessIdentityMismatch(
+            "opaque owned-child birth capture requires Linux /proc"
+        )
+    if process.poll() is not None:
+        raise ProcessIdentityMismatch(
+            "owned supervisor exited before process-birth capture"
+        )
+    first = adapter._stat(int(process.pid))  # noqa: SLF001
+    parent_pid, process_group_id, session_id, start_time_ticks = first
+    if (
+        parent_pid != os.getpid()
+        or process_group_id != int(process.pid)
+        or session_id != int(process.pid)
+    ):
+        raise ProcessIdentityMismatch(
+            "owned supervisor lacks its direct-child session boundary"
+        )
+    expected_markers = {
+        RUN_ID_ENV: profile.run_id,
+        PROFILE_ID_ENV: profile.profile_id,
+        TARGET_ID_ENV: profile.target_id,
+        REPOSITORY_ROOT_ENV: profile.repository_root,
+        STATE_ROOT_ENV: profile.state_root,
+        RUN_ROOT_ENV: profile.run_root,
+        CONFIGURATION_ROOT_ENV: profile.configuration_root,
+    }
+    if any(
+        launch_environment.get(name) != value
+        for name, value in expected_markers.items()
+    ):
+        raise ProcessIdentityMismatch(
+            "owned supervisor launch environment differs from its profile"
+        )
+    try:
+        fencing_epoch = int(launch_environment[FENCING_EPOCH_ENV])
+    except (KeyError, ValueError) as exc:
+        raise ProcessIdentityMismatch(
+            "owned supervisor launch has no lifecycle fence"
+        ) from exc
+    boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+        encoding="ascii"
+    ).strip()
+    if not boot_id:
+        raise ProcessIdentityMismatch("kernel boot identity is unavailable")
+    executable = shutil.which(
+        str(command[0]), path=launch_environment.get("PATH")
+    )
+    if not executable:
+        raise ProcessIdentityMismatch(
+            "owned supervisor executable cannot be resolved"
+        )
+    expected_argv = tuple(str(item) for item in command)
+    try:
+        observed_argv = adapter._argv(int(process.pid))  # noqa: SLF001
+    except PermissionError:
+        observed_argv = ()
+    if observed_argv and observed_argv != expected_argv:
+        raise ProcessIdentityMismatch(
+            "owned supervisor command changed before birth capture"
+        )
+    resolved_executable = str(Path(executable).resolve(strict=True))
+    try:
+        observed_cwd = str(
+            Path(os.readlink(f"/proc/{process.pid}/cwd")).resolve(
+                strict=False
+            )
+        )
+        observed_executable = str(
+            Path(os.readlink(f"/proc/{process.pid}/exe")).resolve(
+                strict=False
+            )
+        )
+    except PermissionError:
+        observed_cwd = ""
+        observed_executable = ""
+    if observed_cwd and observed_cwd != profile.cwd:
+        raise ProcessIdentityMismatch(
+            "owned supervisor cwd changed before birth capture"
+        )
+    if observed_executable and observed_executable != resolved_executable:
+        raise ProcessIdentityMismatch(
+            "owned supervisor executable changed before birth capture"
+        )
+    identity = ProcessIdentity(
+        pid=int(process.pid),
+        start_time_ticks=start_time_ticks,
+        parent_pid=parent_pid,
+        process_group_id=process_group_id,
+        session_id=session_id,
+        boot_id=boot_id,
+        argv=expected_argv,
+        cwd=profile.cwd,
+        executable=resolved_executable,
+        run_id=profile.run_id,
+        profile_id=profile.profile_id,
+        target_id=profile.target_id,
+        repository_root=profile.repository_root,
+        state_root=profile.state_root,
+        run_root=profile.run_root,
+        fencing_epoch=fencing_epoch,
+        configuration_root=profile.configuration_root,
+    )
+    second = adapter._stat(int(process.pid))  # noqa: SLF001
+    if process.poll() is not None or second != first:
+        raise ProcessIdentityMismatch(
+            "owned supervisor process birth changed during capture"
+        )
+    return identity
+
+def _fence_failed_owned_process_birth(
+    process: subprocess.Popen[bytes],
+    *,
+    grace_seconds: float = 1.0,
+) -> bool:
+    """Fence one just-created direct child after identity admission fails."""
+
+    try:
+        parent, process_group, session, start_time = (
+            LinuxProcessAdapter._stat(int(process.pid))  # noqa: SLF001
+        )
+    except (OSError, ValueError, ProcessLookupError):
+        return process.poll() is not None
+    if (
+        parent != os.getpid()
+        or process_group != int(process.pid)
+        or session != int(process.pid)
+    ):
+        return False
+    return terminate_pid_tree(
+        int(process.pid),
+        grace_seconds=max(0.0, grace_seconds),
+        freeze_first=True,
+        require_gone=True,
+        owned_process_group_id=process_group,
+        expected_root_start_time_ticks=start_time,
+    )
+
+def _detached_docker_cleanup_binding(
+    identity: ProcessIdentity,
+    *,
+    runner_pid: int,
+    runner_start_ticks: int,
+    runner_boot_id: str,
+    records: Sequence[_DurableDockerCleanupBinding],
+) -> tuple[str, str, str] | None:
+    """Admit one exact reaper only through its parent-published record."""
+
+    arguments = identity.argv
+    if _DOCKER_CLEANUP_WATCHDOG_ARG not in arguments:
+        return None
+    if (
+        arguments.count(_DOCKER_CLEANUP_WATCHDOG_ARG) != 1
+        or arguments.count(_DOCKER_CLEANUP_WATCHDOG_LAUNCHER_ARG) != 1
+        or arguments.index(_DOCKER_CLEANUP_WATCHDOG_LAUNCHER_ARG)
+        >= arguments.index(_DOCKER_CLEANUP_WATCHDOG_ARG)
+    ):
+        raise ValueError("detached Docker cleanup command is ambiguous")
+
+    def exact_option(name: str) -> str:
+        if arguments.count(name) != 1:
+            raise ValueError(f"detached Docker cleanup {name} is ambiguous")
+        index = arguments.index(name)
+        if index + 1 >= len(arguments):
+            raise ValueError(f"detached Docker cleanup {name} is incomplete")
+        return arguments[index + 1]
+
+    provider = exact_option("--provider")
+    docker_bin = exact_option("--docker-bin")
+    container_name = exact_option("--container-name")
+    raw_lease_root = exact_option("--lease-root")
+    cidfile = exact_option("--cidfile")
+    provider_home = exact_option("--provider-home")
+    prompt_path = exact_option("--prompt-path")
+    binding_path = Path(exact_option("--cleanup-binding-record"))
+    if (
+        provider not in {"codex", "grok"}
+        or _DOCKER_CLEANUP_CONTAINER_RE.fullmatch(container_name) is None
+        or not container_name.startswith(f"ipfs-accelerate-{provider}-")
+    ):
+        raise ValueError("detached Docker cleanup identity is invalid")
+    try:
+        docker_path = Path(docker_bin).resolve(strict=True)
+        metadata = docker_path.stat()
+    except OSError as exc:
+        raise ValueError("detached Docker cleanup binary is unavailable") from exc
+    if (
+        docker_path not in {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
+        or docker_path.name not in {"docker", "docker.exe"}
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != 0
+        or metadata.st_mode & 0o022
+        or not os.access(docker_path, os.X_OK)
+    ):
+        raise ValueError("detached Docker cleanup binary is not trusted")
+    lease_root = Path(raw_lease_root)
+    if (
+        not lease_root.is_absolute()
+        or re.fullmatch(
+            r"asref-(?:grok|codex)-container-[a-z0-9_]+",
+            lease_root.name,
+        )
+        is None
+    ):
+        raise ValueError("detached Docker cleanup lease is not trusted")
+    expected_record_path = (
+        Path(identity.run_root)
+        / _DOCKER_CLEANUP_BINDING_DIRECTORY
+        / (hashlib.sha256(container_name.encode("ascii")).hexdigest() + ".json")
+    )
+    try:
+        executable = Path(identity.executable).resolve(strict=True)
+        executable_metadata = executable.stat()
+        value = _read_durable_docker_cleanup_record(binding_path)
+    except OSError as exc:
+        raise ValueError("detached Docker cleanup authority is unavailable") from exc
+    try:
+        from .grok_cli_runner import _validated_docker_cleanup_root
+
+        cleanup_root, cleanup_root_identity = _validated_docker_cleanup_root(
+            lease_root=lease_root,
+            provider_home=Path(provider_home),
+            prompt_path=Path(prompt_path),
+            expected_root=Path(str(value.get("cleanup_root") or "")),
+            expected_identity=value.get("cleanup_root_identity"),  # type: ignore[arg-type]
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("detached Docker cleanup root is invalid") from exc
+    body = {key: item for key, item in value.items() if key != "record_id"}
+    if (
+        identity.pid <= 0
+        or identity.start_time_ticks <= 0
+        or identity.parent_pid != 1
+        or executable != Path(sys.executable).resolve(strict=True)
+        or not stat.S_ISREG(executable_metadata.st_mode)
+        or executable_metadata.st_uid != 0
+        or executable_metadata.st_mode & 0o022
+        or binding_path != expected_record_path
+        or value.get("schema") != _DOCKER_CLEANUP_BINDING_SCHEMA
+        or value.get("record_id") != _docker_control_identity(body)
+        or value.get("run_id") != identity.run_id
+        or value.get("profile_id") != identity.profile_id
+        or value.get("target_id") != identity.target_id
+        or value.get("repository_root") != identity.repository_root
+        or value.get("state_root") != identity.state_root
+        or value.get("run_root") != identity.run_root
+        or value.get("configuration_root") != identity.configuration_root
+        or value.get("fencing_epoch") != identity.fencing_epoch
+        or value.get("runner_pid") != runner_pid
+        or value.get("runner_start_ticks") != runner_start_ticks
+        or runner_boot_id != identity.boot_id
+        or value.get("watchdog_pid") != identity.pid
+        or value.get("watchdog_start_ticks") != identity.start_time_ticks
+        or value.get("boot_id") != identity.boot_id
+        or value.get("provider") != provider
+        or value.get("docker_bin") != str(docker_path)
+        or value.get("container_name") != container_name
+        or value.get("cleanup_root") != str(cleanup_root)
+        or value.get("cleanup_root_identity") != cleanup_root_identity
+        or value.get("lease_root") != str(lease_root)
+        or value.get("docker_config") != str(lease_root / "docker-config")
+        or value.get("cidfile") != cidfile
+        or value.get("provider_home") != provider_home
+        or value.get("prompt_path") != prompt_path
+        or value.get("binding_path") != str(binding_path)
+    ):
+        raise ValueError("detached Docker cleanup record is not authoritative")
+    admitted = tuple(
+        record
+        for record in records
+        if record.record_path == binding_path
+        and record.runner_pid == runner_pid
+        and record.runner_start_ticks == runner_start_ticks
+        and record.watchdog_pid == identity.pid
+        and record.watchdog_start_ticks == identity.start_time_ticks
+        and record.boot_id == identity.boot_id
+        and record.cleanup_root == cleanup_root
+        and dict(record.cleanup_root_identity) == cleanup_root_identity
+        and record.binding == (str(docker_path), container_name, str(lease_root))
+    )
+    if len(admitted) != 1:
+        raise ValueError("detached Docker cleanup root lacks one admitted record")
+    return str(docker_path), container_name, str(lease_root)
+
+def _read_durable_docker_cleanup_record(
+    path: Path,
+    *,
+    directory_anchor: _DurableCleanupDirectoryAnchor | None = None,
+    directory_descriptor: int | None = None,
+) -> dict[str, object]:
+    """Read one canonical private lifecycle record without following links."""
+
+    directory = path.parent
+    directory_fd = -1
+    try:
+        if directory_anchor is not None and directory_descriptor is not None:
+            raise ValueError("durable Docker cleanup directory authority repeats")
+        if directory_descriptor is not None:
+            if isinstance(directory_descriptor, bool) or directory_descriptor < 3:
+                raise ValueError(
+                    "durable Docker cleanup directory descriptor is invalid"
+                )
+            directory_fd = os.dup(directory_descriptor)
+            opened_directory = os.fstat(directory_fd)
+            named_directory = os.lstat(directory)
+            if (
+                opened_directory.st_dev,
+                opened_directory.st_ino,
+                stat.S_IFMT(opened_directory.st_mode),
+                opened_directory.st_uid,
+            ) != (
+                named_directory.st_dev,
+                named_directory.st_ino,
+                stat.S_IFMT(named_directory.st_mode),
+                named_directory.st_uid,
+            ):
+                os.close(directory_fd)
+                raise ValueError(
+                    "durable Docker cleanup directory identity changed"
+                )
+        elif directory_anchor is None:
+            if directory.resolve(strict=True) != directory.absolute():
+                raise ValueError("durable Docker cleanup directory is aliased")
+            directory_fd = os.open(
+                directory,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+        else:
+            _validate_durable_cleanup_directory_anchor(
+                directory_anchor,
+                expected_path=directory,
+            )
+            directory_fd = os.dup(directory_anchor.descriptor)
+        directory_metadata = os.fstat(directory_fd)
+    except OSError as exc:
+        if directory_fd >= 0:
+            os.close(directory_fd)
+        raise ValueError("durable Docker cleanup directory is unavailable") from exc
+    if (
+        not stat.S_ISDIR(directory_metadata.st_mode)
+        or directory_metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(directory_metadata.st_mode) != 0o700
+    ):
+        os.close(directory_fd)
+        raise ValueError("durable Docker cleanup directory is not private")
+    try:
+        descriptor = os.open(
+            path.name,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=directory_fd,
+        )
+        before = os.fstat(descriptor)
+        try:
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != os.geteuid()
+                or before.st_nlink != 1
+                or stat.S_IMODE(before.st_mode) != 0o600
+                or before.st_size > _DOCKER_PRIVATE_CONTROL_MAX_BYTES
+            ):
+                raise ValueError("durable Docker cleanup record is unsafe")
+            remaining = _DOCKER_PRIVATE_CONTROL_MAX_BYTES + 1
+            chunks: list[bytes] = []
+            while remaining:
+                chunk = os.read(descriptor, min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+            after = os.fstat(descriptor)
+            final = os.stat(
+                path.name,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise ValueError("durable Docker cleanup record is unreadable") from exc
+    finally:
+        os.close(directory_fd)
+    snapshot = lambda item: (  # noqa: E731 - compact immutable stat projection.
+        item.st_dev,
+        item.st_ino,
+        item.st_mode,
+        item.st_uid,
+        item.st_nlink,
+        item.st_size,
+        item.st_mtime_ns,
+        item.st_ctime_ns,
+    )
+    if (
+        len(raw) > _DOCKER_PRIVATE_CONTROL_MAX_BYTES
+        or snapshot(before) != snapshot(after)
+        or snapshot(after) != snapshot(final)
+    ):
+        raise ValueError("durable Docker cleanup record changed while read")
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+        canonical = (
+            json.dumps(
+                value,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+            + b"\n"
+        )
+    except (UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ValueError("durable Docker cleanup record is invalid JSON") from exc
+    if type(value) is not dict or raw != canonical:
+        raise ValueError("durable Docker cleanup record is noncanonical")
+    return value
+
+def _stable_durable_docker_cleanup_entry_names(
+    directory: Path,
+    *,
+    expected_metadata: os.stat_result,
+    directory_anchor: _DurableCleanupDirectoryAnchor | None = None,
+) -> tuple[str, ...]:
+    """Return a stable namespace after bounded exact-writer publication.
+
+    Private control records are published through a same-directory temporary
+    name.  Seeing that exact writer state is contention, not a malformed
+    authoritative record: wait for it to finish, but never admit state while
+    it exists.  Every other unexpected name or unsafe temporary fails closed.
+    """
+
+    owns_directory_fd = directory_anchor is None
+    directory_fd = -1
+    try:
+        if directory_anchor is None:
+            directory_fd = os.open(
+                directory,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+        else:
+            _validate_durable_cleanup_directory_anchor(
+                directory_anchor,
+                expected_path=directory,
+            )
+            directory_fd = directory_anchor.descriptor
+        opened = os.fstat(directory_fd)
+        expected_identity = _cleanup_directory_stat_identity(expected_metadata)
+        if _cleanup_directory_stat_identity(opened) != expected_identity:
+            raise ValueError(
+                "durable Docker cleanup directory identity changed"
+            )
+        deadline = (
+            time.monotonic() + _DOCKER_CLEANUP_PUBLICATION_WAIT_SECONDS
+        )
+        while True:
+            if directory_anchor is None:
+                current = os.lstat(directory)
+                if (
+                    _cleanup_directory_stat_identity(os.fstat(directory_fd))
+                    != expected_identity
+                    or _cleanup_directory_stat_identity(current)
+                    != expected_identity
+                ):
+                    raise ValueError(
+                        "durable Docker cleanup directory identity changed"
+                    )
+            else:
+                _validate_durable_cleanup_directory_anchor(
+                    directory_anchor,
+                    expected_path=directory,
+                )
+            entry_names = tuple(sorted(os.listdir(directory_fd)))
+            publication_pending = False
+            retry_enumeration = False
+            for name in entry_names:
+                if _DOCKER_CLEANUP_STABLE_ENTRY_RE.fullmatch(name) is not None:
+                    continue
+                temporary = _DOCKER_CLEANUP_ATOMIC_TEMP_RE.fullmatch(name)
+                if temporary is None:
+                    raise ValueError(
+                        "durable Docker cleanup record set is invalid"
+                    )
+                try:
+                    metadata = os.stat(
+                        name,
+                        dir_fd=directory_fd,
+                        follow_symlinks=False,
+                    )
+                except FileNotFoundError:
+                    retry_enumeration = True
+                    break
+                if (
+                    not stat.S_ISREG(metadata.st_mode)
+                    or metadata.st_uid != os.geteuid()
+                    or stat.S_IMODE(metadata.st_mode) != 0o600
+                    or metadata.st_size > _DOCKER_PRIVATE_CONTROL_MAX_BYTES
+                    or metadata.st_nlink not in {1, 2}
+                ):
+                    raise ValueError(
+                        "durable Docker cleanup atomic publication is unsafe"
+                    )
+                # Create-only publication briefly hard-links the completed
+                # temporary inode to its final name before unlinking the
+                # temporary.  Admit that as a wait state only when both names
+                # are the exact same private regular file.
+                if metadata.st_nlink == 2:
+                    try:
+                        published = os.stat(
+                            temporary.group("target"),
+                            dir_fd=directory_fd,
+                            follow_symlinks=False,
+                        )
+                    except FileNotFoundError:
+                        raise ValueError(
+                            "durable Docker cleanup atomic publication is unsafe"
+                        ) from None
+                    if (
+                        published.st_dev != metadata.st_dev
+                        or published.st_ino != metadata.st_ino
+                        or not stat.S_ISREG(published.st_mode)
+                        or published.st_uid != os.geteuid()
+                        or stat.S_IMODE(published.st_mode) != 0o600
+                        or published.st_size
+                        > _DOCKER_PRIVATE_CONTROL_MAX_BYTES
+                    ):
+                        raise ValueError(
+                            "durable Docker cleanup atomic publication is unsafe"
+                        )
+                publication_pending = True
+            if retry_enumeration:
+                if time.monotonic() >= deadline:
+                    raise ValueError(
+                        "durable Docker cleanup publication is contended"
+                    )
+                time.sleep(_DOCKER_CLEANUP_PUBLICATION_POLL_SECONDS)
+                continue
+            if not publication_pending:
+                return entry_names
+            if time.monotonic() >= deadline:
+                raise ValueError(
+                    "durable Docker cleanup publication is contended"
+                )
+            time.sleep(_DOCKER_CLEANUP_PUBLICATION_POLL_SECONDS)
+    except OSError as exc:
+        raise ValueError(
+            "durable Docker cleanup directory cannot be enumerated"
+        ) from exc
+    finally:
+        if owns_directory_fd and directory_fd >= 0:
+            os.close(directory_fd)
+
+def _durable_docker_cleanup_bindings(
+    profile: LifecycleProfile,
+    *,
+    fencing_epoch: int | None,
+    directory_anchor: _DurableCleanupDirectoryAnchor | None = None,
+) -> tuple[_DurableDockerCleanupBinding, ...]:
+    """Admit exact cleanup records that survive detached reaper death."""
+
+    directory = Path(profile.run_root) / _DOCKER_CLEANUP_BINDING_DIRECTORY
+    if directory_anchor is None:
+        try:
+            directory_metadata = os.lstat(directory)
+        except FileNotFoundError:
+            return ()
+        except OSError as exc:
+            raise ValueError("durable Docker cleanup directory is unavailable") from exc
+    else:
+        directory_metadata = _validate_durable_cleanup_directory_anchor(
+            directory_anchor,
+            expected_path=directory,
+        )
+    if (
+        fencing_epoch is None
+        or not stat.S_ISDIR(directory_metadata.st_mode)
+        or directory_metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(directory_metadata.st_mode) != 0o700
+        or directory.resolve(strict=True) != directory.absolute()
+    ):
+        raise ValueError("durable Docker cleanup directory is invalid")
+    expected_fields = {
+        "schema",
+        "binding_state",
+        "run_id",
+        "profile_id",
+        "target_id",
+        "repository_root",
+        "state_root",
+        "run_root",
+        "configuration_root",
+        "fencing_epoch",
+        "runner_pid",
+        "runner_start_ticks",
+        "watchdog_pid",
+        "watchdog_start_ticks",
+        "boot_id",
+        "provider",
+        "docker_bin",
+        "docker_device",
+        "docker_inode",
+        "docker_mode",
+        "docker_uid",
+        "container_name",
+        "cleanup_root",
+        "cleanup_root_identity",
+        "lease_root",
+        "docker_config",
+        "cidfile",
+        "provider_home",
+        "prompt_path",
+        "effect_observation",
+        "create_command_id",
+        "create_cwd",
+        "create_environment_id",
+        "termination_fence",
+        "path_identities",
+        "binding_path",
+        "record_id",
+    }
+    try:
+        current_boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+            encoding="ascii"
+        ).strip()
+        entry_names = _stable_durable_docker_cleanup_entry_names(
+            directory,
+            expected_metadata=directory_metadata,
+            directory_anchor=directory_anchor,
+        )
+        entries = tuple(directory / name for name in entry_names)
+    except OSError as exc:
+        raise ValueError(
+            "durable Docker cleanup directory cannot be enumerated"
+        ) from exc
+    if not current_boot_id or any(
+        _DOCKER_CLEANUP_STABLE_ENTRY_RE.fullmatch(path.name) is None
+        for path in entries
+    ):
+        raise ValueError("durable Docker cleanup record set is invalid")
+    # Completion files contain a public hash but no mutation authority.  In
+    # particular, never replay them before the matching active binding has
+    # passed lifecycle, process-birth, CAS, and Docker-name checks below.  A
+    # matching completion is consumed by _remove_durable_cleanup_record only
+    # after those checks.  Standalone journals are inert and do not consume
+    # active-record capacity; this prevents old journals from starving a
+    # later exact binding while preserving fail-closed recovery semantics.
+    entry_name_set = set(entry_names)
+    dual_retirement_stems = {
+        path.stem
+        for path in entries
+        if path.suffix == ".authority"
+        and f"{path.stem}.json" in entry_name_set
+    }
+    # The exact .json/.authority hard-link pair is a crash state after the
+    # terminal binding has already been retained.  It is validated below
+    # under the canonical binding lock and never consumes active capacity.
+    # A forged second name cannot evade admission: any non-identical pair or
+    # pair without its exact completion/CAS evidence fails closed below.
+    paths = tuple(
+        path
+        for path in entries
+        if path.suffix == ".json"
+        and path.stem not in dual_retirement_stems
+    )
+    if len(paths) > 128:
+        raise ValueError("durable Docker cleanup record set is invalid")
+    records: list[_DurableDockerCleanupBinding] = []
+    binding_values: dict[str, Mapping[str, object]] = {}
+    for path in paths:
+        try:
+            value = _read_durable_docker_cleanup_record(
+                path,
+                directory_anchor=directory_anchor,
+            )
+        except ValueError:
+            # A successful watchdog atomically publishes its completion and
+            # unlinks the active binding.  Enumeration can race that exact
+            # transition.  Treat only a now-absent directory entry the same
+            # as an unlink completed just before enumeration; an extant,
+            # replaced, unreadable, or malformed entry remains fail-closed.
+            try:
+                if directory_anchor is None:
+                    os.lstat(path)
+                else:
+                    os.stat(
+                        path.name,
+                        dir_fd=directory_anchor.descriptor,
+                        follow_symlinks=False,
+                    )
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                raise ValueError(
+                    "durable Docker cleanup record liveness is unknown"
+                ) from exc
+            raise
+        try:
+            if directory_anchor is None:
+                record_metadata = os.lstat(path)
+            else:
+                record_metadata = os.stat(
+                    path.name,
+                    dir_fd=directory_anchor.descriptor,
+                    follow_symlinks=False,
+                )
+        except FileNotFoundError:
+            # The same admitted unlink may occur after a stable record read
+            # but before its metadata projection.  No record is returned;
+            # callers retain any earlier binding and independently require
+            # exact Docker-name and lease-root absence before lane release.
+            continue
+        except OSError as exc:
+            raise ValueError(
+                "durable Docker cleanup record disappeared after read"
+            ) from exc
+        body = {key: item for key, item in value.items() if key != "record_id"}
+        provider = str(value.get("provider") or "")
+        container_name = str(value.get("container_name") or "")
+        docker_bin = str(value.get("docker_bin") or "")
+        lease_root = Path(str(value.get("lease_root") or ""))
+        docker_config = Path(str(value.get("docker_config") or ""))
+        cidfile = Path(str(value.get("cidfile") or ""))
+        provider_home = Path(str(value.get("provider_home") or ""))
+        prompt_path = Path(str(value.get("prompt_path") or ""))
+        effect_observation = value.get("effect_observation")
+        termination_fence = value.get("termination_fence")
+        binding_state = str(value.get("binding_state") or "")
+        command_bound = binding_state == "command_bound"
+        create_cwd = (
+            Path(str(value.get("create_cwd") or ""))
+            if command_bound
+            else Path()
+        )
+        path_identities = value.get("path_identities")
+        path_identity_valid = bool(
+            isinstance(path_identities, dict)
+            and set(path_identities)
+            == {
+                "docker_config",
+                "lease_root",
+                "prompt_path",
+                "provider_home",
+            }
+            and all(
+                isinstance(item, dict)
+                and set(item) == {"device", "inode", "mode", "uid"}
+                and all(
+                    type(item.get(name)) is int and int(item[name]) >= 0
+                    for name in ("device", "inode", "mode", "uid")
+                )
+                and item.get("uid") == os.geteuid()
+                for item in path_identities.values()
+            )
+            and all(
+                stat.S_ISDIR(path_identities[name]["mode"])
+                for name in ("docker_config", "lease_root", "provider_home")
+            )
+            and stat.S_ISREG(path_identities["prompt_path"]["mode"])
+        )
+        termination_fence_valid = False
+        if isinstance(termination_fence, dict):
+            try:
+                from .grok_cli_runner import (
+                    _validated_docker_termination_fence,
+                )
+
+                termination_fence_valid = bool(
+                    not termination_fence
+                    or _validated_docker_termination_fence(
+                        termination_fence,
+                        provider=provider,
+                        container_name=container_name,
+                    )
+                    == termination_fence
+                )
+            except (KeyError, TypeError, ValueError):
+                termination_fence_valid = False
+        try:
+            from .grok_cli_runner import _validated_docker_cleanup_root
+
+            cleanup_root, cleanup_root_identity = (
+                _validated_docker_cleanup_root(
+                    lease_root=lease_root,
+                    provider_home=provider_home,
+                    prompt_path=prompt_path,
+                    expected_root=Path(
+                        str(value.get("cleanup_root") or "")
+                    ),
+                    expected_identity=value.get("cleanup_root_identity"),  # type: ignore[arg-type]
+                )
+            )
+            cleanup_root_valid = bool(
+                value.get("cleanup_root") == str(cleanup_root)
+                and value.get("cleanup_root_identity")
+                == cleanup_root_identity
+            )
+        except (TypeError, ValueError):
+            cleanup_root = Path()
+            cleanup_root_identity = {}
+            cleanup_root_valid = False
+        try:
+            docker_path = Path(docker_bin).resolve(strict=True)
+            docker_metadata = docker_path.stat()
+            runner_pid = int(value.get("runner_pid"))
+            runner_start_ticks = int(value.get("runner_start_ticks"))
+            watchdog_pid = int(value.get("watchdog_pid"))
+            watchdog_start_ticks = int(value.get("watchdog_start_ticks"))
+        except (OSError, TypeError, ValueError) as exc:
+            raise ValueError("durable Docker cleanup identity is unavailable") from exc
+        if (
+            set(value) != expected_fields
+            or value.get("schema") != _DOCKER_CLEANUP_BINDING_SCHEMA
+            or binding_state not in {"prepared_no_dispatch", "command_bound"}
+            or value.get("record_id") != _docker_control_identity(body)
+            or value.get("run_id") != profile.run_id
+            or value.get("profile_id") != profile.profile_id
+            or value.get("target_id") != profile.target_id
+            or value.get("repository_root") != profile.repository_root
+            or value.get("state_root") != profile.state_root
+            or value.get("run_root") != profile.run_root
+            or value.get("configuration_root") != profile.configuration_root
+            or value.get("fencing_epoch") != fencing_epoch
+            or re.fullmatch(
+                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                str(value.get("boot_id") or ""),
+            )
+            is None
+            or runner_pid <= 0
+            or runner_start_ticks <= 0
+            or watchdog_pid <= 0
+            or watchdog_start_ticks <= 0
+            or provider not in {"codex", "grok"}
+            or (effect_observation and provider != "codex")
+            or docker_path
+            not in {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
+            or value.get("docker_device") != docker_metadata.st_dev
+            or value.get("docker_inode") != docker_metadata.st_ino
+            or value.get("docker_mode") != docker_metadata.st_mode
+            or value.get("docker_uid") != docker_metadata.st_uid
+            or docker_metadata.st_uid != 0
+            or docker_metadata.st_mode & 0o022
+            or _DOCKER_CLEANUP_CONTAINER_RE.fullmatch(container_name) is None
+            or not container_name.startswith(f"ipfs-accelerate-{provider}-")
+            or path.name
+            != hashlib.sha256(container_name.encode("ascii")).hexdigest()
+            + ".json"
+            or value.get("binding_path") != str(path)
+            or not cleanup_root_valid
+            or not lease_root.name.startswith(f"asref-{provider}-container-")
+            or docker_config != lease_root / "docker-config"
+            or cidfile != lease_root / "container.cid"
+            or not provider_home.name.startswith(f"asref-{provider}-home-")
+            or not prompt_path.name.startswith("asref-grok-prompt-")
+            or not isinstance(effect_observation, dict)
+            or set(effect_observation)
+            not in (
+                set(),
+                {
+                    "logical_attempt_id",
+                    "provider_attempt_store",
+                    "provider_attempt_store_identity",
+                },
+            )
+            or any(
+                not isinstance(item, str) or not item
+                for item in effect_observation.values()
+            )
+            or not path_identity_valid
+            or not termination_fence_valid
+            or (
+                command_bound
+                and (
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(value.get("create_command_id") or ""),
+                    )
+                    is None
+                    or not create_cwd.is_absolute()
+                    or re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(value.get("create_environment_id") or ""),
+                    )
+                    is None
+                )
+            )
+            or (
+                not command_bound
+                and (
+                    value.get("create_command_id") != ""
+                    or value.get("create_cwd") != ""
+                    or value.get("create_environment_id") != ""
+                )
+            )
+        ):
+            raise ValueError("durable Docker cleanup binding drifted")
+        records.append(
+            _DurableDockerCleanupBinding(
+                docker_bin=str(docker_path),
+                provider=provider,
+                container_name=container_name,
+                cleanup_root=cleanup_root,
+                cleanup_root_identity=MappingProxyType(
+                    dict(cleanup_root_identity)
+                ),
+                lease_root=lease_root,
+                docker_config=docker_config,
+                cidfile=cidfile,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+                effect_observation=MappingProxyType(dict(effect_observation)),
+                create_command_id=str(value["create_command_id"]),
+                create_cwd=create_cwd,
+                create_environment_id=str(value["create_environment_id"]),
+                termination_fence=MappingProxyType(
+                    dict(termination_fence)
+                ),
+                binding_state=binding_state,
+                path_identities=MappingProxyType(
+                    {
+                        name: MappingProxyType(dict(identity))
+                        for name, identity in path_identities.items()
+                    }
+                ),
+                runner_pid=runner_pid,
+                runner_start_ticks=runner_start_ticks,
+                watchdog_pid=watchdog_pid,
+                watchdog_start_ticks=watchdog_start_ticks,
+                boot_id=str(value["boot_id"]),
+                record_path=path,
+                record_device=record_metadata.st_dev,
+                record_inode=record_metadata.st_ino,
+                record_id=str(value["record_id"]),
+            )
+        )
+        binding_values[path.stem] = value
+    authority_paths = tuple(
+        path for path in entries if path.suffix == ".authority"
+    )
+    for authority_path in authority_paths:
+        stem = authority_path.stem
+        binding_path = directory / f"{stem}.json"
+        completion_path = directory / f"{stem}.complete"
+        dual_retirement = stem in dual_retirement_stems
+        if completion_path.name not in entry_name_set:
+            raise ValueError(
+                "retired Docker cleanup authority is not exclusive"
+            )
+        completion = _read_durable_docker_cleanup_record(
+            completion_path,
+            directory_anchor=directory_anchor,
+        )
+        binding_identity = completion.get("binding_identity")
+        cleanup_intent = completion.get("cleanup_intent")
+        resources = completion.get("resources")
+        if dual_retirement:
+            binding_record = completion.get("binding_record")
+            if not isinstance(binding_record, Mapping) or not isinstance(
+                binding_identity,
+                Mapping,
+            ):
+                raise ValueError(
+                    "retiring Docker cleanup authority is malformed"
+                )
+            from .grok_cli_runner import (
+                _cleanup_binding_retirement_pair_matches,
+                _docker_binding_lock_descriptor,
+            )
+
+            retirement_lock = _docker_binding_lock_descriptor(binding_path)
+            try:
+                pair_matches = _cleanup_binding_retirement_pair_matches(
+                    retirement_lock.directory_fd,
+                    binding_name=binding_path.name,
+                    authority_name=authority_path.name,
+                    binding_identity=binding_identity,  # type: ignore[arg-type]
+                    binding_record=binding_record,
+                )
+                retirement_lock.assert_current()
+            finally:
+                retirement_lock.close()
+            if not pair_matches:
+                raise ValueError(
+                    "retiring Docker cleanup authority pair drifted"
+                )
+            authority_record = dict(binding_record)
+        else:
+            authority_record = _read_durable_docker_cleanup_record(
+                authority_path,
+                directory_anchor=directory_anchor,
+            )
+        try:
+            authority_metadata = (
+                os.lstat(authority_path)
+                if directory_anchor is None
+                else os.stat(
+                    authority_path.name,
+                    dir_fd=directory_anchor.descriptor,
+                    follow_symlinks=False,
+                )
+            )
+        except OSError as exc:
+            raise ValueError(
+                "retired Docker cleanup authority is unavailable"
+            ) from exc
+        if (
+            not isinstance(binding_identity, Mapping)
+            or not isinstance(cleanup_intent, Mapping)
+            or not isinstance(resources, list)
+            or authority_record.get("binding_path") != str(binding_path)
+            or completion.get("binding_record") != authority_record
+            or not _owned_cleanup_path_matches(
+                authority_metadata,
+                directory=False,
+                identity=binding_identity,
+            )
+        ):
+            raise ValueError("retired Docker cleanup authority drifted")
+        from .grok_cli_runner import (
+            _cleanup_completion_value,
+            _cleanup_intent_terminal_authority,
+            _cleanup_path_quarantine,
+            _cleanup_progress_matches,
+        )
+
+        terminal_authority = _cleanup_intent_terminal_authority(
+            cleanup_intent
+        )
+        if _cleanup_completion_value(
+            binding_path=binding_path,
+            binding_identity=binding_identity,
+            binding_record=authority_record,
+            terminal_cleanup_authority=terminal_authority,
+        ) != completion:
+            raise ValueError("retired Docker cleanup completion drifted")
+        for resource in resources:
+            if (
+                not isinstance(resource, Mapping)
+                or not isinstance(resource.get("identity"), Mapping)
+                or not isinstance(resource.get("directory"), bool)
+            ):
+                raise ValueError(
+                    "retired Docker cleanup resource is malformed"
+                )
+            resource_path = Path(str(resource.get("path") or ""))
+            quarantine, owned, marker, _tombstone = _cleanup_path_quarantine(
+                resource_path,
+                directory=bool(resource["directory"]),
+                identity=resource["identity"],  # type: ignore[arg-type]
+            )
+            if any(
+                os.path.lexists(candidate)
+                for candidate in (
+                    resource_path,
+                    owned,
+                    marker,
+                    quarantine,
+                )
+            ):
+                raise ValueError(
+                    "retired Docker cleanup resource remains materialized"
+                )
+        if terminal_authority is not None:
+            observation = authority_record.get("effect_observation")
+            if not isinstance(observation, Mapping):
+                raise ValueError(
+                    "retired Docker cleanup CAS locator is malformed"
+                )
+            try:
+                from ..control.provider_attempt_store import (
+                    DurableProviderAttemptCAS,
+                )
+
+                attempt_store = DurableProviderAttemptCAS(
+                    str(observation["provider_attempt_store"]),
+                    expected_directory_identity=str(
+                        observation["provider_attempt_store_identity"]
+                    ),
+                    create_if_missing=False,
+                )
+                terminal = attempt_store.observe(
+                    str(observation["logical_attempt_id"])
+                )
+            except (KeyError, OSError, ValueError) as exc:
+                raise ValueError(
+                    "retired Docker cleanup terminal CAS is unavailable"
+                ) from exc
+            if (
+                terminal is None
+                or terminal.state != "terminal"
+                or terminal.terminal_cleanup_authority
+                != terminal_authority
+                or not _cleanup_progress_matches(
+                    terminal.terminal_cleanup_progress,
+                    intent=cleanup_intent,
+                    completion_id=str(completion.get("completion_id") or ""),
+                )
+            ):
+                raise ValueError(
+                    "retired Docker cleanup terminal CAS drifted"
+                )
+        if dual_retirement:
+            from .grok_cli_runner import (
+                _docker_binding_lock_descriptor,
+                _retire_cleanup_binding_authority,
+            )
+
+            retirement_lock = _docker_binding_lock_descriptor(binding_path)
+            try:
+                retired = _retire_cleanup_binding_authority(
+                    binding_path,
+                    binding_identity=binding_identity,  # type: ignore[arg-type]
+                    binding_record=authority_record,
+                    binding_lock=retirement_lock,
+                )
+            finally:
+                retirement_lock.close()
+            if not retired:
+                raise ValueError(
+                    "retiring Docker cleanup authority did not converge"
+                )
+    for sidecar in entries:
+        match = re.fullmatch(
+            r"([0-9a-f]{64})\.(lock|remove-dispatched)",
+            sidecar.name,
+        )
+        if match is None:
+            continue
+        stem, kind = match.groups()
+        if not (
+            f"{stem}.json" in entry_name_set
+            or f"{stem}.authority" in entry_name_set
+            or f"{stem}.complete" in entry_name_set
+        ):
+            raise ValueError("durable Docker cleanup sidecar is orphaned")
+        try:
+            metadata = (
+                os.lstat(sidecar)
+                if directory_anchor is None
+                else os.stat(
+                    sidecar.name,
+                    dir_fd=directory_anchor.descriptor,
+                    follow_symlinks=False,
+                )
+            )
+        except OSError as exc:
+            raise ValueError(
+                "durable Docker cleanup sidecar is unavailable"
+            ) from exc
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or (kind == "lock" and metadata.st_size != 0)
+        ):
+            raise ValueError("durable Docker cleanup sidecar is unsafe")
+        if kind == "lock":
+            continue
+        dispatched = _read_durable_docker_cleanup_record(
+            sidecar,
+            directory_anchor=directory_anchor,
+        )
+        source_binding = binding_values.get(stem)
+        if source_binding is None:
+            completion_path = directory / f"{stem}.complete"
+            completion = _read_durable_docker_cleanup_record(
+                completion_path,
+                directory_anchor=directory_anchor,
+            )
+            source_binding = completion.get("binding_record")
+            binding_identity = completion.get("binding_identity")
+            if (
+                not isinstance(source_binding, Mapping)
+                or not isinstance(binding_identity, Mapping)
+            ):
+                raise ValueError(
+                    "durable Docker removal completion is malformed"
+                )
+            cleanup_intent = completion.get("cleanup_intent")
+            if not isinstance(cleanup_intent, Mapping):
+                raise ValueError(
+                    "durable Docker removal completion intent is malformed"
+                )
+            from .grok_cli_runner import (
+                _cleanup_completion_value,
+                _cleanup_intent_terminal_authority,
+            )
+
+            if _cleanup_completion_value(
+                binding_path=directory / f"{stem}.json",
+                binding_identity=binding_identity,
+                binding_record=source_binding,
+                terminal_cleanup_authority=(
+                    _cleanup_intent_terminal_authority(cleanup_intent)
+                ),
+            ) != completion:
+                raise ValueError(
+                    "durable Docker removal completion drifted"
+                )
+        termination_fence = source_binding.get("termination_fence")
+        if not isinstance(termination_fence, Mapping) or not termination_fence:
+            raise ValueError("durable Docker removal fence is absent")
+        from .grok_cli_runner import _validated_docker_removal_dispatch
+
+        _validated_docker_removal_dispatch(
+            dispatched,
+            binding_path=directory / f"{stem}.json",
+            binding_record=source_binding,
+            termination_fence=termination_fence,
+        )
+    if len({record.binding for record in records}) != len(records):
+        raise ValueError("durable Docker cleanup bindings repeat a container")
+    if directory_anchor is not None:
+        _validate_durable_cleanup_directory_anchor(
+            directory_anchor,
+            expected_path=directory,
+        )
+    return tuple(records)
+
+def _validated_durable_docker_create_journal(
+    record: _DurableDockerCleanupBinding,
+    *,
+    directory_descriptor: int | None = None,
+) -> dict[str, object]:
+    """Return one fully canonical command-bound Docker-create journal."""
+
+    if record.binding_state != "command_bound":
+        raise ValueError("durable Docker create journal is not command-bound")
+    journal_path = record.lease_root / _DOCKER_CREATE_JOURNAL_NAME
+    try:
+        value = _read_durable_docker_cleanup_record(
+            journal_path,
+            directory_descriptor=directory_descriptor,
+        )
+    except FileNotFoundError as exc:
+        raise ValueError("durable Docker create journal is absent") from exc
+    expected_fields = {
+        "schema",
+        "provider",
+        "docker_bin",
+        "docker_config",
+        "container_name",
+        "cidfile",
+        "cwd",
+        "environment_id",
+        "image_id",
+        "argv",
+        "command_id",
+        "state",
+        "issuer_process_birth",
+        "returncode",
+        "stdout_hex",
+        "stderr_hex",
+        "journal_id",
+    }
+    body = {key: item for key, item in value.items() if key != "journal_id"}
+    command_body = {
+        key: value[key]
+        for key in (
+            "provider",
+            "docker_bin",
+            "docker_config",
+            "container_name",
+            "cidfile",
+            "cwd",
+            "environment_id",
+            "image_id",
+            "argv",
+        )
+    }
+    argv = value.get("argv")
+    exact_argv = False
+    if isinstance(argv, list) and all(isinstance(item, str) for item in argv):
+        try:
+            from .grok_cli_runner import _docker_create_command_identity
+
+            canonical_command_id, canonical_command_body = (
+                _docker_create_command_identity(
+                    provider=record.provider,
+                    docker_bin=record.docker_bin,
+                    docker_config=record.docker_config,
+                    container_name=record.container_name,
+                    cidfile=record.cidfile,
+                    cwd=record.create_cwd,
+                    environment_id=record.create_environment_id,
+                    expected_image=str(value.get("image_id") or ""),
+                    argv=argv,
+                )
+            )
+            exact_argv = bool(
+                canonical_command_id == record.create_command_id
+                and canonical_command_body == command_body
+            )
+        except (OSError, ValueError):
+            exact_argv = False
+    try:
+        stdout = bytes.fromhex(str(value.get("stdout_hex") or ""))
+        stderr = bytes.fromhex(str(value.get("stderr_hex") or ""))
+    except ValueError as exc:
+        raise ValueError("durable Docker create output is invalid") from exc
+    state = str(value.get("state") or "")
+    returncode = value.get("returncode")
+    issuer = value.get("issuer_process_birth")
+    issuer_required = state in {
+        "create_inflight",
+        "create_observed",
+        "create_failed_observed",
+        "create_outcome_unknown",
+    }
+    valid_issuer = bool(
+        isinstance(issuer, dict)
+        and set(issuer) == {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+        and type(issuer.get("pid")) is int
+        and issuer["pid"] > 0
+        and type(issuer.get("start_time_ticks")) is int
+        and issuer["start_time_ticks"] > 0
+        and type(issuer.get("parent_pid")) is int
+        and issuer["parent_pid"] == record.watchdog_pid
+        and isinstance(issuer.get("boot_id"), str)
+        and re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            str(issuer.get("boot_id") or ""),
+        )
+        is not None
+    )
+    if (
+        set(value) != expected_fields
+        or value.get("schema") != _DOCKER_CREATE_JOURNAL_SCHEMA
+        or value.get("provider") != record.provider
+        or value.get("docker_bin") != record.docker_bin
+        or value.get("docker_config") != str(record.docker_config)
+        or value.get("container_name") != record.container_name
+        or value.get("cidfile") != str(record.cidfile)
+        or value.get("cwd") != str(record.create_cwd)
+        or value.get("environment_id") != record.create_environment_id
+        or value.get("command_id") != record.create_command_id
+        or not exact_argv
+        or _docker_control_identity(command_body) != record.create_command_id
+        or value.get("journal_id") != _docker_control_identity(body)
+        or state
+        not in {
+            "prepared",
+            "create_armed",
+            "create_inflight",
+            "create_observed",
+            "create_failed_observed",
+            "create_outcome_unknown",
+            "prepared_abandoned",
+        }
+        or issuer_required != valid_issuer
+        or (
+            not issuer_required
+            and issuer != {}
+        )
+        or len(stdout) > _DOCKER_CLEANUP_INSPECTION_MAX_BYTES
+        or len(stderr) > _DOCKER_CLEANUP_INSPECTION_MAX_BYTES
+        or (
+            state == "create_observed"
+            and (type(returncode) is not int or returncode != 0)
+        )
+        or (
+            state == "create_failed_observed"
+            and (type(returncode) is not int or returncode == 0)
+        )
+        or (
+            state == "create_outcome_unknown"
+            and (type(returncode) is not int or returncode == 0)
+        )
+        or (
+            state
+            not in {
+                "create_observed",
+                "create_failed_observed",
+                "create_outcome_unknown",
+            }
+            and (returncode is not None or stdout or stderr)
+        )
+    ):
+        raise ValueError("durable Docker create journal drifted")
+    return value
+
+def _durable_docker_create_state(
+    record: _DurableDockerCleanupBinding,
+) -> str:
+    if record.binding_state == "prepared_no_dispatch":
+        # The watchdog published this authority before readiness and the
+        # runner never atomically upgraded it to a command-bound dispatch.
+        return "prepared_no_dispatch"
+    value = _validated_durable_docker_create_journal(record)
+    return str(value["state"])
+
+def _durable_docker_create_issuer_gone(
+    record: _DurableDockerCleanupBinding,
+) -> bool | None:
+    """Prove the sole durable Docker-create issuer birth is no longer live."""
+
+    state = _durable_docker_create_state(record)
+    if state not in {"create_inflight", "create_outcome_unknown"}:
+        return None
+    value = _read_durable_docker_cleanup_record(
+        record.lease_root / _DOCKER_CREATE_JOURNAL_NAME
+    )
+    issuer = value.get("issuer_process_birth")
+    if not isinstance(issuer, dict):
+        return None
+    birth = WorktreeProcessBirthIdentity.from_dict(issuer)
+    liveness = owner_liveness(birth)
+    if liveness is OwnerLiveness.UNKNOWN:
+        return None
+    return liveness is OwnerLiveness.DEAD
+
+def _exact_process_birth_alive(
+    *,
+    pid: int,
+    start_ticks: int,
+    boot_id: str,
+) -> bool | None:
+    """Return exact liveness, exact death, or an unobservable fail-closed state."""
+
+    liveness = owner_liveness(
+        WorktreeProcessBirthIdentity(
+            pid=pid,
+            start_time_ticks=start_ticks,
+            boot_id=boot_id,
+        )
+    )
+    if liveness is OwnerLiveness.UNKNOWN:
+        return None
+    return liveness is OwnerLiveness.ALIVE
+
+def _durable_cleanup_watchdog_alive(
+    record: _DurableDockerCleanupBinding,
+) -> bool | None:
+    """Observe the receipt-bound watchdog birth independently of profiles."""
+
+    return _exact_process_birth_alive(
+        pid=record.watchdog_pid,
+        start_ticks=record.watchdog_start_ticks,
+        boot_id=record.boot_id,
+    )
+
+def _durable_cleanup_runner_alive(
+    record: _DurableDockerCleanupBinding,
+) -> bool | None:
+    """Observe the record-bound runner birth, not only its numeric PID."""
+
+    return _exact_process_birth_alive(
+        pid=record.runner_pid,
+        start_ticks=record.runner_start_ticks,
+        boot_id=record.boot_id,
+    )
+
+def _private_marker(path: Path) -> bool:
+    try:
+        metadata = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        raise ValueError("Docker cleanup marker is unavailable")
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or metadata.st_nlink != 1
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+    ):
+        raise ValueError("Docker cleanup marker is invalid")
+    return True
+
+def _durable_cleanup_cas_allows_reap(
+    record: _DurableDockerCleanupBinding,
+) -> bool:
+    local_owned = _private_marker(record.lease_root / "cas-owned")
+    local_terminal = _private_marker(record.lease_root / "cas-terminal")
+    observation = dict(record.effect_observation)
+    if not observation:
+        return not local_owned and not local_terminal
+    try:
+        from ..control.provider_attempt_store import DurableProviderAttemptCAS
+
+        store = DurableProviderAttemptCAS(
+            observation["provider_attempt_store"],
+            expected_directory_identity=(
+                observation["provider_attempt_store_identity"]
+            ),
+            create_if_missing=False,
+        )
+        reservation = store.observe(observation["logical_attempt_id"])
+    except (KeyError, OSError, ValueError):
+        return False
+    if reservation is None or reservation.state == "reserved":
+        return not local_owned and not local_terminal
+    if reservation.state not in {"effect_started", "quarantined", "terminal"}:
+        return False
+    launch = reservation.effect_launch_receipt
+    cleanup = launch.get("cleanup_receipt")
+    if not isinstance(cleanup, Mapping):
+        return False
+    try:
+        from .grok_cli_runner import _recorded_codex_cleanup_identity
+
+        observed_root, observed_config, observed_name = (
+            _recorded_codex_cleanup_identity(launch)
+        )
+    except (ImportError, OSError, ValueError):
+        return False
+    local_receipt = bool(
+        observed_root == record.lease_root
+        and observed_config == record.docker_config
+        and observed_name == record.container_name
+        and launch.get("container_name") == record.container_name
+        and cleanup.get("lease_root") == str(record.lease_root)
+        and cleanup.get("docker_config") == str(record.docker_config)
+        and cleanup.get("watchdog_pid") == record.watchdog_pid
+        and cleanup.get("watchdog_start_ticks") == record.watchdog_start_ticks
+    )
+    if local_receipt:
+        # The durable CAS terminal receipt is authoritative.  The local
+        # marker is only a watchdog wake-up hint and a crash may occur after
+        # terminal CAS publication but before that redundant marker write.
+        return reservation.state == "terminal"
+    # A foreign winner proves this exact local lease lost before Docker start,
+    # but a local ownership marker would contradict that proof.
+    return not local_owned and not local_terminal
+
+def _exact_docker_name_absent(
+    record: _DurableDockerCleanupBinding,
+    *,
+    deadline: float,
+) -> bool:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return False
+    temporary_config: Path | None = None
+    config_descriptor = -1
+    config_still_bound = True
+    try:
+        if os.path.lexists(record.docker_config):
+            config_descriptor = os.open(
+                record.docker_config,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            if not _owned_cleanup_path_matches(
+                os.fstat(config_descriptor),
+                directory=True,
+                identity=record.path_identities["docker_config"],
+            ):
+                return False
+            inspection_config = Path(f"/proc/self/fd/{config_descriptor}")
+            inspection_pass_fds = (config_descriptor,)
+        else:
+            # The exact Docker-config directory is nested under the lease and
+            # may already be tombstoned.  Docker's local Unix socket does not
+            # require provider credentials, so use a fresh private config for
+            # the independent exact-name absence observation rather than
+            # recreating or trusting a removed resource path.
+            temporary_config = Path(
+                tempfile.mkdtemp(prefix="aseh-docker-recovery-config-")
+            )
+            temporary_config.chmod(0o700)
+            inspection_config = temporary_config
+            inspection_pass_fds = ()
+        observed = subprocess.run(
+            [
+                record.docker_bin,
+                f"--host={_DOCKER_LOCAL_HOST}",
+                "--config",
+                str(inspection_config),
+                "container",
+                "ls",
+                "--all",
+                "--no-trunc",
+                "--filter",
+                f"name=^/{record.container_name}$",
+                "--format",
+                "{{.Names}}",
+            ],
+            env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=min(2.0, max(0.05, remaining)),
+            check=False,
+            pass_fds=inspection_pass_fds,
+        )
+        if config_descriptor >= 0:
+            config_still_bound = _owned_cleanup_path_matches(
+                os.lstat(record.docker_config),
+                directory=True,
+                identity=record.path_identities["docker_config"],
+            )
+    except (KeyError, OSError, subprocess.TimeoutExpired):
+        return False
+    finally:
+        if config_descriptor >= 0:
+            os.close(config_descriptor)
+        if temporary_config is not None:
+            shutil.rmtree(temporary_config, ignore_errors=True)
+    return bool(
+        observed.returncode == 0
+        and len(observed.stdout) <= _DOCKER_CLEANUP_INSPECTION_MAX_BYTES
+        and not observed.stdout.strip()
+        and config_still_bound
+    )
+
+def _exact_docker_container_materialized(
+    record: _DurableDockerCleanupBinding,
+    *,
+    deadline: float,
+) -> Mapping[str, object] | None:
+    """Attest one exact Docker effect and its current Linux process scope."""
+
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return None
+    lease_descriptor = -1
+    config_descriptor = -1
+    cid_descriptor = -1
+    try:
+        if (
+            record.binding_state != "command_bound"
+            or record.docker_config != record.lease_root / "docker-config"
+            or record.cidfile != record.lease_root / "container.cid"
+        ):
+            return None
+        lease_descriptor = os.open(
+            record.lease_root,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        if not _owned_cleanup_path_matches(
+            os.fstat(lease_descriptor),
+            directory=True,
+            identity=record.path_identities["lease_root"],
+        ):
+            return None
+        config_descriptor = os.open(
+            "docker-config",
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=lease_descriptor,
+        )
+        if not _owned_cleanup_path_matches(
+            os.fstat(config_descriptor),
+            directory=True,
+            identity=record.path_identities["docker_config"],
+        ):
+            return None
+        # Validate the journal again from the already-bound lease descriptor.
+        # The earlier state check schedules this branch; it is never authority
+        # for the image or command used by the Docker inspection below.
+        journal = _validated_durable_docker_create_journal(
+            record,
+            directory_descriptor=lease_descriptor,
+        )
+        image_id = str(journal.get("image_id") or "")
+        if (
+            journal.get("state") != "create_observed"
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None
+        ):
+            return None
+        cid_descriptor = os.open(
+            "container.cid",
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=lease_descriptor,
+        )
+        cid_before = os.fstat(cid_descriptor)
+        if (
+            not stat.S_ISREG(cid_before.st_mode)
+            or cid_before.st_uid != os.geteuid()
+            or cid_before.st_nlink != 1
+            or cid_before.st_size > 128
+        ):
+            return None
+        raw_cid = os.read(cid_descriptor, 129)
+        cid_after = os.fstat(cid_descriptor)
+        cid_named = os.stat(
+            "container.cid",
+            dir_fd=lease_descriptor,
+            follow_symlinks=False,
+        )
+        cid_snapshot = lambda item: (  # noqa: E731 - immutable stat projection.
+            item.st_dev,
+            item.st_ino,
+            item.st_mode,
+            item.st_uid,
+            item.st_nlink,
+            item.st_size,
+            item.st_mtime_ns,
+            item.st_ctime_ns,
+        )
+        if (
+            len(raw_cid) > 128
+            or cid_snapshot(cid_before) != cid_snapshot(cid_after)
+            or cid_snapshot(cid_after) != cid_snapshot(cid_named)
+            or re.fullmatch(
+                r"[0-9a-f]{64}", raw_cid.decode("ascii").strip()
+            )
+            is None
+            or not _owned_cleanup_path_matches(
+                os.lstat(record.lease_root),
+                directory=True,
+                identity=record.path_identities["lease_root"],
+            )
+            or not _owned_cleanup_path_matches(
+                os.lstat(record.docker_config),
+                directory=True,
+                identity=record.path_identities["docker_config"],
+            )
+        ):
+            return None
+        container_id = raw_cid.decode("ascii").strip()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        from .grok_cli_runner import _attest_exact_docker_execution
+
+        termination_fence = _attest_exact_docker_execution(
+            docker_bin=record.docker_bin,
+            docker_config=Path(f"/proc/self/fd/{config_descriptor}"),
+            provider=record.provider,
+            container_name=record.container_name,
+            container_id=container_id,
+            image_id=image_id,
+            timeout=min(2.0, max(0.05, remaining)),
+            pass_fds=(config_descriptor,),
+        )
+        cid_after_attestation = os.fstat(cid_descriptor)
+        cid_named_after_attestation = os.stat(
+            "container.cid",
+            dir_fd=lease_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            cid_snapshot(cid_after)
+            != cid_snapshot(cid_after_attestation)
+            or cid_snapshot(cid_after_attestation)
+            != cid_snapshot(cid_named_after_attestation)
+            or not _owned_cleanup_path_matches(
+                os.fstat(lease_descriptor),
+                directory=True,
+                identity=record.path_identities["lease_root"],
+            )
+            or not _owned_cleanup_path_matches(
+                os.fstat(config_descriptor),
+                directory=True,
+                identity=record.path_identities["docker_config"],
+            )
+            or not _owned_cleanup_path_matches(
+                os.lstat(record.lease_root),
+                directory=True,
+                identity=record.path_identities["lease_root"],
+            )
+            or not _owned_cleanup_path_matches(
+                os.lstat(record.docker_config),
+                directory=True,
+                identity=record.path_identities["docker_config"],
+            )
+        ):
+            return None
+        return MappingProxyType(dict(termination_fence))
+    except (
+        FileNotFoundError,
+        KeyError,
+        OSError,
+        subprocess.TimeoutExpired,
+        UnicodeError,
+        ValueError,
+    ):
+        return None
+    finally:
+        for descriptor in (
+            cid_descriptor,
+            config_descriptor,
+            lease_descriptor,
+        ):
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+
+def _publish_durable_docker_termination_fence(
+    record: _DurableDockerCleanupBinding,
+    termination_fence: Mapping[str, object],
+) -> _DurableDockerCleanupBinding:
+    """Win the one CAS transition that authorizes a single Docker rm."""
+
+    from .grok_cli_runner import (
+        _cleanup_path_identity,
+        _publish_docker_termination_fence_binding,
+        _validated_docker_termination_fence,
+    )
+
+    if record.termination_fence:
+        raise ValueError("Docker termination fence is already published")
+    admitted_fence = _validated_docker_termination_fence(
+        termination_fence,
+        provider=record.provider,
+        container_name=record.container_name,
+    )
+    expected_identity = _cleanup_path_identity(
+        record.record_path,
+        directory=False,
+    )
+    if (
+        expected_identity.get("device") != record.record_device
+        or expected_identity.get("inode") != record.record_inode
+    ):
+        raise ValueError("Docker cleanup binding lost its CAS identity")
+    admitted, refreshed_identity = _publish_docker_termination_fence_binding(
+        record_path=record.record_path,
+        expected_record_id=record.record_id,
+        expected_identity=expected_identity,
+        provider=record.provider,
+        docker_bin=record.docker_bin,
+        docker_config=record.docker_config,
+        container_name=record.container_name,
+        cidfile=record.cidfile,
+        lease_root=record.lease_root,
+        provider_home=record.provider_home,
+        prompt_path=record.prompt_path,
+        effect_observation=record.effect_observation,
+        runner_pid=record.runner_pid,
+        runner_start_ticks=record.runner_start_ticks,
+        watchdog_pid=record.watchdog_pid,
+        watchdog_start_ticks=record.watchdog_start_ticks,
+        create_command_id=record.create_command_id,
+        create_cwd=record.create_cwd,
+        create_environment_id=record.create_environment_id,
+        termination_fence=admitted_fence,
+    )
+    refreshed_record_id = str(admitted.get("record_id") or "")
+    if (
+        admitted.get("termination_fence") != admitted_fence
+        or refreshed_record_id == record.record_id
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", refreshed_record_id) is None
+        or set(refreshed_identity) != {"device", "inode", "mode", "uid"}
+        or any(
+            type(refreshed_identity.get(name)) is not int
+            for name in ("device", "inode", "mode", "uid")
+        )
+    ):
+        raise ValueError("Docker termination fence CAS was not refreshed")
+    return replace(
+        record,
+        termination_fence=MappingProxyType(dict(admitted_fence)),
+        record_device=int(refreshed_identity["device"]),
+        record_inode=int(refreshed_identity["inode"]),
+        record_id=refreshed_record_id,
+    )
+
+def _remove_fenced_durable_docker_effect(
+    record: _DurableDockerCleanupBinding,
+    *,
+    deadline: float,
+    issue_removal: bool,
+) -> bool:
+    """Issue the sole CID-bound rm using the record-bound Docker config FD."""
+
+    if not record.termination_fence:
+        return False
+    config_descriptor = -1
+    try:
+        config_descriptor = os.open(
+            record.docker_config,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        if not _owned_cleanup_path_matches(
+            os.fstat(config_descriptor),
+            directory=True,
+            identity=record.path_identities["docker_config"],
+        ):
+            return False
+        from .grok_cli_runner import _remove_exact_docker_container
+
+        _remove_exact_docker_container(
+            docker_bin=record.docker_bin,
+            docker_config=Path(f"/proc/self/fd/{config_descriptor}"),
+            container_name=record.container_name,
+            settle_for_creation=False,
+            deadline=deadline,
+            termination_fence=record.termination_fence,
+            pass_fds=(config_descriptor,),
+            issue_removal=issue_removal,
+        )
+        return bool(
+            _owned_cleanup_path_matches(
+                os.fstat(config_descriptor),
+                directory=True,
+                identity=record.path_identities["docker_config"],
+            )
+            and _owned_cleanup_path_matches(
+                os.lstat(record.docker_config),
+                directory=True,
+                identity=record.path_identities["docker_config"],
+            )
+        )
+    except (KeyError, OSError, ValueError):
+        return False
+    finally:
+        if config_descriptor >= 0:
+            os.close(config_descriptor)
+
+def _arm_fenced_durable_docker_removal(
+    record: _DurableDockerCleanupBinding,
+) -> bool:
+    """Use the canonical per-binding marker to admit at most one Docker rm."""
+
+    from .grok_cli_runner import (
+        _arm_docker_removal_once,
+        _cleanup_path_identity,
+        _read_private_control_record,
+    )
+
+    raw = _read_private_control_record(
+        record.record_path.parent,
+        record.record_path.name,
+    )
+    if (
+        raw is None
+        or raw.get("record_id") != record.record_id
+        or raw.get("termination_fence") != dict(record.termination_fence)
+    ):
+        raise ValueError("Docker removal binding is unavailable")
+    identity = _cleanup_path_identity(record.record_path, directory=False)
+    if (
+        identity.get("device") != record.record_device
+        or identity.get("inode") != record.record_inode
+    ):
+        raise ValueError("Docker removal binding identity drifted")
+    return _arm_docker_removal_once(
+        binding_path=record.record_path,
+        expected_binding_identity=identity,
+        binding_record=raw,
+        termination_fence=record.termination_fence,
+    )
+
+def _fenced_durable_docker_effect_absent(
+    record: _DurableDockerCleanupBinding,
+    *,
+    deadline: float,
+) -> bool:
+    """Reconcile a prior fenced rm without ever dispatching it again."""
+
+    from .grok_cli_runner import (
+        _docker_termination_scope_quiescent,
+        _validated_docker_termination_fence,
+    )
+
+    try:
+        fence = _validated_docker_termination_fence(
+            record.termination_fence,
+            provider=record.provider,
+            container_name=record.container_name,
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+    temporary_config: Path | None = None
+    config_descriptor = -1
+    bound_record_config = False
+    try:
+        if os.path.lexists(record.docker_config):
+            config_descriptor = os.open(
+                record.docker_config,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            if not _owned_cleanup_path_matches(
+                os.fstat(config_descriptor),
+                directory=True,
+                identity=record.path_identities["docker_config"],
+            ):
+                return False
+            bound_record_config = True
+        else:
+            temporary_config = Path(
+                tempfile.mkdtemp(prefix="aseh-docker-fence-recovery-config-")
+            )
+            temporary_config.chmod(0o700)
+            config_descriptor = os.open(
+                temporary_config,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+        inspection_config = Path(f"/proc/self/fd/{config_descriptor}")
+        absence_samples = 0
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            observed_id = subprocess.run(
+                [
+                    record.docker_bin,
+                    f"--host={_DOCKER_LOCAL_HOST}",
+                    "--config",
+                    str(inspection_config),
+                    "container",
+                    "ls",
+                    "--all",
+                    "--no-trunc",
+                    "--filter",
+                    f"id={fence['container_id']}",
+                    "--format",
+                    "{{.ID}}",
+                ],
+                env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"},
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=min(2.0, max(0.05, remaining)),
+                check=False,
+                pass_fds=(config_descriptor,),
+            )
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            observed_name = subprocess.run(
+                [
+                    record.docker_bin,
+                    f"--host={_DOCKER_LOCAL_HOST}",
+                    "--config",
+                    str(inspection_config),
+                    "container",
+                    "ls",
+                    "--all",
+                    "--no-trunc",
+                    "--filter",
+                    f"name=^/{record.container_name}$",
+                    "--format",
+                    "{{.Names}}",
+                ],
+                env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"},
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=min(2.0, max(0.05, remaining)),
+                check=False,
+                pass_fds=(config_descriptor,),
+            )
+            config_still_bound = bool(
+                not bound_record_config
+                or (
+                    _owned_cleanup_path_matches(
+                        os.fstat(config_descriptor),
+                        directory=True,
+                        identity=record.path_identities["docker_config"],
+                    )
+                    and _owned_cleanup_path_matches(
+                        os.lstat(record.docker_config),
+                        directory=True,
+                        identity=record.path_identities["docker_config"],
+                    )
+                )
+            )
+            exact_absence = bool(
+                observed_id.returncode == 0
+                and observed_name.returncode == 0
+                and len(observed_id.stdout)
+                <= _DOCKER_CLEANUP_INSPECTION_MAX_BYTES
+                and len(observed_name.stdout)
+                <= _DOCKER_CLEANUP_INSPECTION_MAX_BYTES
+                and not observed_id.stdout.strip()
+                and not observed_name.stdout.strip()
+                and config_still_bound
+                and _docker_termination_scope_quiescent(fence)
+            )
+            absence_samples = absence_samples + 1 if exact_absence else 0
+            if absence_samples >= 2:
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.1, remaining))
+    except (KeyError, OSError, subprocess.TimeoutExpired, ValueError):
+        return False
+    finally:
+        if config_descriptor >= 0:
+            os.close(config_descriptor)
+        if temporary_config is not None:
+            shutil.rmtree(temporary_config, ignore_errors=True)
+
+def _unmaterialized_docker_name_absent(
+    record: _DurableDockerCleanupBinding,
+    *,
+    deadline: float,
+) -> bool:
+    """Prove name absence for a state that carries no admitted Docker effect."""
+
+    if not os.path.lexists(record.docker_config):
+        return _exact_docker_name_absent(record, deadline=deadline)
+    config_descriptor = -1
+    try:
+        config_descriptor = os.open(
+            record.docker_config,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        if not _owned_cleanup_path_matches(
+            os.fstat(config_descriptor),
+            directory=True,
+            identity=record.path_identities["docker_config"],
+        ):
+            return False
+        from .grok_cli_runner import _remove_exact_docker_container
+
+        # With no termination fence the canonical helper never dispatches rm;
+        # it only requires two stable exact-name absence observations.
+        _remove_exact_docker_container(
+            docker_bin=record.docker_bin,
+            docker_config=Path(f"/proc/self/fd/{config_descriptor}"),
+            container_name=record.container_name,
+            settle_for_creation=False,
+            deadline=deadline,
+            pass_fds=(config_descriptor,),
+        )
+        return bool(
+            _owned_cleanup_path_matches(
+                os.fstat(config_descriptor),
+                directory=True,
+                identity=record.path_identities["docker_config"],
+            )
+            and _owned_cleanup_path_matches(
+                os.lstat(record.docker_config),
+                directory=True,
+                identity=record.path_identities["docker_config"],
+            )
+        )
+    except (KeyError, OSError, ValueError):
+        return False
+    finally:
+        if config_descriptor >= 0:
+            os.close(config_descriptor)
+
+def _remove_durable_cleanup_record(
+    record: _DurableDockerCleanupBinding,
+) -> bool:
+    """Publish and converge the canonical post-Docker cleanup transition."""
+
+    try:
+        current = _read_durable_docker_cleanup_record(record.record_path)
+        if current.get("record_id") != record.record_id:
+            return False
+        from .grok_cli_runner import (
+            _cleanup_path_identity,
+            _finalize_verified_cleanup_completion,
+        )
+
+        binding_identity = _cleanup_path_identity(
+            record.record_path,
+            directory=False,
+        )
+        if (
+            binding_identity.get("device") != record.record_device
+            or binding_identity.get("inode") != record.record_inode
+        ):
+            return False
+        cleanup_store: object | None = None
+        terminal_reservation: object | None = None
+        observation = dict(record.effect_observation)
+        if observation:
+            from ..control.provider_attempt_store import (
+                DurableProviderAttemptCAS,
+            )
+
+            cleanup_store = DurableProviderAttemptCAS(
+                str(observation["provider_attempt_store"]),
+                expected_directory_identity=str(
+                    observation["provider_attempt_store_identity"]
+                ),
+                create_if_missing=False,
+            )
+            terminal_reservation = cleanup_store.observe(
+                str(observation["logical_attempt_id"])
+            )
+            if (
+                terminal_reservation is None
+                or terminal_reservation.state != "terminal"
+                or terminal_reservation.terminal_cleanup_authority.get(
+                    "binding_record_id"
+                )
+                != record.record_id
+            ):
+                return False
+        return _finalize_verified_cleanup_completion(
+            binding_path=record.record_path,
+            binding_identity=binding_identity,
+            binding_record=current,
+            terminal_cleanup_store=cleanup_store,
+            terminal_cleanup_reservation=terminal_reservation,
+        )
+    except (FileNotFoundError, KeyError, OSError, ValueError):
+        return False
+
+def _owned_cleanup_path_matches(
+    metadata: os.stat_result,
+    *,
+    directory: bool,
+    identity: Mapping[str, int],
+) -> bool:
+    from .grok_cli_runner import (
+        _owned_cleanup_path_matches as canonical_path_matches,
+    )
+
+    return canonical_path_matches(
+        metadata,
+        directory=directory,
+        identity=identity,
+    )
+
+def _remove_owned_cleanup_path(
+    path: Path,
+    *,
+    directory: bool,
+    identity: Mapping[str, int],
+) -> bool:
+    """Use the runner's one canonical replayable inode-removal protocol."""
+
+    from .grok_cli_runner import (
+        _remove_or_admit_cleanup_tombstone as canonical_remove_path,
+    )
+
+    return canonical_remove_path(
+        path,
+        directory=directory,
+        identity=identity,
+    )
+
+def _discard_owned_cleanup_tombstone(
+    path: Path,
+    *,
+    directory: bool,
+    identity: Mapping[str, int],
+) -> bool:
+    from .grok_cli_runner import (
+        _discard_owned_cleanup_tombstone as canonical_discard_tombstone,
+    )
+
+    return canonical_discard_tombstone(
+        path,
+        directory=directory,
+        identity=identity,
+    )
+
+def _reconcile_durable_docker_cleanup(
+    record: _DurableDockerCleanupBinding,
+    *,
+    deadline: float,
+) -> bool:
+    """Recover one dead reaper through the immutable effect/CAS boundary."""
+
+    try:
+        if not _durable_cleanup_cas_allows_reap(record):
+            return False
+        # Recheck both exact births inside the mutation boundary.  Outer
+        # shutdown scans use the same observations for scheduling, but must
+        # not be the sole authority for replaying a durable record.
+        if (
+            _durable_cleanup_runner_alive(record) is not False
+            or _durable_cleanup_watchdog_alive(record) is not False
+        ):
+            return False
+        try:
+            current_boot_id = Path(
+                "/proc/sys/kernel/random/boot_id"
+            ).read_text(encoding="ascii").strip()
+        except (OSError, UnicodeError):
+            return False
+        if not current_boot_id:
+            return False
+        same_boot = current_boot_id == record.boot_id
+        already_fenced = bool(record.termination_fence)
+        # A canonical termination fence was published only after an independently
+        # attested successful create.  Once present, it remains the authority even
+        # if the same-UID-writable public journal is missing or rewritten.
+        create_state = (
+            "create_observed"
+            if already_fenced
+            else _durable_docker_create_state(record)
+        )
+        allowed_states = {
+            "prepared_no_dispatch",
+            "prepared",
+            "prepared_abandoned",
+            "create_armed",
+            "create_inflight",
+            "create_observed",
+            "create_failed_observed",
+            "create_outcome_unknown",
+        }
+        if create_state not in allowed_states:
+            return False
+        if already_fenced and (
+            record.binding_state != "command_bound"
+            or create_state != "create_observed"
+        ):
+            return False
+        if (
+            same_boot
+            and record.binding_state == "command_bound"
+            and create_state != "create_observed"
+        ):
+            # A same-boot public journal cannot downgrade an armed, failed, or
+            # unknown create into authority to release the reserved name.
+            return False
+        if create_state in {"create_inflight", "create_outcome_unknown"} and (
+            same_boot
+            or _durable_docker_create_issuer_gone(record) is not True
+        ):
+            return False
+        lease_present = record.lease_root.exists()
+        if lease_present:
+            if not _owned_cleanup_path_matches(
+                os.lstat(record.lease_root),
+                directory=True,
+                identity=record.path_identities["lease_root"],
+            ) or not _owned_cleanup_path_matches(
+                os.lstat(record.docker_config),
+                directory=True,
+                identity=record.path_identities["docker_config"],
+            ):
+                return False
+        working_record = record
+        if create_state == "create_observed":
+            if already_fenced:
+                # Fence publication happens while the provider is live, before
+                # cleanup.  The separate durable dispatch marker determines
+                # whether this recovery owns the sole rm or must observe only.
+                issue_removal = _arm_fenced_durable_docker_removal(
+                    working_record
+                )
+                effect_absent = _remove_fenced_durable_docker_effect(
+                    working_record,
+                    deadline=deadline,
+                    issue_removal=issue_removal,
+                )
+            else:
+                # The canonical CAS publisher validates the current boot.  An
+                # unfenced effect from an earlier boot cannot acquire deletion
+                # authority from a mutable name-only observation.
+                if not same_boot or not lease_present:
+                    return False
+                termination_fence = _exact_docker_container_materialized(
+                    working_record,
+                    deadline=deadline,
+                )
+                if termination_fence is None:
+                    return False
+                working_record = _publish_durable_docker_termination_fence(
+                    working_record,
+                    termination_fence,
+                )
+                issue_removal = _arm_fenced_durable_docker_removal(
+                    working_record
+                )
+                effect_absent = _remove_fenced_durable_docker_effect(
+                    working_record,
+                    deadline=deadline,
+                    issue_removal=issue_removal,
+                )
+        else:
+            if already_fenced:
+                return False
+            # These states carry no admitted completed effect.  The canonical
+            # helper receives no fence and therefore performs observation only.
+            effect_absent = _unmaterialized_docker_name_absent(
+                working_record,
+                deadline=deadline,
+            )
+        if not effect_absent:
+            return False
+        # The canonical finalizer owns the stable per-binding lock across all
+        # resource tombstones and binding retirement.  Fence publication may
+        # replace the record inode, so finalize only against the refreshed CAS
+        # identity, never the stale input one.
+        return _remove_durable_cleanup_record(working_record)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return False
+
+def _detached_docker_cleanup_bindings(
+    tree: ProcessTreeSnapshot,
+    *,
+    process_pid: int,
+    process_start_ticks: int,
+    process_boot_id: str,
+    records: Sequence[_DurableDockerCleanupBinding] = (),
+) -> tuple[tuple[str, str, str], ...]:
+    """Admit every auxiliary profile root as one exact cleanup reaper."""
+
+    bindings: list[tuple[str, str, str]] = []
+    for root in tree.roots:
+        if root.pid == process_pid:
+            continue
+        binding = _detached_docker_cleanup_binding(
+            root,
+            runner_pid=process_pid,
+            runner_start_ticks=process_start_ticks,
+            runner_boot_id=process_boot_id,
+            records=records,
+        )
+        if binding is None:
+            raise ValueError("managed lifecycle profile has an unknown auxiliary root")
+        bindings.append(binding)
+    if len(bindings) != len(set(bindings)):
+        raise ValueError("managed lifecycle profile repeats a cleanup binding")
+    return tuple(bindings)
+
+def _detached_docker_cleanup_absence_verified(
+    bindings: Sequence[tuple[str, str, str]],
+    *,
+    deadline: float,
+) -> bool:
+    """Independently prove every receipt-bound Docker name is absent."""
+
+    for docker_bin, container_name, lease_root in bindings:
+        if Path(lease_root).exists():
+            return False
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        try:
+            observed = subprocess.run(
+                [
+                    docker_bin,
+                    f"--host={_DOCKER_LOCAL_HOST}",
+                    "container",
+                    "ls",
+                    "--all",
+                    "--no-trunc",
+                    "--filter",
+                    f"name=^/{container_name}$",
+                    "--format",
+                    "{{.Names}}",
+                ],
+                env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"},
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=min(2.0, max(0.05, remaining)),
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        if (
+            observed.returncode != 0
+            or len(observed.stdout) > _DOCKER_CLEANUP_INSPECTION_MAX_BYTES
+            or observed.stdout.strip()
+        ):
+            return False
+    return True
+
+def _release_process_cleanup_directory_anchor(
+    process: subprocess.Popen[bytes],
+) -> bool:
+    """Close a parent-held cleanup namespace only after a verified fence."""
+
+    anchor = getattr(
+        process,
+        "_agent_supervisor_cleanup_directory_anchor",
+        None,
+    )
+    if anchor is None:
+        return not bool(
+            getattr(
+                process,
+                "_agent_supervisor_cleanup_directory_anchor_required",
+                False,
+            )
+        )
+    if not isinstance(anchor, _DurableCleanupDirectoryAnchor):
+        return False
+    try:
+        os.close(anchor.descriptor)
+    except OSError:
+        return False
+    try:
+        delattr(process, "_agent_supervisor_cleanup_directory_anchor")
+    except AttributeError:
+        return False
+    process._agent_supervisor_cleanup_directory_anchor_required = False
+    return True
+
+def _run_plan_bound_launch_gate_with_interpreter(
+    argv: Sequence[str],
+    *,
+    retained_interpreter: RetainedControlPlaneInterpreter,
+) -> int:
+    """Release exactly one accepted-tree child after parent birth capture."""
+
+    tokens = tuple(str(item) for item in argv)
+    if len(tokens) >= 11 and tokens[8] == "--":
+        live_config = "-"
+        child_offset = 9
+    elif len(tokens) >= 12 and tokens[9] == "--":
+        live_config = tokens[8]
+        child_offset = 10
+        if not live_config:
+            return 78
+    else:
+        return 78
+    try:
+        gate_fd = int(tokens[0])
+        control_plane_pin = parse_accepted_control_plane_pin(tokens[2])
+        control_plane_descriptor = int(tokens[3])
+        recovery_authorization_cid = tokens[4]
+        verify_agent_implementation_sealed_control_plane(
+            control_plane_pin,
+            control_plane_descriptor,
+        )
+    except ValueError:
+        return 78
+    try:
+        accepted_tree_root = _canonical_accepted_tree_root(Path(tokens[1]))
+    except ValueError:
+        return 78
+    child_command = list(tokens[child_offset:])
+    try:
+        native_dependency, system_directories = (
+            admit_sealed_native_dependency_environment(os.environ)
+        )
+        if (
+            retained_interpreter.sha256
+            != native_dependency.pin.python_executable_sha256
+        ):
+            raise ValueError("gate interpreter differs from native pin")
+        expected_prefix = build_sealed_control_plane_module_command(
+            python_executable=retained_interpreter.argv0,
+            pin=control_plane_pin,
+            descriptor=control_plane_descriptor,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_supervisor"
+            ),
+            argv=(),
+            repo_root=accepted_tree_root,
+            retained_interpreter=retained_interpreter,
+            native_dependency_launch=native_dependency,
+            accepted_native_authorization_id=(
+                native_dependency.accepted_authorization_id
+            ),
+            system_dependency_directories_json=system_directories,
+        )
+    except (IndexError, OSError, ValueError):
+        return 78
+    prefix_length = len(expected_prefix)
+    if child_command[:prefix_length] != expected_prefix:
+        return 78
+    child_argv = child_command[prefix_length:]
+    try:
+        source_heads = _profile_option_values(
+            child_argv,
+            "--plan-bound-source-head",
+        )
+        source_trees = _profile_option_values(
+            child_argv,
+            "--plan-bound-source-tree",
+        )
+        child_roots = _profile_option_values(
+            child_argv,
+            "--plan-bound-accepted-tree-root",
+        )
+        store_paths = _profile_option_values(
+            child_argv,
+            "--plan-revision-store-path",
+        )
+        revision_cids = _profile_option_values(
+            child_argv,
+            "--plan-bound-revision-cid",
+        )
+        slice_ids = _profile_option_values(
+            child_argv,
+            "--plan-bound-slice-id",
+        )
+        lane_ids = _profile_option_values(
+            child_argv,
+            "--plan-bound-lane-id",
+        )
+        state_dirs = _profile_option_values(child_argv, "--state-dir")
+        state_prefixes = _profile_option_values(child_argv, "--state-prefix")
+        worktree_roots = _profile_option_values(child_argv, "--worktree-root")
+        merge_queue_roots = _profile_option_values(
+            child_argv,
+            "--merge-queue-dir",
+        )
+        from .worker_network_dispatch import (
+            EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
+        )
+
+        worker_network_launch_authorities = _profile_option_values(
+            child_argv,
+            EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
+        )
+    except ValueError:
+        return 78
+    if (
+        gate_fd < 3
+        or control_plane_descriptor < 3
+        or gate_fd == control_plane_descriptor
+        or "--plan-bound-dispatch" not in child_argv
+        or child_roots != (str(accepted_tree_root),)
+        or len(store_paths) != 1
+        or len(revision_cids) != 1
+        or len(slice_ids) != 1
+        or len(lane_ids) != 1
+        or len(source_heads) != 1
+        or len(source_trees) != 1
+        or len(state_prefixes) != 1
+        or not recovery_authorization_cid
+        or (
+            source_heads[0],
+            source_trees[0],
+        )
+        != (
+            control_plane_pin.source_head,
+            control_plane_pin.source_tree,
+        )
+    ):
+        return 78
+    try:
+        while True:
+            try:
+                authorization = os.read(gate_fd, 1)
+                break
+            except InterruptedError:
+                continue
+    except OSError:
+        return 78
+    finally:
+        try:
+            os.close(gate_fd)
+        except OSError:
+            pass
+    if authorization != PLAN_BOUND_LAUNCH_GATE_SUCCESS:
+        return 78
+    try:
+        recovery_repository_head = ""
+        recovery_repository_tree = ""
+        recovery_runtime_roots: tuple[Path, ...] = ()
+        recovery_owner_bound_artifacts: tuple[Path, ...] = ()
+        recovery_artifacts: tuple[Mapping[str, Any], ...] = ()
+        recovery_runtime_bindings: tuple[Mapping[str, Any], ...] = ()
+        if recovery_authorization_cid != "-":
+            from ..control.plan_execution_store import (
+                ProductionParallelPlanAdapter,
+            )
+            from ..task_sources.plan_revision_store import PlanRevisionStore
+
+            store_path = _resolve_path(
+                accepted_tree_root,
+                Path(store_paths[0]),
+            )
+            _lexical_contained_path(accepted_tree_root, store_path)
+            if (
+                len(state_dirs) != 1
+                or len(worktree_roots) != 1
+                or len(merge_queue_roots) != 1
+            ):
+                return 78
+            state_dir = _resolve_path(
+                accepted_tree_root,
+                Path(state_dirs[0]),
+            )
+            if state_dir.parent != store_path.parent:
+                return 78
+            recovery_runtime_roots = (
+                store_path.parent,
+                _resolve_path(
+                    accepted_tree_root,
+                    Path(worktree_roots[0]),
+                ),
+                _resolve_path(
+                    accepted_tree_root,
+                    Path(merge_queue_roots[0]),
+                ),
+            )
+            plan_adapter = ProductionParallelPlanAdapter(
+                PlanRevisionStore(store_path)
+            )
+            recovery = plan_adapter.load_recovery_launch(
+                revision_cid=revision_cids[0],
+                slice_id=slice_ids[0],
+                lane_id=lane_ids[0],
+                authorization_cid=recovery_authorization_cid,
+            )
+            execution = plan_adapter.load_execution_lease(
+                revision_cid=revision_cids[0],
+                slice_id=slice_ids[0],
+                lane_id=lane_ids[0],
+            )
+            if (
+                recovery.source_head != source_heads[0]
+                or recovery.source_tree != source_trees[0]
+                or execution is None
+                or execution[0] != recovery.execution_lease_cid
+            ):
+                return 78
+            recovery_repository_head = recovery.repository_head
+            recovery_repository_tree = recovery.repository_tree
+            recovery_artifacts = recovery.runtime_artifacts
+            recovery_runtime_bindings = plan_adapter.recovery_runtime_bindings(
+                revision_cid=revision_cids[0],
+                slice_manifest_cid=recovery.slice_manifest_cid,
+            )
+            recovery_owner_bound_artifacts = (
+                state_dir / "implementation.lock",
+                *(
+                    _resolve_path(accepted_tree_root, Path(path))
+                    for path in plan_adapter.recovery_workspace_paths(
+                        revision_cid=revision_cids[0],
+                        slice_manifest_cid=recovery.slice_manifest_cid,
+                    )
+                ),
+                *(
+                    _resolve_path(accepted_tree_root, Path(path))
+                    for path in recovery.launch_artifact_paths
+                ),
+            )
+        _validate_plan_bound_accepted_tree(
+            accepted_tree_root=accepted_tree_root,
+            source_head=source_heads[0],
+            source_tree=source_trees[0],
+            control_plane_pin=control_plane_pin,
+            recovery_repository_head=recovery_repository_head,
+            recovery_repository_tree=recovery_repository_tree,
+            recovery_runtime_roots=recovery_runtime_roots,
+            recovery_owner_bound_artifacts=(
+                recovery_owner_bound_artifacts
+            ),
+            recovery_artifacts=recovery_artifacts,
+            recovery_state_prefix=(
+                state_prefixes[0] if recovery_repository_head else ""
+            ),
+            recovery_runtime_bindings=recovery_runtime_bindings,
+            recovery_slice_id=(
+                slice_ids[0] if recovery_repository_head else ""
+            ),
+            recovery_lane_id=(
+                lane_ids[0] if recovery_repository_head else ""
+            ),
+            recovery_state_dir=(
+                state_dir if recovery_repository_head else None
+            ),
+        )
+        if live_config != "-":
+            live_verification = _verify_eaaef_configured_board_birth(
+                repo_root=accepted_tree_root,
+                live_config=live_config,
+                accepted_control_plane_pin=control_plane_pin,
+            )
+            # The birth re-opens the source-addressed ticket before any new
+            # dispatch prerequisite is allowed to reject the child.  This
+            # preserves swap-at-birth detection even when propagation is
+            # absent or stale.
+            if len(worker_network_launch_authorities) != 1:
+                return _plan_bound_gate_fail(
+                    "worker-network launch authority count is not one"
+                )
+            _assert_eaaef_operational_child_profile(
+                common_args=child_command,
+                track_args=(),
+                repo_root=Path(accepted_tree_root),
+                operational=DatabaseProgramConfig.from_mapping(
+                    live_verification["operational_database_program"]
+                ),
+                command_fabric=live_verification[
+                    "operational_command_fabric"
+                ],
+                worker_network_policy=live_verification[
+                    "worker_network_authorization_policy"
+                ],
+                worker_principal_did=str(
+                    live_verification.get("provider_worker_principal_did") or ""
+                ),
+                provider_principal_did=str(
+                    live_verification.get("provider_principal_did") or ""
+                ),
+                forbidden_bootstrap_paths=live_verification[
+                    "forbidden_bootstrap_database_paths"
+                ],
+                expected_source_head=str(
+                    live_verification.get("source_head") or ""
+                ),
+                expected_source_tree=str(
+                    live_verification.get("source_tree") or ""
+                ),
+            )
+            from .worker_network_dispatch import (
+                build_worker_network_launch_authority,
+                canonical_worker_network_launch_authority_json,
+            )
+
+            expected_worker_authority = (
+                canonical_worker_network_launch_authority_json(
+                    build_worker_network_launch_authority(
+                        live_verification,
+                        accepted_control_plane_pin=control_plane_pin,
+                        require_admitted=True,
+                    ),
+                    accepted_control_plane_pin=control_plane_pin,
+                    require_admitted=True,
+                )
+            )
+            if worker_network_launch_authorities != (
+                expected_worker_authority,
+            ):
+                return _plan_bound_gate_fail(
+                    "worker-network launch authority mismatch"
+                )
+        elif worker_network_launch_authorities:
+            return _plan_bound_gate_fail(
+                "worker-network launch authority present without live seal"
+            )
+    except (
+        OSError,
+        UnicodeError,
+        ValueError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ):
+        return 78
+    try:
+        from .process_security import STATE_AUTHORITY_HANDOFF_ENV_NAMES
+
+        environment = _plan_bound_positive_child_environment(os.environ)
+        environment.update(
+            {
+                name: str(os.environ[name])
+                for name in STATE_AUTHORITY_HANDOFF_ENV_NAMES
+                if str(os.environ.get(name, "") or "").strip()
+            }
+        )
+        environment.update(
+            sealed_native_dependency_environment(
+                native_dependency,
+                system_dependency_directories_json=system_directories,
+            )
+        )
+        os.execve(
+            retained_interpreter.executable_path,
+            child_command,
+            environment,
+        )
+    except OSError:
+        return 78
+    return 78

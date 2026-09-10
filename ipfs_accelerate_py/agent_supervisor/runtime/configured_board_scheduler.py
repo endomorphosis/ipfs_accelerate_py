@@ -152,10 +152,22 @@ from .resource_scheduler import (
     PROOF_RESOURCE_CLASSES,
     sample_host_resources,
 )
+import types
+import zipfile
+from dataclasses import dataclass, replace
+from ...llm_router import AgentImplementationControlPlanePin, AgentImplementationRoutePlan, AgentImplementationSealedControlPlane, load_agent_implementation_route_authorization, materialize_agent_implementation_control_plane_capsule, project_agent_implementation_route_capacity, resolve_agent_implementation_route, seal_agent_implementation_control_plane_capsule, verify_agent_implementation_sealed_control_plane
+from .multi_supervisor_runner import AUTHORITY_MODE_LEGACY_MARKDOWN, DATABASE_PROGRAM_CONFIG_INTERFACE, STATE_LIVE_SCHEMA_REVISION_ENV, STATE_GRANT_BROKER_SECRET_FD_ENV, STATE_GRANT_BROKER_SOCKET_ENV, STATE_OWNER_SOCKET_ENV, STATE_SCHEMA_REVISION_ENV, STATE_STORE_GENERATION_ENV, STATE_STORE_LIVE_GENERATION_ENV, TRUSTED_DUCKDB_HOME_ENV, TRUSTED_PYTHON_USER_BASE_ENV, TRUSTED_RUNTIME_CACHE_ENV_NAMES, DatabaseProgramConfig, DatabaseProgramConfigError, ImplementationSupervisorTrackConfig, PlanBoundSupervisorChild, _parse_status_timestamp, _plan_bound_positive_child_environment, _plan_bound_profile_environment, _read_stable_regular_bytes, _read_stable_regular_json, _StableArtifactReadError, _trusted_duckdb_profile_environment, _trusted_duckdb_runtime_environment, admit_retained_control_plane_interpreter, admit_trusted_system_dependency_directories, admit_sealed_native_dependency_environment, accepted_control_plane_pin_json, build_configured_multi_supervisor_cli_runner, build_sealed_control_plane_module_command, parse_accepted_control_plane_pin, parse_database_program_config, retain_control_plane_interpreter, sealed_native_dependency_environment, utc_run_stamp
+from ...llm_router import parse_agent_supervisor_native_dependency_launch, verify_agent_supervisor_native_dependency_sealed_fd
+from .provider_capacity_monitor import DEFAULT_RESPONSE_TOKENS_PER_REQUEST, ProviderCapacityMonitor, ProviderCapacityMonitorConfig
+from .resource_scheduler import sample_host_resources
 
 SCHEDULER_SCHEMA_PATTERN = re.compile(
     r"^ipfs_accelerate_py\.agent_supervisor\."
     r"[a-z0-9_.-]+\.scheduler_config@(?:1|2)$"
+)
+ASEH_SEALED_OWNER_MARKER = "--run-aseh-sealed-owner"
+ASEH_SEALED_OWNER_OPERATOR = (
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py"
 )
 IMPLEMENTATION_ENTRY_PATH = Path(
     "scripts/ops/agent_supervisor/implementation_supervisor_entry.py"
@@ -5222,7 +5234,7 @@ def configured_board_common_args(
 
     payload = board.payload
     objective_refill_controls = _objective_refill_controls(payload)
-    program_for_paths = board.resolved_database_program()
+    program_for_paths = _database_program_with_admitted_live_owner(board)
     worktree_root = (
         str(board.path(program_for_paths.worktree_root))
         if program_for_paths.worktree_root
@@ -5284,7 +5296,7 @@ def configured_board_common_args(
     # flags and already launches the daemon with its closed legacy-Markdown
     # default.  Passing those daemon-only flags through the supervisor creates
     # an immediate argparse/restart loop before any task can run.
-    program = board.resolved_database_program()
+    program = _database_program_with_admitted_live_owner(board)
     program_args = program.cli_args() if board.database_program is not None else []
     skip_next = False
     for item in program_args:
@@ -5466,7 +5478,7 @@ def configured_board_launch_plan(
     state_relative = Path(board.runtime_paths["state"])
     log_dir = board.path(board.runtime_paths["logs"])
     entry = board.path(IMPLEMENTATION_ENTRY_PATH.as_posix())
-    program = board.resolved_database_program()
+    program = _database_program_with_admitted_live_owner(board)
     plan_bound = _plan_bound_profile(board)
     if live_context is not None:
         try:
@@ -5564,7 +5576,9 @@ def configured_board_launch_plan(
                 script_path=entry,
                 state_dir=state_dir,
                 state_prefix=_slug(board.task_prefix),
-                database_program=board.database_program,
+                database_program=(
+                    program if board.database_program is not None else None
+                ),
             ),
         )
     runner = build_configured_multi_supervisor_cli_runner(
@@ -5601,7 +5615,8 @@ def configured_board_launch_plan(
             state_owner_bootstrap_store_id=state_owner_bootstrap_store_id,
         ),
         detach=(detach and not plan_bound),
-        database_program=board.database_program,
+        survive_external_sigterm=not math.isfinite(duration_seconds),
+        database_program=(program if board.database_program is not None else None),
     )
     runner_args = runner.args()
     if plan_bound:
@@ -6174,6 +6189,8 @@ def _configured_lane_process_ready(
     coordinator_start_ticks: int,
     repository_commit: str,
     repository_tree: str,
+    _expected_start_ticks: int = 0,
+    _exec_deadline: float = 0.0,
 ) -> bool:
     """Re-observe one exact lifecycle-marked implementation supervisor."""
 
@@ -6225,7 +6242,9 @@ def _configured_lane_process_ready(
         RUN_ROOT_ENV: str(state_dir / "lifecycle-runs" / lane_name),
         FENCING_EPOCH_ENV: "0",
     }
-    if (
+    identity_mismatch = bool(
+        (_expected_start_ticks and start_ticks != _expected_start_ticks)
+        or
         parent != coordinator_pid
         or group != supervisor_pid
         or session != supervisor_pid
@@ -6251,7 +6270,36 @@ def _configured_lane_process_ready(
         )
         or not _exact_process_option(argv, "--state-dir", expected_state_arg)
         or not _exact_process_option(argv, "--state-prefix", state_prefix)
-    ):
+    )
+    if identity_mismatch:
+        # A newly forked direct child can be observed after Popen returns but
+        # before setsid/exec replaces the inherited argv and environment.
+        # Retry only the same PID/start-tick identity, for a tiny fixed bound;
+        # a replacement PID, reparented process, or unrelated stable child can
+        # never become admissible through this launch handoff allowance.
+        now = time.monotonic()
+        deadline = _exec_deadline or (now + 0.1)
+        if (
+            parent == coordinator_pid
+            and start_ticks >= coordinator_start_ticks
+            and (
+                not _expected_start_ticks
+                or start_ticks == _expected_start_ticks
+            )
+            and now < deadline
+        ):
+            time.sleep(min(0.005, deadline - now))
+            return _configured_lane_process_ready(
+                board,
+                lane_index=lane_index,
+                supervisor_pid=supervisor_pid,
+                coordinator_pid=coordinator_pid,
+                coordinator_start_ticks=coordinator_start_ticks,
+                repository_commit=repository_commit,
+                repository_tree=repository_tree,
+                _expected_start_ticks=start_ticks,
+                _exec_deadline=deadline,
+            )
         return False
     if plan_bound:
         return bool(
@@ -6979,8 +7027,10 @@ def _plan_bound_coordinator_environment(
             "TZ",
             STATE_STORE_LIVE_GENERATION_ENV,
             STATE_LIVE_SCHEMA_REVISION_ENV,
+            STATE_GRANT_BROKER_SOCKET_ENV,
+            STATE_GRANT_BROKER_SECRET_FD_ENV,
+            STATE_OWNER_SOCKET_ENV,
             TRUSTED_DUCKDB_HOME_ENV,
-            TRUSTED_PYTHON_USER_BASE_ENV,
         }
     }
     for name in (
@@ -7004,6 +7054,7 @@ def _plan_bound_coordinator_environment(
                     repository_root=Path(__file__).absolute().parents[3],
                 )
             )
+            environment.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
         except ValueError as exc:
             raise ConfiguredBoardError(
                 "plan-bound coordinator trusted DuckDB HOME is invalid"
@@ -7130,9 +7181,16 @@ def _launch_foreground_plan_bound_coordinator(
     pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(board)
     process: subprocess.Popen[bytes] | None = None
     preserve_capsule_for_unreaped_process = False
+    interpreter = None
+    native_dependency = None
+    owns_native_dependency = False
     try:
+        native_dependency, system_directories, owns_native_dependency = (
+            _configured_sealed_birth_dependencies(pin)
+        )
+        interpreter = retain_control_plane_interpreter(sys.executable)
         command = build_sealed_control_plane_module_command(
-            python_executable=sys.executable,
+            python_executable=interpreter.argv0,
             pin=pin,
             descriptor=sealed.descriptor,
             module_name=(
@@ -7147,16 +7205,57 @@ def _launch_foreground_plan_bound_coordinator(
                 sealed=sealed,
                 capsule_parent=capsule_parent,
             ),
+            retained_interpreter=interpreter,
+            native_dependency_launch=native_dependency,
+            accepted_native_authorization_id=(
+                native_dependency.accepted_authorization_id
+            ),
+            system_dependency_directories_json=system_directories,
         )
         environment = _plan_bound_coordinator_environment(board)
-        process = subprocess.Popen(
-            command,
-            cwd=board.repo_root,
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-            pass_fds=(sealed.descriptor,),
+        environment.update(
+            sealed_native_dependency_environment(
+                native_dependency,
+                system_dependency_directories_json=system_directories,
+            )
         )
+        environment = _sealed_plan_bound_coordinator_environment(environment)
+        from .process_security import (
+            STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
+            prepare_state_authority_child_handoff,
+        )
+
+        handoff = prepare_state_authority_child_handoff(
+            environment,
+            parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
+        )
+        try:
+            process = subprocess.Popen(
+                command,
+                executable=interpreter.executable_path,
+                cwd=board.repo_root,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                pass_fds=tuple(
+                    sorted(
+                        {
+                            sealed.descriptor,
+                            interpreter.descriptor,
+                            native_dependency.descriptor.descriptor,
+                            *handoff.pass_fds,
+                        }
+                    )
+                ),
+            )
+            handoff.deliver(
+                process,
+                expected_executable_descriptor=interpreter.descriptor,
+                expected_argv=command,
+            )
+        except BaseException:
+            handoff.close()
+            raise
         return int(process.wait())
     except BaseException as exc:
         if process is not None:
@@ -7182,6 +7281,10 @@ def _launch_foreground_plan_bound_coordinator(
         raise
     finally:
         os.close(sealed.descriptor)
+        if interpreter is not None:
+            os.close(interpreter.descriptor)
+        if owns_native_dependency and native_dependency is not None:
+            os.close(native_dependency.descriptor.descriptor)
         if not preserve_capsule_for_unreaped_process:
             _cleanup_plan_bound_control_plane(pin, capsule_parent)
 
@@ -7231,12 +7334,19 @@ def _launch_detached_plan_bound_coordinator(
     pin: AgentImplementationControlPlanePin | None = None
     sealed: AgentImplementationSealedControlPlane | None = None
     capsule_parent: Path | None = None
+    interpreter = None
+    native_dependency = None
+    owns_native_dependency = False
     try:
         pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(
             board
         )
+        native_dependency, system_directories, owns_native_dependency = (
+            _configured_sealed_birth_dependencies(pin)
+        )
+        interpreter = retain_control_plane_interpreter(sys.executable)
         command = build_sealed_control_plane_module_command(
-            python_executable=sys.executable,
+            python_executable=interpreter.argv0,
             pin=pin,
             descriptor=sealed.descriptor,
             module_name=(
@@ -7251,18 +7361,58 @@ def _launch_detached_plan_bound_coordinator(
                 sealed=sealed,
                 capsule_parent=capsule_parent,
             ),
+            retained_interpreter=interpreter,
+            native_dependency_launch=native_dependency,
+            accepted_native_authorization_id=(
+                native_dependency.accepted_authorization_id
+            ),
+            system_dependency_directories_json=system_directories,
         )
         with _open_plan_bound_coordinator_log(log_path) as stream:
             launch_environment = _plan_bound_coordinator_environment(board)
+            launch_environment = _plan_bound_coordinator_environment()
+            launch_environment.update(
+                sealed_native_dependency_environment(
+                    native_dependency,
+                    system_dependency_directories_json=system_directories,
+                )
+            )
+            launch_environment = _sealed_plan_bound_coordinator_environment(
+                launch_environment
+            )
+            from .process_security import (
+                STATE_AUTHORITY_PARENT_LOSS_DETACHED,
+                prepare_state_authority_child_handoff,
+            )
+
+            handoff = prepare_state_authority_child_handoff(
+                launch_environment,
+                parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_DETACHED,
+            )
             process = subprocess.Popen(
                 command,
+                executable=interpreter.executable_path,
                 cwd=accepted_tree_root,
                 env=launch_environment,
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
-                pass_fds=(sealed.descriptor,),
+                pass_fds=tuple(
+                    sorted(
+                        {
+                            sealed.descriptor,
+                            interpreter.descriptor,
+                            native_dependency.descriptor.descriptor,
+                            *handoff.pass_fds,
+                        }
+                    )
+                ),
+            )
+            handoff.deliver(
+                process,
+                expected_executable_descriptor=interpreter.descriptor,
+                expected_argv=command,
             )
         _publish_reserved_coordinator_pid(
             pid_path,
@@ -7271,6 +7421,8 @@ def _launch_detached_plan_bound_coordinator(
             process.pid,
         )
     except BaseException as exc:
+        if "handoff" in locals():
+            handoff.close()
         fenced = True
         if process is not None:
             fenced = _fence_exact_coordinator_group(
@@ -7304,6 +7456,10 @@ def _launch_detached_plan_bound_coordinator(
         os.close(descriptor)
         if sealed is not None:
             os.close(sealed.descriptor)
+        if interpreter is not None:
+            os.close(interpreter.descriptor)
+        if owns_native_dependency and native_dependency is not None:
+            os.close(native_dependency.descriptor.descriptor)
     assert process is not None
     return {
         "coordinator_pid": process.pid,
@@ -7411,10 +7567,17 @@ def _launch_detached_receipt_coordinator(
     capsule_parent: Path | None = None
     process_identity: ProcessIdentity | None = None
     observed_start_ticks = 0
+    interpreter = None
+    native_dependency = None
+    owns_native_dependency = False
     try:
         pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(board)
+        native_dependency, system_directories, owns_native_dependency = (
+            _configured_sealed_birth_dependencies(pin)
+        )
+        interpreter = retain_control_plane_interpreter(sys.executable)
         command = build_sealed_control_plane_module_command(
-            python_executable=sys.executable,
+            python_executable=interpreter.argv0,
             pin=pin,
             descriptor=sealed.descriptor,
             module_name=(
@@ -7431,11 +7594,33 @@ def _launch_detached_receipt_coordinator(
                 launch_session_id=launch_session_id,
                 coordinator_status_path=status_path,
             ),
+            retained_interpreter=interpreter,
+            native_dependency_launch=native_dependency,
+            accepted_native_authorization_id=(
+                native_dependency.accepted_authorization_id
+            ),
+            system_dependency_directories_json=system_directories,
         )
         base_environment = _plan_bound_coordinator_environment(board)
+        base_environment = _plan_bound_coordinator_environment()
+        base_environment.update(
+            sealed_native_dependency_environment(
+                native_dependency,
+                system_dependency_directories_json=system_directories,
+            )
+        )
         readiness_timeout_seconds = _coordinator_readiness_timeout_seconds(board)
         launch_attestation_max_age_ms = (
             _coordinator_launch_attestation_max_age_ms(board)
+        )
+        profile_environment = dict(
+            _plan_bound_profile_environment(base_environment)
+        )
+        profile_environment.update(
+            _trusted_duckdb_profile_environment(
+                base_environment,
+                repository_root=board.repo_root,
+            )
         )
         profile = LifecycleProfile(
             target_id=f"configured-board-coordinator:{board.board_namespace}",
@@ -7446,23 +7631,64 @@ def _launch_detached_receipt_coordinator(
             run_root=str(state_dir),
             argv=tuple(command),
             cwd=str(board.repo_root),
-            environment=_plan_bound_profile_environment(base_environment),
+            environment=tuple(sorted(profile_environment.items())),
             health_path=str(status_path),
             health_stale_ms=launch_attestation_max_age_ms,
         )
+        launch_environment = profile.launch_environment(0)
+        launch_environment.update(
+            {
+                name: base_environment[name]
+                for name in (
+                    STATE_GRANT_BROKER_SOCKET_ENV,
+                    STATE_GRANT_BROKER_SECRET_FD_ENV,
+                )
+                if str(base_environment.get(name, "") or "").strip()
+            }
+        )
         launch_environment = _plan_bound_positive_child_environment(
-            profile.launch_environment(0)
+            launch_environment
+        )
+        launch_environment.update(
+            sealed_native_dependency_environment(
+                native_dependency,
+                system_dependency_directories_json=system_directories,
+            )
         )
         with _open_plan_bound_coordinator_log(log_path) as stream:
+            from .process_security import (
+                STATE_AUTHORITY_PARENT_LOSS_DETACHED,
+                prepare_state_authority_child_handoff,
+            )
+
+            handoff = prepare_state_authority_child_handoff(
+                launch_environment,
+                parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_DETACHED,
+            )
             process = subprocess.Popen(
                 command,
+                executable=interpreter.executable_path,
                 cwd=accepted_tree_root,
                 env=launch_environment,
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
-                pass_fds=(sealed.descriptor,),
+                pass_fds=tuple(
+                    sorted(
+                        {
+                            sealed.descriptor,
+                            interpreter.descriptor,
+                            native_dependency.descriptor.descriptor,
+                            *handoff.pass_fds,
+                        }
+                    )
+                ),
+            )
+            handoff.deliver(
+                process,
+                expected_executable_descriptor=interpreter.descriptor,
+                expected_argv=command,
             )
         identity_deadline = time.monotonic() + 10.0
         adapter = LinuxProcessAdapter()
@@ -7611,6 +7837,8 @@ def _launch_detached_receipt_coordinator(
             "receipt_cid": content_identity(unsigned_receipt),
         }
     except BaseException as exc:
+        if "handoff" in locals():
+            handoff.close()
         fenced = True
         if process is not None:
             fenced = _fence_exact_coordinator_group(
@@ -7644,6 +7872,10 @@ def _launch_detached_receipt_coordinator(
         os.close(descriptor)
         if sealed is not None:
             os.close(sealed.descriptor)
+        if interpreter is not None:
+            os.close(interpreter.descriptor)
+        if owns_native_dependency and native_dependency is not None:
+            os.close(native_dependency.descriptor.descriptor)
 
 
 def _run_plan_bound_coordinator(
@@ -8426,8 +8658,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     harden_state_authority_process()
     capture_state_authority_credentials()
+    effective_argv = list(argv) if argv is not None else list(sys.argv[1:])
+    if effective_argv[:1] == [ASEH_SEALED_OWNER_MARKER]:
+        return _run_aseh_sealed_owner(effective_argv)
     parser = _build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    args = parser.parse_args(effective_argv)
     receipt_only = bool(getattr(args, "launch_receipt_only", False))
     if receipt_only and (bool(args.dry_run) or bool(args.foreground)):
         parser.error(
@@ -8457,3 +8692,470 @@ __all__ = (
     "main",
     "preflight_configured_board",
 )
+
+def _database_program_with_admitted_live_owner(
+    board: ConfiguredBoard,
+) -> DatabaseProgramConfig:
+    """Prefer an exact live owner generation only with its full binding."""
+
+    program = board.resolved_database_program()
+    live_generation = str(
+        os.environ.get(STATE_STORE_LIVE_GENERATION_ENV, "") or ""
+    ).strip()
+    live_schema = str(
+        os.environ.get(STATE_LIVE_SCHEMA_REVISION_ENV, "") or ""
+    ).strip()
+    if not live_generation and not live_schema:
+        return program
+    if (
+        board.database_program is None
+        or program.authority_mode != "quack"
+        or not live_generation
+        or not live_schema
+        or re.fullmatch(r"[1-9][0-9]{0,19}", live_generation) is None
+        or re.fullmatch(r"[0-9]{1,20}", live_schema) is None
+        or int(live_generation) > 2**63 - 1
+        or int(live_schema) > 2**63 - 1
+    ):
+        raise ConfiguredBoardError(
+            "live database generation/schema binding is incomplete or invalid"
+        )
+    static_generation = str(
+        os.environ.get(STATE_STORE_GENERATION_ENV, "") or ""
+    ).strip()
+    static_schema = str(
+        os.environ.get(STATE_SCHEMA_REVISION_ENV, "") or ""
+    ).strip()
+    try:
+        inherited_program = json.loads(
+            str(
+                os.environ.get(
+                    "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", ""
+                )
+                or ""
+            )
+        )
+    except json.JSONDecodeError as exc:
+        raise ConfiguredBoardError(
+            "live database identity lacks the operator program binding"
+        ) from exc
+    if (
+        static_generation != live_generation
+        or static_schema != live_schema
+        or not isinstance(inherited_program, Mapping)
+        or str(inherited_program.get("store_id") or "") != program.store_id
+        or str(inherited_program.get("store_generation") or "")
+        != live_generation
+        or str(inherited_program.get("schema_revision") or "") != live_schema
+    ):
+        raise ConfiguredBoardError(
+            "live database identity differs from the operator program binding"
+        )
+    registry = board.path(program.runtime_registry_path)
+    broker_socket = str(
+        os.environ.get(STATE_GRANT_BROKER_SOCKET_ENV, "") or ""
+    ).strip()
+    owner_socket = str(os.environ.get(STATE_OWNER_SOCKET_ENV, "") or "").strip()
+    broker_fd = str(
+        os.environ.get(STATE_GRANT_BROKER_SECRET_FD_ENV, "") or ""
+    ).strip()
+    if (
+        Path(broker_socket).resolve(strict=False)
+        != (registry / "typed-state-owner-grants.sock").resolve(strict=False)
+        or Path(owner_socket).resolve(strict=False)
+        != (registry / "typed-state-owner.sock").resolve(strict=False)
+        or not broker_fd.isdecimal()
+        or int(broker_fd) < 3
+    ):
+        raise ConfiguredBoardError(
+            "live database identity lacks the exact inherited owner capability"
+        )
+    try:
+        os.fstat(int(broker_fd))
+        status, evidence = _read_stable_regular_json(
+            registry / "quack-state-server.status.json"
+        )
+    except (OSError, ValueError, _StableArtifactReadError) as exc:
+        raise ConfiguredBoardError(
+            "live database owner identity cannot be observed"
+        ) from exc
+    status = status if isinstance(status, Mapping) else {}
+    identity = status.get("identity")
+    identity = identity if isinstance(identity, Mapping) else {}
+    process_birth = identity.get("process_birth")
+    process_birth = process_birth if isinstance(process_birth, Mapping) else {}
+    if (
+        evidence.get("state") != "present"
+        or status.get("lifecycle") != "ready"
+        or str(identity.get("store_id") or "") != program.store_id
+        or str(identity.get("generation") or "") != live_generation
+        or str(identity.get("schema_revision") or "") != live_schema
+        or type(process_birth.get("pid")) is not int
+        or int(process_birth["pid"]) < 1
+        or not str(identity.get("process_birth_id") or "")
+    ):
+        raise ConfiguredBoardError(
+            "live database environment differs from the exact owner status"
+        )
+    from ..merge.worktree_lifecycle import (
+        OwnerLiveness,
+        ProcessBirthIdentity,
+        owner_liveness,
+    )
+
+    try:
+        birth = ProcessBirthIdentity.from_dict(process_birth)
+    except (TypeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "live database owner process identity is malformed"
+        ) from exc
+    if owner_liveness(birth) is not OwnerLiveness.ALIVE:
+        raise ConfiguredBoardError("live database owner process is not alive")
+    return replace(
+        program,
+        store_generation=live_generation,
+        schema_revision=live_schema,
+    )
+
+def _sealed_plan_bound_coordinator_environment(
+    environment: Mapping[str, str],
+) -> dict[str, str]:
+    """Strip every startup/loader knob after trusted HOME revalidation."""
+
+    result = dict(environment)
+    for name in tuple(result):
+        if (
+            name.startswith(("PYTHON", "PYTEST", "LD_", "DYLD_"))
+            or name == "GLIBC_TUNABLES"
+        ):
+            result.pop(name, None)
+    return result
+
+def _configured_sealed_birth_dependencies(
+    pin: AgentImplementationControlPlanePin,
+) -> tuple[Any, str, bool]:
+    """Admit an inherited native fd or seal the reviewed pin before authority."""
+
+    names = (
+        "IPFS_ACCELERATE_AGENT_SEALED_NATIVE_DEPENDENCY_FD",
+        "IPFS_ACCELERATE_AGENT_SEALED_NATIVE_DEPENDENCY_LAUNCH_JSON",
+        "IPFS_ACCELERATE_AGENT_SEALED_SYSTEM_DEPENDENCY_DIRS_JSON",
+    )
+    present = tuple(bool(str(os.environ.get(name) or "")) for name in names)
+    if any(present):
+        if not all(present):
+            raise ConfiguredBoardError(
+                "sealed native dependency environment is incomplete"
+            )
+        try:
+            launch, system = admit_sealed_native_dependency_environment(
+                os.environ
+            )
+        except ValueError as exc:
+            raise ConfiguredBoardError(
+                "sealed native dependency environment is invalid"
+            ) from exc
+        return launch, system, False
+    raise ConfiguredBoardError(
+        "sealed native dependency lacks independent accepted authority"
+    )
+
+def _run_aseh_sealed_owner(argv: Sequence[str]) -> int:
+    """Enter the ASEH owner only from exact bytes in the inherited capsule."""
+
+    values = list(argv)
+    if len(values) != 21 or values[0] != ASEH_SEALED_OWNER_MARKER:
+        raise ConfiguredBoardError("sealed ASEH owner launch grammar is invalid")
+    forbidden_environment = (
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "IPFS_ACCELERATE_AGENT_OWNER_STATE_TOKEN",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET",
+        "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_ADDRESS",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_PID",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_START",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_BOOT_ID",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_LOSS_POLICY",
+    )
+    if any(str(os.environ.get(name) or "") for name in forbidden_environment):
+        raise ConfiguredBoardError(
+            "sealed ASEH owner inherited preexisting state authority"
+        )
+    def reject_duplicate_keys(
+        pairs: Sequence[tuple[str, Any]],
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate sealed launch key")
+            result[key] = value
+        return result
+
+    try:
+        pin = parse_accepted_control_plane_pin(values[1])
+        capsule_descriptor = int(values[2])
+        interpreter_descriptor = int(values[3])
+        interpreter = admit_retained_control_plane_interpreter(
+            descriptor=interpreter_descriptor,
+            argv0=values[4],
+            expected_sha256=values[5],
+        )
+        repo_root = Path(values[6])
+        config_path = Path(values[7])
+        implement = {"0": False, "1": True}[values[8]]
+        duration = float(values[9])
+        expected_environment_identity = values[10]
+        native_descriptor = int(values[11])
+        native_payload = json.loads(
+            values[12], object_pairs_hook=reject_duplicate_keys
+        )
+        native_dependency = parse_agent_supervisor_native_dependency_launch(
+            native_payload
+        )
+        if native_dependency.to_json() != values[12]:
+            raise ValueError("native dependency launch is not canonical")
+        system_dependency_directories_json = values[13]
+        qualification_home = Path(values[14])
+        expected_parent_pid = int(values[15])
+        expected_parent_start = int(values[16])
+        expected_parent_boot = values[17]
+        raw_terminal_descriptor = values[18]
+        if (
+            len(raw_terminal_descriptor) > 20
+            or re.fullmatch(r"[0-9]+", raw_terminal_descriptor) is None
+        ):
+            raise ValueError("sealed ASEH owner terminal descriptor is invalid")
+        terminal_descriptor = int(raw_terminal_descriptor)
+        if str(terminal_descriptor) != raw_terminal_descriptor:
+            raise ValueError(
+                "sealed ASEH owner terminal descriptor is not canonical"
+            )
+        terminal_nonce = values[19]
+        raw_terminal_pipe_identity = values[20]
+        if len(raw_terminal_pipe_identity.encode("utf-8")) > 512:
+            raise ValueError("sealed ASEH owner terminal pipe identity is oversized")
+        terminal_pipe_identity = json.loads(raw_terminal_pipe_identity)
+        if (
+            not isinstance(terminal_pipe_identity, list)
+            or len(terminal_pipe_identity) != 9
+            or any(type(value) is not int for value in terminal_pipe_identity)
+            or json.dumps(
+                terminal_pipe_identity,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            )
+            != raw_terminal_pipe_identity
+        ):
+            raise ValueError(
+                "sealed ASEH owner terminal pipe identity is not canonical"
+            )
+        terminal_stat = os.fstat(terminal_descriptor)
+        observed_terminal_identity = [
+            int(getattr(terminal_stat, field))
+            for field in (
+                "st_dev",
+                "st_ino",
+                "st_mode",
+                "st_uid",
+                "st_gid",
+                "st_nlink",
+                "st_size",
+                "st_mtime_ns",
+                "st_ctime_ns",
+            )
+        ]
+        if (
+            terminal_descriptor < 3
+            or terminal_descriptor
+            in {
+                capsule_descriptor,
+                interpreter_descriptor,
+                native_descriptor,
+            }
+            or re.fullmatch(r"[0-9a-f]{64}", terminal_nonce) is None
+            or terminal_pipe_identity != observed_terminal_identity
+            or not stat.S_ISFIFO(terminal_stat.st_mode)
+            or terminal_stat.st_uid != os.geteuid()
+            or fcntl.fcntl(terminal_descriptor, fcntl.F_GETFL)
+            & os.O_ACCMODE
+            != os.O_WRONLY
+        ):
+            raise ValueError("sealed ASEH owner terminal pipe differs")
+        os.set_inheritable(terminal_descriptor, False)
+        if (
+            fcntl.fcntl(terminal_descriptor, fcntl.F_GETFD)
+            & fcntl.FD_CLOEXEC
+            == 0
+        ):
+            raise ValueError("sealed ASEH owner terminal pipe is inheritable")
+        from .process_security import arm_state_authority_parent_death_signal
+
+        arm_state_authority_parent_death_signal(
+            expected_parent_pid=expected_parent_pid,
+            expected_parent_start_time_ticks=expected_parent_start,
+            expected_boot_id=expected_parent_boot,
+        )
+        admit_trusted_system_dependency_directories(
+            system_dependency_directories_json
+        )
+    except (KeyError, OSError, RuntimeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "sealed ASEH owner launch binding is invalid"
+        ) from exc
+    if (
+        not qualification_home.is_absolute()
+        or qualification_home.resolve(strict=True) != qualification_home
+        or qualification_home.parent.name != "qualification-homes"
+    ):
+        raise ConfiguredBoardError("sealed ASEH qualification HOME is invalid")
+    exact_environment = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(qualification_home),
+        "LC_ALL": "C.UTF-8",
+        "LANG": "C.UTF-8",
+        "TZ": "UTC",
+        "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME": str(
+            qualification_home
+        ),
+        "XDG_CACHE_HOME": str(qualification_home / ".cache" / "xdg"),
+        "CUDA_CACHE_PATH": str(qualification_home / ".cache" / "cuda"),
+        "CUDA_CACHE_DISABLE": "1",
+    }
+    if (
+        dict(os.environ) != exact_environment
+        or _identity(exact_environment) != expected_environment_identity
+        or native_dependency.descriptor.descriptor != native_descriptor
+        or verify_agent_supervisor_native_dependency_sealed_fd(
+            native_dependency
+        )
+        != f"/proc/self/fd/{native_descriptor}"
+        or sys.modules.get("duckdb") is not sys.modules.get("_duckdb")
+    ):
+        raise ConfiguredBoardError("sealed ASEH owner environment drifted")
+    if (
+        not math.isfinite(duration) and duration != float("inf")
+    ) or duration <= 0.0:
+        raise ConfiguredBoardError("sealed ASEH owner duration is invalid")
+    if (
+        repo_root != repo_root.resolve(strict=True)
+        or config_path != config_path.resolve(strict=True)
+    ):
+        raise ConfiguredBoardError("sealed ASEH owner paths are not canonical")
+    try:
+        config_path.relative_to(repo_root)
+    except ValueError as exc:
+        raise ConfiguredBoardError(
+            "sealed ASEH owner config escapes its repository"
+        ) from exc
+    verified_path = verify_agent_implementation_sealed_control_plane(
+        pin,
+        capsule_descriptor,
+    )
+    if verified_path != f"/proc/self/fd/{capsule_descriptor}":
+        raise ConfiguredBoardError("sealed ASEH owner capsule path drifted")
+    executable = os.stat("/proc/self/exe")
+    held_interpreter = os.fstat(interpreter.descriptor)
+    if (executable.st_dev, executable.st_ino) != (
+        held_interpreter.st_dev,
+        held_interpreter.st_ino,
+    ):
+        raise ConfiguredBoardError(
+            "sealed ASEH owner did not execute the retained interpreter"
+        )
+
+    try:
+        with os.fdopen(os.dup(capsule_descriptor), "rb") as stream:
+            with zipfile.ZipFile(stream) as archive:
+                names = archive.namelist()
+                if len(names) != len(set(names)):
+                    raise ValueError("capsule archive contains duplicate names")
+                manifest_raw = archive.read(
+                    ".agent-control-plane-manifest.json"
+                )
+                operator_raw = archive.read(ASEH_SEALED_OWNER_OPERATOR)
+        manifest = json.loads(
+            manifest_raw,
+            object_pairs_hook=reject_duplicate_keys,
+        )
+        files = manifest.get("files") if isinstance(manifest, dict) else None
+        expected_digest = (
+            files.get(ASEH_SEALED_OWNER_OPERATOR)
+            if isinstance(files, dict)
+            else None
+        )
+        if (
+            manifest.get("capsule_id") != pin.capsule_id
+            or manifest.get("source_head") != pin.source_head
+            or manifest.get("source_tree") != pin.source_tree
+            or expected_digest
+            != "sha256:" + hashlib.sha256(operator_raw).hexdigest()
+        ):
+            raise ValueError("operator member differs from capsule manifest")
+        operator_code = compile(
+            operator_raw,
+            str(repo_root / ASEH_SEALED_OWNER_OPERATOR),
+            "exec",
+            dont_inherit=True,
+        )
+    except (KeyError, OSError, UnicodeError, ValueError, zipfile.BadZipFile) as exc:
+        raise ConfiguredBoardError(
+            "sealed ASEH owner operator member is invalid"
+        ) from exc
+    operator_module_name = "_aseh_sealed_owner_operator"
+    if operator_module_name in sys.modules:
+        try:
+            os.close(terminal_descriptor)
+        except OSError:
+            pass
+        raise ConfiguredBoardError(
+            "sealed ASEH owner operator module name is already occupied"
+        )
+    operator_module = types.ModuleType(operator_module_name)
+    operator_module.__file__ = str(
+        repo_root / ASEH_SEALED_OWNER_OPERATOR
+    )
+    operator_module.__package__ = ""
+    sys.modules[operator_module_name] = operator_module
+    try:
+        exec(operator_code, operator_module.__dict__)
+        entry = operator_module.__dict__.get("_run_supervisor_owner")
+        if not callable(entry):
+            raise ConfiguredBoardError("sealed ASEH owner entry is absent")
+        # The operator borrows this descriptor.  This scheduler capsule is
+        # its sole closer so that a reused descriptor number cannot be closed
+        # accidentally by two independently unwinding frames.
+        return int(
+            entry(
+                config_path,
+                implement=implement,
+                duration=duration,
+                sealed_control_plane_pin=pin.as_dict(),
+                sealed_control_plane_descriptor=capsule_descriptor,
+                retained_interpreter={
+                    "descriptor": interpreter.descriptor,
+                    "argv0": interpreter.argv0,
+                    "sha256": interpreter.sha256,
+                },
+                native_dependency_launch=native_dependency.as_dict(),
+                system_dependency_directories_json=(
+                    system_dependency_directories_json
+                ),
+                sealed_owner_environment=exact_environment,
+                sealed_owner_terminal_descriptor=terminal_descriptor,
+                sealed_owner_terminal_nonce=terminal_nonce,
+                sealed_owner_terminal_pipe_identity=terminal_pipe_identity,
+            )
+        )
+    finally:
+        removed_module = sys.modules.pop(operator_module_name, None)
+        try:
+            os.close(terminal_descriptor)
+        except OSError:
+            pass
+        if removed_module is not operator_module:
+            raise ConfiguredBoardError(
+                "sealed ASEH owner operator module registration drifted"
+            )

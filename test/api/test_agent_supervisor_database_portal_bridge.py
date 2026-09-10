@@ -121,6 +121,51 @@ from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight
 from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     validation_command_repository_root,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    ProcessBirthIdentity,
+    WorktreeLifecycleStore,
+    current_process_birth,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_QUACK_PREPROJECTION_RECOVERY_SCHEMA,
+    DatabasePortalDeterministicReconciliationDeferred,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+)
+
+
+_VRIF_BENCHMARK_VALIDATION = (
+    "python -m pytest -q test/api/residual_intelligence/test_benchmark.py"
+)
+
+_VRIF_BENCHMARK_OUTPUTS = (
+    "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
+    "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
+    "test/api/residual_intelligence/test_benchmark.py",
+)
+
+_VRIF_TERMINAL_OUTPUTS = (
+    (
+        "docs/architecture/residual_intelligence_inventory/"
+        "final_release_report.json"
+    ),
+    (
+        "docs/architecture/residual_intelligence_inventory/"
+        "final_release_report.md"
+    ),
+    "test/api/residual_intelligence/test_release_report.py",
+)
+
+_VRIF_CALLBACK_REPORT_JSON = (
+    "docs/architecture/residual_intelligence_inventory/final_release_report.json"
+)
+
+_VRIF_CALLBACK_REPORT_MARKDOWN = (
+    "docs/architecture/residual_intelligence_inventory/final_release_report.md"
+)
+
+_VRIF_CALLBACK_REPORT_TEST = "test/api/residual_intelligence/test_release_report.py"
 
 
 def _attempt(
@@ -143,7 +188,6 @@ def _attempt(
         started_at_ms=1,
     )
 
-
 def test_implementation_conflict_matches_main_module_alias() -> None:
     class DatabaseImplementationConflictError(RuntimeError):
         pass
@@ -156,6 +200,14 @@ def test_implementation_conflict_matches_main_module_alias() -> None:
         DatabaseImplementationConflictError("no longer matches")
     )
 
+def test_implementation_conflict_matches_main_module_alias_aseh() -> None:
+    class DatabaseImplementationConflictError(RuntimeError):
+        pass
+
+    assert _is_implementation_conflict(
+        DatabaseImplementationConflictError("stale row")
+    )
+    assert not _is_implementation_conflict(RuntimeError("stale row"))
 
 def _record() -> SimpleNamespace:
     return SimpleNamespace(
@@ -179,7 +231,6 @@ def _record() -> SimpleNamespace:
             "completion_contract": "Focused validation passes",
         },
     )
-
 
 def _post_commit_candidate_fixture(
     tmp_path: Path,
@@ -388,7 +439,6 @@ def _post_commit_candidate_fixture(
     receipt = dict(bridge.recover_post_commit_candidate(source))
     return bridge, source, record, paths, receipt, factory_calls
 
-
 def test_bridge_reuses_exact_post_commit_candidate_without_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -447,7 +497,6 @@ def test_bridge_reuses_exact_post_commit_candidate_without_provider(
     assert reconciliations[0]["seed"] == seed
     assert factory_calls == []
 
-
 def test_bridge_post_commit_candidate_later_event_fails_closed(
     tmp_path: Path,
 ) -> None:
@@ -463,7 +512,6 @@ def test_bridge_post_commit_candidate_later_event_fails_closed(
         bridge.recover_post_commit_candidate(source)
 
     assert factory_calls == []
-
 
 def test_datasets_authority_marker_reaches_provider_without_state_secrets(
     tmp_path: Path,
@@ -519,7 +567,6 @@ def test_datasets_authority_marker_reaches_provider_without_state_secrets(
     )
     assert SEMANTIC_TRUTH_AUTHORITY_ENV not in ordinary_environment
     assert SEMANTIC_WRITER_POLICY_ENV not in ordinary_environment
-
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_database_portal_attempt_isolates_foreign_merge_history_and_dequeue(
@@ -672,7 +719,6 @@ def test_database_portal_attempt_isolates_foreign_merge_history_and_dequeue(
     assert queue.get(current_pending.request_id).status == "processing"
     assert queue.get(foreign_pending.request_id).status == "pending"
 
-
 class _TaskSource:
     def __init__(self, record: object) -> None:
         self.record = record
@@ -686,7 +732,6 @@ class _TaskSource:
 
     def snapshot(self) -> object:
         return SimpleNamespace(repository_tree_id="tree:control-plane-current")
-
 
 class _CompletingPortal:
     def __init__(
@@ -782,7 +827,6 @@ class _CompletingPortal:
     def close_event_runtime(self) -> None:
         self.closed = True
 
-
 class _ProjectionIdentityCompletingPortal(_CompletingPortal):
     """Complete with the exact identity used by the real Portal daemon."""
 
@@ -797,7 +841,6 @@ class _ProjectionIdentityCompletingPortal(_CompletingPortal):
             "canonical_task_key": identity.canonical_task_key,
             "canonical_task_cid": identity.canonical_task_cid,
         }
-
 
 def _pending_merge_result(
     paths: object,
@@ -858,7 +901,6 @@ def _pending_merge_result(
             },
         }
     }
-
 
 def _consumed_no_progress_result(
     paths: object,
@@ -966,9 +1008,6 @@ def _consumed_no_progress_result(
         }
     }
 
-
-
-
 def test_bridge_projection_preserves_authoritative_database_task_identity(
     tmp_path: Path,
 ) -> None:
@@ -1010,6 +1049,24 @@ def test_bridge_projection_preserves_authoritative_database_task_identity(
         }
     ) == 3
 
+def test_bridge_projection_preserves_authoritative_database_task_identity_aseh(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+    )
+
+    paths, binding = bridge._ensure_attempt_projection(_attempt(), record)
+    projected = parse_task_file(paths.task_projection, "LGSWF-")
+
+    assert len(projected) == 1
+    assert projected[0].canonical_task_key == record.body["task_key"]
+    assert projected[0].canonical_task_cid == record.task_cid
+    assert binding["canonical_task_key"] == record.body["task_key"]
+    assert binding["task_cid"] == record.task_cid
 
 def test_bridge_maps_projection_local_completion_to_database_identity(
     tmp_path: Path,
@@ -1044,7 +1101,6 @@ def test_bridge_maps_projection_local_completion_to_database_identity(
         "canonical_task_key": event["canonical_task_key"],
         "canonical_task_cid": event["canonical_task_cid"],
     }
-
 
 def test_bridge_replay_rejects_projection_local_completion_with_wrong_key(
     tmp_path: Path,
@@ -1085,7 +1141,6 @@ def test_bridge_replay_rejects_projection_local_completion_with_wrong_key(
 
     assert portal_calls == []
 
-
 @pytest.mark.parametrize("tamper", ("canonical_task_cid", "task_id"))
 def test_bridge_rejects_forged_projection_local_completion_event(
     tmp_path: Path,
@@ -1117,7 +1172,6 @@ def test_bridge_rejects_forged_projection_local_completion_event(
 
     with pytest.raises(DatabasePortalBridgeError, match="matching durable"):
         bridge.run_provider(_attempt())
-
 
 @pytest.mark.parametrize("tamper", ("event_id", "previous_event_id"))
 def test_bridge_rejects_tampered_projection_completion_event_chain(
@@ -1176,7 +1230,6 @@ def test_bridge_rejects_tampered_projection_completion_event_chain(
     ):
         bridge.run_provider(_attempt())
 
-
 def test_bridge_rejects_completion_after_database_binding_substitution(
     tmp_path: Path,
 ) -> None:
@@ -1217,7 +1270,6 @@ def test_bridge_rejects_completion_after_database_binding_substitution(
     with pytest.raises(DatabasePortalBridgeError):
         bridge.run_provider(_attempt())
 
-
 @pytest.mark.parametrize(
     ("field", "label"),
     (("revision", "Revision"), ("receipt", "Receipt")),
@@ -1249,7 +1301,6 @@ def test_task_contract_digest_includes_projected_body_field(
     assert database_portal_task_contract_digest(original) == (
         database_portal_task_contract_digest(lifecycle_only)
     )
-
 
 @pytest.mark.parametrize(
     ("identity_fields", "message"),
@@ -1290,7 +1341,6 @@ def test_bridge_projection_rejects_contradictory_database_identity(
     with pytest.raises(DatabasePortalBridgeError, match=message):
         bridge._ensure_attempt_projection(_attempt(), record)
 
-
 def test_bridge_rejects_projection_contract_tampering(tmp_path: Path) -> None:
     class TamperingPortal(_CompletingPortal):
         def run_once(self) -> dict[str, object]:
@@ -1311,7 +1361,6 @@ def test_bridge_rejects_projection_contract_tampering(tmp_path: Path) -> None:
     )
     with pytest.raises(DatabasePortalBridgeError, match="outside its mutable status"):
         bridge.run_provider(_attempt())
-
 
 def test_bridge_preserves_explicit_non_consuming_portal_deferral(
     tmp_path: Path,
@@ -1352,7 +1401,6 @@ def test_bridge_preserves_explicit_non_consuming_portal_deferral(
     ):
         bridge.run_provider(_attempt())
     assert portals and portals[0].closed is True
-
 
 def test_bridge_seals_consumed_no_progress_without_cause_inference(
     tmp_path: Path,
@@ -1419,6 +1467,52 @@ def test_bridge_seals_consumed_no_progress_without_cause_inference(
     assert "ImportError" not in json.dumps(evidence)
     assert "provider output" not in json.dumps(evidence)
 
+def test_bridge_seals_consumed_no_progress_without_cause_inference_aseh(
+    tmp_path: Path,
+) -> None:
+    class ImportFailurePortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            return _consumed_no_progress_result(
+                self.paths,
+                self.task_alias,
+            )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: ImportFailurePortal(paths, alias),
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeConsumedNoProgressError,
+        match="portal_consumed_no_progress",
+    ) as raised:
+        bridge.run_provider(_attempt())
+
+    evidence = raised.value.failure_evidence
+    assert evidence["schema"] == (
+        DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA
+    )
+    assert evidence["failure_kind"] == "consumed_no_progress"
+    assert evidence["provider_effect_state"] == "unknown_may_have_started"
+    assert evidence["portal_provider_dispatched"] is True
+    assert evidence["portal_attempt_number"] == 1
+    assert evidence["tree_id"] == "a" * 40
+    assert evidence["control_repository_tree_id"] == (
+        "tree:control-plane-current"
+    )
+    assert evidence["task_cid"] == "task:cid:004"
+    assert evidence["task_contract_digest"].startswith("sha256:")
+    assert evidence["log_digest"].startswith("sha256:")
+    assert evidence["context_receipt_id"].startswith("baguq")
+    assert str(evidence["diagnostic_failure_id"]).startswith("baguq")
+    assert str(evidence["diagnostic_receipt_id"]).startswith("baguq")
+    assert evidence["failure_fingerprint"].startswith("sha256:")
+    assert evidence["failure_fingerprint"] == (
+        database_portal_consumed_no_progress_fingerprint(evidence)
+    )
+    assert "ImportError" not in json.dumps(evidence)
+    assert "provider output" not in json.dumps(evidence)
 
 @pytest.mark.parametrize("identity_authority", ["database", "parsed"])
 def test_bridge_consumed_no_progress_rejects_nonlocal_task_identity(
@@ -1463,7 +1557,6 @@ def test_bridge_consumed_no_progress_rejects_nonlocal_task_identity(
         raised.value,
         DatabasePortalBridgeConsumedNoProgressError,
     )
-
 
 @pytest.mark.parametrize("identity_authority", ["database", "parsed", "missing"])
 def test_bridge_consumed_no_progress_requires_projection_local_task_key(
@@ -1523,7 +1616,6 @@ def test_bridge_consumed_no_progress_requires_projection_local_task_key(
         DatabasePortalBridgeConsumedNoProgressError,
     )
 
-
 @pytest.mark.parametrize("forged_identity", ["receipt_id", "failure_id"])
 def test_bridge_rejects_forged_diagnostic_identity(
     tmp_path: Path,
@@ -1552,7 +1644,6 @@ def test_bridge_rejects_forged_diagnostic_identity(
         raised.value,
         DatabasePortalBridgeConsumedNoProgressError,
     )
-
 
 @pytest.mark.parametrize(
     "log_text",
@@ -1594,7 +1685,6 @@ def test_bridge_neutralizes_spoofed_failure_text_without_classifying_cause(
     )
     assert "spoofed" not in json.dumps(raised.value.failure_evidence)
 
-
 def test_bridge_does_not_neutralize_an_implementation_candidate(
     tmp_path: Path,
 ) -> None:
@@ -1618,7 +1708,6 @@ def test_bridge_does_not_neutralize_an_implementation_candidate(
         raised.value,
         DatabasePortalBridgeConsumedNoProgressError,
     )
-
 
 def test_bridge_rejects_free_text_capacity_as_retry_authority(
     tmp_path: Path,
@@ -1645,7 +1734,6 @@ def test_bridge_rejects_free_text_capacity_as_retry_authority(
         bridge.run_provider(_attempt())
     assert not isinstance(raised.value, DatabasePortalBridgeDeferred)
 
-
 def test_bridge_rejects_completion_event_for_another_canonical_task(
     tmp_path: Path,
 ) -> None:
@@ -1665,6 +1753,49 @@ def test_bridge_rejects_completion_event_for_another_canonical_task(
     with pytest.raises(DatabasePortalBridgeError, match="matching durable"):
         bridge.run_provider(_attempt())
 
+def test_bridge_rejects_completion_event_for_another_canonical_task_aseh(
+    tmp_path: Path,
+) -> None:
+    class ForgedCompletionPortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            result = super().run_once()
+            events = [
+                json.loads(line)
+                for line in self.paths.events.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            completion = events[-1]
+            completion["canonical_task_cid"] = "task:cid:other"
+            completion_body = dict(completion)
+            completion_body.pop("event_id")
+            completion["event_id"] = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    completion_body,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            self.paths.events.write_text(
+                "".join(
+                    json.dumps(event, sort_keys=True, separators=(",", ":"))
+                    + "\n"
+                    for event in events
+                ),
+                encoding="utf-8",
+            )
+            return result
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: ForgedCompletionPortal(paths, alias),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError, match="verified task_completed"):
+        bridge.run_provider(_attempt())
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_production_database_daemon_cannot_complete_with_default_noops(
@@ -1714,6 +1845,54 @@ def test_production_database_daemon_cannot_complete_with_default_noops(
     finally:
         daemon.close()
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_production_database_daemon_cannot_complete_with_default_noops_aseh(
+    tmp_path: Path,
+) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:fail-closed",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:bridge",
+                "tasks": [
+                    {
+                        "task_cid": "task:cid:004",
+                        "task_id": "LGSWF-004",
+                        "goal_cid": "goal:inventory",
+                        "status": "ready",
+                        "priority": "P0",
+                        "ordinal": 4,
+                        "title": "Inventory",
+                    }
+                ],
+            }
+        )
+        result = daemon.run_once()
+        implementation = result["implementation_result"]
+        assert implementation["portal_terminal_failure"] is True
+        assert implementation["provider_dispatched"] == "unknown"
+        assert "no provider executor" in implementation["reason"]
+        task = daemon.task_source.get_task("task:cid:004")
+        assert task is not None
+        assert task.status == "blocked"
+        assert daemon.list_running_attempts() == []
+        assert (
+            daemon.provider_invocation_recorded(
+                result["attempt_id"],
+                idempotency_key=f"provider:{result['attempt_id']}",
+            )
+            is None
+        )
+    finally:
+        daemon.close()
 
 def test_quack_mode_refuses_direct_duckdb_execution(tmp_path: Path) -> None:
     with pytest.raises(
@@ -1725,7 +1904,6 @@ def test_quack_mode_refuses_direct_duckdb_execution(tmp_path: Path) -> None:
             authority_mode="quack",
             task_source_kind="duckdb",
         )
-
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_configured_production_runner_binds_real_portal_bridge(
@@ -1790,7 +1968,6 @@ def _owned_record(owner: str) -> SimpleNamespace:
     }
     return record
 
-
 def _sealed_spar_owned_record(owner: str = "ipfs_datasets_py") -> SimpleNamespace:
     record = _owned_record(owner)
     record.task_alias = "SPAR-002"
@@ -1827,7 +2004,6 @@ def _sealed_spar_owned_record(owner: str = "ipfs_datasets_py") -> SimpleNamespac
         "stable_task_id": record.task_alias,
     }
     return record
-
 
 def _git_completion_lineage(repo: Path) -> tuple[str, str, str]:
     repo.mkdir(parents=True, exist_ok=True)
@@ -1873,28 +2049,6 @@ def _git_completion_lineage(repo: Path) -> tuple[str, str, str]:
     ).stdout.strip()
     return baseline_commit, baseline_tree, implementation_commit
 
-
-_VRIF_BENCHMARK_VALIDATION = (
-    "python -m pytest -q test/api/residual_intelligence/test_benchmark.py"
-)
-_VRIF_BENCHMARK_OUTPUTS = (
-    "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
-    "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
-    "test/api/residual_intelligence/test_benchmark.py",
-)
-_VRIF_TERMINAL_OUTPUTS = (
-    (
-        "docs/architecture/residual_intelligence_inventory/"
-        "final_release_report.json"
-    ),
-    (
-        "docs/architecture/residual_intelligence_inventory/"
-        "final_release_report.md"
-    ),
-    "test/api/residual_intelligence/test_release_report.py",
-)
-
-
 def _json_bytes(value: object) -> bytes:
     return (
         json.dumps(
@@ -1907,12 +2061,10 @@ def _json_bytes(value: object) -> bytes:
         + b"\n"
     )
 
-
 def _write_git_fixture(repo: Path, path: str, payload: bytes) -> None:
     target = repo / path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(payload)
-
 
 def _commit_git_fixture(repo: Path, message: str) -> str:
     subprocess.run(["git", "add", "--all"], cwd=repo, check=True)
@@ -1925,7 +2077,6 @@ def _commit_git_fixture(repo: Path, message: str) -> str:
         text=True,
     ).stdout.strip()
 
-
 def _git_tree(repo: Path, commit: str) -> str:
     return subprocess.run(
         ["git", "rev-parse", f"{commit}^{{tree}}"],
@@ -1934,7 +2085,6 @@ def _git_tree(repo: Path, commit: str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
-
 
 def _init_git_fixture(repo: Path) -> None:
     repo.mkdir(parents=True)
@@ -1949,7 +2099,6 @@ def _init_git_fixture(repo: Path) -> None:
         cwd=repo,
         check=True,
     )
-
 
 def _vrif_benchmark_record(*, task_cid: str = "task:vrif:030") -> SimpleNamespace:
     return SimpleNamespace(
@@ -1969,7 +2118,6 @@ def _vrif_benchmark_record(*, task_cid: str = "task:vrif:030") -> SimpleNamespac
             "track": "benchmark",
         },
     )
-
 
 def _git_vrif_benchmark_lineage(
     repo: Path,
@@ -2112,7 +2260,6 @@ def _git_vrif_benchmark_lineage(
     )
     return baseline_commit, baseline_tree, implementation_commit
 
-
 def _vrif_terminal_record() -> SimpleNamespace:
     return SimpleNamespace(
         task_cid="task:vrif:032",
@@ -2131,7 +2278,6 @@ def _vrif_terminal_record() -> SimpleNamespace:
             "track": "release",
         },
     )
-
 
 def _git_vrif_terminal_lineage(
     repo: Path,
@@ -2177,7 +2323,6 @@ def _git_vrif_terminal_lineage(
     )
     return baseline_commit, baseline_tree, implementation_commit
 
-
 def _git_candidate_with_rescue_branch(repo: Path) -> tuple[str, str]:
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
     subprocess.run(
@@ -2210,7 +2355,6 @@ def _git_candidate_with_rescue_branch(repo: Path) -> tuple[str, str]:
     )
     return commit, rescue_branch
 
-
 def _progressed_implementation_commit(repo: Path) -> tuple[str, str]:
     output = repo / "inventory" / "result.json"
     output.write_text('{"progressed":true}\n', encoding="utf-8")
@@ -2234,7 +2378,6 @@ def _progressed_implementation_commit(repo: Path) -> tuple[str, str]:
     branch = "implementation/lgswf-004-attempt-2-progressed"
     subprocess.run(["git", "branch", branch, commit], cwd=repo, check=True)
     return commit, branch
-
 
 def _mutate_portal_retry_state(
     paths: object,
@@ -2261,7 +2404,6 @@ def _mutate_portal_retry_state(
     )
     return state
 
-
 class _InspectSeedPortal:
     def __init__(self, paths: object) -> None:
         self.paths = paths
@@ -2273,7 +2415,6 @@ class _InspectSeedPortal:
                 "reason": "stop_after_seed_inspection",
             }
         }
-
 
 def _seeded_validation_retry_successor(
     tmp_path: Path,
@@ -2380,7 +2521,6 @@ def _seeded_validation_retry_successor(
         "retry": retry,
     }
 
-
 def _replace_validation_seed_database_key(
     paths: object,
     *,
@@ -2413,7 +2553,6 @@ def _replace_validation_seed_database_key(
         "database_portal_validation_retry_seeded",
         payload,
     )
-
 
 class _ValidationFailurePortal:
     def __init__(
@@ -2647,7 +2786,6 @@ class _ValidationFailurePortal:
         )
         return {"implementation_result": implementation}
 
-
 def _capacity_record_id(value: dict[str, object], field: str) -> str:
     body = {key: item for key, item in value.items() if key != field}
     encoded = json.dumps(
@@ -2658,7 +2796,6 @@ def _capacity_record_id(value: dict[str, object], field: str) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
-
 
 def _capacity_event_payload(
     task_alias: str,
@@ -2771,7 +2908,6 @@ def _capacity_event_payload(
         "codex_capacity_receipt": capacity,
     }
 
-
 class _CapacityFailurePortal:
     def __init__(
         self,
@@ -2813,7 +2949,6 @@ class _CapacityFailurePortal:
             {"active_task_id": self.task_alias},
         )
         return {"implementation_result": implementation}
-
 
 def _write_consumed_attempt_failure(
     paths: object,
@@ -3071,7 +3206,6 @@ def _write_consumed_attempt_failure(
     )
     return started, finished
 
-
 def _git_protected_path_candidate(repo: Path) -> tuple[str, str, str]:
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
     subprocess.run(
@@ -3128,7 +3262,6 @@ def _git_protected_path_candidate(repo: Path) -> tuple[str, str, str]:
         check=True,
     )
     return baseline, candidate, rescue_branch
-
 
 def _write_protected_path_preservation_terminal(
     paths: object,
@@ -3391,7 +3524,6 @@ def _write_protected_path_preservation_terminal(
     )
     return started, mutation, preserved, finished
 
-
 def _prepare_seeded_protected_preservation_replay(
     tmp_path: Path,
     *,
@@ -3521,7 +3653,6 @@ def _prepare_seeded_protected_preservation_replay(
         terminal,
     )
 
-
 def test_bridge_propagates_typed_pre_dispatch_cooldown(tmp_path: Path) -> None:
     class DeferredPortal:
         def __init__(self) -> None:
@@ -3560,7 +3691,6 @@ def test_bridge_propagates_typed_pre_dispatch_cooldown(tmp_path: Path) -> None:
     assert caught.value.provider_dispatched is False
     assert portal.closed is True
 
-
 def test_bridge_uses_safe_default_for_legacy_typed_deferral(
     tmp_path: Path,
 ) -> None:
@@ -3591,7 +3721,6 @@ def test_bridge_uses_safe_default_for_legacy_typed_deferral(
         bridge.run_provider(_attempt())
 
     assert caught.value.backoff_seconds == 300
-
 
 def _verified_quota_fallback_result(
     *,
@@ -3639,7 +3768,6 @@ def _verified_quota_fallback_result(
             },
         }
     }
-
 
 def test_bridge_keeps_verified_quota_fallback_in_same_portal_claim(
     tmp_path: Path,
@@ -3705,7 +3833,6 @@ def test_bridge_keeps_verified_quota_fallback_in_same_portal_claim(
     assert len(portals) == 1
     assert portals[0].calls == 2
 
-
 def test_bridge_rejects_quota_fallback_for_a_foreign_task(
     tmp_path: Path,
 ) -> None:
@@ -3732,7 +3859,6 @@ def test_bridge_rejects_quota_fallback_for_a_foreign_task(
 
     assert caught.value.reason == "provider_capacity_exhausted"
     assert portal.calls == 1
-
 
 def test_bridge_continues_the_same_quota_fallback_at_most_once(
     tmp_path: Path,
@@ -3774,7 +3900,6 @@ def test_bridge_continues_the_same_quota_fallback_at_most_once(
     assert len(portals) == 1
     assert portals[0].calls == 2
 
-
 def test_bridge_does_not_continue_unverified_quota_fallback(
     tmp_path: Path,
 ) -> None:
@@ -3810,7 +3935,6 @@ def test_bridge_does_not_continue_unverified_quota_fallback(
     assert caught.value.reason == "provider_capacity_exhausted"
     assert caught.value.backoff_seconds == 300
 
-
 def test_bridge_defers_when_passes_end_before_projection_is_terminal(
     tmp_path: Path,
 ) -> None:
@@ -3837,7 +3961,6 @@ def test_bridge_defers_when_passes_end_before_projection_is_terminal(
     assert caught.value.attempt_consumed is False
     assert caught.value.provider_dispatched is False
 
-
 def test_bridge_does_not_infer_retryability_from_generic_failure_text(
     tmp_path: Path,
 ) -> None:
@@ -3862,7 +3985,6 @@ def test_bridge_does_not_infer_retryability_from_generic_failure_text(
 
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert not isinstance(caught.value, DatabasePortalCandidateRetry)
-
 
 def test_bridge_defers_external_protected_checkout_contention(
     tmp_path: Path,
@@ -3894,7 +4016,6 @@ def test_bridge_defers_external_protected_checkout_contention(
     assert caught.value.attempt_consumed is False
     assert caught.value.provider_dispatched is False
 
-
 def test_bridge_keeps_invalid_protected_recovery_journal_terminal(
     tmp_path: Path,
 ) -> None:
@@ -3920,7 +4041,6 @@ def test_bridge_keeps_invalid_protected_recovery_journal_terminal(
 
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert str(caught.value) == "protected_recovery_journal_invalid"
-
 
 @pytest.mark.parametrize("reason", sorted(DATABASE_PORTAL_SKIP_CONTENTION_REASONS))
 def test_bridge_defers_skipped_inflight_and_lock_contention(
@@ -3954,7 +4074,6 @@ def test_bridge_defers_skipped_inflight_and_lock_contention(
     )
     assert caught.value.attempt_consumed is False
     assert caught.value.provider_dispatched is False
-
 
 def test_bridge_same_claim_inflight_uses_projection_local_identity(
     tmp_path: Path,
@@ -4004,7 +4123,6 @@ def test_bridge_same_claim_inflight_uses_projection_local_identity(
         paths=paths,
         binding=binding,
     ) == (attempt.task_alias, 1, worktree_path)
-
 
 @pytest.mark.parametrize(
     ("field", "identity_authority"),
@@ -4074,7 +4192,6 @@ def test_bridge_same_claim_inflight_rejects_nonlocal_identity(
         paths=paths,
         binding=binding,
     ) is None
-
 
 def test_bridge_polls_exact_inflight_process_on_same_claim_until_completion(
     tmp_path: Path,
@@ -4159,7 +4276,6 @@ def test_bridge_polls_exact_inflight_process_on_same_claim_until_completion(
     assert portals[0].closed is True
     assert clock.sleeps == [15.0, 15.0]
 
-
 def test_bridge_bounds_inflight_pass_preview_with_streaming_digest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4241,7 +4357,6 @@ def test_bridge_bounds_inflight_pass_preview_with_streaming_digest(
     assert len(evidence["portal_passes"]) == 16
     assert evidence["portal_passes_digest"].startswith("sha256:")
     assert len(evidence["portal_passes_digest"]) == len("sha256:") + 64
-
 
 def test_bridge_defers_exact_inflight_process_at_configured_timeout(
     tmp_path: Path,
@@ -4331,7 +4446,6 @@ def test_bridge_defers_exact_inflight_process_at_configured_timeout(
     assert portals[0].closed is True
     assert clock.sleeps == [15.0, 5.0]
 
-
 def test_bridge_polls_exact_pending_merge_until_portal_completion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4393,7 +4507,6 @@ def test_bridge_polls_exact_pending_merge_until_portal_completion(
     assert portals[0].calls == 2
     assert portals[0].closed is True
     assert clock.sleeps == [15.0]
-
 
 def test_bridge_polls_pending_merge_through_nonpending_portal_pass(
     tmp_path: Path,
@@ -4462,7 +4575,6 @@ def test_bridge_polls_pending_merge_through_nonpending_portal_pass(
     assert portals[0].closed is True
     assert clock.sleeps == [15.0, 15.0]
 
-
 def test_bridge_admits_pending_merge_when_portal_attempt_differs_from_fence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4524,7 +4636,6 @@ def test_bridge_admits_pending_merge_when_portal_attempt_differs_from_fence(
     assert portals[0].closed is True
     assert clock.sleeps == [15.0]
 
-
 def test_bridge_rejects_pending_merge_with_forged_projection_identity(
     tmp_path: Path,
 ) -> None:
@@ -4563,7 +4674,6 @@ def test_bridge_rejects_pending_merge_with_forged_projection_identity(
     assert "does not match the database claim" in str(caught.value)
     assert len(portals) == 1
     assert portals[0].calls == 1
-
 
 @pytest.mark.parametrize("identity_authority", ["database", "parsed", "missing"])
 def test_bridge_rejects_pending_merge_with_nonlocal_projection_key(
@@ -4624,7 +4734,6 @@ def test_bridge_rejects_pending_merge_with_nonlocal_projection_key(
 
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert "does not match the database claim" in str(caught.value)
-
 
 @pytest.mark.parametrize("identity_authority", ["database", "parsed", "missing"])
 def test_bridge_rejects_pending_merge_state_with_nonlocal_last_key(
@@ -4690,7 +4799,6 @@ def test_bridge_rejects_pending_merge_state_with_nonlocal_last_key(
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert "pending-merge state no longer matches" in str(caught.value)
 
-
 @pytest.mark.parametrize(
     ("section", "field", "value"),
     [
@@ -4745,7 +4853,6 @@ def test_bridge_rejects_malformed_pending_merge_evidence(
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert "does not match the database claim" in str(caught.value)
 
-
 def test_bridge_rejects_pending_merge_candidate_substitution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4790,7 +4897,6 @@ def test_bridge_rejects_pending_merge_candidate_substitution(
     assert "candidate identity changed" in str(caught.value)
     assert len(portals) == 1
     assert portals[0].calls == 2
-
 
 def test_bridge_fails_closed_at_pending_merge_timeout(
     tmp_path: Path,
@@ -4853,7 +4959,6 @@ def test_bridge_fails_closed_at_pending_merge_timeout(
     assert portals[0].calls == 2
     assert clock.sleeps == [15.0, 5.0]
 
-
 def test_bridge_keeps_generic_skip_terminal(
     tmp_path: Path,
 ) -> None:
@@ -4878,7 +4983,6 @@ def test_bridge_keeps_generic_skip_terminal(
 
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert str(caught.value) == "completion_gap_missing_precise_edit_targets"
-
 
 def test_recent_log_without_lifecycle_is_not_treated_as_live_owner(
     tmp_path: Path,
@@ -4920,7 +5024,6 @@ def test_recent_log_without_lifecycle_is_not_treated_as_live_owner(
         "disposition": "unverifiable",
         "reason": "recent_log_without_lifecycle_authority",
     }
-
 
 @pytest.mark.parametrize(
     "payload",
@@ -4985,7 +5088,6 @@ def test_bridge_retries_unusable_dispatched_candidates(
         "incomplete_expected_outputs",
     }
 
-
 def test_bridge_keeps_exhausted_unusable_candidate_terminal(
     tmp_path: Path,
 ) -> None:
@@ -5016,7 +5118,6 @@ def test_bridge_keeps_exhausted_unusable_candidate_terminal(
 
     assert not isinstance(caught.value, DatabasePortalCandidateRetry)
     assert str(caught.value) == "portal_provider_failed"
-
 
 def test_bridge_stops_candidate_retry_when_durable_attempt_reaches_cap(
     tmp_path: Path,
@@ -5051,7 +5152,6 @@ def test_bridge_stops_candidate_retry_when_durable_attempt_reaches_cap(
     assert not isinstance(caught.value, DatabasePortalCandidateRetry)
     assert str(caught.value) == "portal_provider_failed"
 
-
 def test_bridge_defers_protected_recovery_fence_contention(
     tmp_path: Path,
 ) -> None:
@@ -5079,7 +5179,6 @@ def test_bridge_defers_protected_recovery_fence_contention(
     assert caught.value.backoff_seconds == 30
     assert caught.value.attempt_consumed is False
     assert caught.value.provider_dispatched is False
-
 
 def test_bridge_defers_live_inflight_process_skip(
     tmp_path: Path,
@@ -5112,7 +5211,6 @@ def test_bridge_defers_live_inflight_process_skip(
     assert caught.value.attempt_consumed is False
     assert caught.value.provider_dispatched is False
 
-
 def test_bridge_still_terminals_non_fence_blocked_portal(
     tmp_path: Path,
 ) -> None:
@@ -5135,7 +5233,6 @@ def test_bridge_still_terminals_non_fence_blocked_portal(
 
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert str(caught.value) == "crash_reconciliation_inputs_drifted"
-
 
 def test_bridge_defers_paired_supervisor_external_checkout_recovery(
     tmp_path: Path,
@@ -5177,7 +5274,6 @@ def test_bridge_defers_paired_supervisor_external_checkout_recovery(
     assert caught.value.attempt_consumed is False
     assert caught.value.provider_dispatched is False
     assert portal.closed is True
-
 
 def test_bridge_restarts_after_paired_checkout_deferral_without_terminal_receipt(
     tmp_path: Path,
@@ -5228,7 +5324,6 @@ def test_bridge_restarts_after_paired_checkout_deferral_without_terminal_receipt
     assert receipt["task_cid"] == attempt.task_cid
     assert calls == ["waiting", "waiting", "recovered"]
 
-
 def test_bridge_defers_foreign_external_checkout_recovery_fence(
     tmp_path: Path,
 ) -> None:
@@ -5262,7 +5357,6 @@ def test_bridge_defers_foreign_external_checkout_recovery_fence(
     assert caught.value.backoff_seconds == 30
     assert caught.value.attempt_consumed is False
     assert caught.value.provider_dispatched is False
-
 
 def test_bridge_defers_verified_live_supervisor_recovery_owner(
     tmp_path: Path,
@@ -5333,7 +5427,6 @@ def test_bridge_defers_verified_live_supervisor_recovery_owner(
     assert caught.value.provider_dispatched is False
     assert portal.closed is True
 
-
 def test_bridge_recovers_external_checkout_only_when_lock_absent(
     tmp_path: Path,
 ) -> None:
@@ -5368,7 +5461,6 @@ def test_bridge_recovers_external_checkout_only_when_lock_absent(
     assert receipt["lock_path"] == str(lock_path)
     assert bridge.recover_external_protected_checkout(attempt) == receipt
 
-
 def test_bridge_defers_unbound_inflight_process_skip(tmp_path: Path) -> None:
     class InflightPortal:
         closed = False
@@ -5402,7 +5494,6 @@ def test_bridge_defers_unbound_inflight_process_skip(tmp_path: Path) -> None:
     assert caught.value.attempt_consumed is False
     assert portal.closed is True
 
-
 def test_bridge_keeps_other_skipped_reasons_terminal(tmp_path: Path) -> None:
     class OtherSkipPortal:
         def run_once(self) -> dict[str, object]:
@@ -5426,6 +5517,28 @@ def test_bridge_keeps_other_skipped_reasons_terminal(tmp_path: Path) -> None:
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert str(caught.value) == "generic_skip"
 
+def test_bridge_keeps_other_skipped_reasons_terminal_aseh(tmp_path: Path) -> None:
+    class OtherSkipPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "skipped": True,
+                    "reason": "provider_capacity_backoff",
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: OtherSkipPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert str(caught.value) == "provider_capacity_backoff"
 
 def test_bridge_defers_worktree_lifecycle_claim_skip(tmp_path: Path) -> None:
     class LifecycleSkipPortal:
@@ -5460,7 +5573,6 @@ def test_bridge_defers_worktree_lifecycle_claim_skip(tmp_path: Path) -> None:
     assert caught.value.backoff_seconds == 30
     assert caught.value.attempt_consumed is False
     assert portal.closed is True
-
 
 def test_bridge_defers_pooled_worktree_create_interrupt(tmp_path: Path) -> None:
     class SetupFailPortal:
@@ -5500,7 +5612,6 @@ def test_bridge_defers_pooled_worktree_create_interrupt(tmp_path: Path) -> None:
     assert caught.value.attempt_consumed is False
     assert portal.closed is True
 
-
 def test_bridge_keeps_dispatched_provider_failure_terminal(tmp_path: Path) -> None:
     class DispatchedFailPortal:
         def run_once(self) -> dict[str, object]:
@@ -5528,7 +5639,6 @@ def test_bridge_keeps_dispatched_provider_failure_terminal(tmp_path: Path) -> No
         bridge.run_provider(_attempt())
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert str(caught.value) == "model_failed"
-
 
 def test_pooled_recovery_maps_projected_cid_then_rejects_stale_replay(
     tmp_path: Path,
@@ -5583,7 +5693,6 @@ def test_pooled_recovery_maps_projected_cid_then_rejects_stale_replay(
         match="requires a pre-dispatch worktree-setup failure",
     ):
         bridge.recover_pooled_worktree_create(attempt)
-
 
 def test_bridge_recovers_pooled_worktree_create_when_path_absent(
     tmp_path: Path,
@@ -5642,6 +5751,48 @@ def test_bridge_recovers_pooled_worktree_create_when_path_absent(
     assert receipt["identity_bound"] is True
     assert bridge.recover_pooled_worktree_create(attempt) == receipt
 
+def test_bridge_recovers_pooled_worktree_create_when_path_absent_aseh(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        max_passes=1,
+    )
+    attempt = _attempt()
+    paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    projection = bridge._verify_projection(paths, binding)
+    portal_task_key, portal_task_cid = bridge._portal_completion_event_identity(
+        paths=paths, projection_text=projection, binding=binding,
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_finished",
+        {
+            "task_id": attempt.task_alias,
+            "canonical_task_cid": portal_task_cid,
+            "canonical_task_key": portal_task_key,
+            "task_cid": portal_task_cid,
+            "provider_dispatched": False,
+            "attempt_consumed": True,
+            "returncode": 1,
+            "worktree_path": str(tmp_path / "missing-pooled-worktree"),
+            "exception_result": {
+                "exception_type": "RuntimeError",
+                "phase": "worktree_setup",
+                "message": "failed to create pooled worktree: Preparing worktree",
+            },
+        },
+    )
+    receipt = bridge.recover_pooled_worktree_create(attempt)
+    assert receipt["schema"] == DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA
+    assert receipt["reason"] == DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON
+    assert receipt["source_reason"] == "portal_provider_failed"
+    assert receipt["worktree_present"] is False
+    assert receipt["identity_bound"] is True
+    assert bridge.recover_pooled_worktree_create(attempt) == receipt
 
 @pytest.mark.parametrize(
     "event_identity",
@@ -5713,7 +5864,6 @@ def test_bridge_rejects_nonlocal_or_keyless_pooled_worktree_recovery_event(
     ):
         bridge.recover_pooled_worktree_create(attempt)
 
-
 def test_bridge_does_not_recover_pooled_worktree_create_while_path_present(
     tmp_path: Path,
 ) -> None:
@@ -5760,6 +5910,45 @@ def test_bridge_does_not_recover_pooled_worktree_create_while_path_present(
     with pytest.raises(DatabasePortalBridgeError, match="worktree path to be absent"):
         bridge.recover_pooled_worktree_create(attempt)
 
+def test_bridge_does_not_recover_pooled_worktree_create_while_path_present_aseh(
+    tmp_path: Path,
+) -> None:
+    leftover = tmp_path / "leftover-pooled-worktree"
+    leftover.mkdir()
+    record = _record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        max_passes=1,
+    )
+    attempt = _attempt()
+    paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    projection = bridge._verify_projection(paths, binding)
+    portal_task_key, portal_task_cid = bridge._portal_completion_event_identity(
+        paths=paths, projection_text=projection, binding=binding,
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_finished",
+        {
+            "task_id": attempt.task_alias,
+            "canonical_task_cid": portal_task_cid,
+            "canonical_task_key": portal_task_key,
+            "task_cid": portal_task_cid,
+            "provider_dispatched": False,
+            "attempt_consumed": True,
+            "returncode": 1,
+            "worktree_path": str(leftover),
+            "exception_result": {
+                "exception_type": "RuntimeError",
+                "phase": "worktree_setup",
+                "message": "failed to create pooled worktree: Preparing worktree",
+            },
+        },
+    )
+    with pytest.raises(DatabasePortalBridgeError, match="worktree path to be absent"):
+        bridge.recover_pooled_worktree_create(attempt)
 
 def test_bridge_recovers_inflight_process_only_when_runner_absent(
     tmp_path: Path,
@@ -5799,7 +5988,6 @@ def test_bridge_recovers_inflight_process_only_when_runner_absent(
     assert receipt["live_runner_present"] is False
     assert bridge.recover_inflight_process(attempt) == receipt
 
-
 def test_bridge_accepts_identity_bound_progressed_validation_retry_seed(
     tmp_path: Path,
 ) -> None:
@@ -5829,6 +6017,34 @@ def test_bridge_accepts_identity_bound_progressed_validation_retry_seed(
     assert state["last_implementation_commit"] == progressed_commit
     assert state["last_implementation_branch"] == progressed_branch
 
+def test_bridge_accepts_identity_bound_progressed_validation_retry_seed_aseh(
+    tmp_path: Path,
+) -> None:
+    seeded = _seeded_validation_retry_successor(tmp_path)
+    successor = seeded["successor"]
+    bridge = seeded["bridge"]
+    paths = seeded["paths"]
+    progressed_commit, progressed_branch = _progressed_implementation_commit(
+        seeded["repo"]
+    )
+    _mutate_portal_retry_state(
+        paths,
+        alias=successor.task_alias,
+        task_cid=str(seeded["portal_task_cid"]),
+        commit=progressed_commit,
+        branch=progressed_branch,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError, match="stop_after_seed_inspection"
+    ):
+        bridge.run_provider(successor)
+
+    state = json.loads(paths.state.read_text(encoding="utf-8"))
+    assert state["implementation_attempts"][successor.task_alias] == 2
+    assert state["last_implementation_returncode"] == 0
+    assert state["last_implementation_commit"] == progressed_commit
+    assert state["last_implementation_branch"] == progressed_branch
 
 def test_bridge_keeps_foreign_progressed_validation_retry_seed_terminal(
     tmp_path: Path,
@@ -5856,6 +6072,31 @@ def test_bridge_keeps_foreign_progressed_validation_retry_seed_terminal(
     with pytest.raises(DatabasePortalBridgeError, match="identity-bound"):
         bridge.recover_validation_retry_seed_conflict(successor)
 
+def test_bridge_keeps_foreign_progressed_validation_retry_seed_terminal_aseh(
+    tmp_path: Path,
+) -> None:
+    seeded = _seeded_validation_retry_successor(tmp_path)
+    successor = seeded["successor"]
+    bridge = seeded["bridge"]
+    paths = seeded["paths"]
+    progressed_commit, progressed_branch = _progressed_implementation_commit(
+        seeded["repo"]
+    )
+    _mutate_portal_retry_state(
+        paths,
+        alias=successor.task_alias,
+        task_cid=successor.task_cid,
+        commit=progressed_commit,
+        branch=progressed_branch,
+        task_id="FOREIGN-001",
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(successor)
+
+    assert str(caught.value) == DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+    with pytest.raises(DatabasePortalBridgeError, match="identity-bound"):
+        bridge.recover_validation_retry_seed_conflict(successor)
 
 def test_bridge_recovers_identity_bound_validation_retry_seed_conflict(
     tmp_path: Path,
@@ -5892,6 +6133,40 @@ def test_bridge_recovers_identity_bound_validation_retry_seed_conflict(
     assert receipt["seed_rescue_branch"] == seeded["rescue_branch"]
     assert bridge.recover_validation_retry_seed_conflict(successor) == receipt
 
+def test_bridge_recovers_identity_bound_validation_retry_seed_conflict_aseh(
+    tmp_path: Path,
+) -> None:
+    seeded = _seeded_validation_retry_successor(tmp_path)
+    successor = seeded["successor"]
+    bridge = seeded["bridge"]
+    paths = seeded["paths"]
+    progressed_commit, progressed_branch = _progressed_implementation_commit(
+        seeded["repo"]
+    )
+    _mutate_portal_retry_state(
+        paths,
+        alias=successor.task_alias,
+        task_cid=str(seeded["portal_task_cid"]),
+        commit=progressed_commit,
+        branch=progressed_branch,
+    )
+
+    receipt = bridge.recover_validation_retry_seed_conflict(successor)
+    assert (
+        receipt["schema"]
+        == DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA
+    )
+    assert receipt["reason"] == "validation_retry_seed_state_progressed"
+    assert (
+        receipt["source_reason"]
+        == DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+    )
+    assert receipt["identity_bound"] is True
+    assert receipt["observed_commit"] == progressed_commit
+    assert receipt["observed_branch"] == progressed_branch
+    assert receipt["seed_commit"] == seeded["commit"]
+    assert receipt["seed_rescue_branch"] == seeded["rescue_branch"]
+    assert bridge.recover_validation_retry_seed_conflict(successor) == receipt
 
 def test_bridge_rejects_rehashed_validation_retry_seed_with_foreign_database_key(
     tmp_path: Path,
@@ -5941,7 +6216,6 @@ def test_bridge_rejects_rehashed_validation_retry_seed_with_foreign_database_key
     with pytest.raises(DatabasePortalBridgeError, match="seed event is not exact"):
         bridge.recover_validation_retry_seed_conflict(successor)
 
-
 def test_bridge_validation_retry_seed_uses_database_fallback_key_and_rejects_foreign(
     tmp_path: Path,
 ) -> None:
@@ -5980,7 +6254,6 @@ def test_bridge_validation_retry_seed_uses_database_fallback_key_and_rejects_for
             paths=paths,
             binding=binding,
         )
-
 
 @pytest.mark.parametrize(
     ("consumer", "foreign_key"),
@@ -6043,7 +6316,6 @@ def test_bridge_validation_retry_seed_consumers_require_exact_database_key(
             binding=binding,
         ) is not None
 
-
 def test_bridge_does_not_recover_invented_validation_retry_seed_commit(
     tmp_path: Path,
 ) -> None:
@@ -6065,6 +6337,26 @@ def test_bridge_does_not_recover_invented_validation_retry_seed_commit(
     with pytest.raises(DatabasePortalBridgeError, match="identity-bound"):
         bridge.recover_validation_retry_seed_conflict(successor)
 
+def test_bridge_does_not_recover_invented_validation_retry_seed_commit_aseh(
+    tmp_path: Path,
+) -> None:
+    seeded = _seeded_validation_retry_successor(tmp_path)
+    successor = seeded["successor"]
+    bridge = seeded["bridge"]
+    paths = seeded["paths"]
+    _mutate_portal_retry_state(
+        paths,
+        alias=successor.task_alias,
+        task_cid=successor.task_cid,
+        commit="a" * 40,
+        branch="implementation/lgswf-004-attempt-2-progressed",
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(successor)
+    assert str(caught.value) == DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+    with pytest.raises(DatabasePortalBridgeError, match="identity-bound"):
+        bridge.recover_validation_retry_seed_conflict(successor)
 
 @pytest.mark.parametrize(
     "identity_mutation",
@@ -6140,7 +6432,6 @@ def test_bridge_rejects_nonlocal_or_keyless_validation_retry_source_chain(
             local_identity.canonical_task_cid,
         }
     ) == 3
-
 
 @pytest.mark.parametrize(
     ("objective_metadata", "expected_objective_id"),
@@ -6229,7 +6520,6 @@ def test_bridge_rejects_task_identity_forged_as_explicit_dag_objective(
             local_identity.canonical_task_cid,
         }
     ) == 3
-
 
 def test_bridge_classifies_only_preserved_authoritative_validation_failure(
     tmp_path: Path,
@@ -6520,6 +6810,150 @@ def test_bridge_classifies_only_preserved_authoritative_validation_failure(
         progressed_bridge.run_provider(successor)
     assert progressed_calls == ["adopt"]
 
+def test_bridge_classifies_only_preserved_authoritative_validation_failure_aseh(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    commit, rescue_branch = _git_candidate_with_rescue_branch(repo)
+    record = _record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _ValidationFailurePortal(
+            paths,
+            alias,
+            commit=commit,
+            rescue_branch=rescue_branch,
+        ),
+        repository_root=repo,
+        max_passes=1,
+        max_task_attempts=3,
+    )
+
+    # Production retained 188 legacy outer attempts before this current-schema
+    # Portal attempt.  Those coordination identities are not retry-budget
+    # consumption; the independently replayed Portal attempt is generation 1.
+    production_attempt = _attempt(attempt_number=189)
+    with pytest.raises(DatabasePortalValidationRetry) as caught:
+        bridge.run_provider(production_attempt)
+
+    retry = caught.value
+    assert retry.attempt_consumed is True
+    assert retry.provider_dispatched is True
+    assert retry.backoff_seconds == 0
+    assert retry.retry_receipt["schema"] == DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA
+    assert retry.retry_receipt["implementation_commit"] == commit
+    assert retry.retry_receipt["rescue_branch"] == rescue_branch
+    assert retry.retry_receipt["attempt_number"] == 189
+    assert retry.retry_receipt["portal_attempt"] == 1
+    assert retry.retry_receipt["typed_retry_generation"] == 1
+    assert retry.retry_receipt["retry_budget_basis"] == "portal_attempt"
+    assert retry.retry_receipt["legacy_database_attempts_excluded"] is True
+    assert retry.retry_receipt["remaining_task_attempts"] == 2
+    assert retry.retry_receipt["denial_findings"] == []
+    # A later blocked-status CAS advances the control revision but does not
+    # invalidate the attempt's immutable task body/claim binding.
+    record.revision += 1
+    assert (
+        bridge.recover_validation_retry(production_attempt)
+        == retry.retry_receipt
+    )
+
+    successor = DatabaseTaskAttempt(
+        attempt_id="attempt:002",
+        claim_id="claim:002",
+        task_cid="task:cid:004",
+        task_alias="LGSWF-004",
+        attempt_number=190,
+        owner_session_id="session:bridge",
+        fencing_token=8,
+        fence_epoch=3,
+        lease_id="lease:002",
+        committed_phase="claimed",
+        status="running",
+        started_at_ms=2,
+    )
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": successor.attempt_id,
+            "claim_id": successor.claim_id,
+            "attempt_number": successor.attempt_number,
+            "fencing_token": successor.fencing_token,
+            "fence_epoch": successor.fence_epoch,
+            "lease_id": successor.lease_id,
+            "validation_retry_source_attempt_id": (
+                production_attempt.attempt_id
+            ),
+            "validation_retry_seed": retry.retry_receipt,
+        },
+    }
+    record.revision += 1
+    observed: dict[str, object] = {}
+
+    class InspectSeedPortal:
+        def __init__(self, paths: object) -> None:
+            self.paths = paths
+
+        def run_once(self) -> dict[str, object]:
+            observed["paths"] = self.paths
+            observed["state"] = json.loads(
+                self.paths.state.read_text(encoding="utf-8")
+            )
+            observed["events"] = [
+                json.loads(line)
+                for line in self.paths.events.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "reason": "stop_after_seed_inspection",
+                }
+            }
+
+    successor_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "successor-attempts",
+        portal_factory=lambda paths, _alias: InspectSeedPortal(paths),
+        repository_root=repo,
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    with pytest.raises(DatabasePortalBridgeError, match="stop_after_seed_inspection"):
+        successor_bridge.run_provider(successor)
+    state = observed["state"]
+    assert isinstance(state, dict)
+    assert state["implementation_attempts"]["LGSWF-004"] == 1
+    assert state["implementation_attempts_by_cid"]["task:cid:004"] == 1
+    assert state["last_implementation_commit"] == commit
+    assert state["last_implementation_branch"] == rescue_branch
+    events = observed["events"]
+    assert isinstance(events, list)
+    assert events[0]["type"] == "database_portal_validation_retry_seeded"
+    assert events[0]["source_retry_receipt_id"] == retry.retry_receipt[
+        "receipt_id"
+    ]
+    successor_paths = observed["paths"]
+    portal = PortalImplementationDaemon(
+        todo_path=successor_paths.task_projection,
+        state_path=successor_paths.state,
+        strategy_path=successor_paths.strategy,
+        events_path=successor_paths.events,
+        repo_root=repo,
+        task_header_prefix="LGSWF-",
+        max_task_attempts=3,
+    )
+    projected_task = portal._load_tasks()[0]
+    projected_state = PortalTaskState.load(successor_paths.state)
+    assert portal._task_attempt(projected_state, projected_task) == 2
+    authority = portal._prior_seed_proposal_authority(projected_task)
+    assert authority["ok"] is True
+    assert authority["database_validation_retry_seed"] is True
+    assert authority["authorized_paths"] == ["inventory/result.json"]
 
 @pytest.mark.parametrize(
     ("objective_metadata", "explicit_objective_id"),
@@ -6697,7 +7131,6 @@ def test_bridge_accepts_real_producer_dag_bound_to_exact_objective_authority(
     else:
         assert observed["dag"]["objective_id"] == observed["parsed_task_cid"]
         assert observed["dag"]["objective_id"] != observed["portal_task_cid"]
-
 
 def test_bridge_capacity_retry_replays_without_dispatch_and_seeds_successor(
     tmp_path: Path,
@@ -6877,7 +7310,6 @@ def test_bridge_capacity_retry_replays_without_dispatch_and_seeds_successor(
     projected_task = portal._load_tasks()[0]
     projected_state = PortalTaskState.load(successor_paths.state)
     assert portal._task_attempt(projected_state, projected_task) == 2
-
 
 def test_bridge_recovers_consumed_attempt_and_seeds_lane_local_successor(
     tmp_path: Path,
@@ -7140,7 +7572,6 @@ def test_bridge_recovers_consumed_attempt_and_seeds_lane_local_successor(
     assert replayed.value.retry_receipt["portal_attempt"] == 2
     assert replayed.value.retry_receipt["remaining_task_attempts"] == 2
 
-
 @pytest.mark.parametrize("diagnostic", [
     "",
     "retry_budget_repair_runtime_revision_unavailable",
@@ -7264,7 +7695,6 @@ def test_bridge_replays_exact_protected_preservation_before_seed_reinit(
     )
     assert factory_calls == []
 
-
 @pytest.mark.parametrize(
     ("terminal_options", "error_match"),
     [
@@ -7350,7 +7780,6 @@ def test_bridge_rejects_near_protected_preservation_without_dispatch(
     assert type(caught.value) is DatabasePortalBridgeError
     assert factory_calls == []
 
-
 def test_bridge_accepts_protected_preservation_preselection_prefixes(
     tmp_path: Path,
 ) -> None:
@@ -7390,7 +7819,6 @@ def test_bridge_accepts_protected_preservation_preselection_prefixes(
         bridge.run_provider(successor)
     assert caught.value.retry_receipt == recovered
     assert factory_calls == []
-
 
 def _prepare_protected_preservation_successor_seed(
     tmp_path: Path,
@@ -7477,7 +7905,6 @@ def _prepare_protected_preservation_successor_seed(
         dict(preservation_seed),
     )
 
-
 class _ProtectedRecoveryQueue:
     def __init__(self, repo: Path, target_branch: str) -> None:
         self.target_repository_id = checkout_repository_id(repo)
@@ -7507,7 +7934,6 @@ class _ProtectedRecoveryQueue:
 
     def get(self, request_id: str) -> object | None:
         return self.requests.get(request_id)
-
 
 class _ProtectedRecoveryPortal:
     def __init__(
@@ -7927,7 +8353,6 @@ class _ProtectedRecoveryPortal:
     def close_event_runtime(self) -> None:
         self.closed = True
 
-
 def _protected_recovery_bridge(
     *,
     record: object,
@@ -7978,7 +8403,6 @@ def _protected_recovery_bridge(
         max_task_attempts=4,
     )
     return bridge, observed, queue, provider_hooks, factory_calls
-
 
 def _write_protected_reconciliation_self_lock_events(
     *,
@@ -8230,7 +8654,6 @@ def _write_protected_reconciliation_self_lock_events(
     )
     return paths, recovery_key, recovery_branch
 
-
 def test_bridge_recovers_exact_historical_protected_reconciliation_self_lock(
     tmp_path: Path,
 ) -> None:
@@ -8283,7 +8706,6 @@ def test_bridge_recovers_exact_historical_protected_reconciliation_self_lock(
     assert factory_calls == []
     assert provider_hooks == []
 
-
 @pytest.mark.parametrize(
     "tamper",
     [
@@ -8325,7 +8747,6 @@ def test_bridge_protected_reconciliation_self_lock_tamper_fails_closed(
     assert factory_calls == []
     assert provider_hooks == []
 
-
 def test_bridge_reconciles_protected_preservation_seed_without_lineage_field(
     tmp_path: Path,
 ) -> None:
@@ -8356,7 +8777,6 @@ def test_bridge_reconciles_protected_preservation_seed_without_lineage_field(
     assert receipt["task_cid"] == target.task_cid
     assert provider_hooks == []
     assert factory_calls == [target.task_alias]
-
 
 def test_bridge_zero_provider_reconciles_protected_preservation_seed(
     tmp_path: Path,
@@ -8445,7 +8865,6 @@ def test_bridge_zero_provider_reconciles_protected_preservation_seed(
     assert observed["portal"].reconcile_calls == []
     assert provider_hooks == []
 
-
 @pytest.mark.parametrize(
     "mode",
     [
@@ -8508,7 +8927,6 @@ def test_bridge_protected_recovery_failures_never_dispatch_or_consume(
     else:
         assert portal.reconcile_calls == []
 
-
 def test_bridge_rejects_conflicting_deterministic_recovery_branch_on_replay(
     tmp_path: Path,
 ) -> None:
@@ -8558,7 +8976,6 @@ def test_bridge_rejects_conflicting_deterministic_recovery_branch_on_replay(
         capture_output=True,
         text=True,
     ).stdout.strip() == baseline
-
 
 def test_bridge_bounded_queue_continuation_completes_without_provider(
     tmp_path: Path,
@@ -8616,7 +9033,6 @@ def test_bridge_bounded_queue_continuation_completes_without_provider(
     assert observed["portal"].reconcile_calls == []
     assert provider_hooks == []
 
-
 def _complete_protected_recovery_queue_request(
     *,
     bridge: DatabasePortalExecutionBridge,
@@ -8641,7 +9057,6 @@ def _complete_protected_recovery_queue_request(
     )
     request.status = "completed"
 
-
 def test_bridge_exact_queue_continuation_never_consumes_foreign_request(
     tmp_path: Path,
 ) -> None:
@@ -8664,7 +9079,6 @@ def test_bridge_exact_queue_continuation_never_consumes_foreign_request(
     assert observed["portal"].consume_calls == 1
     assert queue.get("request:foreign").status == "pending"
     assert provider_hooks == []
-
 
 def test_bridge_repairs_exact_postmerge_completion_event_without_run_once(
     tmp_path: Path,
@@ -8702,7 +9116,6 @@ def test_bridge_repairs_exact_postmerge_completion_event_without_run_once(
     assert completion["completion_source_event_id"].startswith("sha256:")
     assert observed["portal"].consume_calls == 1
     assert provider_hooks == []
-
 
 def test_bridge_replays_queue_completion_before_owned_cleanup(
     tmp_path: Path,
@@ -8747,7 +9160,6 @@ def test_bridge_replays_queue_completion_before_owned_cleanup(
     ).returncode != 0
     assert provider_hooks == []
 
-
 def test_bridge_adopts_repaired_terminal_queue_completion_without_provider(
     tmp_path: Path,
 ) -> None:
@@ -8785,7 +9197,6 @@ def test_bridge_adopts_repaired_terminal_queue_completion_without_provider(
     assert observed["portal"].cleanup_calls
     assert not recovery_worktree.exists()
     assert provider_hooks == []
-
 
 @pytest.mark.parametrize(
     "forged_queue_state",
@@ -8861,7 +9272,6 @@ def test_bridge_rejects_forged_terminal_projection_without_queue_authority(
     assert factory_calls == [target.task_alias, target.task_alias]
     assert provider_hooks == []
 
-
 @pytest.mark.parametrize("mode", ["queued_cancelled", "queued_deadline"])
 def test_bridge_queue_interruption_retains_same_attempt_authority(
     tmp_path: Path,
@@ -8903,7 +9313,6 @@ def test_bridge_queue_interruption_retains_same_attempt_authority(
     assert target.status == "running"
     assert target.committed_phase == "claimed"
     assert provider_hooks == []
-
 
 def test_database_attempt_heartbeat_loss_wins_when_callback_unwinds() -> None:
     renewal_failed = threading.Event()
@@ -8953,7 +9362,6 @@ def test_database_attempt_heartbeat_loss_wins_when_callback_unwinds() -> None:
         )
     assert isinstance(lost.value.__cause__, RuntimeError)
     assert str(lost.value.__cause__) == "fixture lease renewal lost"
-
 
 @pytest.mark.parametrize("tamper", ["receipt", "ref", "ancestry"])
 def test_bridge_rejects_tampered_protected_recovery_seed_before_factory(
@@ -9011,7 +9419,6 @@ def test_bridge_rejects_tampered_protected_recovery_seed_before_factory(
         bridge.run_provider(target)
     assert factory_calls == []
 
-
 def test_bridge_replays_consumed_attempt_terminal_without_dispatch(
     tmp_path: Path,
 ) -> None:
@@ -9054,7 +9461,6 @@ def test_bridge_replays_consumed_attempt_terminal_without_dispatch(
 
     assert str(caught.value) == "portal_provider_failed"
     assert caught.value.retry_receipt == expected
-
 
 @pytest.mark.parametrize(
     ("portal_attempt", "max_task_attempts", "finish_updates", "later_event"),
@@ -9136,7 +9542,6 @@ def test_bridge_consumed_attempt_recovery_requires_exact_terminal_chain(
     ):
         bridge.recover_consumed_attempt_retry(source)
 
-
 def test_bridge_consumed_attempt_recovery_rejects_arbitrary_prefinish_event(
     tmp_path: Path,
 ) -> None:
@@ -9164,7 +9569,6 @@ def test_bridge_consumed_attempt_recovery_rejects_arbitrary_prefinish_event(
         match="not eligible for consumed-attempt retry recovery",
     ):
         bridge.recover_consumed_attempt_retry(source)
-
 
 def test_bridge_rejects_mutually_exclusive_retry_seeds_before_projection(
     tmp_path: Path,
@@ -9199,7 +9603,6 @@ def test_bridge_rejects_mutually_exclusive_retry_seeds_before_projection(
         bridge.run_provider(attempt)
     assert called == []
     assert not (tmp_path / "attempts").exists()
-
 
 def test_bridge_capacity_at_attempt_cap_is_terminal_and_replay_safe(
     tmp_path: Path,
@@ -9240,7 +9643,6 @@ def test_bridge_capacity_at_attempt_cap_is_terminal_and_replay_safe(
     assert not isinstance(replayed.value, DatabasePortalCapacityRetry)
     assert str(replayed.value) == "portal_retry_budget_exhausted"
     assert calls == [3]
-
 
 def test_bridge_stale_capacity_event_cannot_override_later_disposition(
     tmp_path: Path,
@@ -9298,7 +9700,6 @@ def test_bridge_stale_capacity_event_cannot_override_later_disposition(
         replay.run_provider(source)
     assert not isinstance(caught.value, DatabasePortalCapacityRetry)
     assert calls == [1]
-
 
 def test_validation_retry_seed_accepts_declared_outputs_in_different_order(
     tmp_path: Path,
@@ -9414,7 +9815,6 @@ def test_validation_retry_seed_accepts_declared_outputs_in_different_order(
         "inventory/result.json",
     ]
 
-
 @pytest.mark.parametrize(
     ("max_task_attempts", "denied_paths"),
     ((1, ()), (3, ("outside.py",))),
@@ -9448,7 +9848,6 @@ def test_bridge_keeps_exhausted_or_policy_denied_validation_failure_terminal(
     assert not isinstance(caught.value, DatabasePortalValidationRetry)
     assert str(caught.value) == "portal_provider_failed"
 
-
 def test_bridge_does_not_defer_successful_zero_provider_closure(
     tmp_path: Path,
 ) -> None:
@@ -9471,7 +9870,6 @@ def test_bridge_does_not_defer_successful_zero_provider_closure(
     provider = bridge.run_provider(_attempt())
 
     assert provider["accepted"] is True
-
 
 def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
     tmp_path: Path,
@@ -9543,6 +9941,46 @@ def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
     assert len(attempt_boards) == 1
     assert "Projection authority: false" in attempt_boards[0].read_text(encoding="utf-8")
 
+def test_bridge_uses_only_attempt_local_projection_and_seals_receipt_aseh(
+    tmp_path: Path,
+) -> None:
+    canonical_board = tmp_path / "canonical-board.md"
+    canonical_board.write_text(
+        "# Canonical\n\n## LGSWF-004 Authority\n\n- Status: ready\n",
+        encoding="utf-8",
+    )
+    original = canonical_board.read_bytes()
+    portals: list[_CompletingPortal] = []
+
+    def factory(paths: object, alias: str) -> _CompletingPortal:
+        portal = _CompletingPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+    )
+    provider = bridge.run_provider(_attempt())
+    effect = bridge.apply_effect(_attempt(), provider)
+    validation = bridge.validate_effect(_attempt(), effect)
+
+    assert provider["schema"] == DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA
+    assert provider["accepted"] is True
+    assert provider["provider"] == "PortalImplementationDaemon"
+    assert provider["completion_authority"] == "DatabaseImplementationDaemon"
+    assert provider["evidence_digest"].startswith("sha256:")
+    assert "private provider payload" not in json.dumps(provider)
+    assert "provider_payload" not in json.dumps(provider)
+    assert effect["status"] == "applied"
+    assert validation["outcome"] == "passed"
+    assert validation["evidence_digest"] == provider["evidence_digest"]
+    assert canonical_board.read_bytes() == original
+    assert portals and portals[0].closed is True
+    attempt_boards = list((tmp_path / "attempts").glob("*/task-projection.md"))
+    assert len(attempt_boards) == 1
+    assert "Projection authority: false" in attempt_boards[0].read_text(encoding="utf-8")
 
 def test_bridge_projects_exact_vrif_benchmark_contract_without_expanding_scope(
     tmp_path: Path,
@@ -9629,7 +10067,6 @@ def test_bridge_projects_exact_vrif_benchmark_contract_without_expanding_scope(
     )
     assert projected_outputs == [item["path"] for item in outputs]
 
-
 def test_bridge_projects_exact_vrif_root_report_contract_without_expanding_scope(
     tmp_path: Path,
 ) -> None:
@@ -9715,7 +10152,6 @@ def test_bridge_projects_exact_vrif_root_report_contract_without_expanding_scope
     )
     assert projected_outputs == [item["path"] for item in outputs]
 
-
 def test_bridge_accepts_independently_reconstructed_vrif_benchmark(
     tmp_path: Path,
 ) -> None:
@@ -9737,7 +10173,6 @@ def test_bridge_accepts_independently_reconstructed_vrif_benchmark(
         baseline_tree=baseline_tree,
         implementation_commit=implementation_commit,
     )
-
 
 def test_bridge_rejects_self_consistent_but_not_owner_computed_vrif_benchmark(
     tmp_path: Path,
@@ -9773,7 +10208,6 @@ def test_bridge_rejects_self_consistent_but_not_owner_computed_vrif_benchmark(
             implementation_commit=implementation_commit,
         )
 
-
 def test_bridge_accepts_typed_canonical_vrif_terminal_report(
     tmp_path: Path,
 ) -> None:
@@ -9795,7 +10229,6 @@ def test_bridge_accepts_typed_canonical_vrif_terminal_report(
         baseline_tree=baseline_tree,
         implementation_commit=implementation_commit,
     )
-
 
 @pytest.mark.parametrize(
     ("fixture_options", "message"),
@@ -9834,7 +10267,6 @@ def test_bridge_rejects_noncanonical_vrif_terminal_report(
             baseline_tree=baseline_tree,
             implementation_commit=implementation_commit,
         )
-
 
 def test_bridge_calls_vrif_semantic_acceptance_at_effect_boundary(
     tmp_path: Path,
@@ -9883,7 +10315,6 @@ def test_bridge_calls_vrif_semantic_acceptance_at_effect_boundary(
         "baseline_tree": baseline_tree,
         "implementation_commit": implementation_commit,
     }
-
 
 @pytest.mark.parametrize(
     ("mutation", "message"),
@@ -9950,7 +10381,6 @@ def test_bridge_cached_effect_validation_rechecks_exact_git_lineage_before_seman
         bridge.validate_effect(_attempt(), cached_effect)
 
     assert semantic_calls == []
-
 
 @pytest.mark.parametrize(
     "tamper",
@@ -10058,7 +10488,6 @@ def test_bridge_completion_lineage_requires_exact_precompletion_source_event(
     assert bridge._verify_projection(paths, binding)
     with pytest.raises(DatabasePortalBridgeError):
         bridge.run_provider(_attempt())
-
 
 def _append_validated_no_change_completion_chain(
     paths: object,
@@ -10491,7 +10920,6 @@ def _append_validated_no_change_completion_chain(
     )
     return authority
 
-
 def test_bridge_accepts_exact_validated_no_change_commit_lineage(
     tmp_path: Path,
 ) -> None:
@@ -10519,7 +10947,6 @@ def test_bridge_accepts_exact_validated_no_change_commit_lineage(
     assert evidence["implementation_commit"] == "b" * 40
     assert evidence["completion_source_event_type"] == "implementation_finished"
     assert evidence["completion_source_portal_attempt"] == 1
-
 
 def test_bridge_accepts_exact_validated_no_change_ignored_projection_lineage(
     tmp_path: Path,
@@ -10551,7 +10978,6 @@ def test_bridge_accepts_exact_validated_no_change_ignored_projection_lineage(
     assert evidence["_source_projection_commit"] == ""
     assert evidence["_source_projection_uncommitted"] is True
 
-
 def test_bridge_rejects_validated_no_change_without_current_task_authority(
     tmp_path: Path,
 ) -> None:
@@ -10576,7 +11002,6 @@ def test_bridge_rejects_validated_no_change_without_current_task_authority(
             task_cid="task:cid:004",
             completion_task_key="task/v1/current-authority-inventory",
         )
-
 
 @pytest.mark.parametrize(
     ("body", "expected"),
@@ -10606,7 +11031,6 @@ def test_bridge_reads_one_exact_current_no_change_authority(
         DatabasePortalExecutionBridge._record_allows_validated_no_change(record)
         is expected
     )
-
 
 def test_bridge_binds_no_change_authority_to_sealed_board_namespace(
     tmp_path: Path,
@@ -10649,7 +11073,6 @@ def test_bridge_binds_no_change_authority_to_sealed_board_namespace(
         "inventory/result.json",
         "inventory/z-last.json",
     )
-
 
 @pytest.mark.parametrize(
     "tamper",
@@ -10707,7 +11130,6 @@ def test_bridge_rejects_tampered_validated_no_change_commit_lineage(
             completion_task_key="task/v1/current-authority-inventory",
             validated_no_change_authority=authority,
         )
-
 
 def test_bridge_requires_exact_validated_no_change_projection_target(
     tmp_path: Path,
@@ -10835,7 +11257,6 @@ def test_bridge_requires_exact_validated_no_change_projection_target(
             completion=completion,
             projection_text=projection_text,
         )
-
 
 def test_bridge_requires_exact_ignored_no_change_projection_target(
     tmp_path: Path,
@@ -11009,7 +11430,6 @@ def test_bridge_requires_exact_ignored_no_change_projection_target(
             completion=completion,
             projection_text=projection_text,
         )
-
 
 def _append_exact_callback_completion_chain(
     paths: object,
@@ -11396,7 +11816,6 @@ def _append_exact_callback_completion_chain(
         completion_payload.pop("canonical_task_key")
     append_jsonl_event(paths.events, "task_completed", completion_payload)
 
-
 def _nested_callback_repository(
     tmp_path: Path,
 ) -> tuple[Path, str, str, str, str]:
@@ -11494,7 +11913,6 @@ def _nested_callback_repository(
     ).stdout.strip()
     return parent, baseline, candidate, integration, nested_ref
 
-
 def test_bridge_completion_lineage_accepts_only_later_exact_queue_reconciliation(
     tmp_path: Path,
 ) -> None:
@@ -11534,7 +11952,6 @@ def test_bridge_completion_lineage_accepts_only_later_exact_queue_reconciliation
     ) == evidence
     assert paths.events.read_bytes() == before
 
-
 def test_bridge_accepts_exact_synchronous_source_with_terminal_confirmation(
     tmp_path: Path,
 ) -> None:
@@ -11562,7 +11979,6 @@ def test_bridge_accepts_exact_synchronous_source_with_terminal_confirmation(
     )
     assert evidence["implementation_commit"] == "a" * 40
     assert evidence["baseline_commit"] == "b" * 40
-
 
 @pytest.mark.parametrize("projected_source", [False, True])
 def test_bridge_accepts_sealed_spar_nested_callback_frame(
@@ -11600,6 +12016,9 @@ def test_bridge_accepts_sealed_spar_nested_callback_frame(
         task_cid=(
             "baguqeeraokwab3fdwzt7oy772phz2wconrmled44mybi27xgagwf6vzaonqa"
         ),
+        completion_task_key=(
+            "baguqeeraokwab3fdwzt7oy772phz2wconrmled44mybi27xgagwf6vzaonqa"
+        ),
         nested_callback_verifier=(
             bridge._exact_nested_callback_entries_for_completion
         ),
@@ -11608,7 +12027,6 @@ def test_bridge_accepts_sealed_spar_nested_callback_frame(
     assert evidence is not None
     assert evidence["implementation_commit"] == candidate
     assert evidence["baseline_commit"] == baseline
-
 
 def test_bridge_rejects_unrehashable_spar_nested_callback_frame(
     tmp_path: Path,
@@ -11647,11 +12065,13 @@ def test_bridge_rejects_unrehashable_spar_nested_callback_frame(
             task_cid=(
                 "baguqeeraokwab3fdwzt7oy772phz2wconrmled44mybi27xgagwf6vzaonqa"
             ),
+            completion_task_key=(
+                "baguqeeraokwab3fdwzt7oy772phz2wconrmled44mybi27xgagwf6vzaonqa"
+            ),
             nested_callback_verifier=(
                 bridge._exact_nested_callback_entries_for_completion
             ),
         )
-
 
 @pytest.mark.parametrize(
     "tamper",
@@ -11692,9 +12112,11 @@ def test_bridge_rejects_tampered_sealed_spar_nested_callback_frame(
             task_cid=(
                 "baguqeeraokwab3fdwzt7oy772phz2wconrmled44mybi27xgagwf6vzaonqa"
             ),
+            completion_task_key=(
+                "baguqeeraokwab3fdwzt7oy772phz2wconrmled44mybi27xgagwf6vzaonqa"
+            ),
             nested_callback_verifier=lambda *_args, **_kwargs: True,
         )
-
 
 def test_spar_nested_callback_frame_rehashes_exact_parent_gitlink_and_blob(
     tmp_path: Path,
@@ -11811,7 +12233,6 @@ def test_spar_nested_callback_frame_rehashes_exact_parent_gitlink_and_blob(
         is None
     )
 
-
 @pytest.mark.parametrize("initializer_fails", [False, True])
 def test_callback_requalification_initializes_nested_sources_offline(
     tmp_path: Path,
@@ -11855,9 +12276,12 @@ def test_callback_requalification_initializes_nested_sources_offline(
     head = git_text("rev-parse", "HEAD")
     tree = git_text("rev-parse", "HEAD^{tree}")
     queue = object()
+    database_task_cid = "task:database:spar-005"
+    portal_task_key = "task/v1/spar-005"
     task = SimpleNamespace(
         task_id="SPAR-005",
         canonical_task_cid="task:spar-005",
+        metadata={"database task cid": database_task_cid},
         validation=("python3 -m pytest -q nested-projection-test.py",),
     )
     events: list[tuple[str, object]] = []
@@ -11950,9 +12374,13 @@ def test_callback_requalification_initializes_nested_sources_offline(
     bridge._load_post_merge_callback_integration_receipt = (
         lambda path, *, source: json.loads(path.read_text(encoding="utf-8"))
     )
+    bridge._verify_projection = lambda _paths, _binding: "fixture projection"
+    bridge._portal_completion_event_identity = (
+        lambda **_kwargs: (portal_task_key, task.canonical_task_cid)
+    )
     source = {
         "task_ids": [task.task_id],
-        "task_cid": task.canonical_task_cid,
+        "task_cid": database_task_cid,
         "train_receipt_id": "sha256:" + "1" * 64,
         "current_target_commit": head,
         "current_target_tree": tree,
@@ -11971,7 +12399,9 @@ def test_callback_requalification_initializes_nested_sources_offline(
         paths=SimpleNamespace(
             root=tmp_path / "state",
             implementation_logs=tmp_path / "state/logs",
-        )
+        ),
+        binding={"task_cid": database_task_cid},
+        projected_task=task,
     )
 
     receipt = bridge._requalify_callback_integration(
@@ -11979,6 +12409,7 @@ def test_callback_requalification_initializes_nested_sources_offline(
         request=SimpleNamespace(
             task_id=task.task_id,
             canonical_task_id=task.canonical_task_cid,
+            canonical_task_key=portal_task_key,
         ),
         projection=projection,
     )
@@ -12000,7 +12431,6 @@ def test_callback_requalification_initializes_nested_sources_offline(
             "validate",
             "cleanup",
         ]
-
 
 def test_bridge_accepts_historical_terminal_confirmation_without_target_commit(
     tmp_path: Path,
@@ -12031,7 +12461,6 @@ def test_bridge_accepts_historical_terminal_confirmation_without_target_commit(
     assert evidence["completion_source_event_type"] == "implementation_finished"
     assert evidence["implementation_commit"] == "a" * 40
     assert evidence["baseline_commit"] == "b" * 40
-
 
 @pytest.mark.parametrize(
     "terminal_tamper",
@@ -12066,7 +12495,6 @@ def test_bridge_rejects_terminal_confirmation_commit_mismatch(
             task_cid="task:cid:004",
             completion_task_key="task/v1/exact-callback",
         )
-
 
 @pytest.mark.parametrize(
     "tamper",
@@ -12124,7 +12552,6 @@ def test_bridge_callback_reconciliation_rejects_tampered_binding(
             completion_task_key="task/v1/exact-callback",
         )
 
-
 @pytest.mark.parametrize(
     "tamper",
     ["completion-key", "completion-key-missing", "source-key"],
@@ -12154,7 +12581,6 @@ def test_bridge_completion_lineage_rejects_forged_or_missing_task_key(
             task_cid="task:cid:004",
             completion_task_key="task/v1/exact-callback",
         )
-
 
 def test_post_merge_completion_recovery_events_are_exact_and_idempotent(
     tmp_path: Path,
@@ -12211,7 +12637,6 @@ def test_post_merge_completion_recovery_events_are_exact_and_idempotent(
     assert first == replay
     assert replay["implementation_commit"] == "a" * 40
     assert replay["baseline_commit"] == "b" * 40
-
 
 def test_callback_integration_self_hashed_float_qualification_has_no_authority(
 ) -> None:
@@ -12330,7 +12755,6 @@ def test_callback_integration_self_hashed_float_qualification_has_no_authority(
             recovery_evidence={},
         )
 
-
 @pytest.mark.parametrize(
     ("parts", "accepted"),
     [
@@ -12416,7 +12840,6 @@ def test_merge_train_recovery_binds_canonical_portal_attempt_root_shapes(
             portal_attempt_root=attempt_root,
             worktree_submodule_paths=("ipfs_datasets_py", "ipfs_datasets_py"),
         )
-
 
 def _callback_integration_authority_fixture(
     tmp_path: Path,
@@ -12801,7 +13224,6 @@ def _callback_integration_authority_fixture(
     daemon._merge_worktree_submodule_paths = ()
     return daemon, qualification, evidence, train_path, repo
 
-
 def test_callback_integration_authority_reloads_float_receipt_and_git(
     tmp_path: Path,
 ) -> None:
@@ -12817,7 +13239,6 @@ def test_callback_integration_authority_reloads_float_receipt_and_git(
     parsed = json.loads(str(verified["train_receipt"]))
     assert parsed["started_at"] == 1787658877.9862263
     assert parsed["finished_at"] == 1787658878.9458497
-
 
 def test_callback_integration_authority_propagates_nested_repository_scope(
     tmp_path: Path,
@@ -12853,7 +13274,6 @@ def test_callback_integration_authority_propagates_nested_repository_scope(
 
     assert verified["receipt_id"] == qualification["receipt_id"]
     assert observed == [("ipfs_datasets_py",)]
-
 
 @pytest.mark.parametrize(
     "tamper",
@@ -12955,7 +13375,6 @@ def test_callback_integration_authority_rejects_rehashed_or_changed_sources(
             recovery_evidence=evidence,
         )
 
-
 @pytest.mark.parametrize(
     "terminal_reason",
     [
@@ -13015,7 +13434,6 @@ def test_callback_integration_recovery_seed_is_closed_and_content_addressed(
         match="recovery seed is invalid",
     ):
         daemon._verified_post_merge_completion_recovery_seed(tampered)
-
 
 def test_evaluated_baseline_terminal_is_callback_recovery_only(
     monkeypatch: pytest.MonkeyPatch,
@@ -13078,7 +13496,6 @@ def test_evaluated_baseline_terminal_is_callback_recovery_only(
         task,
     )
 
-
 def test_exact_callback_binding_terminal_is_typed_post_merge_recovery_only(
 ) -> None:
     reason = "Portal callback reconciliation binding is invalid"
@@ -13099,7 +13516,6 @@ def test_exact_callback_binding_terminal_is_typed_post_merge_recovery_only(
         )
         == ""
     )
-
 
 @pytest.mark.parametrize(
     ("reason", "expected"),
@@ -13192,7 +13608,6 @@ def test_callback_binding_terminal_recovery_discovery_is_exact(
     observed = daemon.post_merge_completion_recovery_task_cids()
 
     assert observed == ((attempt.task_cid,) if expected else ())
-
 
 def test_callback_integration_source_requires_exact_receipt_event_and_blobs(
     tmp_path: Path,
@@ -13645,7 +14060,6 @@ def test_callback_integration_source_requires_exact_receipt_event_and_blobs(
         )
         is None
     )
-
 
 def test_callback_integration_source_accepts_only_exact_settled_quarantine(
     tmp_path: Path,
@@ -14306,16 +14720,6 @@ def test_callback_integration_source_accepts_only_exact_settled_quarantine(
         is None
     )
 
-
-_VRIF_CALLBACK_REPORT_JSON = (
-    "docs/architecture/residual_intelligence_inventory/final_release_report.json"
-)
-_VRIF_CALLBACK_REPORT_MARKDOWN = (
-    "docs/architecture/residual_intelligence_inventory/final_release_report.md"
-)
-_VRIF_CALLBACK_REPORT_TEST = "test/api/residual_intelligence/test_release_report.py"
-
-
 def _run_vrif_callback_hygiene_requalification(
     tmp_path: Path,
     mutate: object,
@@ -14642,7 +15046,6 @@ def _run_vrif_callback_hygiene_requalification(
         assert (repo / path).read_bytes() == payload
     return receipt, repo, cleanup_statuses, entries
 
-
 def test_callback_requalification_requests_one_bounded_checkout_wait(
     tmp_path: Path,
 ) -> None:
@@ -14670,7 +15073,6 @@ def test_callback_requalification_requests_one_bounded_checkout_wait(
     timeout_seconds = transaction["timeout_seconds"]
     assert isinstance(timeout_seconds, float)
     assert timeout_seconds == 30.0
-
 
 def test_callback_requalification_surfaces_checkout_transaction_deferral(
     tmp_path: Path,
@@ -14740,7 +15142,6 @@ def test_callback_requalification_surfaces_checkout_transaction_deferral(
         for record in caplog.records
     )
 
-
 @pytest.mark.parametrize(
     "reason",
     (
@@ -14771,7 +15172,6 @@ def test_callback_requalification_does_not_mislabel_rejection_as_deferral(
     assert cleanup_statuses == []
     assert dispositions == []
 
-
 def test_callback_requalification_rechecks_target_after_checkout_wait(
     tmp_path: Path,
 ) -> None:
@@ -14787,7 +15187,6 @@ def test_callback_requalification_rechecks_target_after_checkout_wait(
 
     assert receipt is None
     assert cleanup_statuses == []
-
 
 def test_callback_requalification_rechecks_authority_first_after_wait(
     tmp_path: Path,
@@ -14814,7 +15213,6 @@ def test_callback_requalification_rechecks_authority_first_after_wait(
         / "state"
         / "post-merge-callback-integration-requalification"
     ).exists()
-
 
 def test_callback_requalification_does_not_cache_authority_revoked_during_validation(
     tmp_path: Path,
@@ -14847,7 +15245,6 @@ def test_callback_requalification_does_not_cache_authority_revoked_during_valida
         ).glob("*.json")
     )
 
-
 def test_callback_requalification_rejects_target_advanced_before_fresh_receipt(
     tmp_path: Path,
 ) -> None:
@@ -14876,7 +15273,6 @@ def test_callback_requalification_rejects_target_advanced_before_fresh_receipt(
             / "post-merge-callback-integration-requalification"
         ).glob("*.json")
     )
-
 
 def test_callback_requalification_rejects_same_tree_target_advance(
     tmp_path: Path,
@@ -14908,7 +15304,6 @@ def test_callback_requalification_rejects_same_tree_target_advance(
         ).glob("*.json")
     )
 
-
 def test_callback_requalification_rejects_cached_receipt_after_target_advance(
     tmp_path: Path,
 ) -> None:
@@ -14933,7 +15328,6 @@ def test_callback_requalification_rejects_cached_receipt_after_target_advance(
     assert validation_calls == ["validated"]
     assert cleanup_statuses == [b""]
 
-
 def test_callback_requalification_propagates_malformed_authority(
     tmp_path: Path,
 ) -> None:
@@ -14954,7 +15348,6 @@ def test_callback_requalification_propagates_malformed_authority(
             revalidate_authority=malformed_authority,
         )
 
-
 def test_callback_requalification_rejects_loaded_task_body_substitution(
     tmp_path: Path,
 ) -> None:
@@ -14970,7 +15363,6 @@ def test_callback_requalification_rejects_loaded_task_body_substitution(
 
     assert receipt is None
     assert cleanup_statuses == []
-
 
 def test_generic_settled_clean_callback_retains_v2_without_hygiene_checks(
     tmp_path: Path,
@@ -14999,7 +15391,6 @@ def test_generic_settled_clean_callback_retains_v2_without_hygiene_checks(
     )
     assert "workspace_hygiene" not in receipt
     assert cleanup_statuses == [b""]
-
 
 def test_callback_v3_restores_only_vrif_report_regeneration(
     tmp_path: Path,
@@ -15036,7 +15427,6 @@ def test_callback_v3_restores_only_vrif_report_regeneration(
     ][2]
     assert cleanup_statuses == [b""]
 
-
 @pytest.mark.parametrize(
     "mutated_path",
     [_VRIF_CALLBACK_REPORT_TEST, "outside.txt"],
@@ -15057,7 +15447,6 @@ def test_callback_v3_rejects_other_declared_or_out_of_scope_mutation(
 
     assert receipt is None
     assert cleanup_statuses and cleanup_statuses[0]
-
 
 def test_callback_v3_rejects_restore_tamper(
     tmp_path: Path,
@@ -15083,7 +15472,6 @@ def test_callback_v3_rejects_restore_tamper(
 
     assert receipt is None
     assert cleanup_statuses and cleanup_statuses[0]
-
 
 @pytest.mark.parametrize(
     "mutation_kind",
@@ -15119,7 +15507,6 @@ def test_callback_v3_rejects_non_content_workspace_mutation(
     assert receipt is None
     assert cleanup_statuses and cleanup_statuses[0]
 
-
 def test_callback_v3_rejects_cleanup_failure_after_clean_restore(
     tmp_path: Path,
 ) -> None:
@@ -15136,7 +15523,9 @@ def test_callback_v3_rejects_cleanup_failure_after_clean_restore(
 
     assert receipt is None
     assert cleanup_statuses == [b""]
-
+    assert not list(
+        (tmp_path / "state" / "post-merge-callback-integration-requalification").glob("*.json")
+    )
 
 @pytest.mark.parametrize(
     "status",
@@ -15158,7 +15547,6 @@ def test_callback_v3_porcelain_rejects_non_worktree_content_changes(
         )
         is None
     )
-
 
 @pytest.mark.parametrize(
     ("source_status", "terminal_reason"),
@@ -15429,7 +15817,6 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     assert replay["qualification_kind"] == "callback_integration"
     assert replay["post_merge_completion_recovery_seed"] == seed
 
-
 def test_terminal_failure_receipt_optional_lineages_are_all_or_none() -> None:
     daemon = object.__new__(DatabaseImplementationDaemon)
     base = {
@@ -15485,7 +15872,6 @@ def test_terminal_failure_receipt_optional_lineages_are_all_or_none() -> None:
         task=None,
     )
 
-
 def test_post_merge_completion_recovery_seed_closes_without_portal_dispatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -15534,7 +15920,6 @@ def test_post_merge_completion_recovery_seed_closes_without_portal_dispatch(
         ]
     }
     assert events[0]["canonical_task_cid"] != record.task_cid
-
 
 def test_post_merge_completion_seed_accepts_only_exact_typed_admission() -> None:
     pid = 123
@@ -15612,7 +15997,6 @@ def test_post_merge_completion_seed_accepts_only_exact_typed_admission() -> None
         recovery_control_revision=10,
     )
 
-
 def test_post_merge_completion_recovery_never_repairs_bare_completion(
     tmp_path: Path,
 ) -> None:
@@ -15647,7 +16031,6 @@ def test_post_merge_completion_recovery_never_repairs_bare_completion(
             seed_id="sha256:" + "c" * 64,
             recovery_evidence_id="sha256:" + "d" * 64,
         )
-
 
 @pytest.mark.parametrize("tamper", ["source-payload", "stage-order"])
 def test_post_merge_completion_recovery_rejects_conflicting_partial_seed(
@@ -15718,7 +16101,6 @@ def test_post_merge_completion_recovery_rejects_conflicting_partial_seed(
             recovery_evidence_id="sha256:" + "d" * 64,
         )
     assert len(bridge._verified_event_chain(paths)) == 1
-
 
 def test_post_merge_completion_seed_admits_only_exact_shared_lane_source(
     tmp_path: Path,
@@ -15927,7 +16309,6 @@ def test_post_merge_completion_seed_admits_only_exact_shared_lane_source(
         is None
     )
 
-
 def test_post_merge_completion_recovery_priority_snapshot_is_exact(
     tmp_path: Path,
 ) -> None:
@@ -15989,7 +16370,6 @@ def test_post_merge_completion_recovery_priority_snapshot_is_exact(
         ("task:cid:004",)
     ) == ()
 
-
 def test_post_merge_completion_recovery_priority_pages_cannot_pin_after_32(
 ) -> None:
     task_cids = tuple(f"task:cid:{index:03d}" for index in range(35))
@@ -16024,7 +16404,6 @@ def test_post_merge_completion_recovery_priority_pages_cannot_pin_after_32(
         )
     )
     assert restarted == first
-
 
 def test_priority_checkout_deferral_retains_cursor_and_retries_publicly(
     tmp_path: Path,
@@ -16177,7 +16556,6 @@ def test_priority_checkout_deferral_retains_cursor_and_retries_publicly(
     assert cursor["priority_task_cids"] == task_cid
     assert cursor_writes[-1]["priority_task_cids"] == task_cid
 
-
 def test_outer_rejects_malformed_checkout_deferral_vectors() -> None:
     request = SimpleNamespace(
         request_id="request:pcsm-010",
@@ -16224,7 +16602,6 @@ def test_outer_rejects_malformed_checkout_deferral_vectors() -> None:
         rejected = outer._run_post_merge_recovery()
         assert rejected["reason"] == "post_merge_recovery_result_invalid"
         assert rejected["write_count"] == 1
-
 
 def test_post_settlement_checkout_deferral_never_reaches_database_recovery(
     tmp_path: Path,
@@ -16344,7 +16721,6 @@ def test_post_settlement_checkout_deferral_never_reaches_database_recovery(
     assert recover_calls == []
     assert Queue.get(request.request_id) is request
 
-
 def test_bridge_apply_effect_rejects_resealed_nonancestor_baseline(
     tmp_path: Path,
 ) -> None:
@@ -16404,7 +16780,6 @@ def test_bridge_apply_effect_rejects_resealed_nonancestor_baseline(
     ):
         bridge.apply_effect(_attempt(), provider)
 
-
 def test_bridge_apply_effect_replays_equal_commit_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -16452,7 +16827,6 @@ def test_bridge_apply_effect_replays_equal_commit_authority(
     assert observed[0]["attempt"] == _attempt()
     assert observed[0]["evidence"] == evidence
 
-
 @pytest.mark.parametrize(
     ("field", "tampered_value"),
     [
@@ -16492,7 +16866,6 @@ def test_bridge_apply_effect_rejects_tampered_provider_receipt_joins(
     with pytest.raises(DatabasePortalBridgeError):
         bridge.apply_effect(_attempt(), provider)
 
-
 @pytest.mark.parametrize(
     ("field", "tampered_value"),
     [
@@ -16531,7 +16904,6 @@ def test_bridge_validate_effect_rejects_tampered_completion_binding_joins(
 
     with pytest.raises(DatabasePortalBridgeError):
         bridge.validate_effect(_attempt(), effect)
-
 
 @pytest.mark.parametrize(
     "field",
@@ -16579,7 +16951,6 @@ def test_bridge_validate_effect_rejects_resealed_inner_binding_mismatch(
     with pytest.raises(DatabasePortalBridgeError):
         bridge.validate_effect(_attempt(), effect)
 
-
 def test_database_portal_attempt_projection_verifier_accepts_only_status_mutation(
     tmp_path: Path,
 ) -> None:
@@ -16618,7 +16989,6 @@ def test_database_portal_attempt_projection_verifier_accepts_only_status_mutatio
     assert verified["task_cid"] == expected_binding["task_cid"]
     assert verified["projection_authority"] is False
     assert status_only == verified
-
 
 @pytest.mark.parametrize(
     "tamper",
@@ -16688,9 +17058,6 @@ def test_database_portal_attempt_projection_verifier_rejects_tampering(
             expected_task_cid="task:cid:004",
         )
 
-
-
-
 def test_bridge_scopes_validation_to_checked_nested_repository(
     tmp_path: Path,
 ) -> None:
@@ -16732,7 +17099,6 @@ def test_bridge_scopes_validation_to_checked_nested_repository(
     ) in projection
     assert "- Outputs: ipfs_datasets_py/logic/verification_api.py" not in projection
     assert "- Validation: 'python -m pytest" not in projection
-
 
 def test_bridge_preserves_sealed_spar_workspace_scoped_nested_paths(
     tmp_path: Path,
@@ -16778,7 +17144,6 @@ def test_bridge_preserves_sealed_spar_workspace_scoped_nested_paths(
     ]
     assert "ipfs_datasets_py/ipfs_datasets_py/ipfs_datasets_py" not in projection
     assert "- Validation: cd ipfs_datasets_py &&" not in projection
-
 
 @pytest.mark.parametrize(
     "malformation",
@@ -16846,7 +17211,6 @@ def test_bridge_rejects_malformed_sealed_spar_workspace_path_frame(
     with pytest.raises(DatabasePortalBridgeError, match="sealed SPAR"):
         bridge.run_provider(_attempt(task_alias="SPAR-002"))
     assert factory_calls == []
-
 
 def test_bridge_projection_preserves_database_identity_through_scoped_preflight(
     tmp_path: Path,
@@ -16954,7 +17318,6 @@ def test_bridge_projection_preserves_database_identity_through_scoped_preflight(
         == "approved_validation_environment_satisfies_project_dependencies"
     )
 
-
 def test_bridge_rejects_task_body_cid_conflicting_with_database_authority(
     tmp_path: Path,
 ) -> None:
@@ -16978,7 +17341,6 @@ def test_bridge_rejects_task_body_cid_conflicting_with_database_authority(
     ):
         bridge.run_provider(_attempt())
     assert factory_calls == []
-
 
 def test_bridge_preserves_root_repository_output_paths(tmp_path: Path) -> None:
     record = _record()
@@ -17006,7 +17368,6 @@ def test_bridge_preserves_root_repository_output_paths(tmp_path: Path) -> None:
         "test/api/test_runtime.py"
     ) in projection
     assert "ipfs_accelerate_py/ipfs_accelerate_py" not in projection
-
 
 @pytest.mark.parametrize(
     "output",
@@ -17051,6 +17412,47 @@ def test_bridge_rejects_output_paths_that_cannot_be_scoped_losslessly(
         bridge.run_provider(_attempt())
     assert factory_calls == []
 
+@pytest.mark.parametrize(
+    "output",
+    (
+        "/tmp/escape.py",
+        "../escape.py",
+        "pkg/../../escape.py",
+        "./pkg/module.py",
+        "pkg//module.py",
+        "pkg/one.py,pkg/two.py",
+        "pkg\\module.py",
+        "C:/escape.py",
+    ),
+)
+def test_bridge_rejects_output_paths_that_cannot_be_scoped_losslessly_aseh(
+    tmp_path: Path,
+    output: str,
+) -> None:
+    repository_root = tmp_path / "checkout"
+    (repository_root / "ipfs_datasets_py" / ".git").mkdir(parents=True)
+    record = _owned_record("ipfs_datasets_py")
+    record.outputs = ({"path": output},)
+    factory_calls: list[str] = []
+
+    def factory(paths: object, alias: str) -> _CompletingPortal:
+        factory_calls.append(alias)
+        return _CompletingPortal(paths, alias)
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        repository_root=repository_root,
+        worktree_submodule_paths=("ipfs_datasets_py",),
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="task output path identity is unsafe or ambiguous",
+    ):
+        bridge.run_provider(_attempt())
+    assert factory_calls == []
 
 def test_bridge_rejects_ambiguous_output_mapping(tmp_path: Path) -> None:
     record = _record()
@@ -17066,7 +17468,6 @@ def test_bridge_rejects_ambiguous_output_mapping(tmp_path: Path) -> None:
         match="task output mapping has ambiguous path identities",
     ):
         bridge.run_provider(_attempt())
-
 
 def test_bridge_nested_output_projection_binding_is_stable(tmp_path: Path) -> None:
     repository_root = tmp_path / "checkout"
@@ -17088,7 +17489,6 @@ def test_bridge_nested_output_projection_binding_is_stable(tmp_path: Path) -> No
 
     assert second["binding_id"] == first["binding_id"]
     assert binding_path.read_bytes() == first_binding
-
 
 def test_bridge_projects_multiple_validations_under_one_repository_transition(
     tmp_path: Path,
@@ -17120,7 +17520,6 @@ def test_bridge_projects_multiple_validations_under_one_repository_transition(
     assert command.count("cd ipfs_datasets_py") == 1
     assert "test_public_api.py && python -m pytest" in command
     assert validation_command_repository_root(command) == "ipfs_datasets_py"
-
 
 @pytest.mark.parametrize(
     "argv",
@@ -17154,7 +17553,6 @@ def test_bridge_rejects_noncanonical_validation_argv_before_projection(
         bridge.run_provider(_attempt())
     assert factory_calls == []
     assert not list((tmp_path / "attempts").glob("*/task-projection.md"))
-
 
 @pytest.mark.parametrize(
     ("owner", "message"),
@@ -17190,7 +17588,6 @@ def test_bridge_rejects_unsafe_or_unconfigured_owning_repository(
     with pytest.raises(DatabasePortalBridgeError, match=message):
         bridge.run_provider(_attempt())
     assert factory_calls == []
-
 
 def test_bridge_binds_owning_repository_identity_to_configured_nested_path(
     tmp_path: Path,
@@ -17245,7 +17642,6 @@ def test_bridge_binds_owning_repository_identity_to_configured_nested_path(
     ) in projection
     assert "cd external/ipfs_datasets" not in projection
 
-
 def test_bridge_rejects_ambiguous_owning_repository_path_aliases(
     tmp_path: Path,
 ) -> None:
@@ -17284,7 +17680,6 @@ def test_bridge_rejects_ambiguous_owning_repository_path_aliases(
         bridge.run_provider(_attempt())
     assert factory_calls == []
 
-
 def test_bridge_rejects_validation_root_conflicting_with_owner(
     tmp_path: Path,
 ) -> None:
@@ -17306,9 +17701,6 @@ def test_bridge_rejects_validation_root_conflicting_with_owner(
     ):
         bridge.run_provider(_attempt())
 
-
-
-
 def test_post_merge_recovery_is_inert_without_bound_queue(tmp_path: Path) -> None:
     bridge = DatabasePortalExecutionBridge(
         task_source=_TaskSource(_record()),
@@ -17317,9 +17709,6 @@ def test_post_merge_recovery_is_inert_without_bound_queue(tmp_path: Path) -> Non
     )
     assert bridge.merge_queue is None
     assert bridge.recover_post_merge_declared_outputs(object()) is None
-
-
-
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_merge_train_recovery_is_inert_until_bound(tmp_path: Path) -> None:
@@ -17357,6 +17746,37 @@ def test_merge_train_recovery_is_inert_until_bound(tmp_path: Path) -> None:
     finally:
         daemon.close()
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_merge_train_recovery_is_inert_until_bound_aseh(tmp_path: Path) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:merge-train-recovery",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        settlement = daemon._settle_invalid_metadata_portal_quarantines()
+        recovery = daemon._run_post_merge_recovery()
+        assert settlement["attempted"] is False
+        assert settlement["reason"] == "merge_train_recovery_not_configured"
+        assert settlement["write_count"] == 0
+        assert recovery["attempted"] is False
+        assert recovery["reason"] == "post_merge_recovery_not_configured"
+        assert recovery["write_count"] == 0
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="bound queue and target branch",
+        ):
+            daemon.bind_merge_train_recovery(
+                merge_queue=None,
+                repo_root=tmp_path,
+                merge_target_branch="",
+            )
+    finally:
+        daemon.close()
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_merge_train_recovery_bind_is_one_shot(tmp_path: Path) -> None:
@@ -17420,6 +17840,64 @@ def test_merge_train_recovery_bind_is_one_shot(tmp_path: Path) -> None:
     finally:
         daemon.close()
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_merge_train_recovery_bind_is_one_shot_aseh(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        checkout_repository_id,
+    )
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "recovery@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Recovery Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:merge-train-bind",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    try:
+        daemon.bind_merge_train_recovery(
+            merge_queue=queue,
+            repo_root=repo,
+            merge_target_branch="main",
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="already bound",
+        ):
+            daemon.bind_merge_train_recovery(
+                merge_queue=queue,
+                repo_root=repo,
+                merge_target_branch="main",
+            )
+        settlement = daemon._settle_invalid_metadata_portal_quarantines()
+        assert settlement["attempted"] is True
+        assert settlement["settled"] == 0
+    finally:
+        daemon.close()
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_pending_merge_consume_bind_is_one_shot(tmp_path: Path) -> None:
@@ -17441,7 +17919,6 @@ def test_pending_merge_consume_bind_is_one_shot(tmp_path: Path) -> None:
             daemon.bind_pending_merge_consume(lambda: None)
     finally:
         daemon.close()
-
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 @pytest.mark.parametrize("train_first", [True, False])
@@ -17492,7 +17969,6 @@ def test_merge_consumers_bind_independently_and_preserve_both_idle_results(
     finally:
         daemon.close()
 
-
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_idle_database_pass_consumes_pending_same_board_merge(
     tmp_path: Path,
@@ -17531,7 +18007,6 @@ def test_idle_database_pass_consumes_pending_same_board_merge(
         assert result["selection_idle_reason"] == "no_ready_tasks"
     finally:
         daemon.close()
-
 
 def test_pending_merge_consume_skips_false_positive_completion_reopen(
     tmp_path: Path,
@@ -17616,7 +18091,6 @@ def test_pending_merge_consume_skips_false_positive_completion_reopen(
     )
     assert bridge.consume_pending_same_board_merge() is None
     assert constructed == []
-
 
 def test_pending_merge_consume_uses_owned_projection_portal(
     tmp_path: Path,
@@ -17721,7 +18195,6 @@ def test_pending_merge_consume_uses_owned_projection_portal(
     assert result["write_count"] == 1
     assert portal.closed is True
 
-
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_resume_completes_retrying_attempt_when_outputs_on_head(
     tmp_path: Path,
@@ -17803,7 +18276,6 @@ def test_resume_completes_retrying_attempt_when_outputs_on_head(
     finally:
         daemon.close()
 
-
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_post_merge_rearm_endpoints_fail_closed_on_invalid_payloads(
     tmp_path: Path,
@@ -17840,6 +18312,53 @@ def test_post_merge_rearm_endpoints_fail_closed_on_invalid_payloads(
     finally:
         daemon.close()
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_post_merge_rearm_endpoints_fail_closed_on_invalid_payloads_aseh(
+    tmp_path: Path,
+) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:post-merge-rearm",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="preauthorization source is invalid",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery({})
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="preauthorization source is invalid",
+        ):
+            daemon.preauthorize_false_completed_merge_recovery({})
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="recovery schema is invalid",
+        ):
+            daemon.recover_blocked_post_merge_declared_outputs(
+                {"schema": "not-a-recovery-schema"}
+            )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="reintegration receipt is malformed",
+        ):
+            daemon.recover_blocked_false_completed_merge(
+                {"schema": "not-a-recovery-schema"}
+            )
+        captured: list[object] = []
+        daemon.bind_post_merge_recovery(lambda: captured.append("bound") or None)
+        result = daemon._run_post_merge_recovery()
+        assert captured == ["bound"]
+        assert result["attempted"] is True
+        assert result["recovered"] is False
+        assert result["reason"] == "no_recoverable_post_merge_request"
+    finally:
+        daemon.close()
 
 def test_typed_output_rearm_requires_bound_post_merge_recovery() -> None:
     daemon = SimpleNamespace(
@@ -17856,7 +18375,6 @@ def test_typed_output_rearm_requires_bound_post_merge_recovery() -> None:
         DatabaseImplementationDaemon._rearm_blocked_tasks_with_outputs_on_head(
             daemon
         )
-
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_configured_runner_binds_post_merge_recovery_when_queue_is_target_bound(
@@ -17936,6 +18454,84 @@ def test_configured_runner_binds_post_merge_recovery_when_queue_is_target_bound(
     finally:
         daemon.close()
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_configured_runner_binds_post_merge_recovery_when_queue_is_target_bound_aseh(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        checkout_repository_id,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
+        bind_database_portal_execution_from_args,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "recovery@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Recovery Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:post-merge-bind",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--todo-path",
+            str(tmp_path / "canonical-board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "lgswf",
+            "--worktree-root",
+            ".worktrees",
+            "--merge-queue-dir",
+            str(tmp_path / "queue"),
+            "--merge-target-branch",
+            "main",
+            "--implement",
+            "--once",
+        ]
+    )
+    try:
+        bind_database_portal_execution_from_args(
+            daemon,
+            args,
+            repo_root=repo,
+            portal_daemon_class=PortalImplementationDaemon,
+        )
+        assert daemon._merge_queue is not None
+        assert daemon._merge_target_branch == "main"
+        assert daemon._post_merge_recovery_fn is not None
+        assert daemon._quack_preprojection_transport_recovery_fn is not None
+        assert (
+            daemon._quack_preprojection_transport_recovery_fn.__name__
+            == "recover_quack_preprojection_transport_failure"
+        )
+        assert checkout_repository_id(repo) == daemon._merge_queue.target_repository_id
+    finally:
+        daemon.close()
 
 def test_post_merge_recovery_cursor_writes_only_on_progress_or_wrap(
     monkeypatch: pytest.MonkeyPatch,
@@ -17975,7 +18571,6 @@ def test_post_merge_recovery_cursor_writes_only_on_progress_or_wrap(
         (),
     )
     assert writes[-1] == {"completed_requests": ""}
-
 
 def test_bridge_reopens_exact_false_declared_output_completion(
     tmp_path: Path,
@@ -18305,7 +18900,6 @@ def test_bridge_reopens_exact_false_declared_output_completion(
         text=True,
     ).stdout.strip() == transaction_targets[0]
 
-
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_production_database_daemon_uses_portal_checkout_authority_for_false_completion(
     tmp_path: Path,
@@ -18581,7 +19175,6 @@ def test_production_database_daemon_uses_portal_checkout_authority_for_false_com
         assert blocked is not None and blocked.status == "blocked"
     finally:
         daemon.close()
-
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_bridge_routes_only_owned_missing_output_quarantine_and_replays_completion(
@@ -19248,7 +19841,6 @@ def test_bridge_routes_only_owned_missing_output_quarantine_and_replays_completi
     assert replay_bridge.recover_post_merge_declared_outputs(authority) is None
     assert len(recovered_evidence) == 3
 
-
 @pytest.mark.parametrize("version", [1, 2])
 @pytest.mark.parametrize(
     ("section", "field", "bad_value", "predicate"),
@@ -19378,7 +19970,6 @@ def test_post_merge_seed_claim_diagnostic_preserves_rejection(
     assert str(caught.value) == expected
     assert not (tmp_path / "attempts").exists()
 
-
 @pytest.mark.parametrize("alias", ["PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034", "LGSWF-004"])
 def test_last_bounded_portal_pass_uses_canonical_acceptance(tmp_path, alias):
     record = _record()
@@ -19392,7 +19983,6 @@ def test_last_bounded_portal_pass_uses_canonical_acceptance(tmp_path, alias):
     )
     receipt = bridge.run_provider(attempt)
     assert receipt["accepted"] is True
-
 
 @pytest.mark.parametrize("alias", ["PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034", "LGSWF-004"])
 def test_incomplete_portal_is_not_predispatch_authority(tmp_path, alias):
@@ -19408,3 +19998,1111 @@ def test_incomplete_portal_is_not_predispatch_authority(tmp_path, alias):
     with pytest.raises(DatabasePortalBridgeDeferred, match="portal_execution_incomplete") as caught:
         bridge.run_provider(attempt)
     assert type(caught.value) is DatabasePortalBridgeDeferred
+
+def _deterministic_record_and_authority() -> tuple[SimpleNamespace, dict[str, object]]:
+    attempt = _attempt()
+    record = _record()
+    authority: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "false-completion-deterministic-claim-authority@1"
+        ),
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "source_attempt_id": "attempt:source",
+        "reintegration_evidence_id": "sha256:" + "b" * 64,
+        "request_id": "request:integrated",
+        "candidate_commit": "1" * 40,
+        "target_commit": "2" * 40,
+        "target_tree": "3" * 40,
+        "preserved_unknown_receipt_id": "",
+        "provider_dispatch_policy": "forbidden",
+        "effect_execution_policy": "forbidden",
+    }
+    authority["authority_id"] = (
+        database_portal_bridge_module._database_evidence_digest(authority)
+    )
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": attempt.fencing_token,
+            "fence_epoch": attempt.fence_epoch,
+            "attempt_number": attempt.attempt_number,
+            "false_completion_reintegration_source_attempt_id": (
+                authority["source_attempt_id"]
+            ),
+            "false_completion_reintegration_seed": {
+                "schema": DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+                "source_attempt_id": authority["source_attempt_id"],
+                "evidence_id": authority["reintegration_evidence_id"],
+                "request_id": authority["request_id"],
+                "candidate_commit": authority["candidate_commit"],
+                "reintegration_receipt": {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "false-completion-reintegration-receipt@1"
+                    ),
+                    "receipt_id": "baguqeera" + "a" * 52,
+                    "reintegration_target_commit": authority["target_commit"],
+                    "reintegration_target_tree": authority["target_tree"],
+                },
+            },
+        },
+    }
+    return record, authority
+
+class _DeterministicCompletingPortal:
+    def __init__(
+        self,
+        paths: object,
+        task_alias: str,
+        projection: dict[str, object],
+        *,
+        mutate: object = None,
+        run_calls: list[str] | None = None,
+    ) -> None:
+        self.paths = paths
+        self.task_alias = task_alias
+        self.projection = projection
+        self.mutate = mutate
+        self.run_calls = run_calls if run_calls is not None else []
+        self.closed = False
+
+    def _implementation(self) -> dict[str, object]:
+        pre_dispatch: dict[str, object] = {
+            "kind": "false_completion_reintegration",
+            "source_task_id": self.task_alias,
+            "repair_task_id": "",
+            "failure_kind": "false_completion_reintegration",
+            "repair_task_cid": "task:cid:004",
+            "authority_receipt_id": self.projection["receipt_id"],
+            "authority_evidence_id": self.projection["evidence_id"],
+            "target_commit": self.projection["target_commit"],
+            "target_tree": self.projection["target_tree"],
+            "preserved_unknown_receipt_id": self.projection[
+                "preserved_unknown_receipt_id"
+            ],
+            "provider_dispatch_policy": "forbidden",
+            "eligible": True,
+            "provider_dispatched": False,
+            "reason": "declared_validation_proved_existing_contract",
+        }
+        pre_dispatch["receipt_id"] = content_identity(pre_dispatch)
+        implementation: dict[str, object] = {
+            "task_id": self.task_alias,
+            "task_cid": "task:cid:004",
+            "canonical_task_cid": "task:cid:004",
+            "attempt": 1,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": False,
+            "implementation_commit": "",
+            "execution_mode": "local-retry-proof",
+            "commit_result": {"committed": False, "reason": "no_changes"},
+            "merge_result": {"merged": False, "reason": "not_attempted"},
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+                "reason": "declared_validation_passed",
+                "pre_dispatch_no_change": pre_dispatch,
+            },
+            "cleanup_result": {"cleaned": True, "reason": "removed"},
+            "board_completion": {
+                "complete": True,
+                "pending_merge": False,
+                "reason": "validated_no_change",
+            },
+        }
+        if callable(self.mutate):
+            self.mutate(implementation)
+        return implementation
+
+    def run_once(self) -> dict[str, object]:
+        self.run_calls.append(self.task_alias)
+        implementation = self._implementation()
+        text = self.paths.task_projection.read_text(encoding="utf-8")
+        self.paths.task_projection.write_text(
+            text.replace("- Status: ready", "- Status: completed"),
+            encoding="utf-8",
+        )
+        self.paths.state.write_text(
+            json.dumps(
+                {
+                    "last_implementation_task_id": self.task_alias,
+                    "last_implementation_task_cid": "task:cid:004",
+                    "last_implementation_returncode": implementation[
+                        "returncode"
+                    ],
+                    "last_implementation_commit": implementation[
+                        "implementation_commit"
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        append_jsonl_event(
+            self.paths.events,
+            "implementation_finished",
+            implementation,
+        )
+        append_jsonl_event(
+            self.paths.events,
+            "task_completed",
+            {
+                "task_id": self.task_alias,
+                "canonical_task_key": "task/v1/current-authority-inventory",
+                "canonical_task_cid": "task:cid:004",
+            },
+        )
+        return {"implementation_result": implementation}
+
+    def close_event_runtime(self) -> None:
+        self.closed = True
+
+class _DeterministicReceiptOnlyCompletingPortal(
+    _DeterministicCompletingPortal
+):
+    """Match Portal's real validated-no-change terminal event shape."""
+
+    def __init__(
+        self,
+        *args: object,
+        forge_receipt: bool = False,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.forge_receipt = forge_receipt
+
+    def run_once(self) -> dict[str, object]:
+        self.run_calls.append(self.task_alias)
+        implementation = self._implementation()
+        canonical_task_cid = (
+            "task:cid:forged" if self.forge_receipt else "task:cid:004"
+        )
+        implementation["board_namespace"] = "bridge-test"
+        implementation["canonical_task_key"] = (
+            "task/v1/current-authority-inventory"
+        )
+        implementation["todo_update_result"] = {
+            "updated": True,
+            "task_id": self.task_alias,
+            "updated_task_ids": [self.task_alias],
+            "missing_task_ids": [],
+            "missing_status_task_ids": [],
+            "completion_receipts": [
+                {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "member_completion_receipt@1"
+                    ),
+                    "board_namespace": "bridge-test",
+                    "canonical_task_cid": canonical_task_cid,
+                    "canonical_task_key": (
+                        "task/v1/current-authority-inventory"
+                    ),
+                    "status": "succeeded",
+                    "task_id": self.task_alias,
+                }
+            ],
+        }
+        text = self.paths.task_projection.read_text(encoding="utf-8")
+        self.paths.task_projection.write_text(
+            text.replace("- Status: ready", "- Status: completed"),
+            encoding="utf-8",
+        )
+        self.paths.state.write_text(
+            json.dumps(
+                {
+                    "last_implementation_task_id": self.task_alias,
+                    "last_implementation_task_cid": "task:cid:004",
+                    "last_implementation_returncode": 0,
+                    "last_implementation_commit": "",
+                }
+            ),
+            encoding="utf-8",
+        )
+        append_jsonl_event(
+            self.paths.events,
+            "implementation_finished",
+            implementation,
+        )
+        return {"implementation_result": implementation}
+
+def test_deterministic_reconciliation_admits_exact_local_validation_proof(
+    tmp_path: Path,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    run_calls: list[str] = []
+    bridge: DatabasePortalExecutionBridge
+
+    def factory(paths: object, alias: str) -> _DeterministicCompletingPortal:
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicCompletingPortal(
+            paths,
+            alias,
+            projection,
+            run_calls=run_calls,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    settlement = bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert settlement["accepted"] is True
+    assert settlement["provider_dispatched"] is False
+    assert settlement["effect_executed"] is False
+    assert settlement["validation_result"]["provider_dispatched"] is False
+    assert settlement["validation_result"]["effect_executed"] is False
+    assert run_calls == ["LGSWF-004"]
+
+def test_deterministic_reconciliation_admits_receipt_only_no_change_completion(
+    tmp_path: Path,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    bridge: DatabasePortalExecutionBridge
+
+    def factory(
+        paths: object,
+        alias: str,
+    ) -> _DeterministicReceiptOnlyCompletingPortal:
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicReceiptOnlyCompletingPortal(
+            paths,
+            alias,
+            projection,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    settlement = bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert settlement["accepted"] is True
+    assert settlement["provider_dispatched"] is False
+    assert settlement["effect_executed"] is False
+
+def test_deterministic_reconciliation_rejects_forged_receipt_only_completion(
+    tmp_path: Path,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    bridge: DatabasePortalExecutionBridge
+
+    def factory(
+        paths: object,
+        alias: str,
+    ) -> _DeterministicReceiptOnlyCompletingPortal:
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicReceiptOnlyCompletingPortal(
+            paths,
+            alias,
+            projection,
+            forge_receipt=True,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(
+        DatabasePortalDeterministicReconciliationDeferred,
+    ) as caught:
+        bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert caught.value.reason == (
+        "deterministic_reconciliation_replay_proof_failed"
+    )
+
+def test_deterministic_reconciliation_replays_durable_implementation_after_write_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    run_calls: list[str] = []
+    factory_calls: list[str] = []
+    bridge: DatabasePortalExecutionBridge
+
+    def factory(paths: object, alias: str) -> _DeterministicCompletingPortal:
+        factory_calls.append(alias)
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicCompletingPortal(
+            paths,
+            alias,
+            projection,
+            run_calls=run_calls,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+    real_atomic_write_once = database_portal_bridge_module._atomic_write_once
+    crashed = False
+
+    def crash_before_settlement(path: Path, payload: bytes) -> object:
+        nonlocal crashed
+        if (
+            path.name == "false-completion-deterministic-settlement.json"
+            and not crashed
+        ):
+            crashed = True
+            raise OSError("simulated crash before settlement receipt durability")
+        return real_atomic_write_once(path, payload)
+
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "_atomic_write_once",
+        crash_before_settlement,
+    )
+    with pytest.raises(OSError, match="simulated crash"):
+        bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "_atomic_write_once",
+        real_atomic_write_once,
+    )
+    settlement = bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert settlement["accepted"] is True
+    assert run_calls == ["LGSWF-004"]
+    # Terminal replay occurs before Portal construction and carries the exact
+    # local implementation proof instead of an empty portal_passes list.
+    assert factory_calls == ["LGSWF-004"]
+    passes = settlement["portal_acceptance_receipt"]["portal_evidence"][
+        "portal_passes"
+    ]
+    assert len(passes) == 1
+    assert passes[0]["implementation"]["validation_result"][
+        "pre_dispatch_no_change"
+    ]["reason"] == "declared_validation_proved_existing_contract"
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    (
+        (
+            "validation_failed",
+            "deterministic_reconciliation_validation_failed",
+        ),
+        (
+            "target_mismatch",
+            "deterministic_reconciliation_target_mismatch",
+        ),
+        (
+            "proof_missing",
+            "deterministic_reconciliation_replay_proof_failed",
+        ),
+    ),
+)
+def test_deterministic_reconciliation_types_closed_zero_provider_failures(
+    tmp_path: Path,
+    mutation: str,
+    expected_reason: str,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    bridge: DatabasePortalExecutionBridge
+
+    def mutate(implementation: dict[str, object]) -> None:
+        validation = implementation["validation_result"]
+        assert isinstance(validation, dict)
+        pre_dispatch = validation.get("pre_dispatch_no_change")
+        assert isinstance(pre_dispatch, dict)
+        if mutation == "validation_failed":
+            implementation["returncode"] = 1
+            validation.update(
+                {
+                    "passed": False,
+                    "returncode": 1,
+                    "reason": "declared_validation_failed",
+                }
+            )
+            pre_dispatch["reason"] = (
+                "reconciliation_declared_validation_failed"
+            )
+            pre_dispatch.pop("receipt_id", None)
+        elif mutation == "target_mismatch":
+            pre_dispatch["target_commit"] = "4" * 40
+            pre_dispatch_body = dict(pre_dispatch)
+            pre_dispatch_body.pop("receipt_id", None)
+            pre_dispatch["receipt_id"] = content_identity(pre_dispatch_body)
+        elif mutation == "proof_missing":
+            validation.pop("pre_dispatch_no_change")
+
+    def factory(paths: object, alias: str) -> _DeterministicCompletingPortal:
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicCompletingPortal(
+            paths,
+            alias,
+            projection,
+            mutate=mutate,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(
+        DatabasePortalDeterministicReconciliationDeferred
+    ) as caught:
+        bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert caught.value.reason == expected_reason
+    assert caught.value.provider_dispatched is False
+    assert caught.value.attempt_consumed is False
+    assert caught.value.effect_executed is False
+    assert caught.value.source_reason
+
+def test_deterministic_reconciliation_does_not_type_observed_provider_dispatch(
+    tmp_path: Path,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    bridge: DatabasePortalExecutionBridge
+
+    def mutate(implementation: dict[str, object]) -> None:
+        implementation["provider_dispatched"] = True
+
+    def factory(paths: object, alias: str) -> _DeterministicCompletingPortal:
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicCompletingPortal(
+            paths,
+            alias,
+            projection,
+            mutate=mutate,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert not isinstance(
+        caught.value,
+        DatabasePortalDeterministicReconciliationDeferred,
+    )
+    assert "forbidden provider" in str(caught.value)
+
+def test_deterministic_reconciliation_wraps_predispatch_factory_deferral(
+    tmp_path: Path,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+
+    def factory(_paths: object, _alias: str) -> object:
+        raise FileNotFoundError("Portal factory source missing")
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(
+        DatabasePortalDeterministicReconciliationDeferred
+    ) as caught:
+        bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert caught.value.reason == (
+        "deterministic_reconciliation_pre_provider_deferred"
+    )
+    assert caught.value.source_reason == "portal_factory_source_missing"
+    assert caught.value.provider_dispatched is False
+    assert caught.value.attempt_consumed is False
+    assert caught.value.effect_executed is False
+
+def test_bridge_types_current_quack_refusal_before_portal_dispatch(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    class RefusingTaskSource:
+        database_path = "quack:127.0.0.1:45123"
+
+        def get_task(self, _task_cid: str) -> object:
+            raise duckdb.IOException(
+                "IO Error: Failed to send message: IO Error: Could not connect "
+                "to server error for HTTP POST to "
+                "'http://127.0.0.1:45123/quack'"
+            )
+
+    factory_called = False
+
+    def factory(_paths: object, _alias: str) -> object:
+        nonlocal factory_called
+        factory_called = True
+        raise AssertionError("Portal factory must remain outside this boundary")
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=RefusingTaskSource(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+    assert caught.value.reason == "quack_transport_unavailable"
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.provider_dispatched is False
+    assert caught.value.attempt_consumed is False
+    assert factory_called is False
+    assert not (tmp_path / "attempts").exists()
+
+def test_bridge_does_not_type_foreign_quack_refusal_as_pre_dispatch(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    class RefusingTaskSource:
+        database_path = "quack:127.0.0.1:45123"
+
+        def get_task(self, _task_cid: str) -> object:
+            raise duckdb.IOException(
+                "IO Error: Failed to send message: IO Error: Could not connect "
+                "to server error for HTTP POST to "
+                "'http://127.0.0.1:45124/quack'"
+            )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=RefusingTaskSource(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+    )
+
+    with pytest.raises(duckdb.IOException) as caught:
+        bridge.run_provider(_attempt())
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+
+def test_bridge_seals_historical_quack_preprojection_absence(
+    tmp_path: Path,
+) -> None:
+    task_source = SimpleNamespace(database_path="quack:127.0.0.1:45123")
+    bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+    )
+    reason = (
+        "IO Error: Failed to send message: IO Error: Could not connect to "
+        "server error for HTTP POST to 'http://127.0.0.1:45123/quack'"
+    )
+
+    receipt = bridge.recover_quack_preprojection_transport_failure(
+        _attempt(),
+        reason,
+    )
+    replay = bridge.recover_quack_preprojection_transport_failure(
+        _attempt(),
+        reason,
+    )
+
+    assert receipt == replay
+    assert receipt["schema"] == DATABASE_PORTAL_QUACK_PREPROJECTION_RECOVERY_SCHEMA
+    assert receipt["absence_sealed"] is True
+    assert receipt["projection_present"] is False
+    assert receipt["provider_dispatched"] is False
+    assert receipt["effect_executed"] is False
+    attempt_dir = bridge._paths(_attempt()).root
+    assert [item.name for item in attempt_dir.iterdir()] == [
+        "database-portal-quack-preprojection-recovery.json"
+    ]
+
+def test_bridge_quack_preprojection_recovery_rejects_any_projection_artifact(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(
+            database_path="quack:127.0.0.1:45123"
+        ),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+    )
+    attempt_dir = bridge._paths(_attempt()).root
+    attempt_dir.mkdir(parents=True)
+    (attempt_dir / "task-projection.md").write_text("foreign", encoding="utf-8")
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="projection or foreign artifact",
+    ):
+        bridge.recover_quack_preprojection_transport_failure(
+            _attempt(),
+            "IO Error: Failed to send message: IO Error: Could not connect to "
+            "server error for HTTP POST to "
+            "'http://127.0.0.1:45123/quack'",
+        )
+
+def test_bridge_quack_preprojection_recovery_rejects_foreign_endpoint(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(
+            database_path="quack:127.0.0.1:45123"
+        ),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="not an exact Quack transport refusal",
+    ):
+        bridge.recover_quack_preprojection_transport_failure(
+            _attempt(),
+            "IO Error: Failed to send message: IO Error: Could not connect to "
+            "server error for HTTP POST to "
+            "'http://127.0.0.1:45124/quack'",
+        )
+    assert not (tmp_path / "attempts").exists()
+
+def test_bridge_defers_inflight_process_skip(tmp_path: Path) -> None:
+    class InflightPortal:
+        closed = False
+
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "skipped": True,
+                    "reason": "inflight_process",
+                    "task_id": "LGSWF-004",
+                    "attempt": 1,
+                    "worktree_path": str(tmp_path / "worktrees" / "live"),
+                }
+            }
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    portal = InflightPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert str(caught.value) == "inflight_process"
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.attempt_consumed is False
+    assert portal.closed is True
+
+def test_bridge_reclaims_only_dead_exact_lane_portal_lifecycle_claims(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-q"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    attempt_root = tmp_path / "lane" / "lane_database_portal_attempts"
+    attempt_root.mkdir(parents=True)
+    current_name = hashlib.sha256(b"attempt:001").hexdigest()[:24]
+    stale_name = "f" * 24 if current_name != "f" * 24 else "e" * 24
+    stale_state_dir = attempt_root / stale_name
+    live_state_dir = attempt_root / ("d" * 24)
+    foreign_state_dir = tmp_path / "peer" / ("c" * 24)
+    for directory in (stale_state_dir, live_state_dir, foreign_state_dir):
+        directory.mkdir(parents=True)
+
+    store = WorktreeLifecycleStore(repo)
+    stale = store.begin_preparing(
+        task_id="STALE",
+        canonical_task_cid="task:stale",
+        attempt=1,
+        lane_id="lane:stale",
+        workspace_path=tmp_path / "worktrees" / "stale",
+        branch="implementation/stale",
+        merge_target="main",
+        state_dir=str(stale_state_dir),
+        owner=ProcessBirthIdentity(
+            pid=99_999_999,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    live = store.begin_preparing(
+        task_id="LIVE",
+        canonical_task_cid="task:live",
+        attempt=1,
+        lane_id="lane:live",
+        workspace_path=tmp_path / "worktrees" / "live",
+        branch="implementation/live",
+        merge_target="main",
+        state_dir=str(live_state_dir),
+        owner=current_process_birth(),
+    )
+    foreign = store.begin_preparing(
+        task_id="FOREIGN",
+        canonical_task_cid="task:foreign",
+        attempt=1,
+        lane_id="peer:foreign",
+        workspace_path=tmp_path / "worktrees" / "foreign",
+        branch="implementation/foreign",
+        merge_target="main",
+        state_dir=str(foreign_state_dir),
+        owner=ProcessBirthIdentity(
+            pid=99_999_998,
+            start_time_ticks=1,
+            boot_id="dead-peer",
+        ),
+    )
+
+    observed: dict[str, object] = {}
+
+    def factory(paths: object, alias: str) -> object:
+        recovered = store.load_workspace(stale.workspace_path)
+        retained_live = store.load_workspace(live.workspace_path)
+        retained_foreign = store.load_workspace(foreign.workspace_path)
+        observed.update(
+            recovered=recovered,
+            retained_live=retained_live,
+            retained_foreign=retained_foreign,
+        )
+        return _CompletingPortal(paths, alias)
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=attempt_root,
+        portal_factory=factory,
+        repository_root=repo,
+        max_passes=1,
+    )
+
+    receipt = bridge.run_provider(_attempt())
+
+    recovered = observed["recovered"]
+    assert recovered.is_terminal
+    assert recovered.fence == stale.fence + 1
+    assert recovered.terminal_reason == (
+        "database_portal_dead_attempt_owner_reclaim"
+    )
+    assert observed["retained_live"].is_nonterminal
+    assert observed["retained_foreign"].is_nonterminal
+    assert receipt["accepted"] is True
+    event_path = attempt_root / current_name / "portal-events.jsonl"
+    events = [json.loads(line) for line in event_path.read_text().splitlines()]
+    recovery_events = [
+        event
+        for event in events
+        if event.get("type")
+        == "database_portal_worktree_lifecycle_recovered"
+    ]
+    assert len(recovery_events) == 1
+    assert recovery_events[0]["recovered_count"] == 1
+    assert recovery_events[0]["recovered"][0]["prior_record_id"] == (
+        stale.record_id
+    )
+    assert recovery_events[0]["recovered"][0]["terminal_record_id"] == (
+        recovered.record_id
+    )
+
+def test_bridge_defers_portal_factory_source_missing_before_dispatch(
+    tmp_path: Path,
+) -> None:
+    factory_calls: list[str] = []
+
+    def missing_factory(_paths: object, alias: str) -> object:
+        factory_calls.append(alias)
+        raise FileNotFoundError("Portal source disappeared before construction")
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=missing_factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == "portal_factory_source_missing"
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.provider_dispatched is False
+    assert caught.value.attempt_consumed is False
+    assert factory_calls == ["LGSWF-004"]
+
+def test_bridge_defers_exact_quack_refusal_during_portal_construction(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    quack_uri = "quack:127.0.0.1:45123"
+    task_source = _TaskSource(_record())
+    task_source.database_path = quack_uri
+    factory_calls: list[str] = []
+
+    def refusing_factory(_paths: object, alias: str) -> object:
+        factory_calls.append(alias)
+        raise duckdb.IOException(
+            "IO Error: Failed to send message: IO Error: Could not connect "
+            "to server error for HTTP POST to "
+            "'http://127.0.0.1:45123/quack'"
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=tmp_path / "attempts",
+        portal_factory=refusing_factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == "quack_transport_unavailable"
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.provider_dispatched is False
+    assert caught.value.attempt_consumed is False
+    assert factory_calls == ["LGSWF-004"]
+
+def test_bridge_rejects_foreign_quack_refusal_during_portal_construction(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    task_source = _TaskSource(_record())
+    task_source.database_path = "quack:127.0.0.1:45123"
+
+    def refusing_factory(_paths: object, _alias: str) -> object:
+        raise duckdb.IOException(
+            "IO Error: Failed to send message: IO Error: Could not connect "
+            "to server error for HTTP POST to "
+            "'http://127.0.0.1:45124/quack'"
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=tmp_path / "attempts",
+        portal_factory=refusing_factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(duckdb.IOException) as caught:
+        bridge.run_provider(_attempt())
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+
+@pytest.mark.parametrize(
+    ("provider_dispatched", "attempt_consumed", "deferred"),
+    [
+        (False, False, True),
+        (False, True, False),
+        (True, False, False),
+    ],
+)
+def test_bridge_types_file_not_found_setup_only_before_dispatch_and_consumption(
+    tmp_path: Path,
+    provider_dispatched: bool,
+    attempt_consumed: bool,
+    deferred: bool,
+) -> None:
+    class MissingSetupPortal:
+        closed = False
+
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "provider_dispatched": provider_dispatched,
+                    "attempt_consumed": attempt_consumed,
+                    "exception_result": {
+                        "exception_type": "FileNotFoundError",
+                        "phase": "worktree_setup",
+                        "message": "worktree source path disappeared",
+                    },
+                }
+            }
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    portal = MissingSetupPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        max_passes=1,
+    )
+
+    if deferred:
+        with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+            bridge.run_provider(_attempt())
+        assert caught.value.reason == (
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON
+        )
+        assert caught.value.provider_dispatched is False
+        assert caught.value.attempt_consumed is False
+    else:
+        with pytest.raises(DatabasePortalBridgeError) as caught:
+            bridge.run_provider(_attempt())
+        assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+        assert str(caught.value) == "portal_provider_failed"
+    assert portal.closed is True
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_post_merge_wrapper_accepts_false_completion_reintegration_schema(
+    tmp_path: Path,
+) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:false-completion-wrapper",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    expected = {
+        "schema": DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+        "attempted": True,
+        "recovered": True,
+        "changed": True,
+        "write_count": 1,
+        "request_id": "request:false-completion",
+    }
+    try:
+        daemon.bind_post_merge_recovery(lambda: dict(expected))
+
+        assert daemon._run_post_merge_recovery() == expected
+    finally:
+        daemon.close()
+
+def test_false_completion_recheck_reuses_observation_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lease recheck must reproduce the discovery receipt byte-for-byte."""
+
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    request = SimpleNamespace(
+        status="completed",
+        metadata={},
+        request_id="request:false-completion",
+        canonical_task_id="task:false-completion",
+        canonical_task_key="task:false-completion",
+        dedupe_key="dedupe:false-completion",
+        commit_sha="a" * 40,
+        target_repository_id="repository:false-completion",
+        target_branch="main",
+    )
+    observation = {
+        "false_completion_observation": {
+            "observed_target_commit": "b" * 40,
+            "completed_claim_generation": 2,
+            "completed_finished_at_hex": (50.0).hex(),
+            "completed_row_digest": "sha256:" + "c" * 64,
+        },
+        "false_completion_observation_id": "observation:false-completion",
+    }
+    observed_times = iter((100.0, 200.0))
+    monkeypatch.setattr(
+        database_portal_bridge_module.time,
+        "time",
+        lambda: next(observed_times),
+    )
+
+    selected = bridge._false_completion_queue_recovery_receipt(
+        request,
+        observation,
+    )
+    assert selected is not None
+    rechecked = bridge._false_completion_queue_recovery_receipt(
+        request,
+        observation,
+        observed_at=float(selected["observed_at"]),
+    )
+    assert rechecked == selected
+    assert rechecked["receipt_cid"] == selected["receipt_cid"]
+
+    independently_observed = bridge._false_completion_queue_recovery_receipt(
+        request,
+        observation,
+    )
+    assert independently_observed is not None
+    assert independently_observed["observed_at"] == 200.0
+    assert independently_observed["receipt_cid"] != selected["receipt_cid"]
+
+def test_closed_unaccepted_implementation_reason_consumes_protected_path_mutation() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        closed_unaccepted_implementation_reason,
+    )
+
+    events = [
+        {"type": "implementation_started", "task_id": "ASEH-061"},
+        {
+            "type": "implementation_finished",
+            "task_id": "ASEH-061",
+            "canonical_task_cid": "cid-061",
+            "error": "implementation_protected_path_mutated",
+        },
+    ]
+    assert (
+        closed_unaccepted_implementation_reason(
+            events, alias="ASEH-061", task_cid="cid-061"
+        )
+        == "implementation_protected_path_mutated"
+    )
+    assert (
+        closed_unaccepted_implementation_reason(
+            events, alias="ASEH-062", task_cid="cid-061"
+        )
+        == ""
+    )
+    assert closed_unaccepted_implementation_reason((), alias="ASEH-061") == ""

@@ -30,7 +30,7 @@ from .control_plane_schema import (
     DATASETS_AUTHORITATIVE_OPERATIONAL_MIGRATION_VERSION,
     DATASETS_AUTHORITATIVE_OPERATIONAL_PROFILE_ID,
     DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA,
-    load_datasets_authoritative_operational_catalog,
+    load_datasets_authoritative_operational_base_catalog,
 )
 from .duckdb_state import open_duckdb_connection
 from .task_identity import canonical_content_cid
@@ -440,7 +440,7 @@ def eaaef_operational_migration() -> ControlPlaneMigration:
 def load_eaaef_operational_catalog() -> MigrationCatalog:
     """Return base operational @1 plus the exact EAAEF @2 extension."""
 
-    base = load_datasets_authoritative_operational_catalog()
+    base = load_datasets_authoritative_operational_base_catalog()
     return MigrationCatalog.from_migrations(
         (*base.migrations, eaaef_operational_migration())
     )

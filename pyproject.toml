@@ -54,6 +54,7 @@ package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
 "*" = ["*.txt", "*.md"]
+"ipfs_accelerate_py.agent_supervisor.task_sources" = ["sql/*.sql"]
 
 [tool.ipfs_accelerate_py.clean-package]
 schema = "ipfs_accelerate_py/assurance/clean-package@1"

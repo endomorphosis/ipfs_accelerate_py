@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -2209,6 +2210,460 @@ def default_operator_registry_id(roots: DoctorAuthorityRoots) -> str:
     return build_default_doctor_operator_registry(roots).registry_id
 
 
+# ---------------------------------------------------------------------------
+# Bounded exact synthesis transforms (ASEH-054)
+# ---------------------------------------------------------------------------
+
+
+class ExactTransformKind(str, Enum):
+    """The small, closed source grammars admitted by exact synthesis.
+
+    These transforms deliberately sit beside the doctor-operator registry.
+    They are not repair operators and cannot acquire its proof or write
+    authority; they only render a single, already-bound source span.
+    """
+
+    TYPED_ERROR = "typed_error"
+    SCHEMA = "schema"
+    IMPORT = "import"
+    ADAPTER = "adapter"
+    RENAME = "rename"
+    VECTOR = "vector"
+    WRAPPER = "wrapper"
+    FORMAT = "format"
+
+
+class ExactTransformRejectionReason(str, Enum):
+    """Stable rejection vocabulary for the exact transform grammar."""
+
+    UNKNOWN_KIND = "unknown_kind"
+    PATH_OUT_OF_SCOPE = "path_out_of_scope"
+    STALE_SPAN = "stale_span"
+    EMPTY_INPUT = "empty_input"
+    INVALID_PARAMETER = "invalid_parameter"
+    INVALID_MAPPING = "invalid_mapping"
+    UNSUPPORTED_GRAMMAR = "unsupported_grammar"
+    NON_TOTAL_MAPPING = "non_total_mapping"
+    NONEMPTY_OUTPUT_REQUIRED = "nonempty_output_required"
+
+
+@dataclass(frozen=True)
+class ExactTransformSpec:
+    """Reviewed declarative contract for one exact transform grammar."""
+
+    kind: ExactTransformKind
+    preconditions: tuple[str, ...]
+    postconditions: tuple[str, ...]
+    allows_empty_span: bool = False
+
+
+_EXACT_TRANSFORM_SPECS: Final[Mapping[ExactTransformKind, ExactTransformSpec]] = (
+    MappingProxyType(
+        {
+            ExactTransformKind.TYPED_ERROR: ExactTransformSpec(
+                ExactTransformKind.TYPED_ERROR,
+                ("pre:single_raise", "pre:exact_error_symbol"),
+                ("post:error_symbol_replaced", "frame:raise_arguments_preserved"),
+            ),
+            ExactTransformKind.SCHEMA: ExactTransformSpec(
+                ExactTransformKind.SCHEMA,
+                ("pre:json_object", "pre:total_field_mapping"),
+                ("post:fields_projected", "frame:values_preserved"),
+            ),
+            ExactTransformKind.IMPORT: ExactTransformSpec(
+                ExactTransformKind.IMPORT,
+                ("pre:python_import_block", "pre:closed_module_path"),
+                ("post:exact_import_present", "frame:existing_imports_preserved"),
+                allows_empty_span=True,
+            ),
+            ExactTransformKind.ADAPTER: ExactTransformSpec(
+                ExactTransformKind.ADAPTER,
+                ("pre:bare_proved_expression", "pre:closed_adapter_symbol"),
+                ("post:adapter_wrap_present", "frame:inner_expression_preserved"),
+            ),
+            ExactTransformKind.RENAME: ExactTransformSpec(
+                ExactTransformKind.RENAME,
+                ("pre:bare_identifier", "pre:exact_old_name"),
+                ("post:identifier_replaced", "frame:span_only"),
+            ),
+            ExactTransformKind.VECTOR: ExactTransformSpec(
+                ExactTransformKind.VECTOR,
+                ("pre:json_string_vector", "pre:total_element_mapping"),
+                ("post:elements_projected", "frame:vector_cardinality_preserved"),
+            ),
+            ExactTransformKind.WRAPPER: ExactTransformSpec(
+                ExactTransformKind.WRAPPER,
+                ("pre:bare_proved_expression", "pre:closed_wrapper_symbol"),
+                ("post:wrapper_present", "frame:inner_expression_preserved"),
+            ),
+            ExactTransformKind.FORMAT: ExactTransformSpec(
+                ExactTransformKind.FORMAT,
+                ("pre:nonempty_text", "pre:whitespace_only_change"),
+                ("post:trailing_whitespace_removed", "post:single_final_newline"),
+            ),
+        }
+    )
+)
+
+_EXACT_PARAMETER_NAMES: Final[Mapping[ExactTransformKind, frozenset[str]]] = (
+    MappingProxyType(
+        {
+            ExactTransformKind.TYPED_ERROR: frozenset({"old_error", "new_error"}),
+            ExactTransformKind.SCHEMA: frozenset(),
+            ExactTransformKind.IMPORT: frozenset({"module", "name"}),
+            ExactTransformKind.ADAPTER: frozenset({"adapter", "expression"}),
+            ExactTransformKind.RENAME: frozenset({"old_name", "new_name"}),
+            ExactTransformKind.VECTOR: frozenset(),
+            ExactTransformKind.WRAPPER: frozenset({"wrapper", "expression"}),
+            ExactTransformKind.FORMAT: frozenset(),
+        }
+    )
+)
+
+
+def exact_transform_specs() -> tuple[ExactTransformSpec, ...]:
+    """Return the complete allowlist in stable kind order."""
+
+    return tuple(_EXACT_TRANSFORM_SPECS[kind] for kind in ExactTransformKind)
+
+
+@dataclass(frozen=True)
+class ExactTransformRequest:
+    """A scope-bound, body-carrying request for one closed grammar.
+
+    ``allowed_paths`` is intentionally required even though this API emits one
+    replacement: it prevents a caller from treating an unbound snippet as a
+    repository-wide find/replace.  ``before_hash`` must bind ``span_text``.
+    """
+
+    kind: ExactTransformKind | str
+    path: str
+    span_text: str
+    before_hash: str
+    allowed_paths: Sequence[str]
+    parameters: Mapping[str, str] = MappingProxyType({})
+    field_mapping: Mapping[str, str] = MappingProxyType({})
+
+    def __post_init__(self) -> None:
+        try:
+            kind = (
+                self.kind
+                if isinstance(self.kind, ExactTransformKind)
+                else ExactTransformKind(str(self.kind))
+            )
+        except ValueError as exc:
+            raise DoctorTransformUnsupportedError(
+                ExactTransformRejectionReason.UNKNOWN_KIND.value
+            ) from exc
+        path = _path(self.path, "path")
+        if not isinstance(self.span_text, str):
+            raise DoctorTransformError("span_text must be a string")
+        if len(self.span_text.encode("utf-8")) > MAX_SPAN_BYTES:
+            raise DoctorTransformError("span_text exceeds its byte bound")
+        before_hash = _text(self.before_hash, "before_hash", limit=128)
+        allowed_paths = _paths(self.allowed_paths, "allowed_paths")
+        if not allowed_paths or path not in set(allowed_paths):
+            raise DoctorTransformAuthorityError(
+                ExactTransformRejectionReason.PATH_OUT_OF_SCOPE.value
+            )
+        if before_hash != _sha256_text(self.span_text):
+            raise DoctorTransformAuthorityError(
+                ExactTransformRejectionReason.STALE_SPAN.value
+            )
+        parameters = _exact_string_mapping(self.parameters, "parameters")
+        field_mapping = _exact_string_mapping(self.field_mapping, "field_mapping")
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "path", path)
+        object.__setattr__(self, "before_hash", before_hash)
+        object.__setattr__(self, "allowed_paths", allowed_paths)
+        object.__setattr__(self, "parameters", MappingProxyType(parameters))
+        object.__setattr__(self, "field_mapping", MappingProxyType(field_mapping))
+
+
+@dataclass(frozen=True)
+class ExactTransformResult:
+    """Pure rendering receipt.  Rejected results never carry replacement text."""
+
+    request: ExactTransformRequest
+    replacement: str = ""
+    rejection_reason: ExactTransformRejectionReason | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.request, ExactTransformRequest):
+            raise DoctorTransformError("request must be ExactTransformRequest")
+        if self.rejection_reason is not None and not isinstance(
+            self.rejection_reason, ExactTransformRejectionReason
+        ):
+            object.__setattr__(
+                self,
+                "rejection_reason",
+                ExactTransformRejectionReason(str(self.rejection_reason)),
+            )
+        if not isinstance(self.replacement, str):
+            raise DoctorTransformError("replacement must be a string")
+        if self.rejection_reason is not None and self.replacement:
+            raise DoctorTransformError("rejected exact transforms cannot carry replacement text")
+        if self.rejection_reason is None and not self.replacement:
+            raise DoctorTransformError("admitted exact transforms require replacement text")
+
+    @property
+    def admitted(self) -> bool:
+        return self.rejection_reason is None
+
+    @property
+    def changed(self) -> bool:
+        return self.admitted and self.replacement != self.request.span_text
+
+    @property
+    def idempotent(self) -> bool:
+        return self.admitted
+
+    @property
+    def before_hash(self) -> str:
+        return self.request.before_hash
+
+    @property
+    def after_hash(self) -> str:
+        return _sha256_text(self.replacement) if self.admitted else ""
+
+    @property
+    def preconditions(self) -> tuple[str, ...]:
+        return _EXACT_TRANSFORM_SPECS[self.request.kind].preconditions
+
+    @property
+    def postconditions(self) -> tuple[str, ...]:
+        return _EXACT_TRANSFORM_SPECS[self.request.kind].postconditions
+
+
+def _exact_string_mapping(value: Any, name: str) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        raise DoctorTransformError(f"{name} must be a mapping")
+    if len(value) > MAX_REFERENCE_COUNT:
+        raise DoctorTransformError(f"{name} exceeds its bound")
+    result: dict[str, str] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or not isinstance(item, str):
+            raise DoctorTransformError(f"{name} must map strings to strings")
+        if not key or not item or len(key.encode("utf-8")) > MAX_TEXT_BYTES or len(item.encode("utf-8")) > MAX_TEXT_BYTES:
+            raise DoctorTransformError(f"{name} contains an invalid value")
+        result[key] = item
+    return dict(sorted(result.items()))
+
+
+def _exact_identifier(parameters: Mapping[str, str], name: str) -> str:
+    value = parameters.get(name, "")
+    if not _is_python_identifier(value):
+        raise DoctorTransformUnsupportedError(
+            ExactTransformRejectionReason.INVALID_PARAMETER.value
+        )
+    return value
+
+
+def _exact_simple_expression(parameters: Mapping[str, str], name: str) -> str:
+    value = parameters.get(name, "")
+    if not _SIMPLE_ATTR_EXPR.fullmatch(value):
+        raise DoctorTransformUnsupportedError(
+            ExactTransformRejectionReason.INVALID_PARAMETER.value
+        )
+    return value
+
+
+def _exact_reject(
+    request: ExactTransformRequest, reason: ExactTransformRejectionReason
+) -> ExactTransformResult:
+    return ExactTransformResult(request=request, rejection_reason=reason)
+
+
+def _validate_exact_request_grammar(request: ExactTransformRequest) -> None:
+    allowed_parameters = _EXACT_PARAMETER_NAMES[request.kind]
+    if set(request.parameters) - allowed_parameters:
+        raise DoctorTransformUnsupportedError(
+            ExactTransformRejectionReason.INVALID_PARAMETER.value
+        )
+    if request.field_mapping and request.kind not in {
+        ExactTransformKind.SCHEMA,
+        ExactTransformKind.VECTOR,
+    }:
+        raise DoctorTransformUnsupportedError(
+            ExactTransformRejectionReason.INVALID_MAPPING.value
+        )
+
+
+def _render_exact_typed_error(request: ExactTransformRequest) -> str:
+    old_name = _exact_identifier(request.parameters, "old_error")
+    new_name = _exact_identifier(request.parameters, "new_error")
+    try:
+        module = ast.parse(request.span_text)
+    except SyntaxError as exc:
+        raise DoctorTransformUnsupportedError(
+            ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value
+        ) from exc
+    if len(module.body) != 1 or not isinstance(module.body[0], ast.Raise):
+        raise DoctorTransformUnsupportedError(
+            ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value
+        )
+    exc_node = module.body[0].exc
+    symbol = exc_node.func if isinstance(exc_node, ast.Call) else exc_node
+    if not isinstance(symbol, ast.Name) or symbol.id not in {old_name, new_name}:
+        raise DoctorTransformUnsupportedError(
+            ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value
+        )
+    if isinstance(exc_node, ast.Call) and (
+        any(isinstance(item, ast.Starred) for item in exc_node.args)
+        or any(item.arg is None for item in exc_node.keywords)
+    ):
+        raise DoctorTransformUnsupportedError(
+            ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value
+        )
+    if symbol.id == new_name:
+        return request.span_text
+    lines = request.span_text.splitlines(keepends=True)
+    start = sum(len(line) for line in lines[: symbol.lineno - 1]) + symbol.col_offset
+    end = sum(len(line) for line in lines[: symbol.end_lineno - 1]) + symbol.end_col_offset
+    return f"{request.span_text[:start]}{new_name}{request.span_text[end:]}"
+
+
+def _render_exact_schema(request: ExactTransformRequest) -> str:
+    if not request.field_mapping:
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.INVALID_MAPPING.value)
+    try:
+        value = json.loads(request.span_text)
+    except json.JSONDecodeError as exc:
+        raise DoctorTransformUnsupportedError(
+            ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value
+        ) from exc
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value)
+    missing = [key for key, replacement in request.field_mapping.items() if key not in value and key != replacement]
+    if missing and all(target in value for target in request.field_mapping.values()):
+        return request.span_text
+    if missing:
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.NON_TOTAL_MAPPING.value)
+    projected: dict[str, Any] = {}
+    for key, item in value.items():
+        target = request.field_mapping.get(key, key)
+        if target in projected:
+            raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.INVALID_MAPPING.value)
+        projected[target] = item
+    return json.dumps(projected, sort_keys=True, separators=(",", ":"))
+
+
+def _render_exact_import(request: ExactTransformRequest) -> str:
+    module_name = _exact_simple_expression(request.parameters, "module")
+    import_name = request.parameters.get("name", "")
+    if import_name and not _is_python_identifier(import_name):
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.INVALID_PARAMETER.value)
+    statement = f"from {module_name} import {import_name}" if import_name else f"import {module_name}"
+    if not request.span_text:
+        return statement
+    try:
+        module = ast.parse(request.span_text)
+    except SyntaxError as exc:
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value) from exc
+    if any(not isinstance(item, (ast.Import, ast.ImportFrom)) for item in module.body):
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value)
+    for item in module.body:
+        if isinstance(item, ast.ImportFrom) and (item.level or any(alias.name == "*" for alias in item.names)):
+            raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value)
+        if import_name and isinstance(item, ast.ImportFrom) and item.module == module_name and any(alias.name == import_name for alias in item.names):
+            return request.span_text
+        if not import_name and isinstance(item, ast.Import) and any(alias.name == module_name for alias in item.names):
+            return request.span_text
+    return f"{request.span_text}{'' if request.span_text.endswith(chr(10)) else chr(10)}{statement}{chr(10)}"
+
+
+def _render_exact_wrapper(request: ExactTransformRequest, parameter: str) -> str:
+    outer = _exact_simple_expression(request.parameters, parameter)
+    expression = _exact_simple_expression(request.parameters, "expression")
+    expected = f"{outer}({expression})"
+    if request.span_text.strip() in {expression, expected}:
+        return expected if request.span_text.strip() == expression else request.span_text
+    raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value)
+
+
+def _render_exact_rename(request: ExactTransformRequest) -> str:
+    old_name = _exact_identifier(request.parameters, "old_name")
+    new_name = _exact_identifier(request.parameters, "new_name")
+    if request.span_text not in {old_name, new_name}:
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value)
+    return new_name
+
+
+def _render_exact_vector(request: ExactTransformRequest) -> str:
+    if not request.field_mapping:
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.INVALID_MAPPING.value)
+    try:
+        values = json.loads(request.span_text)
+    except json.JSONDecodeError as exc:
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value) from exc
+    if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value)
+    if len(values) != len(set(values)):
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR.value)
+    missing = [key for key, replacement in request.field_mapping.items() if key not in values and key != replacement]
+    if missing and all(target in values for target in request.field_mapping.values()):
+        return request.span_text
+    if missing:
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.NON_TOTAL_MAPPING.value)
+    projected = [request.field_mapping.get(item, item) for item in values]
+    if len(projected) != len(set(projected)):
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.INVALID_MAPPING.value)
+    return json.dumps(projected, separators=(",", ":"))
+
+
+def _render_exact_format(request: ExactTransformRequest) -> str:
+    if not request.span_text:
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.EMPTY_INPUT.value)
+    lines = request.span_text.splitlines()
+    if not lines:
+        raise DoctorTransformUnsupportedError(ExactTransformRejectionReason.EMPTY_INPUT.value)
+    return "\n".join(line.rstrip(" \t") for line in lines) + "\n"
+
+
+def render_exact_transform(request: ExactTransformRequest) -> ExactTransformResult:
+    """Render one exact allowlisted transform without touching the filesystem.
+
+    All accepted forms are deterministic and idempotent: a previously applied
+    transform returns its existing text.  Unknown syntax, stale spans, and
+    incomplete maps return a typed rejection with no replacement body.
+    """
+
+    if not isinstance(request, ExactTransformRequest):
+        raise DoctorTransformError("request must be ExactTransformRequest")
+    spec = _EXACT_TRANSFORM_SPECS[request.kind]
+    if not request.span_text and not spec.allows_empty_span:
+        return _exact_reject(request, ExactTransformRejectionReason.EMPTY_INPUT)
+    try:
+        _validate_exact_request_grammar(request)
+        if request.kind is ExactTransformKind.TYPED_ERROR:
+            replacement = _render_exact_typed_error(request)
+        elif request.kind is ExactTransformKind.SCHEMA:
+            replacement = _render_exact_schema(request)
+        elif request.kind is ExactTransformKind.IMPORT:
+            replacement = _render_exact_import(request)
+        elif request.kind is ExactTransformKind.ADAPTER:
+            replacement = _render_exact_wrapper(request, "adapter")
+        elif request.kind is ExactTransformKind.RENAME:
+            replacement = _render_exact_rename(request)
+        elif request.kind is ExactTransformKind.VECTOR:
+            replacement = _render_exact_vector(request)
+        elif request.kind is ExactTransformKind.WRAPPER:
+            replacement = _render_exact_wrapper(request, "wrapper")
+        elif request.kind is ExactTransformKind.FORMAT:
+            replacement = _render_exact_format(request)
+        else:  # pragma: no cover - enum closure protects this branch.
+            return _exact_reject(request, ExactTransformRejectionReason.UNKNOWN_KIND)
+    except DoctorTransformUnsupportedError as exc:
+        try:
+            reason = ExactTransformRejectionReason(str(exc))
+        except ValueError:
+            reason = ExactTransformRejectionReason.UNSUPPORTED_GRAMMAR
+        return _exact_reject(request, reason)
+    if not replacement:
+        return _exact_reject(request, ExactTransformRejectionReason.NONEMPTY_OUTPUT_REQUIRED)
+    return ExactTransformResult(request=request, replacement=replacement)
+
+
 __all__ = (
     "ANALYTICAL_TRANSFORM_CAPABILITY_INTERFACE",
     "ANALYTICAL_TRANSFORM_OPERATOR_BINDINGS",
@@ -2229,9 +2684,16 @@ __all__ = (
     "DoctorTransformAuthorityError",
     "DoctorTransformError",
     "DoctorTransformUnsupportedError",
+    "ExactTransformKind",
+    "ExactTransformRejectionReason",
+    "ExactTransformRequest",
+    "ExactTransformResult",
+    "ExactTransformSpec",
     "analytical_transform_operator_bindings",
     "build_default_doctor_operator_registry",
     "default_operator_registry_id",
     "doctor_roots_to_propagation_roots",
+    "exact_transform_specs",
     "make_edit_site",
+    "render_exact_transform",
 )

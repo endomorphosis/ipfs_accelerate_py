@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 import signal
 import subprocess
@@ -46,7 +47,9 @@ def test_strict_fence_rejects_reused_root_before_any_signal(
     monkeypatch.setattr(
         core_module,
         "_process_identity_snapshot",
-        lambda: core_module.ProcessIdentitySnapshot.observed({pid: ("S", 1, pid, pid, "999")}),
+        lambda: core_module.ProcessIdentitySnapshot.observed(
+            {pid: ("S", 1, pid, pid, "999")}
+        ),
     )
     monkeypatch.setattr(
         core_module.os,
@@ -76,7 +79,9 @@ def test_strict_fence_rejects_claimed_process_group_mismatch(
     monkeypatch.setattr(
         core_module,
         "_process_identity_snapshot",
-        lambda: core_module.ProcessIdentitySnapshot.observed({pid: ("S", 1, 777, 777, "123")}),
+        lambda: core_module.ProcessIdentitySnapshot.observed(
+            {pid: ("S", 1, 777, 777, "123")}
+        ),
     )
     monkeypatch.setattr(
         core_module.os,
@@ -101,6 +106,108 @@ def test_strict_fence_rejects_claimed_process_group_mismatch(
         owned_process_group_id=pid,
         expected_root_start_time_ticks=123,
     )
+
+
+def _write_proc_stat(
+    proc_root: Path,
+    *,
+    pid: int,
+    start_time_ticks: int,
+) -> Path:
+    process_root = proc_root / str(pid)
+    process_root.mkdir()
+    stat_path = process_root / "stat"
+    fields = [
+        "S",
+        "1",
+        str(pid),
+        str(pid),
+        *("0" for _ in range(15)),
+        str(start_time_ticks),
+    ]
+    assert len(fields) == 20
+    stat_path.write_text(
+        f"{pid} (worker) {' '.join(fields)}\n",
+        encoding="utf-8",
+    )
+    return stat_path
+
+
+@pytest.mark.parametrize(
+    ("error_type", "error_number"),
+    (
+        (FileNotFoundError, errno.ENOENT),
+        (ProcessLookupError, errno.ESRCH),
+    ),
+)
+def test_process_identity_snapshot_skips_only_disappeared_proc_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[OSError],
+    error_number: int,
+) -> None:
+    retained_pid = 4244
+    disappeared_pid = 4245
+    _write_proc_stat(
+        tmp_path,
+        pid=retained_pid,
+        start_time_ticks=123,
+    )
+    disappeared_stat = _write_proc_stat(
+        tmp_path,
+        pid=disappeared_pid,
+        start_time_ticks=456,
+    )
+    original_read_text = Path.read_text
+
+    def read_text(path: Path, *args: object, **kwargs: object) -> str:
+        if path == disappeared_stat:
+            raise error_type(
+                error_number,
+                os.strerror(error_number),
+                str(path),
+            )
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+
+    snapshot = core_module._process_identity_snapshot(proc_root=tmp_path)
+
+    assert snapshot.available
+    assert snapshot.error == ""
+    assert snapshot.processes == {
+        retained_pid: ("S", 1, retained_pid, retained_pid, "123")
+    }
+
+
+def test_process_identity_snapshot_keeps_other_proc_errors_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inaccessible_pid = 4246
+    inaccessible_stat = _write_proc_stat(
+        tmp_path,
+        pid=inaccessible_pid,
+        start_time_ticks=789,
+    )
+    original_read_text = Path.read_text
+
+    def read_text(path: Path, *args: object, **kwargs: object) -> str:
+        if path == inaccessible_stat:
+            raise PermissionError(
+                errno.EACCES,
+                os.strerror(errno.EACCES),
+                str(path),
+            )
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+
+    snapshot = core_module._process_identity_snapshot(proc_root=tmp_path)
+
+    assert not snapshot.available
+    assert snapshot.processes == {}
+    assert f"{inaccessible_pid}: PermissionError:" in snapshot.error
 
 
 def test_naturally_exited_direct_child_retains_empty_group_authority() -> None:

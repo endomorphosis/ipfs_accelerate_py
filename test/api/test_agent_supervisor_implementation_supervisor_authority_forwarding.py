@@ -408,7 +408,9 @@ def test_direct_start_preserves_plan_bound_and_bootstrap_descriptors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The non-LGCVF daemon birth retains both accepted authority FDs."""
+    """One native birth retains authority FDs within the lane's session."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime import multi_supervisor_runner as runner
 
     captured: dict[str, object] = {}
 
@@ -418,6 +420,8 @@ def test_direct_start_preserves_plan_bound_and_bootstrap_descriptors(
     def capture_popen(command: list[str], **kwargs: object) -> FakeProcess:
         captured["command"] = command
         captured.update(kwargs)
+        kwargs["pre_popen_verify"]()
+        kwargs["before_authority_handoff"](FakeProcess())
         return FakeProcess()
 
     supervisor = object.__new__(
@@ -434,7 +438,7 @@ def test_direct_start_preserves_plan_bound_and_bootstrap_descriptors(
         state_owner_bootstrap_fd=12,
     )
     supervisor.ensure_managed_daemon_pid_file = lambda: {"blocked": False}
-    supervisor._build_daemon_command = lambda: ["python3", "daemon.py"]
+    supervisor._build_daemon_command = lambda **_kwargs: ["python3", "daemon.py"]
     supervisor._write_managed_daemon_identity = lambda **_kwargs: None
     monkeypatch.setattr(
         supervisor_module,
@@ -446,14 +450,27 @@ def test_direct_start_preserves_plan_bound_and_bootstrap_descriptors(
         "_managed_daemon_child_environment",
         lambda **_kwargs: {},
     )
-    monkeypatch.setattr(supervisor_module.subprocess, "Popen", capture_popen)
+    retained_fd = os.open(os.devnull, os.O_RDONLY)
+    retained = SimpleNamespace(
+        descriptor=retained_fd, executable_path=f"/proc/self/fd/{retained_fd}"
+    )
+    native = SimpleNamespace(descriptor=SimpleNamespace(descriptor=13))
+    monkeypatch.setattr(runner, "admit_sealed_native_dependency_environment", lambda env: (native, "[]"))
+    monkeypatch.setattr(runner, "retain_control_plane_interpreter", lambda executable: retained)
+    monkeypatch.setattr(runner, "sealed_native_dependency_environment", lambda *args, **kwargs: {})
+    monkeypatch.setattr(supervisor_module, "state_authority_pass_fds", lambda env: ())
+    monkeypatch.setattr(supervisor_module, "launch_process_child", capture_popen)
 
     process = supervisor._start_daemon()
 
     assert process.pid == 43210
     assert captured["command"] == ["python3", "daemon.py"]
-    assert captured["pass_fds"] == (11, 12)
-    assert captured["start_new_session"] is True
+    assert set(captured["pass_fds"]) == {11, 12, 13, retained_fd}
+    assert captured["start_new_session"] is False
+    assert captured["process_group"] == 0
+    assert captured["executable"] == retained.executable_path
+    with pytest.raises(OSError):
+        os.fstat(retained_fd)
 
 
 def test_daemon_hardens_before_receiving_bootstrap_credential(
@@ -814,14 +831,15 @@ def test_source_change_reload_preserves_embedded_programmatic_launch_policy(
     assert len(calls) == 1
     executable, reload_command = calls[0]
     assert executable == supervisor_module.sys.executable
-    assert reload_command[:3] == [
+    assert reload_command[:4] == [
         supervisor_module.sys.executable,
-        "-m",
-        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+        "-c",
+        supervisor_module.ORDINARY_IMPLEMENTATION_SUPERVISOR_BOOTSTRAP,
+        supervisor_module.IMPLEMENTATION_SUPERVISOR_MODULE_SENTINEL,
     ]
-    assert reload_command[3:] == original_argv
+    assert reload_command[4:] == original_argv
 
-    reloaded_args = supervisor_module.parse_args(reload_command[3:])
+    reloaded_args = supervisor_module.parse_args(reload_command[4:])
     reloaded_config = supervisor_module.supervisor_config_from_args(
         reloaded_args,
         repo_root=repo,

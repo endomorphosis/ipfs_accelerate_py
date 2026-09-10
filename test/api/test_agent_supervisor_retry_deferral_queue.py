@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.task_sources import (
     persistent_task_queue as queue_module,
 )
@@ -68,9 +70,11 @@ def test_direct_codex_command_is_ephemeral_and_ignores_ambient_user_config(
     assert not any("grok" in part.lower() or "docker" in part.lower() for part in command)
 
 
+@pytest.mark.parametrize("gate_admitted", [False, True])
 def test_provider_unavailable_defers_before_dispatch_without_daemon_exception(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    gate_admitted: bool,
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -89,6 +93,14 @@ def test_provider_unavailable_defers_before_dispatch_without_daemon_exception(
 """,
         encoding="utf-8",
     )
+    # Provider dispatch requires a real registered worktree even when this
+    # test deliberately stops at the provider readiness check.
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "tasks.todo.md"], cwd=repo, check=True)
+    subprocess.run([
+        "git", "-c", "user.name=Retry Test", "-c", "user.email=retry@example.invalid",
+        "commit", "-qm", "test board",
+    ], cwd=repo, check=True)
     state_dir = repo / "state"
     events_path = state_dir / "events.jsonl"
     daemon = TodoImplementationDaemon(
@@ -99,10 +111,14 @@ def test_provider_unavailable_defers_before_dispatch_without_daemon_exception(
         repo_root=repo,
         task_header_prefix="## RETRY-",
         implement=True,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
     )
     provider_effects: list[str] = []
+    readiness_calls: list[object] = []
 
     def provider_unavailable(_task: object) -> None:
+        readiness_calls.append(_task)
         raise ImplementationRetryDeferred(
             "primary provider unavailable",
             backoff_seconds=300,
@@ -118,6 +134,19 @@ def test_provider_unavailable_defers_before_dispatch_without_daemon_exception(
         "_build_implementation_prompt",
         lambda *_args: provider_effects.append("prompt") or "unexpected",
     )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_residual_provider_handoff",
+        lambda **_kwargs: pytest.fail("unavailable provider must not prepare a handoff"),
+    )
+    if gate_admitted:
+        # Isolate readiness after the gate; this incomplete test result must
+        # never reach the real handoff/dispatch authority boundary above.
+        monkeypatch.setattr(
+            daemon,
+            "_evaluate_pre_implementation_provider_gate",
+            lambda **_kwargs: {"skip_provider": False},
+        )
 
     # A missing queue adapter used to raise AttributeError here, terminating
     # the daemon process and making the supervisor restart it.  Returning a
@@ -125,8 +154,15 @@ def test_provider_unavailable_defers_before_dispatch_without_daemon_exception(
     result = daemon.run_once()
 
     implementation = result["implementation_result"]
-    assert implementation["skipped"] is True
-    assert implementation["reason"] == "primary_provider_unavailable"
+    expected_reason = (
+        "primary_provider_unavailable"
+        if gate_admitted
+        else "pre_implementation_abstain_review_no_analytical_close"
+    )
+    assert implementation["deferred"] is True
+    assert implementation["retryable"] is True
+    assert implementation["reason"] == expected_reason
+    assert len(readiness_calls) == int(gate_admitted)
     assert implementation["attempt_consumed"] is False
     assert implementation["provider_dispatched"] is False
     assert provider_effects == []
@@ -136,7 +172,8 @@ def test_provider_unavailable_defers_before_dispatch_without_daemon_exception(
     assert state.implementation_attempts == {}
     assert state.implementation_attempts_by_cid == {}
     assert state.implementation_in_progress is False
-    assert state.last_implementation_finished_at == ""
+    # Worktree setup is recorded, but its deferral does not spend an attempt.
+    assert state.last_implementation_finished_at
 
     events = [
         json.loads(line)
@@ -145,19 +182,21 @@ def test_provider_unavailable_defers_before_dispatch_without_daemon_exception(
     ]
     assert any(
         event.get("type") == "implementation_retry_deferred"
-        and event.get("reason") == "primary_provider_unavailable"
+        and event.get("reason") == expected_reason
         for event in events
     )
     assert not any(
         event.get("type")
-        in {
-            "implementation_started",
-            "implementation_finished",
-            "provider_invocation_committed",
-        }
+        in {"provider_invocation_committed", "provider_callback_started"}
         for event in events
     )
+    terminal_events = [
+        event for event in events if event.get("type") == "implementation_finished"
+    ]
+    assert terminal_events
+    assert all(event.get("attempt_consumed") is False for event in terminal_events)
+    assert all(event.get("provider_dispatched") is False for event in terminal_events)
     assert len(daemon.task_queue.entries) == 1
     [queue_entry] = daemon.task_queue.entries.values()
     assert queue_entry.is_cooled_down() is True
-    assert queue_entry.notes == "primary provider unavailable"
+    assert queue_entry.notes == expected_reason

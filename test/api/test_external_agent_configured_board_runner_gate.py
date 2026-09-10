@@ -416,6 +416,11 @@ def test_plan_bound_birth_gate_reopens_ticket_after_parent_release(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pin = _pin()
+    retained_fd = os.open("/proc/self/exe", os.O_RDONLY)
+    retained = SimpleNamespace(descriptor=retained_fd, argv0="python", sha256=_sha("7"))
+    native = SimpleNamespace(pin=SimpleNamespace(python_executable_sha256=retained.sha256), accepted_authorization_id=_sha("8"))
+    monkeypatch.setattr(runner, "admit_retained_control_plane_interpreter", lambda **kwargs: retained)
+    monkeypatch.setattr(runner, "admit_sealed_native_dependency_environment", lambda env: (native, "[]"))
     read_fd, write_fd = os.pipe()
     os.write(write_fd, runner.PLAN_BOUND_LAUNCH_GATE_SUCCESS)
     os.close(write_fd)
@@ -449,7 +454,7 @@ def test_plan_bound_birth_gate_reopens_ticket_after_parent_release(
     )
     monkeypatch.setattr(
         runner.os,
-        "execvpe",
+        "execve",
         lambda *_args, **_kwargs: pytest.fail("child executed after ticket swap"),
     )
     child_args = [
@@ -470,6 +475,8 @@ def test_plan_bound_birth_gate_reopens_ticket_after_parent_release(
         "lane-0",
         "--state-dir",
         "state/lane-0",
+        "--state-prefix",
+        "lane-0",
     ]
     tokens = [
         str(read_fd),
@@ -477,6 +484,9 @@ def test_plan_bound_birth_gate_reopens_ticket_after_parent_release(
         "pin-json",
         "99",
         "-",
+        str(retained_fd),
+        retained.argv0,
+        retained.sha256,
         runner.EAAEF_CONFIGURED_BOARD_LIVE_SEAL_CONFIG_PATH,
         "--",
         "python",

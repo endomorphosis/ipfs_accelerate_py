@@ -171,7 +171,68 @@ pytestmark = pytest.mark.skipif(
     not duckdb_available(),
     reason="DuckDB is required for database implementation daemon tests",
 )
-
+from dataclasses import replace
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    acquire_checkout_mutation_lease,
+    board_scoped_checkout_mutation_lock_path,
+    checkout_lock_metadata,
+    checkout_mutation_lease_state,
+    checkout_mutation_lock_path,
+    read_checkout_mutation_lease,
+)
+from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
+from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    DatabaseCoordinationError,
+    DatabaseCoordinationStaleFenceError,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DATABASE_PROGRAM_JSON_ENV,
+    DatabaseProgramConfig,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+    DatabaseTaskSource,
+    TaskSourceConflictError as DatabaseTaskSourceConflictError,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    connect_duckdb_with_policy,
+    open_duckdb_connection,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
+    DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
+    DatabasePortalBridgeConsumedNoProgressError,
+    DatabasePortalBridgeDeferred,
+    DatabasePortalBridgeError,
+    DatabasePortalCandidateRetry,
+    DatabasePortalDeterministicReconciliationDeferred,
+    DatabasePortalExecutionBridge,
+    DatabasePortalValidationRetry,
+    database_portal_consumed_no_progress_fingerprint,
+    database_portal_task_contract_digest,
+    is_protected_checkout_setup_block,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    ATTEMPT_PHASE_BLOCKED,
+    ATTEMPT_PHASE_COMPLETE,
+    ATTEMPT_PHASE_CONTEXT,
+    ATTEMPT_PHASE_EFFECT,
+    ATTEMPT_PHASE_FAILED,
+    ATTEMPT_PHASE_PROVIDER,
+    ATTEMPT_PHASE_VALIDATION,
+    DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
+    DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+    DATABASE_PROVIDER_CALLBACK_DEFERRED_SCHEMA,
+    DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA,
+    DATABASE_TASK_ATTEMPT_INTERFACE,
+    DatabaseImplementationAuthorityError,
+    DatabaseImplementationConflictError,
+    DatabaseImplementationCoordinationDriftError,
+    DatabaseImplementationDaemon,
+    DatabaseTaskAttempt,
+    is_database_authority_mode,
+    open_database_implementation_daemon,
+    parse_args,
+)
 
 def _population(task_count: int = 4) -> dict[str, object]:
     tasks = []
@@ -201,7 +262,6 @@ def _population(task_count: int = 4) -> dict[str, object]:
         ],
         "tasks": tasks,
     }
-
 
 def _apmc_bootstrap_frontier_population() -> dict[str, object]:
     completed = tuple(f"APMC-{index:03d}" for index in range(6)) + ("APMC-018",)
@@ -256,7 +316,6 @@ def _apmc_bootstrap_frontier_population() -> dict[str, object]:
             ),
         ],
     }
-
 
 def _open_daemon(
     tmp_path: Path,
@@ -375,11 +434,9 @@ def _open_daemon(
         task_prefix=task_prefix,
     )
 
-
 def _alias_home(task_alias: str, shard_count: int) -> int:
     digest = hashlib.sha256(task_alias.encode("utf-8")).hexdigest()
     return int(digest[:8], 16) % shard_count
-
 
 def _rewrite_as_legacy_typed_deferrals(
     daemon: DatabaseImplementationDaemon,
@@ -412,7 +469,6 @@ def _rewrite_as_legacy_typed_deferrals(
                 attempt.attempt_id,
             ],
         )
-
 
 def _legacy_leftover_wait_budget(
     daemon: DatabaseImplementationDaemon,
@@ -489,7 +545,6 @@ def _legacy_leftover_wait_budget(
     )
     return budget
 
-
 def _block_with_legacy_leftover_wait_budget(
     daemon: DatabaseImplementationDaemon,
     attempts: list[DatabaseTaskAttempt],
@@ -545,7 +600,6 @@ def _block_with_legacy_leftover_wait_budget(
     )
     return latest, budget
 
-
 def _database_transfer_claim_receipt(
     daemon: DatabaseImplementationDaemon,
     task: object,
@@ -581,7 +635,6 @@ def _database_transfer_claim_receipt(
         },
     }
 
-
 def _sha256_json_identity(value: Mapping[str, object]) -> str:
     encoded = json.dumps(
         dict(value),
@@ -591,7 +644,6 @@ def _sha256_json_identity(value: Mapping[str, object]) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
-
 
 def _legacy_portal_effect(
     attempt: DatabaseTaskAttempt,
@@ -635,14 +687,12 @@ def _legacy_portal_effect(
         "portal_completion_binding": binding,
     }
 
-
 def _single_task_population(task_alias: str) -> dict[str, object]:
     population = _population(1)
     tasks = population["tasks"]
     assert isinstance(tasks, list)
     tasks[0]["task_id"] = task_alias
     return population
-
 
 TYPED_DEFERRAL_RECOVERY_TEST_PATH = (
     "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
@@ -680,7 +730,6 @@ def _git_recovery_repo(tmp_path: Path) -> tuple[Path, str, str]:
         repo, "rev-parse", "HEAD^{tree}"
     )
 
-
 def _git_output(repo: Path, *argv: str, input_text: str | None = None) -> str:
     return subprocess.run(
         ["git", "-C", str(repo), *argv],
@@ -689,7 +738,6 @@ def _git_output(repo: Path, *argv: str, input_text: str | None = None) -> str:
         text=True,
         input=input_text,
     ).stdout.strip()
-
 
 def _git_commit(repo: Path, *, name: str, content: str) -> tuple[str, str]:
     target = repo / name
@@ -700,7 +748,6 @@ def _git_commit(repo: Path, *, name: str, content: str) -> tuple[str, str]:
     return _git_output(repo, "rev-parse", "HEAD"), _git_output(
         repo, "rev-parse", "HEAD^{tree}"
     )
-
 
 def _successful_quota_high_pair() -> tuple[dict[str, object], dict[str, object]]:
     failure = build_grok_failure_receipt(
@@ -724,7 +771,6 @@ def _successful_quota_high_pair() -> tuple[dict[str, object], dict[str, object]]
         fallback_returncode=0,
     )
     return failure, outcome
-
 
 def _consumed_no_progress_evidence(
     daemon: DatabaseImplementationDaemon,
@@ -774,7 +820,6 @@ def _consumed_no_progress_evidence(
         database_portal_consumed_no_progress_fingerprint(evidence)
     )
     return evidence
-
 
 def _capacity_retry_receipt(
     daemon: DatabaseImplementationDaemon,
@@ -899,7 +944,6 @@ def _capacity_retry_receipt(
     receipt["receipt_id"] = digest(receipt)
     return receipt
 
-
 def _rehash_capacity_retry_receipt(
     daemon: DatabaseImplementationDaemon,
     receipt: dict[str, object],
@@ -921,7 +965,6 @@ def _rehash_capacity_retry_receipt(
     value.pop("receipt_id", None)
     value["receipt_id"] = digest(value)
     return value
-
 
 def _consumed_attempt_retry_receipt(
     daemon: DatabaseImplementationDaemon,
@@ -965,7 +1008,6 @@ def _consumed_attempt_retry_receipt(
     }
     receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
     return receipt
-
 
 def _protected_preservation_receipt(
     daemon: DatabaseImplementationDaemon,
@@ -1018,7 +1060,6 @@ def _protected_preservation_receipt(
     }
     receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
     return receipt
-
 
 def _protected_reconciliation_self_lock_receipt(
     daemon: DatabaseImplementationDaemon,
@@ -1090,7 +1131,6 @@ def _protected_reconciliation_self_lock_receipt(
     receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
     return receipt
 
-
 def test_interface_identities() -> None:
     assert DATABASE_IMPLEMENTATION_DAEMON_INTERFACE == (
         "DatabaseImplementationDaemon@1"
@@ -1106,7 +1146,6 @@ def test_interface_identities() -> None:
         authority_mode="legacy_markdown", task_source_kind="legacy-markdown"
     )
 
-
 def test_database_completion_seed_vocabulary_matches_task_source() -> None:
     daemon_module = importlib.import_module(
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
@@ -1117,7 +1156,6 @@ def test_database_completion_seed_vocabulary_matches_task_source() -> None:
     assert TASK_SOURCE_COMPLETED_STATUSES == frozenset(
         {"completed", "complete", "done", "skipped"}
     )
-
 
 def test_strict_database_lane_claims_only_alias_hash_home_tasks(
     tmp_path: Path,
@@ -1149,7 +1187,6 @@ def test_strict_database_lane_claims_only_alias_hash_home_tasks(
     finally:
         daemon.close()
 
-
 def test_non_strict_database_lane_preserves_cross_shard_claiming(
     tmp_path: Path,
 ) -> None:
@@ -1168,7 +1205,6 @@ def test_non_strict_database_lane_preserves_cross_shard_claiming(
         assert _alias_home(attempt.task_alias, 2) == 1
     finally:
         daemon.close()
-
 
 def test_strict_restart_resumes_exact_in_home_claim(
     tmp_path: Path,
@@ -1205,7 +1241,6 @@ def test_strict_restart_resumes_exact_in_home_claim(
         assert provider_calls == [attempt.task_cid]
     finally:
         restarted.close()
-
 
 def test_strict_restart_requeues_pre_provider_out_of_home_attempt(
     tmp_path: Path,
@@ -1277,7 +1312,6 @@ def test_strict_restart_requeues_pre_provider_out_of_home_attempt(
     finally:
         home.close()
 
-
 def test_strict_restart_quarantines_pre_provider_attempt_at_configured_cap(
     tmp_path: Path,
 ) -> None:
@@ -1344,7 +1378,6 @@ def test_strict_restart_quarantines_pre_provider_attempt_at_configured_cap(
     finally:
         restarted.close()
 
-
 def test_strict_resume_accepts_exact_legacy_fenced_retry(
     tmp_path: Path,
 ) -> None:
@@ -1397,7 +1430,6 @@ def test_strict_resume_accepts_exact_legacy_fenced_retry(
         assert provider_calls == [second.task_cid]
     finally:
         daemon.close()
-
 
 def test_strict_restart_quarantines_effect_committed_out_of_home_attempt(
     tmp_path: Path,
@@ -1465,7 +1497,6 @@ def test_strict_restart_quarantines_effect_committed_out_of_home_attempt(
         assert restarted.claim_next() is None
     finally:
         restarted.close()
-
 
 @pytest.mark.parametrize(
     "provider_idempotency_key",
@@ -1561,7 +1592,6 @@ def test_strict_restart_quarantines_provider_receipt_before_phase_commit(
     finally:
         restarted.close()
 
-
 @pytest.mark.parametrize("raced_alias", ["", "DQP-T001", "DQP-T004"])
 def test_strict_database_lane_rechecks_authoritative_alias_after_local_claim(
     tmp_path: Path,
@@ -1617,7 +1647,6 @@ def test_strict_database_lane_rechecks_authoritative_alias_after_local_claim(
     finally:
         daemon.close()
 
-
 def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
     markdown = tmp_path / "board.md"
     markdown.write_text(
@@ -1658,7 +1687,6 @@ def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
         assert markdown.read_text(encoding="utf-8") == original_markdown
     finally:
         idle.close()
-
 
 def _sparse_post_merge_history_fixture(
     task: Any,
@@ -1709,7 +1737,6 @@ def _sparse_post_merge_history_fixture(
     )
     return current, projection
 
-
 def test_post_merge_completion_crash_fence_allows_sparse_ordinary_history(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1753,7 +1780,6 @@ def test_post_merge_completion_crash_fence_allows_sparse_ordinary_history(
     finally:
         daemon.close()
 
-
 def test_post_merge_completion_crash_fence_rejects_sparse_dedicated_history(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1788,7 +1814,6 @@ def test_post_merge_completion_crash_fence_rejects_sparse_dedicated_history(
             )
     finally:
         daemon.close()
-
 
 def test_post_merge_completion_crash_fence_excludes_proven_stale_snapshot(
     tmp_path: Path,
@@ -1909,7 +1934,6 @@ def test_post_merge_completion_crash_fence_excludes_proven_stale_snapshot(
             )
     finally:
         daemon.close()
-
 
 def test_post_merge_completion_recovery_claim_fences_preclaim_and_toctou(
     tmp_path: Path,
@@ -2163,7 +2187,6 @@ def test_post_merge_completion_recovery_claim_fences_preclaim_and_toctou(
     finally:
         daemon.close()
 
-
 def test_apmc_bootstrap_completions_unlock_exact_frontier_across_lane_sidecars(
     tmp_path: Path,
 ) -> None:
@@ -2236,6 +2259,75 @@ def test_apmc_bootstrap_completions_unlock_exact_frontier_across_lane_sidecars(
 
     assert claimed == expected_ready
 
+def test_apmc_bootstrap_completions_unlock_exact_frontier_across_lane_sidecars_aseh(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "apmc-control.duckdb"
+    seed = DatabaseImplementationDaemon(
+        database_path=database_path,
+        coordination_path=tmp_path / "seed-coordination.duckdb",
+        execution_path=tmp_path / "seed-execution.duckdb",
+        owner_session_id="apmc-seed",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+    )
+    try:
+        seed.materialize_population(_apmc_bootstrap_frontier_population())
+    finally:
+        seed.close()
+
+    expected_ready = {
+        "task:cid:APMC-006",
+        "task:cid:APMC-012",
+        "task:cid:APMC-014",
+    }
+    claimed: set[str] = set()
+    for lane in range(3):
+        coordination_path = tmp_path / f"lane-{lane}-coordination.duckdb"
+        execution_path = tmp_path / f"lane-{lane}-execution.duckdb"
+        daemon = DatabaseImplementationDaemon(
+            database_path=database_path,
+            coordination_path=coordination_path,
+            execution_path=execution_path,
+            owner_session_id=f"apmc-lane-{lane}",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+        )
+        try:
+            ready = set(daemon.sync_ready_tasks_into_coordination())
+            assert ready == expected_ready - claimed
+            for task_cid in ready:
+                assert daemon.coordinator.claimability(task_cid)["claimable"] is True
+            if lane == 0:
+                first_projection = daemon.coordinator.coordination_registry_projection()
+                assert set(daemon.sync_ready_tasks_into_coordination()) == ready
+                assert (
+                    daemon.coordinator.coordination_registry_projection()
+                    == first_projection
+                )
+        finally:
+            daemon.close()
+
+        # Reopening the exact lane sidecars is an idempotent projection replay.
+        daemon = DatabaseImplementationDaemon(
+            database_path=database_path,
+            coordination_path=coordination_path,
+            execution_path=execution_path,
+            owner_session_id=f"apmc-lane-{lane}",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+            require_real_execution=True,
+        )
+        try:
+            assert set(daemon.sync_ready_tasks_into_coordination()) == ready
+            attempt = daemon.claim_next()
+            assert attempt is not None
+            assert attempt.task_cid in ready
+            claimed.add(attempt.task_cid)
+        finally:
+            daemon.close()
+
+    assert claimed == expected_ready
 
 def test_removed_authoritative_task_is_excluded_without_idle_growth(
     tmp_path: Path,
@@ -2259,7 +2351,6 @@ def test_removed_authoritative_task_is_excluded_without_idle_growth(
             assert daemon.coordinator.coordination_registry_projection() == before
     finally:
         daemon.close()
-
 
 def test_fresh_strict_lane_seeds_completed_dependency_before_claim(
     tmp_path: Path,
@@ -2352,6 +2443,92 @@ def test_fresh_strict_lane_seeds_completed_dependency_before_claim(
         daemon.close()
         source.close()
 
+def test_fresh_strict_lane_seeds_completed_dependency_before_claim_aseh(
+    tmp_path: Path,
+) -> None:
+    """A lane-private coordinator reconstructs dependency evidence from control."""
+
+    population = _population(4)
+    tasks = population["tasks"]
+    assert isinstance(tasks, list)
+    tasks[0].update(
+        {
+            "task_id": "DQP-COMPLETE",
+            "status": "skipped",
+        }
+    )
+    tasks[1].update(
+        {
+            "task_id": "DQP-DEPENDENT",
+            "dependencies": ["task:cid:001"],
+        }
+    )
+    tasks[2]["task_id"] = "DQP-OTHER-1"
+    tasks[3].update(
+        {
+            "task_id": "DQP-BLOCKED",
+            "status": "blocked",
+        }
+    )
+
+    source = DatabaseTaskSource(tmp_path / "control.duckdb")
+    source.materialize(population, repository_tree_id="tree:dqp-fresh-lane")
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "lane-0" / "coordination.duckdb",
+        execution_path=tmp_path / "lane-0" / "execution.duckdb",
+        owner_session_id="session:fresh-strict-lane",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        task_source=source,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+        require_real_execution=True,
+    )
+    try:
+        # The prerequisite and off-shard task hash to lane 1; the dependent
+        # and blocked task hash to lane 0.  Only the ready dependent is exposed
+        # through the lane's Quack-authoritative eligibility sequence.
+        assert daemon._task_home_shard_index("DQP-COMPLETE") == 1
+        assert daemon._task_home_shard_index("DQP-DEPENDENT") == 0
+        assert daemon._task_home_shard_index("DQP-OTHER-1") == 1
+        assert daemon._task_home_shard_index("DQP-BLOCKED") == 0
+        assert daemon.sync_ready_tasks_into_coordination() == ["task:cid:002"]
+
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert {item["task_cid"] for item in projection["tasks"]} == {
+            "task:cid:001",
+            "task:cid:002",
+        }
+        assert projection["logical_completions"] == [
+            {
+                "task_cid": "task:cid:001",
+                "status": "succeeded",
+                "body": {
+                    "authority": "database_task_source",
+                    "source_status": "skipped",
+                    "task_alias": "DQP-COMPLETE",
+                    "task_revision": 1,
+                },
+            }
+        ]
+        assert daemon.sync_ready_tasks_into_coordination() == ["task:cid:002"]
+        assert daemon.coordinator.coordination_registry_projection() == projection
+
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_cid == "task:cid:002"
+        # Neither the same-shard blocked task nor the ready task owned by the
+        # other strict shard may be claimed from this private coordinator.
+        assert daemon.claim_next() is None
+        blocked = source.get_task("task:cid:004")
+        off_shard = source.get_task("task:cid:003")
+        assert blocked is not None and blocked.status == "blocked"
+        assert off_shard is not None and off_shard.status == "ready"
+    finally:
+        daemon.close()
+        source.close()
 
 def test_sync_demotes_only_registered_stale_ready_terminal_rows(
     tmp_path: Path,
@@ -2430,7 +2607,6 @@ def test_sync_demotes_only_registered_stale_ready_terminal_rows(
     finally:
         fresh.close()
 
-
 def test_sync_retries_mixed_revision_reopen_without_demoting(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2481,7 +2657,6 @@ def test_sync_retries_mixed_revision_reopen_without_demoting(
         )
     finally:
         daemon.close()
-
 
 def test_next_sync_repairs_reopen_after_equal_terminal_snapshot(
     tmp_path: Path,
@@ -2543,7 +2718,6 @@ def test_next_sync_repairs_reopen_after_equal_terminal_snapshot(
     finally:
         daemon.close()
 
-
 def test_conflicting_local_completion_refuses_coordination_drift(
     tmp_path: Path,
 ) -> None:
@@ -2587,7 +2761,6 @@ def test_conflicting_local_completion_refuses_coordination_drift(
     finally:
         daemon.close()
         source.close()
-
 
 def test_portal_deferral_refreshes_failed_revision_and_releases_exact_lease(
     tmp_path: Path,
@@ -2652,6 +2825,88 @@ def test_portal_deferral_refreshes_failed_revision_and_releases_exact_lease(
     finally:
         daemon.close()
 
+def test_portal_deferral_refreshes_failed_revision_and_releases_exact_lease_aseh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+
+    def defer_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        if len(provider_calls) == 1:
+            raise DatabasePortalBridgeDeferred(
+                "validation_project_dependency_preflight_failed",
+                backoff_seconds=0,
+            )
+        return {
+            "status": "ok",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-deferral",
+        provider_fn=defer_provider,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+
+        original_release = daemon.coordinator.release
+        release_calls: list[str] = []
+
+        def release_then_lose_response(*args: object, **kwargs: object) -> None:
+            original_release(*args, **kwargs)
+            release_calls.append(str(kwargs.get("reason") or ""))
+            raise RuntimeError("simulated release response loss")
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "release",
+            release_then_lose_response,
+        )
+        result = daemon._resume_attempt_without_process_crash(attempt)
+        monkeypatch.setattr(daemon.coordinator, "release", original_release)
+
+        assert provider_calls == [attempt.attempt_id]
+        assert release_calls == ["portal_retry_state_persisted"]
+        assert result["status"] == "failed"
+        assert "fail_error" not in result
+        failed = daemon.get_attempt(attempt.attempt_id)
+        assert failed is not None
+        assert failed.committed_phase == "failed"
+        assert failed.status == "failed"
+        assert failed.revision > attempt.revision
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert next(
+            row["state"]
+            for row in projection["task_claims"]
+            if row["claim_id"] == attempt.claim_id
+        ) == "released"
+        assert next(
+            row["status"]
+            for row in projection["task_attempts"]
+            if row["attempt_id"] == attempt.attempt_id
+        ) == "released"
+        assert next(
+            row["state"]
+            for row in projection["fenced_leases"]
+            if row["lease_id"] == attempt.lease_id
+        ) == "released"
+
+        retry = daemon.claim_next()
+        assert retry is not None
+        assert retry.task_cid == attempt.task_cid
+        assert retry.attempt_number == 2
+        resumed = daemon.resume_attempt(retry)
+        assert resumed["resumed"] is True
+        assert resumed["status"] == "succeeded"
+        assert provider_calls == [attempt.attempt_id, retry.attempt_id]
+    finally:
+        daemon.close()
 
 def test_consumed_no_progress_quarantines_and_abstains_after_restart(
     tmp_path: Path,
@@ -2771,7 +3026,6 @@ def test_consumed_no_progress_quarantines_and_abstains_after_restart(
     finally:
         restarted.close()
 
-
 def _git_repo_with_output(tmp_path: Path, relative: str = "landed.py") -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -2815,7 +3069,6 @@ def _git_repo_with_output(tmp_path: Path, relative: str = "landed.py") -> Path:
     )
     return repo
 
-
 def test_landed_quarantined_task_with_outputs_is_completed(
     tmp_path: Path,
 ) -> None:
@@ -2849,7 +3102,6 @@ def test_landed_quarantined_task_with_outputs_is_completed(
         assert result["selection_idle_reason"] == "no_ready_tasks"
     finally:
         daemon.close()
-
 
 def test_landed_merge_repair_does_not_insert_another_validation_run(
     tmp_path: Path,
@@ -2907,7 +3159,6 @@ def test_landed_merge_repair_does_not_insert_another_validation_run(
     finally:
         daemon.close()
 
-
 def test_persist_retry_on_todo_control_retires_instead_of_crashing(
     tmp_path: Path,
 ) -> None:
@@ -2950,7 +3201,6 @@ def test_persist_retry_on_todo_control_retires_instead_of_crashing(
     finally:
         daemon.close()
 
-
 def test_persist_retry_on_todo_control_ignores_stale_terminal_evidence(
     tmp_path: Path,
 ) -> None:
@@ -2992,7 +3242,6 @@ def test_persist_retry_on_todo_control_ignores_stale_terminal_evidence(
     finally:
         daemon.close()
 
-
 def test_exhausted_deferral_on_todo_control_skips_instead_of_crashing(
     tmp_path: Path,
 ) -> None:
@@ -3030,7 +3279,6 @@ def test_exhausted_deferral_on_todo_control_skips_instead_of_crashing(
     finally:
         daemon.close()
 
-
 def test_landed_merge_defers_after_owner_fatal(tmp_path: Path) -> None:
     daemon = _open_daemon(tmp_path / "lane")
     try:
@@ -3047,7 +3295,6 @@ def test_landed_merge_defers_after_owner_fatal(tmp_path: Path) -> None:
         assert outcome["reason"] == "landed_merge_repair_deferred_after_owner_fatal"
     finally:
         daemon.close()
-
 
 def test_landed_merge_fatal_backoff_survives_in_memory_clear(tmp_path: Path) -> None:
     daemon = _open_daemon(tmp_path / "lane")
@@ -3066,7 +3313,6 @@ def test_landed_merge_fatal_backoff_survives_in_memory_clear(tmp_path: Path) -> 
         assert outcome["reason"] == "landed_merge_repair_deferred_after_owner_fatal"
     finally:
         daemon.close()
-
 
 def test_orphaned_in_progress_without_attempt_is_requeued(
     tmp_path: Path,
@@ -3097,7 +3343,6 @@ def test_orphaned_in_progress_without_attempt_is_requeued(
     finally:
         daemon.close()
 
-
 def test_declared_output_paths_split_database_body_csv_fields() -> None:
     task = SimpleNamespace(
         outputs=(),
@@ -3112,7 +3357,6 @@ def test_declared_output_paths_split_database_body_csv_fields() -> None:
         "nested/second.py",
         "third.py",
     )
-
 
 def test_landed_quarantine_rejects_csv_with_unsafe_segment(
     tmp_path: Path,
@@ -3147,7 +3391,6 @@ def test_landed_quarantine_rejects_csv_with_unsafe_segment(
         assert unchanged.status == "quarantined"
     finally:
         daemon.close()
-
 
 def test_landed_quarantine_repairs_comma_separated_predicted_files(
     tmp_path: Path,
@@ -3213,7 +3456,6 @@ def test_landed_quarantine_repairs_comma_separated_predicted_files(
     finally:
         daemon.close()
 
-
 def test_consumed_no_progress_completes_when_declared_outputs_already_landed(
     tmp_path: Path,
 ) -> None:
@@ -3259,7 +3501,6 @@ def test_consumed_no_progress_completes_when_declared_outputs_already_landed(
         assert task.status == "completed"
     finally:
         daemon.close()
-
 
 def test_reopened_quarantine_retires_stale_blocked_attempt(
     tmp_path: Path,
@@ -3393,6 +3634,74 @@ def test_reopened_quarantine_retires_stale_blocked_attempt(
     finally:
         first.close()
 
+def test_reopened_quarantine_retires_stale_blocked_attempt_aseh(
+    tmp_path: Path,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    failure_evidence: dict[str, object] = {}
+
+    def consumed_failure(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:reopen-stale-block",
+        provider_fn=consumed_failure,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempted = first.claim_next()
+        assert attempted is not None
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                first,
+                attempted,
+                tag="reopen-stale-block",
+            )
+        )
+        first._resume_attempt_without_process_crash(attempted)
+        blocked = first.get_attempt(attempted.attempt_id)
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        task = first.task_source.get(blocked.task_cid)
+        assert task is not None
+        assert task.status == "quarantined"
+        first.task_source.compare_and_set_status(
+            blocked.task_cid,
+            int(task.revision),
+            "todo",
+            receipt={
+                "operation": "reopen_unimplemented_unknown_callback_quarantine",
+                "reason": "declared_outputs_missing_on_merge_target",
+            },
+        )
+        reopened = first.task_source.get(blocked.task_cid)
+        assert reopened is not None
+        assert reopened.status == "todo"
+
+        outcomes = first.reconcile_expired_running_attempts()
+        retired = [
+            item
+            for item in outcomes
+            if item.get("reason") == "control_task_left_quarantine"
+        ]
+        assert retired
+        assert retired[0]["attempt_id"] == blocked.attempt_id
+        assert retired[0]["status"] == "failed"
+        stale = first.get_attempt(blocked.attempt_id)
+        assert stale is not None
+        assert stale.status == "failed"
+        current = first.task_source.get(blocked.task_cid)
+        assert current is not None
+        assert current.status == "todo"
+        assert first.list_running_attempts() == []
+    finally:
+        first.close()
 
 def _git_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
@@ -3435,7 +3744,6 @@ def _git_repo(tmp_path: Path) -> Path:
     )
     return repo
 
-
 def _unknown_callback_quarantine_receipt() -> dict[str, object]:
     return {
         "schema": (
@@ -3449,7 +3757,6 @@ def _unknown_callback_quarantine_receipt() -> dict[str, object]:
         "provider_effect_state": "unknown_may_have_started",
         "unknown_callback_reopen_count": 0,
     }
-
 
 def test_unknown_callback_missing_outputs_without_adapter_stays_quarantined(
     tmp_path: Path,
@@ -3479,7 +3786,6 @@ def test_unknown_callback_missing_outputs_without_adapter_stays_quarantined(
         assert current.revision == task.revision + 1
     finally:
         daemon.close()
-
 
 def test_unknown_callback_missing_source_diagnostic_cannot_authorize_retry(
     tmp_path: Path,
@@ -3564,7 +3870,6 @@ def test_unknown_callback_missing_source_diagnostic_cannot_authorize_retry(
     finally:
         daemon.close()
 
-
 def test_unknown_callback_without_declared_outputs_stays_quarantined(
     tmp_path: Path,
 ) -> None:
@@ -3588,7 +3893,6 @@ def test_unknown_callback_without_declared_outputs_stays_quarantined(
         assert result["selection_idle_reason"] == "no_ready_tasks"
     finally:
         daemon.close()
-
 
 def test_unknown_callback_reopen_count_survives_later_claim_receipt(
     tmp_path: Path,
@@ -3645,6 +3949,63 @@ def test_unknown_callback_reopen_count_survives_later_claim_receipt(
     finally:
         daemon.close()
 
+def test_unknown_callback_reopen_count_survives_later_claim_receipt_aseh(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=_unknown_callback_quarantine_receipt(),
+        )
+        first = daemon.run_once()
+        assert first["unknown_callback_reopens"]
+        assert first["unknown_callback_reopens"][0]["unknown_callback_reopen_count"] == 1
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "in_progress",
+            receipt={
+                "operation": "database_claim",
+                "claim_id": "claim:fresh",
+                "attempt_id": "attempt:fresh",
+            },
+        )
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        claim_receipt = task.body.get("completion_receipt")
+        assert isinstance(claim_receipt, dict)
+        assert claim_receipt.get("unknown_callback_reopen_count") == 1
+        receipt = _unknown_callback_quarantine_receipt()
+        receipt.pop("unknown_callback_reopen_count", None)
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=receipt,
+        )
+        second = daemon.run_once()
+        assert second["unknown_callback_reopens"]
+        assert second["unknown_callback_reopens"][0]["unknown_callback_reopen_count"] == 2
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        current_receipt = current.body.get("completion_receipt")
+        assert isinstance(current_receipt, dict)
+        assert current_receipt.get("unknown_callback_reopen_count") == 2
+    finally:
+        daemon.close()
 
 def test_unknown_callback_reopen_count_does_not_authorize_missing_adapter(
     tmp_path: Path,
@@ -3676,7 +4037,6 @@ def test_unknown_callback_reopen_count_does_not_authorize_missing_adapter(
         assert current.revision == task.revision + 1
     finally:
         daemon.close()
-
 
 def test_unaccepted_unknown_callback_is_retired_not_quarantined(
     tmp_path: Path,
@@ -3762,6 +4122,85 @@ def test_unaccepted_unknown_callback_is_retired_not_quarantined(
     finally:
         restarted.close()
 
+def test_unaccepted_unknown_callback_is_retired_not_quarantined_aseh(
+    tmp_path: Path,
+) -> None:
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    now = {"ms": 1_000}
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    repo = _git_repo(tmp_path)
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        raise SimulatedProcessCrash("injected unaccepted-claim crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:unaccepted-unknown",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+        repo_root=repo,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        first.materialize_population(population)
+        attempt = first.claim_next()
+        assert attempt is not None
+        with pytest.raises(SimulatedProcessCrash):
+            first._resume_attempt_without_process_crash(attempt)
+        now["ms"] = 10_000
+        claim = first.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None
+        first.coordinator.expire_task_claim(claim, now_ms=now["ms"])
+        task = first.task_source.get(attempt.task_cid)
+        assert task is not None
+        first.task_source.compare_and_set_status(
+            attempt.task_cid,
+            int(task.revision),
+            "in_progress",
+            receipt={
+                "operation": "database_claim",
+                "claim_id": "claim:other-owner",
+                "attempt_id": "attempt:other-owner",
+            },
+        )
+    finally:
+        first.close()
+
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:unaccepted-unknown",
+        provider_fn=lambda attempt: {"status": "ok", "task_cid": attempt.task_cid},
+        strict_task_sharding=True,
+        repo_root=repo,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        replay = restarted.run_once()
+        current = restarted.task_source.get(attempt.task_cid)
+        assert current is not None
+        assert current.status != "quarantined"
+        retired = [
+            item
+            for item in replay["expired_attempt_reconciliations"]
+            if item.get("attempt_id") == attempt.attempt_id
+        ]
+        assert retired
+        assert retired[0]["reason"] != "portal_neutral_failure"
+    finally:
+        restarted.close()
 
 def test_portal_setup_error_requeues_instead_of_unknown_callback_quarantine(
     tmp_path: Path,
@@ -3799,7 +4238,6 @@ def test_portal_setup_error_requeues_instead_of_unknown_callback_quarantine(
     finally:
         daemon.close()
 
-
 def _write_supervisor_protected_recovery_journal(repo: Path) -> Path:
     lock_path = checkout_mutation_lock_path(repo)
     metadata = checkout_lock_metadata(
@@ -3820,7 +4258,6 @@ def _write_supervisor_protected_recovery_journal(repo: Path) -> Path:
     lock_path.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
     return lock_path
 
-
 def test_protected_checkout_setup_block_classifier() -> None:
     assert is_protected_checkout_setup_block(
         "external_protected_checkout_recovery_required"
@@ -3829,7 +4266,6 @@ def test_protected_checkout_setup_block_classifier() -> None:
         "DatabasePortalBridgeError: external protected checkout recovery required"
     )
     assert not is_protected_checkout_setup_block("portal_consumed_no_progress")
-
 
 def test_supervisor_recovery_journal_defers_before_callback_intent(
     tmp_path: Path,
@@ -3878,6 +4314,52 @@ def test_supervisor_recovery_journal_defers_before_callback_intent(
     finally:
         daemon.close()
 
+def test_supervisor_recovery_journal_defers_before_callback_intent_aseh(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    lock_path = _write_supervisor_protected_recovery_journal(repo)
+    provider_calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.task_cid)
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        repo_root=repo,
+        provider_fn=provider,
+        strict_task_sharding=True,
+    )
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        result = daemon._resume_attempt_without_process_crash(attempt)
+        assert result["retryable"] is True
+        assert "external_protected_checkout_recovery_required" in str(
+            result.get("reason") or ""
+        )
+        current = daemon.task_source.get(attempt.task_cid)
+        assert current is not None
+        assert current.status != "quarantined"
+        assert current.status == "todo"
+        assert provider_calls == []
+        recorded = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        assert recorded is None
+        assert lock_path.is_file()
+        stale = daemon.get_attempt(attempt.attempt_id)
+        assert stale is not None
+        assert stale.status != "running"
+    finally:
+        daemon.close()
 
 def test_unknown_callback_missing_outputs_do_not_authorize_repeat_reopen(
     tmp_path: Path,
@@ -3919,7 +4401,6 @@ def test_unknown_callback_missing_outputs_do_not_authorize_repeat_reopen(
         assert current.revision == task.revision + 1
     finally:
         daemon.close()
-
 
 def test_reopened_task_retires_stale_running_unknown_callback(
     tmp_path: Path,
@@ -3999,6 +4480,83 @@ def test_reopened_task_retires_stale_running_unknown_callback(
     finally:
         restarted.close()
 
+def test_reopened_task_retires_stale_running_unknown_callback_aseh(
+    tmp_path: Path,
+) -> None:
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise SimulatedProcessCrash("injected leftover running crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:stale-running-reopen",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        with pytest.raises(
+            SimulatedProcessCrash,
+            match="injected leftover running crash",
+        ):
+            first._resume_attempt_without_process_crash(attempt)
+        running = first.get_attempt(attempt.attempt_id)
+        assert running is not None and running.status == "running"
+        task = first.task_source.get(attempt.task_cid)
+        assert task is not None
+        first.task_source.compare_and_set_status(
+            attempt.task_cid,
+            int(task.revision),
+            "todo",
+            receipt={
+                "operation": "reopen_unimplemented_unknown_callback_quarantine",
+                "unknown_callback_reopen_count": 1,
+            },
+        )
+    finally:
+        first.close()
+
+    def success_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:stale-running-reopen",
+        provider_fn=success_provider,
+        strict_task_sharding=True,
+    )
+    try:
+        replay = restarted.run_once()
+        retired = [
+            item
+            for item in replay["expired_attempt_reconciliations"]
+            if item.get("reason") == "control_task_left_in_progress"
+        ]
+        assert retired
+        assert retired[0]["attempt_id"] == attempt.attempt_id
+        stale = restarted.get_attempt(attempt.attempt_id)
+        assert stale is not None
+        assert stale.status == "failed"
+        current = restarted.task_source.get(attempt.task_cid)
+        assert current is not None
+        assert current.status != "quarantined"
+        assert attempt.attempt_id not in provider_calls[1:]
+    finally:
+        restarted.close()
 
 def test_expired_unknown_callback_with_rebound_in_progress_is_retired(
     tmp_path: Path,
@@ -4082,6 +4640,83 @@ def test_expired_unknown_callback_with_rebound_in_progress_is_retired(
     finally:
         restarted.close()
 
+def test_expired_unknown_callback_with_rebound_in_progress_is_retired_aseh(
+    tmp_path: Path,
+) -> None:
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    now = {"ms": 1_000}
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        raise SimulatedProcessCrash("injected rebound in-progress crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:rebound-in-progress",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        with pytest.raises(SimulatedProcessCrash):
+            first._resume_attempt_without_process_crash(attempt)
+        task = first.task_source.get(attempt.task_cid)
+        assert task is not None
+        first.task_source.compare_and_set_status(
+            attempt.task_cid,
+            int(task.revision),
+            "todo",
+            receipt={"operation": "reopen_unimplemented_unknown_callback_quarantine"},
+        )
+        task = first.task_source.get(attempt.task_cid)
+        assert task is not None
+        first.task_source.compare_and_set_status(
+            attempt.task_cid,
+            int(task.revision),
+            "in_progress",
+            receipt={
+                "operation": "database_claim",
+                "claim_id": "claim:rebound-owner",
+                "attempt_id": "attempt:rebound-owner",
+            },
+        )
+    finally:
+        first.close()
+
+    now["ms"] = 7_000
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:rebound-in-progress",
+        provider_fn=lambda attempt: {"status": "ok", "task_cid": attempt.task_cid},
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        replay = restarted.run_once()
+        retired = [
+            item
+            for item in replay["expired_attempt_reconciliations"]
+            if item.get("reason") == "control_task_left_in_progress"
+        ]
+        assert retired
+        assert retired[0]["attempt_id"] == attempt.attempt_id
+        stale = restarted.get_attempt(attempt.attempt_id)
+        assert stale is not None
+        assert stale.status == "failed"
+    finally:
+        restarted.close()
 
 def test_consumed_no_progress_quarantine_replays_after_commit_crash(
     tmp_path: Path,
@@ -4178,7 +4813,6 @@ def test_consumed_no_progress_quarantine_replays_after_commit_crash(
         assert len(claims) == 1 and claims[0]["state"] == "released"
     finally:
         restarted.close()
-
 
 def test_cold_restart_rejects_rebound_neutral_receipt_evidence(
     tmp_path: Path,
@@ -4304,7 +4938,6 @@ def test_cold_restart_rejects_rebound_neutral_receipt_evidence(
     finally:
         restarted.close()
 
-
 def test_neutral_blocked_claim_release_replays_after_crash(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4406,7 +5039,6 @@ def test_neutral_blocked_claim_release_replays_after_crash(
         assert provider_calls == [attempt.attempt_id]
     finally:
         restarted.close()
-
 
 def test_provider_callback_hard_crash_abstains_after_cold_restart(
     tmp_path: Path,
@@ -4531,6 +5163,94 @@ def test_provider_callback_hard_crash_abstains_after_cold_restart(
     finally:
         restarted.close()
 
+def test_provider_callback_hard_crash_abstains_after_cold_restart_aseh(
+    tmp_path: Path,
+) -> None:
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise SimulatedProcessCrash("injected hard callback crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:callback-hard-crash",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+
+        with pytest.raises(
+            SimulatedProcessCrash,
+            match="injected hard callback crash",
+        ):
+            first._resume_attempt_without_process_crash(attempt)
+
+        current = first.get_attempt(attempt.attempt_id)
+        assert current is not None
+        assert current.status == "running"
+        assert current.committed_phase == ATTEMPT_PHASE_CONTEXT
+        intent = first.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        assert intent is not None
+        assert intent["schema"] == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+        assert intent["callback_state"] == "started_outcome_unknown"
+        assert intent["provider_effect_state"] == "unknown_may_have_started"
+        assert intent["database_binding_id"] == ""
+        assert intent["portal_failure_fingerprint"] == ""
+        assert provider_calls == [attempt.attempt_id]
+    finally:
+        first.close()
+
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:callback-hard-crash",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+    )
+    try:
+        replay = restarted.run_once()
+
+        assert replay["expired_attempt_reconciliations"] == []
+        result = replay["implementation_result"]
+        assert result["status"] == "blocked"
+        assert result["reason"] == "portal_neutral_failure"
+        assert result["failure_kind"] == "provider_callback_outcome_unknown"
+        assert result["portal_replay_suppressed"] is True
+        assert provider_calls == [attempt.attempt_id]
+        blocked = restarted.get_attempt(attempt.attempt_id)
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        assert blocked.committed_phase == ATTEMPT_PHASE_BLOCKED
+        task = restarted.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "quarantined"
+        receipt = task.body["completion_receipt"]
+        assert receipt["provider_effect_state"] == "unknown_may_have_started"
+        assert receipt["failure_kind"] == "provider_callback_outcome_unknown"
+        claims = [
+            row
+            for row in restarted.coordinator.coordination_registry_projection()[
+                "task_claims"
+            ]
+            if row["claim_id"] == attempt.claim_id
+        ]
+        assert len(claims) == 1 and claims[0]["state"] == "released"
+    finally:
+        restarted.close()
 
 def test_provider_callback_hard_crash_after_expiry_never_redispatches(
     tmp_path: Path,
@@ -4615,7 +5335,6 @@ def test_provider_callback_hard_crash_after_expiry_never_redispatches(
         assert provider_calls == [attempt.attempt_id]
     finally:
         restarted.close()
-
 
 def test_expired_callback_rearms_only_exact_post_commit_candidate(
     tmp_path: Path,
@@ -4756,7 +5475,6 @@ def test_expired_callback_rearms_only_exact_post_commit_candidate(
     finally:
         restarted.close()
 
-
 def test_blocked_response_replay_rejects_different_failure_body(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4831,7 +5549,6 @@ def test_blocked_response_replay_rejects_different_failure_body(
     finally:
         daemon.close()
 
-
 @pytest.mark.parametrize(
     "terminal_phase",
     [ATTEMPT_PHASE_FAILED, ATTEMPT_PHASE_BLOCKED, ATTEMPT_PHASE_COMPLETE],
@@ -4904,7 +5621,6 @@ def test_terminal_phase_evidence_is_immutable(
     finally:
         daemon.close()
 
-
 @pytest.mark.parametrize("succeeded", [False, True], ids=["failed", "complete"])
 def test_reconciled_terminal_evidence_is_immutable(
     tmp_path: Path,
@@ -4966,7 +5682,6 @@ def test_reconciled_terminal_evidence_is_immutable(
     finally:
         daemon.close()
 
-
 def test_retire_stale_running_attempt_accepts_existing_failed_terminal(
     tmp_path: Path,
 ) -> None:
@@ -5004,7 +5719,6 @@ def test_retire_stale_running_attempt_accepts_existing_failed_terminal(
         assert settled.attempt_id == attempt.attempt_id
     finally:
         daemon.close()
-
 
 def test_consumed_failure_stale_task_contract_does_not_quarantine(
     tmp_path: Path,
@@ -5056,7 +5770,6 @@ def test_consumed_failure_stale_task_contract_does_not_quarantine(
         assert daemon.provider_invocation_exists(attempt.attempt_id) is True
     finally:
         daemon.close()
-
 
 def test_consumed_failure_structured_validation_race_does_not_quarantine(
     tmp_path: Path,
@@ -5144,7 +5857,6 @@ def test_consumed_failure_structured_validation_race_does_not_quarantine(
     finally:
         daemon.close()
 
-
 def test_consumed_failure_stale_repository_tree_does_not_quarantine(
     tmp_path: Path,
 ) -> None:
@@ -5195,7 +5907,6 @@ def test_consumed_failure_stale_repository_tree_does_not_quarantine(
     finally:
         daemon.close()
 
-
 def test_consumed_failure_mutated_exception_evidence_fails_closed(
     tmp_path: Path,
 ) -> None:
@@ -5239,7 +5950,6 @@ def test_consumed_failure_mutated_exception_evidence_fails_closed(
         assert daemon.provider_invocation_exists(attempt.attempt_id) is True
     finally:
         daemon.close()
-
 
 def test_neutral_failure_cas_replay_rejects_different_evidence(
     tmp_path: Path,
@@ -5344,7 +6054,6 @@ def test_neutral_failure_cas_replay_rejects_different_evidence(
     finally:
         daemon.close()
 
-
 def test_authoritative_dependency_reopen_invalidates_stale_lane_readiness(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -5435,7 +6144,6 @@ def test_authoritative_dependency_reopen_invalidates_stale_lane_readiness(
         assert daemon.claim_next(exclude_task_cids=(dependency_cid,)) is None
     finally:
         daemon.close()
-
 
 def test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim(
     tmp_path: Path,
@@ -5636,6 +6344,129 @@ def test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim(
     finally:
         daemon.close()
 
+def test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim_aseh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:fenced-retry-dependency",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    dependency_cid = "task:cid:retry-dependency"
+    dependent_cid = "task:cid:retry-dependent"
+    try:
+        assert daemon._automatic_claim_forbidden(object()) is False
+        assert daemon._shared_claim_binding_for_this_owner(object()) is None
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:fenced-retry-dependency",
+                "objectives": [
+                    {
+                        "objective_id": "objective:fenced-retry-dependency",
+                        "goal_cid": "goal:cid:root",
+                        "status": "open",
+                    }
+                ],
+                "tasks": [
+                    {
+                        "task_cid": dependency_cid,
+                        "task_id": "RETRY-DEP",
+                        "goal_cid": "goal:cid:root",
+                        "status": "completed",
+                        "ordinal": 1,
+                    },
+                    {
+                        "task_cid": dependent_cid,
+                        "task_id": "RETRY-WORK",
+                        "goal_cid": "goal:cid:root",
+                        "status": "ready",
+                        "ordinal": 2,
+                        "dependencies": [dependency_cid],
+                    },
+                ],
+            }
+        )
+        first_attempt = daemon.claim_next(exclude_task_cids=(dependency_cid,))
+        assert first_attempt is not None
+        assert first_attempt.task_cid == dependent_cid
+        current = daemon.task_source.get(dependent_cid)
+        assert current is not None
+        assert current.status == "in_progress"
+        assert current.revision == 2
+
+        now["ms"] = 7_000
+        real_claim_ready_task = daemon.coordinator.claim_ready_task
+        reopened = False
+
+        def retry_then_reopen_dependency(**kwargs: object) -> object:
+            nonlocal reopened
+            claim = real_claim_ready_task(**kwargs)
+            if claim is not None and not reopened:
+                assert claim.task_cid == dependent_cid
+                assert claim.attempt_number == 2
+                dependency = daemon.task_source.get(dependency_cid)
+                assert dependency is not None
+                daemon.task_source.compare_and_set_status(
+                    dependency_cid,
+                    expected_revision=int(dependency.revision),
+                    status="ready",
+                )
+                reopened = True
+            return claim
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "claim_ready_task",
+            retry_then_reopen_dependency,
+        )
+        assert daemon.claim_next(exclude_task_cids=(dependency_cid,)) is None
+        assert reopened is True
+        assert [attempt.attempt_id for attempt in daemon.list_running_attempts()] == [
+            first_attempt.attempt_id
+        ]
+        unchanged = daemon.task_source.get(dependent_cid)
+        assert unchanged is not None
+        assert unchanged.status == "in_progress"
+        assert unchanged.revision == 2
+
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert {
+            (edge["task_cid"], edge["dependency_task_cid"])
+            for edge in projection["dependency_edges"]
+        } >= {(dependent_cid, dependency_cid)}
+        retry_claims = [
+            claim
+            for claim in projection["task_claims"]
+            if claim["task_cid"] == dependent_cid
+            and int(claim["attempt_number"]) == 2
+        ]
+        assert len(retry_claims) == 1
+        assert retry_claims[0]["state"] == "released"
+
+        evidence_digest = "sha256:" + "d" * 64
+        daemon.task_source.record_validation_result(
+            task_cid=dependency_cid,
+            outcome="passed",
+            evidence_digest=evidence_digest,
+            argv=("dependency-recompleted",),
+        )
+        reopened_dependency = daemon.task_source.get(dependency_cid)
+        assert reopened_dependency is not None
+        daemon.task_source.compare_and_set_status(
+            dependency_cid,
+            expected_revision=int(reopened_dependency.revision),
+            status="completed",
+            evidence_digests=(evidence_digest,),
+        )
+        converged_retry = daemon.claim_next(exclude_task_cids=(dependency_cid,))
+        assert converged_retry is not None
+        assert converged_retry.task_cid == dependent_cid
+        assert converged_retry.attempt_number == 3
+    finally:
+        daemon.close()
 
 def test_strict_shards_claim_only_home_lane_tasks(tmp_path: Path) -> None:
     seed = _open_daemon(tmp_path, session="session:seed")
@@ -5665,7 +6496,6 @@ def test_strict_shards_claim_only_home_lane_tasks(tmp_path: Path) -> None:
             daemon.close()
 
     assert len(set(claimed.values())) == 4
-
 
 def test_no_markdown_status_update_under_database_authority(tmp_path: Path) -> None:
     markdown = tmp_path / "tasks.md"
@@ -5700,7 +6530,6 @@ def test_no_markdown_status_update_under_database_authority(tmp_path: Path) -> N
     finally:
         daemon.close()
 
-
 def test_json_projections_can_be_absent(tmp_path: Path) -> None:
     daemon = open_database_implementation_daemon(
         tmp_path / "control.duckdb",
@@ -5726,7 +6555,6 @@ def test_json_projections_can_be_absent(tmp_path: Path) -> None:
         assert not list(tmp_path.glob("*.pid"))
     finally:
         daemon.close()
-
 
 def test_database_task_state_compatibility_projection_marks_exact_idle_completion(
     tmp_path: Path,
@@ -5810,7 +6638,6 @@ def test_database_task_state_compatibility_projection_marks_exact_idle_completio
     finally:
         daemon.close()
 
-
 def test_database_task_state_compatibility_projection_overwrites_stale_terminal_on_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -5845,7 +6672,6 @@ def test_database_task_state_compatibility_projection_overwrites_stale_terminal_
         assert persisted["implementation_in_progress"] is True
     finally:
         daemon.close()
-
 
 def test_database_task_state_compatibility_projection_keeps_skipped_board_nonterminal(
     tmp_path: Path,
@@ -5889,6 +6715,7 @@ def test_database_task_state_compatibility_projection_keeps_skipped_board_nonter
         assert terminal["terminal_quiescent"] is False
     finally:
         daemon.close()
+
 def test_datasets_authoritative_open_requires_preinstalled_operational_profile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -5911,7 +6738,6 @@ def test_datasets_authoritative_open_requires_preinstalled_operational_profile(
         )
     assert not control_path.exists()
     assert not (tmp_path / "execution.duckdb").exists()
-
 
 def test_datasets_authoritative_open_rejects_full_control_plane_schema(
     tmp_path: Path,
@@ -5939,7 +6765,6 @@ def test_datasets_authoritative_open_rejects_full_control_plane_schema(
     assert "proof_obligations" in names
     assert not (tmp_path / "execution.duckdb").exists()
 
-
 def test_datasets_authoritative_open_rejects_tampered_operational_profile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -5966,7 +6791,6 @@ def test_datasets_authoritative_open_rejects_tampered_operational_profile(
             task_source_kind="duckdb",
         )
     assert not (tmp_path / "execution.duckdb").exists()
-
 
 def test_datasets_authoritative_open_verifies_existing_operational_profile(
     tmp_path: Path,
@@ -5999,7 +6823,6 @@ def test_datasets_authoritative_open_verifies_existing_operational_profile(
         assert task.status == "ready"
     finally:
         daemon.close()
-
 
 def test_crash_restart_resumes_without_duplicating_provider_or_effect(
     tmp_path: Path,
@@ -6061,7 +6884,6 @@ def test_crash_restart_resumes_without_duplicating_provider_or_effect(
     finally:
         second.close()
 
-
 def test_implicit_embedded_owner_is_store_scoped_and_restart_stable(
     tmp_path: Path,
 ) -> None:
@@ -6100,7 +6922,6 @@ def test_implicit_embedded_owner_is_store_scoped_and_restart_stable(
     finally:
         second.close()
 
-
 def test_implicit_embedded_owner_is_distinct_for_different_stores(
     tmp_path: Path,
 ) -> None:
@@ -6113,7 +6934,6 @@ def test_implicit_embedded_owner_is_distinct_for_different_stores(
     finally:
         second.close()
         first.close()
-
 
 def test_embedded_writer_lock_rejects_a_concurrent_same_store_opener(
     tmp_path: Path,
@@ -6135,7 +6955,6 @@ def test_embedded_writer_lock_rejects_a_concurrent_same_store_opener(
         assert replacement.owner_session_id == first.owner_session_id
     finally:
         replacement.close()
-
 
 def test_effect_phase_resume_skips_both_provider_and_effect(tmp_path: Path) -> None:
     provider_calls: list[str] = []
@@ -6177,7 +6996,6 @@ def test_effect_phase_resume_skips_both_provider_and_effect(tmp_path: Path) -> N
         assert result["status"] == "succeeded"
     finally:
         second.close()
-
 
 def test_vrif_cached_effect_resume_rechecks_current_semantic_acceptance(
     tmp_path: Path,
@@ -6272,7 +7090,6 @@ def test_vrif_cached_effect_resume_rechecks_current_semantic_acceptance(
     finally:
         resumed.close()
 
-
 def test_vrif_committed_validation_replay_rechecks_semantic_acceptance(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -6365,7 +7182,6 @@ def test_vrif_committed_validation_replay_rechecks_semantic_acceptance(
     finally:
         resumed.close()
 
-
 def test_committed_validation_replay_rejects_fresh_passing_drift(
     tmp_path: Path,
 ) -> None:
@@ -6431,7 +7247,6 @@ def test_committed_validation_replay_rejects_fresh_passing_drift(
         assert task.status == "in_progress"
     finally:
         resumed.close()
-
 
 def test_non_vrif_committed_validation_replay_remains_idempotent(
     tmp_path: Path,
@@ -6501,7 +7316,6 @@ def test_non_vrif_committed_validation_replay_remains_idempotent(
     finally:
         resumed.close()
 
-
 def test_provider_heartbeat_renews_exact_task_claim(tmp_path: Path) -> None:
     holder: dict[str, DatabaseImplementationDaemon] = {}
     observed_revisions: list[int] = []
@@ -6542,6 +7356,45 @@ def test_provider_heartbeat_renews_exact_task_claim(tmp_path: Path) -> None:
     finally:
         daemon.close()
 
+def test_provider_heartbeat_renews_exact_task_claim_aseh(tmp_path: Path) -> None:
+    holder: dict[str, DatabaseImplementationDaemon] = {}
+    observed_revisions: list[int] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        daemon = holder["daemon"]
+        initial = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert initial is not None
+        observed_revisions.append(int(initial.revision))
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            current = daemon.coordinator.get_task_claim(attempt.claim_id)
+            assert current is not None
+            if int(current.revision) > int(initial.revision):
+                observed_revisions.append(int(current.revision))
+                break
+            time.sleep(0.005)
+        assert len(observed_revisions) == 2, "background lease renewal did not run"
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:heartbeat",
+        provider_fn=provider,
+        lease_ms=5_000,
+    )
+    holder["daemon"] = daemon
+    daemon._lease_heartbeat_interval_seconds = 0.01
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(attempt, "context")
+        updated, _, duplicated = daemon.run_provider(attempt)
+        assert duplicated is False
+        assert updated.committed_phase == ATTEMPT_PHASE_PROVIDER
+        assert observed_revisions[1] > observed_revisions[0]
+    finally:
+        daemon.close()
 
 def test_consumed_attempt_terminal_replay_preserves_exact_legacy_failed_phase(
     tmp_path: Path,
@@ -6585,7 +7438,6 @@ def test_consumed_attempt_terminal_replay_preserves_exact_legacy_failed_phase(
         assert result["implementation_result"]["reason"] == "portal_provider_failed"
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize(
     ("field", "value"),
@@ -6634,7 +7486,6 @@ def test_consumed_attempt_evidence_mirrors_bridge_exact_predicates(
             )
     finally:
         daemon.close()
-
 
 def test_protected_preservation_is_distinct_and_crosses_lanes(
     tmp_path: Path,
@@ -6730,7 +7581,6 @@ def test_protected_preservation_is_distinct_and_crosses_lanes(
     finally:
         second.close()
 
-
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -6773,7 +7623,6 @@ def test_protected_preservation_rejects_rehashed_foreign_evidence(
             )
     finally:
         daemon.close()
-
 
 def test_exact_legacy_protected_preservation_block_recovers_once(
     tmp_path: Path,
@@ -6823,7 +7672,6 @@ def test_exact_legacy_protected_preservation_block_recovers_once(
     finally:
         daemon.close()
 
-
 def test_chain_inexact_protected_preservation_block_recovers_once(
     tmp_path: Path,
 ) -> None:
@@ -6871,7 +7719,6 @@ def test_chain_inexact_protected_preservation_block_recovers_once(
         assert daemon.reconcile_terminal_portal_failures() == []
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize("defect", ["historical_revision", "foreign_attempt"])
 def test_protected_preservation_recovery_rejects_unbound_seed_without_rearming(
@@ -6926,7 +7773,6 @@ def test_protected_preservation_recovery_rejects_unbound_seed_without_rearming(
         assert daemon.get_attempt(attempt.attempt_id) == attempt
     finally:
         daemon.close()
-
 
 def test_protected_reconciliation_self_lock_rearms_original_seed_once(
     tmp_path: Path,
@@ -7418,7 +8264,6 @@ def test_protected_reconciliation_self_lock_rearms_original_seed_once(
     finally:
         daemon.close()
 
-
 def test_blocked_self_lock_replay_observes_complete_foreign_control_first(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -7514,7 +8359,6 @@ def test_blocked_self_lock_replay_observes_complete_foreign_control_first(
         )
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize("provider_reset_ms", [2_000_000, 0])
 def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
@@ -7636,7 +8480,6 @@ def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
         assert claim_receipt["capacity_retry_seed"] == seed
     finally:
         second.close()
-
 
 def test_superseded_consumed_attempt_recovers_and_crosses_lanes(
     tmp_path: Path,
@@ -7844,7 +8687,6 @@ def test_superseded_consumed_attempt_recovers_and_crosses_lanes(
         racer.close()
         second.close()
 
-
 def test_consumed_attempt_recovery_rejects_nonlegacy_failed_phase(
     tmp_path: Path,
 ) -> None:
@@ -7872,7 +8714,6 @@ def test_consumed_attempt_recovery_rejects_nonlegacy_failed_phase(
             )
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize(
     ("mutation", "error_type"),
@@ -7948,7 +8789,6 @@ def test_terminal_portal_reconciliation_handles_retrying_projection_contract(
     finally:
         daemon.close()
 
-
 def test_terminal_portal_recovery_projection_observes_newer_fence(
     tmp_path: Path,
 ) -> None:
@@ -8003,7 +8843,6 @@ def test_terminal_portal_recovery_projection_observes_newer_fence(
         assert unchanged.status == "retrying"
     finally:
         daemon.close()
-
 
 def test_exhausted_supersession_with_admitted_repair_survives_reconciliation(
     tmp_path: Path,
@@ -8174,7 +9013,6 @@ def test_exhausted_supersession_with_admitted_repair_survives_reconciliation(
         assert daemon.task_source.get(task_cid).status == "completed"
     finally:
         daemon.close()
-
 
 def test_admitted_exhausted_supersession_is_observed_from_partial_lane(
     tmp_path: Path,
@@ -8354,7 +9192,6 @@ def test_admitted_exhausted_supersession_is_observed_from_partial_lane(
     finally:
         observer.close()
 
-
 @pytest.mark.parametrize(
     "rearm_kind",
     (
@@ -8490,7 +9327,6 @@ def test_exhausted_generic_or_unadmitted_repair_is_reblocked(
     finally:
         daemon.close()
 
-
 @pytest.mark.parametrize(
     "terminal_status",
     ("completed", "complete", "done", "rejected"),
@@ -8563,7 +9399,6 @@ def test_exhausted_typed_deferral_yields_to_later_terminal_control_cas(
         assert daemon.task_source.get(task_cid).status == terminal_status
     finally:
         daemon.close()
-
 
 def test_retry_reconciliation_skips_superseded_coordination_fence(
     tmp_path: Path,
@@ -8691,7 +9526,6 @@ def test_retry_reconciliation_skips_superseded_coordination_fence(
         assert completed_successor["coordination_attempt_status"] == "succeeded"
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize(
     "reconciliation_kind",
@@ -8845,7 +9679,6 @@ def test_failed_attempt_persistence_race_proves_successor_without_mutation(
     finally:
         daemon.close()
 
-
 def test_two_lane_shared_control_receipt_supersedes_token_two_with_token_six(
     tmp_path: Path,
 ) -> None:
@@ -8957,7 +9790,6 @@ def test_two_lane_shared_control_receipt_supersedes_token_two_with_token_six(
         lane_three.close()
         lane_two.close()
 
-
 def test_foreign_control_injected_before_atomic_retry_leaves_no_queue(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -9029,7 +9861,6 @@ def test_foreign_control_injected_before_atomic_retry_leaves_no_queue(
         )
     finally:
         daemon.close()
-
 
 def test_retired_lane_observes_complete_foreign_generic_retry_without_claim(
     tmp_path: Path,
@@ -9200,7 +10031,6 @@ def test_retired_lane_observes_complete_foreign_generic_retry_without_claim(
     finally:
         observer.close()
 
-
 def test_completion_owner_cas_rejects_foreign_shared_claim(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -9287,6 +10117,7 @@ def test_completion_owner_cas_rejects_foreign_shared_claim(
         assert not execution.phase_committed(ATTEMPT_PHASE_COMPLETE)
     finally:
         daemon.close()
+
 def test_provider_result_is_rejected_after_fenced_takeover(tmp_path: Path) -> None:
     now = {"ms": 1_000}
     holder: dict[str, DatabaseImplementationDaemon] = {}
@@ -9338,6 +10169,56 @@ def test_provider_result_is_rejected_after_fenced_takeover(tmp_path: Path) -> No
     finally:
         daemon.close()
 
+def test_provider_result_is_rejected_after_fenced_takeover_aseh(tmp_path: Path) -> None:
+    now = {"ms": 1_000}
+    holder: dict[str, DatabaseImplementationDaemon] = {}
+    replacement_claim_ids: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        daemon = holder["daemon"]
+        # Cross the renewed deadline and let another session claim the same
+        # ready coordination task before this provider result is returned.
+        now["ms"] = 7_000
+        replacement = daemon.coordinator.claim_ready_task(
+            owner_session_id="session:replacement",
+            lease_ms=5_000,
+            now_ms=now["ms"],
+        )
+        assert replacement is not None
+        assert replacement.task_cid == attempt.task_cid
+        replacement_claim_ids.append(replacement.claim_id)
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:stale-provider",
+        provider_fn=provider,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    holder["daemon"] = daemon
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(attempt, "context")
+        with pytest.raises(DatabaseCoordinationError):
+            daemon.run_provider(attempt)
+        assert replacement_claim_ids
+        intent = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        assert intent is not None
+        assert intent["schema"] == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+        assert intent["callback_state"] == "started_outcome_unknown"
+        assert intent["provider_effect_state"] == "unknown_may_have_started"
+        stored = daemon.get_attempt(attempt.attempt_id)
+        assert stored is not None
+        assert stored.committed_phase == "context"
+        assert stored.status == "running"
+    finally:
+        daemon.close()
 
 def test_expired_attempt_cannot_commit_logical_completion(tmp_path: Path) -> None:
     now = {"ms": 1_000}
@@ -9373,7 +10254,6 @@ def test_expired_attempt_cannot_commit_logical_completion(tmp_path: Path) -> Non
         assert stored.status == "running"
     finally:
         daemon.close()
-
 
 def test_restart_retires_prepared_absent_expired_attempt_then_refences_retry(
     tmp_path: Path,
@@ -9431,7 +10311,6 @@ def test_restart_retires_prepared_absent_expired_attempt_then_refences_retry(
         assert replacement_claim.fencing_token > old_attempt.fencing_token
     finally:
         replacement.close()
-
 
 def test_completed_control_cas_is_recovered_from_prepared_barrier(
     tmp_path: Path,
@@ -9515,7 +10394,6 @@ def test_completed_control_cas_is_recovered_from_prepared_barrier(
     finally:
         daemon.close()
 
-
 def test_restart_recovers_prepared_control_completion_without_prior_expiry_sweep(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -9588,7 +10466,6 @@ def test_restart_recovers_prepared_control_completion_without_prior_expiry_sweep
     finally:
         replacement.close()
 
-
 def test_promoted_completion_replays_after_local_phase_response_loss(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -9660,7 +10537,6 @@ def test_promoted_completion_replays_after_local_phase_response_loss(
     finally:
         daemon.close()
 
-
 def test_expired_preparation_without_control_cas_is_aborted_and_requeued(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -9727,7 +10603,6 @@ def test_expired_preparation_without_control_cas_is_aborted_and_requeued(
     finally:
         daemon.close()
 
-
 def test_task_claim_settlement_authority_loss_is_not_suppressed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -9751,7 +10626,6 @@ def test_task_claim_settlement_authority_loss_is_not_suppressed(
             daemon.run_once()
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize(
     ("restart_ms", "expected_claim_state"),
@@ -9826,7 +10700,6 @@ def test_restart_settles_promoted_completion_after_local_complete_crash(
     finally:
         replacement.close()
 
-
 def test_automatic_run_once_never_claims_manual_or_review_only_task(
     tmp_path: Path,
 ) -> None:
@@ -9859,7 +10732,6 @@ def test_automatic_run_once_never_claims_manual_or_review_only_task(
     finally:
         daemon.close()
 
-
 def test_parse_args_accepts_database_authority_flags() -> None:
     args = parse_args(
         [
@@ -9880,7 +10752,6 @@ def test_parse_args_accepts_database_authority_flags() -> None:
     assert args.owner_session_id == "session:cli"
     paths = resolve_database_implementation_paths(args)
     assert paths["database_path"] == Path("/tmp/control.duckdb")
-
 
 def test_runner_builds_database_daemon_without_json_projections(
     tmp_path: Path,
@@ -9930,6 +10801,58 @@ def test_runner_builds_database_daemon_without_json_projections(
     finally:
         daemon.close()
 
+def test_runner_builds_database_daemon_without_json_projections_aseh(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "control.duckdb"
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded",
+            "--database-path",
+            str(database_path),
+            "--todo-path",
+            str(tmp_path / "unused.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "dqp",
+            "--board-namespace",
+            "agent-supervisor-efficiency-and-state-hardening-v1",
+            "--task-shard-count",
+            "4",
+            "--task-shard-index",
+            "3",
+            "--strict-task-sharding",
+            "--max-task-attempts",
+            "3",
+            "--once",
+        ]
+    )
+    daemon = build_database_implementation_daemon_from_args(
+        args,
+        owner_session_id="session:runner",
+    )
+    try:
+        assert isinstance(daemon, DatabaseImplementationDaemon)
+        assert daemon.state_path is None
+        assert daemon.events_path is None
+        assert daemon.max_task_attempts == 3
+        assert daemon.projections_required() is False
+        assert daemon.task_shard_count == 4
+        assert daemon.task_shard_index == 3
+        assert daemon.strict_task_sharding is True
+        assert daemon.board_namespace == (
+            "agent-supervisor-efficiency-and-state-hardening-v1"
+        )
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+        assert result["authority_mode"] == "embedded"
+        assert result["markdown_status_writes"] == 0
+    finally:
+        daemon.close()
 
 @pytest.mark.parametrize(
     ("field_name", "malformed", "message"),
@@ -9961,7 +10884,6 @@ def test_database_runner_preserves_exact_shard_types_for_constructor_guard(
     setattr(args, field_name, malformed)
     with pytest.raises(ValueError, match=message):
         build_database_implementation_daemon_from_args(args)
-
 
 def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
     database_path = tmp_path / "control.duckdb"
@@ -10002,6 +10924,55 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
         assert daemon.task_shard_index == 1
         assert daemon.strict_task_sharding is True
         assert daemon.require_real_execution is True
+    finally:
+        daemon.close()
+
+def test_runner_portal_builder_selects_database_daemon_aseh(tmp_path: Path) -> None:
+    database_path = tmp_path / "control.duckdb"
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded",
+            "--database-path",
+            str(database_path),
+            "--todo-path",
+            str(tmp_path / "board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "dqp",
+            "--task-shard-count",
+            "2",
+            "--task-shard-index",
+            "1",
+            "--strict-task-sharding",
+            "--max-task-attempts",
+            "4",
+            "--implement",
+            "--once",
+        ]
+    )
+    daemon, context = build_portal_implementation_daemon_from_args(
+        args,
+        repo_root=tmp_path,
+    )
+    try:
+        assert isinstance(daemon, DatabaseImplementationDaemon)
+        assert daemon.max_task_attempts == 4
+        assert context.state_path.name.startswith("dqp_")
+        assert daemon.task_shard_count == 2
+        assert daemon.task_shard_index == 1
+        assert daemon.strict_task_sharding is True
+        daemon.materialize_population(_population(2))
+        first = daemon.claim_next()
+        second = daemon.claim_next()
+        # Single session claims one at a time via claim_ready; second claim is
+        # a different task while the first remains leased.
+        assert first is not None
+        assert second is not None
+        assert first.task_cid != second.task_cid
     finally:
         daemon.close()
 
@@ -10092,7 +11063,6 @@ print(json.dumps({"forbidden": forbidden, "receipt": receipt}, sort_keys=True))
     assert metadata == observed["receipt"]["metadata"]
     assert tables == set(observed["receipt"]["tables"])
 
-
 def _validation_retry_receipt(
     daemon: DatabaseImplementationDaemon,
     attempt: DatabaseTaskAttempt,
@@ -10143,7 +11113,6 @@ def _validation_retry_receipt(
     receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
     return receipt
 
-
 def test_direct_selector_never_bypasses_cooldown_when_all_ready_are_cooled() -> None:
     daemon = object.__new__(DatabaseImplementationDaemon)
     daemon.merge_queue = SimpleNamespace(
@@ -10178,7 +11147,6 @@ def test_direct_selector_never_bypasses_cooldown_when_all_ready_are_cooled() -> 
 
     assert selected is None
 
-
 def test_materialization_projects_completed_prerequisites_into_coordination(
     tmp_path: Path,
 ) -> None:
@@ -10199,7 +11167,6 @@ def test_materialization_projects_completed_prerequisites_into_coordination(
         assert attempt.task_cid == "task:cid:002"
     finally:
         daemon.close()
-
 
 def test_fresh_coordination_sidecar_projects_canonical_completed_dependencies(
     tmp_path: Path,
@@ -10246,7 +11213,6 @@ def test_fresh_coordination_sidecar_projects_canonical_completed_dependencies(
     finally:
         daemon.close()
 
-
 def test_claim_next_preserves_canonical_ready_order_for_late_task(
     tmp_path: Path,
 ) -> None:
@@ -10282,7 +11248,6 @@ def test_claim_next_preserves_canonical_ready_order_for_late_task(
         assert attempt.task_cid == "task:cid:late-preferred"
     finally:
         daemon.close()
-
 
 def test_database_observer_without_real_execution_never_resumes_or_claims(
     tmp_path: Path,
@@ -10425,7 +11390,6 @@ def test_database_observer_without_real_execution_never_resumes_or_claims(
         assert int(final_count[0]) == 1
     finally:
         observer.close()
-
 
 def test_failed_attempt_observes_fresh_typed_admission_as_superseding(
     tmp_path: Path,
@@ -10573,7 +11537,6 @@ def test_failed_attempt_observes_fresh_typed_admission_as_superseding(
     finally:
         daemon.close()
 
-
 def test_portal_failure_terminal_cas_refetches_advanced_attempt(
     tmp_path: Path,
 ) -> None:
@@ -10639,7 +11602,6 @@ def test_portal_failure_terminal_cas_refetches_advanced_attempt(
         assert implementation["terminal_state"]["status"] == "blocked"
     finally:
         daemon.close()
-
 
 def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
     tmp_path: Path,
@@ -10710,7 +11672,6 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
         assert claim_receipt["lease_id"] == successor.lease_id
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize(
     ("path_count", "transfer_claim"),
@@ -11517,7 +12478,6 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
     finally:
         daemon.close()
 
-
 def test_transition_invalid_replay_rejects_a_foreign_database_claim(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -11619,7 +12579,6 @@ def test_transition_invalid_replay_rejects_a_foreign_database_claim(
     finally:
         daemon.close()
 
-
 def test_false_completion_reopen_is_not_consumed_by_generic_output_rearm(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -11666,7 +12625,6 @@ def test_false_completion_reopen_is_not_consumed_by_generic_output_rearm(
         assert result["write_count"] == 0
     finally:
         daemon.close()
-
 
 def test_unusable_candidate_reaches_retry_handler_without_generic_requeue(
     tmp_path: Path,
@@ -11718,7 +12676,6 @@ def test_unusable_candidate_reaches_retry_handler_without_generic_requeue(
     finally:
         daemon.close()
 
-
 def test_reconcile_rearms_blocked_portal_provider_failed(tmp_path: Path) -> None:
     def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
         raise DatabasePortalBridgeError("portal_provider_failed")
@@ -11747,6 +12704,59 @@ def test_reconcile_rearms_blocked_portal_provider_failed(tmp_path: Path) -> None
     finally:
         daemon.close()
 
+def test_reconcile_rearms_blocked_portal_provider_failed_aseh(tmp_path: Path) -> None:
+    provider_calls: list[str] = []
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(_attempt.attempt_id)
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:rearm-portal-provider-failed",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        # An exception after callback entry cannot prove no provider effects.
+        # Reclassifying the task must preserve its exact unresolved custody.
+        retained = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert retained is not None
+        assert retained.state.value == "accepted"
+        callback = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        assert callback is not None
+        assert callback["callback_state"] == "started_outcome_unknown"
+        assert callback["provider_effect_state"] == "unknown_may_have_started"
+        failure = daemon.phase_history(attempt.attempt_id)[-1]["body"]
+        assert failure["provider_dispatched"] == "unknown"
+        assert failure["attempt_consumed"] == "unknown"
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "retrying"
+        assert outcomes[0]["changed"] is True
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert daemon.reconcile_terminal_portal_failures() == []
+        assert daemon.coordinator.get_task_claim(attempt.claim_id) == retained
+        assert daemon.claim_next() is None
+        daemon.run_once()
+        assert provider_calls == [attempt.attempt_id]
+        assert daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        ) == callback
+    finally:
+        daemon.close()
 
 def test_reconcile_skips_stale_terminal_after_control_rearm(tmp_path: Path) -> None:
     def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
@@ -11776,7 +12786,6 @@ def test_reconcile_skips_stale_terminal_after_control_rearm(tmp_path: Path) -> N
         assert daemon.task_source.get(attempt.task_cid).status == "ready"
     finally:
         daemon.close()
-
 
 def test_reconcile_rearms_blocked_checkout_contention(tmp_path: Path) -> None:
     def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
@@ -11811,6 +12820,64 @@ def test_reconcile_rearms_blocked_checkout_contention(tmp_path: Path) -> None:
     finally:
         daemon.close()
 
+def test_reconcile_rearms_blocked_checkout_contention_aseh(tmp_path: Path) -> None:
+    provider_calls: list[str] = []
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(_attempt.attempt_id)
+        raise DatabasePortalBridgeError(
+            "external_protected_checkout_recovery_required"
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:rearm-checkout-contention",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        # An exception after callback entry cannot prove no provider effects.
+        # Reclassifying the task must preserve its exact unresolved custody.
+        retained = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert retained is not None
+        assert retained.state.value == "accepted"
+        callback = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        assert callback is not None
+        assert callback["callback_state"] == "started_outcome_unknown"
+        assert callback["provider_effect_state"] == "unknown_may_have_started"
+        failure = daemon.phase_history(attempt.attempt_id)[-1]["body"]
+        assert failure["provider_dispatched"] == "unknown"
+        assert failure["attempt_consumed"] == "unknown"
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "retrying"
+        assert outcomes[0]["changed"] is True
+        assert outcomes[0]["evidence_source"] == (
+            "portal_checkout_contention_reclassified"
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert daemon.reconcile_terminal_portal_failures() == []
+        assert daemon.coordinator.get_task_claim(attempt.claim_id) == retained
+        assert daemon.claim_next() is None
+        daemon.run_once()
+        assert provider_calls == [attempt.attempt_id]
+        assert daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        ) == callback
+    finally:
+        daemon.close()
 
 def test_reconcile_rearms_blocked_missing_implementation_commit_at_attempt_cap(
     tmp_path: Path,
@@ -11859,7 +12926,6 @@ def test_reconcile_rearms_blocked_missing_implementation_commit_at_attempt_cap(
         assert daemon.reconcile_terminal_portal_failures() == []
     finally:
         daemon.close()
-
 
 def test_typed_blocked_reopen_stamps_retry_deadline_before_cas() -> None:
     """Quack cooldown binds the CAS receipt deadline, not a later clock."""
@@ -11952,7 +13018,6 @@ def test_typed_blocked_reopen_stamps_retry_deadline_before_cas() -> None:
     assert result["transition_receipt"]["retry_not_before_ms"] == 1_700_000
     assert result["previous_status"] == "blocked"
 
-
 def test_blocked_retry_prefers_atomic_queue_status_over_typed_cooldown(
     tmp_path: Path,
 ) -> None:
@@ -11985,7 +13050,6 @@ def test_blocked_retry_prefers_atomic_queue_status_over_typed_cooldown(
         assert daemon.task_source.get(attempt.task_cid).status == "retrying"
     finally:
         daemon.close()
-
 
 def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
     tmp_path: Path,
@@ -12042,7 +13106,6 @@ def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
     finally:
         daemon.close()
 
-
 @pytest.mark.parametrize("control_status", ("completed", "todo"))
 def test_terminal_portal_reconciliation_skips_settled_control_status(
     tmp_path: Path,
@@ -12079,7 +13142,6 @@ def test_terminal_portal_reconciliation_skips_settled_control_status(
         assert daemon.reconcile_terminal_portal_failures() == []
     finally:
         daemon.close()
-
 
 def test_terminal_portal_reconciliation_accepts_board_unstall_retrying(
     tmp_path: Path,
@@ -12121,7 +13183,6 @@ def test_terminal_portal_reconciliation_accepts_board_unstall_retrying(
     finally:
         daemon.close()
 
-
 def test_proposal_gate_failure_retries_instead_of_blocking(
     tmp_path: Path,
 ) -> None:
@@ -12146,7 +13207,6 @@ def test_proposal_gate_failure_retries_instead_of_blocking(
         assert daemon.task_source.get(attempt.task_cid).status == "retrying"
     finally:
         daemon.close()
-
 
 def test_quack_attach_contention_defers_instead_of_crashing(
     tmp_path: Path,
@@ -12178,7 +13238,6 @@ def test_quack_attach_contention_defers_instead_of_crashing(
         assert result.get("provider_dispatched") is False
     finally:
         daemon.close()
-
 
 def test_wrapped_quack_attach_contention_still_defers(
     tmp_path: Path,
@@ -12214,7 +13273,6 @@ def test_wrapped_quack_attach_contention_still_defers(
     finally:
         daemon.close()
 
-
 def test_stale_quack_authority_binding_defers_instead_of_killing_the_daemon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -12248,7 +13306,6 @@ def test_stale_quack_authority_binding_defers_instead_of_killing_the_daemon(
         assert result["deferred"] is True
     finally:
         daemon.close()
-
 
 def test_expired_quack_grant_rebinds_instead_of_idling_forever(
     tmp_path: Path,
@@ -12308,7 +13365,6 @@ def test_expired_quack_grant_rebinds_instead_of_idling_forever(
     finally:
         daemon.close()
 
-
 def test_owner_command_fatal_defers_instead_of_killing_the_daemon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -12332,7 +13388,6 @@ def test_owner_command_fatal_defers_instead_of_killing_the_daemon(
         assert result["deferred"] is True
     finally:
         daemon.close()
-
 
 def test_stale_retry_cooldown_lineage_does_not_fail_attempt_floor(
     tmp_path: Path,
@@ -12387,7 +13442,6 @@ def test_stale_retry_cooldown_lineage_does_not_fail_attempt_floor(
     finally:
         daemon.close()
 
-
 def test_authorization_denied_claim_cas_is_attach_contention(
     tmp_path: Path,
 ) -> None:
@@ -12416,7 +13470,6 @@ def test_authorization_denied_claim_cas_is_attach_contention(
     finally:
         daemon.close()
 
-
 def test_typed_blocked_recovery_unavailable_is_not_attach_contention(
     tmp_path: Path,
 ) -> None:
@@ -12437,7 +13490,6 @@ def test_typed_blocked_recovery_unavailable_is_not_attach_contention(
         assert daemon._run_reconciliation_step(_raise) == []
     finally:
         daemon.close()
-
 
 def test_claim_cas_authorization_denied_releases_unadmitted_claim_and_defers(
     tmp_path: Path,
@@ -12483,7 +13535,6 @@ def test_claim_cas_authorization_denied_releases_unadmitted_claim_and_defers(
     finally:
         daemon.close()
 
-
 def test_wrapped_uncertain_transaction_authority_error_is_not_attach_contention(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -12522,7 +13573,6 @@ def test_wrapped_uncertain_transaction_authority_error_is_not_attach_contention(
             daemon.run_once()
     finally:
         daemon.close()
-
 
 def test_uncertain_transaction_reopens_only_owned_lane_sidecars(
     tmp_path: Path,
@@ -12587,7 +13637,6 @@ def test_uncertain_transaction_reopens_only_owned_lane_sidecars(
     finally:
         daemon.close()
 
-
 def test_uncertain_transaction_sidecar_reopen_does_not_retry_same_pass(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -12628,7 +13677,6 @@ def test_uncertain_transaction_sidecar_reopen_does_not_retry_same_pass(
     finally:
         daemon.close()
 
-
 def test_uncertain_transaction_sidecar_reopen_is_consecutively_bounded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -12662,7 +13710,6 @@ def test_uncertain_transaction_sidecar_reopen_is_consecutively_bounded(
         assert len({id(connection) for connection in opened_connections}) == 3
     finally:
         daemon.close()
-
 
 def test_successful_pass_resets_consecutive_sidecar_reopen_bound(
     tmp_path: Path,
@@ -12698,7 +13745,6 @@ def test_successful_pass_resets_consecutive_sidecar_reopen_bound(
     finally:
         daemon.close()
 
-
 def test_wrapped_quack_authority_mismatch_remains_fatal(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -12731,7 +13777,6 @@ def test_wrapped_quack_authority_mismatch_remains_fatal(
     finally:
         daemon.close()
 
-
 def test_quack_attach_contention_requests_owner_board_unstall(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -12762,7 +13807,6 @@ def test_quack_attach_contention_requests_owner_board_unstall(
         assert payload["op"] == "board_unstall"
     finally:
         daemon.close()
-
 
 def test_run_once_unstalls_stale_in_progress_gate_and_claims(
     tmp_path: Path,
@@ -12801,7 +13845,6 @@ def test_run_once_unstalls_stale_in_progress_gate_and_claims(
     finally:
         daemon.close()
 
-
 def test_orphan_in_progress_unstall_preserves_unbound_control_row(
     tmp_path: Path,
 ) -> None:
@@ -12834,7 +13877,6 @@ def test_orphan_in_progress_unstall_preserves_unbound_control_row(
         assert retried.status == "in_progress"
     finally:
         daemon.close()
-
 
 def test_orphan_in_progress_unstall_leaves_live_lifecycle_owner_alone(
     tmp_path: Path,
@@ -12884,7 +13926,6 @@ def test_orphan_in_progress_unstall_leaves_live_lifecycle_owner_alone(
     finally:
         daemon.close()
 
-
 def test_stale_in_progress_unstall_leaves_live_attempts_alone(
     tmp_path: Path,
 ) -> None:
@@ -12913,7 +13954,6 @@ def test_stale_in_progress_unstall_leaves_live_attempts_alone(
         assert live.status == "in_progress"
     finally:
         daemon.close()
-
 
 def test_quack_attach_contention_still_expires_running_attempts(
     tmp_path: Path,
@@ -12960,6 +14000,49 @@ def test_quack_attach_contention_still_expires_running_attempts(
     finally:
         daemon.close()
 
+def test_quack_attach_contention_still_expires_running_attempts_aseh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QuackTransportContentionError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-attach-expire",
+        max_task_attempts=3,
+    )
+    try:
+        def boom(*_args: object, **_kwargs: object) -> list[object]:
+            raise QuackTransportContentionError(
+                "quack control-plane attach contended: Authentication failed"
+            )
+
+        expired = [
+            {
+                "status": "expired",
+                "reason": "coordination_lease_expired_before_completion",
+            }
+        ]
+        seen = {"expired": False}
+
+        def expire() -> list[dict[str, object]]:
+            seen["expired"] = True
+            return expired
+
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        monkeypatch.setattr(daemon, "reconcile_expired_running_attempts", expire)
+        monkeypatch.setattr(daemon, "reconcile_terminal_portal_failures", boom)
+        monkeypatch.setattr(daemon, "reconcile_terminal_retry_states", lambda: [])
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        result = daemon.run_once()
+        assert seen["expired"] is True
+        assert result.get("expired_attempt_reconciliations") == expired
+        assert result.get("selection_idle_reason") == "no_ready_tasks"
+    finally:
+        daemon.close()
 
 def test_inflight_process_failure_retries_instead_of_blocking(
     tmp_path: Path,
@@ -12985,7 +14068,6 @@ def test_inflight_process_failure_retries_instead_of_blocking(
         assert daemon.task_source.get(attempt.task_cid).status == "retrying"
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize("restart_count", [1, 2])
 def test_supervisor_checkout_recovery_survives_daemon_restart(
@@ -13044,7 +14126,6 @@ def test_supervisor_checkout_recovery_survives_daemon_restart(
     finally:
         restarted.close()
 
-
 def test_inflight_process_deferral_does_not_exhaust_typed_budget(
     tmp_path: Path,
 ) -> None:
@@ -13080,7 +14161,6 @@ def test_inflight_process_deferral_does_not_exhaust_typed_budget(
         assert task.status == "retrying"
     finally:
         daemon.close()
-
 
 def test_reconcile_keeps_inflight_deferral_block_without_typed_supersession(
     tmp_path: Path,
@@ -13141,7 +14221,6 @@ def test_reconcile_keeps_inflight_deferral_block_without_typed_supersession(
     finally:
         daemon.close()
 
-
 def test_reconcile_refuses_unbound_inflight_deferral_budget_block(
     tmp_path: Path,
 ) -> None:
@@ -13185,7 +14264,6 @@ def test_reconcile_refuses_unbound_inflight_deferral_budget_block(
         assert blocked.status == "blocked"
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize(
     ("mutation", "error_type"),
@@ -13247,7 +14325,6 @@ def test_terminal_portal_reconciliation_rejects_foreign_retrying_projection(
     finally:
         daemon.close()
 
-
 def test_terminal_portal_recovery_projection_rejects_newer_fence(
     tmp_path: Path,
 ) -> None:
@@ -13307,6 +14384,54 @@ def test_terminal_portal_recovery_projection_rejects_newer_fence(
     finally:
         daemon.close()
 
+def test_terminal_portal_recovery_projection_rejects_newer_fence_aseh(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:validation-retry-recovery-newer-fence",
+        provider_fn=provider,
+        max_task_attempts=3,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        daemon.recover_blocked_portal_validation_retry(
+            attempt,
+            retry_evidence=_validation_retry_receipt(daemon, attempt),
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+
+        source_claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert source_claim is not None
+        now["ms"] = 7_000
+        daemon.coordinator.expire_task_claim(source_claim, now_ms=now["ms"])
+        newer = daemon.coordinator.claim_ready_task(
+            owner_session_id="session:newer-validation-retry-fence",
+            lease_ms=5_000,
+            now_ms=now["ms"],
+        )
+        assert newer is not None
+        assert newer.fencing_token > attempt.fencing_token
+
+        with pytest.raises(DatabaseCoordinationError):
+            daemon.reconcile_terminal_portal_failures()
+        unchanged = daemon.task_source.get(attempt.task_cid)
+        assert unchanged is not None
+        assert unchanged.status == "retrying"
+    finally:
+        daemon.close()
 
 def test_restart_accepts_exact_validation_retry_recovery_projection(
     tmp_path: Path,
@@ -13355,7 +14480,6 @@ def test_restart_accepts_exact_validation_retry_recovery_projection(
     finally:
         restarted.close()
 
-
 def test_restart_finishes_terminal_portal_failure_control_cas(
     tmp_path: Path,
 ) -> None:
@@ -13388,7 +14512,6 @@ def test_restart_finishes_terminal_portal_failure_control_cas(
         assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
     finally:
         daemon.close()
-
 
 def test_typed_portal_deferral_honors_canonical_cooldown_after_lease_expiry(
     tmp_path: Path,
@@ -13450,7 +14573,6 @@ def test_typed_portal_deferral_honors_canonical_cooldown_after_lease_expiry(
         assert retried_task.revision == 5
     finally:
         daemon.close()
-
 
 def test_typed_portal_deferral_budget_blocks_before_fourth_dispatch(
     tmp_path: Path,
@@ -13514,7 +14636,6 @@ def test_typed_portal_deferral_budget_blocks_before_fourth_dispatch(
     finally:
         daemon.close()
 
-
 def test_mixed_leftover_wait_deferrals_do_not_consume_typed_budget(
     tmp_path: Path,
 ) -> None:
@@ -13562,7 +14683,6 @@ def test_mixed_leftover_wait_deferrals_do_not_consume_typed_budget(
         assert observed_reasons == reasons
     finally:
         daemon.close()
-
 
 def test_run_once_rearms_identity_bound_mixed_leftover_wait_exhaustion(
     tmp_path: Path,
@@ -13652,7 +14772,6 @@ def test_run_once_rearms_identity_bound_mixed_leftover_wait_exhaustion(
     finally:
         daemon.close()
 
-
 def test_portal_execution_incomplete_deferrals_do_not_consume_typed_budget(
     tmp_path: Path,
 ) -> None:
@@ -13700,7 +14819,6 @@ def test_portal_execution_incomplete_deferrals_do_not_consume_typed_budget(
         assert observed_reasons == reasons
     finally:
         daemon.close()
-
 
 def test_run_once_rearms_portal_execution_incomplete_budget_exhaustion(
     tmp_path: Path,
@@ -13771,7 +14889,6 @@ def test_run_once_rearms_portal_execution_incomplete_budget_exhaustion(
     finally:
         daemon.close()
 
-
 def test_run_once_rearms_portal_execution_incomplete_empty_coordination(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -13837,7 +14954,6 @@ def test_run_once_rearms_portal_execution_incomplete_empty_coordination(
     finally:
         daemon.close()
 
-
 def test_provider_capacity_exhausted_deferrals_do_not_consume_typed_budget(
     tmp_path: Path,
 ) -> None:
@@ -13885,7 +15001,6 @@ def test_provider_capacity_exhausted_deferrals_do_not_consume_typed_budget(
         assert observed_reasons == reasons
     finally:
         daemon.close()
-
 
 def test_run_once_rearms_provider_capacity_exhausted_budget_exhaustion(
     tmp_path: Path,
@@ -13956,7 +15071,6 @@ def test_run_once_rearms_provider_capacity_exhausted_budget_exhaustion(
     finally:
         daemon.close()
 
-
 def test_leftover_wait_budget_recovery_rejects_mixed_non_wait_reason(
     tmp_path: Path,
 ) -> None:
@@ -14006,7 +15120,6 @@ def test_leftover_wait_budget_recovery_rejects_mixed_non_wait_reason(
         assert daemon.task_source.get(attempt.task_cid).status == "blocked"
     finally:
         daemon.close()
-
 
 def test_leftover_wait_current_does_not_exhaust_against_capacity_history(
     tmp_path: Path,
@@ -14063,7 +15176,6 @@ def test_leftover_wait_current_does_not_exhaust_against_capacity_history(
     finally:
         daemon.close()
 
-
 def _foreign_matching_leftover_wait_current_budget(
     daemon: DatabaseImplementationDaemon,
     matching_attempts: list[DatabaseTaskAttempt],
@@ -14084,7 +15196,6 @@ def _foreign_matching_leftover_wait_current_budget(
     budget.pop("observation_id")
     budget["observation_id"] = daemon._database_portal_evidence_digest(budget)
     return budget
-
 
 def test_leftover_wait_current_foreign_matching_recovers(
     tmp_path: Path,
@@ -14167,7 +15278,6 @@ def test_leftover_wait_current_foreign_matching_recovers(
     finally:
         daemon.close()
 
-
 def test_leftover_wait_recovery_prefers_atomic_owner_path_over_cooldown(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -14236,7 +15346,6 @@ def test_leftover_wait_recovery_prefers_atomic_owner_path_over_cooldown(
         assert rearmed is not None and rearmed.status == "retrying"
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize("drift_surface", ("direct_seed", "reconciler_budget"))
 def test_leftover_wait_recovery_rejects_self_hashed_reason_drift(
@@ -14347,7 +15456,6 @@ def test_leftover_wait_recovery_rejects_self_hashed_reason_drift(
     finally:
         daemon.close()
 
-
 @pytest.mark.parametrize("leftover_wait_count", (17, 65))
 def test_typed_deferral_budget_paginates_past_leftover_wait_history(
     tmp_path: Path,
@@ -14454,7 +15562,6 @@ def test_typed_deferral_budget_paginates_past_leftover_wait_history(
     finally:
         daemon.close()
 
-
 def test_legacy_failed_claim_does_not_consume_typed_deferral_budget(
     tmp_path: Path,
 ) -> None:
@@ -14508,7 +15615,6 @@ def test_legacy_failed_claim_does_not_consume_typed_deferral_budget(
         ]["typed_deferral_count"] == 1
     finally:
         daemon.close()
-
 
 def test_restart_reconciles_exhausted_typed_deferral_without_new_claim(
     tmp_path: Path,
@@ -14578,7 +15684,6 @@ def test_restart_reconciles_exhausted_typed_deferral_without_new_claim(
         assert len(provider_attempts) == 2
     finally:
         replacement.close()
-
 
 def test_exhaustion_blocks_already_retrying_task_and_bounds_evidence_preview(
     tmp_path: Path,
@@ -14653,7 +15758,6 @@ def test_exhaustion_blocks_already_retrying_task_and_bounds_evidence_preview(
     finally:
         daemon.close()
 
-
 def test_typed_deferral_from_old_state_schema_does_not_consume_current_budget(
     tmp_path: Path,
 ) -> None:
@@ -14694,7 +15798,6 @@ def test_typed_deferral_from_old_state_schema_does_not_consume_current_budget(
         assert evidence["typed_deferral_budget"] is None
     finally:
         daemon.close()
-
 
 def test_restart_reconciles_failed_execution_and_expired_coordination_claim(
     tmp_path: Path,
@@ -14779,7 +15882,6 @@ def test_restart_reconciles_failed_execution_and_expired_coordination_claim(
     finally:
         replacement.close()
 
-
 def test_retry_reconciliation_reuses_attempt_bound_queue_after_cas_crash(
     tmp_path: Path,
 ) -> None:
@@ -14830,7 +15932,6 @@ def test_retry_reconciliation_reuses_attempt_bound_queue_after_cas_crash(
         assert task.revision == 3
     finally:
         daemon.close()
-
 
 def test_typed_blocked_recovery_fails_before_cooldown_write() -> None:
     writes: list[str] = []
@@ -14910,7 +16011,6 @@ def test_typed_blocked_recovery_fails_before_cooldown_write() -> None:
     assert source.task.status == "blocked"
     assert source.task.revision == 3
 
-
 def test_typed_protected_blocked_recovery_fails_before_queue_write() -> None:
     writes: list[str] = []
 
@@ -14983,7 +16083,6 @@ def test_typed_protected_blocked_recovery_fails_before_queue_write() -> None:
     assert source.entry is None
     assert source.task.status == "blocked"
     assert source.task.revision == 3
-
 
 def test_embedded_expanded_blocked_recovery_uses_atomic_queue_status() -> None:
     calls: list[str] = []
@@ -15082,7 +16181,6 @@ def test_embedded_expanded_blocked_recovery_uses_atomic_queue_status() -> None:
     assert source.task.status == "blocked"
     assert source.task.revision == 3
 
-
 def test_legacy_blocked_recovery_fails_before_queue_without_atomic_surface() -> None:
     calls: list[str] = []
 
@@ -15155,7 +16253,6 @@ def test_legacy_blocked_recovery_fails_before_queue_without_atomic_surface() -> 
     assert source.entry is None
     assert source.task.status == "blocked"
     assert source.task.revision == 3
-
 
 @pytest.mark.parametrize(
     ("error_type", "error_message"),
@@ -15292,7 +16389,6 @@ def test_blocked_recovery_propagates_coordination_errors_without_mutation(
     assert task.body == original_body
     assert source.get_queue_entry(task.task_cid) is None
 
-
 def test_typed_retrying_reuse_validates_immutable_admitted_delay() -> None:
     calls: list[str] = []
 
@@ -15385,7 +16481,6 @@ def test_typed_retrying_reuse_validates_immutable_admitted_delay() -> None:
     assert result["backoff_ms"] == 299_000
     assert result["retry_not_before_ms"] == 5_000
 
-
 def test_retrying_cooldown_repair_payload_follows_control_receipt() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
         TypedDatabaseTaskSource,
@@ -15436,7 +16531,6 @@ def test_retrying_cooldown_repair_payload_follows_control_receipt() -> None:
     task.body = {"completion_receipt": stale}
     assert TypedDatabaseTaskSource._retrying_cooldown_repair_payload(task) is None
 
-
 def test_reconcile_retrying_cooldown_bindings_uses_typed_repair() -> None:
     calls: list[str] = []
 
@@ -15479,7 +16573,6 @@ def test_reconcile_retrying_cooldown_bindings_uses_typed_repair() -> None:
         == []
     )
 
-
 def test_terminal_portal_reason_skips_failed_attempt_without_phase_receipt() -> None:
     daemon = SimpleNamespace(phase_history=lambda _attempt_id: [])
     attempt = SimpleNamespace(attempt_id="attempt:missing-failed-phase")
@@ -15497,7 +16590,6 @@ def test_terminal_portal_reason_skips_failed_attempt_without_phase_receipt() -> 
         )
         is None
     )
-
 
 def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_landed() -> None:
     cas: list[dict[str, object]] = []
@@ -15586,7 +16678,6 @@ def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_landed() 
         "operation": "legacy_retry"
     }
 
-
 def _git_repo_with_gitlink(
     tmp_path: Path,
     *,
@@ -15660,7 +16751,6 @@ def _git_repo_with_gitlink(
     assert missing.returncode != 0
     return repo
 
-
 def test_git_tree_contains_gitlink_without_parent_object(tmp_path: Path) -> None:
     repo = _git_repo_with_gitlink(tmp_path)
     daemon = SimpleNamespace(
@@ -15691,7 +16781,6 @@ def test_git_tree_contains_gitlink_without_parent_object(tmp_path: Path) -> None
         )
         == "commit"
     )
-
 
 def test_gitlink_only_outputs_are_not_landed_without_merge_proof(
     tmp_path: Path,
@@ -15724,7 +16813,6 @@ def test_gitlink_only_outputs_are_not_landed_without_merge_proof(
         is False
     )
 
-
 def test_gitlink_plus_blob_outputs_count_as_landed(tmp_path: Path) -> None:
     repo = _git_repo_with_gitlink(tmp_path)
     task = SimpleNamespace(
@@ -15749,7 +16837,6 @@ def test_gitlink_plus_blob_outputs_count_as_landed(tmp_path: Path) -> None:
         DatabaseImplementationDaemon._task_outputs_landed_on_target(daemon, task)
         is True
     )
-
 
 def test_gitlink_only_outputs_land_with_completed_merge_request(
     tmp_path: Path,
@@ -15786,7 +16873,6 @@ def test_gitlink_only_outputs_land_with_completed_merge_request(
         DatabaseImplementationDaemon._task_outputs_landed_on_target(daemon, task)
         is True
     )
-
 
 def test_reconcile_landed_merged_tasks_completes_retrying_without_control_receipt() -> None:
     cas: list[dict[str, object]] = []
@@ -15873,7 +16959,6 @@ def test_reconcile_landed_merged_tasks_completes_retrying_without_control_receip
     assert cas[0]["expected_control_receipt"] is None
     assert cas[0]["receipt_operation"] == "database_landed_merge_repair"
 
-
 def test_quack_landed_retrying_does_not_cas_completed_without_admitted_claim() -> None:
     cas: list[dict[str, object]] = []
 
@@ -15940,7 +17025,6 @@ def test_quack_landed_retrying_does_not_cas_completed_without_admitted_claim() -
     assert outcomes[0]["completed"] is False
     assert outcomes[0]["reason"] == "landed_outputs_require_admitted_completion"
     assert cas == []
-
 
 def test_quack_bootstrap_without_command_gateway_does_not_cas_landed_retrying() -> None:
     """Production lanes attach through state-owner bootstrap, not a command gateway."""
@@ -16012,7 +17096,6 @@ def test_quack_bootstrap_without_command_gateway_does_not_cas_landed_retrying() 
     assert outcomes[0]["completed"] is False
     assert outcomes[0]["reason"] == "landed_outputs_require_admitted_completion"
     assert cas == []
-
 
 def test_quack_bootstrap_in_progress_completes_with_admitted_claim() -> None:
     cas: list[dict[str, object]] = []
@@ -16132,7 +17215,6 @@ def test_quack_bootstrap_in_progress_completes_with_admitted_claim() -> None:
     )
     assert cas[0]["expected_control_receipt"]["attempt_id"] == "attempt:1"
 
-
 def test_quack_landed_in_progress_completes_with_admitted_claim() -> None:
     cas: list[dict[str, object]] = []
     admitted = {
@@ -16249,7 +17331,6 @@ def test_quack_landed_in_progress_completes_with_admitted_claim() -> None:
     )
     assert cas[0]["expected_control_receipt"]["attempt_id"] == "attempt:1"
 
-
 def test_resume_without_process_crash_requeues_missing_receipt_without_killing_daemon() -> None:
     attempt = SimpleNamespace(
         attempt_id="attempt:1",
@@ -16292,7 +17373,6 @@ def test_resume_without_process_crash_requeues_missing_receipt_without_killing_d
     assert result["reason"] == "unaccepted_unknown_callback_requeued"
     assert retired == ["attempt:1"]
 
-
 def test_resume_without_process_crash_completes_landed_missing_receipt() -> None:
     attempt = SimpleNamespace(
         attempt_id="attempt:1",
@@ -16329,7 +17409,6 @@ def test_resume_without_process_crash_completes_landed_missing_receipt() -> None
     assert result["landed_outputs_completed"] is True
     assert result["status"] == "completed"
 
-
 def test_execute_retry_transition_runs_callback_for_released_claim() -> None:
     calls: list[str] = []
     daemon = SimpleNamespace()
@@ -16342,7 +17421,6 @@ def test_execute_retry_transition_runs_callback_for_released_claim() -> None:
     )
     assert calls == ["ran"]
     assert result == "ok"
-
 
 def test_reconcile_failed_attempt_observes_released_claim() -> None:
     attempt = SimpleNamespace(
@@ -16398,7 +17476,6 @@ def test_reconcile_failed_attempt_observes_released_claim() -> None:
     assert observed["historical_released"] is True
     assert observed["attempt_id"] == "attempt:1"
 
-
 def test_typed_attempt_floor_survives_stale_retry_cooldown() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         TaskSourceIntegrityError,
@@ -16445,7 +17522,6 @@ def test_typed_attempt_floor_survives_stale_retry_cooldown() -> None:
         == 2
     )
 
-
 def test_resume_completes_landed_outputs_before_provider() -> None:
     attempt = SimpleNamespace(
         attempt_id="attempt:1",
@@ -16480,7 +17556,6 @@ def test_resume_completes_landed_outputs_before_provider() -> None:
     assert result["landed_outputs_completed"] is True
     assert result["status"] == "completed"
 
-
 def test_rearm_landed_retrying_without_local_attempt_is_claimable() -> None:
     task = SimpleNamespace(
         task_cid="task:pcpr-002",
@@ -16507,7 +17582,6 @@ def test_rearm_landed_retrying_without_local_attempt_is_claimable() -> None:
     assert outcome["rearmed"] is True
     assert outcome["completed"] is False
     assert outcome["reason"] == "landed_retrying_claimable"
-
 
 def test_complete_landed_admitted_retries_minimal_receipt() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
@@ -16588,7 +17662,6 @@ def test_complete_landed_admitted_retries_minimal_receipt() -> None:
     assert cas_receipts[1]["operation"] == "database_complete"
     assert cas_receipts[1]["attempt_id"] == "attempt:1"
 
-
 def test_resume_unknown_callback_completes_landed_outputs() -> None:
     attempt = SimpleNamespace(
         attempt_id="attempt:1",
@@ -16626,7 +17699,6 @@ def test_resume_unknown_callback_completes_landed_outputs() -> None:
     assert result["landed_outputs_completed"] is True
     assert result["status"] == "completed"
 
-
 def test_git_index_lock_contention_text_detects_writer_lock() -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         PortalImplementationDaemon,
@@ -16644,7 +17716,6 @@ def test_git_index_lock_contention_text_detects_writer_lock() -> None:
         "Automatic merge failed; fix conflicts and then commit the result.\n"
     )
 
-
 def test_repair_stale_git_index_lock_removes_inactive_lock(tmp_path: Path) -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         PortalImplementationDaemon,
@@ -16658,7 +17729,6 @@ def test_repair_stale_git_index_lock_removes_inactive_lock(tmp_path: Path) -> No
     result = PortalImplementationDaemon._repair_stale_git_index_lock(daemon, repo)
     assert result["removed"] is True
     assert not lock.exists()
-
 
 def test_database_lane_consumes_pending_merge_train() -> None:
     daemon = SimpleNamespace(
@@ -16678,7 +17748,6 @@ def test_database_lane_consumes_pending_merge_train() -> None:
     assert result["write_count"] == 1
     assert result["request_id"] == "req-1"
 
-
 def test_database_lane_pending_merge_consume_unbound() -> None:
     daemon = SimpleNamespace(_pending_merge_train_consume_fn=None)
     result = DatabaseImplementationDaemon._consume_bound_pending_merge_train(
@@ -16686,7 +17755,6 @@ def test_database_lane_pending_merge_consume_unbound() -> None:
     )
     assert result["attempted"] is False
     assert result["reason"] == "pending_merge_consume_not_bound"
-
 
 def test_reconcile_landed_merged_tasks_requires_fresh_portal_after_operator_recovery() -> None:
     requirement = typed_database_blocked_retry_revalidation_requirement(
@@ -16732,7 +17800,6 @@ def test_reconcile_landed_merged_tasks_requires_fresh_portal_after_operator_reco
 
     assert DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon) == []
 
-
 def test_fresh_portal_requirement_survives_control_receipt_rotations() -> None:
     task_cid = "task:pcsm-013"
     requirement = typed_database_blocked_retry_revalidation_requirement(
@@ -16765,7 +17832,6 @@ def test_fresh_portal_requirement_survives_control_receipt_rotations() -> None:
             task,
         )
 
-
 def test_malformed_fresh_portal_requirement_fails_closed() -> None:
     task = SimpleNamespace(
         task_cid="task:pcsm-013",
@@ -16783,7 +17849,6 @@ def test_malformed_fresh_portal_requirement_fails_closed() -> None:
             SimpleNamespace(),
             task,
         )
-
 
 def test_landed_repair_rechecks_fresh_portal_requirement_after_validation_race() -> None:
     task_cid = "task:pcsm-013"
@@ -16852,7 +17917,6 @@ def test_landed_repair_rechecks_fresh_portal_requirement_after_validation_race()
         is None
     )
     assert source.validation_recorded is True
-
 
 def test_persist_retry_settles_when_cooldown_matches_receipt_not_attempt() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
@@ -16941,7 +18005,6 @@ def test_persist_retry_settles_when_cooldown_matches_receipt_not_attempt() -> No
     assert outcome["reason"] == "retrying_cooldown_bound_to_control_receipt"
     assert outcome["retry_not_before_ms"] == 1_000
 
-
 def test_retry_reconciliation_repairs_retrying_without_queue(
     tmp_path: Path,
 ) -> None:
@@ -16986,7 +18049,6 @@ def test_retry_reconciliation_repairs_retrying_without_queue(
         assert entry.retry_not_before_ms == 301_000
     finally:
         daemon.close()
-
 
 def test_retry_reconciliation_rejects_superseded_coordination_fence(
     tmp_path: Path,
@@ -17044,6 +18106,53 @@ def test_retry_reconciliation_rejects_superseded_coordination_fence(
     finally:
         daemon.close()
 
+def test_retry_reconciliation_rejects_superseded_coordination_fence_aseh(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:superseded-retry-fence",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_attempt = daemon.claim_next()
+        assert failed_attempt is not None
+        failed_attempt = daemon.commit_phase(failed_attempt, "context")
+        failed_attempt = daemon.commit_phase(
+            failed_attempt,
+            "failed",
+            body={
+                "reason": "typed_deferral",
+                "portal_retryable_failure": True,
+                "backoff_seconds": 300,
+            },
+        )
+        old_claim = daemon.coordinator.get_task_claim(failed_attempt.claim_id)
+        assert old_claim is not None
+        now["ms"] = 7_000
+        daemon.coordinator.expire_task_claim(old_claim, now_ms=now["ms"])
+        replacement = daemon.coordinator.claim_ready_task(
+            owner_session_id="session:newer-fence",
+            lease_ms=5_000,
+            now_ms=now["ms"],
+        )
+        assert replacement is not None
+        assert replacement.fencing_token > failed_attempt.fencing_token
+
+        outcomes = daemon.reconcile_terminal_retry_states()
+        assert any(
+            item.get("reason") == "stale_retry_fence_skipped" for item in outcomes
+        )
+
+        control = daemon.task_source.get(failed_attempt.task_cid)
+        assert control is not None
+        assert control.status == "in_progress"
+        assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
+    finally:
+        daemon.close()
 
 def test_retry_reconciliation_rejects_manual_task(
     tmp_path: Path,
@@ -17101,7 +18210,6 @@ def test_retry_reconciliation_rejects_manual_task(
     finally:
         daemon.close()
 
-
 def test_current_control_recheck_rejects_task_that_became_manual(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -17149,7 +18257,6 @@ def test_current_control_recheck_rejects_task_that_became_manual(
         assert current.body["completion"] == "manual"
     finally:
         daemon.close()
-
 
 def test_portal_builder_with_inherited_database_program_without_implement_is_observer(
     tmp_path: Path,
@@ -17231,7 +18338,6 @@ def test_portal_builder_with_inherited_database_program_without_implement_is_obs
         assert tuple(int(counts[index]) for index in range(3)) == (0, 0, 0)
     finally:
         daemon.close()
-
 
 def test_quack_runner_builders_require_bound_typed_owner_for_lane_sidecars(
     tmp_path: Path,
@@ -17318,7 +18424,6 @@ def test_quack_runner_builders_require_bound_typed_owner_for_lane_sidecars(
             database_path=control,
         )
 
-
 def test_database_lanes_register_disjoint_hash_shards(tmp_path: Path) -> None:
     source = DatabaseTaskSource(tmp_path / "control.duckdb")
     source.materialize(_population(8), repository_tree_id="tree:dqp-018")
@@ -17354,7 +18459,6 @@ def test_database_lanes_register_disjoint_hash_shards(tmp_path: Path) -> None:
         for daemon in daemons:
             daemon.close()
         source.close()
-
 
 def test_already_in_progress_control_task_creates_no_execution_attempt(
     tmp_path: Path,
@@ -17394,7 +18498,6 @@ def test_already_in_progress_control_task_creates_no_execution_attempt(
         daemon.close()
         source.close()
 
-
 def test_authoritative_cas_race_creates_no_execution_attempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -17426,7 +18529,6 @@ def test_authoritative_cas_race_creates_no_execution_attempt(
     finally:
         daemon.close()
         source.close()
-
 
 def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim(
     tmp_path: Path,
@@ -17520,6 +18622,97 @@ def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim(
     finally:
         daemon.close()
 
+def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim_aseh(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    provider_attempts: list[DatabaseTaskAttempt] = []
+
+    def fail_first_portal_pass(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_attempts.append(attempt)
+        if len(provider_attempts) == 1:
+            raise DatabasePortalBridgeDeferred(
+                "launch_redteam_forced_retryable_portal_bridge_failure",
+                backoff_seconds=1,
+            )
+        return {
+            "status": "ok",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-requeue",
+        provider_fn=fail_first_portal_pass,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+
+        first_pass = daemon.run_once()
+        first_result = first_pass["implementation_result"]
+        assert first_result["portal_retryable_failure"] is True
+        assert first_result["status"] == "failed"
+        assert first_result["deferred"] is True
+        assert first_result["retry_state"]["changed"] is True
+        assert first_result["retry_state"]["status"] == "retrying"
+        assert first_result["retry_state"]["backoff_seconds"] == 1
+
+        first_attempt_id = str(first_result["attempt_id"])
+        first_attempt = daemon.get_attempt(first_attempt_id)
+        assert first_attempt is not None
+        assert first_attempt.status == "failed"
+        assert first_attempt.committed_phase == "failed"
+        failure_phases = [
+            phase
+            for phase in daemon.phase_history(first_attempt_id)
+            if phase["phase"] == "failed"
+        ]
+        assert len(failure_phases) == 1
+        failure_receipt = failure_phases[0]["body"]
+        assert failure_receipt["portal_retryable_failure"] is True
+        assert failure_receipt["portal_terminal_failure"] is False
+        assert failure_receipt["deferred"] is True
+        assert failure_receipt["attempt_consumed"] is False
+        assert failure_receipt["provider_dispatched"] is False
+        assert failure_receipt["typed_deferral_slot_consumed"] is True
+        assert failure_receipt["backoff_seconds"] == 1
+        assert failure_receipt["typed_deferral"]["attempt_id"] == first_attempt_id
+
+        initial_claim = daemon.coordinator.get_task_claim(first_attempt.claim_id)
+        initial_coordination_attempt = daemon.coordinator.get_task_attempt(
+            first_attempt_id
+        )
+        assert initial_claim is not None
+        assert initial_coordination_attempt is not None
+        assert initial_claim.state.value == "released"
+        assert initial_coordination_attempt.status.value == "released"
+        control_after_failure = daemon.task_source.get(first_attempt.task_cid)
+        assert control_after_failure is not None
+        assert control_after_failure.status == "retrying"
+        assert daemon.list_running_attempts() == []
+
+        now["ms"] = 2_001
+        second_pass = daemon.run_once()
+        second_result = second_pass["implementation_result"]
+        assert second_result["status"] == "succeeded"
+        second_attempt = second_result["attempt"]
+        assert second_attempt["attempt_id"] != first_attempt_id
+        assert second_attempt["attempt_number"] == 2
+        assert second_attempt["fencing_token"] > first_attempt.fencing_token
+        assert len(provider_attempts) == 2
+        released_claim = daemon.coordinator.get_task_claim(first_attempt.claim_id)
+        assert released_claim is not None
+        assert released_claim.state.value == "released"
+        final_control = daemon.task_source.get(first_attempt.task_cid)
+        assert final_control is not None
+        assert final_control.status == "completed"
+    finally:
+        daemon.close()
 
 def test_database_daemon_validates_idle_lane_work_stealing(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="empty or 'virgin-transfer'"):
@@ -17561,7 +18754,6 @@ def test_database_daemon_validates_idle_lane_work_stealing(tmp_path: Path) -> No
             idle_lane_work_stealing="virgin-transfer",
         )
 
-
 def test_database_virgin_transfer_rejects_nondeterministic_surplus_route(
     tmp_path: Path,
 ) -> None:
@@ -17594,7 +18786,6 @@ def test_database_virgin_transfer_rejects_nondeterministic_surplus_route(
             )
     finally:
         daemon.close()
-
 
 def test_database_virgin_transfer_excludes_manual_donor_capacity(
     tmp_path: Path,
@@ -17633,7 +18824,6 @@ def test_database_virgin_transfer_excludes_manual_donor_capacity(
     finally:
         home.close()
         recipient.close()
-
 
 def test_database_claim_uses_trusted_store_policy(
     tmp_path: Path,
@@ -17692,7 +18882,6 @@ def test_database_claim_uses_trusted_store_policy(
             )
     finally:
         daemon.close()
-
 
 def test_database_virgin_transfer_starts_exact_four_ready_lanes(
     tmp_path: Path,
@@ -17764,7 +18953,6 @@ def test_database_virgin_transfer_starts_exact_four_ready_lanes(
     finally:
         for daemon in reversed(daemons):
             daemon.close()
-
 
 def test_database_virgin_transfer_binding_survives_retry_claim(
     tmp_path: Path,
@@ -17904,7 +19092,6 @@ def test_database_virgin_transfer_binding_survives_retry_claim(
         home.close()
         recipient.close()
 
-
 def test_database_owner_rejects_client_authored_transfer_binding(
     tmp_path: Path,
 ) -> None:
@@ -17932,7 +19119,6 @@ def test_database_owner_rejects_client_authored_transfer_binding(
         assert "completion_receipt" not in unchanged.body
     finally:
         daemon.close()
-
 
 def test_idle_run_once_idles_on_quack_attach_failure(
     tmp_path: Path,
@@ -17966,7 +19152,6 @@ def test_idle_run_once_idles_on_quack_attach_failure(
     finally:
         daemon.close()
 
-
 def test_idle_run_once_idles_on_quack_attach_lock_timeout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -17997,7 +19182,6 @@ def test_idle_run_once_idles_on_quack_attach_lock_timeout(
     finally:
         daemon.close()
 
-
 def test_idle_run_once_idles_on_quack_authorization_failed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -18023,7 +19207,6 @@ def test_idle_run_once_idles_on_quack_authorization_failed(
         assert result["control_plane_error"]["error_type"] == "RuntimeError"
     finally:
         daemon.close()
-
 
 def test_idle_run_once_invokes_bound_post_merge_recovery_before_claim(
     tmp_path: Path,
@@ -18075,7 +19258,6 @@ def test_idle_run_once_invokes_bound_post_merge_recovery_before_claim(
         assert reported["results"][0]["status"] == "retrying"
     finally:
         daemon.close()
-
 
 def test_idle_run_once_rearms_blocked_task_when_outputs_are_on_head(
     tmp_path: Path,
@@ -18236,7 +19418,6 @@ def test_idle_run_once_rearms_blocked_task_when_outputs_are_on_head(
     finally:
         daemon.close()
 
-
 def test_idle_run_once_rearms_from_older_repair_receipt_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -18326,7 +19507,6 @@ def test_idle_run_once_rearms_from_older_repair_receipt_json(
     finally:
         daemon.close()
 
-
 def test_idle_run_once_rearms_before_attach_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -18375,7 +19555,6 @@ def test_idle_run_once_rearms_before_attach_failure(
         assert result["unchanged"] is False
     finally:
         daemon.close()
-
 
 def test_idle_run_once_settles_invalid_metadata_portal_quarantine_before_claim(
     tmp_path: Path,
@@ -18482,7 +19661,6 @@ def test_idle_run_once_settles_invalid_metadata_portal_quarantine_before_claim(
     finally:
         daemon.close()
 
-
 def test_idle_run_once_reports_failed_recovery_as_potentially_changed(
     tmp_path: Path,
 ) -> None:
@@ -18516,7 +19694,6 @@ def test_idle_run_once_reports_failed_recovery_as_potentially_changed(
         assert daemon.task_source.get_queue_entry("task:cid:001") is not None
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize(
     "invalid_result",
@@ -18559,7 +19736,6 @@ def test_idle_run_once_rejects_untyped_post_merge_recovery_result(
     finally:
         daemon.close()
 
-
 def test_observer_run_once_never_invokes_bound_post_merge_recovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -18599,7 +19775,6 @@ def test_observer_run_once_never_invokes_bound_post_merge_recovery(
         )
     finally:
         daemon.close()
-
 
 def test_terminal_portal_failure_reason_ignores_later_non_portal_failure(
     tmp_path: Path,
@@ -18642,7 +19817,6 @@ def test_terminal_portal_failure_reason_ignores_later_non_portal_failure(
     finally:
         daemon.close()
 
-
 def _post_merge_preauthorization(
     daemon: DatabaseImplementationDaemon,
     failed: DatabaseTaskAttempt,
@@ -18664,7 +19838,6 @@ def _post_merge_preauthorization(
         "source_binding_id": "sha256:" + "c" * 64,
         "source_projection_immutable_digest": "sha256:" + "d" * 64,
     }
-
 
 def _post_merge_repair_recovery_evidence(
     daemon: DatabaseImplementationDaemon,
@@ -18727,7 +19900,6 @@ def _post_merge_repair_recovery_evidence(
     )
     return evidence
 
-
 def test_preauthorize_accepts_wrapped_post_merge_terminal_reason(
     tmp_path: Path,
 ) -> None:
@@ -18778,7 +19950,6 @@ def test_preauthorize_accepts_wrapped_post_merge_terminal_reason(
         assert authorized["task_status"] == "blocked"
     finally:
         daemon.close()
-
 
 def test_post_merge_recovery_accepts_complete_execution_route_lineage(
     tmp_path: Path,
@@ -18923,7 +20094,6 @@ def test_post_merge_recovery_accepts_complete_execution_route_lineage(
     finally:
         daemon.close()
 
-
 def test_base_only_execution_route_lineage_requires_a_legacy_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -18957,7 +20127,6 @@ def test_base_only_execution_route_lineage_requires_a_legacy_source(
         )
     finally:
         daemon.close()
-
 
 def test_base_only_execution_route_lineage_accepts_unsealed_typed_source(
     tmp_path: Path,
@@ -18999,7 +20168,6 @@ def test_base_only_execution_route_lineage_accepts_unsealed_typed_source(
         )
     finally:
         daemon.close()
-
 
 def test_execution_route_lineage_sealed_policy_failure_fails_closed(
     tmp_path: Path,
@@ -19055,7 +20223,6 @@ def test_execution_route_lineage_sealed_policy_failure_fails_closed(
         )
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize(
     "normalized",
@@ -19119,7 +20286,6 @@ def test_execution_route_lineage_rejects_empty_or_untyped_normalization(
     finally:
         daemon.close()
 
-
 def test_callback_recovery_projection_admits_exact_sibling_lane(
     tmp_path: Path,
 ) -> None:
@@ -19150,7 +20316,6 @@ def test_callback_recovery_projection_admits_exact_sibling_lane(
     )
 
     assert verified == source_root.resolve(strict=True)
-
 
 @pytest.mark.parametrize(
     "source_parts",
@@ -19185,7 +20350,6 @@ def test_callback_recovery_projection_rejects_foreign_sibling_lane(
             configured_attempt_root=configured_root,
             projection_path=projection,
         )
-
 
 def test_callback_integration_authority_reloads_exact_sibling_lane_source(
     tmp_path: Path,
@@ -19246,7 +20410,6 @@ def test_callback_integration_authority_reloads_exact_sibling_lane_source(
             recovery_evidence=evidence,
         )
 
-
 def test_preauthorize_uses_blocked_receipt_when_phase_omits_portal_flags(
     tmp_path: Path,
 ) -> None:
@@ -19279,7 +20442,6 @@ def test_preauthorize_uses_blocked_receipt_when_phase_omits_portal_flags(
         assert authorized["authorized"] is True
     finally:
         daemon.close()
-
 
 def test_preauthorize_accepts_receipt_despite_later_unrelated_portal_phase(
     tmp_path: Path,
@@ -19335,7 +20497,6 @@ def test_preauthorize_accepts_receipt_despite_later_unrelated_portal_phase(
     finally:
         daemon.close()
 
-
 def test_preauthorize_rejects_when_receipt_is_not_post_merge_terminal(
     tmp_path: Path,
 ) -> None:
@@ -19373,7 +20534,6 @@ def test_preauthorize_rejects_when_receipt_is_not_post_merge_terminal(
             )
     finally:
         daemon.close()
-
 
 def test_preauthorize_accepts_cross_board_completion_terminal(
     tmp_path: Path,
@@ -19421,7 +20581,6 @@ def test_preauthorize_accepts_cross_board_completion_terminal(
         assert authorized_prior["authorized"] is True
     finally:
         daemon.close()
-
 
 def test_preauthorize_accepts_binding_changed_resume_receipt_from_later_attempt(
     tmp_path: Path,
@@ -19479,7 +20638,6 @@ def test_preauthorize_accepts_binding_changed_resume_receipt_from_later_attempt(
         assert authorized["task_status"] == "blocked"
     finally:
         daemon.close()
-
 
 def test_exact_repair_evidence_rearms_only_matching_blocked_task(
     tmp_path: Path,
@@ -19744,7 +20902,6 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
     finally:
         daemon.close()
 
-
 def test_post_merge_completion_seed_is_one_shot_per_target_generation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -19948,7 +21105,6 @@ def test_post_merge_completion_seed_is_one_shot_per_target_generation(
             )
     finally:
         daemon.close()
-
 
 def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
     tmp_path: Path,
@@ -21237,7 +22393,6 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             consumer_daemon.close()
         source_daemon.close()
 
-
 def _persist_legacy_empty_coordination_terminal(
     daemon: DatabaseImplementationDaemon,
     failed: DatabaseTaskAttempt,
@@ -21272,7 +22427,6 @@ def _persist_legacy_empty_coordination_terminal(
             "control_expected_revision": int(task.revision),
         },
     )
-
 
 def test_terminal_coordination_projection_accepts_exact_producer_history(
     tmp_path: Path,
@@ -21348,7 +22502,6 @@ def test_terminal_coordination_projection_accepts_exact_producer_history(
             )
     finally:
         daemon.close()
-
 
 def test_ordinary_post_merge_recovery_uses_expired_portable_coordination(
     tmp_path: Path,
@@ -21569,7 +22722,6 @@ def test_ordinary_post_merge_recovery_uses_expired_portable_coordination(
     finally:
         daemon.close()
 
-
 def test_preauthorize_accepts_legacy_empty_coordination_only_after_exact_expiry(
     tmp_path: Path,
 ) -> None:
@@ -21643,7 +22795,6 @@ def test_preauthorize_accepts_legacy_empty_coordination_only_after_exact_expiry(
     finally:
         daemon.close()
 
-
 def test_preauthorize_rejects_legacy_empty_coordination_with_newer_fence(
     tmp_path: Path,
 ) -> None:
@@ -21701,7 +22852,6 @@ def test_preauthorize_rejects_legacy_empty_coordination_with_newer_fence(
             )
     finally:
         daemon.close()
-
 
 def test_preauthorize_accepts_populated_coordination_after_exact_expiry(
     tmp_path: Path,
@@ -21777,7 +22927,6 @@ def test_preauthorize_accepts_populated_coordination_after_exact_expiry(
     finally:
         daemon.close()
 
-
 def test_preauthorize_rejects_populated_coordination_with_newer_fence(
     tmp_path: Path,
 ) -> None:
@@ -21836,7 +22985,6 @@ def test_preauthorize_rejects_populated_coordination_with_newer_fence(
             )
     finally:
         daemon.close()
-
 
 def test_preauthorize_does_not_expire_overdue_legacy_empty_coordination(
     tmp_path: Path,
@@ -21926,7 +23074,6 @@ def test_preauthorize_does_not_expire_overdue_legacy_empty_coordination(
     finally:
         daemon.close()
 
-
 def test_preauthorize_requires_successor_projection_reader(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -21971,7 +23118,6 @@ def test_preauthorize_requires_successor_projection_reader(
             )
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize(
     "terminal_reason",
@@ -22031,7 +23177,6 @@ def test_preauthorize_accepts_recoverable_completion_terminal(
     finally:
         daemon.close()
 
-
 def test_protected_preservation_ancestry_reason_requires_exact_token() -> None:
     forged = (
         "prefix:"
@@ -22049,6 +23194,7 @@ def test_protected_preservation_ancestry_reason_requires_exact_token() -> None:
         )
         == ""
     )
+
 def test_descendant_requalification_recovery_replays_one_queue_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -22208,7 +23354,6 @@ def test_descendant_requalification_recovery_replays_one_queue_write(
     finally:
         daemon.close()
 
-
 def test_compatibility_projection_uses_canonical_dependency_readiness(tmp_path: Path) -> None:
     daemon = _open_daemon(tmp_path, session="session:dependency-projection")
     try:
@@ -22229,7 +23374,6 @@ def test_compatibility_projection_uses_canonical_dependency_readiness(tmp_path: 
         assert projection["ready_task_ids"] == ["DQP-T002"]
     finally:
         daemon.close()
-
 
 @pytest.mark.parametrize("failure", ["unavailable", "revision", "cursor", "foreign"])
 def test_compatibility_projection_rejects_unbound_ready_observation(
@@ -22265,3 +23409,2771 @@ def test_compatibility_projection_rejects_unbound_ready_observation(
         assert json.loads(state_path.read_text())["projection_complete"] is False
     finally:
         daemon.close()
+
+def test_portal_failure_lease_release_response_loss_accepts_exact_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def defer_provider(
+        _attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=0,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-release-response-loss",
+        provider_fn=defer_provider,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        original_release = daemon.coordinator.release
+        released_lease_ids: list[str] = []
+
+        def release_then_lose_response(lease: object, **kwargs: object) -> None:
+            released = original_release(lease, **kwargs)
+            released_lease_ids.append(released.lease_id)
+            raise RuntimeError("simulated release response loss")
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "release",
+            release_then_lose_response,
+        )
+
+        result = daemon._resume_attempt_without_process_crash(attempt)
+
+        assert result["status"] == "failed"
+        assert "fail_error" not in result
+        assert released_lease_ids == [attempt.lease_id]
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert next(
+            row["state"]
+            for row in projection["task_claims"]
+            if row["claim_id"] == attempt.claim_id
+        ) == "released"
+        assert next(
+            row["state"]
+            for row in projection["fenced_leases"]
+            if row["lease_id"] == attempt.lease_id
+        ) == "released"
+    finally:
+        daemon.close()
+
+def test_portal_failure_lease_release_stale_fence_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def defer_provider(
+        _attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=0,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-release-stale-fence",
+        provider_fn=defer_provider,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+
+        def reject_stale_fence(_lease: object, **_kwargs: object) -> None:
+            raise DatabaseCoordinationStaleFenceError(
+                "simulated stale fence on release"
+            )
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "release",
+            reject_stale_fence,
+        )
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="exact fenced claim was not released",
+        ):
+            daemon._resume_attempt_without_process_crash(attempt)
+
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert next(
+            row["state"]
+            for row in projection["task_claims"]
+            if row["claim_id"] == attempt.claim_id
+        ) == "accepted"
+        assert next(
+            row["state"]
+            for row in projection["fenced_leases"]
+            if row["lease_id"] == attempt.lease_id
+        ) == "accepted"
+    finally:
+        daemon.close()
+
+def test_sandbox_host_failure_quarantine_reopens(tmp_path: Path) -> None:
+    daemon = _open_daemon(tmp_path, session="session:bwrap-reopen")
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt={
+                "operation": "database_strict_resume_quarantine",
+                "provider_phase_committed": False,
+                "reason": "bwrap: setting up uid map: Permission denied",
+                "attempt_id": "attempt:bwrap",
+            },
+        )
+        outcomes = daemon.reconcile_sandbox_host_failure_quarantines()
+        assert outcomes
+        assert outcomes[0]["reopened"] is True
+        reopened = daemon.task_source.get("task:cid:001")
+        assert reopened is not None
+        assert reopened.status == "todo"
+        assert reopened.body["completion_receipt"]["operation"] == (
+            "reopen_sandbox_host_failure"
+        )
+    finally:
+        daemon.close()
+
+def test_false_terminal_unstalls_protected_path_verification_lock_timeout(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:protected-lock-timeout-unstall",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="implementation_protected_path_verification_lock_timeout",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+        assert retried.body["completion_receipt"]["previous_reason"] == (
+            "implementation_protected_path_verification_lock_timeout"
+        )
+    finally:
+        daemon.close()
+
+def test_false_terminal_unstalls_isolate_merge_queue_attribute_error(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:isolate-merge-queue-unstall",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason=(
+                "'PortalImplementationDaemon' object has no attribute "
+                "'isolate_merge_queue_to_task_projection'"
+            ),
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+        assert retried.body["completion_receipt"]["previous_reason"] == (
+            "isolate_merge_queue_to_task_projection"
+        )
+    finally:
+        daemon.close()
+
+def test_false_terminal_unstalls_operator_merge_protected_path_block(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:protected-path-unstall",
+        repo_root=repo,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "blocked",
+            receipt={
+                "operation": "database_portal_terminal_failure",
+                "reason": "implementation_protected_path_mutated",
+                "retryable": False,
+            },
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert outcomes
+        assert outcomes[0]["reason"] == "false_terminal_portal_unstall"
+        reopened = daemon.task_source.get("task:cid:001")
+        assert reopened is not None
+        assert reopened.status == "retrying"
+    finally:
+        daemon.close()
+
+def test_false_terminal_unstalls_quack_disconnect_block(tmp_path: Path) -> None:
+    daemon = _open_daemon(tmp_path, session="session:quack-unstall")
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "blocked",
+            receipt={
+                "operation": "database_portal_terminal_failure",
+                "reason": (
+                    "IO Error: Failed to send message: IO Error: Could not "
+                    "connect to server error for HTTP POST to "
+                    "'http://127.0.0.1:41487/quack'"
+                ),
+                "retryable": False,
+            },
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert outcomes
+        reopened = daemon.task_source.get("task:cid:001")
+        assert reopened is not None
+        assert reopened.status == "retrying"
+    finally:
+        daemon.close()
+
+def test_sandbox_host_failure_does_not_reopen_committed_provider_phase(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:bwrap-committed")
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt={
+                "operation": "database_strict_resume_quarantine",
+                "provider_phase_committed": True,
+                "reason": "bwrap: setting up uid map: Permission denied",
+            },
+        )
+        assert daemon.reconcile_sandbox_host_failure_quarantines() == []
+        still = daemon.task_source.get("task:cid:001")
+        assert still is not None
+        assert still.status == "quarantined"
+    finally:
+        daemon.close()
+
+def test_unknown_callback_without_landed_outputs_reopens(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=_unknown_callback_quarantine_receipt(),
+        )
+        result = daemon.run_once()
+        reopened = result["unknown_callback_reopens"]
+        assert reopened
+        assert reopened[0]["reopened"] is True
+        assert reopened[0]["task_cid"] == "task:cid:001"
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status != "quarantined"
+    finally:
+        daemon.close()
+
+def _consumed_no_progress_quarantine_receipt() -> dict[str, object]:
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-neutral-quarantine@1"
+        ),
+        "operation": "database_portal_neutral_failure_quarantine",
+        "failure_kind": "consumed_no_progress",
+        "retry_suppressed": True,
+        "root_cause_required": True,
+        "attempt_id": "attempt:runner-abort",
+        "failure_fingerprint": "sha256:" + "e" * 64,
+        "failure_evidence": {
+            "implementation_candidate_present": False,
+            "implementation_commit_present": False,
+            "validation_state": "not_run",
+            "returncode": 2,
+        },
+    }
+
+def test_consumed_no_progress_without_effect_reopens(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=_consumed_no_progress_quarantine_receipt(),
+        )
+        result = daemon.run_once()
+        reopened = result["consumed_no_progress_reopens"]
+        assert reopened
+        assert reopened[0]["reopened"] is True
+        assert reopened[0]["task_cid"] == "task:cid:001"
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status != "quarantined"
+    finally:
+        daemon.close()
+
+def test_consumed_no_progress_with_candidate_stays_quarantined(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = _consumed_no_progress_quarantine_receipt()
+        evidence = dict(receipt["failure_evidence"])
+        evidence["implementation_candidate_present"] = True
+        receipt["failure_evidence"] = evidence
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=receipt,
+        )
+        result = daemon.run_once()
+        assert result["consumed_no_progress_reopens"] == []
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status == "quarantined"
+    finally:
+        daemon.close()
+
+def test_unknown_callback_quarantine_receipt_count_does_not_block_reopen(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = _unknown_callback_quarantine_receipt()
+        receipt["unknown_callback_reopen_count"] = 4
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=receipt,
+        )
+        result = daemon.run_once()
+        reopened = result["unknown_callback_reopens"]
+        assert reopened
+        assert reopened[0]["reopened"] is True
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status != "quarantined"
+    finally:
+        daemon.close()
+
+def test_scoped_database_daemon_ignores_foreign_global_recovery_journal(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    global_lock = _write_supervisor_protected_recovery_journal(repo)
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        repo_root=repo,
+        board_namespace="agent-supervisor-efficiency-and-state-hardening-v1",
+    )
+    try:
+        assert daemon._external_protected_checkout_setup_block_reason() == ""
+        assert global_lock.is_file()
+
+        sibling_lock = board_scoped_checkout_mutation_lock_path(
+            repo,
+            "proof-carrying-procedure-compiler-v1",
+        )
+        sibling_lock.write_bytes(global_lock.read_bytes())
+        assert daemon._external_protected_checkout_setup_block_reason() == ""
+
+        scoped_lock = board_scoped_checkout_mutation_lock_path(
+            repo,
+            daemon.board_namespace,
+        )
+        scoped_lock.write_bytes(global_lock.read_bytes())
+        assert daemon._external_protected_checkout_setup_block_reason() == (
+            "external_protected_checkout_recovery_required"
+        )
+    finally:
+        daemon.close()
+
+def test_unknown_callback_reopen_continues_while_outputs_are_missing(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "todo",
+            receipt={
+                "operation": "reopen_unimplemented_unknown_callback_quarantine",
+                "unknown_callback_reopen_count": 4,
+            },
+        )
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = _unknown_callback_quarantine_receipt()
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=receipt,
+        )
+        result = daemon.run_once()
+        reopened = result["unknown_callback_reopens"]
+        assert reopened
+        assert reopened[0]["reopened"] is True
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status != "quarantined"
+    finally:
+        daemon.close()
+
+def test_provider_callback_pre_dispatch_deferral_is_durable_and_replayed(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+
+    def defer_before_dispatch(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        deferred = DatabasePortalBridgeDeferred(
+            "provider_capacity_deferred",
+            backoff_seconds=45,
+        )
+        assert deferred.provider_dispatched is False
+        assert deferred.attempt_consumed is False
+        raise deferred
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:durable-provider-deferral",
+        provider_fn=defer_before_dispatch,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        key = f"provider:{attempt.attempt_id}"
+
+        with pytest.raises(DatabasePortalBridgeDeferred) as first_deferral:
+            daemon.run_provider(attempt)
+        assert first_deferral.value.provider_dispatched is False
+        assert first_deferral.value.attempt_consumed is False
+        assert provider_calls == [attempt.attempt_id]
+
+        recorded = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=key,
+        )
+        assert recorded is not None
+        assert recorded["schema"] == DATABASE_PROVIDER_CALLBACK_DEFERRED_SCHEMA
+        assert recorded["schema"] != DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+        assert recorded["callback_state"] == "returned_pre_dispatch_deferral"
+        assert recorded["provider_effect_state"] == "not_dispatched"
+        assert recorded["accepted"] is False
+        assert recorded["attempt_consumed"] is False
+        assert recorded["provider_dispatched"] is False
+        assert recorded["reason"] == "provider_capacity_deferred"
+        assert recorded["backoff_seconds"] == 45
+        assert recorded["attempt_id"] == attempt.attempt_id
+        assert recorded["claim_id"] == attempt.claim_id
+        assert recorded["lease_id"] == attempt.lease_id
+        assert recorded["owner_session_id"] == attempt.owner_session_id
+        assert recorded["fencing_token"] == attempt.fencing_token
+        assert recorded["fence_epoch"] == attempt.fence_epoch
+        assert recorded["task_cid"] == attempt.task_cid
+        assert recorded["idempotency_key"] == key
+        assert str(recorded["receipt_id"]).startswith("sha256:")
+
+        with pytest.raises(DatabasePortalBridgeDeferred) as replayed:
+            daemon.run_provider(attempt)
+        assert replayed.value.reason == "provider_capacity_deferred"
+        assert replayed.value.backoff_seconds == 45
+        assert replayed.value.provider_dispatched is False
+        assert replayed.value.attempt_consumed is False
+        assert provider_calls == [attempt.attempt_id]
+        assert daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=key,
+        ) == recorded
+        persisted = daemon.get_attempt(attempt.attempt_id)
+        assert persisted is not None
+        assert persisted.committed_phase == ATTEMPT_PHASE_CONTEXT
+    finally:
+        daemon.close()
+
+@pytest.mark.parametrize(
+    ("mutation", "error_type", "message"),
+    [
+        (
+            "invalid_receipt",
+            DatabaseImplementationAuthorityError,
+            "provider callback deferral evidence is malformed",
+        ),
+        (
+            "foreign_claim",
+            DatabaseImplementationConflictError,
+            "provider callback deferral does not match the exact attempt",
+        ),
+    ],
+)
+def test_provider_callback_deferred_replay_rejects_untrusted_evidence(
+    tmp_path: Path,
+    mutation: str,
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    provider_calls: list[str] = []
+
+    def defer_before_dispatch(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeDeferred(
+            "provider_capacity_deferred",
+            backoff_seconds=45,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:untrusted-provider-deferral:{mutation}",
+        provider_fn=defer_before_dispatch,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        key = f"provider:{attempt.attempt_id}"
+        with pytest.raises(DatabasePortalBridgeDeferred):
+            daemon.run_provider(attempt)
+        recorded = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=key,
+        )
+        assert recorded is not None
+
+        tampered = dict(recorded)
+        if mutation == "invalid_receipt":
+            tampered["receipt_id"] = "sha256:" + "0" * 64
+        else:
+            tampered["claim_id"] = "claim:foreign"
+            unsigned = dict(tampered)
+            unsigned.pop("receipt_id")
+            tampered["receipt_id"] = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    unsigned,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+        daemon._require_connection().execute(
+            """
+            UPDATE provider_invocations
+            SET result_json = ?
+            WHERE attempt_id = ? AND idempotency_key = ?
+            """,
+            [
+                json.dumps(
+                    tampered,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ),
+                attempt.attempt_id,
+                key,
+            ],
+        )
+
+        with pytest.raises(error_type, match=message):
+            daemon.run_provider(attempt)
+        assert provider_calls == [attempt.attempt_id]
+        persisted = daemon.get_attempt(attempt.attempt_id)
+        assert persisted is not None
+        assert persisted.committed_phase == ATTEMPT_PHASE_CONTEXT
+    finally:
+        daemon.close()
+
+def test_unusable_candidate_retries_instead_of_blocking(tmp_path: Path) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalCandidateRetry("no_change_completion_not_allowed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:candidate-retry",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+        implementation = result["implementation_result"]
+        assert implementation["portal_retryable_failure"] is True
+        assert implementation["portal_terminal_failure"] is False
+        assert implementation["attempt_consumed"] is True
+        assert implementation["provider_dispatched"] is True
+        assert implementation["retry_state"]["status"] == "retrying"
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        failed = daemon.phase_history(attempt.attempt_id)[-1]["body"]
+        assert failed["reason"] == "no_change_completion_not_allowed"
+        assert failed["portal_retryable_failure"] is True
+    finally:
+        daemon.close()
+
+@pytest.mark.parametrize(
+    "provider_intent_present",
+    (True, False),
+    ids=("callback-intent", "before-callback-intent"),
+)
+def test_reconcile_recovers_exact_quack_preprojection_transport_failure(
+    tmp_path: Path,
+    provider_intent_present: bool,
+) -> None:
+    import duckdb
+
+    quack_uri = "quack:127.0.0.1:45123"
+    source_reason = (
+        "IO Error: Failed to send message: IO Error: Could not connect to "
+        "server error for HTTP POST to 'http://127.0.0.1:45123/quack'"
+    )
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise duckdb.IOException(source_reason)
+
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:quack-preprojection-recovery",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(database_path=quack_uri),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    daemon._quack_uri = quack_uri
+    daemon._quack_preprojection_transport_recovery_fn = (
+        bridge.recover_quack_preprojection_transport_failure
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        if not provider_intent_present:
+            daemon._require_connection().execute(
+                "DELETE FROM provider_invocations WHERE attempt_id = ?",
+                [attempt.attempt_id],
+            )
+        unknown = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        if provider_intent_present:
+            assert unknown is not None
+            assert unknown["schema"] == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+        else:
+            assert unknown is None
+        assert daemon.effect_claim_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        ) is None
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        recovered = outcomes[0]
+        assert recovered["changed"] is True
+        assert recovered["status"] == "retrying"
+        evidence = recovered[
+            "quack_preprojection_transport_recovery_evidence"
+        ]
+        assert evidence["provider_dispatched"] is False
+        assert evidence["effect_executed"] is False
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        control = task.body["completion_receipt"]
+        assert control["operation"] == (
+            "database_portal_quack_preprojection_retry_recovery"
+        )
+        assert control["quack_preprojection_transport_recovery_seed"] == evidence
+        assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+def test_quack_preprojection_recovery_supersedes_only_expired_same_task_queue_lineage(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    quack_uri = "quack:127.0.0.1:45123"
+    source_reason = (
+        "IO Error: Failed to send message: IO Error: Could not connect to "
+        "server error for HTTP POST to 'http://127.0.0.1:45123/quack'"
+    )
+    calls = 0
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise DatabasePortalBridgeDeferred(
+                "worktree_lifecycle_claim_exists",
+                backoff_seconds=0,
+            )
+        raise duckdb.IOException(source_reason)
+
+    now = {"ms": 10_000}
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:quack-stale-queue-lineage",
+        provider_fn=provider,
+        max_task_attempts=4,
+        clock_ms=lambda: now["ms"],
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(database_path=quack_uri),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    daemon._quack_uri = quack_uri
+    daemon._quack_preprojection_transport_recovery_fn = (
+        bridge.recover_quack_preprojection_transport_failure
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        first_attempt = daemon.get_attempt(first["attempt_id"])
+        assert first_attempt is not None
+        first_queue = daemon.task_source.get_queue_entry(
+            first_attempt.task_cid
+        )
+        assert first_queue is not None
+        assert first_queue.reason.startswith(
+            f"database_portal_retry:{first_attempt.attempt_id}:"
+        )
+
+        now["ms"] += 1
+        second = daemon.run_once()
+        second_attempt = daemon.get_attempt(second["attempt_id"])
+        assert second_attempt is not None
+        assert second_attempt.attempt_number > first_attempt.attempt_number
+        assert daemon.task_source.get(second_attempt.task_cid).status == "blocked"
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        recovered = outcomes[0]
+        assert recovered["changed"] is True
+        lineage = recovered["superseded_queue_lineage"]
+        assert lineage["task_cid"] == second_attempt.task_cid
+        assert lineage["prior_attempt_id"] == first_attempt.attempt_id
+        assert lineage["successor_attempt_id"] == second_attempt.attempt_id
+        assert lineage["prior_state"] == "released"
+        replacement = daemon.task_source.get_queue_entry(
+            second_attempt.task_cid
+        )
+        assert replacement is not None
+        assert replacement.reason.startswith(
+            f"database_portal_retry:{second_attempt.attempt_id}:"
+        )
+        task = daemon.task_source.get(second_attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        assert task.body["completion_receipt"][
+            "superseded_queue_lineage"
+        ] == lineage
+        verified = (
+            daemon._verified_quack_preprojection_transport_recovery_state(
+                second_attempt,
+                task,
+            )
+        )
+        assert verified["receipt"]["superseded_queue_lineage"] == lineage
+        assert daemon.reconcile_terminal_portal_failures() == []
+
+        preserved_body = json.loads(json.dumps(dict(task.body)))
+        preserved_body["unknown_callback_reopen_count"] = 1
+        preserved_body["completion_receipt"][
+            "unknown_callback_reopen_count"
+        ] = 1
+        preserved_task = SimpleNamespace(
+            status=task.status,
+            revision=task.revision,
+            body=preserved_body,
+        )
+        verified = (
+            daemon._verified_quack_preprojection_transport_recovery_state(
+                second_attempt,
+                preserved_task,
+            )
+        )
+        assert verified["receipt"]["unknown_callback_reopen_count"] == 1
+
+        preserved_body["completion_receipt"][
+            "unknown_callback_reopen_count"
+        ] = 2
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="control state is not exact",
+        ):
+            daemon._verified_quack_preprojection_transport_recovery_state(
+                second_attempt,
+                preserved_task,
+            )
+
+        tampered_body = json.loads(json.dumps(dict(task.body)))
+        tampered_body["completion_receipt"][
+            "superseded_queue_lineage"
+        ]["observed_at_ms"] = lineage["prior_retry_not_before_ms"] - 1
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="control state is not exact",
+        ):
+            daemon._verified_quack_preprojection_transport_recovery_state(
+                second_attempt,
+                SimpleNamespace(
+                    status=task.status,
+                    revision=task.revision,
+                    body=tampered_body,
+                ),
+            )
+
+        tampered_body = json.loads(json.dumps(dict(task.body)))
+        tampered_body["completion_receipt"][
+            "superseded_queue_lineage"
+        ]["prior_attempt_number"] = True
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="control state is not exact",
+        ):
+            daemon._verified_quack_preprojection_transport_recovery_state(
+                second_attempt,
+                SimpleNamespace(
+                    status=task.status,
+                    revision=task.revision,
+                    body=tampered_body,
+                ),
+            )
+    finally:
+        daemon.close()
+
+def test_recovery_control_receipts_bind_only_exact_preserved_reopen_count(
+) -> None:
+    exact = DatabaseImplementationDaemon._control_receipt_fields_are_exact
+
+    assert exact({}, {"operation": "recovery"}, {"operation"}) is True
+    assert exact(
+        {"unknown_callback_reopen_count": 2},
+        {"operation": "recovery", "unknown_callback_reopen_count": 2},
+        {"operation"},
+    ) is True
+    assert exact(
+        {"unknown_callback_reopen_count": 2},
+        {"operation": "recovery"},
+        {"operation"},
+    ) is False
+    assert exact(
+        {"unknown_callback_reopen_count": 2},
+        {"operation": "recovery", "unknown_callback_reopen_count": 3},
+        {"operation"},
+    ) is False
+    assert exact(
+        {"unknown_callback_reopen_count": True},
+        {"operation": "recovery", "unknown_callback_reopen_count": True},
+        {"operation"},
+    ) is False
+    assert exact(
+        {},
+        {"operation": "recovery", "foreign": True},
+        {"operation"},
+    ) is False
+
+def test_quack_preprojection_recovery_rejects_live_or_current_queue_lineage(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    quack_uri = "quack:127.0.0.1:45123"
+    source_reason = (
+        "IO Error: Failed to send message: IO Error: Could not connect to "
+        "server error for HTTP POST to 'http://127.0.0.1:45123/quack'"
+    )
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise duckdb.IOException(source_reason)
+
+    now = {"ms": 20_000}
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:quack-live-queue-lineage",
+        provider_fn=provider,
+        max_task_attempts=4,
+        clock_ms=lambda: now["ms"],
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(database_path=quack_uri),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    daemon._quack_uri = quack_uri
+    daemon._quack_preprojection_transport_recovery_fn = (
+        bridge.recover_quack_preprojection_transport_failure
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.run_once()
+        attempt = daemon.get_attempt(failed["attempt_id"])
+        assert attempt is not None
+        daemon.task_source.record_queue_backoff(
+            task_cid=attempt.task_cid,
+            delay_ms=60_000,
+            reason=(
+                f"database_portal_retry:{attempt.attempt_id}:"
+                "foreign_live_lineage"
+            ),
+        )
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["error"] == (
+            "typed recovery found a foreign queue entry"
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+    finally:
+        daemon.close()
+
+def test_quack_preprojection_recovery_rejects_a_committed_provider_outcome(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    quack_uri = "quack:127.0.0.1:45123"
+    source_reason = (
+        "IO Error: Failed to send message: IO Error: Could not connect to "
+        "server error for HTTP POST to 'http://127.0.0.1:45123/quack'"
+    )
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise duckdb.IOException(source_reason)
+
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:quack-preprojection-reject-provider",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(database_path=quack_uri),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    daemon._quack_uri = quack_uri
+    daemon._quack_preprojection_transport_recovery_fn = (
+        bridge.recover_quack_preprojection_transport_failure
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        daemon._require_connection().execute(
+            "UPDATE provider_invocations SET result_json = ? "
+            "WHERE attempt_id = ?",
+            [
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "accepted": True,
+                        "task_cid": attempt.task_cid,
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                attempt.attempt_id,
+            ],
+        )
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["reason"] == (
+            "quack_preprojection_transport_recovery_not_admitted"
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+        assert not (tmp_path / "attempts").exists()
+    finally:
+        daemon.close()
+
+def test_duckdb_write_lock_timeout_defers_instead_of_crashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:write-lock-defer",
+        max_task_attempts=3,
+    )
+    try:
+        def boom(*_args: object, **_kwargs: object) -> dict[str, object]:
+            raise TimeoutError(
+                "timed out acquiring DuckDB process lock: "
+                "/tmp/aseh/q/write-transaction.lock"
+            )
+
+        monkeypatch.setattr(daemon, "_run_once_impl", boom)
+        result = daemon.run_once()
+        assert result.get("deferred") is True
+        assert result.get("reason") == "quack_attach_contended"
+        assert result.get("attempt_consumed") is False
+        assert result.get("portal_retryable_failure") is True
+        for _ in range(12):
+            again = daemon.run_once()
+            assert again.get("deferred") is True
+            assert again.get("reason") == "quack_attach_contended"
+    finally:
+        daemon.close()
+
+def test_quack_preflight_defers_on_write_lock_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:preflight-lock-defer",
+    )
+    try:
+        daemon.authority_mode = "quack"
+        daemon._quack_uri = "quack:127.0.0.1:41487"
+
+        def boom_snapshot() -> dict[str, object]:
+            raise TimeoutError(
+                "timed out acquiring DuckDB process lock: "
+                "/tmp/aseh/q/write-transaction.lock"
+            )
+
+        monkeypatch.setattr(daemon.task_source, "snapshot", boom_snapshot)
+        result = daemon.run_once()
+        assert result.get("deferred") is True
+        assert result.get("reason") == "quack_attach_contended"
+        assert result.get("attempt_consumed") is False
+    finally:
+        daemon.close()
+
+def test_quack_transport_unavailable_defers_whole_pass_without_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        duckdb_state as duckdb_state_module,
+    )
+
+    uri = "quack:127.0.0.1:45123"
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-transport-unavailable",
+        max_task_attempts=3,
+    )
+    resets: list[object] = []
+    claims: list[str] = []
+    try:
+        daemon._quack_uri = uri
+        daemon.authority_mode = "quack"
+
+        def unavailable() -> object:
+            raise duckdb.IOException(
+                "IO Error: Failed to send message: Could not connect to "
+                'server "127.0.0.1:45123"'
+            )
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "snapshot",
+            unavailable,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "claim_next",
+            lambda: claims.append("claim") or None,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_request_owner_board_unstall",
+            lambda: pytest.fail("transport availability requested board mutation"),
+        )
+        monkeypatch.setattr(
+            duckdb_state_module,
+            "reset_quack_transport_cache",
+            lambda endpoint="": resets.append(endpoint),
+        )
+
+        result = daemon.run_once()
+
+        assert result["reason"] == "quack_transport_unavailable"
+        assert result["unchanged"] is True
+        assert result["write_count"] == 0
+        assert result["attempt_consumed"] is False
+        assert result["provider_dispatched"] is False
+        assert result["pre_mutation_transport_probe"] is True
+        assert result["durable_state_uncertain"] is False
+        assert result["quack_transport_cache_reset"] is True
+        assert claims == []
+        assert resets == [uri]
+        assert result["consecutive_quack_portal_deferrals"] == 1
+    finally:
+        daemon.close()
+
+def test_quack_transport_unavailable_fail_closes_after_bounded_deferrals(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_daemon as daemon_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        duckdb_state as duckdb_state_module,
+    )
+
+    monkeypatch.setattr(
+        daemon_module,
+        "_MAX_CONSECUTIVE_QUACK_PORTAL_DEFERRALS",
+        2,
+    )
+    uri = "quack:127.0.0.1:45124"
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-transport-circuit-breaker",
+        max_task_attempts=3,
+    )
+    try:
+        daemon._quack_uri = uri
+        daemon.authority_mode = "quack"
+
+        def unavailable() -> object:
+            raise duckdb.IOException(
+                "IO Error: Failed to send message: Could not connect to "
+                'server "127.0.0.1:45124"'
+            )
+
+        monkeypatch.setattr(daemon.task_source, "snapshot", unavailable)
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        monkeypatch.setattr(
+            daemon,
+            "_request_owner_board_unstall",
+            lambda: pytest.fail("transport availability requested board mutation"),
+        )
+        monkeypatch.setattr(
+            duckdb_state_module,
+            "reset_quack_transport_cache",
+            lambda endpoint="": None,
+        )
+
+        first = daemon.run_once()
+        second = daemon.run_once()
+        assert first["reason"] == "quack_transport_unavailable"
+        assert first["consecutive_quack_portal_deferrals"] == 1
+        assert second["consecutive_quack_portal_deferrals"] == 2
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="fail-closed so claim cannot stall",
+        ):
+            daemon.run_once()
+    finally:
+        daemon.close()
+
+def test_quack_transport_unavailable_after_preflight_marks_effects_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import duckdb
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-transport-midpass-unknown",
+        max_task_attempts=3,
+    )
+    try:
+        daemon._quack_uri = "quack:127.0.0.1:45123"
+        daemon.authority_mode = "quack"
+
+        def unavailable_after_effect_boundary() -> dict[str, object]:
+            raise duckdb.IOException(
+                "IO Error: Failed to send message: Could not connect to "
+                'server "127.0.0.1:45123"'
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_run_once_impl",
+            unavailable_after_effect_boundary,
+        )
+        result = daemon.run_once()
+
+        assert result["reason"] == "quack_transport_unavailable"
+        assert result["pre_mutation_transport_probe"] is False
+        assert result["durable_state_uncertain"] is True
+        assert result["reconciliation_required"] is True
+        assert result["write_count"] is None
+        assert result["write_count_available"] is False
+        assert "attempt_consumed" not in result
+        assert "provider_dispatched" not in result
+    finally:
+        daemon.close()
+
+@pytest.mark.parametrize(
+    ("error", "uri"),
+    (
+        (
+            RuntimeError(
+                "Failed to send message: Could not connect to server "
+                '"127.0.0.1:45123"'
+            ),
+            "quack:127.0.0.1:45123",
+        ),
+        (
+            __import__("duckdb").IOException(
+                "IO Error: Failed to send message: Could not connect to "
+                'server "127.0.0.1:45124"'
+            ),
+            "quack:127.0.0.1:45123",
+        ),
+    ),
+)
+def test_quack_transport_deferral_rejects_untyped_or_foreign_endpoint_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: BaseException,
+    uri: str,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-transport-negative",
+        max_task_attempts=3,
+    )
+    try:
+        daemon._quack_uri = uri
+        daemon.authority_mode = "quack"
+
+        def boom() -> dict[str, object]:
+            raise error
+
+        monkeypatch.setattr(daemon, "_run_once_impl", boom)
+        with pytest.raises(type(error), match="Could not connect"):
+            daemon.run_once()
+    finally:
+        daemon.close()
+
+def test_database_portal_reason_does_not_remint_application_failures_as_quack() -> None:
+    classify = DatabaseImplementationDaemon._database_portal_reason
+
+    assert classify("Authentication failed") == "Authentication failed"
+    assert (
+        classify(
+            "Failed to send message: Could not connect to server "
+            '"127.0.0.1:45123"'
+        )
+        != "quack_attach_contended"
+    )
+    assert (
+        classify("quack control-plane attach contended: connection refused")
+        == "quack_attach_contended"
+    )
+
+def test_quack_stale_gate_requests_owner_recycle_without_replica_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-stale-gate-owner-recycle",
+        max_task_attempts=3,
+    )
+    requested: list[str] = []
+    cooldowns: list[str] = []
+    try:
+        source = daemon.task_source
+        intent = source.intent
+        intent._quack_transport = True
+        stale = (datetime.now(timezone.utc) - timedelta(hours=12)).isoformat()
+        monkeypatch.setattr(
+            intent,
+            "list_tasks",
+            lambda **_kwargs: (
+                {
+                    "task_cid": "task:cid:stale-quack-gate",
+                    "status": "in_progress",
+                    "updated_at": stale,
+                },
+            ),
+        )
+        monkeypatch.setattr(
+            source,
+            "unstall_stale_in_progress_tasks",
+            lambda **_kwargs: pytest.fail(
+                "Quack replica attempted the embedded unstall mutation path"
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_request_owner_board_unstall",
+            lambda: requested.append("owner-recycle")
+            or {"ok": True, "requested": True, "waited": False},
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_arm_quack_attach_cooldown",
+            lambda: cooldowns.append("armed"),
+        )
+
+        assert daemon.reconcile_stale_in_progress_gates() == []
+        assert requested == ["owner-recycle"]
+        assert cooldowns == ["armed"]
+    finally:
+        daemon.close()
+
+def test_quack_stale_gate_fails_closed_when_owner_recycle_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-stale-gate-rejected-recycle",
+        max_task_attempts=3,
+    )
+    try:
+        source = daemon.task_source
+        intent = source.intent
+        intent._quack_transport = True
+        stale = (datetime.now(timezone.utc) - timedelta(hours=12)).isoformat()
+        monkeypatch.setattr(
+            intent,
+            "list_tasks",
+            lambda **_kwargs: (
+                {
+                    "task_cid": "task:cid:stale-quack-gate",
+                    "status": "in_progress",
+                    "updated_at": stale,
+                },
+            ),
+        )
+        monkeypatch.setattr(
+            source,
+            "unstall_stale_in_progress_tasks",
+            lambda **_kwargs: pytest.fail(
+                "Quack replica attempted the embedded unstall mutation path"
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_request_owner_board_unstall",
+            lambda: {"ok": False, "requested": False, "waited": False},
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_arm_quack_attach_cooldown",
+            lambda: pytest.fail("rejected owner recycle armed a success cooldown"),
+        )
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="did not accept",
+        ):
+            daemon.reconcile_stale_in_progress_gates()
+    finally:
+        daemon.close()
+
+def test_quack_live_gate_does_not_request_owner_recycle_or_replica_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-live-gate-no-recycle",
+        max_task_attempts=3,
+    )
+    try:
+        source = daemon.task_source
+        intent = source.intent
+        intent._quack_transport = True
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+        monkeypatch.setattr(
+            intent,
+            "list_tasks",
+            lambda **_kwargs: (
+                {
+                    "task_cid": "task:cid:live-quack-gate",
+                    "status": "in_progress",
+                    "updated_at": recent,
+                },
+            ),
+        )
+        monkeypatch.setattr(
+            source,
+            "unstall_stale_in_progress_tasks",
+            lambda **_kwargs: pytest.fail(
+                "Quack replica attempted the embedded unstall mutation path"
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_request_owner_board_unstall",
+            lambda: pytest.fail("live Quack gate requested an owner recycle"),
+        )
+
+        assert daemon.reconcile_stale_in_progress_gates() == []
+    finally:
+        daemon.close()
+
+def test_post_merge_recovery_settles_before_claiming_next_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-settlement",
+        max_task_attempts=3,
+    )
+    recoveries = iter(
+        (
+            {
+                "schema": (
+                    DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA
+                ),
+                "attempted": True,
+                "recovered": True,
+                "changed": True,
+                "write_count": 1,
+            },
+            {
+                "schema": (
+                    DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA
+                ),
+                "attempted": True,
+                "recovered": True,
+                "changed": False,
+                "write_count": 0,
+            },
+        )
+    )
+    claims: list[str] = []
+    try:
+        daemon.bind_post_merge_recovery(lambda: next(recoveries))
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(
+            daemon,
+            "claim_next",
+            lambda: claims.append("claim") or None,
+        )
+
+        settlement = daemon.run_once()
+        assert settlement["selection_idle_reason"] == (
+            "post_merge_recovery_settlement"
+        )
+        assert settlement["write_count"] >= 1
+        assert claims == []
+
+        next_pass = daemon.run_once()
+        assert next_pass["selection_idle_reason"] == "no_ready_tasks"
+        assert claims == ["claim"]
+    finally:
+        daemon.close()
+
+def _false_completion_deterministic_settlement(
+    attempt: DatabaseTaskAttempt,
+    admitted: dict[str, object],
+) -> dict[str, object]:
+    evidence_digest = "sha256:" + "e" * 64
+    portal_receipt = {
+        "accepted": True,
+        "attempt_id": attempt.attempt_id,
+        "task_cid": attempt.task_cid,
+        "evidence_digest": evidence_digest,
+        "receipt_id": "sha256:" + "f" * 64,
+    }
+    settlement: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "false-completion-deterministic-settlement@1"
+        ),
+        "accepted": True,
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "fencing_token": int(attempt.fencing_token),
+        "fence_epoch": int(attempt.fence_epoch),
+        "claim_authority_id": admitted["authority_id"],
+        "reintegration_evidence_id": admitted[
+            "reintegration_evidence_id"
+        ],
+        "target_commit": admitted["target_commit"],
+        "target_tree": admitted["target_tree"],
+        "preserved_unknown_receipt_id": admitted[
+            "preserved_unknown_receipt_id"
+        ],
+        "provider_dispatched": False,
+        "effect_executed": False,
+        "route": "deterministic_current_tree_declared_validation",
+        "validation_result": {
+            "outcome": "passed",
+            "evidence_digest": evidence_digest,
+            "argv": ["focused-current-tree-validation"],
+            "provider_dispatched": False,
+            "effect_executed": False,
+        },
+        "portal_acceptance_receipt": portal_receipt,
+    }
+    settlement["receipt_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            settlement,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    return settlement
+
+def _false_completion_test_authority(
+    attempt: DatabaseTaskAttempt,
+    *,
+    target_commit: str,
+    target_tree: str,
+) -> dict[str, object]:
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "false-completion-deterministic-claim-authority@1"
+        ),
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": int(attempt.fencing_token),
+        "fence_epoch": int(attempt.fence_epoch),
+        "source_attempt_id": "attempt:source",
+        "reintegration_evidence_id": "sha256:" + "b" * 64,
+        "request_id": "request:integrated",
+        "candidate_commit": "1" * 40,
+        "target_commit": target_commit,
+        "target_tree": target_tree,
+        "preserved_unknown_receipt_id": "sha256:" + "c" * 64,
+        "provider_dispatch_policy": "forbidden",
+        "effect_execution_policy": "forbidden",
+        "authority_id": "sha256:" + "d" * 64,
+    }
+
+def test_false_completion_claim_settles_without_provider_or_effect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    settlement_calls: list[str] = []
+    repo = _git_repo(tmp_path)
+    target_commit = subprocess.run(
+        ["git", "rev-parse", "main^{commit}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    target_tree = subprocess.run(
+        ["git", "rev-parse", f"{target_commit}^{{tree}}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    authority: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "false-completion-deterministic-claim-authority@1"
+        ),
+        "task_cid": "task:cid:001",
+        "attempt_id": "",
+        "claim_id": "",
+        "lease_id": "",
+        "fencing_token": 0,
+        "fence_epoch": 0,
+        "source_attempt_id": "attempt:source",
+        "reintegration_evidence_id": "sha256:" + "b" * 64,
+        "request_id": "request:integrated",
+        "candidate_commit": "1" * 40,
+        "target_commit": target_commit,
+        "target_tree": target_tree,
+        "preserved_unknown_receipt_id": "sha256:" + "c" * 64,
+        "provider_dispatch_policy": "forbidden",
+        "effect_execution_policy": "forbidden",
+        "authority_id": "sha256:" + "d" * 64,
+    }
+
+    def deterministic_settlement(
+        attempt: DatabaseTaskAttempt,
+        admitted: dict[str, object],
+    ) -> dict[str, object]:
+        settlement_calls.append(attempt.attempt_id)
+        assert dict(admitted) == authority
+        return _false_completion_deterministic_settlement(attempt, admitted)
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-completion-deterministic-settlement",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        deterministic_reconciliation_fn=deterministic_settlement,
+        repo_root=repo,
+        board_namespace="aseh-test",
+    )
+    try:
+        merge_queue = SimpleNamespace(
+            queue_dir=tmp_path / "merge-queue",
+            max_attempts=3,
+        )
+        daemon.bind_merge_train_recovery(
+            merge_queue=merge_queue,
+            repo_root=repo,
+            merge_target_branch="main",
+        )
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        authority.update(
+            attempt_id=attempt.attempt_id,
+            claim_id=attempt.claim_id,
+            lease_id=attempt.lease_id,
+            fencing_token=int(attempt.fencing_token),
+            fence_epoch=int(attempt.fence_epoch),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_false_completion_deterministic_claim_authority",
+            lambda current: (
+                dict(authority)
+                if current.attempt_id == attempt.attempt_id
+                else None
+            ),
+        )
+        original_complete_attempt = daemon.complete_attempt
+        settlement_fences: list[dict[str, object]] = []
+
+        def complete_while_fenced(
+            current: DatabaseTaskAttempt,
+            **kwargs: object,
+        ) -> DatabaseTaskAttempt:
+            lock_path = board_scoped_checkout_mutation_lock_path(
+                repo,
+                "aseh-test",
+            )
+            lease = read_checkout_mutation_lease(lock_path)
+            assert lease is not None
+            assert checkout_mutation_lease_state(lease) == "current"
+            assert lease.metadata["operation"] == (
+                "database_false_completion_settlement"
+            )
+            contender = MergeTrain(
+                repo_root=repo,
+                queue=merge_queue,
+                target_branch="main",
+                max_attempts=3,
+            )
+            target_lease_acquired, _ = contender.run_under_consumer_lease(
+                lambda: "unexpected"
+            )
+            competing_checkout, reason, _owner, _waited = (
+                acquire_checkout_mutation_lease(
+                    lock_path,
+                    checkout_lock_metadata(
+                        kind="merge",
+                        repo_root=repo,
+                        task_id="competing-settlement",
+                        branch="main",
+                    ),
+                    owner_active=lambda _metadata: True,
+                    timeout_seconds=0.0,
+                )
+            )
+            assert target_lease_acquired is False
+            assert competing_checkout is None
+            assert reason == "lock_exists"
+            settlement_fences.append(
+                {
+                    "checkout_lease_id": lease.lease_id,
+                    "target_consumer_contended": True,
+                }
+            )
+            return original_complete_attempt(current, **kwargs)
+
+        monkeypatch.setattr(
+            daemon,
+            "complete_attempt",
+            complete_while_fenced,
+        )
+
+        result = daemon.resume_attempt(attempt)
+
+        assert result["status"] == "succeeded"
+        assert result["provider_dispatched"] is False
+        assert result["effect_executed"] is False
+        assert result["route"] == (
+            "deterministic_current_tree_declared_validation"
+        )
+        assert provider_calls == []
+        assert effect_calls == []
+        assert settlement_calls == [attempt.attempt_id]
+        assert len(settlement_fences) == 1
+        assert read_checkout_mutation_lease(
+            board_scoped_checkout_mutation_lock_path(repo, "aseh-test")
+        ) is None
+        assert daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        ) is None
+        assert daemon.effect_claim_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        ) is None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "completed"
+        phases = {
+            item["phase"]: item["body"]
+            for item in daemon.phase_history(attempt.attempt_id)
+        }
+        assert phases[ATTEMPT_PHASE_PROVIDER]["provider_dispatched"] is False
+        assert phases[ATTEMPT_PHASE_EFFECT]["effect_executed"] is False
+        assert phases[ATTEMPT_PHASE_VALIDATION]["outcome"] == "passed"
+        settlement_id = result["settlement_receipt_id"]
+        assert phases[ATTEMPT_PHASE_CONTEXT][
+            "deterministic_reconciliation"
+        ]["receipt_id"] == settlement_id
+        assert phases[ATTEMPT_PHASE_PROVIDER][
+            "settlement_receipt_id"
+        ] == settlement_id
+        assert phases[ATTEMPT_PHASE_EFFECT][
+            "settlement_receipt_id"
+        ] == settlement_id
+        assert phases[ATTEMPT_PHASE_VALIDATION][
+            "deterministic_settlement"
+        ]["receipt_id"] == settlement_id
+        assert task.body["completion_receipt"]["validation"][
+            "deterministic_settlement"
+        ]["receipt_id"] == settlement_id
+        assert task.body["completion_receipt"]["validation"][
+            "deterministic_settlement"
+        ]["preserved_unknown_receipt_id"] == authority[
+            "preserved_unknown_receipt_id"
+        ]
+
+        replay = daemon.resume_attempt(attempt.attempt_id)
+        assert replay["resumed"] is False
+        assert replay["reason"] == "attempt_succeeded"
+        assert settlement_calls == [attempt.attempt_id]
+    finally:
+        daemon.close()
+
+def test_false_completion_target_consumer_contention_is_typed_and_replayable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    settlement_calls: list[str] = []
+    repo = _git_repo(tmp_path)
+    target_commit = subprocess.run(
+        ["git", "rev-parse", "main^{commit}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    target_tree = subprocess.run(
+        ["git", "rev-parse", f"{target_commit}^{{tree}}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    merge_queue = SimpleNamespace(
+        queue_dir=tmp_path / "merge-queue",
+        max_attempts=3,
+    )
+
+    def deterministic_settlement(
+        attempt: DatabaseTaskAttempt,
+        admitted: dict[str, object],
+    ) -> dict[str, object]:
+        settlement_calls.append(attempt.attempt_id)
+        return _false_completion_deterministic_settlement(attempt, admitted)
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-completion-target-consumer-contention",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        deterministic_reconciliation_fn=deterministic_settlement,
+        repo_root=repo,
+        board_namespace="aseh-test",
+    )
+    try:
+        daemon.bind_merge_train_recovery(
+            merge_queue=merge_queue,
+            repo_root=repo,
+            merge_target_branch="main",
+        )
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        authority = _false_completion_test_authority(
+            attempt,
+            target_commit=target_commit,
+            target_tree=target_tree,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_false_completion_deterministic_claim_authority",
+            lambda current: (
+                dict(authority)
+                if current.attempt_id == attempt.attempt_id
+                else None
+            ),
+        )
+        incumbent = MergeTrain(
+            repo_root=repo,
+            queue=merge_queue,
+            target_branch="main",
+            max_attempts=3,
+        )
+        with incumbent._consumer_lease() as acquired:
+            assert acquired is True
+            with pytest.raises(
+                DatabasePortalDeterministicReconciliationDeferred
+            ) as raised:
+                daemon.resume_attempt(attempt)
+
+        assert raised.value.reason == (
+            "deterministic_reconciliation_checkout_contended"
+        )
+        assert raised.value.source_reason == (
+            "merge_train_consumer_lease_contended"
+        )
+        assert provider_calls == []
+        assert effect_calls == []
+        assert settlement_calls == [attempt.attempt_id]
+        phases = daemon.phase_history(attempt.attempt_id)
+        assert [item["phase"] for item in phases] == [
+            "claimed",
+            ATTEMPT_PHASE_CONTEXT,
+        ]
+        assert read_checkout_mutation_lease(
+            board_scoped_checkout_mutation_lock_path(repo, "aseh-test")
+        ) is None
+
+        replay = daemon.resume_attempt(attempt.attempt_id)
+        assert replay["status"] == "succeeded"
+        assert replay["provider_dispatched"] is False
+        assert replay["effect_executed"] is False
+        assert settlement_calls == [attempt.attempt_id]
+    finally:
+        daemon.close()
+
+def test_false_completion_target_advance_before_fenced_cas_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    repo = _git_repo(tmp_path)
+    target_commit = subprocess.run(
+        ["git", "rev-parse", "main^{commit}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    target_tree = subprocess.run(
+        ["git", "rev-parse", f"{target_commit}^{{tree}}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    merge_queue = SimpleNamespace(
+        queue_dir=tmp_path / "merge-queue",
+        max_attempts=3,
+    )
+
+    def advance_target_during_validation(
+        attempt: DatabaseTaskAttempt,
+        admitted: dict[str, object],
+    ) -> dict[str, object]:
+        (repo / "README.md").write_text("target advanced\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "advance target during validation"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return _false_completion_deterministic_settlement(attempt, admitted)
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-completion-target-advance",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        deterministic_reconciliation_fn=advance_target_during_validation,
+        repo_root=repo,
+        board_namespace="aseh-test",
+    )
+    try:
+        daemon.bind_merge_train_recovery(
+            merge_queue=merge_queue,
+            repo_root=repo,
+            merge_target_branch="main",
+        )
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        authority = _false_completion_test_authority(
+            attempt,
+            target_commit=target_commit,
+            target_tree=target_tree,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_false_completion_deterministic_claim_authority",
+            lambda current: (
+                dict(authority)
+                if current.attempt_id == attempt.attempt_id
+                else None
+            ),
+        )
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="settlement target changed",
+        ):
+            daemon.resume_attempt(attempt)
+
+        assert provider_calls == []
+        assert effect_calls == []
+        assert daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        ) is None
+        assert daemon.effect_claim_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        ) is None
+        phases = daemon.phase_history(attempt.attempt_id)
+        assert [item["phase"] for item in phases] == [
+            "claimed",
+            ATTEMPT_PHASE_CONTEXT,
+        ]
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "in_progress"
+        assert read_checkout_mutation_lease(
+            board_scoped_checkout_mutation_lock_path(repo, "aseh-test")
+        ) is None
+        probe = MergeTrain(
+            repo_root=repo,
+            queue=merge_queue,
+            target_branch="main",
+            max_attempts=3,
+        )
+        target_lease_acquired, observed = probe.run_under_consumer_lease(
+            lambda: "released"
+        )
+        assert target_lease_acquired is True
+        assert observed == "released"
+    finally:
+        daemon.close()
+
+def test_false_completion_deferral_preserves_zero_provider_retry_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    seed = {
+        "schema": DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+        "evidence_id": "sha256:" + "b" * 64,
+    }
+
+    def defer(
+        _attempt: DatabaseTaskAttempt,
+        _authority: dict[str, object],
+    ) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "deterministic_reconciliation_checkout_contended",
+            backoff_seconds=0,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-completion-deterministic-deferral",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        deterministic_reconciliation_fn=defer,
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+
+        def authority(current: DatabaseTaskAttempt) -> dict[str, object]:
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "false-completion-deterministic-claim-authority@1"
+                ),
+                "task_cid": current.task_cid,
+                "attempt_id": current.attempt_id,
+                "claim_id": current.claim_id,
+                "lease_id": current.lease_id,
+                "fencing_token": int(current.fencing_token),
+                "fence_epoch": int(current.fence_epoch),
+                "source_attempt_id": "attempt:source",
+                "reintegration_evidence_id": seed["evidence_id"],
+                "request_id": "request:integrated",
+                "candidate_commit": "1" * 40,
+                "target_commit": "2" * 40,
+                "target_tree": "3" * 40,
+                "preserved_unknown_receipt_id": "",
+                "provider_dispatch_policy": "forbidden",
+                "effect_execution_policy": "forbidden",
+                "authority_id": "sha256:" + "d" * 64,
+            }
+
+        def retry_material(
+            current: DatabaseTaskAttempt,
+        ) -> dict[str, object]:
+            refreshed = daemon.get_attempt(current.attempt_id)
+            assert refreshed is not None
+            task = daemon.task_source.get(refreshed.task_cid)
+            assert task is not None
+            return {
+                "attempt": refreshed,
+                "task": task,
+                "control": dict(task.body.get("completion_receipt") or {}),
+                "seed": dict(seed),
+                "preserved_unknown_provider_outcome": None,
+            }
+
+        monkeypatch.setattr(
+            daemon,
+            "_false_completion_deterministic_claim_authority",
+            authority,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_false_completion_claim_retry_material",
+            retry_material,
+        )
+
+        result = daemon.run_once()
+        implementation = result["implementation_result"]
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt is not None
+
+        assert implementation["deterministic_reconciliation"] is True
+        assert implementation["status"] == "retrying"
+        assert implementation["provider_dispatched"] is False
+        assert implementation["effect_executed"] is False
+        assert provider_calls == []
+        assert effect_calls == []
+        assert daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        ) is None
+        assert daemon.effect_claim_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        ) is None
+        [failed] = [
+            phase
+            for phase in daemon.phase_history(attempt.attempt_id)
+            if phase["phase"] == ATTEMPT_PHASE_FAILED
+        ]
+        assert failed["body"]["provider_dispatched"] is False
+        assert failed["body"]["effect_executed"] is False
+        assert failed["body"]["typed_deferral"]["reason"] == (
+            "deterministic_reconciliation_checkout_contended"
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        released_claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert released_claim is not None
+        assert str(released_claim.state.value) == "released"
+        receipt = task.body["completion_receipt"]
+        assert receipt["operation"] == (
+            "database_portal_false_completion_reintegration_retry_recovery"
+        )
+        assert receipt["false_completion_reintegration_seed"] == seed
+        assert "preserved_unknown_provider_outcome" not in receipt
+    finally:
+        daemon.close()
+
+def test_quack_transport_deferral_does_not_consume_model_or_spin_budget(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "quack_transport_unavailable",
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-transport-deferral-budget",
+        provider_fn=provider,
+        max_task_attempts=1,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        implementation = first["implementation_result"]
+        assert implementation["portal_retryable_failure"] is True
+        assert implementation["portal_terminal_failure"] is False
+        assert implementation["reason"] == "quack_transport_unavailable"
+        assert implementation["typed_deferral_slot_consumed"] is False
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None and task.status == "retrying"
+    finally:
+        daemon.close()
+
+def test_reconcile_reopens_inflight_deferral_budget_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:inflight-deferral-unstall",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            status="blocked",
+            receipt={
+                "operation": "database_portal_typed_deferral_budget_exhausted",
+                "retry_budget": {
+                    "matching_attempts": [
+                        {"reason": "inflight_process"},
+                        {"reason": "inflight_process"},
+                        {"reason": "inflight_process"},
+                    ]
+                },
+            },
+        )
+        blocked = daemon.task_source.get("task:cid:001")
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        outcomes = daemon.reconcile_inflight_deferral_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+def _block_task_terminal(
+    daemon: DatabaseImplementationDaemon,
+    task_cid: str,
+    *,
+    reason: str,
+) -> None:
+    task = daemon.task_source.get(task_cid)
+    assert task is not None
+    daemon.task_source.compare_and_set_status(
+        task.task_cid,
+        expected_revision=int(task.revision),
+        status="blocked",
+        receipt={
+            "operation": "database_portal_terminal_failure",
+            "reason": reason,
+            "retryable": False,
+        },
+    )
+
+def test_reconcile_reopens_false_terminal_seed_verification_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-terminal-seed-unstall",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="database claim validation retry seed failed verification",
+        )
+        blocked = daemon.task_source.get("task:cid:001")
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        assert outcomes[0]["reason"] == "false_terminal_portal_unstall"
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+        receipt = retried.body["completion_receipt"]
+        assert receipt["operation"] == "database_portal_false_terminal_unstall"
+        assert (
+            receipt["previous_reason"]
+            == "database claim validation retry seed failed verification"
+        )
+    finally:
+        daemon.close()
+
+def test_false_terminal_unstalls_portal_provider_failed_when_logs_show_grok_quota(
+    tmp_path: Path,
+) -> None:
+    """Control-plane leftover 402 blocks rearm without a local failed attempt."""
+
+    repo_root = tmp_path / "repo"
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:false-terminal-quota-log-unstall",
+        repo_root=repo_root,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="portal_provider_failed",
+        )
+        blocked = daemon.task_source.get("task:cid:001")
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        assert daemon.reconcile_false_terminal_portal_blocks() == []
+        assert daemon.task_source.get("task:cid:001").status == "blocked"
+
+        alias = str(blocked.task_alias or "")
+        log_dir = (
+            repo_root
+            / "data"
+            / "aseh"
+            / "state"
+            / "lane-1"
+            / "attempts"
+            / "leftover"
+            / "implementation-logs"
+        )
+        log_dir.mkdir(parents=True)
+        (log_dir / f"{alias.lower()}-attempt-1.log").write_text(
+            'Error: Internal error: {"message":"API error (status 402 '
+            'Payment Required): Grok Build usage balance exhausted",'
+            '"http_status":402,"promptUsage":{"inputTokens":1}}\n',
+            encoding="utf-8",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        assert outcomes[0]["reason"] == "false_terminal_portal_unstall"
+        assert outcomes[0]["previous_reason"] == "grok_quota_exhausted"
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+        receipt = retried.body["completion_receipt"]
+        assert receipt["operation"] == "database_portal_false_terminal_unstall"
+        assert receipt["previous_reason"] == "grok_quota_exhausted"
+    finally:
+        daemon.close()
+
+def test_reconcile_reopens_missing_task_completed_block_without_merge(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-terminal-missing-event-unstall",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="Portal completion lacks a verified task_completed event",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+def test_reconcile_does_not_reopen_unrelated_terminal_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-terminal-unrelated",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="implementation_protected_path_mutated",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert outcomes == []
+        blocked = daemon.task_source.get("task:cid:001")
+        assert blocked is not None
+        assert blocked.status == "blocked"
+    finally:
+        daemon.close()
+
+def test_reconcile_completes_blocked_task_when_merge_queue_landed(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    queue_dir = tmp_path / "merge-queue"
+    merge_queue = MergeQueue(queue_dir)
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:merge-queue-landed-completion",
+        repo_root=repo,
+        merge_queue=merge_queue,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="Portal completion lacks a verified task_completed event",
+        )
+        completed_dir = Path(daemon.merge_queue.completed_dir)
+        completed_dir.mkdir(parents=True, exist_ok=True)
+        (completed_dir / "aseh-020-completed.json").write_text(
+            json.dumps(
+                {
+                    "status": "completed",
+                    "task_id": "DQP-T001",
+                    "canonical_task_id": "task:cid:001",
+                    "commit_sha": commit,
+                    "metadata": {
+                        "implementation_commit": commit,
+                        "completion_task_cids": {"DQP-T001": "task:cid:001"},
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = daemon.run_once()
+        completed_rows = result["merge_queue_landed_completions"]
+        assert completed_rows
+        assert completed_rows[0]["task_cid"] == "task:cid:001"
+        assert completed_rows[0]["completed"] is True
+        assert result["false_terminal_portal_unstalls"] == []
+        completed = daemon.task_source.get("task:cid:001")
+        assert completed is not None
+        assert completed.status == "completed"
+        assert result["selection_idle_reason"] == "no_ready_tasks"
+    finally:
+        daemon.close()
+
+def test_reconcile_reopens_enospc_terminal_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-terminal-enospc",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="[Errno 28] No space left on device",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+def test_reconcile_reopens_missing_implementation_event_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-terminal-missing-implementation",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="Portal terminal replay lacks a task-bound implementation event",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+def test_reconcile_completes_bound_merge_train_queue_without_constructor_queue(
+    tmp_path: Path,
+) -> None:
+    """Live daemons bind the queue on _merge_queue, not the constructor field."""
+
+    repo = _git_repo_with_output(tmp_path)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    queue = MergeQueue(tmp_path / "merge-queue")
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:bound-merge-train-completion",
+        repo_root=repo,
+        merge_target_ref="main",
+    )
+    try:
+        assert daemon.merge_queue is None
+        daemon.bind_merge_train_recovery(
+            merge_queue=queue,
+            repo_root=repo,
+            merge_target_branch="main",
+        )
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="Portal terminal replay lacks a task-bound implementation event",
+        )
+        completed_dir = Path(queue.completed_dir)
+        completed_dir.mkdir(parents=True, exist_ok=True)
+        (completed_dir / "aseh-020-completed.json").write_text(
+            json.dumps(
+                {
+                    "status": "completed",
+                    "task_id": "DQP-T001",
+                    "canonical_task_id": "task:cid:001",
+                    "commit_sha": commit,
+                    "metadata": {
+                        "implementation_commit": commit,
+                        "completion_task_cids": {"DQP-T001": "task:cid:001"},
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = daemon.run_once()
+        completed_rows = result["merge_queue_landed_completions"]
+        assert completed_rows
+        assert completed_rows[0]["task_cid"] == "task:cid:001"
+        assert result["false_terminal_portal_unstalls"] == []
+        completed = daemon.task_source.get("task:cid:001")
+        assert completed is not None
+        assert completed.status == "completed"
+    finally:
+        daemon.close()
+
+def test_quack_runner_builders_use_lane_private_sidecars(tmp_path: Path) -> None:
+    control = tmp_path / "control.duckdb"
+
+    def lane_args(index: int):
+        return parse_args(
+            [
+                "--task-source-kind",
+                "duckdb",
+                "--authority-mode",
+                "quack",
+                "--database-path",
+                str(control),
+                "--endpoint-secret-handle",
+                "handle:test-quack",
+                "--quack-endpoint",
+                "quack:127.0.0.1:45671",
+                "--state-store-id",
+                "state/control.duckdb",
+                "--state-store-generation",
+                "test-generation",
+                "--state-schema-revision",
+                "datasets-authoritative-operational-v1",
+                "--todo-path",
+                str(tmp_path / "unused.md"),
+                "--state-dir",
+                str(tmp_path / f"lane-{index}"),
+                "--state-prefix",
+                f"pcpc_lane_{index}",
+                "--task-shard-count",
+                "4",
+                "--task-shard-index",
+                str(index),
+                "--strict-task-sharding",
+                "--once",
+            ]
+        )
+
+    first, _first_context = build_portal_implementation_daemon_from_args(
+        lane_args(0),
+        repo_root=tmp_path,
+    )
+    second, _second_context = build_portal_implementation_daemon_from_args(
+        lane_args(1),
+        repo_root=tmp_path,
+    )
+    third = build_database_implementation_daemon_from_args(
+        lane_args(2),
+        database_path=control,
+    )
+    try:
+        assert isinstance(first, DatabaseImplementationDaemon)
+        assert isinstance(second, DatabaseImplementationDaemon)
+        assert isinstance(third, DatabaseImplementationDaemon)
+        assert first.database_path == second.database_path == third.database_path == control
+        assert first.execution_path != second.execution_path
+        assert first.coordination_path != second.coordination_path
+        assert third.execution_path not in {first.execution_path, second.execution_path}
+        assert third.coordination_path not in {
+            first.coordination_path,
+            second.coordination_path,
+        }
+        assert first.execution_path.parent == tmp_path / "lane-0"
+        assert second.execution_path.parent == tmp_path / "lane-1"
+        assert third.execution_path.parent == tmp_path / "lane-2"
+        assert first.coordination_path.parent == tmp_path / "lane-0"
+        assert second.coordination_path.parent == tmp_path / "lane-1"
+        assert third.coordination_path.parent == tmp_path / "lane-2"
+        assert first.strict_task_sharding is True
+        assert second.strict_task_sharding is True
+        assert third.strict_task_sharding is True
+        assert first.task_shard_index == 0
+        assert second.task_shard_index == 1
+        assert third.task_shard_index == 2
+    finally:
+        first.close()
+        second.close()
+        third.close()
+
+def test_same_status_control_replay_rejects_foreign_receipt_without_mutation(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:foreign-same-status-receipt",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        foreign_receipt = {
+            "operation": "competing_lane_claim",
+            "claim_id": "claim:foreign",
+        }
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            task.revision,
+            "in_progress",
+            foreign_receipt,
+        )
+        before = daemon.task_source.get(task.task_cid)
+        assert before is not None
+        before_body = dict(before.body)
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="same-status control replay has foreign receipt authority",
+        ):
+            daemon._cas_task_status_database(
+                task.task_cid,
+                expected_revision=int(before.revision),
+                new_status="in_progress",
+                receipt={
+                    "operation": "database_claim",
+                    "claim_id": "claim:local",
+                },
+            )
+
+        after = daemon.task_source.get(task.task_cid)
+        assert after is not None
+        assert after.status == before.status == "in_progress"
+        assert after.revision == before.revision
+        assert dict(after.body) == before_body
+        assert after.body.get("completion_receipt") == foreign_receipt
+    finally:
+        daemon.close()
+
+def test_same_status_control_replay_accepts_exact_receipt_without_revision_change(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:exact-same-status-receipt",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = {
+            "operation": "database_claim",
+            "claim_id": "claim:exact",
+        }
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            task.revision,
+            "in_progress",
+            receipt,
+        )
+        before = daemon.task_source.get(task.task_cid)
+        assert before is not None
+        before_body = dict(before.body)
+
+        replayed = daemon._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(before.revision),
+            new_status="in_progress",
+            receipt=receipt,
+        )
+
+        assert getattr(replayed, "changed", False) is False
+        after = daemon.task_source.get(task.task_cid)
+        assert after is not None
+        assert after.status == before.status == "in_progress"
+        assert after.revision == before.revision
+        assert dict(after.body) == before_body
+        assert after.body.get("completion_receipt") == receipt
+    finally:
+        daemon.close()
+
+def test_database_daemon_rejects_idle_lane_work_stealing(tmp_path: Path) -> None:
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="does not support idle-lane work stealing",
+    ):
+        DatabaseImplementationDaemon(
+            database_path=tmp_path / "control.duckdb",
+            coordination_path=tmp_path / "coordination.duckdb",
+            execution_path=tmp_path / "execution.duckdb",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+            task_shard_count=2,
+            task_shard_index=0,
+            strict_task_sharding=True,
+            idle_lane_work_stealing="virgin-transfer",
+        )

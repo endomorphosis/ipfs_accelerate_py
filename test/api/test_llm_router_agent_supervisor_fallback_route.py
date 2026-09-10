@@ -7,10 +7,13 @@ import json
 import os
 import shutil
 import signal
+import socket
+import stat
 import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -273,6 +276,136 @@ def _effect_detail_identity(value: object) -> str:
     ).hexdigest()
 
 
+def _fixture_terminal_cleanup_evidence(
+    launch_receipt: Mapping[str, object],
+    *,
+    fallback_dispatched: bool,
+) -> dict[str, object]:
+    """Bind one protected fixture's exact cleanup and effect identities."""
+
+    cleanup = launch_receipt.get("cleanup_receipt")
+    container_name = launch_receipt.get("container_name")
+    assert isinstance(cleanup, Mapping)
+    assert isinstance(container_name, str)
+    binding_path = (
+        Path(str(cleanup["lease_root"]))
+        / "provider-cleanup-bindings"
+        / (hashlib.sha256(container_name.encode("ascii")).hexdigest() + ".json")
+    )
+    binding_record_id = _effect_detail_identity(
+        {
+            "schema": "test/protected-cleanup-binding@1",
+            "binding_path": str(binding_path),
+            "cleanup_id": launch_receipt["cleanup_id"],
+            "container_name": container_name,
+        }
+    )
+    termination_fence_id = (
+        _effect_detail_identity(
+            {
+                "schema": "test/protected-termination-fence@1",
+                "binding_record_id": binding_record_id,
+                "container_id": launch_receipt["container_id"],
+                "image_id": launch_receipt["image_id"],
+            }
+        )
+        if fallback_dispatched
+        else ""
+    )
+    return {
+        "binding_path": str(binding_path),
+        "binding_record_id": binding_record_id,
+        "termination_fence_id": termination_fence_id,
+    }
+
+
+def _fixture_terminal_cleanup_intent(terminal) -> dict[str, object]:
+    authority = terminal.terminal_cleanup_authority
+    cleanup = terminal.effect_launch_receipt["cleanup_receipt"]
+    assert isinstance(authority, Mapping)
+    assert isinstance(cleanup, Mapping)
+
+    resources: list[dict[str, object]] = []
+    for name, directory in (
+        ("prompt_path", False),
+        ("provider_home", True),
+        ("lease_root", True),
+    ):
+        identity = {
+            "device": 1,
+            "inode": len(resources) + 2,
+            "mode": (stat.S_IFDIR if directory else stat.S_IFREG) | 0o600,
+            "uid": os.geteuid(),
+        }
+        tombstone_body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "cleanup-path-tombstone@1"
+            ),
+            "path": str(Path(str(cleanup[name])).absolute()),
+            "directory": directory,
+            "identity": identity,
+            "transition": "exact_inode_quarantined_for_removal",
+        }
+        resources.append(
+            {
+                "name": name,
+                "path": cleanup[name],
+                "directory": directory,
+                "identity": identity,
+                "tombstone_id": _effect_detail_identity(tombstone_body),
+            }
+        )
+    fence_id = str(authority["termination_fence_id"])
+    docker_absence = {
+        "kind": (
+            "fenced_effect_absence"
+            if fence_id
+            else "unmaterialized_name_absence"
+        ),
+        "binding_record_id": authority["binding_record_id"],
+    }
+    if fence_id:
+        docker_absence.update(
+            {
+                "fence_id": fence_id,
+                "dispatch_id": "sha256:" + ("d" * 64),
+            }
+        )
+    body: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/terminal-cleanup-intent@1"
+        ),
+        "logical_attempt_id": terminal.logical_attempt_id,
+        "reservation_id": terminal.reservation_id,
+        "cleanup_id": authority["cleanup_id"],
+        "authority_id": authority["authority_id"],
+        "binding_path": authority["binding_path"],
+        "binding_identity": {
+            "device": 1,
+            "inode": 1,
+            "mode": stat.S_IFREG | 0o600,
+            "uid": os.geteuid(),
+        },
+        "binding_record_id": authority["binding_record_id"],
+        "termination_fence_id": fence_id,
+        "lifecycle": {
+            "run_id": "run-fixture",
+            "profile_id": "profile-fixture",
+            "target_id": "target-fixture",
+            "repository_root": "/tmp/work",
+            "state_root": "/tmp/state",
+            "run_root": "/tmp/run",
+            "configuration_root": "sha256:" + ("c" * 64),
+            "fencing_epoch": 1,
+        },
+        "resources": resources,
+        "docker_absence": docker_absence,
+    }
+    body["intent_id"] = _effect_detail_identity(body)
+    return body
+
+
 def _refresh_effect_detail_identities(
     context: dict[str, object],
 ) -> None:
@@ -443,6 +576,27 @@ def _discard_live_cleanup_inputs(paths: dict[str, Path]) -> None:
         paths["prompt_path"].unlink()
     except FileNotFoundError:
         pass
+
+
+def test_immutable_effect_receipt_survives_private_cleanup_root_retirement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cleanup_root = (tmp_path / "private-cleanup-root").resolve()
+    cleanup_root.mkdir(mode=0o700)
+    monkeypatch.setattr(tempfile, "tempdir", str(cleanup_root))
+    context, paths = _live_cleanup_launch_context()
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    assert llm_router._agent_effect_launch_details_valid(context)
+    _discard_live_cleanup_inputs(paths)
+    cleanup_root.rmdir()
+
+    # The receipt remains immutable evidence after admitted cleanup, while a
+    # path that would mutate or adopt the retired effect must still fail shut.
+    assert llm_router._agent_effect_launch_details_valid(context)
+    with pytest.raises(ValueError, match="cleanup root identity is unavailable"):
+        grok_cli_runner_module._recorded_codex_lease_root(context)
 
 
 @pytest.mark.parametrize(
@@ -679,90 +833,303 @@ def test_effect_owner_and_two_dead_adopters_terminalize_one_container(
     assert len(tuple((tmp_path / "attempts").glob("*.json"))) == 1
 
 
-def test_recorded_effect_cleanup_is_reestablished_without_watchdog(
+def test_terminal_cleanup_progress_is_monotonic_and_restart_durable(
+    tmp_path: Path,
+) -> None:
+    store = DurableProviderAttemptCAS(tmp_path / "attempts")
+    started = store.reserve_or_adopt(
+        logical_attempt_id="attempt:cleanup-progress-雪",
+        route_id="route:cleanup-progress",
+        decision_id="decision:cleanup-progress",
+        task_id="task:cleanup-progress",
+        worktree_id="worktree:cleanup-progress",
+        authorized=True,
+        launch_context=_protected_effect_launch_context(),
+        now_ms=1_000,
+    )
+    outcome = {
+        "decision": "effect_not_created",
+        "fallback_dispatched": False,
+        "fallback_returncode": 125,
+        "reservation_id": started.reservation.reservation_id,
+        "effect_launch_receipt": started.reservation.effect_launch_receipt,
+    }
+    terminal = store.complete(
+        started.reservation,
+        returncode=125,
+        outcome=outcome,
+        completion_capability=started.completion_capability,
+        terminal_cleanup_evidence=_fixture_terminal_cleanup_evidence(
+            started.reservation.effect_launch_receipt,
+            fallback_dispatched=False,
+        ),
+        now_ms=1_001,
+    )
+    assert terminal.schema.endswith("@7")
+    assert terminal.terminal_cleanup_progress == {}
+    authority = dict(terminal.terminal_cleanup_authority)
+    authority_id = authority.pop("authority_id")
+    assert authority_id == grok_cli_runner_module._effect_receipt_identity(
+        authority
+    )
+
+    intent = _fixture_terminal_cleanup_intent(terminal)
+    lifecycle = dict(intent["lifecycle"])
+    lifecycle["profile_id"] = "profile-λ-雪"
+    lifecycle["repository_root"] = "/tmp/work-雪"
+    intent["lifecycle"] = lifecycle
+    intent["intent_id"] = grok_cli_runner_module._effect_receipt_identity(
+        {key: item for key, item in intent.items() if key != "intent_id"}
+    )
+    prepared = store.commit_terminal_cleanup_intent(
+        terminal,
+        intent=intent,
+    )
+    assert prepared.terminal_cleanup_progress["phase"] == "intent_committed"
+    progress_body = {
+        key: item
+        for key, item in prepared.terminal_cleanup_progress.items()
+        if key != "progress_id"
+    }
+    assert prepared.terminal_cleanup_progress["progress_id"] == (
+        grok_cli_runner_module._effect_receipt_identity(progress_body)
+    )
+    assert store.commit_terminal_cleanup_intent(
+        terminal,
+        intent=intent,
+    ) == prepared
+
+    restarted = DurableProviderAttemptCAS(tmp_path / "attempts")
+    assert restarted.read(terminal.logical_attempt_id) == prepared
+    completion_id = "sha256:" + ("e" * 64)
+    completed = restarted.commit_terminal_cleanup_completion(
+        terminal,
+        intent_id=str(intent["intent_id"]),
+        completion_id=completion_id,
+    )
+    assert completed.terminal_cleanup_progress["phase"] == (
+        "completion_committed"
+    )
+    assert completed.terminal_cleanup_progress["completion_id"] == completion_id
+    assert restarted.commit_terminal_cleanup_completion(
+        terminal,
+        intent_id=str(intent["intent_id"]),
+        completion_id=completion_id,
+    ) == completed
+    with pytest.raises(
+        ProviderAttemptStoreError,
+        match="cleanup completion changed",
+    ):
+        restarted.commit_terminal_cleanup_completion(
+            terminal,
+            intent_id=str(intent["intent_id"]),
+            completion_id="sha256:" + ("f" * 64),
+        )
+
+    reservation_path = restarted._path(terminal.logical_attempt_id)
+    tampered = json.loads(reservation_path.read_text(encoding="utf-8"))
+    tampered_progress = tampered["terminal_cleanup_progress"]
+    tampered_progress["previous_progress_id"] = "sha256:" + ("d" * 64)
+    tampered_progress["progress_id"] = "sha256:" + hashlib.sha256(
+        provider_attempt_store_module._cleanup_canonical(
+            {
+                key: item
+                for key, item in tampered_progress.items()
+                if key != "progress_id"
+            }
+        )
+    ).hexdigest()
+    reservation_path.write_bytes(
+        provider_attempt_store_module._canonical(tampered) + b"\n"
+    )
+    with pytest.raises(ProviderAttemptStoreError, match="state is invalid"):
+        restarted.read(terminal.logical_attempt_id)
+
+
+def test_attempt_cas_lock_name_replacement_cannot_split_exclusion(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    container_name = "ipfs-accelerate-codex-123-" + "a" * 32
+    """The kernel lease survives rename/recreate of the permanent lock name."""
+
+    monkeypatch.setattr(
+        provider_attempt_store_module,
+        "_PROVIDER_ATTEMPT_LOCK_TIMEOUT_SECONDS",
+        0.05,
+    )
+    store = DurableProviderAttemptCAS(tmp_path / "attempts")
+    first, record_path = store._lock("replacement-safe-attempt")
+    lock_path = record_path.with_suffix(".lock")
+    displaced = lock_path.with_suffix(".displaced")
+    try:
+        # Recursive acquisition cannot deadlock the owning thread; the
+        # pathname lease makes the attempt fail on the same bounded deadline.
+        with pytest.raises(
+            ProviderAttemptStoreError,
+            match="pathname is contended",
+        ):
+            store._lock("replacement-safe-attempt")
+        lock_path.rename(displaced)
+        lock_path.touch(mode=0o600)
+        lock_path.chmod(0o600)
+        with pytest.raises(
+            ProviderAttemptStoreError,
+            match="pathname is contended",
+        ):
+            store._lock("replacement-safe-attempt")
+    finally:
+        store._unlock(first)
+
+    successor, successor_path = store._lock("replacement-safe-attempt")
+    try:
+        assert successor_path == record_path
+    finally:
+        store._unlock(successor)
+
+
+def test_attempt_cas_rejects_canonical_directory_replacement_while_locked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Detached retained dirfds cannot supply or publish authoritative state."""
+
+    read_directory = tmp_path / "read-attempts"
+    read_store = DurableProviderAttemptCAS(read_directory)
+    values = {
+        "logical_attempt_id": "directory-replacement-read",
+        "route_id": "route:directory-replacement",
+        "decision_id": "decision:directory-replacement",
+        "task_id": "task:directory-replacement",
+        "worktree_id": "worktree:directory-replacement",
+        "authorized": True,
+    }
+    read_store.reserve_or_adopt(**values)
+    read_lock, read_path = read_store._lock(values["logical_attempt_id"])
+    displaced_read_directory = tmp_path / "read-attempts-displaced"
+    try:
+        read_directory.rename(displaced_read_directory)
+        read_directory.mkdir(mode=0o700)
+        with pytest.raises(
+            ProviderAttemptStoreError,
+            match="unreadable",
+        ):
+            read_store._read(read_path)
+    finally:
+        read_store._unlock(read_lock)
+
+    write_directory = tmp_path / "write-attempts"
+    write_store = DurableProviderAttemptCAS(write_directory)
+    displaced_write_directory = tmp_path / "write-attempts-displaced"
+    real_replace = provider_attempt_store_module.os.replace
+    replacement_injected = False
+
+    def replace_after_final_prepublication_check(
+        source: str,
+        destination: str,
+        *,
+        src_dir_fd: int,
+        dst_dir_fd: int,
+    ) -> None:
+        nonlocal replacement_injected
+        if (
+            not replacement_injected
+            and src_dir_fd == write_store._directory_fd
+            and dst_dir_fd == write_store._directory_fd
+        ):
+            write_directory.rename(displaced_write_directory)
+            write_directory.mkdir(mode=0o700)
+            replacement_injected = True
+        real_replace(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+
+    monkeypatch.setattr(
+        provider_attempt_store_module.os,
+        "replace",
+        replace_after_final_prepublication_check,
+    )
+    with pytest.raises(
+        ProviderAttemptStoreError,
+        match="directory identity drifted",
+    ):
+        write_store.reserve_or_adopt(
+            **{
+                **values,
+                "logical_attempt_id": "directory-replacement-write",
+            }
+        )
+    assert replacement_injected
+    assert not tuple(write_directory.glob("*.json"))
+    assert len(tuple(displaced_write_directory.glob("*.json"))) == 1
+
+
+def test_recorded_effect_cleanup_without_durable_binding_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launch_context, cleanup_paths = _live_cleanup_launch_context()
     removed: list[tuple[str, str, str]] = []
     monkeypatch.setattr(
         grok_cli_runner_module,
         "_remove_exact_docker_container",
-        lambda *, docker_bin, docker_config, container_name, settle_for_creation: (
-            removed.append((docker_bin, str(docker_config), container_name))
+        lambda **kwargs: removed.append(
+            (
+                str(kwargs["docker_bin"]),
+                str(kwargs["docker_config"]),
+                str(kwargs["container_name"]),
+            )
         ),
     )
-    with tempfile.TemporaryDirectory(
-        prefix="asref-codex-container-"
-    ) as raw_lease_root:
-        lease_root = Path(raw_lease_root)
-        lease_root.chmod(0o700)
-        docker_config = lease_root / "docker-config"
-        docker_config.mkdir(mode=0o700)
-        cidfile = lease_root / "container.cid"
-        cidfile.write_text("6" * 64, encoding="ascii")
-        provider_home = Path(
-            tempfile.mkdtemp(prefix="asref-codex-home-")
+    try:
+        store = DurableProviderAttemptCAS(tmp_path / "attempts")
+        started = store.reserve_or_adopt(
+            logical_attempt_id="attempt:cleanup-without-binding",
+            route_id="route:cleanup-without-binding",
+            decision_id="decision:cleanup-without-binding",
+            task_id="task:cleanup-without-binding",
+            worktree_id="worktree:cleanup-without-binding",
+            authorized=True,
+            launch_context=launch_context,
+            effect_owner_id="sha256:" + "a" * 64,
+            now_ms=1_000,
         )
-        provider_home.chmod(0o700)
-        prompt_fd, prompt_name = tempfile.mkstemp(
-            prefix="asref-grok-prompt-", suffix=".txt"
-        )
-        os.close(prompt_fd)
-        prompt_path = Path(prompt_name)
-        prompt_path.chmod(0o600)
-        cleanup_receipt = {
-            "schema": (
-                "ipfs_accelerate_py.agent_supervisor."
-                "provider-effect-cleanup@1"
+        reservation = started.reservation
+        outcome = {
+            "decision": "fallback_failed",
+            "fallback_dispatched": True,
+            "fallback_returncode": 17,
+            "reservation_id": reservation.reservation_id,
+            "effect_launch_receipt": reservation.effect_launch_receipt,
+        }
+        terminal = store.complete(
+            reservation,
+            returncode=17,
+            outcome=outcome,
+            completion_capability=started.completion_capability,
+            terminal_cleanup_evidence=_fixture_terminal_cleanup_evidence(
+                reservation.effect_launch_receipt,
+                fallback_dispatched=True,
             ),
-            "lease_root": str(lease_root),
-            "docker_config": str(docker_config),
-            "cidfile": str(cidfile),
-            "provider_home": str(provider_home),
-            "prompt_path": str(prompt_path),
-            "watchdog_pid": 999_999_999,
-            "watchdog_start_ticks": 1,
-        }
-        cleanup_receipt["receipt_id"] = _effect_detail_identity(
-            cleanup_receipt
+            effect_owner_id="sha256:" + "a" * 64,
+            now_ms=1_001,
         )
-        launch_receipt = {
-            "container_name": container_name,
-            "cleanup_id": cleanup_receipt["receipt_id"],
-            "cleanup_receipt": cleanup_receipt,
-            "runtime_receipt": {"path": "/usr/bin/docker"},
-            "command_receipt": {
-                "create_argv": [
-                    "/usr/bin/docker",
-                    "--host=unix:///var/run/docker.sock",
-                    "--config",
-                    str(docker_config),
-                    "create",
-                    "--name",
-                    container_name,
-                    "--cidfile",
-                    str(cidfile),
-                ]
-            },
-        }
-        terminal_marker = lease_root / "cas-terminal"
-        assert not terminal_marker.exists()
+        assert store.observe(reservation.logical_attempt_id) == terminal
 
-        grok_cli_runner_module._release_recorded_codex_effect_cleanup(
-            launch_receipt
-        )
-        assert removed == [
-            ("/usr/bin/docker", str(docker_config), container_name)
-        ]
-        assert not lease_root.exists()
-        assert not provider_home.exists()
-        assert not prompt_path.exists()
-
-        # A later terminal replay observes already-complete cleanup.
-        grok_cli_runner_module._release_recorded_codex_effect_cleanup(
-            launch_receipt
-        )
-        assert len(removed) == 1
+        with pytest.raises(ValueError, match="binding path is absent"):
+            grok_cli_runner_module._release_recorded_codex_effect_cleanup(
+                terminal.effect_launch_receipt,
+                terminal_observer=store,
+                terminal_reservation=terminal,
+            )
+        assert removed == []
+        assert cleanup_paths["lease_root"].exists()
+        assert cleanup_paths["provider_home"].exists()
+        assert cleanup_paths["prompt_path"].exists()
+    finally:
+        _discard_live_cleanup_inputs(cleanup_paths)
 
 
 @pytest.mark.parametrize(
@@ -903,6 +1270,12 @@ def test_eight_adoption_cap_can_only_terminalize_after_exact_reinspection(
                     returncode=terminal_returncode,
                     outcome=outcome,
                     completion_capability=invalid_capability,
+                    terminal_cleanup_evidence=(
+                        _fixture_terminal_cleanup_evidence(
+                            repair.reservation.effect_launch_receipt,
+                            fallback_dispatched=dispatched,
+                        )
+                    ),
                     effect_owner_id=repair_owner_id,
                     now_ms=1_011,
                 )
@@ -916,18 +1289,28 @@ def test_eight_adoption_cap_can_only_terminalize_after_exact_reinspection(
             returncode=terminal_returncode,
             outcome=outcome,
             completion_capability=repair.completion_capability,
+            terminal_cleanup_evidence=_fixture_terminal_cleanup_evidence(
+                repair.reservation.effect_launch_receipt,
+                fallback_dispatched=dispatched,
+            ),
             effect_owner_id=repair_owner_id,
             now_ms=1_011,
         )
         assert terminal.terminal
         assert terminal.terminal_outcome == outcome
-        grok_cli_runner_module._release_recorded_codex_effect_cleanup(
-            terminal.effect_launch_receipt
-        )
-        assert len(removed) == 1
-        assert not cleanup_paths["lease_root"].exists()
-        assert not cleanup_paths["provider_home"].exists()
-        assert not cleanup_paths["prompt_path"].exists()
+        # The legacy fixture predates inode-bound cleanup authority.  Its CAS
+        # may still terminalize from exact provider reinspection, but that
+        # semantic receipt cannot authorize deletion of current local paths.
+        with pytest.raises(ValueError, match="binding path is absent"):
+            grok_cli_runner_module._release_recorded_codex_effect_cleanup(
+                terminal.effect_launch_receipt,
+                terminal_observer=restarted,
+                terminal_reservation=terminal,
+            )
+        assert removed == []
+        assert cleanup_paths["lease_root"].exists()
+        assert cleanup_paths["provider_home"].exists()
+        assert cleanup_paths["prompt_path"].exists()
     finally:
         _discard_live_cleanup_inputs(cleanup_paths)
 
@@ -1008,6 +1391,10 @@ def _terminal_watchdog_arguments(
         str(paths["provider_home"]),
         "--prompt-path",
         str(paths["prompt_path"]),
+        "--runner-pid",
+        str(os.getpid()),
+        "--runner-start-ticks",
+        str(grok_cli_runner_module._runner_process_start_ticks(os.getpid())),
     ]
 
 
@@ -1015,7 +1402,8 @@ def _arm_terminal_watchdog_signal(
     context: dict[str, object],
     paths: dict[str, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    channel: socket.socket,
+) -> object:
     for name in ("cas-owned", "cas-terminal"):
         marker = paths["lease_root"] / name
         marker.write_text(str(context["container_name"]), encoding="ascii")
@@ -1026,34 +1414,47 @@ def _arm_terminal_watchdog_signal(
         handlers[signum] = handler
 
     class SignalBeforePoll:
-        @property
-        def buffer(self) -> SignalBeforePoll:
-            return self
+        def fileno(self) -> int:
+            return channel.fileno()
 
-        def read(self, _maximum: int) -> bytes:
+        def getsockopt(self, *args: object) -> object:
+            return channel.getsockopt(*args)
+
+        def sendall(self, payload: bytes) -> None:
+            channel.sendall(payload)
+
+        def recv(self, _maximum: int) -> bytes:
             handler = handlers[signal.SIGTERM]
             assert callable(handler)
             handler(signal.SIGTERM, None)
             raise AssertionError("terminal signal handler did not exit")
+
+        def shutdown(self, how: int) -> None:
+            channel.shutdown(how)
+
+        def close(self) -> None:
+            channel.close()
 
     monkeypatch.setattr(
         grok_cli_runner_module.signal,
         "signal",
         capture_handler,
     )
-    monkeypatch.setattr(
-        grok_cli_runner_module.sys,
-        "stdin",
-        SignalBeforePoll(),
-    )
+    return SignalBeforePoll()
 
 
 def test_terminal_watchdog_signal_reaps_before_removing_cleanup_inputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     context, paths = _live_cleanup_launch_context()
+    watchdog_socket, runner_socket = socket.socketpair()
     observed: list[tuple[bool, bool, bool, bool]] = []
-    _arm_terminal_watchdog_signal(context, paths, monkeypatch)
+    control = _arm_terminal_watchdog_signal(
+        context,
+        paths,
+        monkeypatch,
+        watchdog_socket,
+    )
 
     def remove_exact(**_kwargs: object) -> None:
         observed.append(
@@ -1073,7 +1474,8 @@ def test_terminal_watchdog_signal_reaps_before_removing_cleanup_inputs(
     try:
         with pytest.raises(SystemExit) as stopped:
             grok_cli_runner_module._docker_cleanup_watchdog_main(
-                _terminal_watchdog_arguments(context, paths)
+                _terminal_watchdog_arguments(context, paths),
+                control_socket=control,
             )
         assert stopped.value.code == 128 + signal.SIGTERM
         assert observed == [(True, True, True, True)]
@@ -1081,6 +1483,8 @@ def test_terminal_watchdog_signal_reaps_before_removing_cleanup_inputs(
         assert not paths["provider_home"].exists()
         assert not paths["prompt_path"].exists()
     finally:
+        watchdog_socket.close()
+        runner_socket.close()
         _discard_live_cleanup_inputs(paths)
 
 
@@ -1088,8 +1492,14 @@ def test_terminal_watchdog_signal_preserves_inputs_when_docker_rm_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     context, paths = _live_cleanup_launch_context()
+    watchdog_socket, runner_socket = socket.socketpair()
     observed: list[bool] = []
-    _arm_terminal_watchdog_signal(context, paths, monkeypatch)
+    control = _arm_terminal_watchdog_signal(
+        context,
+        paths,
+        monkeypatch,
+        watchdog_socket,
+    )
 
     def failed_remove(**_kwargs: object) -> None:
         observed.append(paths["docker_config"].exists())
@@ -1103,7 +1513,8 @@ def test_terminal_watchdog_signal_preserves_inputs_when_docker_rm_fails(
     try:
         with pytest.raises(SystemExit) as stopped:
             grok_cli_runner_module._docker_cleanup_watchdog_main(
-                _terminal_watchdog_arguments(context, paths)
+                _terminal_watchdog_arguments(context, paths),
+                control_socket=control,
             )
         assert stopped.value.code == 125
         assert observed == [True]
@@ -1114,6 +1525,8 @@ def test_terminal_watchdog_signal_preserves_inputs_when_docker_rm_fails(
         assert (paths["lease_root"] / "cas-owned").exists()
         assert (paths["lease_root"] / "cas-terminal").exists()
     finally:
+        watchdog_socket.close()
+        runner_socket.close()
         _discard_live_cleanup_inputs(paths)
 
 _BOARD = "agent-supervisor-prompt-only-self-improvement-v3"
@@ -1705,6 +2118,11 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
         / quote(str(verifier_workspace.resolve()), safe="")
         / session_id
     )
+    workspace_namespace = quote(
+        str(verifier_workspace.resolve(strict=True)),
+        safe="!'()*-._~",
+    )
+    session = home / "sessions" / workspace_namespace / session_id
     session.mkdir(parents=True, mode=0o700)
 
     def update(value: dict[str, object]) -> dict[str, object]:
@@ -1876,6 +2294,10 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
         returncode=17,
         outcome=outcome,
         completion_capability=claim.completion_capability,
+        terminal_cleanup_evidence=_fixture_terminal_cleanup_evidence(
+            claim.reservation.effect_launch_receipt,
+            fallback_dispatched=True,
+        ),
         now_ms=now_ms + 1,
     )
     assert terminal.terminal_outcome == outcome
@@ -2171,6 +2593,10 @@ def test_router_outcome_binds_exact_quarantine_terminalization_lineage(
             returncode=17,
             outcome=omitted_lineage,
             completion_capability=repair.completion_capability,
+            terminal_cleanup_evidence=_fixture_terminal_cleanup_evidence(
+                repair.reservation.effect_launch_receipt,
+                fallback_dispatched=True,
+            ),
             effect_owner_id=repair_owner,
             now_ms=now_ms + 11,
         )
@@ -2179,6 +2605,10 @@ def test_router_outcome_binds_exact_quarantine_terminalization_lineage(
         returncode=17,
         outcome=outcome,
         completion_capability=repair.completion_capability,
+        terminal_cleanup_evidence=_fixture_terminal_cleanup_evidence(
+            repair.reservation.effect_launch_receipt,
+            fallback_dispatched=True,
+        ),
         effect_owner_id=repair_owner,
         # Completion may legitimately occur long after the once-only start
         # authority expired.  Historical validation is anchored at the CAS

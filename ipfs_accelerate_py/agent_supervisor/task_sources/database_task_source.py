@@ -34,6 +34,7 @@ from typing import Any, ClassVar, Final
 from .control_plane_contracts import content_identity
 from .control_plane_migrations import duckdb_available
 from .duckdb_state import (
+    FALSE_TERMINAL_BLOCKED_REASON_MARKERS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
@@ -2060,6 +2061,7 @@ def _raise_typed_owner_error(exc: QuackOwnerCommandRemoteError) -> None:
     if exc.code in {
         "command_timeout_unknown_outcome",
         "read_replica_refresh_unknown_outcome",
+        "unknown_external_outcome",
     }:
         raise TaskSourceUnknownOutcomeError(
             exc.message,
@@ -3462,12 +3464,46 @@ class DatabaseTaskSource:
         *,
         now: Any = None,
         stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+        orphan_previous_generation: bool = False,
     ) -> dict[str, Any]:
         """Retry leftover in_progress gates through the intent authority."""
 
-        return self._intent.unstall_stale_in_progress_tasks(
-            now=now, stale_seconds=stale_seconds
+        result = dict(
+            self._intent.unstall_stale_in_progress_tasks(
+                now=now,
+                stale_seconds=stale_seconds,
+                orphan_previous_generation=orphan_previous_generation,
+            )
+            or {}
         )
+        extra: list[dict[str, Any]] = []
+        try:
+            page = self.list_tasks(status="blocked", limit=40)
+        except Exception:
+            page = None
+        for record in getattr(page, "tasks", ()) or ():
+            try:
+                blob = json.dumps(record.to_dict(), default=str)
+            except Exception:
+                blob = str(getattr(record, "body", "") or "")
+            if not any(marker in blob for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS):
+                continue
+            cas = self.rearm_blocked_task(
+                record,
+                receipt={"operation": "false_terminal_blocked_supervisor_bug"},
+            )
+            if getattr(cas, "changed", False):
+                extra.append(
+                    {
+                        "task_alias": str(getattr(record, "task_alias", "")),
+                        "task_cid": str(getattr(record, "task_cid", "")),
+                        "revision": int(getattr(cas, "revision", 0) or 0),
+                        "reason": "false_terminal_blocked_supervisor_bug",
+                    }
+                )
+        if extra:
+            result["unstalled"] = list(result.get("unstalled") or []) + extra
+        return result
 
     def compare_and_set_goal_status(
         self,

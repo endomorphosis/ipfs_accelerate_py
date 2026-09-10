@@ -73,6 +73,9 @@ from .task_execution_route_policy import (
     resolve_post_merge_retry_predecessor_lineage,
     typed_database_blocked_retry_revalidation_requirement,
 )
+import fcntl
+from dataclasses import dataclass
+from .control_plane_contracts import StateCommand, canonical_json_bytes, content_identity
 
 TYPED_STATE_OWNER_INTERFACE: Final = "TypedStateOwnerCommandGateway@1"
 _UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
@@ -1037,6 +1040,7 @@ class OwnerClientGrant:
     process_birth_id: str
     allowed_operations: frozenset[str]
     allowed_command_operations: frozenset[str]
+    allowed_database_task_commands: frozenset[str] = frozenset()
     tenant_id: str = ""
     federation_id: str = ""
     entity_scopes: tuple[tuple[str, str], ...] = ()
@@ -1066,6 +1070,10 @@ class OwnerClientGrant:
             "allowed_command_operations",
             frozenset(str(item) for item in self.allowed_command_operations),
         )
+        database_task_commands = frozenset(str(item) for item in self.allowed_database_task_commands)
+        if not database_task_commands.issubset(DATABASE_TASK_COMMANDS):
+            raise TypedStateOwnerAuthorizationError("owner grant contains an unknown database-task command")
+        object.__setattr__(self, "allowed_database_task_commands", database_task_commands)
         object.__setattr__(self, "tenant_id", str(self.tenant_id or "").strip())
         object.__setattr__(self, "federation_id", str(self.federation_id or "").strip())
         scopes = tuple(
@@ -1134,6 +1142,9 @@ class OwnerClientGrant:
             "process_birth_id": self.process_birth_id,
             "allowed_operations": sorted(self.allowed_operations),
             "allowed_command_operations": sorted(self.allowed_command_operations),
+            "allowed_database_task_commands": sorted(
+                self.allowed_database_task_commands
+            ),
             "tenant_id": self.tenant_id,
             "federation_id": self.federation_id,
             "entity_scopes": dict(self.entity_scopes),
@@ -5355,6 +5366,7 @@ class TypedStateOwnerGateway:
         self._committed_transactions = 0
         self._last_error_type = ""
         self._grants: dict[str, OwnerClientGrant] = {}
+        self._database_task_session_grants: dict[str, OwnerClientGrant] = {}
         self._revoked_grants: set[str] = set()
         self._grants_lock = threading.Lock()
         self._status_bootstrap_token_digest: bytes | None = None
@@ -5369,11 +5381,30 @@ class TypedStateOwnerGateway:
         self._event_wait_handler: Any | None = None
         self._event_wait_cancel_handler: Any | None = None
         self._event_wait_clear_handler: Any | None = None
+        self._database_task_command_handler: Any | None = None
         self._commit_observer: Any | None = None
         self._last_observer_error_type = ""
         self._eaaef_service_bind_lock = threading.Lock()
         self._eaaef_typed_owner_command_service: Any | None = None
         self._eaaef_plan_r2_owner_service: Any | None = None
+        self._hash_observation_store: Any | None = None
+        from .hash_observations import (
+            HashObservationStore,
+            HashObservationUnavailableError,
+        )
+
+        try:
+            self._hash_observation_store = HashObservationStore(
+                connection,
+                generation=(
+                    f"{self.identity.get('server_id', '')}:"
+                    f"{self.identity.get('generation', '')}"
+                ),
+            )
+        except HashObservationUnavailableError:
+            # Older/custom schema owners remain usable, but cannot serve
+            # hash observations before the additive migration is installed.
+            pass
 
     def _require_live_server_binding(self) -> None:
         thread = self._thread
@@ -5812,16 +5843,22 @@ class TypedStateOwnerGateway:
         )
         ephemeral_token = secrets.token_hex(32)
         with self._grants_lock:
+            self._purge_expired_grants_locked(now_ms=issued_at)
             self._grants[ephemeral_token] = grant
         return grant
 
     def _retire_status_session_grant(self, grant_id: str) -> None:
-        """Remove a connection-local status grant without growing revocation state."""
+        """Remove a connection-local grant without growing revocation state."""
 
         with self._grants_lock:
             self._grants = {
                 token: candidate
                 for token, candidate in self._grants.items()
+                if candidate.grant_id != grant_id
+            }
+            self._database_task_session_grants = {
+                session_id: candidate
+                for session_id, candidate in self._database_task_session_grants.items()
                 if candidate.grant_id != grant_id
             }
             self._revoked_grants.discard(grant_id)
@@ -5883,6 +5920,7 @@ class TypedStateOwnerGateway:
         process_birth_id: str = "",
         allowed_operations: Sequence[str] = (),
         allowed_command_operations: Sequence[str] = (),
+        allowed_database_task_commands: Sequence[str] = (),
         tenant_id: str = "",
         federation_id: str = "",
         entity_scopes: Mapping[str, str] | None = None,
@@ -5893,8 +5931,11 @@ class TypedStateOwnerGateway:
 
         operations = frozenset(str(item) for item in allowed_operations)
         commands = frozenset(str(item) for item in allowed_command_operations)
+        database_task_commands = frozenset(str(item) for item in allowed_database_task_commands)
+        if not database_task_commands.issubset(DATABASE_TASK_COMMANDS):
+            raise TypedStateOwnerAuthorizationError("grant contains a database-task command absent from server policy")
         if not operations.issubset(
-            set(self.catalog) | set(_ISSUABLE_SERVICE_OPERATIONS)
+            set(self.catalog) | set(_ISSUABLE_SERVICE_OPERATIONS) | {HASH_OBSERVATION_SERVICE_OPERATION}
         ):
             raise TypedStateOwnerAuthorizationError(
                 "grant contains an operation absent from the server catalog"
@@ -5932,6 +5973,7 @@ class TypedStateOwnerGateway:
             process_birth_id=process_birth_id,
             allowed_operations=operations,
             allowed_command_operations=commands,
+            allowed_database_task_commands=database_task_commands,
             tenant_id=tenant_id,
             federation_id=federation_id,
             entity_scopes=tuple((entity_scopes or {}).items()),
@@ -5943,6 +5985,7 @@ class TypedStateOwnerGateway:
         )
         token = uuid.uuid4().hex + uuid.uuid4().hex
         with self._grants_lock:
+            self._purge_expired_grants_locked(now_ms=issued_at)
             self._grants[token] = grant
         return token, grant
 
@@ -5990,6 +6033,11 @@ class TypedStateOwnerGateway:
             self._grants = {
                 token: grant
                 for token, grant in self._grants.items()
+                if grant.grant_id != selected
+            }
+            self._database_task_session_grants = {
+                session_id: grant
+                for session_id, grant in self._database_task_session_grants.items()
                 if grant.grant_id != selected
             }
 
@@ -6066,14 +6114,19 @@ class TypedStateOwnerGateway:
         grant: OwnerClientGrant,
         *,
         peer_identity: tuple[int, int, int],
+        session_id: str = "",
     ) -> OwnerClientGrant:
         """Revalidate revocation, expiry, and kernel peer identity per request."""
 
         with self._grants_lock:
             revoked = grant.grant_id in self._revoked_grants
+            issued = (
+                (self._database_task_session_grants[session_id],)
+                if session_id in self._database_task_session_grants else ()
+            ) if grant.allowed_database_task_commands else self._grants.values()
             current = tuple(
                 candidate
-                for candidate in self._grants.values()
+                for candidate in issued
                 if candidate.grant_id == grant.grant_id
             )
             if revoked or len(current) != 1:
@@ -6082,10 +6135,17 @@ class TypedStateOwnerGateway:
                 )
             active = current[0]
             if int(time.time() * 1_000) >= active.expires_at:
+                # This lock is deliberately nonreentrant. Retire both grant
+                # tables here without reentering the public revoke method.
                 self._revoked_grants.add(active.grant_id)
                 self._grants = {
                     token: candidate
                     for token, candidate in self._grants.items()
+                    if candidate.grant_id != active.grant_id
+                }
+                self._database_task_session_grants = {
+                    session: candidate
+                    for session, candidate in self._database_task_session_grants.items()
                     if candidate.grant_id != active.grant_id
                 }
                 raise TypedStateOwnerAuthorizationError(
@@ -6215,6 +6275,13 @@ class TypedStateOwnerGateway:
         with self._grants_lock:
             status_configured = self._status_bootstrap_token_digest is not None
             status_scope_bound = bool(self._status_bootstrap_scope)
+            self._purge_expired_grants_locked(
+                now_ms=int(time.time() * 1_000)
+            )
+            active_grants = len(self._grants) + len(
+                self._database_task_session_grants
+            )
+            revoked_grants = len(self._revoked_grants)
         return {
             "interface": TYPED_STATE_OWNER_INTERFACE,
             "available": self._listener is not None and not self._stop.is_set(),
@@ -6225,8 +6292,8 @@ class TypedStateOwnerGateway:
             "operation_count": len(self.catalog),
             "request_count": self._request_count,
             "committed_transactions": self._committed_transactions,
-            "active_grants": len(self._grants),
-            "revoked_grants": len(self._revoked_grants),
+            "active_grants": active_grants,
+            "revoked_grants": revoked_grants,
             "grant_expiry_required": True,
             "kernel_peer_credentials_required": True,
             # Configuration diagnostics only: live scope is revalidated on
@@ -6235,6 +6302,11 @@ class TypedStateOwnerGateway:
             "status_bootstrap_scope_bound": status_scope_bound,
             "typed_event_wait_bound": self._event_wait_handler is not None,
             # Owner status is canonical DAG-JSON and therefore float-free.
+            "database_task_command_bound": (
+                self._database_task_command_handler is not None
+            ),
+            # Status projections use canonical control-plane JSON, which
+            # intentionally rejects floats.  This bound is an exact integer.
             "typed_event_wait_maximum_seconds": int(
                 MAX_REMOTE_EVENT_WAIT_SECONDS
             ),
@@ -6525,6 +6597,7 @@ class TypedStateOwnerGateway:
         derived_session_grant_id = ""
         fleet_read_session_grant_id = ""
         session_id = ""
+        database_task_session_grant_id = ""
         status_index_sql: list[str] = []
         try:
             channel.settimeout(30.0)
@@ -6557,6 +6630,7 @@ class TypedStateOwnerGateway:
                 or len(process_birth_id) > 256
             ):
                 raise TypedStateOwnerAuthorizationError("gateway authentication failed")
+            session_id = f"session:owner:{uuid.uuid4()}"
             if action == "open_fleet":
                 expected = self._fleet_read_bootstrap_token_digest
                 supplied = hashlib.sha256(supplied_token.encode()).digest()
@@ -6625,20 +6699,18 @@ class TypedStateOwnerGateway:
                     return
                 status_session_grant_id = grant.grant_id
             elif action == "open":
-                with self._grants_lock:
-                    for candidate_token, candidate_grant in self._grants.items():
-                        if hmac.compare_digest(supplied_token, candidate_token):
-                            grant = candidate_grant
-                            break
-                if grant is None:
-                    raise TypedStateOwnerAuthorizationError(
-                        "gateway authentication failed"
-                    )
+                grant = self._admit_open_grant(
+                    supplied_token=supplied_token, client_id=client_id,
+                    process_birth_id=process_birth_id, peer_identity=peer_identity,
+                    session_id=session_id,
+                )
+                if grant.allowed_database_task_commands:
+                    database_task_session_grant_id = grant.grant_id
             else:
                 raise TypedStateOwnerAuthorizationError("gateway authentication failed")
             grant = self._require_active_grant(
                 grant,
-                peer_identity=peer_identity,
+                peer_identity=peer_identity, session_id=session_id,
             )
             if (
                 not client_id
@@ -6650,7 +6722,6 @@ class TypedStateOwnerGateway:
                 )
             ):
                 raise TypedStateOwnerAuthorizationError("gateway client identity is invalid")
-            session_id = f"session:owner:{uuid.uuid4()}"
             now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             try:
                 with self._transaction_lock:
@@ -6714,7 +6785,7 @@ class TypedStateOwnerGateway:
                 try:
                     grant = self._require_active_grant(
                         grant,
-                        peer_identity=peer_identity,
+                        peer_identity=peer_identity, session_id=session_id,
                     )
                     if action == "begin":
                         self._reject_unknown(
@@ -6732,7 +6803,7 @@ class TypedStateOwnerGateway:
                         try:
                             grant = self._require_active_grant(
                                 grant,
-                                peer_identity=peer_identity,
+                                peer_identity=peer_identity, session_id=session_id,
                             )
                             self._authorize_command(command, client_id, grant=grant)
                             status_index_sql = self._task_status_cas_index_sql(
@@ -6868,7 +6939,7 @@ class TypedStateOwnerGateway:
                             with self._transaction_lock:
                                 grant = self._require_active_grant(
                                     grant,
-                                    peer_identity=peer_identity,
+                                    peer_identity=peer_identity, session_id=session_id,
                                 )
                                 if grant.authority_profile == "dedicated_database_status":
                                     self._resolve_database_status_scope()
@@ -6944,6 +7015,127 @@ class TypedStateOwnerGateway:
                             include_closeout=action == "completion.closeout.snapshot",
                         )
                         response = {"ok": True, "result": dict(snapshot)}
+                    elif action == "hash_observation":
+                        self._reject_unknown(
+                            request,
+                            {"schema", "action", "request_id", "observation"},
+                            "hash observation request",
+                        )
+                        if transaction_active:
+                            raise TypedStateOwnerAuthorizationError(
+                                "hash observations are unavailable inside a transaction"
+                            )
+                        if HASH_OBSERVATION_SERVICE_OPERATION not in grant.allowed_operations:
+                            raise TypedStateOwnerAuthorizationError(
+                                "hash observations are outside the client grant"
+                            )
+                        observation = request.get("observation")
+                        if not isinstance(observation, Mapping):
+                            raise TypedStateOwnerProtocolError(
+                                "hash observation request must be an object"
+                            )
+                        store = self._hash_observation_store
+                        if store is None:
+                            raise TypedStateOwnerProtocolError(
+                                "hash observation schema is unavailable"
+                            )
+                        # This identity is authenticated at the socket boundary;
+                        # callers cannot choose another process's lease owner.
+                        principal = json.dumps(
+                            [grant.peer_uid, grant.peer_pid,
+                             grant.peer_start_time_ticks, grant.client_id],
+                            separators=(",", ":"),
+                        )
+                        if not self._transaction_lock.acquire(timeout=30.0):
+                            raise TypedStateOwnerProtocolError(
+                                "hash observation admission timed out"
+                            )
+                        try:
+                            self._require_active_grant(
+                                grant,
+                                peer_identity=peer_identity,
+                                session_id=session_id,
+                            )
+                            observation_result = store.handle(
+                                dict(observation), principal=principal
+                            )
+                        finally:
+                            self._transaction_lock.release()
+                        response = {"ok": True, "result": dict(observation_result)}
+                    elif action == "database_task_command":
+                        self._reject_unknown(
+                            request,
+                            {
+                                "schema",
+                                "action",
+                                "request_id",
+                                "command_request_id",
+                                "command",
+                                "payload",
+                            },
+                            "database-task command request",
+                        )
+                        if transaction_active:
+                            raise TypedStateOwnerAuthorizationError(
+                                "database-task command is unavailable inside a transaction"
+                            )
+                        command_name = str(request.get("command") or "")
+                        command_request_id = str(
+                            request.get("command_request_id") or ""
+                        )
+                        command_payload = request.get("payload")
+                        if (
+                            command_name not in DATABASE_TASK_COMMANDS
+                            or command_name
+                            not in grant.allowed_database_task_commands
+                        ):
+                            raise TypedStateOwnerAuthorizationError(
+                                "database-task command is outside the client grant"
+                            )
+                        if (
+                            len(command_request_id) != 32
+                            or any(
+                                character not in "0123456789abcdef"
+                                for character in command_request_id
+                            )
+                        ):
+                            raise TypedStateOwnerProtocolError(
+                                "database-task command request identity is invalid"
+                            )
+                        if not isinstance(command_payload, Mapping):
+                            raise TypedStateOwnerProtocolError(
+                                "database-task command payload must be an object"
+                            )
+                        handler = self._database_task_command_handler
+                        if not callable(handler):
+                            raise TypedStateOwnerProtocolError(
+                                "server-owned database-task command handler is unavailable"
+                            )
+                        if not self._transaction_lock.acquire(timeout=30.0):
+                            raise TypedStateOwnerProtocolError(
+                                "database-task command admission timed out"
+                            )
+                        try:
+                            # Waiting for the exclusive owner may outlive this
+                            # exact session grant or race explicit revocation.
+                            grant = self._require_active_grant(
+                                grant,
+                                peer_identity=peer_identity,
+                                session_id=session_id,
+                            )
+                            command_result = handler(
+                                command_name,
+                                dict(command_payload),
+                                command_request_id,
+                                grant,
+                            )
+                        finally:
+                            self._transaction_lock.release()
+                        if not isinstance(command_result, Mapping):
+                            raise TypedStateOwnerProtocolError(
+                                "database-task command handler returned an invalid result"
+                            )
+                        response = {"ok": True, "result": dict(command_result)}
                     elif action == "wait_events":
                         self._reject_unknown(
                             request,
@@ -7076,7 +7268,7 @@ class TypedStateOwnerGateway:
                         with self._transaction_lock:
                             grant = self._require_active_grant(
                                 grant,
-                                peer_identity=peer_identity,
+                                peer_identity=peer_identity, session_id=session_id,
                             )
                             if self._stop.is_set():
                                 raise TypedStateOwnerAuthorizationError(
@@ -7181,7 +7373,7 @@ class TypedStateOwnerGateway:
                         with self._transaction_lock:
                             grant = self._require_active_grant(
                                 grant,
-                                peer_identity=peer_identity,
+                                peer_identity=peer_identity, session_id=session_id,
                             )
                             if self._stop.is_set():
                                 raise TypedStateOwnerAuthorizationError(
@@ -7357,6 +7549,8 @@ class TypedStateOwnerGateway:
                 channel.close()
             except OSError:
                 pass
+            if database_task_session_grant_id:
+                self._retire_status_session_grant(database_task_session_grant_id)
             if fleet_read_session_grant_id:
                 self._retire_status_session_grant(fleet_read_session_grant_id)
             if derived_session_grant_id:
@@ -9220,6 +9414,24 @@ class TypedStateOwnerGateway:
                     )
                 task_row = task_rows[0]
                 if int(task_row[1]) != expected_revision:
+                    if (
+                        phase_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                        and next_receipt.get("operation") == "database_claim"
+                        and _strict_scalar_equal(
+                            next_receipt.get("claimed_from_revision"),
+                            expected_revision,
+                        )
+                    ):
+                        # A live, exact claimant may lose the shared revision
+                        # race. Validate its claim and peer binding before
+                        # returning conflict; no stale receipt becomes authority.
+                        _validated_database_claim_identity(next_receipt)
+                        _require_database_claim_process_attestation(
+                            next_receipt, grant=grant,
+                        )
+                        raise OptimisticConflictError(
+                            "typed database claim task revision is stale"
+                        )
                     raise TypedStateOwnerAuthorizationError(
                         "typed database claim task revision is stale"
                     )
@@ -12621,7 +12833,111 @@ class TypedStateOwnerGateway:
             detail = " ".join(str(exc).split())[:160]
             if detail:
                 return f"operation_failed:{type(exc).__name__}:{detail}"
+        if isinstance(exc, TypedStateOwnerDatabaseTaskCommandError):
+            return exc.error_code
         return "operation_failed"
+
+    def _purge_expired_grants_locked(self, *, now_ms: int) -> None:
+        """Bound orphaned grants when a broker client drops before gateway open."""
+
+        self._grants = {
+            token: grant
+            for token, grant in self._grants.items()
+            if grant.expires_at > now_ms
+        }
+        self._database_task_session_grants = {
+            session_id: grant
+            for session_id, grant in self._database_task_session_grants.items()
+            if grant.expires_at > now_ms
+        }
+
+    def bind_database_task_command_handler(self, handler: Any) -> None:
+        """Bind the owner's existing closed DatabaseTaskSource command facet."""
+
+        if not callable(handler):
+            raise TypedStateOwnerProtocolError(
+                "database-task command handler must be owner-owned and callable"
+            )
+        with self._grants_lock:
+            if self._database_task_command_handler is not None:
+                if self._database_task_command_handler is handler:
+                    return
+                raise TypedStateOwnerProtocolError(
+                    "database-task command handler is already bound"
+                )
+            self._database_task_command_handler = handler
+
+    def _admit_open_grant(
+        self,
+        *,
+        supplied_token: str,
+        client_id: str,
+        process_birth_id: str,
+        peer_identity: tuple[int, int, int],
+        session_id: str,
+    ) -> OwnerClientGrant:
+        """Authenticate one open and atomically bind database-task authority.
+
+        Ordinary typed grants retain their existing reusable-token behavior.
+        A database-task grant is instead removed from the unused-token map and
+        bound to exactly one server-selected session before admission.  Every
+        identity and expiry check precedes that move, so a foreign peer cannot
+        consume a valid capability by presenting a copied token.
+        """
+
+        now_ms = int(time.time() * 1_000)
+        with self._grants_lock:
+            matched_token = ""
+            grant: OwnerClientGrant | None = None
+            for candidate_token, candidate_grant in self._grants.items():
+                if hmac.compare_digest(supplied_token, candidate_token):
+                    matched_token = candidate_token
+                    grant = candidate_grant
+                    break
+            if grant is None:
+                raise TypedStateOwnerAuthorizationError(
+                    "gateway authentication failed"
+                )
+
+            peer_pid, peer_uid, peer_start = peer_identity
+            database_task_grant = bool(grant.allowed_database_task_commands)
+            invalid_client = (
+                not client_id
+                or len(client_id) > 256
+                or client_id != grant.client_id
+            )
+            invalid_process_birth = (
+                process_birth_id != grant.process_birth_id
+                if database_task_grant
+                else bool(
+                    grant.process_birth_id
+                    and process_birth_id != grant.process_birth_id
+                )
+            )
+            invalid_peer = (
+                peer_pid != grant.peer_pid
+                or peer_uid != grant.peer_uid
+                or peer_start != grant.peer_start_time_ticks
+            )
+            if invalid_client or invalid_process_birth or invalid_peer:
+                raise TypedStateOwnerAuthorizationError(
+                    "gateway client identity is invalid"
+                )
+            if grant.grant_id in self._revoked_grants:
+                raise TypedStateOwnerAuthorizationError("owner grant is revoked")
+            if now_ms >= grant.expires_at:
+                self._grants.pop(matched_token, None)
+                self._revoked_grants.add(grant.grant_id)
+                raise TypedStateOwnerAuthorizationError("owner grant is expired")
+
+            if database_task_grant:
+                if session_id in self._database_task_session_grants:
+                    raise TypedStateOwnerAuthorizationError(
+                        "owner session identity is already bound"
+                    )
+                self._grants.pop(matched_token)
+                self._database_task_session_grants[session_id] = grant
+            return grant
 
 
 class TypedStateOwnerConnection:
@@ -13004,6 +13320,7 @@ class TypedStateOwnerConnection:
                 "session_id",
                 "grant",
                 "batch",
+                "result",
                 "columns",
                 "rows",
                 "rowcount",
@@ -13044,6 +13361,54 @@ class TypedStateOwnerConnection:
                 )
             return response
 
+    def hash_observation(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Coordinate bounded hash reuse through the exclusive DuckDB owner."""
+
+        if not isinstance(request, Mapping):
+            raise TypedStateOwnerProtocolError(
+                "hash observation request must be an object"
+            )
+        response = self._request("hash_observation", observation=dict(request))
+        result = response.get("result")
+        if not isinstance(result, Mapping):
+            raise TypedStateOwnerProtocolError(
+                "hash observation response must be an object"
+            )
+        return dict(result)
+
+    def execute_database_task_command(
+        self,
+        command: str,
+        payload: Mapping[str, Any],
+        *,
+        command_request_id: str,
+    ) -> Mapping[str, Any]:
+        """Execute one grant-bounded canonical DatabaseTaskSource command."""
+
+        selected_request_id = str(command_request_id or "")
+        try:
+            response = self._request(
+                "database_task_command",
+                command_request_id=selected_request_id,
+                command=str(command or ""),
+                payload=dict(payload),
+            )
+            result = response.get("result")
+            if not isinstance(result, Mapping):
+                raise TypedStateOwnerProtocolError(
+                    "typed owner database-task result must be an object"
+                )
+        except TypedStateOwnerRemoteError:
+            raise
+        except (OSError, TypedStateOwnerProtocolError) as exc:
+            # The closed command frame may have reached the exclusive owner
+            # and committed before transport loss or a malformed/missing
+            # response.  Never collapse that window into an ordinary retry.
+            raise TypedStateOwnerDatabaseTaskOutcomeUnknownError(
+                selected_request_id
+            ) from exc
+        return MappingProxyType(dict(result))
+
 
 def compact_default_owner_socket_path(
     candidate: Path | str,
@@ -13069,7 +13434,23 @@ def typed_owner_socket_path(store_id: str, explicit: str = "") -> Path:
 
     selected = str(explicit or os.environ.get(TYPED_STATE_OWNER_SOCKET_ENV, "") or "").strip()
     if selected:
-        path = Path(selected).expanduser().resolve(strict=False)
+        wire_path = Path(selected).expanduser()
+        resolved = wire_path.resolve(strict=False)
+        # Linux AF_UNIX counts the address bytes supplied to connect(), not
+        # the resolved filesystem path.  A configured owner may therefore
+        # publish a bounded /proc/self/cwd alias for a repository-local socket
+        # when an isolated worktree has a long absolute path.  Keep only this
+        # kernel alias on the wire; ordinary paths retain the prior resolved
+        # behavior.  The broker performs an exact resolved-store comparison.
+        if (
+            wire_path.is_absolute()
+            and wire_path.parts[:4] == ("/", "proc", "self", "cwd")
+            and ".." not in wire_path.parts
+            and len(os.fsencode(str(wire_path))) < 108
+        ):
+            path = wire_path
+        else:
+            path = resolved
     else:
         store = Path(str(store_id or "")).expanduser().resolve(strict=False)
         path = store.parent / "quack-owner" / TYPED_STATE_OWNER_SOCKET_FILENAME
@@ -13138,3 +13519,333 @@ __all__ = [
     "typed_owner_socket_path",
     "validate_completion_progress_snapshot",
 ]
+
+TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV: Final = (
+    "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET"
+)
+
+TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV: Final = (
+    "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD"
+)
+
+TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME: Final = (
+    "typed-state-owner-grants.sock"
+)
+
+TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-state-owner-grant-request@2"
+)
+
+TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT: Final = "read_transport"
+
+TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND: Final = (
+    "database_task_command"
+)
+
+TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION: Final = "hash_observation"
+
+HASH_OBSERVATION_SERVICE_OPERATION: Final = "hash.observe"
+
+TYPED_STATE_OWNER_GRANT_BROKER_CREDENTIAL_KINDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT,
+            TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND,
+            TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION,
+        }
+    )
+)
+
+MAX_GRANT_BROKER_FRAME_BYTES: Final = 8 * 1024
+
+DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS: Final = 60.0
+
+DATABASE_TASK_COMMANDS: Final[frozenset[str]] = frozenset(
+    {
+        "compare_and_set_status",
+        "rearm_blocked_task",
+        "record_queue_backoff",
+        "record_queue_retry",
+        "record_evidence",
+        "record_validation_result",
+    }
+)
+
+_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "event.wait",
+        "event.wait.cancel",
+        "event.wait.clear_cancellation",
+    }
+)
+
+class TypedStateOwnerDatabaseTaskCommandError(TypedStateOwnerError):
+    """An admitted database-task command failed a canonical owner gate."""
+
+    _ERROR_CODES: Final[frozenset[str]] = frozenset(
+        {
+            "bounds",
+            "completion_refused",
+            "conflict",
+            "integrity",
+            "not_found",
+            "owner_error",
+            "read_replica_refresh_unknown_outcome",
+        }
+    )
+
+    def __init__(self, error_code: str) -> None:
+        code = str(error_code or "owner_error").strip()
+        if code not in self._ERROR_CODES:
+            code = "owner_error"
+        self.error_code = code
+        # Never forward a repository or driver exception message over the
+        # wire. It can contain SQL, paths, or caller-controlled values.
+        super().__init__("database-task command failed an owner gate")
+
+class TypedStateOwnerDatabaseTaskOutcomeUnknownError(TypedStateOwnerError):
+    """A task command was dispatched but no authoritative response arrived."""
+
+    def __init__(self, command_request_id: str) -> None:
+        self.command_request_id = str(command_request_id or "")
+        super().__init__(
+            "database-task command outcome is unknown and requires reconciliation"
+        )
+
+def kernel_process_birth_id(
+    pid: int | None = None,
+    *,
+    start_time_ticks: int | None = None,
+) -> str:
+    """Return the closed broker identity for one kernel-observed process.
+
+    Callers normally omit both arguments.  The owner supplies the PID and
+    start time returned by :func:`_kernel_peer_identity`; comparing the two
+    values prevents a caller-selected audit label from entering an authority
+    decision while remaining resistant to PID reuse.
+    """
+
+    selected_pid = os.getpid() if pid is None else int(pid)
+    selected_start = (
+        _process_start_time_ticks(selected_pid)
+        if start_time_ticks is None
+        else int(start_time_ticks)
+    )
+    if selected_pid < 1 or selected_start < 0:
+        raise TypedStateOwnerAuthorizationError(
+            "kernel process birth identity is invalid"
+        )
+    material = f"{selected_pid}:{selected_start}".encode("ascii")
+    return f"birth:kernel:{hashlib.sha256(material).hexdigest()[:32]}"
+
+def _request_typed_state_owner_credential(
+    *,
+    credential_kind: str,
+    store_id: str,
+    client_id: str,
+    process_birth_id: str,
+    timeout_seconds: float = 5.0,
+) -> str:
+    """Request one closed credential kind over the private owner facet.
+
+    The bootstrap secret is available only to hardened supervisor processes
+    through a sealed inherited descriptor and is stripped from provider and
+    validator environments.  The broker authenticates the connecting kernel
+    PID, UID, and PID start time. The supplied process birth identity must
+    equal the kernel-derived identity; task grants also bind ``client_id`` as
+    the later gateway session identity.
+    No credential is written to disk, placed in argv or the environment, or
+    returned through a public status surface.
+    """
+
+    selected_kind = str(credential_kind or "").strip()
+    if selected_kind not in TYPED_STATE_OWNER_GRANT_BROKER_CREDENTIAL_KINDS:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner credential kind is not admitted"
+        )
+    raw_secret_fd = str(
+        os.environ.get(TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV, "") or ""
+    ).strip()
+    raw_path = str(
+        os.environ.get(TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV, "") or ""
+    ).strip()
+    if not raw_secret_fd or not raw_path:
+        return ""
+    if not raw_secret_fd.isascii() or not raw_secret_fd.isdecimal():
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is invalid"
+        )
+    secret_fd = int(raw_secret_fd)
+    if secret_fd < 3 or secret_fd > 1_048_576:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is invalid"
+        )
+    try:
+        descriptor = os.fstat(secret_fd)
+        secret = os.pread(secret_fd, 257, 0).decode("ascii")
+    except (OSError, UnicodeError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is unavailable"
+        ) from exc
+    if not stat.S_ISREG(descriptor.st_mode) or descriptor.st_uid != os.geteuid():
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is unsafe"
+        )
+    required_seals = (
+        int(getattr(fcntl, "F_SEAL_SEAL", 0x0001))
+        | int(getattr(fcntl, "F_SEAL_SHRINK", 0x0002))
+        | int(getattr(fcntl, "F_SEAL_GROW", 0x0004))
+        | int(getattr(fcntl, "F_SEAL_WRITE", 0x0008))
+    )
+    try:
+        observed_seals = int(
+            fcntl.fcntl(
+                secret_fd,
+                int(getattr(fcntl, "F_GET_SEALS", 1034)),
+            )
+        )
+    except OSError as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is unsealed"
+        ) from exc
+    if observed_seals & required_seals != required_seals:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is unsealed"
+        )
+    if not 32 <= len(secret) <= 256:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap is unavailable"
+        )
+    wire_path = Path(raw_path).expanduser()
+    use_bounded_cwd_alias = bool(
+        wire_path.is_absolute()
+        and wire_path.parts[:4] == ("/", "proc", "self", "cwd")
+        and ".." not in wire_path.parts
+        and len(os.fsencode(str(wire_path))) < 108
+    )
+    selected = wire_path.resolve(strict=False)
+    store = Path(str(store_id or "")).expanduser().resolve(strict=False)
+    expected = (
+        typed_owner_socket_path(str(store)).parent
+        / TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME
+    ).resolve(strict=False)
+    if selected != expected:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant broker path differs from the store binding"
+        )
+    request = canonical_json_bytes(
+        {
+            "schema": TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA,
+            "credential_kind": selected_kind,
+            "bootstrap_secret": secret,
+            "client_id": str(client_id or "").strip(),
+            "process_birth_id": str(process_birth_id or "").strip(),
+            "store_id": str(store_id or "").strip(),
+        }
+    ) + b"\n"
+    if len(request) > MAX_GRANT_BROKER_FRAME_BYTES:
+        raise TypedStateOwnerProtocolError(
+            "typed owner grant request exceeds its closed bound"
+        )
+    timeout = float(timeout_seconds)
+    if not math.isfinite(timeout) or not 0.05 <= timeout <= 30.0:
+        raise TypedStateOwnerProtocolError(
+            "typed owner grant timeout is outside its closed bound"
+        )
+    channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    channel.settimeout(timeout)
+    response = bytearray()
+    try:
+        channel.connect(str(wire_path if use_bounded_cwd_alias else selected))
+        channel.sendall(request)
+        while b"\n" not in response:
+            chunk = channel.recv(4096)
+            if not chunk:
+                break
+            response.extend(chunk)
+            if len(response) > MAX_GRANT_BROKER_FRAME_BYTES:
+                raise TypedStateOwnerProtocolError(
+                    "typed owner grant response exceeds its closed bound"
+                )
+    finally:
+        channel.close()
+    try:
+        payload = json.loads(bytes(response).split(b"\n", 1)[0])
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise TypedStateOwnerProtocolError(
+            "typed owner grant broker returned an invalid response"
+        ) from exc
+    if (
+        not isinstance(payload, dict)
+        or set(payload)
+        != {"schema", "credential_kind", "ok", "token", "error_code"}
+        or payload.get("schema") != TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA
+        or payload.get("credential_kind") != selected_kind
+        or payload.get("ok") is not True
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant broker denied the request"
+        )
+    token = str(payload.get("token") or "")
+    if (
+        not 8 <= len(token) <= 256
+        or any(
+            not character.isalnum() and character not in "_-"
+            for character in token
+        )
+    ):
+        raise TypedStateOwnerProtocolError(
+            "typed owner grant broker returned an invalid credential"
+        )
+    return token
+
+def request_quack_attach_credential(
+    *,
+    store_id: str,
+    client_id: str,
+    process_birth_id: str,
+    timeout_seconds: float = 5.0,
+) -> str:
+    """Request only the strictly read-only Quack transport credential."""
+
+    return _request_typed_state_owner_credential(
+        credential_kind=TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT,
+        store_id=store_id,
+        client_id=client_id,
+        process_birth_id=process_birth_id,
+        timeout_seconds=timeout_seconds,
+    )
+
+def request_database_task_command_credential(
+    *,
+    store_id: str,
+    client_id: str,
+    process_birth_id: str,
+    timeout_seconds: float = 5.0,
+) -> str:
+    """Request the fixed, peer-bound six-command owner capability."""
+
+    return _request_typed_state_owner_credential(
+        credential_kind=TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND,
+        store_id=store_id,
+        client_id=client_id,
+        process_birth_id=process_birth_id,
+        timeout_seconds=timeout_seconds,
+    )
+
+def request_hash_observation_credential(
+    *,
+    store_id: str,
+    client_id: str,
+    process_birth_id: str,
+    timeout_seconds: float = 5.0,
+) -> str:
+    """Request only the peer-bound operational hash observation service."""
+
+    return _request_typed_state_owner_credential(
+        credential_kind=TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION,
+        store_id=store_id,
+        client_id=client_id,
+        process_birth_id=process_birth_id,
+        timeout_seconds=timeout_seconds,
+    )

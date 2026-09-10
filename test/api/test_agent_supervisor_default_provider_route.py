@@ -478,6 +478,60 @@ def test_confirmed_grok_quota_exhaustion_runs_terra_medium_with_same_prompt(
     assert calls[1][1]["text"] is True
 
 
+def test_configured_quota_only_route_preserves_terra_high_and_typed_binding(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    values = {
+        implementation_daemon.IMPLEMENTATION_PROVIDER_ENV: "grok_cli",
+        implementation_daemon.IMPLEMENTATION_FALLBACK_PROVIDER_ENV: "codex",
+        implementation_daemon.IMPLEMENTATION_FALLBACK_TRIGGER_ENV: (
+            "primary_quota_exhausted"
+        ),
+        implementation_daemon._GROK_MODEL_ENV: "grok-4.6",
+        implementation_daemon._CODEX_MODEL_ENV: "gpt-5.6-terra",
+        implementation_daemon._CODEX_REASONING_EFFORT_ENV: "high",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    _set_runner_grok_identity(monkeypatch, "/opt/providers/grok")
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/opt/providers/codex",
+    )
+    monkeypatch.setattr(
+        implementation_daemon.shutil,
+        "which",
+        lambda name: "/opt/providers/codex" if name == "codex" else None,
+    )
+
+    daemon = _daemon(tmp_path)
+    daemon.worktree_root = tmp_path
+    command = daemon._build_implementation_command(tmp_path)
+
+    assert command[command.index("--model") + 1] == "grok-4.6"
+    assert "--canonical-legacy-preflight-route" not in command
+    nonce = command[command.index("--grok-failure-receipt-nonce") + 1]
+    assert len(nonce) == 64
+    binding = json.loads(
+        command[command.index("--agent-implementation-route-json") + 1]
+    )
+    assert binding["fallback_trigger"] == "primary_quota_exhausted"
+    fallback = json.loads(
+        command[command.index("--codex-fallback-command-json") + 1]
+    )
+    assert fallback[:2] == ["/opt/providers/codex", "exec"]
+    assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="high"' in fallback
+
+
 @pytest.mark.parametrize(
     "diagnostic",
     [

@@ -63,6 +63,7 @@ from .duckdb_state import (
     quack_transport_uri,
     unstall_stale_in_progress_tasks as apply_stale_in_progress_unstall,
 )
+import warnings
 
 # ---------------------------------------------------------------------------
 # Interface / schema identities
@@ -1807,9 +1808,11 @@ def task_authority_spec_cid(record: Mapping[str, Any]) -> str:
 
     ``IntentRepository@1`` historically stores the latest status-transition
     receipt in ``body.completion_receipt`` so retry workers can recover an
-    exact seed.  That receipt is operational lifecycle evidence: replacing it
-    through an admitted status CAS must not look like a plan amendment.  Every
-    other body field remains authority-bearing.  The legacy
+    exact seed.  Unknown-callback recovery also persists its monotonic retry
+    counter in ``body.unknown_callback_reopen_count`` so later claim receipts
+    cannot erase it.  Both fields are operational lifecycle evidence: changing
+    them through an admitted status CAS must not look like a plan amendment.
+    Every other body field remains authority-bearing.  The legacy
     :func:`task_projection_spec_cid` is intentionally unchanged because its
     CIDs are already persisted in plan-revision receipts.
     """
@@ -1819,6 +1822,7 @@ def task_authority_spec_cid(record: Mapping[str, Any]) -> str:
     if isinstance(body, dict):
         body = dict(body)
         body.pop("completion_receipt", None)
+        body.pop("unknown_callback_reopen_count", None)
         normalized["body"] = body
     material = {
         "schema": TASK_AUTHORITY_SPEC_SCHEMA,
@@ -3417,6 +3421,12 @@ class IntentRepository:
         evidence_freshness_seconds: int = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
         lock_timeout_seconds: float = 30.0,
         clock_ms: Any | None = None,
+        fencing_epoch: int = 1,
+        generation: int = 1,
+        repository_id: str = "",
+        tree_id: str = "",
+        authentication_subject_id: str = "",
+        authentication_binding_id: str = "",
     ) -> None:
         _require_duckdb()
         if bound_connection is not None:
@@ -3478,6 +3488,25 @@ class IntentRepository:
         self._closed = False
         self._read_session_state = threading.local()
         self._quack_connection: Any | None = None
+        if (
+            isinstance(fencing_epoch, bool)
+            or not isinstance(fencing_epoch, int)
+            or fencing_epoch < 1
+        ):
+            raise IntentRepositoryBoundsError("fencing_epoch must be a positive integer")
+        if (
+            isinstance(generation, bool)
+            or not isinstance(generation, int)
+            or generation < 1
+        ):
+            raise IntentRepositoryBoundsError("generation must be a positive integer")
+        self._fencing_epoch = int(fencing_epoch)
+        self._owner_generation = int(generation)
+        self._repository_id = str(repository_id or "").strip()
+        self._tree_id = str(tree_id or "").strip()
+        self._authentication_subject_id = str(authentication_subject_id or "").strip()
+        self._authentication_binding_id = str(authentication_binding_id or "").strip()
+        self._legacy_route_count = 0
         if self._quack_transport:
             # Schema is owned by the Quack state-owner / trusted materializer.
             install_schema = False
@@ -3626,32 +3655,6 @@ class IntentRepository:
                         self._bound_transaction_depth = 0
                 else:
                     yield connection
-            return
-        if self._quack_transport:
-            with self._bound_connection_lock:
-                connection = self._quack_read_connection
-                if connection is not None and not quack_session_is_live(connection):
-                    try:
-                        connection.close()
-                    except Exception:
-                        pass
-                    self._quack_read_connection = None
-                    connection = None
-                if connection is None:
-                    self._quack_read_connection = open_duckdb_connection(
-                        self._open_target
-                    )
-                    connection = self._quack_read_connection
-                try:
-                    yield connection
-                except BaseException as exc:
-                    if _is_quack_session_dead(exc):
-                        try:
-                            connection.close()
-                        except Exception:
-                            pass
-                        self._quack_read_connection = None
-                    raise
             return
         # Match DuckDBTaskSource / StateTransaction durability: begin with SQL,
         # commit/rollback with SQL, and always close the adapter explicitly.
@@ -7494,10 +7497,17 @@ class IntentRepository:
                     "result_id": result_id,
                     "run_id": run_id,
                     "task_cid": tcid,
+                    "attempt_id": attempt_id or "",
                     "outcome": outcome_text,
                     "evidence_digest": digest,
                     "argv": argv_list,
                     "body": body_map,
+                    "validation_evidence_body": {
+                        "run_id": run_id,
+                        "result_id": result_id,
+                        "argv": argv_list,
+                        "outcome": outcome_text,
+                    },
                     "recorded_at": now,
                     "revision": 0,
                 },
@@ -8135,10 +8145,13 @@ class IntentRepository:
             body={
                 "task_cid": task_cid,
                 "attempt": attempt,
+                "started_at_ms": now_ms,
                 "retry_not_before_ms": retry_not_before,
                 "delay_ms": delay_ms,
                 "selection_penalty": selection_penalty,
                 "reason": reason,
+                "claimant_did": self.owner_id,
+                "owner_session_id": self.session_id,
                 "revision": attempt,
             },
         )
@@ -8728,13 +8741,147 @@ class IntentRepository:
         *,
         now: datetime | None = None,
         stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+        orphan_previous_generation: bool = False,
     ) -> dict[str, Any]:
-        """Retry leftover in_progress gates so dependents can become ready."""
+        """Retry stale gates through the canonical event-sourced transition.
+
+        The low-level helper owns the DuckDB status-index workaround only.  On
+        a canonical control plane this repository owns the projection CAS,
+        task revision, and domain event, all inside this one transaction.
+        """
 
         with self._connection(write=True) as connection:
-            return apply_stale_in_progress_unstall(
-                connection, now=now, stale_seconds=stale_seconds
+            def transition(item: Mapping[str, Any]) -> Mapping[str, Any]:
+                task_cid = str(item["task_cid"])
+                previous_revision = int(item["previous_revision"])
+                revision = int(item["revision"])
+                recorded_at = str(item["recorded_at"])
+                row = connection.execute(
+                    """
+                    SELECT task_cid, task_alias, goal_cid, status, revision, body_json
+                    FROM tasks WHERE task_cid = ?
+                    """,
+                    [task_cid],
+                ).fetchone()
+                if row is None:
+                    raise IntentRepositoryIntegrityError(
+                        "stale-task recovery target disappeared"
+                    )
+                if str(row[3]) != "in_progress" or int(row[4]) != previous_revision:
+                    raise IntentRepositoryConflictError(
+                        "stale-task recovery lost its exact task revision CAS"
+                    )
+                body = _decode_json(row[5], noun="task body")
+                if not isinstance(body, dict):
+                    body = {}
+                else:
+                    body = dict(body)
+                previous_receipt = body.get("completion_receipt")
+                recovery_receipt: dict[str, Any] = (
+                    dict(previous_receipt)
+                    if isinstance(previous_receipt, Mapping)
+                    else {}
+                )
+                # Stale-unstall receipts are not validation-retry claims.
+                # Copying a leftover seed makes the next claim raise
+                # "malformed validation retry seed".
+                for key in _LEFTOVER_VALIDATION_RETRY_SEED_KEYS:
+                    recovery_receipt.pop(key, None)
+                recovery_receipt.update(
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "stale-task-recovery-receipt@1"
+                        ),
+                        "operation": "event_sourced_stale_in_progress_unstall",
+                        "task_cid": task_cid,
+                        "task_alias": str(row[1]),
+                        "previous_status": "in_progress",
+                        "status": "retrying",
+                        "previous_revision": previous_revision,
+                        "revision": revision,
+                        "age_seconds": int(item["age_seconds"]),
+                        "stale_seconds": int(stale_seconds),
+                        "owner_id": self.owner_id,
+                        "session_id": self.session_id,
+                        "recorded_at": recorded_at,
+                    }
+                )
+                recovery_receipt["receipt_cid"] = content_identity(
+                    recovery_receipt
+                )
+                body["completion_receipt"] = recovery_receipt
+                updated = connection.execute(
+                    """
+                    UPDATE tasks SET status = 'retrying', revision = ?,
+                        updated_at = ?, body_json = ?
+                    WHERE task_cid = ? AND revision = ? AND status = 'in_progress'
+                    RETURNING revision
+                    """,
+                    [
+                        revision,
+                        recorded_at,
+                        _canonical(body, noun="task body"),
+                        task_cid,
+                        previous_revision,
+                    ],
+                ).fetchone()
+                if updated is None or int(updated[0]) != revision:
+                    raise IntentRepositoryConflictError(
+                        "stale-task recovery task revision CAS changed"
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO task_revisions (
+                        task_cid, revision, status, body_json, recorded_at
+                    ) VALUES (?, ?, 'retrying', ?, ?)
+                    """,
+                    [
+                        task_cid,
+                        revision,
+                        _canonical(body, noun="task revision body"),
+                        recorded_at,
+                    ],
+                )
+                event = self._append_event(
+                    connection,
+                    event_type=IntentEventType.TASK_STATUS_CHANGED,
+                    subject_id=task_cid,
+                    task_cid=task_cid,
+                    body={
+                        "task_cid": task_cid,
+                        "task_alias": str(row[1]),
+                        "goal_cid": str(row[2]),
+                        "previous_status": "in_progress",
+                        "status": "retrying",
+                        "revision": revision,
+                        "receipt": recovery_receipt,
+                        "recorded_at": recorded_at,
+                    },
+                )
+                return {
+                    **dict(item),
+                    "changed": True,
+                    "event_id": event.event_id,
+                    "event_global_sequence": event.global_sequence,
+                    "receipt_cid": recovery_receipt["receipt_cid"],
+                }
+
+            result = apply_stale_in_progress_unstall(
+                connection,
+                now=now,
+                stale_seconds=stale_seconds,
+                canonical_transition=transition,
+                orphan_previous_generation=orphan_previous_generation,
             )
+            if orphan_previous_generation:
+                result = dict(result)
+                result["sanitized_malformed_validation_retry_seeds"] = (
+                    self._sanitize_malformed_validation_retry_seeds_on(
+                        connection
+                    )
+                )
+            return result
 
     # -- readiness / selection -----------------------------------------------
 
@@ -8830,12 +8977,13 @@ class IntentRepository:
         """Recover intent projections from admitted events if they diverge.
 
         Recovery is a pure database operation: rebuild projections from the
-        event stream and emit a recovery receipt. No external files are read.
+        event stream and emit a recovery receipt. No external files are read,
+        and the rebuild plus receipt are committed atomically.
         """
 
-        before = self.snapshot()
-        rebuilt = self.rebuild_projections_from_events()
         with self._connection(write=True) as connection:
+            before = self._snapshot_on(connection)
+            rebuilt = self._rebuild_projections_from_events_on(connection, strict=True)
             return self._append_event(
                 connection,
                 event_type=IntentEventType.RECOVERY_APPLIED,
@@ -8856,78 +9004,7 @@ class IntentRepository:
         """
 
         with self._connection(write=True) as connection:
-            events = connection.execute(
-                """
-                SELECT event_id, event_type, task_cid, attempt_id,
-                       body_json, global_sequence
-                FROM domain_events
-                WHERE stream_id = ?
-                ORDER BY global_sequence ASC
-                """,
-                [INTENT_STREAM_ID],
-            ).fetchall()
-            replayed_validation_run_ids: set[str] = set()
-            replayed_validation_result_ids: set[str] = set()
-            # Preserve non-intent domain events; only rebuild intent projections.
-            for table in _PROJECTION_TABLES:
-                try:
-                    connection.execute(f"DELETE FROM {table}")
-                except Exception:
-                    # Some tables may be empty or not present in partial installs.
-                    pass
-            # Leases are shared with the lease coordinator; only clear queue
-            # entries owned by this repository's extension schema.
-            try:
-                connection.execute(
-                    "DELETE FROM leases WHERE extension_schema = ?",
-                    [_SHARED_QUEUE_LEASE_SCHEMA],
-                )
-            except Exception:
-                pass
-            for event_row in events:
-                # DuckDBRow iterates keys; index into values explicitly.
-                event_type = str(event_row[1])
-                event_attempt_id = str(event_row[3] or "")
-                body_json = event_row[4]
-                body_wrapper = _decode_json(body_json, noun="event body")
-                if not isinstance(body_wrapper, dict):
-                    continue
-                payload = body_wrapper.get("body")
-                if not isinstance(payload, dict):
-                    payload = body_wrapper
-                if event_type == IntentEventType.VALIDATION_RECORDED.value:
-                    run_id = str(payload.get("run_id") or "")
-                    result_id = str(payload.get("result_id") or "")
-                    if run_id:
-                        replayed_validation_run_ids.add(run_id)
-                    if result_id:
-                        replayed_validation_result_ids.add(result_id)
-                self._apply_event_payload(
-                    connection,
-                    event_type=event_type,
-                    payload=payload,
-                    attempt_id=event_attempt_id,
-                )
-            # DuckDB's immediate unique-index checks can reject a delete and
-            # reinsert of the same ``(run_id, ordinal)`` in one transaction.
-            # Validation projections are therefore updated in place during
-            # replay, then rows absent from the admitted event stream are
-            # removed before this transaction commits.
-            for row in connection.execute("SELECT result_id FROM validation_results").fetchall():
-                result_id = str(row[0])
-                if result_id not in replayed_validation_result_ids:
-                    connection.execute(
-                        "DELETE FROM validation_results WHERE result_id = ?",
-                        [result_id],
-                    )
-            for row in connection.execute("SELECT run_id FROM validation_runs").fetchall():
-                run_id = str(row[0])
-                if run_id not in replayed_validation_run_ids:
-                    connection.execute(
-                        "DELETE FROM validation_runs WHERE run_id = ?",
-                        [run_id],
-                    )
-        return self.snapshot()
+            return self._rebuild_projections_from_events_on(connection)
 
     def _apply_event_payload(
         self,
@@ -8936,14 +9013,25 @@ class IntentRepository:
         event_type: str,
         payload: Mapping[str, Any],
         attempt_id: str = "",
+        event_owner_id: str = "",
+        event_session_id: str = "",
+        event_attempt_id: str = "",
+        event_recorded_at: str = "",
     ) -> None:
         """Project one admitted event into current-state tables (idempotent)."""
 
-        now = str(payload.get("recorded_at") or _utc_iso())
+        if attempt_id and event_attempt_id and attempt_id != event_attempt_id:
+            raise IntentRepositoryIntegrityError("event attempt identity differs from its envelope")
+        event_attempt_id = event_attempt_id or attempt_id
+        now = str(payload.get("recorded_at") or event_recorded_at or _utc_iso())
         if event_type == IntentEventType.OBJECTIVE_UPSERTED.value:
             oid = str(payload["objective_id"])
             revision = int(payload.get("revision") or 1)
             body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
+            prior = connection.execute(
+                "SELECT created_at FROM objectives WHERE objective_id = ?", [oid]
+            ).fetchone()
+            created_at = str(prior[0]) if prior is not None else now
             connection.execute("DELETE FROM objectives WHERE objective_id = ?", [oid])
             connection.execute(
                 """
@@ -8959,7 +9047,7 @@ class IntentRepository:
                     str(payload.get("title") or oid),
                     str(payload.get("status") or "open"),
                     str(payload.get("priority") or "P2"),
-                    now,
+                    created_at,
                     now,
                     revision,
                     _canonical(body, noun="objective body"),
@@ -8989,6 +9077,10 @@ class IntentRepository:
             gcid = str(payload["goal_cid"])
             revision = int(payload.get("revision") or 1)
             body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
+            prior = connection.execute(
+                "SELECT created_at FROM goals WHERE goal_cid = ?", [gcid]
+            ).fetchone()
+            created_at = str(prior[0]) if prior is not None else now
             connection.execute("DELETE FROM goals WHERE goal_cid = ?", [gcid])
             connection.execute(
                 """
@@ -9005,7 +9097,7 @@ class IntentRepository:
                     int(payload.get("ordinal") or 0),
                     str(payload.get("title") or gcid),
                     str(payload.get("status") or "open"),
-                    now,
+                    created_at,
                     now,
                     revision,
                     _canonical(body, noun="goal body"),
@@ -9058,8 +9150,29 @@ class IntentRepository:
             body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
             status = str(payload.get("status") or "active")
             goal_cid = str(payload.get("goal_cid") or "")
+            prior = connection.execute(
+                "SELECT plan_alias, created_at FROM plans WHERE plan_cid = ?",
+                [pcid],
+            ).fetchone()
+            created_at = str(prior[1]) if prior is not None else now
+            plan_alias = str(payload.get("plan_alias") or "")
+            if not plan_alias and prior is not None:
+                plan_alias = str(prior[0])
             if event_type == IntentEventType.PLAN_CONTINUED.value:
                 status = "active"
+                predecessor = str(payload.get("continuation_of") or "")
+                predecessor_row = (
+                    connection.execute(
+                        "SELECT plan_alias FROM plans WHERE plan_cid = ?",
+                        [predecessor],
+                    ).fetchone()
+                    if predecessor
+                    else None
+                )
+                if not plan_alias and predecessor_row is not None:
+                    plan_alias = f"{predecessor_row[0]}-cont"
+            if not plan_alias:
+                plan_alias = pcid
             connection.execute("DELETE FROM plans WHERE plan_cid = ?", [pcid])
             connection.execute(
                 """
@@ -9071,26 +9184,30 @@ class IntentRepository:
                 [
                     pcid,
                     goal_cid,
-                    str(payload.get("plan_alias") or pcid),
+                    plan_alias,
                     status,
-                    now,
+                    created_at,
                     now,
                     revision,
                     _canonical(body, noun="plan body"),
                 ],
             )
-            connection.execute(
-                "DELETE FROM plan_revisions WHERE plan_cid = ? AND revision = ?",
-                [pcid, revision],
-            )
-            connection.execute(
-                """
-                INSERT INTO plan_revisions (
-                    plan_cid, revision, body_json, recorded_at
-                ) VALUES (?, ?, ?, ?)
-                """,
-                [pcid, revision, _canonical(body, noun="plan revision"), now],
-            )
+            # Existing continuation heads historically advanced without a
+            # second plan_revisions row.  Preserve that admitted behavior;
+            # first creation and ordinary upserts/revisions do write one.
+            if event_type != IntentEventType.PLAN_CONTINUED.value or prior is None:
+                connection.execute(
+                    "DELETE FROM plan_revisions WHERE plan_cid = ? AND revision = ?",
+                    [pcid, revision],
+                )
+                connection.execute(
+                    """
+                    INSERT INTO plan_revisions (
+                        plan_cid, revision, body_json, recorded_at
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    [pcid, revision, _canonical(body, noun="plan revision"), now],
+                )
             # Mirror live upsert_plan head demotion so rebuild status matches.
             if (
                 event_type == IntentEventType.PLAN_UPSERTED.value
@@ -9139,6 +9256,8 @@ class IntentRepository:
             successor = str(payload.get("successor_plan_cid") or "")
             revision = int(payload.get("revision") or 1)
             body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
+            goal_cid = str(payload.get("goal_cid") or "")
+            reason = str(payload.get("reason") or "superseded")
             connection.execute(
                 """
                 UPDATE plans SET status = 'superseded', revision = ?,
@@ -9155,6 +9274,40 @@ class IntentRepository:
                     """,
                     [now, successor],
                 )
+            decision_id = content_identity(
+                {
+                    "kind": "supersession",
+                    "plan_cid": pcid,
+                    "successor": successor,
+                    "revision": revision,
+                }
+            )
+            connection.execute(
+                "DELETE FROM planning_decisions WHERE decision_id = ?",
+                [decision_id],
+            )
+            connection.execute(
+                """
+                INSERT INTO planning_decisions (
+                    decision_id, plan_cid, goal_cid, decision_kind,
+                    decided_at, body_json
+                ) VALUES (?, ?, ?, 'supersession', ?, ?)
+                """,
+                [
+                    decision_id,
+                    pcid,
+                    goal_cid,
+                    now,
+                    _canonical(
+                        {
+                            "predecessor": pcid,
+                            "successor": successor,
+                            "reason": reason,
+                        },
+                        noun="supersession decision",
+                    ),
+                ],
+            )
             return
 
         if event_type == IntentEventType.TASK_UPSERTED.value:
@@ -9166,6 +9319,10 @@ class IntentRepository:
                 if isinstance(payload.get("identity"), dict)
                 else {"task_cid": tcid}
             )
+            prior = connection.execute(
+                "SELECT created_at FROM tasks WHERE task_cid = ?", [tcid]
+            ).fetchone()
+            created_at = str(prior[0]) if prior is not None else now
             connection.execute("DELETE FROM tasks WHERE task_cid = ?", [tcid])
             connection.execute(
                 """
@@ -9185,7 +9342,7 @@ class IntentRepository:
                     str(payload.get("status") or "ready"),
                     revision,
                     str(payload.get("priority") or "P2"),
-                    now,
+                    created_at,
                     now,
                     _canonical(identity, noun="task identity"),
                     _canonical(body, noun="task body"),
@@ -9240,6 +9397,7 @@ class IntentRepository:
 
         if event_type == "intent.completion_projection_repaired":
             from .completion_projection_repair import apply_projection
+
             apply_projection(connection, payload)
             return
 
@@ -9264,8 +9422,22 @@ class IntentRepository:
                 body = {}
             if receipt:
                 _store_control_receipt_preserving_reopen_budget(
-                    body, receipt, completing=status in _COMPLETED_STATUSES,
+                    body, receipt, completing=(status in _COMPLETED_STATUSES),
                 )
+                if receipt.get("operation") in {
+                    "reopen_unimplemented_unknown_callback_quarantine",
+                    "requeue_unimplemented_stale_attempt",
+                }:
+                    raw_reopen_count = receipt.get(
+                        "unknown_callback_reopen_count"
+                    )
+                    if raw_reopen_count is not None:
+                        try:
+                            body["unknown_callback_reopen_count"] = max(
+                                0, int(raw_reopen_count)
+                            )
+                        except (TypeError, ValueError):
+                            pass
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
@@ -9472,7 +9644,7 @@ class IntentRepository:
                     [
                         run_id,
                         tcid,
-                        attempt_id,
+                        event_attempt_id,
                         now,
                         now,
                         str(payload.get("outcome") or "passed"),
@@ -9526,6 +9698,36 @@ class IntentRepository:
                         "run_id": run_id,
                     }
                 )
+                declared_evidence_body = payload.get("validation_evidence_body")
+                if isinstance(declared_evidence_body, Mapping):
+                    validation_evidence_body = dict(declared_evidence_body)
+                else:
+                    minimal_legacy_body = {
+                        "run_id": run_id,
+                        "result_id": result_id,
+                    }
+                    rich_legacy_body = {
+                        **minimal_legacy_body,
+                        "argv": list(payload.get("argv") or ()),
+                        "outcome": str(payload.get("outcome") or "passed"),
+                    }
+                    validation_body = payload.get("body")
+                    legacy_portal_minimal = (
+                        isinstance(validation_body, Mapping)
+                        and validation_body.get("validator")
+                        == "DatabasePortalExecutionBridge@1"
+                        and isinstance(validation_body.get("portal_receipt_id"), str)
+                        and bool(validation_body.get("portal_receipt_id"))
+                    )
+                    # The first admitted portal-bridge contract materialized
+                    # only run/result IDs. Later legacy repository events used
+                    # the rich argv/outcome suffix. The immutable validator and
+                    # receipt markers distinguish those event-defined shapes;
+                    # current events carry the complete body explicitly.
+                    if legacy_portal_minimal:
+                        validation_evidence_body = minimal_legacy_body
+                    else:
+                        validation_evidence_body = rich_legacy_body
                 connection.execute(
                     "DELETE FROM evidence_nodes WHERE evidence_id = ?",
                     [evidence_id],
@@ -9545,12 +9747,7 @@ class IntentRepository:
                         str(payload.get("evidence_digest") or ""),
                         now,
                         _canonical(
-                            {
-                                "run_id": run_id,
-                                "result_id": result_id,
-                                "argv": list(payload.get("argv") or ()),
-                                "outcome": str(payload.get("outcome") or "passed"),
-                            },
+                            validation_evidence_body,
                             noun="validation evidence",
                         ),
                     ],
@@ -9563,6 +9760,21 @@ class IntentRepository:
             retry = int(payload.get("retry_not_before_ms") or 0)
             reason = str(payload.get("reason") or "backoff")
             penalty = int(payload.get("selection_penalty") or 0)
+            delay = int(payload.get("delay_ms") or 0)
+            started_at_ms = int(
+                payload.get("started_at_ms")
+                or max(0, retry - max(0, delay))
+            )
+            claimant_did = str(
+                payload.get("claimant_did")
+                or event_owner_id
+                or self.owner_id
+            )
+            owner_session_id = str(
+                payload.get("owner_session_id")
+                or event_session_id
+                or self.session_id
+            )
             exists = connection.execute(
                 "SELECT 1 FROM leases WHERE task_cid = ?", [tcid]
             ).fetchone()
@@ -9584,29 +9796,21 @@ class IntentRepository:
                         owner_session_id, fence_epoch, revision, extension_schema,
                         extension_json
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (task_cid) DO UPDATE SET
-                        attempt = leases.attempt + 1,
-                        retry_not_before_ms = excluded.retry_not_before_ms,
-                        release_reason = excluded.release_reason,
-                        state = 'released',
-                        extension_schema = excluded.extension_schema,
-                        extension_json = excluded.extension_json,
-                        revision = leases.revision + 1
                     """,
                     [
                         tcid,
                         f"claim:queue:{tcid}",
                         f"resolution:queue:{tcid}",
-                        self.owner_id,
+                        claimant_did,
                         1,
                         1,
                         0,
                         attempt,
                         "released",
-                        0,
+                        started_at_ms,
                         reason,
                         retry,
-                        self.session_id,
+                        owner_session_id,
                         1,
                         1,
                         QUEUE_ENTRY_SCHEMA,
@@ -9648,41 +9852,50 @@ class IntentRepository:
             return
 
         if event_type == IntentEventType.ATTEMPT_RECORDED.value:
-            attempt_id = str(payload["attempt_id"])
-            status = _status(
-                payload.get("status") or "started",
-                allowed=_ATTEMPT_STATUSES,
-                noun="attempt",
-            )
+            attempt_id = str(payload.get("attempt_id") or event_attempt_id)
+            status = _status(payload.get("status") or "started", allowed=_ATTEMPT_STATUSES, noun="attempt")
             started_at = str(payload.get("started_at") or now)
             raw_finished_at = str(payload.get("finished_at") or "")
-            finished_at = (
-                raw_finished_at or started_at
-                if status in _TERMINAL_ATTEMPT_STATUSES
-                else ""
-            )
-            connection.execute("DELETE FROM task_attempts WHERE attempt_id = ?", [attempt_id])
-            connection.execute(
-                """
-                INSERT INTO task_attempts (
-                    attempt_id, task_cid, attempt_number, owner_session_id,
-                    fencing_token, fence_epoch, started_at, finished_at,
-                    status, revision
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    attempt_id,
-                    str(payload.get("task_cid") or ""),
-                    int(payload.get("attempt_number") or 1),
-                    str(payload.get("owner_session_id") or self.session_id),
-                    int(payload.get("fencing_token") or 1),
-                    1,
-                    started_at,
-                    finished_at,
-                    status,
-                    1,
-                ],
-            )
+            finished_at = (raw_finished_at or started_at) if status in _TERMINAL_ATTEMPT_STATUSES else ""
+            attempt_row = [
+                str(payload.get("task_cid") or ""),
+                int(payload.get("attempt_number") or 1),
+                str(
+                    payload.get("owner_session_id")
+                    or event_session_id
+                    or self.session_id
+                ),
+                int(payload.get("fencing_token") or 1),
+                int(payload.get("fence_epoch") or 1),
+                started_at,
+                finished_at,
+                status,
+                int(payload.get("revision") or 1),
+            ]
+            exists = connection.execute(
+                "SELECT 1 FROM task_attempts WHERE attempt_id = ?", [attempt_id]
+            ).fetchone()
+            if exists is None:
+                connection.execute(
+                    """
+                    INSERT INTO task_attempts (
+                        attempt_id, task_cid, attempt_number, owner_session_id,
+                        fencing_token, fence_epoch, started_at, finished_at,
+                        status, revision
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [attempt_id, *attempt_row],
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE task_attempts SET task_cid = ?, attempt_number = ?,
+                        owner_session_id = ?, fencing_token = ?, fence_epoch = ?,
+                        started_at = ?, finished_at = ?, status = ?, revision = ?
+                    WHERE attempt_id = ?
+                    """,
+                    [*attempt_row, attempt_id],
+                )
             return
 
         if event_type == IntentEventType.TASK_BLOCKED.value:
@@ -9754,65 +9967,7 @@ class IntentRepository:
 
     def snapshot(self) -> IntentSnapshot:
         with self._connection(write=False) as connection:
-            objective_count = int(
-                connection.execute("SELECT COUNT(*) FROM objectives").fetchone()[0]
-            )
-            goal_count = int(connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0])
-            plan_count = int(connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0])
-            task_count = int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
-            dependency_count = int(
-                connection.execute("SELECT COUNT(*) FROM task_dependencies").fetchone()[0]
-            )
-            watermark = int(
-                connection.execute(
-                    "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
-                ).fetchone()[0]
-            )
-            task_rows = connection.execute(
-                """
-                SELECT task_cid, status, revision FROM tasks
-                ORDER BY task_cid
-                """
-            ).fetchall()
-            plan_rows = connection.execute(
-                """
-                SELECT plan_cid, status, revision FROM plans
-                ORDER BY plan_cid
-                """
-            ).fetchall()
-            goal_rows = connection.execute(
-                """
-                SELECT goal_cid, status, revision FROM goals
-                ORDER BY goal_cid
-                """
-            ).fetchall()
-        material = {
-            "objectives": objective_count,
-            "goals": [
-                {"goal_cid": str(r[0]), "status": str(r[1]), "revision": int(r[2])}
-                for r in goal_rows
-            ],
-            "plans": [
-                {"plan_cid": str(r[0]), "status": str(r[1]), "revision": int(r[2])}
-                for r in plan_rows
-            ],
-            "tasks": [
-                {"task_cid": str(r[0]), "status": str(r[1]), "revision": int(r[2])}
-                for r in task_rows
-            ],
-            "dependency_count": dependency_count,
-            "event_watermark": watermark,
-        }
-        return IntentSnapshot(
-            objective_count=objective_count,
-            goal_count=goal_count,
-            plan_count=plan_count,
-            task_count=task_count,
-            dependency_count=dependency_count,
-            event_watermark=watermark,
-            projection_cid=content_identity(material),
-            recorded_at=_utc_iso(),
-        )
+            return self._snapshot_on(connection)
 
     def task_revision_history_projection(self, task_cid_or_alias: str) -> Mapping[str, Any]:
         """Return bounded task-body revisions for legacy spec-CID replay.
@@ -10153,6 +10308,1121 @@ class IntentRepository:
         """Return the plan-revision repository view over this intent store."""
 
         return PlanRevisionRepository(self)
+
+    @property
+    def uses_typed_quack_owner(self) -> bool:
+        """Whether mutations traverse the typed Quack owner (bound or transport)."""
+
+        return self.uses_bound_connection or self.uses_quack_transport
+
+    @property
+    def fencing_epoch(self) -> int:
+        return self._fencing_epoch
+
+    @property
+    def owner_generation(self) -> int:
+        return self._owner_generation
+
+    @property
+    def legacy_route_count(self) -> int:
+        """Number of supported legacy operations routed through this repository."""
+
+        return self._legacy_route_count
+
+    def _sanitize_malformed_validation_retry_seeds_on(
+        self,
+        connection: Any,
+    ) -> list[dict[str, Any]]:
+        """Drop leftover retry seeds that cannot survive a claim CAS.
+
+        Exclusive-owner restart copies the prior in_progress receipt onto a
+        stale-unstall receipt. A leftover ``validation_retry_seed`` then makes
+        ``claim_next`` raise ``malformed validation retry seed`` forever.
+        """
+
+        rows = connection.execute(
+            """
+            SELECT task_cid, task_alias, goal_cid, status, revision, body_json
+            FROM tasks WHERE status = 'retrying'
+            ORDER BY task_alias, task_cid
+            """
+        ).fetchall()
+        sanitized: list[dict[str, Any]] = []
+        for row in rows:
+            task_cid = str(row[0])
+            previous_revision = int(row[4])
+            body = _decode_json(row[5], noun="task body")
+            if not isinstance(body, dict):
+                body = {}
+            else:
+                body = dict(body)
+            previous_receipt = body.get("completion_receipt")
+            if not isinstance(previous_receipt, Mapping):
+                continue
+            if previous_receipt.get("validation_retry_seed") is None:
+                continue
+            if (
+                str(previous_receipt.get("operation") or "")
+                in _VALIDATION_RETRY_RECEIPT_OPERATIONS
+            ):
+                continue
+            revision = previous_revision + 1
+            recorded_at = _utc_iso()
+            recovery_receipt = dict(previous_receipt)
+            for key in _LEFTOVER_VALIDATION_RETRY_SEED_KEYS:
+                recovery_receipt.pop(key, None)
+            recovery_receipt.update(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "stale-task-recovery-receipt@1"
+                    ),
+                    "operation": (
+                        "event_sourced_malformed_validation_retry_seed_unstall"
+                    ),
+                    "reason": (
+                        "leftover_validation_retry_seed_after_stale_unstall"
+                    ),
+                    "task_cid": task_cid,
+                    "task_alias": str(row[1]),
+                    "previous_status": "retrying",
+                    "status": "todo",
+                    "previous_revision": previous_revision,
+                    "revision": revision,
+                    "owner_id": self.owner_id,
+                    "session_id": self.session_id,
+                    "recorded_at": recorded_at,
+                }
+            )
+            recovery_receipt["receipt_cid"] = content_identity(recovery_receipt)
+            body["completion_receipt"] = recovery_receipt
+            updated = connection.execute(
+                """
+                UPDATE tasks SET status = 'todo', revision = ?,
+                    updated_at = ?, body_json = ?
+                WHERE task_cid = ? AND revision = ? AND status = 'retrying'
+                RETURNING revision
+                """,
+                [
+                    revision,
+                    recorded_at,
+                    _canonical(body, noun="task body"),
+                    task_cid,
+                    previous_revision,
+                ],
+            ).fetchone()
+            if updated is None or int(updated[0]) != revision:
+                raise IntentRepositoryConflictError(
+                    "malformed-seed unstall lost its exact task revision CAS"
+                )
+            connection.execute(
+                """
+                INSERT INTO task_revisions (
+                    task_cid, revision, status, body_json, recorded_at
+                ) VALUES (?, ?, 'todo', ?, ?)
+                """,
+                [
+                    task_cid,
+                    revision,
+                    _canonical(body, noun="task revision body"),
+                    recorded_at,
+                ],
+            )
+            event = self._append_event(
+                connection,
+                event_type=IntentEventType.TASK_STATUS_CHANGED,
+                subject_id=task_cid,
+                task_cid=task_cid,
+                body={
+                    "task_cid": task_cid,
+                    "task_alias": str(row[1]),
+                    "goal_cid": str(row[2]),
+                    "previous_status": "retrying",
+                    "status": "todo",
+                    "revision": revision,
+                    "receipt": recovery_receipt,
+                    "recorded_at": recorded_at,
+                },
+            )
+            sanitized.append(
+                {
+                    "task_cid": task_cid,
+                    "task_alias": str(row[1]),
+                    "previous_revision": previous_revision,
+                    "revision": revision,
+                    "changed": True,
+                    "event_id": event.event_id,
+                    "event_global_sequence": event.global_sequence,
+                    "receipt_cid": recovery_receipt["receipt_cid"],
+                }
+            )
+        return sanitized
+
+    def reconcile_legacy_stale_unstall_projection_drift(self) -> IntentReceipt:
+        """Repair only the exact projection-only stale-unstall legacy shape.
+
+        Older owner startup code advanced ``tasks`` from ``in_progress@N`` to
+        ``retrying@N+1`` without a task revision or intent event.  This bounded
+        recovery accepts only that reconstructible footprint.  Any unrelated
+        event/projection divergence rolls back and fails closed.
+        """
+
+        try:
+            settled = self.assert_projection_matches_events()
+        except IntentRepositoryIntegrityError:
+            # Diagnose the divergence inside the exclusive recovery
+            # transaction below. The parity probe itself always rolls back.
+            pass
+        else:
+            with self._connection(write=False) as connection:
+                full_projection_cid = content_identity(
+                    self._full_projection_on(connection)
+                )
+            return IntentReceipt(
+                event_id="",
+                event_type=IntentEventType.RECOVERY_APPLIED.value,
+                global_sequence=settled.event_watermark,
+                recorded_at=_utc_iso(),
+                subject_id="intent:recovery:legacy-stale-unstall",
+                revision=settled.event_watermark,
+                changed=False,
+                details=MappingProxyType(
+                    {
+                        "operation": "legacy_projection_only_stale_unstall",
+                        "projection_cid": settled.projection_cid,
+                        "full_projection_cid": full_projection_cid,
+                        "candidates": (),
+                    }
+                ),
+            )
+
+        with self._connection(write=True) as connection:
+            before = self._snapshot_on(connection)
+            before_full = self._full_projection_on(connection)
+            before_full_cid = content_identity(before_full)
+            before_tasks = self._task_projection_rows_on(connection)
+            before_goals = self._status_projection_rows_on(
+                connection, "goals", "goal_cid"
+            )
+            before_plans = self._status_projection_rows_on(
+                connection, "plans", "plan_cid"
+            )
+            candidates: list[dict[str, Any]] = []
+            for task_cid, row in sorted(before_tasks.items()):
+                status = str(row[6])
+                revision = int(row[7])
+                if status != "retrying" or revision < 2:
+                    continue
+                current_revision = connection.execute(
+                    "SELECT 1 FROM task_revisions WHERE task_cid = ? AND revision = ?",
+                    [task_cid, revision],
+                ).fetchone()
+                if current_revision is not None:
+                    continue
+                prior = connection.execute(
+                    """
+                    SELECT status, body_json FROM task_revisions
+                    WHERE task_cid = ? AND revision = ?
+                    """,
+                    [task_cid, revision - 1],
+                ).fetchone()
+                if (
+                    prior is None
+                    or str(prior[0]) != "in_progress"
+                    or str(prior[1]) != str(row[12])
+                ):
+                    continue
+                latest = connection.execute(
+                    """
+                    SELECT event_type, body_json, global_sequence
+                    FROM domain_events
+                    WHERE stream_id = ? AND task_cid = ?
+                      AND event_type IN (?, ?, ?, ?, ?)
+                    ORDER BY global_sequence DESC LIMIT 1
+                    """,
+                    [
+                        INTENT_STREAM_ID,
+                        task_cid,
+                        IntentEventType.TASK_UPSERTED.value,
+                        IntentEventType.TASK_STATUS_CHANGED.value,
+                        IntentEventType.COMPLETION_RECORDED.value,
+                        IntentEventType.TASK_BLOCKED.value,
+                        IntentEventType.TASK_UNBLOCKED.value,
+                    ],
+                ).fetchone()
+                if latest is None:
+                    continue
+                wrapper = _decode_json(latest[1], noun="event body")
+                payload = wrapper.get("body") if isinstance(wrapper, dict) else None
+                if not isinstance(payload, dict):
+                    continue
+                if (
+                    str(payload.get("task_cid") or "") != task_cid
+                    or str(payload.get("status") or "") != "in_progress"
+                    or int(payload.get("revision") or -1) != revision - 1
+                ):
+                    continue
+                candidates.append(
+                    {
+                        "task_cid": task_cid,
+                        "task_alias": str(row[1]),
+                        "legacy_status": "retrying",
+                        "legacy_revision": revision,
+                        "admitted_status": "in_progress",
+                        "admitted_revision": revision - 1,
+                        "last_event_type": str(latest[0]),
+                        "last_event_global_sequence": int(latest[2]),
+                    }
+                )
+
+            rebuilt = self._rebuild_projections_from_events_on(connection, strict=True)
+            after_full = self._full_projection_on(connection)
+            after_full_cid = content_identity(after_full)
+            after_tasks = self._task_projection_rows_on(connection)
+            after_goals = self._status_projection_rows_on(
+                connection, "goals", "goal_cid"
+            )
+            after_plans = self._status_projection_rows_on(
+                connection, "plans", "plan_cid"
+            )
+            candidate_ids = {item["task_cid"] for item in candidates}
+            if (
+                before.objective_count != rebuilt.objective_count
+                or before.goal_count != rebuilt.goal_count
+                or before.plan_count != rebuilt.plan_count
+                or before.task_count != rebuilt.task_count
+                or before.dependency_count != rebuilt.dependency_count
+                or before_goals != after_goals
+                or before_plans != after_plans
+                or set(before_tasks) != set(after_tasks)
+            ):
+                raise IntentRepositoryIntegrityError(
+                    "projection drift is not the bounded legacy stale-unstall shape"
+                )
+            for table, before_projection in before_full.items():
+                if table == "tasks":
+                    continue
+                if before_projection != after_full.get(table):
+                    raise IntentRepositoryIntegrityError(
+                        "projection drift changes state outside the stale task rows"
+                    )
+            for task_cid, before_row in before_tasks.items():
+                after_row = after_tasks[task_cid]
+                if task_cid not in candidate_ids:
+                    if before_row != after_row:
+                        raise IntentRepositoryIntegrityError(
+                            "projection drift includes a non-stale task row"
+                        )
+                    continue
+                candidate = next(
+                    item for item in candidates if item["task_cid"] == task_cid
+                )
+                if (
+                    str(after_row[6]) != candidate["admitted_status"]
+                    or int(after_row[7]) != candidate["admitted_revision"]
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "legacy stale-unstall candidate does not replay to its admitted state"
+                    )
+                # The legacy bypass changed only status, revision, and
+                # updated_at.  All authority-bearing task fields and body must
+                # reconstruct exactly.
+                for ordinal in (0, 1, 2, 3, 4, 5, 8, 9, 11, 12):
+                    if str(before_row[ordinal]) != str(after_row[ordinal]):
+                        raise IntentRepositoryIntegrityError(
+                            "legacy stale-unstall candidate changed task authority"
+                        )
+
+            if (
+                before.projection_cid == rebuilt.projection_cid
+                and before_full_cid == after_full_cid
+            ):
+                raise IntentRepositoryConflictError(
+                    "projection became event-equivalent during legacy recovery; retry "
+                    "from the current authoritative revision"
+                )
+            if not candidates:
+                raise IntentRepositoryIntegrityError(
+                    "projection/event divergence has no admitted legacy stale-unstall repair"
+                )
+            return self._append_event(
+                connection,
+                event_type=IntentEventType.RECOVERY_APPLIED,
+                subject_id="intent:recovery:legacy-stale-unstall",
+                body={
+                    "operation": "legacy_projection_only_stale_unstall",
+                    "before_projection_cid": before.projection_cid,
+                    "after_projection_cid": rebuilt.projection_cid,
+                    "before_full_projection_cid": before_full_cid,
+                    "after_full_projection_cid": after_full_cid,
+                    "candidates": candidates,
+                    "event_watermark": rebuilt.event_watermark,
+                    "revision": rebuilt.event_watermark,
+                    "recorded_at": _utc_iso(),
+                },
+            )
+
+    def assert_projection_matches_events(self) -> IntentSnapshot:
+        """Prove full projection parity without committing the test replay."""
+
+        class _ParityProvedRollback(Exception):
+            pass
+
+        proof: dict[str, IntentSnapshot] = {}
+        try:
+            with self._connection(write=True) as connection:
+                before = self._snapshot_on(connection)
+                before_full_cid = content_identity(self._full_projection_on(connection))
+                rebuilt = self._rebuild_projections_from_events_on(
+                    connection, strict=True
+                )
+                rebuilt_full_cid = content_identity(
+                    self._full_projection_on(connection)
+                )
+                if (
+                    before.projection_cid != rebuilt.projection_cid
+                    or before_full_cid != rebuilt_full_cid
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "intent projection differs from admitted events"
+                    )
+                proof["snapshot"] = before
+                # The repository transaction manager rolls the replay back;
+                # equality is evidence, not authority to rewrite live rows.
+                raise _ParityProvedRollback
+        except _ParityProvedRollback:
+            return proof["snapshot"]
+
+    def _rebuild_projections_from_events_on(
+        self,
+        connection: Any,
+        *,
+        strict: bool = False,
+    ) -> IntentSnapshot:
+        events = connection.execute(
+                """
+                SELECT event_id, event_type, task_cid, attempt_id, session_id,
+                       recorded_at, body_json, sequence, global_sequence
+                FROM domain_events
+                WHERE stream_id = ?
+                ORDER BY global_sequence ASC
+                """,
+                [INTENT_STREAM_ID],
+            ).fetchall()
+        replayed_validation_run_ids: set[str] = set()
+        replayed_validation_result_ids: set[str] = set()
+        replayed_attempt_ids: set[str] = set()
+        # Preserve non-intent domain events; only rebuild intent projections.
+        for table in _PROJECTION_TABLES:
+            # ``task_attempts`` has an immediate unique ART index on
+            # ``(task_cid, attempt_number)``. DuckDB can reject deleting and
+            # reinserting the exact same key in one transaction. Attempts are
+            # updated in place and pruned after replay.
+            if table == "task_attempts":
+                continue
+            try:
+                connection.execute(f"DELETE FROM {table}")
+            except Exception:
+                # Some tables may be empty or not present in partial installs.
+                if strict:
+                    raise
+        # Leases are shared with the lease coordinator; only clear queue
+        # entries owned by this repository's extension schema.
+        try:
+            connection.execute(
+                "DELETE FROM leases WHERE extension_schema = ?",
+                [_SHARED_QUEUE_LEASE_SCHEMA],
+            )
+        except Exception:
+            if strict:
+                raise
+        prior_global_sequence = 0
+        for expected_stream_sequence, event_row in enumerate(events, start=1):
+            # DuckDBRow iterates keys; index into values explicitly.
+            event_type = str(event_row[1])
+            event_task_cid = str(event_row[2] or "")
+            event_attempt_id = str(event_row[3] or "")
+            event_session_id = str(event_row[4] or "")
+            event_recorded_at = str(event_row[5] or "")
+            body_json = event_row[6]
+            stream_sequence = int(event_row[7])
+            global_sequence = int(event_row[8])
+            body_wrapper = _decode_json(body_json, noun="event body")
+            if not isinstance(body_wrapper, dict):
+                if strict:
+                    raise IntentRepositoryIntegrityError(
+                        "admitted intent event body is not an object"
+                    )
+                continue
+            payload = body_wrapper.get("body")
+            if not isinstance(payload, dict):
+                if strict:
+                    raise IntentRepositoryIntegrityError(
+                        "admitted intent event has no typed body payload"
+                    )
+                payload = body_wrapper
+            if strict:
+                try:
+                    IntentEventType(event_type)
+                except ValueError as exc:
+                    # This published repair has its own exact projection CAS;
+                    # it still passes every event CID/envelope check below.
+                    from .completion_projection_repair import EVENT
+
+                    if event_type != EVENT:
+                        raise IntentRepositoryIntegrityError(
+                            f"unsupported admitted intent event type: {event_type}"
+                        ) from exc
+                if (
+                    stream_sequence != expected_stream_sequence
+                    or global_sequence <= prior_global_sequence
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "admitted intent event sequence is not monotonic and contiguous"
+                    )
+                expected_event_id = content_identity(
+                    {
+                        "stream_id": INTENT_STREAM_ID,
+                        "sequence": stream_sequence,
+                        "global_sequence": global_sequence,
+                        "event_type": event_type,
+                        "body": body_wrapper,
+                    }
+                )
+                if str(event_row[0]) != expected_event_id:
+                    raise IntentRepositoryIntegrityError(
+                        "admitted intent event content identity does not reconstruct"
+                    )
+                if (
+                    str(body_wrapper.get("schema") or "") != INTENT_EVENT_SCHEMA
+                    or str(body_wrapper.get("event_type") or "") != event_type
+                    or str(body_wrapper.get("recorded_at") or "")
+                    != event_recorded_at
+                    or str(payload.get("task_cid") or event_task_cid)
+                    != event_task_cid
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "admitted intent event envelope does not match its columns"
+                    )
+            prior_global_sequence = global_sequence
+            if event_type == IntentEventType.VALIDATION_RECORDED.value:
+                run_id = str(payload.get("run_id") or "")
+                result_id = str(payload.get("result_id") or "")
+                if run_id:
+                    replayed_validation_run_ids.add(run_id)
+                if result_id:
+                    replayed_validation_result_ids.add(result_id)
+            if event_type == IntentEventType.ATTEMPT_RECORDED.value:
+                attempt_id = str(payload.get("attempt_id") or event_attempt_id)
+                if attempt_id:
+                    replayed_attempt_ids.add(attempt_id)
+            self._apply_event_payload(
+                connection,
+                event_type=event_type,
+                payload=payload,
+                event_owner_id=str(body_wrapper.get("owner_id") or ""),
+                event_session_id=event_session_id,
+                event_attempt_id=event_attempt_id,
+                event_recorded_at=event_recorded_at,
+            )
+        # DuckDB's immediate unique-index checks can reject a delete and
+        # reinsert of the same ``(run_id, ordinal)`` in one transaction.
+        # Validation projections are therefore updated in place during
+        # replay, then rows absent from the admitted event stream are
+        # removed before this transaction commits.
+        for row in connection.execute("SELECT result_id FROM validation_results").fetchall():
+            result_id = str(row[0])
+            if result_id not in replayed_validation_result_ids:
+                connection.execute(
+                    "DELETE FROM validation_results WHERE result_id = ?",
+                    [result_id],
+                )
+        for row in connection.execute("SELECT run_id FROM validation_runs").fetchall():
+            run_id = str(row[0])
+            if run_id not in replayed_validation_run_ids:
+                connection.execute(
+                    "DELETE FROM validation_runs WHERE run_id = ?",
+                    [run_id],
+                )
+        for row in connection.execute("SELECT attempt_id FROM task_attempts").fetchall():
+            attempt_id = str(row[0])
+            if attempt_id not in replayed_attempt_ids:
+                connection.execute(
+                    "DELETE FROM task_attempts WHERE attempt_id = ?",
+                    [attempt_id],
+                )
+        return self._snapshot_on(connection)
+
+    def _task_projection_rows_on(
+        self, connection: Any
+    ) -> dict[str, tuple[Any, ...]]:
+        rows = connection.execute(
+            """
+            SELECT task_cid, task_alias, goal_cid, plan_cid, objective_id,
+                   ordinal, status, revision, priority, created_at, updated_at,
+                   identity_json, body_json
+            FROM tasks ORDER BY task_cid
+            """
+        ).fetchall()
+        return {
+            str(row[0]): tuple(
+                self._projection_value(row[index]) for index in range(13)
+            )
+            for row in rows
+        }
+
+    @staticmethod
+    def _projection_value(value: Any) -> Any:
+        if value is None or isinstance(value, (str, bool, int)):
+            return value
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            raw = bytes(value)
+            return {
+                "byte_length": len(raw),
+                "sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+            }
+        if isinstance(value, datetime):
+            moment = value
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=timezone.utc)
+            return moment.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        # Decimal/date/UUID and extension scalar types have stable string
+        # projections; floats are represented textually so intent JSON never
+        # mistakes a non-exact value for an exact integer measurement.
+        return str(value)
+
+    def _full_projection_on(self, connection: Any) -> dict[str, Any]:
+        projection: dict[str, Any] = {}
+        for table in _PROJECTION_TABLES:
+            cursor = connection.execute(f"SELECT * FROM {table} ORDER BY ALL")
+            cursor_columns = getattr(cursor, "_columns", ())
+            if cursor_columns:
+                columns = tuple(str(item) for item in cursor_columns)
+            else:
+                columns = tuple(
+                    str(item[0])
+                    for item in (getattr(cursor, "description", None) or ())
+                )
+            rows = cursor.fetchall()
+            if len(rows) > MAX_PROJECTION_RECORDS:
+                raise IntentRepositoryBoundsError(
+                    f"{table} exceeds the projection replay record bound"
+                )
+            projection[table] = {
+                "columns": list(columns),
+                "rows": [
+                    [self._projection_value(row[index]) for index in range(len(columns))]
+                    for row in rows
+                ],
+            }
+        try:
+            lease_cursor = connection.execute(
+                """
+                SELECT * FROM leases WHERE extension_schema = ? ORDER BY ALL
+                """,
+                [_SHARED_QUEUE_LEASE_SCHEMA],
+            )
+            cursor_columns = getattr(lease_cursor, "_columns", ())
+            if cursor_columns:
+                lease_columns = tuple(str(item) for item in cursor_columns)
+            else:
+                lease_columns = tuple(
+                    str(item[0])
+                    for item in (getattr(lease_cursor, "description", None) or ())
+                )
+            lease_rows = lease_cursor.fetchall()
+        except Exception as exc:
+            raise IntentRepositoryIntegrityError(
+                "intent queue lease projection is unavailable"
+            ) from exc
+        projection["leases:intent-queue"] = {
+            "columns": list(lease_columns),
+            "rows": [
+                [
+                    self._projection_value(row[index])
+                    for index in range(len(lease_columns))
+                ]
+                for row in lease_rows
+            ],
+        }
+        return projection
+
+    def _status_projection_rows_on(
+        self,
+        connection: Any,
+        table: str,
+        identity_column: str,
+    ) -> tuple[tuple[str, str, int], ...]:
+        allowed = {("goals", "goal_cid"), ("plans", "plan_cid")}
+        if (table, identity_column) not in allowed:
+            raise IntentRepositoryIntegrityError("unsupported status projection")
+        rows = connection.execute(
+            f"SELECT {identity_column}, status, revision "
+            f"FROM {table} ORDER BY {identity_column}"
+        ).fetchall()
+        return tuple((str(row[0]), str(row[1]), int(row[2])) for row in rows)
+
+    def _snapshot_on(self, connection: Any) -> IntentSnapshot:
+        objective_count = int(
+            connection.execute("SELECT COUNT(*) FROM objectives").fetchone()[0]
+        )
+        goal_count = int(connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0])
+        plan_count = int(connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0])
+        task_count = int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
+        dependency_count = int(
+            connection.execute("SELECT COUNT(*) FROM task_dependencies").fetchone()[0]
+        )
+        watermark = int(
+            connection.execute(
+                "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+            ).fetchone()[0]
+        )
+        task_rows = connection.execute(
+            """
+            SELECT task_cid, status, revision FROM tasks
+            ORDER BY task_cid
+            """
+        ).fetchall()
+        plan_rows = connection.execute(
+            """
+            SELECT plan_cid, status, revision FROM plans
+            ORDER BY plan_cid
+            """
+        ).fetchall()
+        goal_rows = connection.execute(
+            """
+            SELECT goal_cid, status, revision FROM goals
+            ORDER BY goal_cid
+            """
+        ).fetchall()
+        material = {
+            "objectives": objective_count,
+            "goals": [
+                {"goal_cid": str(r[0]), "status": str(r[1]), "revision": int(r[2])}
+                for r in goal_rows
+            ],
+            "plans": [
+                {"plan_cid": str(r[0]), "status": str(r[1]), "revision": int(r[2])}
+                for r in plan_rows
+            ],
+            "tasks": [
+                {"task_cid": str(r[0]), "status": str(r[1]), "revision": int(r[2])}
+                for r in task_rows
+            ],
+            "dependency_count": dependency_count,
+            "event_watermark": watermark,
+        }
+        return IntentSnapshot(
+            objective_count=objective_count,
+            goal_count=goal_count,
+            plan_count=plan_count,
+            task_count=task_count,
+            dependency_count=dependency_count,
+            event_watermark=watermark,
+            projection_cid=content_identity(material),
+            recorded_at=_utc_iso(),
+        )
+
+    def compatibility_catalog(self) -> Mapping[str, Any]:
+        """Machine-readable replacement, rollback, and fail-closed catalog."""
+
+        return MappingProxyType(
+            {
+                "schema": COMPATIBILITY_CATALOG_SCHEMA,
+                "task_id": PRODUCTION_CUTOVER_TASK_ID,
+                "production_authority_path": list(PRODUCTION_AUTHORITY_PATH),
+                "canonical_owner": PRODUCTION_AUTHORITY_OWNER,
+                "host": PRODUCTION_AUTHORITY_HOST,
+                "substrate": PRODUCTION_AUTHORITY_SUBSTRATE,
+                "independent_writer": False,
+                "public_api_deletion": False,
+                "plan_delta_cannot_waive_production_integration": True,
+                "uses_typed_quack_owner": self.uses_typed_quack_owner,
+                "supported_legacy_operations": {
+                    name: dict(record) for name, record in SUPPORTED_LEGACY_OPERATIONS.items()
+                },
+                "unsupported_legacy_operations": {
+                    name: dict(record) for name, record in UNSUPPORTED_LEGACY_OPERATIONS.items()
+                },
+                "caller_replacements": dict(CALLER_REPLACEMENTS),
+                "rollback": dict(self.rollback_plan()),
+            }
+        )
+
+    def rollback_plan(self) -> Mapping[str, Any]:
+        """Documented rollback: revert the adapter patch, keep this authority."""
+
+        return MappingProxyType(
+            {
+                "schema": ROLLBACK_PLAN_SCHEMA,
+                "task_id": PRODUCTION_CUTOVER_TASK_ID,
+                "restores_independent_writer": False,
+                "public_api_deletion": False,
+                "preserve_observed_effects_and_receipts": True,
+                "procedure": (
+                    "stop new claims and drain mutating leases",
+                    "pause the Quack owner",
+                    "discard or revert only the scoped compatibility-adapter patch",
+                    "restart with the same external credential handle",
+                    "reconcile through IntentRepository.recover and projection replay",
+                    "do not restore DuckDBTaskSource, markdown, or direct-SQL writers",
+                    "reopen claims only after event/materialized-state reconciliation",
+                ),
+            }
+        )
+
+    def caller_replacement(self, caller: str) -> str:
+        """Return the documented replacement for one production caller."""
+
+        text = str(caller or "").strip()
+        if not text:
+            raise IntentRepositoryUnsupportedPathError("caller replacement requires a caller")
+        replacement = CALLER_REPLACEMENTS.get(text)
+        if replacement is None:
+            raise IntentRepositoryUnsupportedPathError(
+                f"no admitted replacement for caller {text}"
+            )
+        return replacement
+
+    def _warn_legacy_api(
+        self,
+        operation: str,
+        *,
+        caller: str,
+        replacement: str,
+    ) -> None:
+        caller_text = str(caller or "").strip() or "unknown"
+        warnings.warn(
+            f"compatibility adapter routing {operation} from {caller_text}; "
+            f"use {replacement} through IntentRepository and the typed Quack owner",
+            IntentRepositoryCompatibilityWarning,
+            stacklevel=3,
+        )
+
+    def reject_unsupported_legacy_path(
+        self,
+        *,
+        operation: str,
+        caller: str = "",
+    ) -> None:
+        """Warn and refuse an unsupported independent-write path."""
+
+        op = str(operation or "").strip() or "unsupported"
+        record = UNSUPPORTED_LEGACY_OPERATIONS.get(op)
+        caller_text = str(caller or "").strip() or (
+            str(record["caller"]) if record is not None else "unknown"
+        )
+        replacement = (
+            str(record["replacement"])
+            if record is not None
+            else "IntentRepository.cas_task_status via the typed Quack owner"
+        )
+        reason = (
+            str(record["reason"]) if record is not None else "path is not an admitted mutation"
+        )
+        self._warn_legacy_api(op, caller=caller_text, replacement=replacement)
+        raise IntentRepositoryUnsupportedPathError(
+            f"unsupported compatibility path {op} from {caller_text} failed closed: {reason}"
+        )
+
+    def route_legacy_api(
+        self,
+        operation: str,
+        /,
+        *args: Any,
+        caller: str = "",
+        **kwargs: Any,
+    ) -> Any:
+        """Warn and dispatch one supported legacy API through this repository.
+
+        Unsupported operations warn then fail closed without writing.
+        """
+
+        op = str(operation or "").strip()
+        if op in UNSUPPORTED_LEGACY_OPERATIONS or op not in SUPPORTED_LEGACY_OPERATIONS:
+            self.reject_unsupported_legacy_path(operation=op, caller=caller)
+        record = SUPPORTED_LEGACY_OPERATIONS[op]
+        caller_text = str(caller or "").strip() or str(record["caller"])
+        self._warn_legacy_api(
+            op,
+            caller=caller_text,
+            replacement=str(record["replacement"]),
+        )
+        self._legacy_route_count += 1
+        kwargs.pop("caller", None)
+        if op in {"compare_and_set_status", "cas_status"}:
+            return self._legacy_compare_and_set_status(*args, **kwargs)
+        if op == "transition":
+            return self._legacy_transition(*args, **kwargs)
+        if op == "recover":
+            return self.recover()
+        if op == "reconcile_legacy_stale_unstall_projection_drift":
+            return self.reconcile_legacy_stale_unstall_projection_drift()
+        if op == "unstall_stale_in_progress_tasks":
+            return self.unstall_stale_in_progress_tasks(**kwargs)
+        if op == "record_evidence":
+            return self.record_evidence(**kwargs)
+        if op == "record_validation_result":
+            return self.record_validation_result(**kwargs)
+        if op == "record_queue_backoff":
+            return self.record_queue_backoff(**kwargs)
+        if op == "record_queue_retry":
+            return self.record_queue_retry(**kwargs)
+        self.reject_unsupported_legacy_path(operation=op, caller=caller_text)
+        raise IntentRepositoryUnsupportedPathError(
+            f"unsupported compatibility path {op} failed closed"
+        )
+
+    def apply_legacy_compare_and_set_status(
+        self,
+        task_cid_or_alias: str | Mapping[str, Any],
+        expected_revision: int,
+        status: str,
+        receipt: Mapping[str, Any] | None = None,
+        *,
+        caller: str = "DuckDBTaskSource.compare_and_set_status",
+        evidence_digests: Sequence[str] | None = None,
+        writer_id: str | None = None,
+        fencing_token: int | None = None,
+    ) -> IntentReceipt:
+        """DuckDBTaskSource-shaped CAS. Warns and delegates to cas_task_status."""
+
+        del writer_id, fencing_token
+        self._warn_legacy_api(
+            "compare_and_set_status",
+            caller=caller,
+            replacement="IntentRepository.cas_task_status",
+        )
+        self._legacy_route_count += 1
+        return self._legacy_compare_and_set_status(
+            task_cid_or_alias,
+            expected_revision,
+            status,
+            receipt,
+            evidence_digests=evidence_digests,
+        )
+
+    def apply_legacy_transition(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
+        caller: str = "TaskTransitionService.transition",
+    ) -> IntentReceipt:
+        """TaskTransitionService-shaped CAS. Warns and delegates to cas_task_status."""
+
+        self._warn_legacy_api(
+            "transition",
+            caller=caller,
+            replacement="IntentRepository.cas_task_status",
+        )
+        self._legacy_route_count += 1
+        return self.cas_task_status(
+            task_cid=task_cid,
+            expected_revision=expected_revision,
+            new_status=new_status,
+            receipt=receipt,
+            evidence_digests=evidence_digests,
+        )
+
+    def _legacy_compare_and_set_status(
+        self,
+        task_cid_or_alias: str | Mapping[str, Any],
+        expected_revision: int,
+        status: str,
+        receipt: Mapping[str, Any] | None = None,
+        *,
+        evidence_digests: Sequence[str] | None = None,
+    ) -> IntentReceipt:
+        return self.cas_task_status(
+            task_cid=_legacy_task_key(task_cid_or_alias),
+            expected_revision=expected_revision,
+            new_status=status,
+            receipt=receipt,
+            evidence_digests=evidence_digests,
+        )
+
+    def _legacy_transition(
+        self,
+        *args: Any,
+        task_cid: str = "",
+        expected_revision: int | None = None,
+        new_status: str = "",
+        status: str = "",
+        receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
+        **kwargs: Any,
+    ) -> IntentReceipt:
+        del kwargs
+        if args:
+            raise IntentRepositoryUnsupportedPathError(
+                "legacy transition requires keyword task_cid/expected_revision/new_status"
+            )
+        target = new_status or status
+        if expected_revision is None:
+            raise IntentRepositoryError("legacy transition requires expected_revision")
+        return self.cas_task_status(
+            task_cid=task_cid,
+            expected_revision=expected_revision,
+            new_status=target,
+            receipt=receipt,
+            evidence_digests=evidence_digests,
+        )
+
+    def export_owner_restart_snapshot(
+        self,
+        *,
+        repository_id: str = "",
+        tree_id: str = "",
+        generation: int | None = None,
+        owner_session_id: str = "",
+        fencing_epoch: int | None = None,
+        authenticated: bool = True,
+        authentication_subject_id: str = "",
+        authentication_binding_id: str = "",
+    ) -> dict[str, Any]:
+        """Export SupervisorRecovery-compatible owner projection from this store."""
+
+        snapshot = self.snapshot()
+        tasks = {
+            str(item["task_cid"]): {
+                "revision": int(item["revision"]),
+                "status": str(item["status"]),
+            }
+            for item in self.list_tasks(limit=MAX_PAGE_LIMIT)
+        }
+        watermark = int(snapshot.event_watermark)
+        last_event_id = ""
+        if watermark > 0:
+            events = self.list_events(after_global_sequence=watermark - 1, limit=1)
+            if events:
+                last_event_id = str(events[0].get("event_id") or "")
+        rid = str(repository_id or self._repository_id or f"repository:{self.owner_id}")
+        tid = str(tree_id or self._tree_id or snapshot.projection_cid)
+        cursor: dict[str, Any] = {
+            "stream_id": INTENT_STREAM_ID,
+            "position": watermark,
+            "last_event_id": last_event_id,
+            "snapshot_id": tid,
+        }
+        if watermark == 0:
+            cursor["last_event_id"] = ""
+        subject = str(authentication_subject_id or self._authentication_subject_id)
+        binding = str(authentication_binding_id or self._authentication_binding_id)
+        if authenticated and not (subject and binding):
+            subject = subject or f"supervisor:{self.owner_id}"
+            binding = binding or f"grant-binding:{self.session_id}"
+        payload = {
+            "schema": OWNER_RESTART_SNAPSHOT_SCHEMA,
+            "repository_id": rid,
+            "tree_id": tid,
+            "generation": int(generation or self._owner_generation),
+            "cursor": cursor,
+            "task_state": tasks,
+            "event_state": {
+                "head_event_id": last_event_id,
+                "event_count": watermark,
+                "projection_cid": snapshot.projection_cid,
+            },
+            "lease_state": {
+                "lease_id": f"lease:{owner_session_id or self.session_id}",
+                "owner_session_id": str(owner_session_id or self.session_id),
+                "fencing_epoch": int(fencing_epoch or self._fencing_epoch),
+                "claim_revision": 1,
+            },
+            "idempotency_state": {},
+            "reconciliation_state": {},
+            "owner_session_id": str(owner_session_id or self.session_id),
+            "fencing_epoch": int(fencing_epoch or self._fencing_epoch),
+            "authenticated": bool(authenticated),
+            "authentication_subject_id": subject,
+            "authentication_binding_id": binding,
+        }
+        return payload
+
+    def rebuild_owner_restart_projection(
+        self,
+        expected: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rebuild by proving projections match events; do not append a recovery event.
+
+        SupervisorRecovery requires the rebuilt snapshot identity to equal the
+        checkpoint. ``recover()`` always appends ``intent.recovery_applied`` and
+        would change the watermark, so rebuild is a fail-closed parity check
+        that returns the checkpoint body when live truth matches.
+        """
+
+        self.assert_projection_matches_events()
+        live = self.export_owner_restart_snapshot(
+            repository_id=str(expected.get("repository_id") or ""),
+            tree_id=str(expected.get("tree_id") or ""),
+            generation=int(expected.get("generation") or self._owner_generation),
+            owner_session_id=str(expected.get("owner_session_id") or self.session_id),
+            fencing_epoch=int(expected.get("fencing_epoch") or self._fencing_epoch),
+            authenticated=bool(expected.get("authenticated", True)),
+            authentication_subject_id=str(expected.get("authentication_subject_id") or ""),
+            authentication_binding_id=str(expected.get("authentication_binding_id") or ""),
+        )
+        expected_tasks = expected.get("task_state") or {}
+        if expected_tasks and live.get("task_state") != expected_tasks:
+            raise IntentRepositoryIntegrityError(
+                "restart rebuild did not reconstruct the checkpoint state root"
+            )
+        expected_count = (expected.get("event_state") or {}).get("event_count")
+        live_count = (live.get("event_state") or {}).get("event_count")
+        if expected_count is not None and int(expected_count) != int(live_count or 0):
+            raise IntentRepositoryIntegrityError(
+                "restart rebuild did not reconstruct the checkpoint state root"
+            )
+        return dict(expected)
+
+    def take_over_owner_session(
+        self,
+        expected: Mapping[str, Any],
+        owner: str,
+    ) -> dict[str, Any]:
+        """Advance in-memory owner identity after an authenticated takeover.
+
+        Task/event/idempotency truth stays in this repository. Takeover does
+        not open a second writer or rewrite materialized rows.
+        """
+
+        self.assert_projection_matches_events()
+        owner_text = str(owner or "").strip()
+        if not owner_text:
+            raise IntentRepositoryError("owner takeover requires owner_session_id")
+        previous_epoch = int(expected.get("fencing_epoch") or self._fencing_epoch)
+        self.session_id = _identifier(owner_text, noun="owner_session_id")
+        self._fencing_epoch = previous_epoch + 1
+        self._owner_generation = int(expected.get("generation") or self._owner_generation) + 1
+        return self.export_owner_restart_snapshot(
+            repository_id=str(expected.get("repository_id") or ""),
+            tree_id=str(expected.get("tree_id") or ""),
+            generation=self._owner_generation,
+            owner_session_id=self.session_id,
+            fencing_epoch=self._fencing_epoch,
+            authenticated=True,
+            authentication_subject_id=str(expected.get("authentication_subject_id") or ""),
+            authentication_binding_id=str(expected.get("authentication_binding_id") or ""),
+        )
+
+    def owner_restart_authenticated(self, snapshot: Mapping[str, Any]) -> bool:
+        """Verify the durable grant binding, never a rematerialized credential."""
+
+        subject = str(snapshot.get("authentication_subject_id") or "")
+        binding = str(snapshot.get("authentication_binding_id") or "")
+        expected_subject = self._authentication_subject_id or subject
+        expected_binding = self._authentication_binding_id or binding
+        return (
+            bool(snapshot.get("authenticated"))
+            and subject == expected_subject
+            and binding == expected_binding
+            and bool(subject)
+            and bool(binding)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -10609,3 +11879,217 @@ __all__ = (
     "open_intent_repository",
     "duckdb_available",
 )
+
+COMPATIBILITY_ADAPTER_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/intent-compatibility-adapter@1"
+)
+
+COMPATIBILITY_CATALOG_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/aseh-compatibility-catalog@1"
+)
+
+ROLLBACK_PLAN_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/aseh-compatibility-rollback@1"
+)
+
+OWNER_RESTART_SNAPSHOT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/owner-restart-snapshot@1"
+)
+
+PRODUCTION_CUTOVER_TASK_ID: Final[str] = "ASEH-061"
+
+PRODUCTION_AUTHORITY_PATH: Final[tuple[str, str, str]] = (
+    "IntentRepository@1",
+    "TypedStateOwnerCommandGateway@1",
+    "QuackStateServer@1",
+)
+
+PRODUCTION_AUTHORITY_HOST: Final[str] = "QuackStateServer@1"
+
+PRODUCTION_AUTHORITY_OWNER: Final[str] = "TypedStateOwnerCommandGateway@1"
+
+PRODUCTION_AUTHORITY_SUBSTRATE: Final[str] = "IntentRepository@1"
+
+SUPPORTED_LEGACY_OPERATIONS: Final[Mapping[str, Mapping[str, str]]] = MappingProxyType(
+    {
+        "compare_and_set_status": MappingProxyType(
+            {
+                "caller": "DuckDBTaskSource.compare_and_set_status",
+                "replacement": "IntentRepository.cas_task_status",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "cas_status": MappingProxyType(
+            {
+                "caller": "DuckDBTaskSource.cas_status",
+                "replacement": "IntentRepository.cas_task_status",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "transition": MappingProxyType(
+            {
+                "caller": "TaskTransitionService.transition",
+                "replacement": "IntentRepository.cas_task_status",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "recover": MappingProxyType(
+            {
+                "caller": "SupervisorRecovery.rebuild",
+                "replacement": "IntentRepository.recover",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "reconcile_legacy_stale_unstall_projection_drift": MappingProxyType(
+            {
+                "caller": "QuackStateServer.start",
+                "replacement": "IntentRepository.reconcile_legacy_stale_unstall_projection_drift",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "unstall_stale_in_progress_tasks": MappingProxyType(
+            {
+                "caller": "QuackStateServer.start",
+                "replacement": "IntentRepository.unstall_stale_in_progress_tasks",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "record_evidence": MappingProxyType(
+            {
+                "caller": "DatabaseTaskSource.record_evidence",
+                "replacement": "IntentRepository.record_evidence",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "record_validation_result": MappingProxyType(
+            {
+                "caller": "DatabaseTaskSource.record_validation_result",
+                "replacement": "IntentRepository.record_validation_result",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "record_queue_backoff": MappingProxyType(
+            {
+                "caller": "DatabaseTaskSource.record_queue_backoff",
+                "replacement": "IntentRepository.record_queue_backoff",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+        "record_queue_retry": MappingProxyType(
+            {
+                "caller": "DatabaseTaskSource.record_queue_retry",
+                "replacement": "IntentRepository.record_queue_retry",
+                "authority": INTENT_REPOSITORY_INTERFACE,
+            }
+        ),
+    }
+)
+
+UNSUPPORTED_LEGACY_OPERATIONS: Final[Mapping[str, Mapping[str, str]]] = MappingProxyType(
+    {
+        "direct_sql": MappingProxyType(
+            {
+                "caller": "raw DuckDB SQL",
+                "replacement": "IntentRepository.cas_task_status via the typed Quack owner",
+                "reason": "independent SQL is a second writer",
+            }
+        ),
+        "markdown_board_write": MappingProxyType(
+            {
+                "caller": "markdown_task_board",
+                "replacement": "IntentRepository@1",
+                "reason": "markdown status is an observation and cannot mutate task state",
+            }
+        ),
+        "duckdb_task_source_independent_write": MappingProxyType(
+            {
+                "caller": "DuckDBTaskSource",
+                "replacement": "DatabaseTaskSource@1 / IntentRepository.cas_task_status",
+                "reason": "direct DuckDB projection writes are not production authority",
+            }
+        ),
+        "dual_write": MappingProxyType(
+            {
+                "caller": "compatibility dual-write",
+                "replacement": "single IntentRepository mutation on the bound owner connection",
+                "reason": "two writers for one fact is a hard failure",
+            }
+        ),
+        "independent_writer": MappingProxyType(
+            {
+                "caller": "disconnected wrapper",
+                "replacement": "bound IntentRepository on QuackStateServer",
+                "reason": "compatibility adapters cannot write independently",
+            }
+        ),
+        "silent_fallback": MappingProxyType(
+            {
+                "caller": "legacy silent fallback",
+                "replacement": "warn-then-route or warn-then-fail",
+                "reason": "silent legacy fallback is a hard failure",
+            }
+        ),
+        "transition_legacy": MappingProxyType(
+            {
+                "caller": "TaskTransitionService.transition_legacy",
+                "replacement": "IntentRepository.cas_task_status",
+                "reason": "the candidate legacy trap is not an admitted mutation",
+            }
+        ),
+        "plan_delta_waive_production_integration": MappingProxyType(
+            {
+                "caller": "plan delta",
+                "replacement": "owner-paused ASEH-061 cutover through IntentRepository",
+                "reason": "a plan delta cannot waive production integration",
+            }
+        ),
+    }
+)
+
+CALLER_REPLACEMENTS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "DuckDBTaskSource.compare_and_set_status": "IntentRepository.cas_task_status",
+        "DuckDBTaskSource.cas_status": "IntentRepository.cas_task_status",
+        "TaskTransitionService.transition": "IntentRepository.cas_task_status",
+        "TaskTransitionService.transition_legacy": "IntentRepository.cas_task_status",
+        "DatabaseTaskSource.compare_and_set_status": "IntentRepository.cas_task_status",
+        "markdown_task_board": "IntentRepository@1 (observation only; writes fail closed)",
+        "direct_sql": "typed Quack owner command over IntentRepository",
+        "SupervisorRecovery.rebuild": "IntentRepository.rebuild_owner_restart_projection",
+        "SupervisorRecovery.takeover": "IntentRepository.take_over_owner_session",
+    }
+)
+
+_VALIDATION_RETRY_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "database_portal_validation_retry",
+        "database_portal_validation_retry_recovery",
+    }
+)
+
+_LEFTOVER_VALIDATION_RETRY_SEED_KEYS: Final[tuple[str, ...]] = (
+    "validation_retry_seed",
+    "validation_retry_source_attempt_id",
+)
+
+class IntentRepositoryCompatibilityWarning(RuntimeWarning):
+    """Emitted when a supported legacy API is routed through this repository."""
+
+class IntentRepositoryCompatibilityError(IntentRepositoryError):
+    """Unsupported independent write or compatibility bypass failed closed."""
+
+class IntentRepositoryUnsupportedPathError(IntentRepositoryCompatibilityError):
+    """A legacy path is not admitted and must not write."""
+
+def _legacy_task_key(value: Any) -> str:
+    """Resolve a DuckDBTaskSource-style task key to a repository identifier."""
+
+    if isinstance(value, Mapping):
+        for field_name in ("task_cid", "task_alias", "id"):
+            candidate = value.get(field_name)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        raise IntentRepositoryError("legacy CAS requires task_cid")
+    if not isinstance(value, str) or not value.strip():
+        raise IntentRepositoryError("legacy CAS requires task_cid")
+    return value.strip()

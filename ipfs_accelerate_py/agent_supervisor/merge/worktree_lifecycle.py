@@ -1842,6 +1842,8 @@ class WorktreeLifecycleStore:
         workspace: str | Path,
         *,
         expected_state_dir: str | Path,
+        expected_record_id: str = "",
+        expected_fence: int | None = None,
         reclaimer_lease_id: str = "",
         reclaimer: ProcessBirthIdentity | None = None,
         reason: str = "controlled_restart_dead_owner",
@@ -1874,6 +1876,10 @@ class WorktreeLifecycleStore:
                 current,
                 expected_state,
             ):
+                return None
+            if expected_record_id and current.record_id != expected_record_id:
+                return None
+            if expected_fence is not None and current.fence != expected_fence:
                 return None
             if (
                 owner_liveness(current.owner, proc_root=self.proc_root)

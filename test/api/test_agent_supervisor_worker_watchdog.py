@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon,
     supervisor,
+    supervisor_loop,
     supervisor_runtime,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSpec
@@ -500,8 +501,8 @@ def test_supervisor_loop_graces_exact_sealed_runner_disappearance(
     live = [True]
     _preserve_process_identity(monkeypatch, argv=argv)
     monkeypatch.setattr(
-        supervisor,
-        "descendant_processes",
+        supervisor_loop,
+        "procfs_descendant_processes",
         lambda _pid: [item] if live[0] else [],
     )
     child = SimpleNamespace(pid=os.getppid())
@@ -1449,12 +1450,15 @@ def test_supervisor_loop_graces_packaged_runner_disappearance(
     )
     runner_live = [True]
     monkeypatch.setattr(
-        supervisor,
-        "descendant_processes",
+        supervisor_loop,
+        "procfs_descendant_processes",
         lambda _pid: (
             [
                 {
                     "pid": 4324,
+                    "argv": ["/usr/bin/python3.12", "-m",
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+                        "--workspace", "/tmp/task", "--model", "grok-4.6"],
                     "cmdline": (
                         "/usr/bin/python3.12 -m "
                         "ipfs_accelerate_py.agent_supervisor.grok_cli_runner "
@@ -1473,7 +1477,7 @@ def test_supervisor_loop_graces_packaged_runner_disappearance(
         "active_phase_started_at": (now - timedelta(minutes=10)).isoformat(),
         "worktree_no_child_stall_seconds": 60,
     }
-    child = SimpleNamespace(pid=1234)
+    child = SimpleNamespace(pid=os.getpid())
 
     live = loop.default_watchdog(child, status)
     assert live.action == "continue"
@@ -1604,6 +1608,43 @@ def test_worker_generation_ignores_observation_churn(tmp_path, monkeypatch):
     state.active_task_id = ""
     assert outer._worktree_phase_without_worker_reason(state, now_ts=now.timestamp()) == ""
     assert outer._worktree_worker_generation == ""
+    assert outer._last_worktree_worker_seen_monotonic is None
+
+
+def test_cached_worker_census_cannot_follow_a_different_exact_attempt(tmp_path, monkeypatch):
+    state = PortalTaskState(
+        active_task_id="TASK-001", active_attempt=1, active_task_cid="revision-one",
+        active_worktree_path=str(tmp_path), implementation_in_progress=True,
+        active_phase="implementing", active_phase_started_at="2026-09-10T00:00:00+00:00",
+    )
+    outer = PortalImplementationSupervisor(_outer_worker_test_config(tmp_path))
+    monkeypatch.setattr(outer, "_read_managed_daemon_pid", lambda: 1234)
+    now = datetime(2026, 9, 10, 1, tzinfo=UTC)
+    cached = supervisor.worktree_phase_worker_status(
+        vars(state), 1234, 60, now=now, descendants=[],
+    )
+    cached.update(active_worker_count=1, stalled_without_active_worker=False,
+                  worker_metrics_available=True)
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_supervisor as outer_module
+    real_census = outer_module.worktree_phase_worker_status
+    scans = []
+
+    def census(current, daemon_pid, threshold, **kwargs):
+        scans.append(dict(current))
+        return real_census(current, daemon_pid, threshold, descendants=[], **kwargs)
+
+    monkeypatch.setattr(outer_module, "worktree_phase_worker_status", census)
+    assert outer._worktree_phase_without_worker_reason(
+        state, now_ts=now.timestamp(), worker_status=cached,
+    ) == ""
+    assert scans == []
+    state.active_attempt = 2
+    reason = outer._worktree_phase_without_worker_reason(
+        state, now_ts=now.timestamp(), worker_status=cached,
+    )
+    assert "no active worker" in reason
+    assert len(scans) == 1
+    assert scans[0]["active_attempt"] == 2
     assert outer._last_worktree_worker_seen_monotonic is None
 
 

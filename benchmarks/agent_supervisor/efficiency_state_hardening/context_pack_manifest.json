@@ -1,0 +1,2138 @@
+{
+  "arm_constraints": {
+    "candidate_optimized_supervisor": [
+      "campaign_changes_only",
+      "shadow_before_mutation"
+    ],
+    "direct_minimal_orchestration_baseline": [
+      "same_safe_isolation_and_acceptance_tests",
+      "no_candidate_context_pack_optimization",
+      "no_candidate_proof_or_test_reuse_optimization",
+      "same_available_model_and_provider_set",
+      "no_unsafe_direct_mutation"
+    ],
+    "sealed_current_supervisor_baseline": [
+      "exact_pre_campaign_policy",
+      "exact_pre_campaign_routing_behavior"
+    ]
+  },
+  "arms": [
+    "direct_minimal_orchestration_baseline",
+    "sealed_current_supervisor_baseline",
+    "candidate_optimized_supervisor"
+  ],
+  "audit_overhead": {
+    "includes_audit_in_net_effect": true,
+    "median_compute_units": 15127,
+    "total_compute_units": 244204,
+    "unit": "compute_units"
+  },
+  "authority": false,
+  "controls": {
+    "acceptance_tests": "baguqeeratgxxtipbjnry37tekgkcvqmyzd3ysvzns7hacoemisvnkwfdjq4q",
+    "available_providers_and_models": "baguqeera3i6avsgb4enqjiyaegkm3e2gen2tsxvwu4dzf3tcmh7ue3y3t6wq",
+    "human_intervention_policy": "baguqeeraijx5uvhi35valu2yfdtvrhq4oqxbzkjkxziwwsrgo7dmugi2sc7q",
+    "maximum_retries": 3,
+    "objective": "ASEH-G040",
+    "price_accounting": "baguqeerawxzxp27snosji4mn4757e3op6puhme2yuefqqxydfrc3hxs4xfda",
+    "repository_revision": "729da9f8293ecfa046a0136381a3d3808f9ed140",
+    "resource_limits": "baguqeera3ndxb76ndwpggkigqukxf7grvanwyolsuq6w4ujwayucts6c2hka",
+    "task_inputs": "baguqeerayvcnc5wag53zuoye4buzvps2hwp7ekmx6e6yed2734nt7lohf66q"
+  },
+  "count": 17,
+  "critical_omissions_accepted": 0,
+  "equal_control_fields": [
+    "repository_revision",
+    "objective",
+    "task_inputs",
+    "acceptance_tests",
+    "available_providers_and_models",
+    "price_accounting",
+    "resource_limits",
+    "maximum_retries",
+    "human_intervention_policy"
+  ],
+  "explicit_unavailable_fields": [
+    "paired_fixtures[0].observations.candidate_optimized_supervisor.metrics.expansion_precision",
+    "paired_fixtures[0].observations.candidate_optimized_supervisor.metrics.expansion_recall",
+    "paired_fixtures[0].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[0].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[0].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[0].observations.candidate_optimized_supervisor.metrics.retrieval_cost",
+    "paired_fixtures[0].observations.direct_minimal_orchestration_baseline.metrics.expansion_precision",
+    "paired_fixtures[0].observations.direct_minimal_orchestration_baseline.metrics.expansion_recall",
+    "paired_fixtures[0].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[0].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[0].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[0].observations.direct_minimal_orchestration_baseline.metrics.retrieval_cost",
+    "paired_fixtures[0].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[0].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[0].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[0].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[0].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[0].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[10].observations.candidate_optimized_supervisor.metrics.context_tokens_after",
+    "paired_fixtures[10].observations.candidate_optimized_supervisor.metrics.critical_omission_detection",
+    "paired_fixtures[10].observations.candidate_optimized_supervisor.metrics.expansion_precision",
+    "paired_fixtures[10].observations.candidate_optimized_supervisor.metrics.expansion_recall",
+    "paired_fixtures[10].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[10].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[10].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[10].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[10].observations.candidate_optimized_supervisor.metrics.retrieval_cost",
+    "paired_fixtures[10].observations.direct_minimal_orchestration_baseline.metrics.context_tokens_after",
+    "paired_fixtures[10].observations.direct_minimal_orchestration_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[10].observations.direct_minimal_orchestration_baseline.metrics.expansion_precision",
+    "paired_fixtures[10].observations.direct_minimal_orchestration_baseline.metrics.expansion_recall",
+    "paired_fixtures[10].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[10].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[10].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[10].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[10].observations.direct_minimal_orchestration_baseline.metrics.retrieval_cost",
+    "paired_fixtures[10].observations.sealed_current_supervisor_baseline.metrics.context_tokens_after",
+    "paired_fixtures[10].observations.sealed_current_supervisor_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[10].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[10].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[10].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[10].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[10].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[10].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[10].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[11].observations.candidate_optimized_supervisor.metrics.context_tokens_after",
+    "paired_fixtures[11].observations.candidate_optimized_supervisor.metrics.critical_omission_detection",
+    "paired_fixtures[11].observations.candidate_optimized_supervisor.metrics.expansion_precision",
+    "paired_fixtures[11].observations.candidate_optimized_supervisor.metrics.expansion_recall",
+    "paired_fixtures[11].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[11].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[11].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[11].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[11].observations.candidate_optimized_supervisor.metrics.retrieval_cost",
+    "paired_fixtures[11].observations.direct_minimal_orchestration_baseline.metrics.context_tokens_after",
+    "paired_fixtures[11].observations.direct_minimal_orchestration_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[11].observations.direct_minimal_orchestration_baseline.metrics.expansion_precision",
+    "paired_fixtures[11].observations.direct_minimal_orchestration_baseline.metrics.expansion_recall",
+    "paired_fixtures[11].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[11].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[11].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[11].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[11].observations.direct_minimal_orchestration_baseline.metrics.retrieval_cost",
+    "paired_fixtures[11].observations.sealed_current_supervisor_baseline.metrics.context_tokens_after",
+    "paired_fixtures[11].observations.sealed_current_supervisor_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[11].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[11].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[11].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[11].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[11].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[11].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[11].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[12].observations.candidate_optimized_supervisor.metrics.context_tokens_after",
+    "paired_fixtures[12].observations.candidate_optimized_supervisor.metrics.critical_omission_detection",
+    "paired_fixtures[12].observations.candidate_optimized_supervisor.metrics.expansion_precision",
+    "paired_fixtures[12].observations.candidate_optimized_supervisor.metrics.expansion_recall",
+    "paired_fixtures[12].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[12].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[12].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[12].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[12].observations.candidate_optimized_supervisor.metrics.retrieval_cost",
+    "paired_fixtures[12].observations.direct_minimal_orchestration_baseline.metrics.context_tokens_after",
+    "paired_fixtures[12].observations.direct_minimal_orchestration_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[12].observations.direct_minimal_orchestration_baseline.metrics.expansion_precision",
+    "paired_fixtures[12].observations.direct_minimal_orchestration_baseline.metrics.expansion_recall",
+    "paired_fixtures[12].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[12].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[12].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[12].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[12].observations.direct_minimal_orchestration_baseline.metrics.retrieval_cost",
+    "paired_fixtures[12].observations.sealed_current_supervisor_baseline.metrics.context_tokens_after",
+    "paired_fixtures[12].observations.sealed_current_supervisor_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[12].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[12].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[12].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[12].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[12].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[12].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[12].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[13].observations.candidate_optimized_supervisor.metrics.context_tokens_after",
+    "paired_fixtures[13].observations.candidate_optimized_supervisor.metrics.critical_omission_detection",
+    "paired_fixtures[13].observations.candidate_optimized_supervisor.metrics.expansion_precision",
+    "paired_fixtures[13].observations.candidate_optimized_supervisor.metrics.expansion_recall",
+    "paired_fixtures[13].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[13].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[13].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[13].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[13].observations.candidate_optimized_supervisor.metrics.retrieval_cost",
+    "paired_fixtures[13].observations.direct_minimal_orchestration_baseline.metrics.context_tokens_after",
+    "paired_fixtures[13].observations.direct_minimal_orchestration_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[13].observations.direct_minimal_orchestration_baseline.metrics.expansion_precision",
+    "paired_fixtures[13].observations.direct_minimal_orchestration_baseline.metrics.expansion_recall",
+    "paired_fixtures[13].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[13].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[13].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[13].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[13].observations.direct_minimal_orchestration_baseline.metrics.retrieval_cost",
+    "paired_fixtures[13].observations.sealed_current_supervisor_baseline.metrics.context_tokens_after",
+    "paired_fixtures[13].observations.sealed_current_supervisor_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[13].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[13].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[13].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[13].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[13].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[13].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[13].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[14].observations.candidate_optimized_supervisor.metrics.context_tokens_after",
+    "paired_fixtures[14].observations.candidate_optimized_supervisor.metrics.critical_omission_detection",
+    "paired_fixtures[14].observations.candidate_optimized_supervisor.metrics.expansion_precision",
+    "paired_fixtures[14].observations.candidate_optimized_supervisor.metrics.expansion_recall",
+    "paired_fixtures[14].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[14].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[14].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[14].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[14].observations.candidate_optimized_supervisor.metrics.retrieval_cost",
+    "paired_fixtures[14].observations.direct_minimal_orchestration_baseline.metrics.context_tokens_after",
+    "paired_fixtures[14].observations.direct_minimal_orchestration_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[14].observations.direct_minimal_orchestration_baseline.metrics.expansion_precision",
+    "paired_fixtures[14].observations.direct_minimal_orchestration_baseline.metrics.expansion_recall",
+    "paired_fixtures[14].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[14].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[14].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[14].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[14].observations.direct_minimal_orchestration_baseline.metrics.retrieval_cost",
+    "paired_fixtures[14].observations.sealed_current_supervisor_baseline.metrics.context_tokens_after",
+    "paired_fixtures[14].observations.sealed_current_supervisor_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[14].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[14].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[14].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[14].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[14].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[14].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[14].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[15].observations.candidate_optimized_supervisor.metrics.context_tokens_after",
+    "paired_fixtures[15].observations.candidate_optimized_supervisor.metrics.critical_omission_detection",
+    "paired_fixtures[15].observations.candidate_optimized_supervisor.metrics.expansion_precision",
+    "paired_fixtures[15].observations.candidate_optimized_supervisor.metrics.expansion_recall",
+    "paired_fixtures[15].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[15].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[15].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[15].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[15].observations.candidate_optimized_supervisor.metrics.retrieval_cost",
+    "paired_fixtures[15].observations.direct_minimal_orchestration_baseline.metrics.context_tokens_after",
+    "paired_fixtures[15].observations.direct_minimal_orchestration_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[15].observations.direct_minimal_orchestration_baseline.metrics.expansion_precision",
+    "paired_fixtures[15].observations.direct_minimal_orchestration_baseline.metrics.expansion_recall",
+    "paired_fixtures[15].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[15].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[15].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[15].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[15].observations.direct_minimal_orchestration_baseline.metrics.retrieval_cost",
+    "paired_fixtures[15].observations.sealed_current_supervisor_baseline.metrics.context_tokens_after",
+    "paired_fixtures[15].observations.sealed_current_supervisor_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[15].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[15].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[15].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[15].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[15].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[15].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[15].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[16].observations.candidate_optimized_supervisor.metrics.expansion_precision",
+    "paired_fixtures[16].observations.candidate_optimized_supervisor.metrics.expansion_recall",
+    "paired_fixtures[16].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[16].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[16].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[16].observations.candidate_optimized_supervisor.metrics.retrieval_cost",
+    "paired_fixtures[16].observations.direct_minimal_orchestration_baseline.metrics.expansion_precision",
+    "paired_fixtures[16].observations.direct_minimal_orchestration_baseline.metrics.expansion_recall",
+    "paired_fixtures[16].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[16].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[16].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[16].observations.direct_minimal_orchestration_baseline.metrics.retrieval_cost",
+    "paired_fixtures[16].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[16].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[16].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[16].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[16].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[16].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[1].observations.candidate_optimized_supervisor.metrics.expansion_precision",
+    "paired_fixtures[1].observations.candidate_optimized_supervisor.metrics.expansion_recall",
+    "paired_fixtures[1].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[1].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[1].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[1].observations.candidate_optimized_supervisor.metrics.retrieval_cost",
+    "paired_fixtures[1].observations.direct_minimal_orchestration_baseline.metrics.expansion_precision",
+    "paired_fixtures[1].observations.direct_minimal_orchestration_baseline.metrics.expansion_recall",
+    "paired_fixtures[1].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[1].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[1].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[1].observations.direct_minimal_orchestration_baseline.metrics.retrieval_cost",
+    "paired_fixtures[1].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[1].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[1].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[1].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[1].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[1].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[2].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[2].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[2].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[2].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[2].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[2].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[2].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[2].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[2].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[2].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[2].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[2].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[3].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[3].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[3].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[3].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[3].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[3].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[3].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[3].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[3].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[3].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[3].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[3].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[4].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[4].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[4].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[4].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[4].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[4].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[4].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[4].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[4].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[4].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[4].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[4].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[5].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[5].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[5].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[5].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[5].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[5].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[5].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[5].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[5].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[5].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[5].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[5].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[6].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[6].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[6].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[6].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[6].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[6].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[6].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[6].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[6].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[6].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[6].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[6].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[7].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[7].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[7].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[7].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[7].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[7].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[7].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[7].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[7].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[7].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[7].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[7].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[8].observations.candidate_optimized_supervisor.metrics.context_tokens_after",
+    "paired_fixtures[8].observations.candidate_optimized_supervisor.metrics.expansion_precision",
+    "paired_fixtures[8].observations.candidate_optimized_supervisor.metrics.expansion_recall",
+    "paired_fixtures[8].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[8].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[8].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[8].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[8].observations.candidate_optimized_supervisor.metrics.retrieval_cost",
+    "paired_fixtures[8].observations.candidate_optimized_supervisor.metrics.stale_pack_rejection",
+    "paired_fixtures[8].observations.direct_minimal_orchestration_baseline.metrics.context_tokens_after",
+    "paired_fixtures[8].observations.direct_minimal_orchestration_baseline.metrics.expansion_precision",
+    "paired_fixtures[8].observations.direct_minimal_orchestration_baseline.metrics.expansion_recall",
+    "paired_fixtures[8].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[8].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[8].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[8].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[8].observations.direct_minimal_orchestration_baseline.metrics.retrieval_cost",
+    "paired_fixtures[8].observations.direct_minimal_orchestration_baseline.metrics.stale_pack_rejection",
+    "paired_fixtures[8].observations.sealed_current_supervisor_baseline.metrics.context_tokens_after",
+    "paired_fixtures[8].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[8].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[8].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[8].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[8].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[8].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[8].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "paired_fixtures[8].observations.sealed_current_supervisor_baseline.metrics.stale_pack_rejection",
+    "paired_fixtures[9].observations.candidate_optimized_supervisor.metrics.context_tokens_after",
+    "paired_fixtures[9].observations.candidate_optimized_supervisor.metrics.critical_omission_detection",
+    "paired_fixtures[9].observations.candidate_optimized_supervisor.metrics.expansion_precision",
+    "paired_fixtures[9].observations.candidate_optimized_supervisor.metrics.expansion_recall",
+    "paired_fixtures[9].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[9].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[9].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[9].observations.candidate_optimized_supervisor.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[9].observations.candidate_optimized_supervisor.metrics.retrieval_cost",
+    "paired_fixtures[9].observations.direct_minimal_orchestration_baseline.metrics.context_tokens_after",
+    "paired_fixtures[9].observations.direct_minimal_orchestration_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[9].observations.direct_minimal_orchestration_baseline.metrics.expansion_precision",
+    "paired_fixtures[9].observations.direct_minimal_orchestration_baseline.metrics.expansion_recall",
+    "paired_fixtures[9].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[9].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[9].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[9].observations.direct_minimal_orchestration_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[9].observations.direct_minimal_orchestration_baseline.metrics.retrieval_cost",
+    "paired_fixtures[9].observations.sealed_current_supervisor_baseline.metrics.context_tokens_after",
+    "paired_fixtures[9].observations.sealed_current_supervisor_baseline.metrics.critical_omission_detection",
+    "paired_fixtures[9].observations.sealed_current_supervisor_baseline.metrics.expansion_precision",
+    "paired_fixtures[9].observations.sealed_current_supervisor_baseline.metrics.expansion_recall",
+    "paired_fixtures[9].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.provider_reported_charge",
+    "paired_fixtures[9].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_based_estimated_charge",
+    "paired_fixtures[9].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.token_delta",
+    "paired_fixtures[9].observations.sealed_current_supervisor_baseline.metrics.net_provider_cost_effect.unit_prices",
+    "paired_fixtures[9].observations.sealed_current_supervisor_baseline.metrics.retrieval_cost",
+    "statistics.net_provider_cost_effect.provider_reported_charge",
+    "statistics.net_provider_cost_effect.token_based_estimated_charge",
+    "statistics.net_provider_cost_effect.unit_prices"
+  ],
+  "fixtures": [
+    {
+      "admitted": true,
+      "disposition": "reuse",
+      "fixture_id": "aseh-cp-reuse",
+      "identity": "baguqeerad3rs7eg2tjnlnzhk2vhic4iui65r7qx6gpy5z3mhmijtpv5jejoq",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 12124
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 11211
+        },
+        "context_tokens_after": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 200
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "accepted": false,
+          "detected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "eligible_reuse": {
+          "eligible": true,
+          "live_reuse_granted": false,
+          "reused": true,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 1
+        },
+        "expansion_precision": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "expansion_recall": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "sensor_id": "aseh-035-context-pack-benchmark",
+            "truth_state": "measured",
+            "unit": "tokens",
+            "value": 280
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "stale_pack_rejection": {
+          "admitted": true,
+          "masquerade_reasons": [],
+          "rejected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        }
+      },
+      "scenario": "eligible_reuse",
+      "seeded_critical_omission": false,
+      "seeded_stale": false
+    },
+    {
+      "admitted": true,
+      "disposition": "selected",
+      "fixture_id": "aseh-cp-tokens",
+      "identity": "baguqeera7lmwgo4cmhgjev2sq7t6xhjz4edubpt5pontlgj3gtbl6muiqe7q",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 12138
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 11211
+        },
+        "context_tokens_after": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 200
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "accepted": false,
+          "detected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "expansion_recall": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "sensor_id": "aseh-035-context-pack-benchmark",
+            "truth_state": "measured",
+            "unit": "tokens",
+            "value": 280
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "stale_pack_rejection": {
+          "admitted": true,
+          "masquerade_reasons": [],
+          "rejected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        }
+      },
+      "scenario": "token_before_after",
+      "seeded_critical_omission": false,
+      "seeded_stale": false
+    },
+    {
+      "admitted": true,
+      "disposition": "expanded",
+      "fixture_id": "aseh-cp-expand-cid",
+      "identity": "baguqeeragdgwtc7dfk2vwyv4nr26hywduurgyrmea3kdlyujco2wm5nzf4ea",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15042
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 14994
+        },
+        "context_tokens_after": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 200
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "accepted": false,
+          "detected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "expansion_recall": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "sensor_id": "aseh-035-context-pack-benchmark",
+            "truth_state": "measured",
+            "unit": "tokens",
+            "value": 280
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 3847
+        },
+        "stale_pack_rejection": {
+          "admitted": true,
+          "masquerade_reasons": [],
+          "rejected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        }
+      },
+      "scenario": "expansion_precision_recall",
+      "seeded_critical_omission": false,
+      "seeded_stale": false
+    },
+    {
+      "admitted": true,
+      "disposition": "expanded",
+      "fixture_id": "aseh-cp-expand-symbol",
+      "identity": "baguqeerallecexcao7tri243nopkmrdaq5uvydk54cd66suojzxmz2hpxqvq",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15077
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15029
+        },
+        "context_tokens_after": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 200
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "accepted": false,
+          "detected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "expansion_recall": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "sensor_id": "aseh-035-context-pack-benchmark",
+            "truth_state": "measured",
+            "unit": "tokens",
+            "value": 280
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 3882
+        },
+        "stale_pack_rejection": {
+          "admitted": true,
+          "masquerade_reasons": [],
+          "rejected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        }
+      },
+      "scenario": "expansion_precision_recall",
+      "seeded_critical_omission": false,
+      "seeded_stale": false
+    },
+    {
+      "admitted": true,
+      "disposition": "expanded",
+      "fixture_id": "aseh-cp-expand-contract",
+      "identity": "baguqeerajuzmja7ngqqmyt4ph2pj2wsozpzkimvxunvuyywigprja5er74da",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15127
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15079
+        },
+        "context_tokens_after": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 200
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "accepted": false,
+          "detected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "expansion_recall": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "sensor_id": "aseh-035-context-pack-benchmark",
+            "truth_state": "measured",
+            "unit": "tokens",
+            "value": 280
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 3932
+        },
+        "stale_pack_rejection": {
+          "admitted": true,
+          "masquerade_reasons": [],
+          "rejected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        }
+      },
+      "scenario": "expansion_precision_recall",
+      "seeded_critical_omission": false,
+      "seeded_stale": false
+    },
+    {
+      "admitted": true,
+      "disposition": "expanded",
+      "fixture_id": "aseh-cp-expand-test",
+      "identity": "baguqeerapbnir6sxgtla3kkkble4tpdmtclnidhnxwvcqp522qsh4nvhmu7a",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15067
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15019
+        },
+        "context_tokens_after": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 200
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "accepted": false,
+          "detected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "expansion_recall": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "sensor_id": "aseh-035-context-pack-benchmark",
+            "truth_state": "measured",
+            "unit": "tokens",
+            "value": 280
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 3872
+        },
+        "stale_pack_rejection": {
+          "admitted": true,
+          "masquerade_reasons": [],
+          "rejected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        }
+      },
+      "scenario": "expansion_precision_recall",
+      "seeded_critical_omission": false,
+      "seeded_stale": false
+    },
+    {
+      "admitted": true,
+      "disposition": "expanded",
+      "fixture_id": "aseh-cp-expand-counterexample",
+      "identity": "baguqeerarapsf27syytoqtesskfz2cjvuvc7xjcek2w37ski47fjtbxkv2ba",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15235
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15187
+        },
+        "context_tokens_after": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 200
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "accepted": false,
+          "detected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "expansion_recall": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "sensor_id": "aseh-035-context-pack-benchmark",
+            "truth_state": "measured",
+            "unit": "tokens",
+            "value": 280
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 4040
+        },
+        "stale_pack_rejection": {
+          "admitted": true,
+          "masquerade_reasons": [],
+          "rejected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        }
+      },
+      "scenario": "expansion_precision_recall",
+      "seeded_critical_omission": false,
+      "seeded_stale": false
+    },
+    {
+      "admitted": true,
+      "disposition": "expanded",
+      "fixture_id": "aseh-cp-expand-obligation",
+      "identity": "baguqeerayyv5f5lm7vhdya44wheczdet3cyule5d6hxl3difj5qw3jljnq3a",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15163
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15115
+        },
+        "context_tokens_after": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 200
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "accepted": false,
+          "detected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "expansion_recall": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "ratio_millionths",
+          "value": 1000000
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "sensor_id": "aseh-035-context-pack-benchmark",
+            "truth_state": "measured",
+            "unit": "tokens",
+            "value": 280
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 3968
+        },
+        "stale_pack_rejection": {
+          "admitted": true,
+          "masquerade_reasons": [],
+          "rejected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        }
+      },
+      "scenario": "expansion_precision_recall",
+      "seeded_critical_omission": false,
+      "seeded_stale": false
+    },
+    {
+      "admitted": false,
+      "disposition": "rejected_critical_omission",
+      "fixture_id": "aseh-cp-omission",
+      "identity": "baguqeerai5y2x72ncflmqnj5kknzhfjqa4ccfsjvzbcr7rvak3vtsmr7gfda",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 11259
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 11211
+        },
+        "context_tokens_after": {
+          "reason_code": "not_admitted",
+          "truth_state": "unavailable"
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "accepted": false,
+          "detected": true,
+          "seeded": true,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 1
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "reason_code": "not_admitted",
+          "truth_state": "unavailable"
+        },
+        "expansion_recall": {
+          "reason_code": "not_admitted",
+          "truth_state": "unavailable"
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "reason_code": "not_admitted",
+            "truth_state": "unavailable"
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "reason_code": "not_admitted",
+          "truth_state": "unavailable"
+        },
+        "stale_pack_rejection": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        }
+      },
+      "scenario": "seeded_critical_omission",
+      "seeded_critical_omission": true,
+      "seeded_stale": false
+    },
+    {
+      "admitted": false,
+      "disposition": "rejected_stale",
+      "fixture_id": "aseh-cp-stale-tree",
+      "identity": "baguqeerayoulozsj3ie5bnijcavkbfqaezoo6x5ssfet6tygxsfcyenhzv2q",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15629
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 14859
+        },
+        "context_tokens_after": {
+          "reason_code": "not_admitted",
+          "truth_state": "unavailable"
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "expansion_recall": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "reason_code": "not_admitted",
+            "truth_state": "unavailable"
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "stale_pack_rejection": {
+          "admitted": false,
+          "masquerade_reasons": [],
+          "rejected": true,
+          "seeded": true,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [
+            "tree"
+          ],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 1
+        }
+      },
+      "scenario": "stale_pack",
+      "seeded_critical_omission": false,
+      "seeded_stale": true
+    },
+    {
+      "admitted": false,
+      "disposition": "rejected_stale",
+      "fixture_id": "aseh-cp-stale-objective",
+      "identity": "baguqeera56hfzmlwkjtptwzjyyiok7wdfcv6tfkvmu2jc7gmiv66db3v5ohq",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15607
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 14822
+        },
+        "context_tokens_after": {
+          "reason_code": "not_admitted",
+          "truth_state": "unavailable"
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "expansion_recall": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "reason_code": "not_admitted",
+            "truth_state": "unavailable"
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "stale_pack_rejection": {
+          "admitted": false,
+          "masquerade_reasons": [],
+          "rejected": true,
+          "seeded": true,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [
+            "objective"
+          ],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 1
+        }
+      },
+      "scenario": "stale_pack",
+      "seeded_critical_omission": false,
+      "seeded_stale": true
+    },
+    {
+      "admitted": false,
+      "disposition": "rejected_stale",
+      "fixture_id": "aseh-cp-stale-policy",
+      "identity": "baguqeerahjvqxyniuwpnmysdv4mq6bhgoglnynfvcypb7kf3lqfk3hhkcxda",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15635
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 14859
+        },
+        "context_tokens_after": {
+          "reason_code": "not_admitted",
+          "truth_state": "unavailable"
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "expansion_recall": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "reason_code": "not_admitted",
+            "truth_state": "unavailable"
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "stale_pack_rejection": {
+          "admitted": false,
+          "masquerade_reasons": [],
+          "rejected": true,
+          "seeded": true,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [
+            "policy"
+          ],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 1
+        }
+      },
+      "scenario": "stale_pack",
+      "seeded_critical_omission": false,
+      "seeded_stale": true
+    },
+    {
+      "admitted": false,
+      "disposition": "rejected_stale",
+      "fixture_id": "aseh-cp-stale-interface",
+      "identity": "baguqeerao7kmgfqwdhgqs6losay4wuruuv4ykk3u7l5rdr2225fbrz36edca",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15617
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 14832
+        },
+        "context_tokens_after": {
+          "reason_code": "not_admitted",
+          "truth_state": "unavailable"
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "expansion_recall": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "reason_code": "not_admitted",
+            "truth_state": "unavailable"
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "stale_pack_rejection": {
+          "admitted": false,
+          "masquerade_reasons": [],
+          "rejected": true,
+          "seeded": true,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [
+            "interface"
+          ],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 1
+        }
+      },
+      "scenario": "stale_pack",
+      "seeded_critical_omission": false,
+      "seeded_stale": true
+    },
+    {
+      "admitted": false,
+      "disposition": "rejected_stale",
+      "fixture_id": "aseh-cp-stale-toolchain",
+      "identity": "baguqeera76owvpz35rz4a2uxg6sxk2unucg66f6pskbc3kqm2tf2ux7lykwa",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15638
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 14853
+        },
+        "context_tokens_after": {
+          "reason_code": "not_admitted",
+          "truth_state": "unavailable"
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "expansion_recall": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "reason_code": "not_admitted",
+            "truth_state": "unavailable"
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "stale_pack_rejection": {
+          "admitted": false,
+          "masquerade_reasons": [],
+          "rejected": true,
+          "seeded": true,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [
+            "toolchain"
+          ],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 1
+        }
+      },
+      "scenario": "stale_pack",
+      "seeded_critical_omission": false,
+      "seeded_stale": true
+    },
+    {
+      "admitted": false,
+      "disposition": "rejected_stale",
+      "fixture_id": "aseh-cp-stale-environment",
+      "identity": "baguqeerairy6rwutm6nspypompy7ol4lvm2e57uvkcfnxhvqotoqfv6w3voq",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 15619
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 14828
+        },
+        "context_tokens_after": {
+          "reason_code": "not_admitted",
+          "truth_state": "unavailable"
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "expansion_recall": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "reason_code": "not_admitted",
+            "truth_state": "unavailable"
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "stale_pack_rejection": {
+          "admitted": false,
+          "masquerade_reasons": [],
+          "rejected": true,
+          "seeded": true,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [
+            "environment"
+          ],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 1
+        }
+      },
+      "scenario": "stale_pack",
+      "seeded_critical_omission": false,
+      "seeded_stale": true
+    },
+    {
+      "admitted": false,
+      "disposition": "rejected_fixture_as_live",
+      "fixture_id": "aseh-cp-fixture-as-live",
+      "identity": "baguqeera64y3d35v7pyb7r3ee7vuvut3h6xgwbmpqrkaykvbufpp7yupnatq",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 12089
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 11211
+        },
+        "context_tokens_after": {
+          "reason_code": "not_admitted",
+          "truth_state": "unavailable"
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "expansion_recall": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "reason_code": "not_admitted",
+            "truth_state": "unavailable"
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "stale_pack_rejection": {
+          "admitted": false,
+          "masquerade_reasons": [
+            "evidence_kind_mismatch",
+            "execution_mode_mismatch",
+            "fixture_as_live"
+          ],
+          "rejected": true,
+          "seeded": true,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 1
+        }
+      },
+      "scenario": "fixture_as_live",
+      "seeded_critical_omission": false,
+      "seeded_stale": true
+    },
+    {
+      "admitted": true,
+      "disposition": "selected",
+      "fixture_id": "aseh-cp-unavailable-charge",
+      "identity": "baguqeeraetbodlzkh4hhm2dnfotx4antrvps7fl3jtkh4rwikl4wcd4knzma",
+      "live": false,
+      "metrics": {
+        "audit_overhead": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 12138
+        },
+        "build_cost": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "compute_units",
+          "value": 11211
+        },
+        "context_tokens_after": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 200
+        },
+        "context_tokens_before": {
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "tokens",
+          "value": 480
+        },
+        "critical_omission_detection": {
+          "accepted": false,
+          "detected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "eligible_reuse": {
+          "eligible": false,
+          "live_reuse_granted": false,
+          "reused": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        },
+        "expansion_precision": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "expansion_recall": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
+          "provider_reported_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_based_estimated_charge": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          },
+          "token_delta": {
+            "sensor_id": "aseh-035-context-pack-benchmark",
+            "truth_state": "measured",
+            "unit": "tokens",
+            "value": 280
+          },
+          "unit_prices": {
+            "reason_code": "not_reported",
+            "truth_state": "unavailable"
+          }
+        },
+        "retrieval_cost": {
+          "reason_code": "not_applicable",
+          "truth_state": "unavailable"
+        },
+        "stale_pack_rejection": {
+          "admitted": true,
+          "masquerade_reasons": [],
+          "rejected": false,
+          "seeded": false,
+          "sensor_id": "aseh-035-context-pack-benchmark",
+          "stale_fields": [],
+          "truth_state": "measured",
+          "unit": "count",
+          "value": 0
+        }
+      },
+      "scenario": "unavailable_provider_charge",
+      "seeded_critical_omission": false,
+      "seeded_stale": false
+    }
+  ],
+  "hermetic_sufficient_for_production_promotion": false,
+  "identity": "baguqeeracyriiwbhgkddx2q67bxscmxchkqc6zb42ovx7h6ymj6hudhvoxya",
+  "interface": "AsehContextPackBenchmark@1",
+  "live": false,
+  "live_reuse_granted": false,
+  "manifest_cid": "baguqeeracyriiwbhgkddx2q67bxscmxchkqc6zb42ovx7h6ymj6hudhvoxya",
+  "objective_id": "ASEH-G040",
+  "objective_revision": "baguqeeraeizp2zwv4rh5jynxmlr6xhtlh67kxwxwkgdmk6xf5zekxzjxcgia",
+  "policy_identity": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1",
+  "population_kind": "hermetic_development",
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "promotion_without_paired_campaign": false,
+  "recipe_identity": "baguqeerayvcnc5wag53zuoye4buzvps2hwp7ekmx6e6yed2734nt7lohf66q",
+  "repository_commit": "755f45475cc2d13dacd8b330036c1d597afeddde",
+  "repository_tree": "729da9f8293ecfa046a0136381a3d3808f9ed140",
+  "required_metrics": [
+    "eligible_reuse",
+    "context_tokens_before",
+    "context_tokens_after",
+    "expansion_precision",
+    "expansion_recall",
+    "critical_omission_detection",
+    "stale_pack_rejection",
+    "build_cost",
+    "retrieval_cost",
+    "audit_overhead",
+    "net_provider_cost_effect"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-context-pack-benchmark-manifest@1",
+  "schema_version": 1,
+  "stale_packs_admitted": 0,
+  "statistics": {
+    "audit_overhead": {
+      "includes_audit_in_net_effect": true,
+      "median_compute_units": 15127,
+      "total_compute_units": 244204,
+      "unit": "compute_units"
+    },
+    "critical_omission_detection": {
+      "accepted": 0,
+      "detected": 1,
+      "seeded": 1
+    },
+    "eligible_reuse": {
+      "count": 1,
+      "total": 17
+    },
+    "expansion_precision": {
+      "sensor_id": "aseh-035-context-pack-benchmark",
+      "truth_state": "measured",
+      "unit": "ratio_millionths",
+      "value": 1000000
+    },
+    "expansion_recall": {
+      "sensor_id": "aseh-035-context-pack-benchmark",
+      "truth_state": "measured",
+      "unit": "ratio_millionths",
+      "value": 1000000
+    },
+    "net_provider_cost_effect": {
+      "includes_audit_in_net_effect": true,
+      "provider_reported_charge": {
+        "reason_code": "not_reported",
+        "truth_state": "unavailable"
+      },
+      "token_based_estimated_charge": {
+        "reason_code": "not_reported",
+        "truth_state": "unavailable"
+      },
+      "token_delta": {
+        "sensor_id": "aseh-035-context-pack-benchmark",
+        "truth_state": "measured",
+        "unit": "tokens",
+        "value": 280
+      },
+      "unit_prices": {
+        "reason_code": "not_reported",
+        "truth_state": "unavailable"
+      }
+    },
+    "pair_count": 17,
+    "stale_pack_rejection": {
+      "admitted": 0,
+      "rejected": 7,
+      "seeded": 7
+    }
+  },
+  "status": "sealed",
+  "task_id": "ASEH-035",
+  "vectors_identity": "baguqeerayvcnc5wag53zuoye4buzvps2hwp7ekmx6e6yed2734nt7lohf66q"
+}
