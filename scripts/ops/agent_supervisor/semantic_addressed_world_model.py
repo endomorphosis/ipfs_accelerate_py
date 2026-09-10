@@ -1806,6 +1806,22 @@ def _config(path: Path) -> dict[str, Any]:
     return value
 
 
+def _owner_status_observation_runtime() -> Any:
+    """Resolve the reader from this source checkout without ambient authority."""
+    prior_path = list(sys.path)
+    try:
+        sys.path.insert(0, str(REPO_ROOT))
+        from ipfs_accelerate_py.agent_supervisor.runtime import owner_status_observation
+
+        if Path(owner_status_observation.__file__).resolve() != (
+            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/runtime/owner_status_observation.py"
+        ).resolve():
+            raise OperatorError("native observation runtime source differs")
+        return owner_status_observation
+    finally:
+        sys.path[:] = prior_path
+
+
 def _delegate_repair_service_launch(arguments: Sequence[str]) -> int | None:
     """Import the lifetime helper from this checkout before native admission."""
     prior_path = list(sys.path)
@@ -20383,6 +20399,8 @@ def _validate_sawm_token_rearm_probe_receipt(
 def _serve_sawm_owner(server: Any) -> dict[str, Any]:
     stop_requested = {"value": False}
     next_token_rearm_probe = 0.0
+    status_observer = None
+    next_observer_start = 0.0
 
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
         rearm_token_handoff_if_coordinator_absent,
@@ -20399,6 +20417,27 @@ def _serve_sawm_owner(server: Any) -> dict[str, Any]:
             if control.is_file():
                 break
             _process_mutation_inbox(server, max_requests=32)
+            # Only this admitted exclusive owner may read canonical task facts.
+            # A missing or resource-starved diagnostic listener never retires it.
+            observation_context = getattr(server, "_sawm_observation_context", None)
+            if observation_context is not None:
+                if status_observer is None and time.monotonic() >= next_observer_start:
+                    next_observer_start = time.monotonic() + 5.0
+                    try:
+                        status_observer = _owner_status_observation_runtime().OwnerStatusObservation(
+                            server, **observation_context
+                        )
+                    except Exception:
+                        status_observer = None
+                if status_observer is not None:
+                    try:
+                        status_observer.poll()
+                    except Exception:
+                        try:
+                            status_observer.close()
+                        except Exception:
+                            pass
+                        status_observer = None
             identity = server.identity
             vault = server._vault
             handoff_path = None if vault is None else getattr(vault, "_path", None)
@@ -20437,6 +20476,11 @@ def _serve_sawm_owner(server: Any) -> dict[str, Any]:
         server.stop()
         raise
     finally:
+        if status_observer is not None:
+            try:
+                status_observer.close()
+            except Exception:
+                pass
         signal.signal(signal.SIGINT, previous_int)
         signal.signal(signal.SIGTERM, previous_term)
 
@@ -22614,6 +22658,24 @@ def _start_quack(
         raise
     print(json.dumps({"identity": identity.to_dict(), "readiness": readiness}, indent=2, sort_keys=True))
     sys.stdout.flush()
+    # Freeze the already qualified launch source/configuration and task registry
+    # for this owner lifetime. Later descriptor reads are endpoint discovery only.
+    try:
+        population = _materializer().build_population(REPO_ROOT)
+        source_identity = subprocess.run(
+            ["git", "--no-optional-locks", "rev-parse", "HEAD", "HEAD^{tree}"],
+            cwd=REPO_ROOT, check=True, capture_output=True, text=True, timeout=10,
+        ).stdout.splitlines()
+        if len(source_identity) != 2:
+            raise OperatorError("status observation launch source unavailable")
+        server._sawm_observation_context = {
+            "program_id": str(config["board_namespace"]),
+            "configuration": json.loads(json.dumps(config)),
+            "source_head": source_identity[0], "source_tree": source_identity[1],
+            "task_registry": {str(row["task_cid"]): str(row["task_id"]) for row in population["taskboard"]},
+        }
+    except Exception:
+        server._sawm_observation_context = None
     result = _serve_sawm_owner(server)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
@@ -29815,7 +29877,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     for command in (
         "validate-dependencies", "validate-board", "materialize", "render", "check",
-        "quack-start", "quack-status", "quack-ready", "quack-stop",
+        "quack-start", "quack-status", "quack-ready", "quack-stop", "status",
         "quack-recover-stale", "preflight", "dry-run",
     ):
         sub.add_parser(command)
@@ -29836,6 +29898,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return delegated
         config_path = args.config if args.config.is_absolute() else REPO_ROOT / args.config
         config = _config(config_path)
+        if args.command == "status":
+            owner = config["quack_owner"]
+            return _emit(_owner_status_observation_runtime().read_owner_status(
+                database=(REPO_ROOT / owner["database_path"]).resolve(),
+                state_dir=(REPO_ROOT / owner["state_dir"]).resolve(),
+                program_id=str(config["board_namespace"]), configuration=config,
+                expected_owner={"store_id": str(owner["store_id"]),
+                    "repository_id": str(owner["repository_id"]),
+                    "generation": int(config["database_program"]["store_generation"])},
+            ))
         if args.command == "validate-dependencies":
             return _emit(_validator("scripts/validate_semantic_addressed_world_model_dependencies.py", "validate_dependencies"))
         if args.command == "validate-board":
