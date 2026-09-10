@@ -7534,31 +7534,107 @@ def _process_argv_is_grok_cli_runner(argv: Sequence[str]) -> bool:
     )
 
 
+def _proc_child_pids(pid: int) -> tuple[int, ...]:
+    """Return direct children of ``pid`` from procfs."""
+
+    try:
+        raw = Path(f"/proc/{int(pid)}/task/{int(pid)}/children").read_text(
+            encoding="utf-8"
+        )
+    except (OSError, ValueError):
+        return ()
+    return tuple(int(part) for part in raw.split() if part.isdigit())
+
+
+def _pid_tree_has_grok_cli_runner(root_pid: int) -> bool:
+    """True when ``root_pid`` or a descendant is grok_cli_runner."""
+
+    try:
+        start = int(root_pid)
+    except (TypeError, ValueError):
+        return False
+    if start <= 1:
+        return False
+    stack = [start]
+    seen: set[int] = set()
+    while stack:
+        pid = stack.pop()
+        if pid in seen or pid <= 1:
+            continue
+        seen.add(pid)
+        try:
+            raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+        except OSError:
+            continue
+        argv = tuple(
+            part.decode("utf-8", "replace")
+            for part in raw.split(b"\0")
+            if part
+        )
+        if _process_argv_is_grok_cli_runner(argv):
+            return True
+        stack.extend(_proc_child_pids(pid))
+    return False
+
+
 def _extra_gate_grok_descendants_must_preserve(
     process: subprocess.Popen[bytes] | None,
+    *,
+    daemon_pid: int | None = None,
 ) -> bool:
     """True when an exited extra-gate supervisor still has grok children.
 
-    Master ``restarting exited`` fenced the whole marker-bound tree and
-    SIGTERM-killed grok_cli_runner mid PCTDD-006. Official unstick is
-    rearm, never CAS. Extra-gate aliases still cannot bypass
-    ``safe_to_restart=False``.
+    Master ``restarting exited`` fenced the marker-bound supervisor tree
+    and missed grok under the session-leader daemon, so PCTDD-005 grok
+    was SIGTERM-killed. Official unstick is rearm, never CAS. Extra-gate
+    aliases still cannot bypass ``safe_to_restart=False``.
     """
 
-    if process is None:
-        return False
-    profile = getattr(process, "_agent_supervisor_lifecycle_profile", None)
-    if not isinstance(profile, LifecycleProfile):
-        return False
+    if process is not None:
+        profile = getattr(process, "_agent_supervisor_lifecycle_profile", None)
+        if isinstance(profile, LifecycleProfile):
+            try:
+                tree = LinuxProcessAdapter().snapshot(profile)
+            except Exception:
+                tree = None
+            if tree is not None:
+                for item in getattr(tree, "members", ()) or ():
+                    argv = tuple(getattr(item, "argv", ()) or ())
+                    if _process_argv_is_grok_cli_runner(argv):
+                        return True
     try:
-        tree = LinuxProcessAdapter().snapshot(profile)
-    except Exception:
-        return False
-    for item in getattr(tree, "members", ()) or ():
-        argv = tuple(getattr(item, "argv", ()) or ())
-        if _process_argv_is_grok_cli_runner(argv):
-            return True
+        pid = int(daemon_pid or 0)
+    except (TypeError, ValueError):
+        pid = 0
+    if pid > 1 and _pid_tree_has_grok_cli_runner(pid):
+        return True
     return False
+
+
+def _restarting_track_must_preserve_extra_gate_grok(
+    process: subprocess.Popen[bytes] | None,
+    daemon_fields: Mapping[str, object] | None = None,
+) -> bool:
+    """Preserve extra-gate grok on master restarting-exited/stale.
+
+    ``restarting stale`` always fenced the supervisor tree and skipped the
+    exited-path preserve, so PCTDD-005 grok died. Daemon pid files can be
+    missing after cleanup_stale_marker; scan the supervisor pid tree too.
+    Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+    """
+
+    fields = dict(daemon_fields or {})
+    preserve_pid = fields.get("daemon_pid") or fields.get("stale_daemon_pid")
+    if not preserve_pid and process is not None:
+        preserve_pid = getattr(process, "pid", None)
+    try:
+        pid = int(preserve_pid or 0)
+    except (TypeError, ValueError):
+        pid = 0
+    return _extra_gate_grok_descendants_must_preserve(
+        process,
+        daemon_pid=pid if pid > 1 else None,
+    )
 
 
 def _terminate_managed_process(
@@ -8758,6 +8834,19 @@ def run_supervisor_tracks(
                     )
                     if supervisor_fields.get("restart_supervisor"):
                         daemon_pid = daemon_fields.get("daemon_pid")
+                        if _restarting_track_must_preserve_extra_gate_grok(
+                            process,
+                            daemon_fields,
+                        ):
+                            _emit(
+                                output,
+                                (
+                                    f"preserving extra-gate grok descendants for "
+                                    f"stale {track.name} old_pid={process.pid} "
+                                    f"daemon_pid={daemon_pid or 'unknown'}"
+                                ),
+                            )
+                            continue
                         _emit(
                             output,
                             (
@@ -9011,7 +9100,10 @@ def run_supervisor_tracks(
                     continue
                 _emit(output, f"restarting exited {track.name} supervisor old_pid={old_pid or 'none'}")
                 if process is not None:
-                    if _extra_gate_grok_descendants_must_preserve(process):
+                    if _restarting_track_must_preserve_extra_gate_grok(
+                        process,
+                        daemon_fields,
+                    ):
                         _emit(
                             output,
                             (

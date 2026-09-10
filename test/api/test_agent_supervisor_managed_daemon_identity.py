@@ -2769,6 +2769,117 @@ def test_supervisor_loop_preserves_markers_when_termination_is_unproven(
     assert identity_path.read_text(encoding="utf-8") == "unavailable\n"
 
 
+def test_failed_child_termination_keeps_running_for_control_plane_source_changed() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
+        SupervisorLoopDecision,
+        failed_child_termination_should_keep_running,
+    )
+
+    keep = SupervisorLoopDecision.stop(
+        "control_plane_source_changed",
+        status="control_plane_reload_required",
+    )
+    operator = SupervisorLoopDecision.stop("operator_stop")
+    assert (
+        failed_child_termination_should_keep_running(
+            keep, child_still_alive=True
+        )
+        is True
+    )
+    assert (
+        failed_child_termination_should_keep_running(
+            keep, child_still_alive=False
+        )
+        is False
+    )
+    assert (
+        failed_child_termination_should_keep_running(
+            operator, child_still_alive=True
+        )
+        is False
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_watchdog_hook_outranks_worktree_phase_recycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Extra-gate preserve must outrank default worktree-no-child recycle.
+
+    default_watchdog recycled before the extra-gate hook, so a live grok
+    that was not counted as a worker was SIGTERM-killed. Extra-gate
+    aliases still cannot bypass safe_to_restart=False.
+    """
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    status_path = state_dir / "supervisor-status.json"
+    daemon_status_path = state_dir / "daemon-status.json"
+    status_path.write_text("{}\n", encoding="utf-8")
+    daemon_status_path.write_text("{}\n", encoding="utf-8")
+    spec = ManagedDaemonSpec(
+        name="identity-required-daemon",
+        schema="test.identity-required-daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=("python", "worker.py"),
+        status_path=daemon_status_path,
+        supervisor_status_path=status_path,
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure-status.json",
+        ensure_check_path=state_dir / "ensure-check.json",
+        supervisor_lock_path=state_dir / "supervisor.lock",
+    )
+    child = SupervisedChild(
+        pid=11,
+        command=("python", "worker.py"),
+        log_path=state_dir / "child.log",
+        child_pid_path=state_dir / "child.pid",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=child.command,
+            log_prefix="child",
+        ),
+        watchdog_hook=lambda *_args: SupervisorLoopDecision.keep_running(),
+    )
+    monkeypatch.setattr(
+        loop,
+        "default_watchdog",
+        lambda *_args: SupervisorLoopDecision.recycle(
+            "worktree_phase_without_active_child"
+        ),
+    )
+    decision = loop.watchdog_decision(child)
+    assert decision.action == "continue"
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
 def test_supervisor_loop_relaunches_when_child_identity_is_already_dead(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

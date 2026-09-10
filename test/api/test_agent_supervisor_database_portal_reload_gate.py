@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 import time
 from contextlib import contextmanager, nullcontext
@@ -32,6 +34,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA,
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+    SupervisedChildIdentity,
+)
+from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+    ProcessBirthIdentity as SupervisedProcessBirthIdentity,
 )
 
 
@@ -3145,6 +3153,101 @@ def test_extra_gate_grok_descendants_are_preserved_on_exited_supervisor() -> Non
     )
 
 
+def test_extra_gate_preserve_uses_daemon_pid_when_supervisor_profile_misses_grok(
+    monkeypatch,
+) -> None:
+    """Daemon is a session leader, so supervisor snapshot misses grok.
+
+    Master restarting-exited never logged preserving extra-gate and
+    SIGTERM-killed PCTDD-005 grok 1053569. Extra-gate aliases still
+    cannot bypass safe_to_restart=False.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        _extra_gate_grok_descendants_must_preserve,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner._pid_tree_has_grok_cli_runner",
+        lambda pid: int(pid) == 951233,
+    )
+    process = SimpleNamespace(_agent_supervisor_lifecycle_profile=None)
+    assert (
+        _extra_gate_grok_descendants_must_preserve(process, daemon_pid=951233)
+        is True
+    )
+    assert (
+        _extra_gate_grok_descendants_must_preserve(process, daemon_pid=1)
+        is False
+    )
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_restarting_stale_or_exited_preserves_extra_gate_via_supervisor_pid(
+    monkeypatch,
+) -> None:
+    """Stale restart fenced extra-gate grok because only exited-path preserved.
+
+    Master logged restarting exited with zero preserving extra-gate lines
+    and SIGTERM-killed PCTDD-005. Daemon pid markers can already be gone;
+    scan the supervisor pid tree. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        _restarting_track_must_preserve_extra_gate_grok,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner._pid_tree_has_grok_cli_runner",
+        lambda pid: int(pid) == 2668379,
+    )
+    process = SimpleNamespace(
+        pid=2668379,
+        _agent_supervisor_lifecycle_profile=None,
+    )
+    assert (
+        _restarting_track_must_preserve_extra_gate_grok(
+            process,
+            {"daemon_pid": None, "daemon_status": "missing"},
+        )
+        is True
+    )
+    assert (
+        _restarting_track_must_preserve_extra_gate_grok(
+            process,
+            {"daemon_pid": 2681548, "stale_daemon_pid": None},
+        )
+        is False
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner._pid_tree_has_grok_cli_runner",
+        lambda pid: int(pid) == 2681548,
+    )
+    assert (
+        _restarting_track_must_preserve_extra_gate_grok(
+            process,
+            {"daemon_pid": 2681548},
+        )
+        is True
+    )
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
 def test_source_reload_defers_without_quiesce_when_extra_gate_in_progress(
     tmp_path,
     monkeypatch,
@@ -3361,6 +3464,382 @@ def test_watchdog_maintenance_preserves_live_grok_without_active_task_id(
             "reason": "database_portal_retained_reconciliation_blocked",
         }
     )
+
+
+def _write_leftover_managed_daemon_identity(
+    supervisor: PortalImplementationSupervisor,
+    *,
+    pid: int,
+) -> None:
+    identity = SupervisedChildIdentity(
+        process_birth=SupervisedProcessBirthIdentity(
+            pid=pid,
+            start_time_ticks=39360547,
+            boot_id="boot-test",
+            parent_pid=17,
+        ),
+        command=(
+            "/usr/bin/python3.12",
+            "-P",
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+        ),
+        owner_scope=supervisor._managed_daemon_owner_scope(),
+        created_at="2026-09-09T20:00:00+00:00",
+    )
+    path = supervisor._managed_daemon_identity_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(identity.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _extra_gate_cannot_bypass_safe_to_restart() -> None:
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
+def test_recorded_managed_daemon_pid_falls_back_to_identity(tmp_path) -> None:
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    _write_leftover_managed_daemon_identity(supervisor, pid=2892700)
+    assert supervisor._read_managed_daemon_pid() is None
+    assert supervisor._recorded_managed_daemon_pid() == 2892700
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_live_in_progress_preserves_identity_grok_when_lane_state_missing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Restart run_once must see leftover extra-gate grok via identity.
+
+    Lane task-state.json was missing and the pid file was already unlinked
+    after the supervisor exited, so preserve missed grok 2932295 under
+    leftover daemon 2892700. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    config = _config(tmp_path)
+    supervisor = PortalImplementationSupervisor(config)
+    _write_leftover_managed_daemon_identity(supervisor, pid=2892700)
+    assert not config.state_path.exists()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda pid, status=None: (
+            [
+                {
+                    "pid": 2932295,
+                    "cmdline": (
+                        "python3.12 -m "
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+                    ),
+                }
+            ]
+            if int(pid) == 2892700
+            else []
+        ),
+    )
+    assert supervisor._live_in_progress_worker_must_preserve() is True
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_public_run_once_does_not_terminate_identity_extra_gate_grok(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config = _config(tmp_path)
+    supervisor = PortalImplementationSupervisor(config)
+    _write_leftover_managed_daemon_identity(supervisor, pid=2892700)
+    events: list[str] = []
+    finished: list[tuple[str, str]] = []
+
+    @contextmanager
+    def portal_fence():
+        events.append("portal_fence_enter")
+        try:
+            yield supervisor.config.database_program
+        finally:
+            events.append("portal_fence_exit")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection_fenced",
+        lambda _program: (
+            events.append("projection")
+            or _authenticated_watchdog_projection(active=False)
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda phase: events.append(phase),
+            lambda status="completed", error="": finished.append(
+                (status, error)
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda pid, status=None: (
+            [
+                {
+                    "pid": 2932295,
+                    "cmdline": (
+                        "python3.12 -m "
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+                    ),
+                }
+            ]
+            if int(pid) == 2892700
+            else []
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_terminate_managed_daemon_tree",
+        lambda **_kwargs: pytest.fail(
+            "leftover extra-gate grok must not be terminated on supervisor restart"
+        ),
+    )
+
+    def maintenance(_update, **kwargs):
+        assert kwargs["database_portal_quiesced_idle"] is False
+        events.append("maintenance")
+        return {"stuck": False}
+
+    monkeypatch.setattr(supervisor, "_run_once_with_maintenance", maintenance)
+
+    result = supervisor.run_once(include_refill=False)
+
+    assert events == [
+        "portal_fence_enter",
+        "projection",
+        "portal_fence_exit",
+        "maintenance",
+    ]
+    assert result == {"stuck": False}
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_terminate_managed_daemon_tree_refuses_identity_extra_gate_grok(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    _write_leftover_managed_daemon_identity(supervisor, pid=2892700)
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda pid, status=None: (
+            [
+                {
+                    "pid": 2932295,
+                    "cmdline": (
+                        "python3.12 -m "
+                        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+                    ),
+                }
+            ]
+            if int(pid) == 2892700
+            else []
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_fence_recorded_managed_daemon",
+        lambda **_kwargs: pytest.fail(
+            "identity-named extra-gate grok must not be fenced"
+        ),
+    )
+
+    result = supervisor._terminate_managed_daemon_tree()
+
+    assert result["terminated"] is False
+    assert result["quiesced"] is False
+    assert result["reason"] == "extra_gate_in_progress_preserve_worker"
+    assert result["daemon_fence"]["reason"] == (
+        "extra_gate_in_progress_preserve_worker"
+    )
+    assert supervisor._managed_daemon_identity_path().exists()
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def _write_nested_extra_gate_portal(
+    supervisor: PortalImplementationSupervisor,
+    *,
+    task_id: str = "PCTDD-007",
+    runner_pid: int | None = 1816991,
+) -> Path:
+    root = (
+        supervisor.config.state_dir
+        / f"{supervisor.config.state_prefix}_database_portal_attempts"
+        / "0892ec23fdc05be191ed6d0d"
+    )
+    root.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, object] = {
+        "active_task_id": task_id,
+        "implementation_in_progress": True,
+        "heartbeat_at": "2026-09-10T00:00:37.844083+00:00",
+    }
+    if runner_pid is not None:
+        payload["active_provider_runner"] = {
+            "pid": runner_pid,
+            "task_id": task_id,
+            "schema": "ipfs_accelerate_py.agent_supervisor.ordinary-provider-runner-birth@1",
+        }
+    path = root / "portal-task-state.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_nested_extra_gate_dead_runner_does_not_preserve_worker(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Stale nested PCTDD-007 must not fence relaunch after grok died.
+
+    Lane-3 terminate returned extra_gate_in_progress_preserve_worker with
+    pid=null while runner 1816991 was already gone, so the daemon never
+    relaunched to rearm. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    _write_nested_extra_gate_portal(supervisor, runner_pid=1816991)
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.process_is_running",
+        lambda pid: False,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda *_args, **_kwargs: [],
+    )
+
+    assert supervisor._nested_extra_gate_portal_must_preserve_worker() is False
+    assert (
+        supervisor._nested_extra_gate_portal_must_preserve_worker(
+            require_live_runner=True
+        )
+        is False
+    )
+    assert supervisor._live_in_progress_worker_must_preserve() is False
+    result = supervisor._terminate_managed_daemon_tree()
+    assert result.get("reason") != "extra_gate_in_progress_preserve_worker"
+    assert result["daemon_fence"]["reason"] != (
+        "extra_gate_in_progress_preserve_worker"
+    )
+    assert result["daemon_fence"]["safe_to_restart"] is True
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_nested_extra_gate_live_runner_still_preserves_worker(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    _write_nested_extra_gate_portal(supervisor, runner_pid=3337834)
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.process_is_running",
+        lambda pid: int(pid) == 3337834,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda *_args, **_kwargs: [],
+    )
+
+    assert supervisor._nested_extra_gate_portal_must_preserve_worker() is True
+    assert (
+        supervisor._nested_extra_gate_portal_must_preserve_worker(
+            require_live_runner=True
+        )
+        is True
+    )
+    result = supervisor._terminate_managed_daemon_tree()
+    assert result["reason"] == "extra_gate_in_progress_preserve_worker"
+    assert result["terminated"] is False
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_nested_extra_gate_mid_worktree_without_runner_still_preserves(
+    tmp_path,
+) -> None:
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    _write_nested_extra_gate_portal(supervisor, runner_pid=None)
+
+    assert supervisor._nested_extra_gate_portal_must_preserve_worker() is True
+    assert (
+        supervisor._nested_extra_gate_portal_must_preserve_worker(
+            require_live_runner=True
+        )
+        is False
+    )
+    _extra_gate_cannot_bypass_safe_to_restart()
+
+
+def test_nested_extra_gate_live_runner_survives_newer_idle_attempts(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Live grok outside the newest-8 window must still preserve.
+
+    Lane-0 accrued 700+ portal attempts; idle 007 claims were newer than
+    the PCTDD-005 grok attempt, so the cap-8 scan missed it and recycle
+    killed grok. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    live_path = _write_nested_extra_gate_portal(
+        supervisor, task_id="PCTDD-005", runner_pid=1592311
+    )
+    older = live_path.stat().st_mtime - 30
+    os.utime(live_path.parent, (older, older))
+    os.utime(live_path, (older, older))
+    root = live_path.parent.parent
+    for index in range(9):
+        newer = root / f"{index:024x}"
+        newer.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "active_task_id": "PCTDD-007",
+            "implementation_in_progress": False,
+            "heartbeat_at": "2026-09-10T02:39:23.989519+00:00",
+        }
+        (newer / "portal-task-state.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.process_is_running",
+        lambda pid: int(pid) == 1592311,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.active_codex_exec_workers",
+        lambda *_args, **_kwargs: [],
+    )
+
+    assert supervisor._nested_extra_gate_portal_must_preserve_worker() is True
+    assert (
+        supervisor._nested_extra_gate_portal_must_preserve_worker(
+            require_live_runner=True
+        )
+        is True
+    )
+    result = supervisor._terminate_managed_daemon_tree()
+    assert result["reason"] == "extra_gate_in_progress_preserve_worker"
+    assert result["terminated"] is False
+    _extra_gate_cannot_bypass_safe_to_restart()
 
 
 def test_failed_landed_recovery_is_not_a_read_only_diagnostic() -> None:
@@ -3591,5 +4070,59 @@ def test_extra_gate_rearm_with_leftover_no_provider_fence_is_claimable() -> None
     assert daemon._automatic_claim_forbidden_current(task) is False
     task.body["review_only"] = True
     assert daemon._automatic_claim_forbidden_current(task) is True
+
+
+def test_blocked_extra_gate_leftover_no_provider_saga_does_not_fence_rearm() -> None:
+    """PCTDD-007 stayed blocked after grok death because leftover saga fenced rearm.
+
+    Master restarting-exited killed extra-gate grok; lane-3 then idled
+    ``database_no_provider_rearm_recovery_fenced``. Official unstick is
+    rearm → retrying. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DatabaseImplementationDaemon,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon.open = lambda: None  # type: ignore[method-assign]
+    daemon._unresolved_database_no_provider_rearm_sagas = lambda: (  # type: ignore[method-assign]
+        (
+            {
+                "task_cid": "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq",
+                "saga_id": "",
+                "state": "recovery_required",
+            },
+        )
+    )
+    assert daemon._reconcile_database_no_provider_rearm_sagas() == []
+    blocked = SimpleNamespace(
+        task_cid="baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq",
+        task_alias="PCTDD-007",
+        status="blocked",
+        body={
+            "completion_receipt": {
+                "no_provider_rearm_fence": {"saga_id": "sha256:" + "b" * 64},
+                "operation": "database_unknown_outcome_blocked",
+            }
+        },
+    )
+    daemon._task_source = SimpleNamespace(  # type: ignore[attr-defined]
+        list_tasks=lambda limit=32: SimpleNamespace(tasks=[blocked])
+    )
+    assert daemon._reconcile_shared_no_provider_rearm_fences() == []
+    assert not PortalImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
 
 

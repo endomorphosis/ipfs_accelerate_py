@@ -16505,6 +16505,11 @@ class PortalImplementationSupervisor:
         if self._extra_gate_portal_state_must_preserve_worker(mapping):
             return True
         try:
+            if self._nested_extra_gate_portal_must_preserve_worker():
+                return True
+        except Exception:
+            pass
+        try:
             workers = self._active_agent_worker_processes(portal_state)
         except Exception:
             workers = []
@@ -16512,11 +16517,89 @@ class PortalImplementationSupervisor:
             return True
         pid = int(child_pid or 0)
         if pid <= 0:
+            try:
+                pid = int(self._recorded_managed_daemon_pid() or 0)
+            except Exception:
+                pid = 0
+        if pid <= 0:
             return False
         try:
             return bool(active_codex_exec_workers(pid, mapping))
         except Exception:
             return False
+
+    def _nested_extra_gate_portal_must_preserve_worker(
+        self,
+        *,
+        require_live_runner: bool = False,
+    ) -> bool:
+        """True when nested portal-task-state still has extra-gate grok.
+
+        Lane task-state.json is often missing after recycle, so preserve
+        only saw an empty PortalTaskState while nested 005 was still
+        implementing. Extra-gate aliases still cannot bypass
+        ``safe_to_restart=False``.
+
+        ``require_live_runner`` skips mid-worktree claims with no runner and
+        ghost claims whose recorded grok is already dead, so terminate can
+        relaunch and rearm instead of fencing pid=null forever.
+        """
+
+        root = self.config.state_dir / (
+            f"{self.config.state_prefix}_database_portal_attempts"
+        )
+        if not root.is_dir():
+            return False
+        try:
+            children = [path for path in root.iterdir() if path.is_dir()]
+        except OSError:
+            return False
+        newest = sorted(
+            children,
+            key=lambda path: path.stat().st_mtime if path.exists() else 0,
+            reverse=True,
+        )
+        # Live grok can sit in an older attempt while idle extra-gate
+        # claims keep getting newer mtimes. Capping at 8 missed PCTDD-005
+        # grok on lane-0 (700+ attempt dirs) and recycle killed it.
+        mid_worktree_window = 8
+        for index, child in enumerate(newest):
+            portal_path = child / "portal-task-state.json"
+            if not portal_path.is_file():
+                continue
+            try:
+                payload = json.loads(
+                    portal_path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeError, ValueError):
+                continue
+            if not isinstance(payload, Mapping):
+                continue
+            runner = payload.get("active_provider_runner")
+            runner_pid = 0
+            if isinstance(runner, Mapping):
+                try:
+                    runner_pid = int(runner.get("pid") or 0)
+                except (TypeError, ValueError):
+                    runner_pid = 0
+            runner_live = bool(
+                runner_pid > 1 and process_is_running(runner_pid)
+            )
+            if runner_live:
+                return True
+            if runner_pid > 1:
+                # Ghost extra-gate claim: grok died, nested state still
+                # says PCTDD-007 in_progress. Preserve then refused
+                # terminate with pid=null and blocked daemon relaunch.
+                # Official unstick is rearm after relaunch, never CAS.
+                continue
+            if require_live_runner:
+                continue
+            if index >= mid_worktree_window:
+                continue
+            if self._extra_gate_portal_state_must_preserve_worker(payload):
+                return True
+        return False
 
     def _database_portal_extra_gate_shard_must_wait_for_mutation_fence(
         self,
@@ -23259,7 +23342,7 @@ class PortalImplementationSupervisor:
         self,
         state: PortalTaskState | None = None,
     ) -> list[dict[str, Any]]:
-        daemon_pid = self._read_managed_daemon_pid()
+        daemon_pid = self._recorded_managed_daemon_pid()
         if not daemon_pid:
             return []
         current_state = state or PortalTaskState.load(self.config.state_path)
@@ -25186,11 +25269,68 @@ class PortalImplementationSupervisor:
         pid_path = self._managed_daemon_pid_path()
         identity_path = self._managed_daemon_identity_path()
         initial_identity = load_supervised_child_identity(identity_path)
-        pid = self._read_managed_daemon_pid()
-        if pid is None:
-            identity = load_supervised_child_identity(identity_path)
-            if identity is not None:
-                pid = int(identity.process_birth.pid)
+        pid = self._recorded_managed_daemon_pid()
+        preserve_worker = self._live_in_progress_worker_must_preserve(
+            active_state,
+            child_pid=int(pid or 0) or None,
+        )
+        live_pid = int(pid or 0)
+        grok_workers = False
+        if live_pid > 1:
+            try:
+                grok_workers = bool(
+                    active_codex_exec_workers(
+                        live_pid,
+                        vars(active_state) if active_state is not None else None,
+                    )
+                )
+            except Exception:
+                grok_workers = False
+        pid_running = bool(live_pid > 1 and process_is_running(live_pid))
+        nested_live_runner = False
+        if preserve_worker and not (grok_workers or pid_running):
+            try:
+                nested_live_runner = self._nested_extra_gate_portal_must_preserve_worker(
+                    require_live_runner=True,
+                )
+            except Exception:
+                nested_live_runner = False
+        if preserve_worker and (
+            grok_workers or pid_running or nested_live_runner
+        ):
+            # Restart run_once used the pid file only and SIGTERM-killed
+            # leftover extra-gate grok named by identity. Extra-gate aliases
+            # still cannot bypass ``safe_to_restart=False``.
+            return {
+                "pid": pid,
+                "managed_daemon_identity_record_id": (
+                    str(initial_identity.record_id or "")
+                    if initial_identity is not None
+                    else ""
+                ),
+                "managed_daemon_process_birth": (
+                    initial_identity.process_birth.to_dict()
+                    if initial_identity is not None
+                    else None
+                ),
+                "terminated": False,
+                "quiesced": False,
+                "remaining_pid": pid,
+                "pid_path": str(pid_path),
+                "identity_path": str(identity_path),
+                "daemon_fence": {
+                    "fenced": False,
+                    "safe_to_restart": False,
+                    "reason": "extra_gate_in_progress_preserve_worker",
+                },
+                "markers_removed": False,
+                "provider_runner_fence": {
+                    "fenced": False,
+                    "safe_to_restart": False,
+                    "reason": "extra_gate_in_progress_preserve_worker",
+                },
+                "reason": "extra_gate_in_progress_preserve_worker",
+            }
 
         if pid is None:
             marker_present = bool(
@@ -25281,6 +25421,36 @@ class PortalImplementationSupervisor:
             return int(raw_pid)
         except (OSError, ValueError):
             return None
+
+    def _recorded_managed_daemon_pid(self) -> int | None:
+        """Pid-file first, then leftover identity.
+
+        Restart ``run_once`` missed extra-gate grok because the exited
+        supervisor had already unlinked the pid file while identity still
+        named the live daemon. Extra-gate aliases still cannot bypass
+        ``safe_to_restart=False``.
+        """
+
+        pid = self._read_managed_daemon_pid()
+        if pid is not None:
+            try:
+                recorded = int(pid)
+            except (TypeError, ValueError):
+                recorded = 0
+            if recorded > 1:
+                return recorded
+        identity = load_supervised_child_identity(
+            self._managed_daemon_identity_path()
+        )
+        if identity is None:
+            return None
+        try:
+            recorded = int(identity.process_birth.pid)
+        except (TypeError, ValueError, AttributeError):
+            return None
+        if recorded <= 1:
+            return None
+        return recorded
 
     def _find_matching_managed_daemon_pid(self, *, exclude_pids: set[int] | None = None) -> int | None:
         excluded = set(exclude_pids or set())
