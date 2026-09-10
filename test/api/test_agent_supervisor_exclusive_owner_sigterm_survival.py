@@ -164,3 +164,19 @@ def test_stop_signal_handlers_survive_external_sigterm_ignores_sigterm() -> None
         assert requested.is_set()
         assert received == {"signum": signal.SIGINT}
     assert signal.getsignal(signal.SIGTERM) == prior
+
+
+def test_call_stop_signal_handlers_accepts_two_argument_test_double() -> None:
+    from contextlib import nullcontext
+
+    original = aseh_operator._stop_signal_handlers
+    aseh_operator._stop_signal_handlers = lambda *_args: nullcontext()
+    try:
+        with aseh_operator._call_stop_signal_handlers(
+            threading.Event(),
+            {},
+            survive_external_sigterm=True,
+        ):
+            pass
+    finally:
+        aseh_operator._stop_signal_handlers = original

@@ -13,6 +13,7 @@ state/*
 *model_functionality*
 *.json
 !test/fixtures/agent_supervisor_prompt_entrypoints/manifest.json
+!test/api/agent_supervisor/efficiency_state_hardening/fixtures/*.json
 !data/agent_supervisor/prompt_only_self_improvement_v3/convergence/*.json
 .venv-test
 *result.json*

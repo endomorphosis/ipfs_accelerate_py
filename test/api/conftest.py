@@ -57,15 +57,64 @@ def _load_aseh_board_pytest_plugin():
     return loaded
 
 
+_R45_EVIDENCE_NAME = (
+    "bootstrap-repair-historical-live-evidence-revision-closure-transition.json"
+)
+
+
+def _seed_r45_receipt_evidence() -> None:
+    """Hermetic 061 worktrees do not have gitignored ``data/aseh`` evidence."""
+
+    dest = (
+        repo_root
+        / "data"
+        / "aseh"
+        / "evidence"
+        / "bootstrap"
+        / _R45_EVIDENCE_NAME
+    )
+    try:
+        if dest.is_file():
+            dest.chmod(0o600)
+            return
+    except OSError:
+        pass
+    fixture = (
+        repo_root
+        / "test"
+        / "api"
+        / "agent_supervisor"
+        / "efficiency_state_hardening"
+        / "fixtures"
+        / _R45_EVIDENCE_NAME
+    )
+    if not fixture.is_file():
+        return
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(fixture.read_bytes())
+        dest.chmod(0o600)
+    except OSError:
+        return
+
+
 try:
     _aseh_board_pytest_plugin = _load_aseh_board_pytest_plugin()
 except Exception:  # pragma: no cover - fail closed: run every item
     _aseh_board_pytest_plugin = None
+    _plugin_configure = None
 else:
-    pytest_configure = _aseh_board_pytest_plugin.pytest_configure
+    _plugin_configure = _aseh_board_pytest_plugin.pytest_configure
     pytest_collection_modifyitems = (
         _aseh_board_pytest_plugin.pytest_collection_modifyitems
     )
     pytest_runtest_logreport = _aseh_board_pytest_plugin.pytest_runtest_logreport
+
+
+def pytest_configure(config) -> None:
+    _seed_r45_receipt_evidence()
+    if _plugin_configure is not None:
+        _plugin_configure(config)
+
 
 pytest_plugins = ("ipfs_accelerate_py.testing.proof_reuse.plugin",)

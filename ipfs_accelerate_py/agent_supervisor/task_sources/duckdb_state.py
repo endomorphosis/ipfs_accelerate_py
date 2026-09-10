@@ -1028,6 +1028,11 @@ _STATE_AUTHORITY_MODE_ENV = "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE"
 # Longer than implementation_max_timeout (14400s) so a live Grok run is not
 # stolen. Shorter than a multi-day freeze so a dead in_progress gate unblocks.
 STALE_IN_PROGRESS_UNSTALL_SECONDS = 16_200
+# Even exclusive-owner restart must not unstall a claim this process just
+# made. Compatibility adapters CAS to in_progress then immediately start
+# recovery; treating that row as a previous-generation orphan flips it to
+# retrying and blocks ASEH-061. Real leftovers are minutes old.
+ORPHAN_FRESH_CLAIM_GRACE_SECONDS = 15
 _QUACK_ATTACH_LOCK = threading.RLock()
 _QUACK_TRANSPORT_CACHE: dict[str, DuckDBConnection] = {}
 QUACK_ATTACH_ATTEMPTS = 8
@@ -2568,6 +2573,19 @@ def unstall_stale_in_progress_tasks(
                     "task_cid": str(task_cid),
                     "task_alias": str(task_alias),
                     "reason": "still_within_live_attempt_window",
+                    "age_seconds": int(age),
+                }
+            )
+            continue
+        if (
+            orphan_previous_generation
+            and age < float(ORPHAN_FRESH_CLAIM_GRACE_SECONDS)
+        ):
+            skipped.append(
+                {
+                    "task_cid": str(task_cid),
+                    "task_alias": str(task_alias),
+                    "reason": "claimed_by_current_owner_generation",
                     "age_seconds": int(age),
                 }
             )
