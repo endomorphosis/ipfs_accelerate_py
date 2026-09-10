@@ -439,6 +439,9 @@ _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
         "derived.coordination.read",
         "derived.coordination.write",
+        *("legacy.merge_queue." + operation for operation in (
+            "get", "enqueue", "claim", "owns_claim", "complete", "requeue", "quarantine"
+        )),
         *_EVENT_WAIT_SERVICE_OPERATIONS,
         *_EAAEF_COMMAND_SERVICE_OPERATIONS,
         *_EAAEF_PLAN_R2_SERVICE_OPERATIONS,
@@ -1072,6 +1075,7 @@ class OwnerClientGrant:
             "supervisor_id",
             "subagent_id",
             "repository_id",
+            "target_branch",
             "tree_id",
             "task_id",
             "task_cid",
@@ -5357,6 +5361,7 @@ class TypedStateOwnerGateway:
         self._status_bootstrap_scope: dict[str, str] = {}
         self._database_status_binding: dict[str, Any] = {}
         self._database_closeout_profile: Any = None
+        self._legacy_merge_queue_service: Any | None = None
         self._derived_coordination_service: Any | None = None
         self._derived_bootstrap_token_digest: bytes | None = None
         self._fleet_read_bootstrap_token_digest: bytes | None = None
@@ -5379,6 +5384,33 @@ class TypedStateOwnerGateway:
         ):
             raise TypedStateOwnerAuthorizationError(
                 "EAAEF binding requires a live server-owned gateway"
+            )
+
+    def _retire_borrowed_owner_connection(self, connection: Any) -> None:
+        """Owner-held transaction lock guards freezing its exact shared handle."""
+        if connection is not self._connection:
+            raise TypedStateOwnerAuthorizationError("borrowed owner handle changed")
+        connection.retire_owner_binding()
+
+    def bind_legacy_merge_queue_service(
+        self, *, expected_identity: Mapping[str, Any], repository_id: str,
+        target_branch: str, max_age_seconds: int, max_queue_size: int,
+        max_processing: int, max_attempts: int, max_worktree_bytes: int | None,
+        worktree_usage: Any | None = None,
+    ) -> None:
+        """Bind existing migrated queue state without opening files or issuing grants."""
+        from ..merge.owner_merge_queue import _OwnerMergeQueueService
+
+        with self._transaction_lock:
+            self._require_live_server_binding()
+            if self._legacy_merge_queue_service is not None:
+                raise TypedStateOwnerAuthorizationError("legacy queue is already bound")
+            self._legacy_merge_queue_service = _OwnerMergeQueueService(
+                self, expected_identity=expected_identity, repository_id=repository_id,
+                target_branch=target_branch, max_age_seconds=max_age_seconds,
+                max_queue_size=max_queue_size, max_processing=max_processing,
+                max_attempts=max_attempts, max_worktree_bytes=max_worktree_bytes,
+                worktree_usage=worktree_usage,
             )
 
     def _bind_eaaef_typed_owner_command_service_from_server(
@@ -6468,6 +6500,7 @@ class TypedStateOwnerGateway:
 
         connection = self._connection
         with connection._execution_condition:
+            connection._require_owner_binding_not_retired_locked()
             if not getattr(connection, "_closed", False):
                 if not getattr(connection, "_poisoned", False):
                     connection._poison_locked()
@@ -6840,6 +6873,26 @@ class TypedStateOwnerGateway:
                                     self._resolve_database_status_scope()
                                 result = self._execute(operation, parameters)
                         response = result
+                    elif action == "legacy.merge_queue":
+                        self._reject_unknown(
+                            request, {"schema", "action", "request_id", "payload"},
+                            "legacy merge queue request",
+                        )
+                        service = self._legacy_merge_queue_service
+                        if transaction_active or service is None:
+                            raise TypedStateOwnerAuthorizationError("legacy queue service is unavailable")
+                        payload = request.get("payload")
+                        if not isinstance(payload, dict):
+                            raise TypedStateOwnerProtocolError("queue request must be an object")
+                        if not self._transaction_lock.acquire(timeout=5):
+                            raise TypedStateOwnerProtocolError("legacy queue owner is busy")
+                        try:
+                            grant = self._require_active_grant(grant, peer_identity=peer_identity)
+                            result = service.execute(payload, grant=grant, session_id=session_id,
+                                                     peer_identity=peer_identity)
+                        finally:
+                            self._transaction_lock.release()
+                        response = {"ok": True, "result": result}
                     elif action == "derived.coordination":
                         self._reject_unknown(request, {"schema", "action", "request_id", "payload"},
                                              "derived coordination request")
@@ -12628,6 +12681,20 @@ class TypedStateOwnerConnection:
             raise TypedStateOwnerProtocolError(
                 "typed owner handshake returned no admitted session"
             )
+
+    def legacy_merge_queue(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Invoke a closed legacy queue operation using this exact existing grant."""
+        from ..merge.owner_merge_queue import SCHEMA
+
+        if self._active:
+            raise TypedStateOwnerAuthorizationError("queue cannot join a task transaction")
+        result = self._request("legacy.merge_queue", payload=dict(payload)).get("result")
+        if (not isinstance(result, dict) or result.get("schema") != SCHEMA
+                or result.get("owner_identity") != dict(self.identity)
+                or result.get("operation") != payload.get("operation")
+                or result.get("completion_authority") is not False):
+            raise TypedStateOwnerProtocolError("queue response differs from admitted operation")
+        return MappingProxyType(result)
 
     def derived_coordination(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         """Perform a bounded operation on a separately admitted derived owner."""
