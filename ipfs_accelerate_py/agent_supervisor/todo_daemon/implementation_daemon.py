@@ -94216,6 +94216,12 @@ class DatabaseImplementationDaemon:
             "completed_count": 0,
             "ready_count": 0,
             "eligible_ready_count": 0,
+            "readiness_scope": "unknown",
+            "eligible_ready_count_scope": "unknown",
+            "todo_count": None,
+            "todo_task_ids": [],
+            "claim_eligibility_known": False,
+            "claim_eligible_count": None,
             "blocked_count": 0,
             "external_reserved_count": 0,
             "active_task_id": "",
@@ -94237,6 +94243,12 @@ class DatabaseImplementationDaemon:
         execution authority.  A nonterminal marker is written before querying
         the canonical source so a failed or interrupted refresh cannot leave a
         terminal payload from an earlier pass in place.
+
+        The legacy numeric ``eligible_ready_count`` means source readiness,
+        including dependencies and cooldowns.  It does not evaluate lane,
+        manual-task, attempt-budget, claim, or retained-callback admission.
+        ``todo_count`` separately reports backlog; full claim eligibility is
+        explicitly unknown in this read-only compatibility view.
         """
 
         path = Path(state_path).absolute()
@@ -94272,6 +94284,23 @@ class DatabaseImplementationDaemon:
                 cursor = str(page.next_cursor or "")
                 if not cursor:
                     break
+            ready_page = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            if (
+                int(ready_page.revision) != int(before.revision)
+                or ready_page.next_cursor
+                or (
+                    len(ready_page.tasks) == TASK_SOURCE_QUERY_LIMIT
+                    and len(tasks) > TASK_SOURCE_QUERY_LIMIT
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "task-state compatibility ready scan changed or exceeded its bound"
+                )
+            _, ready_cids = self._validated_authoritative_task_projection(
+                tasks=tuple(tasks),
+                ready_tasks=tuple(ready_page.tasks),
+                expected_count=int(before.task_count),
+            )
             after = self.task_source.snapshot()
             if (
                 int(after.revision) != int(before.revision)
@@ -94285,6 +94314,7 @@ class DatabaseImplementationDaemon:
             task_statuses: dict[str, str] = {}
             completed_task_ids: list[str] = []
             ready_task_ids: list[str] = []
+            todo_task_ids: list[str] = []
             blocked_task_ids: list[str] = []
             for task in tasks:
                 task_id = str(task.task_alias or task.task_cid or "").strip()
@@ -94299,6 +94329,9 @@ class DatabaseImplementationDaemon:
                 elif status == "blocked":
                     blocked_task_ids.append(task_id)
                 elif status == "todo":
+                    todo_task_ids.append(task_id)
+                # Pending status alone does not establish dependency readiness.
+                if str(task.task_cid) in ready_cids:
                     ready_task_ids.append(task_id)
 
             active_task_id = str(pass_result.get("active_task_id") or "").strip()
@@ -94320,6 +94353,12 @@ class DatabaseImplementationDaemon:
                 "completed_count": len(completed_task_ids),
                 "ready_count": len(ready_task_ids),
                 "eligible_ready_count": len(ready_task_ids),
+                "readiness_scope": "canonical_task_source_dependencies_and_cooldowns",
+                "eligible_ready_count_scope": "source_readiness_only",
+                "todo_count": len(todo_task_ids),
+                "todo_task_ids": sorted(todo_task_ids),
+                "claim_eligibility_known": False,
+                "claim_eligible_count": None,
                 "blocked_count": len(blocked_task_ids),
                 "external_reserved_count": 0,
                 "active_task_id": active_task_id,
