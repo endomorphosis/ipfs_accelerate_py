@@ -2463,6 +2463,55 @@ def _control_file_is_tracked(
     return False
 
 
+def _pid_file_alive(path: Path) -> bool:
+    try:
+        pid = int(path.read_text(encoding="utf-8").strip().split()[0])
+    except (OSError, IndexError, TypeError, ValueError):
+        return False
+    if pid <= 1:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _plan_bound_master_down_recycle(board: ConfiguredBoard) -> bool:
+    """True when a prior wave left lane state and no coordinator is live.
+
+    A first launch has no lane supervisor status.  After SIGTERM teardown the
+    pid files are removed, so recycle cannot be detected from those markers
+    alone.  Leftover lane status plus a dead coordinator is the recycle case:
+    launch the committed HEAD capsule even if a stall-fixer working tree is
+    dirty, because the sealed archive is HEAD, not the dirty files.
+    """
+
+    state_dir = board.path(board.runtime_paths["state"])
+    if _pid_file_alive(state_dir / "configured-board-wave.pid") or _pid_file_alive(
+        state_dir / "configured-board-master.pid"
+    ):
+        return False
+    try:
+        lane_dirs = [
+            path
+            for path in state_dir.glob("lane-*")
+            if path.is_dir() and not path.is_symlink()
+        ]
+    except OSError:
+        return False
+    return any(
+        path.is_file() and path.name.endswith("_supervisor_status.json")
+        for lane in lane_dirs
+        for path in lane.glob("*_supervisor_status.json")
+        if not path.is_symlink()
+    )
+
+
 def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
     """Prove that a scheduler document can safely launch from this checkout."""
 
@@ -2587,13 +2636,24 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
         "--untracked-files=all",
     )
     dirty_lines = [line for line in status.stdout.splitlines() if line]
+    master_down_recycle = _plan_bound_master_down_recycle(board)
+    checkout_clean = status.returncode == 0 and (
+        not dirty_lines or master_down_recycle
+    )
     _append_check(
         checks,
         errors,
         name="checkout_clean",
-        passed=status.returncode == 0 and not dirty_lines,
-        detail=dirty_lines[:100],
+        passed=checkout_clean,
+        detail={
+            "dirty": dirty_lines[:100],
+            "master_down_recycle": master_down_recycle,
+        },
     )
+    if dirty_lines and master_down_recycle:
+        warnings.append(
+            "checkout_clean:ignored_for_master_down_head_recycle"
+        )
 
     validator_report: dict[str, Any] = {}
     if board.path(board.validator_path).is_file():
