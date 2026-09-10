@@ -178,6 +178,33 @@ def test_prior_report_continuation_is_bounded_and_confined(tmp_path):
     assert "content" not in repair._prior_report_context(str(link), directory)
 
 
+def test_prior_report_keeps_next_action_after_large_deployment_log(tmp_path):
+    prior = tmp_path / "report.json"
+    write_json(prior, {
+        "deployment": {"stdout": "already deployed\n" * 20000},
+        "next_action": "Implement the missing native goal CAS consumer; do not repeat the readiness cutover.",
+        "remaining_blockers": ["independent_current_source_acceptance_required"],
+        "status": "blocked",
+    })
+    context = repair._prior_report_context(str(prior), tmp_path)
+    assert context["continuation"]["next_action"].startswith("Implement the missing native goal CAS")
+    assert context["continuation"]["remaining_blockers"] == ["independent_current_source_acceptance_required"]
+    assert context["continuation"]["deployment"]["truncated"] is True
+    assert len(json.dumps(context)) < 16000
+    assert context["truncated"] is True
+
+
+def test_prior_report_caps_oversized_or_non_object_input(tmp_path):
+    prior = tmp_path / "report.json"
+    prior.write_text('{"deployment":"' + "x" * (2 * 1024 * 1024) + '"}')
+    context = repair._prior_report_context(str(prior), tmp_path)
+    assert context["error"] == "prior_report_too_large"
+    assert len(context["content"]) == 16000
+    assert "continuation" not in context
+    prior.write_text('["not a report"]')
+    assert repair._prior_report_context(str(prior), tmp_path)["error"] == "prior_report_not_object"
+
+
 def test_queue_reports_future_and_held_work_instead_of_idle(tmp_path):
     cfg = config(tmp_path)
     hold = tmp_path / "HOLD"

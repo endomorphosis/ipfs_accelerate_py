@@ -231,13 +231,43 @@ def _prior_report_context(path: str | None, directory: Path) -> dict[str, Any]:
         try:
             if not stat.S_ISREG(os.fstat(descriptor).st_mode):
                 return {"path": str(candidate), "error": "prior_report_not_regular"}
-            raw = os.read(descriptor, 16001)
+            # Reports often put a large deployment/probe transcript before
+            # next_action. Read a bounded complete document before selecting
+            # continuation fields; a raw prefix silently loses the actual
+            # blocker and causes later jobs to repeat finished repairs.
+            with os.fdopen(os.dup(descriptor), "rb") as stream:
+                raw = stream.read(1024 * 1024 + 1)
         finally:
             os.close(descriptor)
     except OSError as exc:
         return {"path": str(candidate), "error": type(exc).__name__}
+    try:
+        payload = json.loads(raw) if len(raw) <= 1024 * 1024 else None
+    except (ValueError, UnicodeError):
+        payload = None
+    if isinstance(payload, dict):
+        selected = {}
+        truncated = False
+        for field, budget in (
+            ("status", 256), ("next_action", 4500),
+            ("remaining_blockers", 2500), ("root_cause", 1800),
+            ("summary", 1200), ("commits", 1800),
+            ("deployment", 1500), ("tests", 800),
+        ):
+            if field not in payload:
+                continue
+            value = payload[field]
+            encoded = json.dumps(value, ensure_ascii=False)
+            if len(encoded) > budget:
+                selected[field] = {"excerpt": encoded[:budget], "truncated": True}
+                truncated = True
+            else:
+                selected[field] = value
+        return {"path": str(candidate), "continuation": selected,
+                "truncated": truncated or set(selected) != set(payload)}
     return {"path": str(candidate), "content": raw[:16000].decode("utf-8", "replace"),
-            "truncated": len(raw) > 16000}
+            "truncated": len(raw) > 16000,
+            "error": "prior_report_too_large" if len(raw) > 1024 * 1024 else "prior_report_not_object"}
 
 
 def repair_prompt(board: dict[str, Any], incident: dict[str, Any], config: dict[str, Any],
