@@ -2321,6 +2321,7 @@ def test_recoverable_accepted_source_portal_failure_auto_rearms_blocked_task(
     "cross_attempt_lifecycle_process_inventory_unavailable",
     "cross_attempt_lifecycle_absent_database_effect_admitted",
     "new_native_deferred_reason",
+    "Portal task projection is not complete",
 ])
 def test_unknown_portal_deferral_preserves_exact_running_claim(
     tmp_path: Path, reason: str,

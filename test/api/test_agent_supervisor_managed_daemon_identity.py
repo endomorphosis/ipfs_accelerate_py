@@ -1319,3 +1319,13 @@ def test_clear_dead_child_pass_heartbeat_preserves_live_worker(
     heartbeat = json.loads(heartbeat_path.read_text(encoding="utf-8"))
     assert heartbeat["active_task_id"] == "SAWM-008"
     assert heartbeat["claimed_task_cid"] == "sha256:live"
+
+
+@pytest.mark.parametrize("birth", [None, {}, {"pid": 0}, {"pid": "invalid"}])
+def test_clear_dead_child_pass_heartbeat_preserves_unknown_owner(tmp_path, birth):
+    path = tmp_path / "lane_database_daemon_pass_heartbeat.json"
+    raw = json.dumps({"active_task_id": "task:one", "process_birth": birth})
+    path.write_text(raw)
+    result = clear_dead_child_pass_heartbeat(tmp_path)
+    assert result["cleared"] == []
+    assert path.read_text() == raw

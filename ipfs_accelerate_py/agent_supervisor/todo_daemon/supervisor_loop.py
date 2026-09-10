@@ -95,7 +95,7 @@ def clear_dead_child_pass_heartbeat(
                 pid = int(birth.get("pid") or 0)
             except (TypeError, ValueError):
                 pid = 0
-        if pid > 1 and pid_alive(pid):
+        if pid <= 1 or pid_alive(pid):
             skipped_live.append(str(path))
             continue
         payload["active_task_id"] = ""
