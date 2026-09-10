@@ -6776,7 +6776,6 @@ class DatabasePortalExecutionBridge:
                 )
                 or event.get("phase") != "preflight"
                 or event.get("disposition") != "deny"
-                or event.get("reason") != "nonterminal_active_owner_alive"
                 or event.get("failure_kind") != "lifecycle_race"
                 or any(
                     event.get(name) is not False
@@ -6789,7 +6788,14 @@ class DatabasePortalExecutionBridge:
                 or not isinstance(record, Mapping)
                 or record.get("schema")
                 != "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-record@1"
-                or record.get("state") != "active"
+                # The lifecycle owner denies peer reuse throughout all three
+                # nonterminal phases. These are diagnostics only: accepting
+                # the paired reason/state grants neither reuse nor retry.
+                or (record.get("state"), event.get("reason")) not in (
+                    ("preparing", "nonterminal_preparing_owner_alive"),
+                    ("active", "nonterminal_active_owner_alive"),
+                    ("settling", "nonterminal_settling_owner_alive"),
+                )
                 or record.get("workspace_path") != event.get("worktree_path")
                 or record.get("branch") != event.get("branch")
                 or not re.fullmatch(
