@@ -397,6 +397,33 @@ def test_plan_refuses_hard_deny_and_exhausted_budget() -> None:
     assert exhausted.action is AutoRescueAction.NONE
 
 
+def test_plan_skips_provider_rescue_when_failures_are_ansi_colored() -> None:
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "error": "validation_command_failed",
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": ["validation_command_failed"],
+            },
+            "failure_head": (
+                "\x1b[31mFAILED\x1b[0m test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+                "::test_aseh_post_admission_bounds_parallel_scope_identity_flicker"
+            ),
+        },
+        expected_outputs=(
+            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+            "test/api/agent_supervisor/efficiency_state_hardening/"
+            "test_compatibility_migration.py",
+        ),
+        expected_outputs_present_on_disk=True,
+        stage_rescue_used=True,
+        materialize_rescue_used=True,
+    )
+    assert plan.action is AutoRescueAction.NONE
+    assert plan.reason == "failed_tests_outside_declared_outputs"
+
+
 def test_plan_skips_provider_rescue_when_failures_are_outside_declared_outputs() -> None:
     plan = plan_automatic_implementation_rescue(
         validation_result={

@@ -91983,6 +91983,28 @@ def _recent_live_work(receipt: Mapping[str, Any]) -> bool:
     )
 
 
+def _blocked_recovery_identity_rejected(receipt: Mapping[str, Any]) -> bool:
+    """True when a blocked receipt has an explicit identity/corpus reject.
+
+    Parallel-scope continue is for owner-readiness flicker, not for an
+    unsealed mutation that already failed the authority pair.
+    """
+
+    for key in (
+        "owner_identity_admitted",
+        "source_identity_admitted",
+        "task_corpus_admitted",
+        "semantic_corpus_admitted",
+        "frontier_admitted",
+    ):
+        if receipt.get(key) is False:
+            return True
+    pair = receipt.get("task_authority_pair")
+    if isinstance(pair, Mapping) and pair.get("admitted") is False:
+        return True
+    return False
+
+
 def _post_admission_health_action(
     receipt: Mapping[str, Any],
     *,
@@ -91997,6 +92019,19 @@ def _post_admission_health_action(
             # The authoritative receipt supplies the recovery bound.  Keep
             # the transient outage counter independent so an admitted repair
             # period cannot consume a later one/two-sample outage allowance.
+            return "continue", "", 0
+        if _blocked_recovery_identity_rejected(receipt):
+            return "fail", "authoritative_board_blocked", unhealthy_edges
+        if receipt.get("startup_grace_active") is True:
+            return "continue", "", 0
+        if receipt.get("blocked_recovery_scope") in {
+            "parallel_startup",
+            "parallel_work",
+        }:
+            # Owner-identity flicker must not SIGTERM remaining parallel
+            # shards. Empty scope is the expired/halted bound.
+            return "continue", "", 0
+        if _recent_live_work(receipt):
             return "continue", "", 0
         return "fail", "authoritative_board_blocked", unhealthy_edges
     if receipt.get("stuck") is True:
