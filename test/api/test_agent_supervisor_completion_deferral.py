@@ -138,3 +138,29 @@ def test_preparation_disappearing_at_identity_recheck_is_not_stale_evidence(tmp_
         assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
     finally:
         coordinator.close()
+
+
+def test_missing_completion_at_reconciliation_barrier_prevents_dispatch():
+    daemon = DatabaseImplementationDaemon.__new__(DatabaseImplementationDaemon)
+    calls = []
+    error = DatabaseCoordinationNotReadyError("missing", evidence=dict(
+        reason="completion_missing", task_cid="task:a", claim_id="claim:a", attempt_id="attempt:a"))
+
+    def reconcile():
+        calls.append("reconcile")
+        raise error
+
+    def forbidden():
+        pytest.fail("missing settlement evidence must end the tick")
+
+    daemon.reconcile_prepared_task_completions = reconcile
+    daemon.reconcile_terminal_portal_failures = forbidden
+    daemon.reconcile_expired_running_attempts = forbidden
+    daemon.reconcile_recoverable_portal_failure_rearms = forbidden
+    daemon.list_running_attempts = forbidden
+    daemon.claim_next = forbidden
+    for _ in range(2):
+        result = daemon.run_once()
+        assert result["deferred"] is True
+        assert result["recovery_provider_dispatched"] is False
+    assert calls == ["reconcile", "reconcile"]

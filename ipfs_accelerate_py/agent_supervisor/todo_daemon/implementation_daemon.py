@@ -73506,28 +73506,10 @@ class DatabaseImplementationDaemon:
     def _run_once_impl(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
-        from ..merge.database_coordination import DatabaseCoordinationNotReadyError
-
-        try:
-            completion_reconciliations = self.reconcile_prepared_task_completions()
-            portal_failure_reconciliations = (
-                self.reconcile_terminal_portal_failures()
-            )
-            expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
-            portal_failure_rearms = self.reconcile_recoverable_portal_failure_rearms()
-        except DatabaseCoordinationNotReadyError as exc:
-            evidence = dict(getattr(exc, "evidence", {}) or {})
-            if str(evidence.get("reason") or "") != "completion_missing":
-                raise
-            logger.warning(
-                "Skipping run_once reconciliation with missing completion task=%s claim=%s",
-                evidence.get("task_cid"),
-                evidence.get("claim_id"),
-            )
-            completion_reconciliations = []
-            portal_failure_reconciliations = []
-            expired_attempt_reconciliations = []
-            portal_failure_rearms = []
+        completion_reconciliations = self.reconcile_prepared_task_completions()
+        portal_failure_reconciliations = self.reconcile_terminal_portal_failures()
+        expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
+        portal_failure_rearms = self.reconcile_recoverable_portal_failure_rearms()
         reconciliation_write_count = (
             len(completion_reconciliations)
             + len(portal_failure_reconciliations)
