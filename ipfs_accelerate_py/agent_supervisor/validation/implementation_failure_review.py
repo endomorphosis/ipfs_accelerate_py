@@ -14,6 +14,7 @@ never authorizes secret, protected-path, submodule, or test-weakening failures.
 
 from __future__ import annotations
 
+import re
 import shlex
 from dataclasses import dataclass
 from enum import Enum
@@ -98,6 +99,7 @@ class FailureReviewReason(str, Enum):
     EMPTY_OR_NO_CHANGE = "empty_or_no_change"
     GENERIC_IMPLEMENTATION_FAILURE = "generic_implementation_failure"
     NO_ACTIONABLE_EVIDENCE = "no_actionable_evidence"
+    DIAGNOSTIC_PATH_EVIDENCE_INCOMPLETE = "diagnostic_path_evidence_incomplete"
 
 
 def _normalize_path(value: Any) -> str:
@@ -175,41 +177,83 @@ def _finding_codes_from_validation(
     return tuple(sorted(codes))
 
 
+_OMITTED_PATH_ARTIFACT = re.compile(
+    r"\[truncated original_bytes=[0-9]{1,20} sha256=[0-9a-f]{64}"
+    r"(?: omitted_items=[0-9]{1,20})?\]$"
+)
+
+
+def _diagnostic_paths(value: Any) -> tuple[tuple[str, ...], bool]:
+    """Decode bounded path evidence without rendering candidate objects.
+
+    A reserved sanitizer artifact (including a truncated string suffix) is
+    unknown evidence, never a pathname. A candidate can imitate the artifact,
+    but that only makes the review incomplete; it grants no scope or acceptance.
+    """
+
+    if type(value) not in (list, tuple):
+        return (), False
+    complete = len(value) <= 128
+    paths: set[str] = set()
+    for item in value[:128]:
+        if type(item) is not str or len(item) > 2048:
+            complete = False
+            continue
+        if _OMITTED_PATH_ARTIFACT.search(item.rstrip()):
+            complete = False
+            continue
+        path = _normalize_path(item)
+        if not path:
+            complete = False
+            continue
+        paths.add(path)
+    return tuple(sorted(paths)), complete
+
+
 def _changed_paths_from_validation(
     validation_result: Mapping[str, Any],
-) -> tuple[str, ...]:
+) -> tuple[tuple[str, ...], bool, bool]:
     proposal_paths: set[str] = set()
-    for container_key in ("proposal_gate", "proposal_validation"):
-        container = _mapping(validation_result.get(container_key))
+    complete = True
+    observed = False
+
+    def collect(container: Any, target: set[str]) -> None:
+        nonlocal complete, observed
+        if type(container) is not dict:
+            if container is not None:
+                complete = False
+                observed = True
+            return
         for key in ("changed_paths", "changed_files", "paths"):
-            proposal_paths.update(
-                path
-                for path in _normalized_paths(container.get(key) or ())
-            )
+            if key in container:
+                observed = True
+                paths, field_complete = _diagnostic_paths(container[key])
+                target.update(paths)
+                complete = complete and field_complete
+
+    for container_key in ("proposal_gate", "proposal_validation"):
+        collect(validation_result.get(container_key), proposal_paths)
     # Nested proposal object.
     proposal_validation = _mapping(
         validation_result.get("proposal_validation")
     )
-    proposal = _mapping(proposal_validation.get("proposal"))
-    proposal_paths.update(
-        _normalized_paths(proposal.get("changed_paths") or ())
+    collect(proposal_validation.get("proposal"), proposal_paths)
+    proposal_record_present = any(
+        key in validation_result for key in ("proposal_gate", "proposal_validation")
     )
-    if proposal_paths:
-        return tuple(sorted(proposal_paths))
+    if observed or proposal_record_present:
+        # A present but empty/malformed proposal record cannot be replaced by
+        # selection's read-only validation impact paths.
+        return tuple(sorted(proposal_paths)), complete and observed, True
 
     # Legacy validation records may not contain a proposal projection. Keep
     # their selection paths as a best-effort fallback, but never union them
     # with authoritative proposal paths: selection.changed_files also includes
     # read-only validation impact paths and therefore is not candidate-edit
     # evidence.
-    selection = _mapping(validation_result.get("selection"))
     selection_paths: set[str] = set()
-    for key in ("changed_paths", "changed_files", "paths"):
-        selection_paths.update(
-            path
-            for path in _normalized_paths(selection.get(key) or ())
-        )
-    return tuple(sorted(selection_paths))
+    collect(validation_result.get("selection"), selection_paths)
+    return tuple(sorted(selection_paths)), complete, observed
 
 
 def _failed_commands_from_validation(
@@ -620,6 +664,15 @@ def _guidance_lines(
                 validation_environment_guidance,
             ]
         )
+    if FailureReviewReason.DIAGNOSTIC_PATH_EVIDENCE_INCOMPLETE.value in reason_codes:
+        lines.extend(
+            [
+                "",
+                "Changed-path diagnostics are incomplete. Omitted or unsupported "
+                "evidence is not an out-of-scope path or edit permission. Keep "
+                "the rejection until complete admitted evidence is available.",
+            ]
+        )
     if FailureReviewReason.ENVIRONMENT_VALIDATION_UNAVAILABLE.value in reason_codes:
         lines.append("")
         lines.append("### Environment")
@@ -903,8 +956,15 @@ def review_implementation_failure(
             "validation_environment_guidance exceeds 8 KiB"
         )
     finding_codes = _finding_codes_from_validation(validation)
-    changed = _normalized_paths(
-        (*changed_paths, *_changed_paths_from_validation(validation))
+    projected_paths, projected_complete, projected_present = (
+        _changed_paths_from_validation(validation)
+    )
+    explicit_paths, explicit_complete = _diagnostic_paths(changed_paths)
+    changed = _normalized_paths((*explicit_paths, *projected_paths))
+    path_evidence_complete = (
+        projected_complete
+        and explicit_complete
+        and (projected_present or bool(explicit_paths))
     )
     expected = _normalized_paths(expected_outputs)
     # AST companions / justified scope are lawful edit authority for CIG-style
@@ -970,6 +1030,10 @@ def review_implementation_failure(
     size_findings = _size_related_findings(finding_codes)
 
     reason_codes: list[str] = []
+    if not path_evidence_complete:
+        reason_codes.append(
+            FailureReviewReason.DIAGNOSTIC_PATH_EVIDENCE_INCOMPLETE.value
+        )
     hard_denies = tuple(
         code for code in finding_codes if code in _HARD_DENY_FINDING_CODES
     )
@@ -1036,6 +1100,7 @@ def review_implementation_failure(
         and not hard_denies
         and not failed_commands
         and not missing
+        and path_evidence_complete
         and not _is_environment_failure(validation, log_excerpt=log_excerpt)
         and (
             proposal_accepted is True
@@ -1073,6 +1138,13 @@ def review_implementation_failure(
         "Prior attempt failure review "
         f"({decision.value}; reasons: {', '.join(reason_codes)}).",
     ]
+    if not path_evidence_complete:
+        addendum_lines.append(
+            "Changed-path diagnostics are incomplete; omitted or unsupported "
+            "evidence is not an out-of-scope path or permission to edit. "
+            "Keep the proposal rejection and obtain complete admitted evidence "
+            "before any scope-based acceptance."
+        )
     if size_findings:
         addendum_lines.append(
             "Proposal size gate failed ("
