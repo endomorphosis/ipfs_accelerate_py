@@ -28,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
     SupervisorLoop,
     SupervisorLoopConfig,
     SupervisorLoopDecision,
+    clear_dead_child_pass_heartbeat,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     SUPERVISED_CHILD_IDENTITY_PATH_ENV,
@@ -1254,6 +1255,24 @@ def test_supervisor_loop_stops_on_typed_fail_closed_child_exit(tmp_path: Path) -
         sleep=lambda _seconds: None,
     )
 
+    state_dir.mkdir(parents=True, exist_ok=True)
+    heartbeat_path = state_dir / "sawm_lane_0_database_daemon_pass_heartbeat.json"
+    heartbeat_path.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-daemon-pass-heartbeat@1"
+                ),
+                "active_task_id": "SAWM-008",
+                "claimed_task_cid": "sha256:dead",
+                "process_birth": {"pid": 2_147_483_647},
+                "selection_idle_reason": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+
     result = loop.run()
 
     assert result.status == TYPED_CHILD_BLOCKER_STATUS
@@ -1267,3 +1286,36 @@ def test_supervisor_loop_stops_on_typed_fail_closed_child_exit(tmp_path: Path) -
     assert status["last_exit_code"] == TYPED_FAIL_CLOSED_EXIT_CODE
     assert status["last_recycle_reason"] == TYPED_FAIL_CLOSED_RECYCLE_REASON
     assert status["exact_source_worktree"] is True
+    heartbeat = json.loads(heartbeat_path.read_text(encoding="utf-8"))
+    assert heartbeat["active_task_id"] == ""
+    assert heartbeat["claimed_task_cid"] == ""
+    assert heartbeat["selection_idle_reason"] == TYPED_FAIL_CLOSED_RECYCLE_REASON
+
+
+def test_clear_dead_child_pass_heartbeat_preserves_live_worker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Claim-preserving recovery must not drop a live child's heartbeat."""
+
+    heartbeat_path = tmp_path / "sawm_lane_0_database_daemon_pass_heartbeat.json"
+    heartbeat_path.write_text(
+        json.dumps(
+            {
+                "active_task_id": "SAWM-008",
+                "claimed_task_cid": "sha256:live",
+                "process_birth": {"pid": 123},
+                "selection_idle_reason": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(supervisor_loop_module, "pid_alive", lambda pid: pid == 123)
+
+    result = clear_dead_child_pass_heartbeat(tmp_path)
+
+    assert result["skipped_live"] == [str(heartbeat_path)]
+    assert result["cleared"] == []
+    heartbeat = json.loads(heartbeat_path.read_text(encoding="utf-8"))
+    assert heartbeat["active_task_id"] == "SAWM-008"
+    assert heartbeat["claimed_task_cid"] == "sha256:live"

@@ -18058,6 +18058,57 @@ def _m70_published_owner_is_process_dead(config: Mapping[str, Any]) -> bool:
     return not listening
 
 
+def _admit_leftover_fail_closed_heartbeat_unstall(
+    *,
+    owner_ready: bool,
+    owner_alive: bool,
+    master_alive: bool,
+    supervisor_alive: bool,
+    daemon_alive: bool,
+    last_exit_code: int | None,
+    leftover_active_task_id: str,
+    leftover_heartbeat_pid_alive: bool,
+) -> dict[str, object]:
+    """Clear a dead fail-closed claim. Never kill a healthy coordinator."""
+
+    if not owner_ready or not owner_alive:
+        return {
+            "admitted": False,
+            "kill_coordinator": False,
+            "reason": "owner_not_ready",
+        }
+    if not master_alive:
+        return {
+            "admitted": False,
+            "kill_coordinator": False,
+            "reason": "healthy_coordinator_owns_in_wave_relaunch",
+        }
+    if not supervisor_alive:
+        return {
+            "admitted": False,
+            "kill_coordinator": False,
+            "reason": "lane_supervisor_dead",
+        }
+    if daemon_alive or leftover_heartbeat_pid_alive:
+        return {
+            "admitted": False,
+            "kill_coordinator": False,
+            "reason": "live_worker_claim_preserved",
+        }
+    if int(last_exit_code or 0) != 78 or not str(leftover_active_task_id or "").strip():
+        return {
+            "admitted": False,
+            "kill_coordinator": False,
+            "reason": "no_leftover_fail_closed_heartbeat",
+        }
+    return {
+        "admitted": True,
+        "kill_coordinator": False,
+        "action": "clear_leftover_fail_closed_heartbeat",
+        "reason": "leftover_fail_closed_heartbeat",
+    }
+
+
 def _admit_isolated_lane_supervisor_recycle(
     *,
     owner_ready: bool,

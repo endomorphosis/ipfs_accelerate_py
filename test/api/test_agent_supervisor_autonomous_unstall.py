@@ -904,6 +904,88 @@ def test_watchdog_does_not_restart_typed_fail_closed_exit(
     assert lane_report["heartbeat_check"].get("last_exit_code") == 78
 
 
+def test_watchdog_clears_leftover_fail_closed_heartbeat_without_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exit 78 plus a dead-child claim is leftover, not a frozen worker."""
+
+    state_dir = tmp_path / "lane-state"
+    state_dir.mkdir()
+    (state_dir / "lane_1_status.json").write_text(
+        json.dumps(
+            {
+                "state": "agentic_maintenance_completed",
+                "last_exit_code": 78,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    (state_dir / "lane_1_supervisor.pid").write_text("123\n", encoding="utf-8")
+    heartbeat_path = state_dir / "lane_1_database_daemon_pass_heartbeat.json"
+    heartbeat_path.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-daemon-pass-heartbeat@1"
+                ),
+                "active_task_id": "SAWM-008",
+                "claimed_task_cid": "sha256:dead",
+                "process_birth": {"pid": 2_147_483_647},
+                "selection_idle_reason": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "lanes.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "tree_id": "tree-1",
+                "autonomous_unstall_policy": {
+                    "enabled": True,
+                    "cooldown_ms": 0,
+                },
+                "lanes": [
+                    {
+                        "bundle_key": "lane-1",
+                        "state_dir": str(state_dir),
+                        "state_prefix": "lane_1",
+                    }
+                ],
+                "started": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    restart_calls = 0
+
+    def restart(_lane: dict[str, Any]) -> dict[str, Any]:
+        nonlocal restart_calls
+        restart_calls += 1
+        return {"restarted": True, "new_pid": 456}
+
+    monkeypatch.setattr(watchdog_module, "pid_alive", lambda pid: pid == 123)
+    report = SupervisorWatchdog(
+        manifest_path=manifest_path,
+        repo_root=tmp_path,
+        lifecycle_restart=restart,
+    )._check_cycle()
+
+    lane_report = report["reports"][0]
+    assert restart_calls == 0
+    assert lane_report["action"] == "leftover_fail_closed_heartbeat_cleared"
+    assert lane_report["reason"] == "leftover_fail_closed_heartbeat"
+    leftover = lane_report["autonomous_unstall"]
+    assert leftover["recovered"] is True
+    assert leftover["reason"] == "leftover_fail_closed_heartbeat"
+    heartbeat = json.loads(heartbeat_path.read_text(encoding="utf-8"))
+    assert heartbeat["active_task_id"] == ""
+    assert heartbeat["claimed_task_cid"] == ""
+
+
 def test_watchdog_restarts_dead_lane_when_owner_ready(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
