@@ -967,6 +967,18 @@ class ProcessGroupCancelled(RuntimeError):
         super().__init__(self.reason)
 
 
+class ProcessGroupCleanupUnverified(RuntimeError):
+    """The completed leader's owned group has no verified cleanup outcome.
+
+    This error preserves uncertainty; it supplies no callback, descendant
+    isolation, or task settlement authority.
+    """
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__("process group cleanup unverified: " + reason)
+
+
 def run_process_group_capture(
     command: Sequence[str],
     *,
@@ -1075,6 +1087,10 @@ def run_process_group_stream(
     noisy or malicious child from extending its lease forever. Supplying only
     ``on_progress`` retains the absolute deadline while polling the same
     progress marker for telemetry.
+
+    Normal return also requires observing the owned process group absent.
+    Unavailable cleanup raises ``ProcessGroupCleanupUnverified``. This is not
+    proof about descendants that escaped the group or an isolation boundary.
     """
 
     input_value: Any = input_text
@@ -1358,31 +1374,46 @@ def run_process_group_stream(
                 setattr(timeout_exc, attribute, getattr(exc, attribute))
         raise timeout_exc from exc
     # A successful CLI process may have daemonized descendants that closed
-    # their inherited output descriptors.  They remain in the owned session
-    # and could mutate the checkout after the implementation fence's final
-    # check, so quiesce the complete group before returning to validation.
+    # their inherited output descriptors. Members remaining in the owned group
+    # could mutate the checkout after the implementation fence's final check.
+    # Only ESRCH establishes group absence; neither a denied observation nor a
+    # sent signal proves cleanup. This does not cover escaped descendants.
     def group_alive() -> bool:
         try:
             os.killpg(process.pid, 0)
             return True
         except ProcessLookupError:
             return False
-        except OSError:
-            return False
+        except OSError as exc:
+            raise ProcessGroupCleanupUnverified("group_probe_failed") from exc
 
-    if group_alive():
+    def signal_group(signum: int) -> bool:
         try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except OSError:
-            pass
+            os.killpg(process.pid, signum)
+            return True
+        except ProcessLookupError:
+            return False
+        except OSError as exc:
+            reason = (
+                "group_term_failed"
+                if signum == signal.SIGTERM
+                else "group_kill_failed"
+            )
+            raise ProcessGroupCleanupUnverified(reason) from exc
+
+    if group_alive() and signal_group(signal.SIGTERM):
         deadline = time.monotonic() + max(0.0, float(termination_grace_seconds))
         while group_alive() and time.monotonic() < deadline:
             time.sleep(0.02)
-        if group_alive():
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except OSError:
-                pass
+        if group_alive() and signal_group(signal.SIGKILL):
+            # Give killed members a bounded opportunity to leave/reap. A
+            # retained zombie group remains conservatively unverified too.
+            final_grace = max(0.1, min(5.0, float(termination_grace_seconds)))
+            deadline = time.monotonic() + final_grace
+            while group_alive():
+                if time.monotonic() >= deadline:
+                    raise ProcessGroupCleanupUnverified("group_remains_after_kill")
+                time.sleep(0.02)
     return subprocess.CompletedProcess(
         args=list(command),
         returncode=int(process.returncode or 0),
