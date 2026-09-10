@@ -2092,6 +2092,24 @@ def test_operator_m70_live_owner_retired_token_does_not_demand_quack_start() -> 
     assert live_source.index(wait_token) < live_source.index(unavailable)
 
 
+def test_sidecar_duckdb_opens_do_not_prefer_unbound_quack_owner() -> None:
+    """Sidecar files must not default-prefer the live owner URI."""
+
+    duckdb_source = (
+        REPO_ROOT
+        / "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py"
+    ).read_text(encoding="utf-8")
+    coordination_source = (
+        REPO_ROOT
+        / "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py"
+    ).read_text(encoding="utf-8")
+    assert "def _prefer_quack_for_local_path(" in duckdb_source
+    assert "prefer_quack = _prefer_quack_for_local_path(path)" in duckdb_source
+    assert "Do not restore an unconditional True default" in duckdb_source
+    assert "prefer_quack=bool(self._quack_transport)" in coordination_source
+    assert "Do not drop prefer_quack=False" in coordination_source
+
+
 def test_m69_live_preflight_contract_accepts_mappingproxy_authority() -> None:
     """M69 must authorize stopped gen-46 vault restart to generation 47."""
 

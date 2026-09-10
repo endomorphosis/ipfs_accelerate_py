@@ -4,6 +4,8 @@ import hashlib
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DUCKDB_ONLY_ENV,
@@ -240,3 +242,28 @@ def test_merge_resolver_migration_preserves_epoch_precision(
     assert is_sqlite_database(source)
     assert migrated["acquired_at"] == acquired_at
     assert migrated["lease_expires_at"] == lease_expires_at
+
+
+def test_local_sidecar_does_not_prefer_unbound_quack_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = tmp_path / "control.duckdb"
+    sidecar = tmp_path / "control.coordination.duckdb"
+    monkeypatch.setenv(
+        duckdb_state.QUACK_STORE_ID_ENV,
+        str(store),
+    )
+    monkeypatch.delenv(duckdb_state.QUACK_PREFER_ENV, raising=False)
+    discovered: list[object] = []
+
+    def fake_discover(path):
+        discovered.append(path)
+        raise AssertionError("sidecar must not discover a Quack owner")
+
+    monkeypatch.setattr(duckdb_state, "discover_live_quack_endpoint", fake_discover)
+    with open_duckdb_connection(sidecar) as connection:
+        connection.execute("SELECT 1")
+    assert discovered == []
+    assert duckdb_state._prefer_quack_for_local_path(sidecar) is False
+    assert duckdb_state._prefer_quack_for_local_path(store) is True
