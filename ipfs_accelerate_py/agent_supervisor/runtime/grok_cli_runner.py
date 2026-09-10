@@ -9794,7 +9794,6 @@ def _run_protected_effect_recovery(
             terminal_observer=store,
             terminal_reservation=terminal,
         )
-        _release_recorded_codex_effect_cleanup(terminal.effect_launch_receipt)
         if capacity_receipt:
             print(
                 render_agent_implementation_codex_capacity_receipt(
