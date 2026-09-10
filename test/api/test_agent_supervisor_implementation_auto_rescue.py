@@ -397,6 +397,67 @@ def test_plan_refuses_hard_deny_and_exhausted_budget() -> None:
     assert exhausted.action is AutoRescueAction.NONE
 
 
+def test_plan_skips_provider_rescue_when_failures_are_outside_declared_outputs() -> None:
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "error": "validation_command_failed",
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": ["validation_command_failed"],
+            },
+            "failed_tests": [
+                "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+                "::test_aseh_r45_receipt_id_reuses_memoized_validation_contracts"
+            ],
+            "failure_head": (
+                "FAILED test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+                "::test_aseh_health_gives_exact_blocked_reconciliation_a_bounded_window"
+            ),
+        },
+        expected_outputs=(
+            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+            "test/api/agent_supervisor/efficiency_state_hardening/"
+            "test_compatibility_migration.py",
+        ),
+        expected_outputs_present_on_disk=True,
+        stage_rescue_used=True,
+        materialize_rescue_used=True,
+    )
+    assert plan.action is AutoRescueAction.NONE
+    assert plan.reason == "failed_tests_outside_declared_outputs"
+
+
+def test_plan_still_rescues_when_a_declared_output_test_failed() -> None:
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "error": "validation_command_failed",
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": ["validation_command_failed"],
+            },
+            "failed_tests": [
+                "test/api/agent_supervisor/efficiency_state_hardening/"
+                "test_compatibility_migration.py"
+                "::test_quack_state_server_routes_legacy_api_through_bound_repository",
+                "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+                "::test_aseh_r21_owner_start_runner_preserves_failed_start_and_skips_stop",
+            ],
+        },
+        expected_outputs=(
+            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+            "test/api/agent_supervisor/efficiency_state_hardening/"
+            "test_compatibility_migration.py",
+        ),
+        expected_outputs_present_on_disk=True,
+        stage_rescue_used=True,
+        materialize_rescue_used=True,
+    )
+    assert plan.action is AutoRescueAction.INLINE_PROVIDER_RESCUE
+
+
 def test_inline_provider_rescue_prompt_includes_failure_evidence() -> None:
     prompt = build_inline_provider_rescue_prompt(
         base_prompt="Implement DCR-013 outputs.",

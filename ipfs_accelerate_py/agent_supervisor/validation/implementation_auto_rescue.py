@@ -78,6 +78,10 @@ HARD_DENY_REASON_CODES = frozenset(
 )
 
 _VALIDATE_TOKEN_RE = re.compile(r"(?i)(?<![A-Za-z0-9_])validate(?![A-Za-z0-9_])")
+_FAILED_NODE_RE = re.compile(
+    r"^FAILED\s+(\S+::\S+)",
+    re.MULTILINE,
+)
 _MATERIALIZE_ALIASES = ("materialize", "write", "generate")
 
 
@@ -153,6 +157,64 @@ class AutoRescuePlan:
             "denied_helper_paths": list(self.denied_helper_paths),
             "max_provider_rescue_passes": int(self.max_provider_rescue_passes),
         }
+
+
+def _failed_test_nodeids(validation_result: Mapping[str, Any]) -> tuple[str, ...]:
+    review = _failure_review_projection(validation_result)
+    collected = list(_as_str_tuple(validation_result.get("failed_tests") or ()))
+    collected.extend(_as_str_tuple(review.get("failed_tests") or ()))
+    blob = "\n".join(
+        (
+            str(validation_result.get("failure_head") or ""),
+            str(validation_result.get("stdout") or ""),
+            str(validation_result.get("stderr") or ""),
+            str(review.get("failure_head") or ""),
+        )
+    )
+    for match in _FAILED_NODE_RE.finditer(blob):
+        collected.append(match.group(1))
+    return tuple(dict.fromkeys(item for item in collected if item))
+
+
+def _failed_test_files(nodeids: Sequence[str]) -> tuple[str, ...]:
+    files: list[str] = []
+    for node in nodeids:
+        path = str(node).replace("\\", "/").split("::", 1)[0].lstrip("./")
+        if path:
+            files.append(path)
+    return tuple(dict.fromkeys(files))
+
+
+def _failed_tests_outside_declared_outputs(
+    failed_files: Sequence[str],
+    expected_outputs: Sequence[str],
+) -> bool:
+    """True when every failing test file is outside the task's declared outputs.
+
+    ASEH-061 cannot edit ``test_agent_supervisor_configured_typed_grant_handoff.py``
+    (implementation-protected). Looping Grok on those failures wastes the
+    rescue pass that should repair declared outputs such as
+    ``test_compatibility_migration.py``.
+    """
+
+    if not failed_files:
+        return False
+    expected = {
+        str(item).replace("\\", "/").lstrip("./")
+        for item in expected_outputs
+        if str(item).strip()
+    }
+    if not expected:
+        return False
+    for test_file in failed_files:
+        if test_file in expected:
+            return False
+        if any(
+            test_file.startswith(item.rstrip("/") + "/") or item.startswith(test_file)
+            for item in expected
+        ):
+            return False
+    return True
 
 
 def _as_str_tuple(values: Any) -> tuple[str, ...]:
@@ -473,6 +535,18 @@ def plan_automatic_implementation_rescue(
         or proposal_failed
         or set(reason_codes) & INLINE_PROVIDER_RESCUE_REASON_CODES
     )
+    failed_nodes = _failed_test_nodeids(result)
+    failed_files = _failed_test_files(failed_nodes)
+    if _failed_tests_outside_declared_outputs(failed_files, expected):
+        return AutoRescuePlan(
+            action=AutoRescueAction.NONE,
+            reason="failed_tests_outside_declared_outputs",
+            finding_codes=finding_codes,
+            reason_codes=reason_codes,
+            failed_commands=failed_commands,
+            expected_outputs=expected,
+            missing_expected_outputs=missing,
+        )
     if (
         allow_provider_rescue
         and provider_rescue_passes_used < 1

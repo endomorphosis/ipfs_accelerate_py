@@ -58,11 +58,14 @@ def pytest_configure(config: Any) -> None:
 
     try:
         workspace = _workspace(config)
-        located = infer_board_workspace(workspace)
-        if located is None:
-            return
-        repo_root, board = located
         context = ledger_context(workspace)
+        located = infer_board_workspace(workspace)
+        if located is None and context is None:
+            return
+        if located is None:
+            repo_root, board = workspace, "aseh"
+        else:
+            repo_root, board = located
         task_id = str(context["task_id"]) if context else "unbound"
         cache_root = repo_root / "data" / board / "state" / "proof-reuse" / task_id
         cache_root.mkdir(parents=True, exist_ok=True)

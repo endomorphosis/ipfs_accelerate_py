@@ -6,6 +6,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.runtime.pytest_item_ledger import (
     LEDGER_SCHEMA,
     command_fingerprint,
@@ -55,6 +57,34 @@ def test_ledger_context_none_outside_board_worktree(tmp_path: Path) -> None:
     (tmp_path / "keep.txt").write_text("x\n", encoding="utf-8")
     assert infer_board_workspace(tmp_path) is None
     assert ledger_context(tmp_path) is None
+
+
+def test_ledger_context_uses_env_when_git_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.pytest_item_ledger import (
+        write_task_id_marker,
+    )
+
+    branch = "implementation/aseh-061-deadbeef-attempt-1-1"
+    workspace = _seed_worktree(tmp_path, branch=branch)
+    monkeypatch.setenv("ASEH_TASK_ID", "ASEH-061")
+
+    def boom(*_args, **_kwargs):
+        raise OSError("landlock denied git")
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.pytest_item_ledger.subprocess.run",
+        boom,
+    )
+    context = ledger_context(workspace)
+    assert context is not None
+    assert context["task_id"] == "ASEH-061"
+    write_task_id_marker(workspace, "ASEH-061")
+    monkeypatch.delenv("ASEH_TASK_ID", raising=False)
+    marked = ledger_context(workspace)
+    assert marked is not None
+    assert marked["task_id"] == "ASEH-061"
 
 
 def test_record_pass_is_reusable_when_hashes_match(tmp_path: Path) -> None:

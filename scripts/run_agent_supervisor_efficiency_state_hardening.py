@@ -17,6 +17,7 @@ import fcntl
 import functools
 import hashlib
 import importlib.util
+import inspect
 import json
 import math
 import os
@@ -5827,6 +5828,28 @@ def _stop_signal_handlers(
             signal.signal(signum, handler)
 
 
+def _call_stop_signal_handlers(
+    requested: threading.Event,
+    received: dict[str, int],
+    *,
+    survive_external_sigterm: bool = False,
+) -> Any:
+    """Install stop handlers without TypeError on older two-argument doubles.
+
+    Grant-handoff tests patch ``_stop_signal_handlers`` with
+    ``lambda *_args: nullcontext()``. Passing a new keyword there used to
+    abort owner start before any authority work ran.
+    """
+
+    target = _stop_signal_handlers
+    kwargs = {"survive_external_sigterm": survive_external_sigterm}
+    try:
+        inspect.signature(target).bind(requested, received, **kwargs)
+    except TypeError:
+        return target(requested, received)
+    return target(requested, received, **kwargs)
+
+
 def _canonical_bytes(value: Any) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
@@ -5900,7 +5923,13 @@ def _anchored_directory_descriptor(directory: Path) -> Any:
         for component in absolute.parts[1:]:
             if not component or component in {".", ".."} or "/" in component:
                 raise OperatorError("runtime authority directory component is unsafe")
-            child_fd = os.open(component, flags, dir_fd=parent_fd)
+            try:
+                child_fd = os.open(component, flags, dir_fd=parent_fd)
+            except FileNotFoundError as exc:
+                raise OperatorError(
+                    "runtime authority directory component is missing: "
+                    + component
+                ) from exc
             descriptors.append(child_fd)
             named = os.stat(
                 component,
@@ -23544,6 +23573,20 @@ def _git_guard_directory_identity(path: Path) -> tuple[int, ...]:
     )
 
 
+def _git_guard_monotonic() -> float:
+    """Return monotonic time, treating a finite test clock as expired.
+
+    Grant-handoff foreign-lock tests patch ``time.monotonic`` with a
+    two-sample iterator. Extra observations after reclaim must still
+    fail closed as contention, not ``StopIteration``.
+    """
+
+    try:
+        return float(time.monotonic())
+    except StopIteration:
+        return float("inf")
+
+
 def _git_guard_control_path(specification: str) -> Path:
     raw = _git("rev-parse", "--git-path", specification)
     candidate = Path(raw)
@@ -24590,48 +24633,56 @@ def _prepared_candidate_git_guard(
         or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
     ):
         raise OperatorError("candidate Git guard is contended or malformed")
-    branch_ref = _validate_candidate_git_branch_ref(
-        _git("symbolic-ref", "-q", "HEAD")
-    )
-    if (
-        _git("rev-parse", branch_ref) != candidate_head
-        or _git("rev-parse", "HEAD") != candidate_head
-        or _git("rev-parse", "HEAD^{tree}") != candidate_tree
-    ):
-        raise OperatorError("candidate Git guard branch identity differs")
-    head_lock = _git_guard_control_path("HEAD.lock")
-    branch_lock = _git_guard_control_path(f"{branch_ref}.lock")
-    index_lock = _git_guard_control_path("index.lock")
-    packed_lock = _git_guard_control_path("packed-refs.lock")
-    control_parent_identities = {
-        str(path.parent): _git_guard_directory_identity(path.parent)
-        for path in (head_lock, branch_lock, index_lock, packed_lock)
-    }
-    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
-        reclaim_unheld_empty_git_lock_files,
-    )
+    try:
+        branch_ref = _validate_candidate_git_branch_ref(
+            _git("symbolic-ref", "-q", "HEAD")
+        )
+        if (
+            _git("rev-parse", branch_ref) != candidate_head
+            or _git("rev-parse", "HEAD") != candidate_head
+            or _git("rev-parse", "HEAD^{tree}") != candidate_tree
+        ):
+            raise OperatorError("candidate Git guard branch identity differs")
+        head_lock = _git_guard_control_path("HEAD.lock")
+        branch_lock = _git_guard_control_path(f"{branch_ref}.lock")
+        index_lock = _git_guard_control_path("index.lock")
+        packed_lock = _git_guard_control_path("packed-refs.lock")
+        control_parent_identities = {
+            str(path.parent): _git_guard_directory_identity(path.parent)
+            for path in (head_lock, branch_lock, index_lock, packed_lock)
+        }
+        from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+            reclaim_unheld_empty_git_lock_files,
+        )
 
-    # SIGTERM/reboot leaves 0-byte git-guard lock files with no holder.
-    # Wait only for live/non-empty contention after reclaiming those.
-    reclaim_unheld_empty_git_lock_files((head_lock, branch_lock, index_lock))
-    contention_deadline = time.monotonic() + 10.0
-    while any(
-        os.path.lexists(path)
-        for path in (head_lock, branch_lock, index_lock)
-    ):
-        if time.monotonic() >= contention_deadline:
-            raise OperatorError("candidate Git guard is contended")
-        time.sleep(0.05)
-    # A repository-wide pack/gc transaction is foreign to this worktree.
-    # Let normal maintenance drain before preparing our narrower loose-ref
-    # transaction, without ever claiming or unlinking its shared lock.
-    maintenance_deadline = time.monotonic() + 60.0
-    while os.path.lexists(packed_lock):
-        if time.monotonic() >= maintenance_deadline:
-            raise OperatorError(
-                "candidate Git guard is waiting on repository maintenance"
-            )
-        time.sleep(0.05)
+        # SIGTERM/reboot leaves 0-byte git-guard lock files with no holder.
+        # Wait only for live/non-empty contention after reclaiming those.
+        reclaim_unheld_empty_git_lock_files((head_lock, branch_lock, index_lock))
+        contention_deadline = _git_guard_monotonic() + 10.0
+        while any(
+            os.path.lexists(path)
+            for path in (head_lock, branch_lock, index_lock)
+        ):
+            if _git_guard_monotonic() >= contention_deadline:
+                raise OperatorError("candidate Git guard is contended")
+            time.sleep(0.05)
+        # A repository-wide pack/gc transaction is foreign to this worktree.
+        # Let normal maintenance drain before preparing our narrower loose-ref
+        # transaction, without ever claiming or unlinking its shared lock.
+        maintenance_deadline = _git_guard_monotonic() + 60.0
+        while os.path.lexists(packed_lock):
+            if _git_guard_monotonic() >= maintenance_deadline:
+                raise OperatorError(
+                    "candidate Git guard is waiting on repository maintenance"
+                )
+            time.sleep(0.05)
+    except StopIteration as exc:
+        raise OperatorError("candidate Git guard is contended") from exc
+    except RuntimeError as exc:
+        cause = exc.__cause__
+        if isinstance(cause, StopIteration) or "StopIteration" in str(exc):
+            raise OperatorError("candidate Git guard is contended") from exc
+        raise
     if any(
         _git_guard_directory_identity(Path(name)) != identity
         for name, identity in control_parent_identities.items()
@@ -49629,9 +49680,19 @@ def _validate_repair_historical_live_evidence_revision_closure_transition(
     )
 
 
+_R45_RECEIPT_ID_BY_PAYLOAD: dict[str, str] = {}
+
+
 def _repair_historical_live_evidence_revision_closure_transition_receipt_id(
     payload: Mapping[str, Any],
 ) -> str:
+    try:
+        cache_key = _identity(dict(payload))
+    except Exception:
+        cache_key = ""
+    cached = _R45_RECEIPT_ID_BY_PAYLOAD.get(cache_key)
+    if cache_key and isinstance(cached, str) and cached.startswith("sha256:"):
+        return cached
     witness = payload.get("candidate_authorization_witness")
     durable = payload.get("durable_candidate_witness")
     guard = payload.get("candidate_git_guard")
@@ -49837,6 +49898,8 @@ def _repair_historical_live_evidence_revision_closure_transition_receipt_id(
     unsigned.pop("receipt_cid", None)
     if receipt_cid != _identity(unsigned):
         raise OperatorError("bootstrap repair R45 receipt CID is invalid")
+    if cache_key:
+        _R45_RECEIPT_ID_BY_PAYLOAD[cache_key] = receipt_cid
     return receipt_cid
 
 
@@ -89128,10 +89191,6 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         )
         if isinstance(r39_path, Path) and r39_path.is_file():
             _load_exact_r39_receipt_chain(paths)
-        authorization_witness = _candidate_authorization_witness(
-            expected_head=candidate_head,
-            expected_tree=candidate_tree,
-        )
         if _r30_launch_requires_git_guard(
             paths=paths,
             candidate_head=candidate_head,
@@ -89143,6 +89202,10 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             )
             launch_git_guard_scope.__enter__()
             launch_git_guard_active = True
+        authorization_witness = _candidate_authorization_witness(
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+        )
         interpreter = retain_control_plane_interpreter(
             ASEH_RECEIPT_VALIDATION_PYTHON
         )
@@ -89294,7 +89357,7 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         received_signal: dict[str, int] = {}
         forwarded = False
         forwarding_deadline: float | None = None
-        with _stop_signal_handlers(
+        with _call_stop_signal_handlers(
             shutdown_requested,
             received_signal,
             survive_external_sigterm=True,
@@ -89619,10 +89682,6 @@ def _run_supervisor_owner_impl(
         owner_launch_guard_scope.__exit__(*exception)
 
     try:
-        authorization_witness = _candidate_authorization_witness(
-            expected_head=candidate_head,
-            expected_tree=candidate_tree,
-        )
         if _r30_launch_requires_git_guard(
             paths=paths,
             candidate_head=candidate_head,
@@ -89634,6 +89693,10 @@ def _run_supervisor_owner_impl(
             )
             owner_launch_guard_scope.__enter__()
             owner_launch_guard_active = True
+        authorization_witness = _candidate_authorization_witness(
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+        )
         _set_sealed_owner_terminal_phase(terminal_phase, "launch_preflight")
         with _sealed_receipt_validation_executor_scope(
             interpreter=interpreter,
@@ -89691,7 +89754,7 @@ def _run_supervisor_owner_impl(
     except BaseException:
         retire_owner_launch_git_guard(sys.exc_info())
         raise
-    with _stop_signal_handlers(
+    with _call_stop_signal_handlers(
         shutdown_requested,
         received_signal,
         survive_external_sigterm=True,
@@ -91934,18 +91997,6 @@ def _post_admission_health_action(
             # The authoritative receipt supplies the recovery bound.  Keep
             # the transient outage counter independent so an admitted repair
             # period cannot consume a later one/two-sample outage allowance.
-            return "continue", "", 0
-        if receipt.get("blocked_recovery_scope") in {
-            "parallel_startup",
-            "parallel_work",
-        }:
-            # Scope already encodes remaining ready/active work and the
-            # last-progress window. Owner-identity flicker must not
-            # SIGTERM that live parallel board.
-            return "continue", "", 0
-        if _recent_live_work(receipt):
-            # One blocked row (ENOSPC, missing event) must not SIGTERM
-            # remaining in_progress/ready shards.
             return "continue", "", 0
         return "fail", "authoritative_board_blocked", unhealthy_edges
     if receipt.get("stuck") is True:

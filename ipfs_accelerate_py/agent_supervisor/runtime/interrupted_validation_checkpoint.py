@@ -138,8 +138,10 @@ def snapshot_implementation_workspace(
             WORKSPACE_LEDGER_NAME,
             pytest_item_ledger_dir,
             workspace_records_path,
+            write_task_id_marker,
         )
 
+        write_task_id_marker(workspace, task_id)
         local_ledger = workspace_records_path(workspace)
         if local_ledger.is_file():
             _copy_file(local_ledger, dest_root / WORKSPACE_LEDGER_NAME)
@@ -203,6 +205,7 @@ def restore_interrupted_validation(
             WORKSPACE_LEDGER_NAME,
             pytest_item_ledger_dir,
             workspace_records_path,
+            write_task_id_marker,
         )
 
         local_ledger = workspace_records_path(workspace)
@@ -212,6 +215,7 @@ def restore_interrupted_validation(
             _copy_file(checkpoint_ledger, local_ledger)
         elif durable_ledger.is_file():
             _copy_file(durable_ledger, local_ledger)
+        write_task_id_marker(workspace, task_id)
     except Exception:
         pass
     return restored > 0

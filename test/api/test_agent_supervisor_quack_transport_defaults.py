@@ -587,6 +587,56 @@ def test_unstall_orphans_in_progress_on_owner_restart(tmp_path) -> None:
     assert rows["ASEH-031"] == ("retrying", 787)
 
 
+def test_orphan_unstall_keeps_a_claim_this_owner_just_made() -> None:
+    import duckdb
+    from datetime import datetime, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        unstall_stale_in_progress_tasks,
+    )
+
+    connection = duckdb.connect(":memory:")
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL
+        )
+        """
+    )
+    now = datetime(2026, 9, 10, 1, 40, tzinfo=timezone.utc)
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?)",
+        [
+            "cid-061",
+            "ASEH-061",
+            "in_progress",
+            2,
+            now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ],
+    )
+    result = unstall_stale_in_progress_tasks(
+        connection,
+        now=now,
+        stale_seconds=16_200,
+        allow_projection_only=True,
+        orphan_previous_generation=True,
+    )
+    assert result["unstalled"] == []
+    skipped = {
+        str(item.get("task_alias")): str(item.get("reason"))
+        for item in result.get("skipped") or ()
+    }
+    assert skipped["ASEH-061"] == "claimed_by_current_owner_generation"
+    row = connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_alias = 'ASEH-061'"
+    ).fetchone()
+    assert tuple(row) == ("in_progress", 2)
+
+
 def test_unstall_refuses_projection_only_mutation_without_fixture_authority() -> None:
     import duckdb
     from datetime import datetime, timedelta, timezone

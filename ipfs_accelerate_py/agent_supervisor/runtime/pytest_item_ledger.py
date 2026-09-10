@@ -22,6 +22,16 @@ from typing import Any, Iterable, Mapping
 LEDGER_SCHEMA = "ipfs_accelerate_py/agent-supervisor/pytest-item-ledger@1"
 SKIP_REASON = "pytest-item-ledger reuse"
 WORKSPACE_LEDGER_NAME = ".aseh-pytest-item-ledger.jsonl"
+WORKSPACE_LEDGER_ALIASES = (
+    WORKSPACE_LEDGER_NAME,
+    "aseh-pytest-item-ledger.jsonl",
+    ".pytest_cache/aseh-pytest-item-ledger.jsonl",
+)
+TASK_ID_MARKER_NAME = ".aseh-task-id"
+TASK_ID_ENV_NAMES = (
+    "ASEH_TASK_ID",
+    "IPFS_ACCELERATE_AGENT_TASK_ID",
+)
 _TASK_BRANCH_RE = re.compile(
     r"^implementation/([a-z][a-z0-9]*-\d+)",
     re.IGNORECASE,
@@ -29,6 +39,14 @@ _TASK_BRANCH_RE = re.compile(
 _MAX_FILE_BYTES = 2 * 1024 * 1024
 _MAX_JSONL_BYTES = 8 * 1024 * 1024
 _PASSED = "passed"
+_WALK_SKIP_DIRS = {
+    ".git",
+    ".pytest_cache",
+    "__pycache__",
+    "data",
+    "htmlcov",
+    "node_modules",
+}
 
 
 def pytest_item_ledger_dir(repo_root: Path, board: str, task_id: str) -> Path:
@@ -70,19 +88,59 @@ def infer_board_workspace(workspace: Path) -> tuple[Path, str] | None:
     return None
 
 
+def write_task_id_marker(workspace: Path, task_id: str) -> None:
+    text = str(task_id or "").strip().upper()
+    if not text:
+        return
+    try:
+        (Path(workspace) / TASK_ID_MARKER_NAME).write_text(text + "\n", encoding="utf-8")
+    except OSError:
+        return
+
+
 def task_id_from_workspace(workspace: Path) -> str | None:
-    completed = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=workspace,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    branch = (completed.stdout or "").strip()
+    for name in TASK_ID_ENV_NAMES:
+        env_value = str(os.environ.get(name) or "").strip().upper()
+        if env_value:
+            return env_value
+    try:
+        marker = Path(workspace) / TASK_ID_MARKER_NAME
+        if marker.is_file():
+            text = marker.read_text(encoding="utf-8").strip().upper()
+            if text:
+                return text
+    except OSError:
+        pass
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=workspace,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        completed = None
+    branch = (completed.stdout or "").strip() if completed is not None else ""
     match = _TASK_BRANCH_RE.match(branch)
-    if match is None:
+    if match is not None:
+        return match.group(1).upper()
+    try:
+        git_file = Path(workspace) / ".git"
+        if git_file.is_file():
+            raw = git_file.read_text(encoding="utf-8")
+            for line in raw.splitlines():
+                if line.lower().startswith("gitdir:"):
+                    gitdir = Path(line.split(":", 1)[1].strip())
+                    head = (gitdir / "HEAD").read_text(encoding="utf-8").strip()
+                    if head.startswith("ref: refs/heads/"):
+                        branch = head.split("refs/heads/", 1)[1]
+                        match = _TASK_BRANCH_RE.match(branch)
+                        if match is not None:
+                            return match.group(1).upper()
+    except OSError:
         return None
-    return match.group(1).upper()
+    return None
 
 
 def command_fingerprint(args: Iterable[str]) -> str:
@@ -109,14 +167,56 @@ def file_sha256(path: Path) -> str | None:
         return None
 
 
+def _is_ledger_relative(raw: str) -> bool:
+    name = raw.replace("\\", "/").rsplit("/", 1)[-1]
+    return name in {
+        WORKSPACE_LEDGER_NAME,
+        "aseh-pytest-item-ledger.jsonl",
+        TASK_ID_MARKER_NAME,
+    }
+
+
+def _walk_source_paths(workspace: Path) -> tuple[str, ...]:
+    root = Path(workspace)
+    paths: list[str] = []
+    try:
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [
+                name
+                for name in dirnames
+                if name not in _WALK_SKIP_DIRS and not name.startswith(".git")
+            ]
+            for name in filenames:
+                if name.endswith((".pyc", ".pyo")) or name in {
+                    WORKSPACE_LEDGER_NAME,
+                    TASK_ID_MARKER_NAME,
+                    "aseh-pytest-item-ledger.jsonl",
+                }:
+                    continue
+                if not name.endswith((".py", ".md", ".json", ".toml")):
+                    continue
+                relative = (Path(dirpath) / name).relative_to(root).as_posix()
+                paths.append(relative)
+    except OSError:
+        return ()
+    return tuple(dict.fromkeys(paths))
+
+
 def dirty_source_paths(workspace: Path) -> tuple[str, ...]:
-    completed = subprocess.run(
-        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
-        cwd=workspace,
-        check=False,
-        capture_output=True,
-    )
+    try:
+        completed = subprocess.run(
+            ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+            cwd=workspace,
+            check=False,
+            capture_output=True,
+        )
+    except OSError:
+        completed = None
+    if completed is None or completed.returncode != 0:
+        return _walk_source_paths(workspace)
     payload = completed.stdout or b""
+    if not payload:
+        return ()
     paths: list[str] = []
     for entry in payload.split(b"\0"):
         if len(entry) < 4:
@@ -132,7 +232,7 @@ def dirty_source_paths(workspace: Path) -> tuple[str, ...]:
             continue
         if raw.startswith(".pytest_cache/") or "/.pytest_cache/" in raw:
             continue
-        if raw == WORKSPACE_LEDGER_NAME or raw.endswith("/" + WORKSPACE_LEDGER_NAME):
+        if _is_ledger_relative(raw):
             continue
         paths.append(raw)
     return tuple(dict.fromkeys(paths))
@@ -154,7 +254,17 @@ def _records_path(dest: Path) -> Path:
 
 
 def workspace_records_path(workspace: Path) -> Path:
-    return Path(workspace) / WORKSPACE_LEDGER_NAME
+    root = Path(workspace)
+    for relative in WORKSPACE_LEDGER_ALIASES:
+        candidate = root / relative
+        if candidate.is_file():
+            return candidate
+    return root / WORKSPACE_LEDGER_NAME
+
+
+def workspace_record_write_paths(workspace: Path) -> tuple[Path, ...]:
+    root = Path(workspace)
+    return tuple(root / relative for relative in WORKSPACE_LEDGER_ALIASES)
 
 
 def _load_jsonl(path: Path) -> dict[str, dict[str, Any]]:
@@ -234,7 +344,8 @@ def record_item(
     line = json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n"
     _append_jsonl(_records_path(dest), line)
     if workspace is not None:
-        _append_jsonl(workspace_records_path(workspace), line)
+        for path in workspace_record_write_paths(workspace):
+            _append_jsonl(path, line)
 
 
 def reusable_nodeids(
@@ -263,16 +374,21 @@ def reusable_nodeids(
 
 def ledger_context(workspace: Path) -> dict[str, Any] | None:
     located = infer_board_workspace(workspace)
-    if located is None:
-        return None
-    repo_root, board = located
     task_id = task_id_from_workspace(workspace)
-    if task_id is None:
+    git_marker = Path(workspace) / ".git"
+    if located is None and task_id is None and not git_marker.exists():
         return None
+    if located is None:
+        repo_root = git_worktree_root(workspace)
+        board = "aseh"
+        dest = Path(workspace) / ".aseh-pytest-item-ledger-durable"
+    else:
+        repo_root, board = located
+        dest = pytest_item_ledger_dir(repo_root, board, task_id or "unbound")
     return {
         "repo_root": repo_root,
         "board": board,
-        "task_id": task_id,
-        "dest": pytest_item_ledger_dir(repo_root, board, task_id),
+        "task_id": task_id or "unbound",
+        "dest": dest,
         "workspace_fingerprint": workspace_fingerprint(workspace),
     }
