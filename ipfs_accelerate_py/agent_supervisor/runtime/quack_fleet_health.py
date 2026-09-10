@@ -21,6 +21,7 @@ from .quack_fleet_topology import ROLES, attach_typed_instance
 
 SERVICES = {role: f"ipfs-quack-fleet-{role.replace('_', '-')}.service" for role in ROLES}
 _MAX_KERNEL_LOCK_BYTES = 1024 * 1024
+_MAX_OWNER_STATUS_BYTES = 1024 * 1024
 
 
 def _valid_birth(birth: Any) -> bool:
@@ -31,9 +32,27 @@ def _valid_birth(birth: Any) -> bool:
 
 def _read_owner_status(state: Path) -> Mapping[str, Any] | None:
     try:
-        value = json.loads((state / "quack-state-server.status.json").read_text())
+        descriptor = os.open(state / "quack-state-server.status.json",
+            os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            observed = os.fstat(descriptor)
+            if not stat.S_ISREG(observed.st_mode) or observed.st_size > _MAX_OWNER_STATUS_BYTES:
+                return None
+            chunks = []
+            size = 0
+            while size <= _MAX_OWNER_STATUS_BYTES:
+                raw = os.read(descriptor, min(65536, _MAX_OWNER_STATUS_BYTES + 1 - size))
+                if not raw:
+                    break
+                chunks.append(raw)
+                size += len(raw)
+            if size > _MAX_OWNER_STATUS_BYTES:
+                return None
+        finally:
+            os.close(descriptor)
+        value = json.loads(b"".join(chunks))
         return value if isinstance(value, Mapping) else None
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         return None
 
 

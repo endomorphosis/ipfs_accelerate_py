@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -334,7 +335,7 @@ def test_health_persists_and_budgets_restart_timeout_without_assuming_nonexecuti
 
 
 @pytest.mark.parametrize("stage", ["before", "after"])
-@pytest.mark.parametrize("metadata", ["malformed", "nonmapping", "unreadable", "null_identity"])
+@pytest.mark.parametrize("metadata", ["malformed", "nonmapping", "unreadable", "null_identity", "nested", "fifo"])
 def test_unverified_owner_metadata_never_becomes_restartable_gateway_failure(tmp_path, monkeypatch, stage, metadata):
     birth = {"pid": 22, "start_time_ticks": 1, "boot_id": "boot:test"}
     identity = {"process_birth": birth, "process_birth_id": "birth:test", "database_uuid": "uuid:test",
@@ -348,6 +349,11 @@ def test_unverified_owner_metadata_never_becomes_restartable_gateway_failure(tmp
         if metadata == "unreadable":
             path.unlink()
             path.mkdir()
+        elif metadata == "fifo":
+            path.unlink()
+            os.mkfifo(path)
+        elif metadata == "nested":
+            path.write_text("[" * 6000 + "]" * 6000)
         elif metadata == "null_identity":
             path.write_text(json.dumps({"lifecycle": "ready", "identity": None}))
         else:
@@ -361,8 +367,10 @@ def test_unverified_owner_metadata_never_becomes_restartable_gateway_failure(tmp
     monkeypatch.setattr(health, "attach_typed_instance", lambda *args, **kwargs: client)
     if stage == "before":
         corrupt()
+    started = time.monotonic()
     result = health.probe_owner({"instances": {"aggregate_control": {
         "state_dir": str(tmp_path), "database_path": str(tmp_path / "control.duckdb")}}}, "aggregate_control")
+    assert time.monotonic() - started < 2
     assert result["healthy"] is False and result["restartable"] is False
     assert result["reason"] in {"native_owner_status_unverified", "native_owner_birth_unverified"}
     assert closed == ([] if stage == "before" else [True])
