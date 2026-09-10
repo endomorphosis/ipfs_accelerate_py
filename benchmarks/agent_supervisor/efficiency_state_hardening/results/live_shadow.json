@@ -1,0 +1,60 @@
+{
+  "allow_honest_nonpromotion": true,
+  "allow_not_admitted": false,
+  "arms": [
+    "direct_minimal_orchestration_baseline",
+    "sealed_current_supervisor_baseline",
+    "candidate_optimized_supervisor"
+  ],
+  "audit_overhead": {
+    "reason_code": "not_yet_measured",
+    "truth_state": "unavailable"
+  },
+  "authority": false,
+  "cohort": "live-shadow",
+  "controls": {},
+  "disposition": "insufficient_evidence",
+  "equal_control_fields": [
+    "repository_revision",
+    "objective",
+    "task_inputs",
+    "acceptance_tests",
+    "available_providers_and_models",
+    "price_accounting",
+    "resource_limits",
+    "maximum_retries",
+    "human_intervention_policy"
+  ],
+  "explicit_unavailable_fields": [
+    "audit_overhead"
+  ],
+  "fixture_count": 0,
+  "hermetic_sufficient_for_production_promotion": false,
+  "identity": "baguqeeraxs7fq7hcwqqf7rajpgblzm2q625auyriwvbbomwsfkdmspqqbg7q",
+  "interface": "AsehPairedCampaignResults@1",
+  "live": false,
+  "minimum_tasks": 10,
+  "pair_count": 0,
+  "population_kind": "new_live_shadow_canary",
+  "promotion_without_paired_campaign": false,
+  "reasons": [
+    "live-shadow_corpus_unavailable_on_current_tree",
+    "honest_nonpromotion"
+  ],
+  "required_statistics": [
+    "median_difference",
+    "mean_difference",
+    "per_task_ratios",
+    "bootstrap_confidence_intervals",
+    "distribution_by_task_class",
+    "outlier_analysis",
+    "quality_adjusted_cost",
+    "accepted_patch_rate",
+    "time_to_terminal_outcome"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-live-shadow-campaign-results@1",
+  "schema_version": 1,
+  "statistics": {},
+  "task_id": "ASEH-072",
+  "vectors_identity": "unavailable"
+}
