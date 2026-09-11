@@ -374,8 +374,20 @@ environ, retained descriptors or logs, borrow a lane's credentials, or impersona
 its PID/session to obtain task observations. When status_argv is empty or its
 monitor has stopped, implement the missing native reader/observation transition;
 owner readiness and credential-borrowed reads cannot replace status authority.
+Inspect the enforced ordering of the existing native resume before concluding
+that a separate reader must exist first. Some native operators qualify the
+current source, prove the previous owner dead under the one-winner fence,
+admit their own replacement owner, and only then authenticate their normal
+status client. Running that complete operator through its existing ensure
+service is not borrowing another process's credentials. Never extract tokens
+manually or skip its source, owner, task-population or receipt checks. If the
+native path cannot admit its own reader, implement the missing transition;
+do not impose an additional pre-resume reader gate that the native contract
+does not require. This does not authorize stopping a live owner to manufacture
+a replacement-owner boundary.
 Implement
-the smallest reusable fix with a regression test in an isolated branch or
+the reusable fix and native recovery needed to restore progress, with regression
+coverage in an isolated branch or
 worktree of ipfs_accelerate_py. Validate the affected code. Preserve all dirty
 user work. Integrate reusable tested fixes with the respective GitHub main
 using normal non-forced pushes, then deploy through the board's existing
@@ -434,6 +446,18 @@ Retain exact source/index snapshots and compare them again before a forward sour
 transition. A source-only candidate preflight cannot replace the native current-root
 qualification and resume checks. Ordinary descendant-source resume must not
 reissue a historical bootstrap completion receipt to bless new runtime code.
+Preserve dirty source bytes in reachable history, but do not assume the entire
+preserved tree is safe to execute. Compare each candidate with the last tested
+native repair lineage and retain its callback, consumed-credit, exact-attempt,
+pre-connect and replica protections. Run the relevant earlier safety suites as
+well as new component tests. Bind tests and production imports to the candidate
+checkout itself; an external test path can silently select its original source
+through pytest configuration. Record the tested source tree and actual import
+locations. Narrow green tests cannot qualify a tree that lost prior fixes.
+For a submodule mismatch, inspect the configured ancestry/equality and receipt
+rules. Preserve the existing commit history and apply the exact enforced rule;
+do not regenerate receipts or invent a new receipt prerequisite for a gitlink
+correction when the native contract only requires the current planning revision.
 Background worktree cleanup must not infer completion from branch ancestry or
 a terminal dead-owner lifecycle. Preserve unknown callback workspaces and refs;
 task-isolated Portal workers do not have peer cleanup authority. Database
