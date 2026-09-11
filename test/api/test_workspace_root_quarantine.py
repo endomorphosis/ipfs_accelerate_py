@@ -44,6 +44,33 @@ def seed(tmp_path):
     return repo, root, pool, lease, lifecycle, record
 
 
+@pytest.mark.parametrize("has_intent", [False, True])
+def test_default_workspace_is_preserved_without_custody(tmp_path, has_intent):
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.owner_task_quarantine import (
+        independent_workspace_root,
+    )
+
+    task_source = SimpleNamespace()
+    if has_intent:
+        task_source.intent = SimpleNamespace(owner_task_quarantines=lambda: {})
+    daemon = SimpleNamespace(task_source=task_source)
+    assert independent_workspace_root(daemon, tmp_path, None) is None
+
+
+def test_recorded_custody_cannot_infer_an_unconfigured_workspace(tmp_path):
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.owner_task_quarantine import (
+        independent_workspace_root,
+    )
+
+    daemon = SimpleNamespace(task_source=SimpleNamespace(intent=SimpleNamespace(
+        owner_task_quarantines=lambda: {"attempt:retained": {}},
+    )))
+    with pytest.raises(QuarantineDenied, match="workspace_configuration_unbound"):
+        independent_workspace_root(daemon, tmp_path, None)
+
+
 def test_whole_root_retained_and_independent_fresh_pool_allocates(tmp_path):
     repo, root, pool, lease, lifecycle, record = seed(tmp_path)
     before = q.census(repo, root)

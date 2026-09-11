@@ -1475,7 +1475,15 @@ def bind_database_portal_execution_from_args(
         task_header_prefix=parsed.task_prefix,
         worktree_submodule_paths=configured_worktree_submodule_paths,
         workspace_repository_root=repo_root.resolve(),
-        workspace_root=(Path(parsed.worktree_root) if Path(parsed.worktree_root).is_absolute() else repo_root / parsed.worktree_root).resolve(),
+        workspace_root=(
+            None
+            if parsed.worktree_root is None
+            else (
+                Path(parsed.worktree_root)
+                if Path(parsed.worktree_root).is_absolute()
+                else repo_root / parsed.worktree_root
+            ).resolve()
+        ),
     )
     binder(
         provider_fn=bridge.run_provider,

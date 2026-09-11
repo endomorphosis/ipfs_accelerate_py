@@ -423,15 +423,16 @@ def admit_known_blockers(daemon: Any, result: dict[str, Any]) -> list[str]:
 def independent_workspace_root(daemon: Any, repo_root: Any, configured: Any) -> Any:
     from pathlib import Path
 
-    root = Path(configured)
-    if not root.is_absolute():
-        root = Path(repo_root) / root
     intent = getattr(daemon.task_source, "intent", None)
     if intent is None:
         return configured
     heads = intent.owner_task_quarantines()
     if not heads:
         return configured
+    central.require(configured is not None, "quarantine_workspace_configuration_unbound")
+    root = Path(configured)
+    if not root.is_absolute():
+        root = Path(repo_root) / root
     current(daemon)
     frozen = workspace.verify(Path(repo_root), root.resolve())
     central.require(
