@@ -29,6 +29,13 @@ Cursor imports require the exact native path
 `train/post-merge-recovery-cursors/<binding-sha256>.json`, content identity,
 repository, target, attempt root and all five native stages. Receipt imports
 require explicit logical keys, content IDs and complete contiguous versions.
+The canonical `train/distributed-publications.json` must explicitly import to
+`distributed-publications`, the key read by the owner-backed train. It must
+remain the current receipt head; archiving it without importing it, mapping it
+to an unrelated key, or superseding it with another supplied snapshot is denied
+before clone creation. Prior publication IDs, task fences and duplicate history
+therefore remain visible after migration and owner restart. This preservation
+check does not validate publication authority or close prior callbacks.
 No filename is treated as authority to reconstruct an unknown receipt key.
 
 `start_queue_owner` starts a prepared role and binds both typed services after
