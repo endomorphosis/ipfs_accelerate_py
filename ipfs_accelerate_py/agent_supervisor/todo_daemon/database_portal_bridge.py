@@ -3711,11 +3711,12 @@ def _bounded_file(path: Path, *, limit: int) -> bytes:
     descriptor = -1
     try:
         nofollow = getattr(os, "O_NOFOLLOW", None)
-        if not isinstance(nofollow, int):
-            raise OSError("platform has no no-follow file-open authority")
+        nonblock = getattr(os, "O_NONBLOCK", None)
+        if not isinstance(nofollow, int) or not isinstance(nonblock, int):
+            raise OSError("platform has no nonblocking no-follow file-open authority")
         descriptor = os.open(
             path,
-            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | nofollow,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | nofollow | nonblock,
         )
         before = os.fstat(descriptor)
         if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
@@ -16367,11 +16368,13 @@ class DatabasePortalExecutionBridge:
         try:
             paths.events.lstat()
         except FileNotFoundError:
-            return None
+            events = []
+        else:
+            events = self._verified_event_chain(paths)
         pending_seen = False
         identity = None
         marker_identities = []
-        for event in self._verified_event_chain(paths):
+        for event in events:
             event_type = event.get("type")
             if event_type not in {
                 "implementation_started", "implementation_finished",
@@ -16434,6 +16437,17 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "Portal recorded pending-merge handoff is incomplete"
             )
+        if identity is None:
+            try:
+                paths.state.lstat()
+            except FileNotFoundError:
+                return None
+            state = self._read_json_object(paths.state, noun="Portal pending-merge state")
+            statuses = state.get("task_statuses")
+            if isinstance(statuses, Mapping) and statuses.get(binding.get("task_alias")) == "merge-queued":
+                raise DatabasePortalBridgeError(
+                    "Portal queued state has no admitted pending-merge history"
+                )
         return identity
 
     @staticmethod
