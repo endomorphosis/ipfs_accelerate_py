@@ -2800,6 +2800,14 @@ def _create_grok_container_and_build_start_command(
         or re.fullmatch(r"[0-9a-f]{64}", created_fields[0]) is None
     ):
         raise ValueError("Grok container identity is invalid")
+    try:
+        recorded_container_id = docker_lease.cidfile.read_text(
+            encoding="ascii"
+        ).strip()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("Grok container identity is unavailable") from exc
+    if recorded_container_id != created_fields[0]:
+        raise ValueError("Grok container identity is invalid")
     return [
         docker_lease.docker_bin,
         f"--host={_DOCKER_LOCAL_HOST}",
@@ -6462,22 +6470,14 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             )
 
         try:
-            if docker_lease is not None:
-                primary_returncode = (
-                    _run_created_grok_container_with_typed_failure_capture(
-                        cmd,
-                        docker_bin=docker_lease.docker_bin,
-                        docker_config=docker_lease.docker_config,
-                        cidfile=docker_lease.cidfile,
-                        workspace=workspace,
-                        env=grok_launch_env,
-                    )
-                )
-            else:
-                primary_returncode = _run_grok_with_typed_failure_capture(
-                    cmd,
-                    env=grok_launch_env,
-                )
+            # Docker creation above already bound cmd to the exact attached
+            # start. Run it through the live typed-output path once; passing a
+            # start command to the create helper would buffer provider output
+            # and misclassify its 120-second wait as container creation.
+            primary_returncode = _run_grok_with_typed_failure_capture(
+                cmd,
+                env=grok_launch_env,
+            )
             docker_run_finished = True
         except (OSError, ValueError) as exc:
             print(f"unable to launch Grok CLI: {exc}", file=sys.stderr)
