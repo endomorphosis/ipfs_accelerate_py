@@ -21336,3 +21336,83 @@ def test_recorded_pending_merge_cannot_hide_a_later_unsettled_outcome(tmp_path, 
     with pytest.raises(DatabasePortalBridgeError, match="recorded pending-merge"):
         bridge._recorded_pending_merge_identity(paths, binding)
     assert calls == []
+
+
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+def test_recorded_pending_merge_rejects_linked_event_artifact(tmp_path, link_kind):
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()), attempt_root=tmp_path / "attempts",
+        portal_factory=lambda *_: None,
+    )
+    paths, binding = bridge._ensure_attempt_projection(_attempt(), _record())
+    result = _pending_merge_result(paths, binding["task_alias"])
+    append_jsonl_event(paths.events, "implementation_finished", result["implementation_result"])
+    retained = paths.events.with_name("retained-events.jsonl")
+    paths.events.rename(retained)
+    if link_kind == "symlink":
+        paths.events.symlink_to(retained)
+    else:
+        paths.events.hardlink_to(retained)
+    with pytest.raises(DatabasePortalBridgeError, match="could not read Portal attempt artifact"):
+        bridge._recorded_pending_merge_identity(paths, binding)
+
+
+@pytest.mark.parametrize("mutation", [b"grow", b"same"])
+def test_pending_history_artifact_rejects_changes_during_descriptor_read(tmp_path, monkeypatch, mutation):
+    path = tmp_path / "events.jsonl"
+    path.write_bytes(b"seed")
+    original_read = database_portal_bridge_module.os.read
+    changes = []
+    def mutate_after_first_read(descriptor, length):
+        payload = original_read(descriptor, length)
+        if not changes:
+            changes.append(True)
+            if mutation == b"grow":
+                with path.open("ab") as stream:
+                    stream.write(b"more")
+            else:
+                path.write_bytes(mutation)
+        return payload
+    monkeypatch.setattr(database_portal_bridge_module.os, "read", mutate_after_first_read)
+    with pytest.raises(DatabasePortalBridgeError, match="could not read Portal attempt artifact"):
+        database_portal_bridge_module._bounded_file(path, limit=128)
+    assert changes == [True]
+
+
+@pytest.mark.parametrize("history", ["absent", "unrelated_only"])
+def test_recorded_pending_merge_refuses_missing_queue_history(tmp_path, history):
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()), attempt_root=tmp_path / "attempts",
+        portal_factory=lambda *_: None,
+    )
+    paths, binding = bridge._ensure_attempt_projection(_attempt(), _record())
+    _pending_merge_result(paths, binding["task_alias"])
+    if history == "unrelated_only":
+        append_jsonl_event(paths.events, "daemon_pass", {"unchanged": True})
+    with pytest.raises(DatabasePortalBridgeError, match="queued state has no admitted"):
+        bridge._recorded_pending_merge_identity(paths, binding)
+
+
+def test_recorded_pending_merge_fifo_is_rejected_without_waiting(tmp_path):
+    import os
+    import sys
+    fifo = tmp_path / "portal-events.jsonl"
+    os.mkfifo(fifo)
+    script = """
+from pathlib import Path
+from types import SimpleNamespace
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import DatabasePortalExecutionBridge, DatabasePortalBridgeError
+import sys
+bridge = object.__new__(DatabasePortalExecutionBridge)
+try:
+    bridge._recorded_pending_merge_identity(SimpleNamespace(events=Path(sys.argv[1])), {})
+except DatabasePortalBridgeError:
+    raise SystemExit(0)
+raise SystemExit(1)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(fifo)],
+        cwd=Path(database_portal_bridge_module.__file__).parents[3],
+        timeout=10, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr

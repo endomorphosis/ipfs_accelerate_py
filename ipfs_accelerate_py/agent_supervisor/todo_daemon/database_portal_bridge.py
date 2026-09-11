@@ -2258,23 +2258,59 @@ def _sha256_file(path: Path) -> str:
 
 
 def _bounded_file(path: Path, *, limit: int) -> bytes:
-    """Read one bounded regular artifact without accepting truncation."""
+    """Read one bounded regular artifact through a no-follow descriptor."""
 
+    descriptor = -1
     try:
-        if path.is_symlink() or not path.is_file():
-            raise OSError("artifact is not a regular non-symlink file")
-        size = path.stat().st_size
-        if size > limit:
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        nonblock = getattr(os, "O_NONBLOCK", None)
+        if not isinstance(nofollow, int) or not isinstance(nonblock, int):
+            raise OSError("platform has no nonblocking no-follow file-open authority")
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | nofollow | nonblock,
+        )
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise OSError("artifact is not a singly linked regular file")
+        if before.st_size < 0 or before.st_size > limit:
             raise OSError("artifact exceeds its byte limit")
-        with path.open("rb") as handle:
-            payload = handle.read(limit + 1)
-        if len(payload) != size:
+        chunks: list[bytes] = []
+        remaining = int(before.st_size)
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                raise OSError("artifact was truncated while read")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise OSError("artifact grew while read")
+        after = os.fstat(descriptor)
+        stable_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if any(
+            getattr(before, field) != getattr(after, field)
+            for field in stable_fields
+        ):
             raise OSError("artifact changed while read")
+        payload = b"".join(chunks)
+        if len(payload) != before.st_size:
+            raise OSError("artifact length changed while read")
         return payload
-    except OSError as exc:
+    except (OSError, TypeError, ValueError) as exc:
         raise DatabasePortalBridgeError(
             f"could not read Portal attempt artifact {path.name!r}"
         ) from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
@@ -13200,11 +13236,13 @@ class DatabasePortalExecutionBridge:
         try:
             paths.events.lstat()
         except FileNotFoundError:
-            return None
+            events = []
+        else:
+            events = self._verified_event_chain(paths)
         pending_seen = False
         identity = None
         marker_identities = []
-        for event in self._verified_event_chain(paths):
+        for event in events:
             event_type = event.get("type")
             if event_type not in {
                 "implementation_started", "implementation_finished",
@@ -13267,6 +13305,17 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "Portal recorded pending-merge handoff is incomplete"
             )
+        if identity is None:
+            try:
+                paths.state.lstat()
+            except FileNotFoundError:
+                return None
+            state = self._read_json_object(paths.state, noun="Portal pending-merge state")
+            statuses = state.get("task_statuses")
+            if isinstance(statuses, Mapping) and statuses.get(binding.get("task_alias")) == "merge-queued":
+                raise DatabasePortalBridgeError(
+                    "Portal queued state has no admitted pending-merge history"
+                )
         return identity
 
     @staticmethod
@@ -13479,22 +13528,29 @@ class DatabasePortalExecutionBridge:
         return ""
 
     @staticmethod
-    def _verified_event_chain(paths: DatabasePortalAttemptPaths) -> list[dict[str, Any]]:
+    def _verified_event_chain(
+        paths: DatabasePortalAttemptPaths,
+        *,
+        payload: bytes | None = None,
+    ) -> list[dict[str, Any]]:
         """Read one bounded attempt-local event chain without repairing it."""
 
-        try:
-            size = paths.events.stat().st_size
-        except OSError as exc:
-            raise DatabasePortalBridgeError(
-                "validation retry has no durable Portal event stream"
-            ) from exc
+        event_bytes = (
+            payload
+            if payload is not None
+            else _bounded_file(
+                paths.events,
+                limit=_MAX_DATABASE_PORTAL_EVENT_BYTES,
+            )
+        )
+        size = len(event_bytes)
         if size <= 0 or size > _MAX_DATABASE_PORTAL_EVENT_BYTES:
             raise DatabasePortalBridgeError(
                 "validation retry Portal event stream exceeds its closed bound"
             )
         try:
-            raw_lines = paths.events.read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeDecodeError) as exc:
+            raw_lines = event_bytes.decode("utf-8").splitlines()
+        except UnicodeDecodeError as exc:
             raise DatabasePortalBridgeError(
                 "validation retry Portal event stream is unreadable"
             ) from exc
