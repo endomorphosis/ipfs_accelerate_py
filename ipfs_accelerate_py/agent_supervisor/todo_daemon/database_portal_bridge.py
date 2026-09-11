@@ -1248,6 +1248,18 @@ class DatabasePortalCandidateRetry(DatabasePortalBridgeError):
         self.diagnostic_summary = normalize_candidate_failure_diagnostics(diagnostic_summary)
 
 
+class DatabasePortalCandidateRejectedClosed(DatabasePortalCandidateRetry):
+    """Exact bridge-produced closure, separately reverified by the outer daemon."""
+
+    def __init__(self, receipt: Mapping[str, Any], *, diagnostic_summary=None):
+        from .candidate_rejection_closure import CLOSURE_SCHEMA, exact_seal
+
+        if not exact_seal(receipt) or receipt.get("schema") != CLOSURE_SCHEMA:
+            raise ValueError("candidate rejection closure is malformed")
+        super().__init__(str(receipt["reason"]), diagnostic_summary=diagnostic_summary)
+        self.closure_receipt = dict(receipt)
+
+
 class DatabasePortalBridgeConsumedNoProgressError(DatabasePortalBridgeError):
     """One Portal attempt was consumed without an implementation candidate.
 
@@ -15594,6 +15606,305 @@ class DatabasePortalExecutionBridge:
             and ancestry.returncode == 0
         )
 
+    def _candidate_rejection_closure_receipt(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        implementation: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Join one protected nonpooled rejection with independently read cleanup.
+
+        Hash chains bind the exact producer observations; they are not provider
+        termination authority. The signed route and current native CAS supply
+        that independent authority, and no missing lifecycle row is consulted.
+        """
+        from .candidate_rejection_closure import (
+            CLOSURE_SCHEMA,
+            TERMINAL_EVENT,
+            RELEASED_EVENT,
+            TERMINAL_SCHEMA,
+            RELEASED_SCHEMA,
+            exact_seal,
+            sealed,
+            validate_lifecycle_pair,
+        )
+        from .implementation_daemon import (
+            PortalImplementationDaemon,
+            _stable_owned_log_tail,
+            PROVIDER_CAPACITY_LOG_TAIL_BYTES,
+        )
+
+        if self.repository_root is None:
+            return None
+        events = self._verified_event_chain(paths)
+        starts = [
+            (i, e)
+            for i, e in enumerate(events)
+            if e.get("type") == "implementation_started"
+        ]
+        finishes = [
+            (i, e)
+            for i, e in enumerate(events)
+            if e.get("type") == "implementation_finished"
+        ]
+        terminals = [
+            (i, e) for i, e in enumerate(events) if e.get("type") == TERMINAL_EVENT
+        ]
+        releases = [(i, e) for i, e in enumerate(events) if e.get("type") == RELEASED_EVENT]
+        if any(len(items) != 1 for items in (starts, finishes, terminals, releases)):
+            return None
+        (si, started), (fi, finished), (ti, terminal_event), (ri, released_event) = (
+            starts[0],
+            finishes[0],
+            terminals[0],
+            releases[0],
+        )
+        reason = self._candidate_retry_reason(finished)
+        if not (si < ti < ri < fi) or reason != "proposal_gate_failed":
+            return None
+        alias = str(binding.get("task_alias") or "")
+        projection = self._verify_projection(paths, binding)
+        portal_key, portal_cid = self._portal_completion_event_identity(
+            paths=paths,
+            projection_text=projection,
+            binding=binding,
+        )
+        portal_attempt = finished.get("attempt")
+        number = getattr(attempt, "attempt_number", 0)
+        if (
+            type(portal_attempt) is not int
+            or portal_attempt != 1
+            or type(number) is not int
+            or not 1 <= number < self.max_task_attempts
+            or any(
+                event.get("task_id") != alias
+                or event.get("attempt") != portal_attempt
+                or event.get("canonical_task_cid") != portal_cid
+                or event.get("canonical_task_key") != portal_key
+                for event in (started, finished)
+            )
+            or finished.get("protected_path_violation") not in (None, {})
+            or finished.get("provider_dispatched") is not True
+            or finished.get("attempt_consumed") is not True
+        ):
+            return None
+        if implementation is not None and any(
+            implementation.get(k) != finished.get(k)
+            for k in (
+                "task_id",
+                "attempt",
+                "returncode",
+                "validation_result",
+                "cleanup_result",
+                "failed_preservation_result",
+            )
+        ):
+            return None
+        validation = finished.get("validation_result")
+        preservation = finished.get("failed_preservation_result")
+        cleanup = finished.get("cleanup_result")
+        if not all(isinstance(v, Mapping) for v in (validation, preservation, cleanup)):
+            return None
+        proposal = validation.get("proposal_gate")
+        merge = finished.get("merge_result")
+        board = finished.get("board_completion")
+        if (
+            not isinstance(proposal, Mapping)
+            or proposal.get("attempted") is not True
+            or proposal.get("accepted") is not False
+            or not proposal.get("receipt_id")
+            or not proposal.get("proposal_id")
+            or not proposal.get("policy_id")
+            or validation.get("passed") is not False
+            or not isinstance(merge, Mapping)
+            or merge.get("merged") is not False
+            or merge.get("queued") is True
+            or (isinstance(board, Mapping) and board.get("complete") is True)
+            or preservation.get("preserved") is not True
+            or preservation.get("cleanup_result") != cleanup
+            or cleanup.get("cleaned") is not True
+            or cleanup.get("removed_worktree") is not True
+            or cleanup.get("pooled") is True
+            or cleanup.get("pool_release") is not None
+            or any(
+                "merge_queued" in str(e.get("type"))
+                or e.get("type") == "implementation_merged"
+                for e in events
+            )
+        ):
+            return None
+        native = terminal_event.get("closure_terminal")
+        released = released_event.get("closure_released")
+        if (
+            not exact_seal(native)
+            or native.get("schema") != TERMINAL_SCHEMA
+            or not exact_seal(released)
+            or released.get("schema") != RELEASED_SCHEMA
+            or released.get("terminal_receipt_id") != native.get("receipt_id")
+            or released.get("compare_delete_succeeded") is not True
+            or not validate_lifecycle_pair(native.get("prior"), native.get("terminal"))
+        ):
+            return None
+        common = (
+            "task_id",
+            "attempt",
+            "worktree_path",
+            "branch",
+            "preserved_commit",
+            "rescue_branch",
+            "provider_cleanup",
+            "completion_authority",
+        )
+        if any(native.get(k) != released.get(k) for k in common):
+            return None
+        prior = native["prior"]
+        finalize = cleanup.get("lifecycle_finalize")
+        if (
+            native.get("task_id") != alias
+            or native.get("attempt") != portal_attempt
+            or prior.get("canonical_task_cid") != portal_cid
+            or prior.get("repo_root") != str(self.repository_root.resolve())
+            or prior.get("state_dir") != str(paths.state.parent.resolve())
+            or prior.get("workspace_path") != started.get("worktree_path")
+            or prior.get("branch") != started.get("branch")
+            or native.get("worktree_path") != started.get("worktree_path")
+            or native.get("branch") != started.get("branch")
+            or not isinstance(finalize, Mapping)
+            or finalize.get("finalized") is not True
+            or finalize.get("terminal_callback") != native
+            or finalize.get("released_callback") != released
+            or native.get("preserved_commit") != preservation.get("preserved_commit")
+            or native.get("rescue_branch") != preservation.get("rescue_branch")
+            or not self._preserved_commit_exists(
+                commit=native["preserved_commit"], rescue_branch=native["rescue_branch"]
+            )
+        ):
+            return None
+        preserved_events = [
+            e
+            for e in events[ri + 1 : fi]
+            if e.get("type") == "failed_validation_worktree_preserved"
+        ]
+        proposal_events = [
+            e
+            for e in events[si + 1 : ti]
+            if e.get("type") == "implementation_proposal_validated"
+        ]
+        if (
+            len(preserved_events) != 1
+            or len(proposal_events) != 1
+            or any(preserved_events[0].get(k) != preservation.get(k) for k in preservation)
+            or any(
+                proposal_events[0].get(k) != proposal.get(k)
+                for k in (
+                    "receipt_id",
+                    "proposal_id",
+                    "policy_id",
+                    "attempted",
+                    "accepted",
+                    "reason_codes",
+                )
+            )
+        ):
+            return None
+        command = started.get("command")
+        if (
+            not isinstance(command, list)
+            or not command
+            or not all(isinstance(v, str) for v in command)
+        ):
+            return None
+        log_path = Path(str(started.get("log_path") or ""))
+        try:
+            log_path.resolve(strict=True).relative_to(
+                paths.implementation_logs.resolve(strict=True)
+            )
+            _, receipt_text = _stable_owned_log_tail(
+                log_path, PROVIDER_CAPACITY_LOG_TAIL_BYTES, reject_group_writable=True
+            )
+            from .candidate_rejection_closure import observe_provider_cleanup
+
+            proof = observe_provider_cleanup(
+                repo_root=self.repository_root,
+                command_items=command,
+                receipt_text=receipt_text,
+            )
+        except (OSError, TypeError, ValueError, RuntimeError):
+            return None
+        if (
+            not isinstance(proof, Mapping)
+            or proof != native.get("provider_cleanup")
+            or proof.get("task_revision_cid") != portal_cid
+            or proof.get("task_id") != alias
+            or proof.get("attempt") != portal_attempt
+            or proof.get("workspace_path") != started.get("worktree_path")
+        ):
+            return None
+        return sealed(
+            {
+                "schema": CLOSURE_SCHEMA,
+                "reason": reason,
+                **{
+                    k: getattr(attempt, k)
+                    for k in (
+                        "attempt_id",
+                        "claim_id",
+                        "lease_id",
+                        "owner_session_id",
+                        "task_cid",
+                        "attempt_number",
+                        "fencing_token",
+                        "fence_epoch",
+                    )
+                },
+                "task_alias": alias,
+                "binding_id": binding["binding_id"],
+                "task_contract_digest": binding["task_contract_digest"],
+                "repository_tree_id": binding["repository_tree_id"],
+                "provider_cleanup": dict(proof),
+                "terminal_receipt_id": native["receipt_id"],
+                "release_receipt_id": released["receipt_id"],
+                "event_ids": [
+                    e["event_id"]
+                    for e in (
+                        started,
+                        proposal_events[0],
+                        terminal_event,
+                        released_event,
+                        preserved_events[0],
+                        finished,
+                    )
+                ],
+                "preserved_commit": native["preserved_commit"],
+                "rescue_branch": native["rescue_branch"],
+                "provider_dispatched": True,
+                "attempt_consumed": True,
+                "completion_authority": False,
+                "queue_publication": False,
+            }
+        )
+
+    def verify_candidate_rejection_closure(
+        self,
+        attempt: Any,
+        expected: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Read only this bound attempt; unavailable proof keeps callback custody."""
+        try:
+            paths, binding = self._recovery_attempt_binding(
+                attempt, recovery_name="candidate rejection closure"
+            )
+            receipt = self._candidate_rejection_closure_receipt(
+                attempt=attempt, paths=paths, binding=binding
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if expected is not None and receipt != dict(expected):
+            return None
+        return receipt
+
     def _validation_retry_receipt(
         self,
         *,
@@ -22066,6 +22377,14 @@ class DatabasePortalExecutionBridge:
                     ):
                         from .candidate_failure_diagnostics import summarize_candidate_failure
 
+                        closure = self._candidate_rejection_closure_receipt(
+                            attempt=attempt, paths=paths, binding=binding,
+                            implementation=implementation,
+                        ) if paths.events.is_file() else None
+                        if closure is not None:
+                            raise DatabasePortalCandidateRejectedClosed(
+                                closure, diagnostic_summary=summarize_candidate_failure(implementation),
+                            )
                         raise DatabasePortalCandidateRetry(
                             candidate_reason,
                             diagnostic_summary=summarize_candidate_failure(implementation),

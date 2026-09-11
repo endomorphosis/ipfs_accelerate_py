@@ -1978,6 +1978,125 @@ class WorktreeLifecycleStore:
                 pass
             return True
 
+    def compare_and_delete_observed(self, expected: WorkspaceLifecycleRecord) -> bool:
+        """Observe one exact terminal record's actual durable removal.
+
+        Unlike legacy idempotent deletion, absence is not success. This is a
+        precondition for an external post-delete observation, not a tombstone:
+        a crash after deletion still cannot reconstruct that observation.
+        """
+        import stat
+
+        if (
+            type(expected) is not WorkspaceLifecycleRecord
+            or not expected.is_terminal
+            or expected.record_id != expected.compute_record_id()
+        ):
+            return False
+        record_path = self.workspace_path_for(expected.workspace_path)
+        index_path = self.task_index_path_for(
+            canonical_task_cid=expected.canonical_task_cid,
+            task_id=expected.task_id,
+            attempt=expected.attempt,
+        )
+
+        def identity(item):
+            return (
+                item.st_dev,
+                item.st_ino,
+                item.st_mode,
+                item.st_uid,
+                item.st_size,
+                item.st_mtime_ns,
+                item.st_ctime_ns,
+                item.st_nlink,
+            )
+
+        def encoded(value):
+            return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+        def unique(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate lifecycle record field")
+                result[key] = value
+            return result
+
+        def open_exact(path, payload):
+            descriptor = os.open(
+                path,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0),
+            )
+            try:
+                before = os.fstat(descriptor)
+                if (
+                    not stat.S_ISREG(before.st_mode)
+                    or before.st_uid != os.geteuid()
+                    or before.st_nlink != 1
+                    or not 0 < before.st_size <= 65536
+                ):
+                    raise ValueError(
+                        "lifecycle record is not an owned bounded regular file"
+                    )
+                data = os.read(descriptor, 65537)
+                if (
+                    len(data) != before.st_size
+                    or encoded(json.loads(data, object_pairs_hook=unique))
+                    != encoded(payload)
+                    or identity(os.fstat(descriptor)) != identity(before)
+                    or identity(path.lstat()) != identity(before)
+                ):
+                    raise ValueError("lifecycle deletion observation changed")
+                return descriptor, identity(before)
+            except BaseException:
+                os.close(descriptor)
+                raise
+
+        # Match begin_preparing's stable task-index -> workspace lock order.
+        with serialized_lock_update(index_path):
+            with serialized_lock_update(record_path):
+                descriptors = []
+                try:
+                    record_fd, record_identity = open_exact(record_path, expected.to_dict())
+                    descriptors.append(record_fd)
+                    index_fd, index_identity = open_exact(
+                        index_path, self._task_index_payload(expected)
+                    )
+                    descriptors.append(index_fd)
+                    if (
+                        identity(record_path.lstat()) != record_identity
+                        or identity(index_path.lstat()) != index_identity
+                    ):
+                        return False
+                    record_path.unlink()  # FileNotFound is uncertainty, never success.
+                    if os.fstat(record_fd).st_nlink != 0:
+                        return False
+                    if identity(index_path.lstat()) != index_identity:
+                        return False
+                    index_path.unlink()
+                    if os.fstat(index_fd).st_nlink != 0:
+                        return False
+                    directory = os.open(
+                        record_path.parent,
+                        os.O_RDONLY
+                        | getattr(os, "O_DIRECTORY", 0)
+                        | getattr(os, "O_NOFOLLOW", 0),
+                    )
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
+                    return True
+                except (OSError, ValueError, TypeError, RecursionError):
+                    return False
+                finally:
+                    for descriptor in reversed(descriptors):
+                        os.close(descriptor)
+
     def authorize_cleanup(
         self,
         *,
