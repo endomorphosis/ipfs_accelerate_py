@@ -1364,6 +1364,7 @@ class WorktreeLifecycleStore:
         expected_fence: int,
         renew_lease: bool = True,
         terminal_reason: str = "",
+        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
         """Owner-only CAS state transition with optional lease renewal."""
 
@@ -1375,6 +1376,8 @@ class WorktreeLifecycleStore:
             if current is None:
                 raise WorktreeLifecycleError("lifecycle record missing")
             self._require_owner(current, lease_id=lease_id, expected_fence=expected_fence)
+            if expected_record is not None and current != expected_record:
+                raise OwnershipError("lifecycle captured record no longer matches")
             if current.is_terminal and new_state is not WorkspaceLifecycleState.TERMINAL:
                 raise WorktreeLifecycleError("cannot revive a terminal lifecycle record")
             now = float(self.clock())
@@ -1544,6 +1547,7 @@ class WorktreeLifecycleStore:
         lease_id: str,
         expected_fence: int,
         reason: str = "owner_terminal",
+        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
         return self.transition(
             workspace,
@@ -1552,6 +1556,7 @@ class WorktreeLifecycleStore:
             expected_fence=expected_fence,
             renew_lease=False,
             terminal_reason=reason,
+            expected_record=expected_record,
         )
 
     def renew_lease(

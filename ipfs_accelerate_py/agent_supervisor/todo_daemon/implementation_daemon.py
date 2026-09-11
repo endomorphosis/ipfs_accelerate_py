@@ -52339,12 +52339,11 @@ class PortalImplementationDaemon:
             if lifecycle_load_error:
                 lifecycle_result["error"] = lifecycle_load_error
         elif (
-            loaded_record.lease_id != lifecycle_record.lease_id
-            or loaded_record.fence != lifecycle_record.fence
+            loaded_record != lifecycle_record
         ):
             lifecycle_result = {
                 "terminal": False,
-                "reason": "lifecycle_owner_or_fence_changed",
+                "reason": "lifecycle_identity_or_fence_changed",
                 "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
                 "expected_lease_id": lifecycle_record.lease_id,
                 "observed_lease_id": loaded_record.lease_id,
@@ -52364,7 +52363,8 @@ class PortalImplementationDaemon:
                 terminal = self.worktree_lifecycle.mark_terminal(
                     loaded_record.workspace_path,
                     lease_id=loaded_record.lease_id,
-                    expected_fence=loaded_record.fence,
+                    expected_fence=lifecycle_record.fence,
+                    expected_record=lifecycle_record,
                     reason=(
                         "verification_deferred_checkout_lease_unavailable"
                     ),
@@ -52387,7 +52387,9 @@ class PortalImplementationDaemon:
                     "error": str(exc)[-500:],
                     "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
                 }
-        self._active_worktree_lifecycle = None
+        if (lifecycle_result.get("terminal") is True
+                and self._active_worktree_lifecycle == lifecycle_record):
+            self._active_worktree_lifecycle = None
         retained = worktree_path.exists()
         if retained and retained_workspace is not None:
             try:

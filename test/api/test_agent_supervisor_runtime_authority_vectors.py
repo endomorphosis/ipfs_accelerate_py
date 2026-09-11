@@ -1291,3 +1291,60 @@ def test_isolated_candidate_diff_check_covers_dirty_child_submodule(
     )
     assert passed["passed"] is True
     assert _git(child, "diff", "--cached", "--binary") == child_index_before
+
+
+def test_verification_retention_rechecks_record_inside_terminal_cas(tmp_path, monkeypatch):
+    """A replacement after the preliminary read must retain its exact bytes."""
+    repo = tmp_path / "repo"
+    _repository(repo)
+    daemon = _daemon(repo)
+    task = _diff_task("src/alpha.py")
+    store = daemon.worktree_lifecycle
+    captured = store.begin_preparing(
+        task_id=task.task_id, canonical_task_cid="cid:retained-original",
+        attempt=1, lane_id="lane-a", workspace_path=repo,
+        branch="implementation/original", merge_target="main",
+    )
+    daemon._active_worktree_lifecycle = captured
+    mark_terminal = store.mark_terminal
+    observed = {}
+
+    def replace_before_cas(workspace, **kwargs):
+        terminal = mark_terminal(workspace, lease_id=captured.lease_id,
+            expected_fence=captured.fence, reason="original_released")
+        assert store.compare_and_delete(workspace, expected_fence=terminal.fence,
+            lease_id=terminal.lease_id)
+        replacement = store.begin_preparing(
+            task_id="REPLACEMENT", canonical_task_cid="cid:replacement",
+            attempt=1, lane_id="lane-b", workspace_path=repo,
+            branch="implementation/replacement", merge_target="main",
+            lease_id=captured.lease_id,
+        )
+        assert replacement.fence == captured.fence
+        observed["replacement"] = replacement
+        observed["bytes"] = store.workspace_path_for(repo).read_bytes()
+        return mark_terminal(workspace, **kwargs)
+
+    monkeypatch.setattr(store, "mark_terminal", replace_before_cas)
+    result = daemon._retain_verification_deferred_worktree(
+        repo, captured.branch, task, 1, {"verification_deferred": True})
+    assert result["lifecycle"]["terminal"] is False
+    assert result["lifecycle"]["reason"] == "lifecycle_terminal_transition_failed"
+    assert store.load_workspace(repo) == observed["replacement"]
+    assert store.workspace_path_for(repo).read_bytes() == observed["bytes"]
+    assert result.get("retained_candidate_receipt") is None
+
+
+def test_terminal_cas_accepts_exact_captured_lifecycle_record(tmp_path):
+    repo = tmp_path / "repo"
+    _repository(repo)
+    store = _daemon(repo).worktree_lifecycle
+    captured = store.begin_preparing(
+        task_id="EXACT", canonical_task_cid="cid:exact", attempt=1,
+        lane_id="lane", workspace_path=repo, branch="implementation/exact",
+        merge_target="main",
+    )
+    terminal = store.mark_terminal(repo, lease_id=captured.lease_id,
+        expected_fence=captured.fence, expected_record=captured)
+    assert terminal.is_terminal
+    assert terminal.record_id == captured.record_id
