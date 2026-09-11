@@ -71254,32 +71254,38 @@ class PortalImplementationDaemon:
             return ""
         return str(record.lease_id or "")
 
-    def _mark_worktree_lifecycle_settling(
-        self,
-        worktree_path: Path | None,
+    def _require_active_worktree_lifecycle(
+        self, worktree_path: Path | None, *, boundary: str,
     ) -> WorkspaceLifecycleRecord | None:
-        """Advance the active claim into settling before validation/merge/cleanup."""
+        """Verify the captured record without adopting a path's current owner."""
+        expected = self._active_worktree_lifecycle
+        if expected is None:
+            return None
+        if (worktree_path is not None and
+                normalize_workspace_path(worktree_path) !=
+                normalize_workspace_path(expected.workspace_path)):
+            raise OwnershipError(f"lifecycle workspace changed before {boundary}")
+        observed = self.worktree_lifecycle.load_workspace(expected.workspace_path)
+        if observed != expected or observed.is_terminal:
+            raise OwnershipError(f"lifecycle ownership or fence changed before {boundary}")
+        return expected
 
-        record = self._active_worktree_lifecycle
-        if worktree_path is not None:
-            loaded = self.worktree_lifecycle.load_workspace(worktree_path)
-            if loaded is not None:
-                record = loaded
-        if record is None or record.is_terminal:
+    def _mark_worktree_lifecycle_settling(
+        self, worktree_path: Path | None,
+    ) -> WorkspaceLifecycleRecord | None:
+        """Settle only the captured owner, rechecked inside the mutation guard."""
+        record = self._require_active_worktree_lifecycle(
+            worktree_path, boundary="validation",
+        )
+        if record is None or record.state is WorkspaceLifecycleState.SETTLING:
             return record
-        if record.state is WorkspaceLifecycleState.SETTLING:
-            self._active_worktree_lifecycle = record
-            return record
-        try:
-            updated = self.worktree_lifecycle.mark_settling(
-                record.workspace_path,
-                lease_id=record.lease_id,
-                expected_fence=record.fence,
-            )
-        except (FenceMismatchError, OwnershipError, WorktreeLifecycleError):
-            return record
+        updated = self.worktree_lifecycle.mark_settling(
+            record.workspace_path, lease_id=record.lease_id,
+            expected_fence=record.fence, expected_record=record,
+        )
         self._active_worktree_lifecycle = updated
         return updated
+
 
     def _sync_worktree_lifecycle_workspace(
         self,
@@ -71432,24 +71438,22 @@ class PortalImplementationDaemon:
         return payload
 
     def _finalize_worktree_lifecycle(
-        self,
-        worktree_path: Path | None,
-        *,
-        reason: str = "cleanup_finished",
+        self, worktree_path: Path | None, *, reason: str = "cleanup_finished",
     ) -> dict[str, Any]:
-        """Mark the active (or path-bound) lifecycle record terminal after disposal."""
-
+        """Finalize the captured claim; a workspace path cannot confer custody."""
         record = self._active_worktree_lifecycle
-        if worktree_path is not None:
-            loaded = self.worktree_lifecycle.load_workspace(worktree_path)
-            if loaded is not None:
-                record = loaded
         if record is None:
             return {"finalized": False, "reason": "no_lifecycle_record"}
-        return self._finalize_exact_worktree_lifecycle(
-            record,
-            reason=reason,
-        )
+        if (worktree_path is not None and
+                normalize_workspace_path(record.workspace_path) !=
+                normalize_workspace_path(worktree_path)):
+            return {
+                "finalized": False, "reason": "lifecycle_workspace_mismatch",
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                "attempt_consumed": False, "provider_call_allowed": False,
+            }
+        return self._finalize_exact_worktree_lifecycle(record, reason=reason)
+
 
     def _finalize_exact_worktree_lifecycle(
         self,
@@ -71488,13 +71492,7 @@ class PortalImplementationDaemon:
 
         def _clear_captured_active() -> None:
             current = self._active_worktree_lifecycle
-            if (
-                current is not None
-                and current.lease_id == record.lease_id
-                and current.fence == record.fence
-                and normalize_workspace_path(current.workspace_path)
-                == normalize_workspace_path(record.workspace_path)
-            ):
+            if current == record:
                 self._active_worktree_lifecycle = None
 
         if record.is_terminal:
@@ -71533,6 +71531,7 @@ class PortalImplementationDaemon:
                 lease_id=record.lease_id,
                 expected_fence=record.fence,
                 reason=reason,
+                expected_record=record,
             )
             terminal_callback_result: dict[str, Any] = {}
             if terminal_callback is not None:
@@ -71598,8 +71597,7 @@ class PortalImplementationDaemon:
                 ),
             }
         except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
-            # Peer reclamation or concurrent owner may have advanced the fence.
-            _clear_captured_active()
+            # Retain the captured identity when another owner won the CAS.
             return {
                 "finalized": False,
                 "reason": "lifecycle_finalize_race",
@@ -71608,6 +71606,7 @@ class PortalImplementationDaemon:
                 "attempt_consumed": False,
                 "provider_call_allowed": False,
             }
+
 
     @_workspace_maintenance_boundary()
     def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
