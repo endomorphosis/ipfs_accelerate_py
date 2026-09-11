@@ -493,3 +493,99 @@ def test_origin_install_refuses_staging_changed_before_replacement(armed, monkey
     assert changed
     assert (armed.queue / "merge_queue.duckdb").read_bytes() == before["merge_queue.duckdb"]
     assert bytes_before(captured.path) == before
+
+
+def test_path_substitution_while_validated_database_handle_is_open_must_be_denied(armed, monkeypatch):
+    from scripts.ops.agent_supervisor import spar_legacy_origin as origin
+    from scripts.ops.agent_supervisor.spar_merge_owner_handoff import ORIGIN_TABLE
+    armed.close_native()
+    captured = do_capture(armed)
+    prepared = role.prepare_offline_clone(offline_root=captured.path,
+        destination=armed.tmp / 'prepared', manifest=captured.receipt['manifest'])
+    canonical_before = (armed.queue / 'merge_queue.duckdb').read_bytes()
+    captured_before = bytes_before(captured.path)
+    native_inventory = role.inventory
+    replacement = armed.tmp / 'not-a-database'
+    substituted = b'UNVALIDATED PATHNAME SUBSTITUTION DURING OPEN DATABASE HANDLE\n'
+    replacement.write_bytes(substituted)
+    swapped = False
+
+    def swap_after_logical_inventory(connection):
+        nonlocal swapped
+        value = native_inventory(connection)
+        if not swapped and ORIGIN_TABLE in value:
+            swapped = True
+            os.replace(replacement, prepared.database_path)
+        return value
+
+    monkeypatch.setattr(role, 'inventory', swap_after_logical_inventory)
+    rejected = False
+    try:
+        origin.install_captured_queue(captured, prepared)
+    except Exception:
+        rejected = True
+    assert swapped
+    assert bytes_before(captured.path) == captured_before
+    actual = (armed.queue / 'merge_queue.duckdb').read_bytes()
+    assert rejected and actual == canonical_before, (
+        f'installation_rejected={rejected}, canonical_contains_unvalidated_substitution={actual == substituted}'
+    )
+
+
+def test_prepared_cursor_substitution_cannot_reset_captured_positions(armed):
+    import hashlib
+    from dataclasses import replace
+    from scripts.ops.agent_supervisor import spar_legacy_origin as origin
+    from scripts.ops.agent_supervisor import spar_merge_owner_handoff as handoff
+    from test.api.semantic_refactoring.test_spar_merge_owner_bootstrap import start, attach_recovery
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import _POST_MERGE_RECOVERY_CURSOR_SCHEMA, _canonical_json
+    from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import content_identity
+    coordinates={'target_repository_id':armed.context['repository_id'],
+                 'target_branch':armed.context['target_branch'],
+                 'attempt_root':armed.context['scope_bindings'][0]['attempt_root']}
+    body={'schema':_POST_MERGE_RECOVERY_CURSOR_SCHEMA, **coordinates,
+          'cursors':{stage:'retained:'+stage for stage in role.STAGES}}
+    body['state_id']=content_identity(body)
+    path=armed.queue/'train/post-merge-recovery-cursors'/(hashlib.sha256(_canonical_json(coordinates)).hexdigest()+'.json')
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(body))
+    armed.close_native()
+    captured=do_capture(armed)
+    prepared=role.prepare_offline_clone(offline_root=captured.path,
+        destination=armed.tmp/'prepared',manifest=captured.receipt['manifest'])
+    assert len(prepared.cursor_imports)==1
+    reset={stage:'' for stage in role.STAGES}
+    substituted={**prepared.cursor_imports[0], 'cursors':reset, 'state_cid':role._cid(reset)}
+    try:
+        origin.install_captured_queue(captured,replace(prepared,cursor_imports=(substituted,)))
+    except role.SparMergeOwnerError:
+        return
+    armed.session.close()
+    resumed=handoff._load_origin(armed.queue/'merge_queue.duckdb',profile=handoff.LEGACY_PROFILE,
+        repository_id=armed.context['repository_id'],target_branch=armed.context['target_branch'],
+        store_id=armed.context['store_id'],scopes=armed.context['scope_bindings'])
+    server=start(resumed,armed.tmp/'successor')
+    connection=None
+    try:
+        connection,api=attach_recovery(server,resumed.manifest)
+        actual=api.load_cursors()['cursors']
+        assert actual==body['cursors'], f'captured_cursor_positions_reset={actual == reset}'
+    finally:
+        if connection:connection.close()
+        server.stop()
+
+
+def test_prepared_inventory_cannot_redefine_original_population(armed):
+    from dataclasses import replace
+    from scripts.ops.agent_supervisor import spar_legacy_origin as origin
+    armed.close_native()
+    captured = do_capture(armed)
+    prepared = role.prepare_offline_clone(offline_root=captured.path,
+        destination=armed.tmp / "prepared", manifest=captured.receipt["manifest"])
+    original = (armed.queue / "merge_queue.duckdb").read_bytes()
+    with role.open_duckdb_connection(prepared.database_path, prefer_quack=False) as connection:
+        connection.execute("DELETE FROM merge_requests WHERE request_id=?", [armed.unknown.request_id])
+        replacement_baseline = role.inventory(connection)
+    with pytest.raises(role.SparMergeOwnerError, match="preservation inventory differs"):
+        origin.install_captured_queue(captured, replace(prepared, preserved_inventory=replacement_baseline))
+    assert (armed.queue / "merge_queue.duckdb").read_bytes() == original
