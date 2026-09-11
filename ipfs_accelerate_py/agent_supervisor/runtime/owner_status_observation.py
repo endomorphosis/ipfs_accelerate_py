@@ -347,9 +347,16 @@ class OwnerStatusObservation:
             raise OwnerObservationUnavailable()
         connection = self.server._connection
         owner = self.scope["owner_identity"]
+        # Scope validation requires an exact positive int (not bool or text).
+        # Binding even this scalar can initialize DuckDB's optional Python
+        # conversion imports on the first observation and exhaust its deadline.
+        # Keep that initialization out of the native owner's bounded read path.
+        generation = owner["generation"]
+        if type(generation) is not int or generation <= 0:
+            raise OwnerObservationUnavailable()
         row = connection.execute(
-            "SELECT database_uuid, birth_id, fence_epoch FROM store_generations WHERE generation = ?",
-            [owner["generation"]],
+            "SELECT database_uuid, birth_id, fence_epoch FROM store_generations "
+            f"WHERE generation = {generation}"
         ).fetchall()
         if len(row) != 1 or tuple(row[0][i] for i in range(3)) != (owner["database_uuid"], owner["process_birth_id"], owner["fence_epoch"]):
             raise OwnerObservationUnavailable()
