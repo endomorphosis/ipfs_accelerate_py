@@ -516,3 +516,49 @@ The read session controls resource lifetime only. It does not begin a read
 transaction, freeze task heads, grant authority, or replace native source/owner
 admission. The caller must retain the final snapshot comparison and retry only
 the typed observation drift that the native restart-check contract permits.
+
+
+## A stable maintenance observation window
+
+After the current repair job finishes normally and its queue claim is reconciled,
+stop `ipfs-taskboard-repair.service`. Keep the watchdog and every board's native
+holds under their existing operator rules. A bounded observer can then retain
+`<state_dir>/repair-worker.lock` and publish fresh, truthful maintenance status:
+
+```sh
+python -m ipfs_accelerate_py.agent_supervisor.rescue.fleet_repair observe-maintenance \
+  --config /path/to/fleet.json \
+  --maintenance-duration-seconds 900 \
+  --maintenance-interval-seconds 5
+```
+
+Run it from the reviewed observer source in its own retained session or temporary
+operator service, not as the normal `ipfs-taskboard-repair.service`. It does not
+change the fleet configuration or pretend that the configured normal runtime
+release has changed. Reports explicitly identify `mode=maintenance_observation`,
+`dispatch_enabled=false`, the observer PID/source/hash and the separately
+configured normal runtime release. Duration is bounded to 1–3600 seconds; the
+observation interval is bounded to 0.2–30 seconds.
+
+The observer never selects, reconciles, claims, starts, stops or completes a job.
+A due queued job is reported as waiting, including held work; its attempt budget
+and scheduled retry remain untouched. Missing jobs are empty queues. Every
+existing configured claim must be queued or positively finished; running,
+unrecognized, malformed or unfinished attempt histories block an idle report.
+The actual normal dispatcher and global repair-job units must both have an
+admitted inactive lifecycle and MainPID 0. Units and all job/hold bindings are
+checked twice, and any change, failed read or unknown lifecycle prevents idle
+admission. A live repair job is reported as running. The observer does not signal
+it or reconcile its result.
+
+The retained kernel flock excludes both another observer and the ordinary
+native dispatcher, even when another board is due. A busy mutex fails without
+writing a status. Its inode and the exact configuration bytes remain bound.
+Normal bounded expiry or an operator signal writes
+`status=maintenance_observer_stopped` before releasing the mutex; that terminal
+record is not an idle certificate. Keep the observer's actual process and mutex
+custody until the maintenance operation finishes, then allow it to exit normally
+or stop only that observer before restoring the normal dispatcher. A crash or
+lost mutex must be treated as loss of this retained maintenance session, not as
+an indefinitely valid idle observation. Native per-board fences, current owner
+checks and completion gates remain necessary throughout maintenance.

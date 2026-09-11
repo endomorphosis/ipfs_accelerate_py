@@ -766,13 +766,22 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["enqueue", "run"])
+    parser.add_argument("mode", choices=["enqueue", "run", "observe-maintenance"])
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--incident", type=Path)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--maintenance-duration-seconds", type=float, default=900)
+    parser.add_argument("--maintenance-interval-seconds", type=float, default=5)
     args = parser.parse_args(argv)
     config = load_config(args.config)
     config["_config_path"] = str(args.config.resolve())
+    if args.mode == "observe-maintenance":
+        if args.once or args.incident is not None:
+            parser.error("observe-maintenance uses its bounded duration, not --once or --incident")
+        from .fleet_repair_maintenance import run as observe_maintenance
+        return observe_maintenance(config, config_path=args.config.resolve(),
+            duration_seconds=args.maintenance_duration_seconds,
+            interval_seconds=args.maintenance_interval_seconds)
     if args.mode == "enqueue":
         if args.incident is None:
             parser.error("enqueue requires --incident")
