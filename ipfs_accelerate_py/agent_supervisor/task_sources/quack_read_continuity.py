@@ -35,7 +35,13 @@ class QuackReadUnavailable(RuntimeError):
 def owned_connection_deadline(connection, deadline):
     """Interrupt only this fresh connection; retire the timer before closing it."""
     if deadline is None:
-        yield
+        try:
+            yield
+        except Exception as error:
+            from .duckdb_interrupts import reraise_process_interrupt
+
+            reraise_process_interrupt(error)
+            raise
         return
     if time.monotonic() >= deadline:
         raise QuackReadUnavailable("quack task read deadline exhausted")
@@ -60,6 +66,11 @@ def owned_connection_deadline(connection, deadline):
         yield
         if time.monotonic() >= deadline:
             raise QuackReadUnavailable("quack task read deadline exhausted")
+    except Exception as error:
+        from .duckdb_interrupts import reraise_process_interrupt
+
+        reraise_process_interrupt(error)
+        raise
     finally:
         done.set()
         timer.join()
@@ -110,6 +121,9 @@ def read_task_projection(*, open_connection, read_projection, store_id, endpoint
             with owned_connection_deadline(connection._connection, deadline):
                 return read_projection(connection)
         except Exception as error:
+            from .duckdb_interrupts import reraise_process_interrupt
+
+            reraise_process_interrupt(error)
             if time.monotonic() >= deadline:
                 raise QuackReadUnavailable(
                     "quack task read deadline exhausted"

@@ -1426,8 +1426,10 @@ def _execute_quack_owner_mutation_bundle(
 def _consume_duckdb_result(connection: Any) -> None:
     try:
         connection.fetchall()
-    except Exception:
-        pass
+    except Exception as error:
+        from .duckdb_interrupts import reraise_process_interrupt
+
+        reraise_process_interrupt(error)
 
 
 def _open_quack_transport_connection_once(
@@ -1456,7 +1458,9 @@ def _open_quack_transport_connection_once(
         raise DuckDBConnectionPolicyError(
             "DuckDB is required for Quack transport"
         ) from exc
-    connection = duckdb.connect(":memory:")
+    connection = duckdb.connect(
+        ":memory:", config={"threads": 1, "memory_limit": DEFAULT_MEMORY_LIMIT}
+    )
     from .quack_read_continuity import owned_connection_deadline
 
     try:
@@ -1583,11 +1587,14 @@ def _open_quack_transport_connection_once(
                         "quack live binding differs from the admitted owner status: "
                         + ", ".join(mismatched)
                     )
-    except Exception:
+    except BaseException as error:
         try:
             connection.close()
         except Exception:
             pass
+        from .duckdb_interrupts import reraise_process_interrupt
+
+        reraise_process_interrupt(error)
         raise
     wrapped = DuckDBConnection.wrap(connection)
     wrapped._default_catalog = _QUACK_CONTROL_CATALOG
