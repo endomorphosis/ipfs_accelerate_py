@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..merge.workspace_quarantine import maintenance_boundary as _workspace_maintenance_boundary
+from ..merge.workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
 
 import argparse
 import fcntl
@@ -17357,6 +17358,7 @@ class PortalImplementationSupervisor:
             self._record_event("stale_worktree_detection", result)
         return result
 
+    @_workspace_maintenance_boundary()
     def reconcile_backlogged_worktrees(
         self,
         *,
@@ -20540,6 +20542,7 @@ class PortalImplementationSupervisor:
     def _worktree_branch_can_delete_after_merge(branch: str) -> bool:
         return PortalImplementationSupervisor._worktree_branch_is_reconcilable(branch)
 
+    @_workspace_mutation_boundary("worktree_path")
     def _prune_completed_leftover_worktree(
         self,
         worktree_path: Path,
@@ -20957,23 +20960,26 @@ class PortalImplementationSupervisor:
         closed.
         """
 
-        worktree_root = self.config.worktree_root
-        if worktree_root is None:
-            yield {
-                "allowed": True,
-                "pooled": False,
-                "reason": "worktree_pool_not_configured",
-                "operation": operation,
-            }
-            return
-        with guarded_worktree_pool_mutation(
-            repo_root=self.config.repo_root,
-            worktree_root=worktree_root,
-            workspace_path=worktree_path,
-            expected_branch=expected_branch,
-            operation=operation,
-        ) as decision:
-            yield decision
+        from ..merge.workspace_quarantine import mutation
+
+        with mutation(self.config.repo_root, worktree_path):
+            worktree_root = self.config.worktree_root
+            if worktree_root is None:
+                yield {
+                    "allowed": True,
+                    "pooled": False,
+                    "reason": "worktree_pool_not_configured",
+                    "operation": operation,
+                }
+                return
+            with guarded_worktree_pool_mutation(
+                repo_root=self.config.repo_root,
+                worktree_root=worktree_root,
+                workspace_path=worktree_path,
+                expected_branch=expected_branch,
+                operation=operation,
+            ) as decision:
+                yield decision
 
     def _revalidate_worktree_mutation_preimage(
         self,
@@ -21342,6 +21348,7 @@ class PortalImplementationSupervisor:
             fragment = fragment.replace("--", "-")
         return fragment[:96] or "worktree"
 
+    @_workspace_mutation_boundary("worktree_path")
     def _rescue_dirty_worktree(
         self,
         worktree_path: Path,
@@ -21408,6 +21415,7 @@ class PortalImplementationSupervisor:
                 reason=reason,
             )
 
+    @_workspace_mutation_boundary("worktree_path")
     def _rescue_dirty_worktree_guarded(
         self,
         worktree_path: Path,
