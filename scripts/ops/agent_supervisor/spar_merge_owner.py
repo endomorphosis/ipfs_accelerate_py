@@ -598,6 +598,7 @@ class PreparedQueueStore:
     preserved_inventory: Mapping[str, Any]
     receipt_imports: tuple[Mapping[str, Any], ...]
     cursor_imports: tuple[Mapping[str, Any], ...]
+    launch_transition: Any = None
 
     @property
     def manifest_cid(self):
@@ -816,6 +817,9 @@ def start_queue_owner(
             receipt_imports=prepared.receipt_imports,
             cursor_imports=prepared.cursor_imports,
         )
+        if prepared.launch_transition is not None:
+            from .spar_legacy_launch_transition import provision_transition
+            provision_transition(server, prepared)
         server.bind_legacy_merge_recovery_service(**scope)
         with server._owner_transaction_lock:
             require_preserved(startup_inventory, inventory(server._connection))

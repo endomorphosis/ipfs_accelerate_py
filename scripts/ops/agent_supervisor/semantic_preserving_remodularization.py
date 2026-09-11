@@ -520,6 +520,13 @@ def dependency_seal(documents: dict[str, bytes]) -> dict[str, Any]:
     edges = sorted((dependency, task.task_id) for task in TASKS for dependency in task.dependencies)
     bootstrap_runtime_paths = (
         "pyproject.toml",
+        "scripts/ops/agent_supervisor/spar_legacy_capture.py",
+        "scripts/ops/agent_supervisor/spar_legacy_import_plan.py",
+        "scripts/ops/agent_supervisor/spar_legacy_observation.py",
+        "scripts/ops/agent_supervisor/spar_legacy_origin.py",
+        "scripts/ops/agent_supervisor/spar_legacy_launch_transition.py",
+        "scripts/ops/agent_supervisor/spar_merge_owner.py",
+        "scripts/ops/agent_supervisor/spar_merge_owner_handoff.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",

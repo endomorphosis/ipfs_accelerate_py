@@ -66,7 +66,8 @@ def configured_queue_root(board):
     return root
 
 
-def _load_origin(database, *, repository_id, target_branch, store_id, scopes, profile=FRESH_PROFILE):
+def _load_origin(database, *, repository_id, target_branch, store_id, scopes, profile=FRESH_PROFILE,
+                 launch_context=None):
     # A positive observed lock veto precedes every canonical DB open. Absence
     # does not certify legacy closure; only this role's canonical origin is read.
     info = database.lstat()
@@ -124,12 +125,29 @@ def _load_origin(database, *, repository_id, target_branch, store_id, scopes, pr
             "repository_id": repository_id,
             "target_branch": target_branch,
             "store_id": store_id,
-            "scope_bindings": scopes,
         }
         if any(manifest[key] != value for key, value in expected.items()):
             raise role.SparMergeOwnerError(
                 "current native source namespace differs from fresh origin; explicit migration required"
             )
+        transition = None
+        if manifest["scope_bindings"] != scopes:
+            if profile != LEGACY_PROFILE or launch_context is None:
+                raise role.SparMergeOwnerError(
+                    "current native source namespace differs from fresh origin; explicit migration required")
+            from .spar_legacy_launch_transition import qualify_transition
+            try:
+                transition = qualify_transition(origin=record, scopes=scopes, **launch_context)
+            except role.SparMergeOwnerError as exc:
+                raise role.SparMergeOwnerError(
+                    "current native source namespace differs: " + str(exc)) from exc
+        elif profile == LEGACY_PROFILE and "legacy_merge_recovery_migrations" in names:
+            migrated = connection.execute(
+                "SELECT payload_cid FROM legacy_merge_recovery_migrations WHERE migration_id=?",
+                ["spar-native-launch:" + role._cid(manifest)]).fetchall()
+            if migrated:
+                raise role.SparMergeOwnerError(
+                    "native launch already transitioned away from the captured configuration")
         if profile != LEGACY_PROFILE and (
             manifest["receipt_imports"]
             or manifest["cursor_imports"]
@@ -140,7 +158,8 @@ def _load_origin(database, *, repository_id, target_branch, store_id, scopes, pr
     role.verify_installed_schema(database)
     return role.PreparedQueueStore(
         database, manifest, record["database_uuid"], baseline,
-        tuple(record.get("receipt_imports", ())), tuple(record.get("cursor_imports", ()))
+        tuple(record.get("receipt_imports", ())), tuple(record.get("cursor_imports", ())),
+        transition,
     )
 
 
@@ -302,7 +321,9 @@ def start_native_queue_for_launch(
                 raise role.SparMergeOwnerError("native migrated root is not private and owned")
         finally:
             os.close(descriptor)
-        prepared = _load_origin(root / "merge_queue.duckdb", profile=profile, **coordinates)
+        prepared = _load_origin(root / "merge_queue.duckdb", profile=profile,
+                                launch_context=dict(board=board, paths=paths, amendment=amendment),
+                                **coordinates)
     else:
         prepared = prepare_fresh_native_queue(
             queue_root=root, source_commit=amendment.launch_source_head,
@@ -366,7 +387,8 @@ class NativeMergeBundleIssuer:
         owner = self.owner.server
         manifest = self.owner.prepared.manifest
         index = int(session.rsplit("-", 1)[1])
-        scope = manifest["scope_bindings"][index]
+        transition = self.owner.prepared.launch_transition
+        scope = (transition.scope_bindings if transition is not None else manifest["scope_bindings"])[index]
         scope_id = role.recovery_scope_cid(
             store_id=manifest["store_id"],
             repository_id=manifest["repository_id"],

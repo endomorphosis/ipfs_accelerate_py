@@ -214,3 +214,29 @@ qualified update of a running service through its own temporary drop-in.
 The deployed native closeout handler also returned `stopped` after exact-pidfd
 SIGTERM with a progress-only status fixture. These tests changed only their
 uniquely named disposable units; they are not evidence of SPAR live adoption.
+
+### Captured scope to current launch configuration
+
+A native legacy origin remains bound to the captured configuration and its
+original cursor files. A current dependency seal changes the launch configuration
+CID; treating that as an empty recovery scope would lose the retained positions.
+The native entry now permits one explicit transition when the only configuration
+change is `dependency_seal_cid`. The current typed launch amendment must already
+be admitted by the materializer. The transition verifies the captured Git source,
+current committed files and seal, unchanged immutable bootstrap inputs, and every
+old/new lane, attempt root, plan and repository coordinate.
+
+The separate queue owner imports the original scopes first. Before issuing any
+worker grants it creates the new scopes from the exact retained initial cursor
+values and appends a versioned transition receipt. Original scope rows, cursor
+history, claims, callback receipts and the captured origin remain unchanged.
+Restart replay preserves later successor cursor heads. An advanced original
+scope, a second configuration transition, reverting to the captured configuration,
+or any change beyond the dependency seal requires a separate admission; none can
+silently reseed positions. This operation grants no signing, callback settlement,
+semantic completion or Git integration authority.
+
+The current rendered seal/configuration are forward source artifacts. The
+original bootstrap receipt and its Git-addressed configuration, board, plan,
+objectives and validator remain historical inputs and are never regenerated to
+make the new source pass.
