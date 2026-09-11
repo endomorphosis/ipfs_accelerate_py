@@ -13190,6 +13190,85 @@ class DatabasePortalExecutionBridge:
             str(paths.task_projection),
         )
 
+    def _recorded_pending_merge_identity(
+        self,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> tuple[str, str, str, int, str, str, str] | None:
+        """Resume a durable queued handoff without reopening provider selection."""
+
+        try:
+            paths.events.lstat()
+        except FileNotFoundError:
+            return None
+        pending_seen = False
+        identity = None
+        marker_identities = []
+        for event in self._verified_event_chain(paths):
+            event_type = event.get("type")
+            if event_type not in {
+                "implementation_started", "implementation_finished",
+                "merge_candidate_enqueued", "implementation_pending_merge",
+            }:
+                continue
+            if event.get("task_id") != binding.get("task_alias"):
+                if pending_seen:
+                    raise DatabasePortalBridgeError(
+                        "Portal recorded pending-merge lifecycle changed tasks"
+                    )
+                continue
+            if event_type in {"merge_candidate_enqueued", "implementation_pending_merge"}:
+                merge = event if event_type == "merge_candidate_enqueued" else event.get("merge_result")
+                if not isinstance(merge, Mapping) or type(event.get("attempt")) is not int:
+                    raise DatabasePortalBridgeError("Portal recorded pending-merge marker is malformed")
+                marker = (
+                    event.get("task_id"), event.get("canonical_task_key"),
+                    event.get("canonical_task_cid"), event.get("attempt"),
+                    event.get("implementation_commit"), merge.get("request_id"),
+                    str(paths.task_projection),
+                )
+                if identity is not None and marker != identity:
+                    raise DatabasePortalBridgeError("Portal recorded pending-merge marker identity changed")
+                marker_identities.append(marker)
+                pending_seen = True
+                continue
+            if not pending_seen:
+                # A terminal pending result is independently sufficient even
+                # if its earlier advisory enqueue event was not published.
+                if event_type != "implementation_finished" or not self._claims_pending_merge(
+                    {"implementation_result": event}
+                ):
+                    continue
+                pending_seen = True
+            if event_type == "implementation_started":
+                raise DatabasePortalBridgeError(
+                    "Portal recorded pending-merge handoff was followed by another implementation"
+                )
+            result = {"implementation_result": event}
+            if not self._claims_pending_merge(result):
+                raise DatabasePortalBridgeError(
+                    "Portal recorded pending-merge handoff has an unsettled terminal outcome"
+                )
+            current_identity = self._same_claim_pending_merge_identity(
+                result, paths=paths, binding=binding
+            )
+            if current_identity is None:
+                raise DatabasePortalBridgeError(
+                    "Portal recorded pending-merge handoff does not match the database claim"
+                )
+            if any(marker != current_identity for marker in marker_identities):
+                raise DatabasePortalBridgeError("Portal recorded pending-merge marker identity changed")
+            if identity is not None and current_identity != identity:
+                raise DatabasePortalBridgeError(
+                    "Portal recorded pending-merge candidate identity changed"
+                )
+            identity = current_identity
+        if pending_seen and identity is None:
+            raise DatabasePortalBridgeError(
+                "Portal recorded pending-merge handoff is incomplete"
+            )
+        return identity
+
     @staticmethod
     def _claims_pending_merge(result: Mapping[str, Any]) -> bool:
         """Detect an attempted pending-merge handoff before admitting it."""
@@ -22144,9 +22223,7 @@ class DatabasePortalExecutionBridge:
             quota_fallback_continued = False
             ordinary_passes = 0
             inflight_identity: tuple[str, int, str] | None = None
-            pending_merge_identity: (
-                tuple[str, str, str, int, str, str, str] | None
-            ) = None
+            pending_merge_identity = self._recorded_pending_merge_identity(paths, binding)
             while ordinary_passes < self.max_passes:
                 projection = self._verify_projection(paths, binding)
                 if _projection_status(projection) in _TERMINAL_STATUSES:
@@ -22205,7 +22282,21 @@ class DatabasePortalExecutionBridge:
                             DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS
                         ),
                     )
-                raw_result = daemon.run_once()
+                if pending_merge_identity is not None:
+                    if not self._pending_merge_state_is_current(
+                        paths, binding, pending_merge_identity
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "Portal pending-merge state no longer matches the queued candidate"
+                        )
+                    reconcile_pending = getattr(daemon, "reconcile_pending_merge_once", None)
+                    if not callable(reconcile_pending):
+                        raise DatabasePortalBridgeError(
+                            "Portal pending-merge reconciliation capability is unavailable"
+                        )
+                    raw_result = reconcile_pending()
+                else:
+                    raw_result = daemon.run_once()
                 if not isinstance(raw_result, Mapping):
                     raise DatabasePortalBridgeError("Portal daemon returned a non-object result")
                 summary = _bounded_portal_result(raw_result)
