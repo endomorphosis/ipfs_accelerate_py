@@ -382,7 +382,8 @@ def test_nested_boundary_rejects_unreadable_or_unbound_parent_custody(
 
 
 
-def _fifo_custody_reader(operation, path, repo, root, output):
+def _fifo_custody_reader(operation, path, repo, root, output, ready):
+    ready.set()
     try:
         if operation == "direct":
             q.read_regular(path)
@@ -431,11 +432,15 @@ def test_fifo_custody_population_is_denied_without_waiting_for_writer(
     # even though no process ever opens the other end of this FIFO.
     context = multiprocessing.get_context("spawn")
     output = context.Queue()
+    ready = context.Event()
     child = context.Process(
-        target=_fifo_custody_reader, args=(operation, path, repo, root, output)
+        target=_fifo_custody_reader, args=(operation, path, repo, root, output, ready)
     )
     child.start()
     try:
+        # Match the shared-main fixture: import time is separate from the
+        # unchanged ten-second bound on the actual native custody operation.
+        assert ready.wait(timeout=45), "custody reader process failed to initialize"
         child.join(timeout=10)
         assert not child.is_alive(), "native custody read blocked opening a FIFO"
         assert child.exitcode == 0
