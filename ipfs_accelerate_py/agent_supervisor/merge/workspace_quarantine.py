@@ -11,7 +11,6 @@ import fcntl
 from fnmatch import fnmatchcase
 import hashlib
 from itertools import islice
-import json
 import os
 import stat
 import tempfile
@@ -496,6 +495,8 @@ def mutation_boundary(*workspace_names: str, pool: bool = False):
                 if owner is not None
                 else bound.arguments.get("repo_root")
             )
+            if repo_root is None and owner is not None:
+                repo_root = getattr(getattr(owner, "config", None), "repo_root", None)
             require(repo_root is not None, "workspace_mutation_root_unbound")
             if pool:
                 paths = [owner.worktree_root]

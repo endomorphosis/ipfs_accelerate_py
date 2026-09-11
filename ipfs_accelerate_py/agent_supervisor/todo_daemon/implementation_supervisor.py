@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..merge.workspace_quarantine import maintenance_boundary as _workspace_maintenance_boundary
+from ..merge.workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
 
 import argparse
 import fcntl
@@ -13292,6 +13293,7 @@ class PortalImplementationSupervisor:
             self._record_event("stale_worktree_detection", result)
         return result
 
+    @_workspace_maintenance_boundary()
     def reconcile_backlogged_worktrees(
         self,
         *,
@@ -19202,6 +19204,7 @@ class PortalImplementationSupervisor:
             fragment = fragment[len(stacked) :]
         return fragment or "worktree"
 
+    @_workspace_mutation_boundary("worktree_path")
     def _rescue_dirty_worktree(
         self,
         worktree_path: Path,
