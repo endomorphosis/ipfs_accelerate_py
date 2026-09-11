@@ -344,7 +344,10 @@ from ..validation.validation_scheduler import (
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor import validated_protected_attempt_latch
-from .supervisor_runtime import run_process_group_stream
+from .supervisor_runtime import (
+    ProcessGroupCleanupUnverified,
+    run_process_group_stream,
+)
 from .contract_packet_provider_router import (
     IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
     PROVIDER_EXECUTION_RECEIPT_INTERFACE,
@@ -25368,6 +25371,7 @@ class PortalImplementationDaemon:
                 {"task_ids": sorted(revision_reset_task_ids)},
             )
         implementation_result: dict[str, Any] | None = None
+        process_group_cleanup_unverified = False
         try:
             if self.implement and selected is not None and resolved_statuses.get(selected.task_id) == "ready":
                 unresolved_for_selected = unresolved_merge_failures.get(selected.task_id)
@@ -25401,6 +25405,9 @@ class PortalImplementationDaemon:
                     self._record_event("implementation_skipped", implementation_result)
                 else:
                     implementation_result = self._run_implementation(selected, state)
+        except ProcessGroupCleanupUnverified:
+            process_group_cleanup_unverified = True
+            raise
         finally:
             retain_selected_intent = bool(
                 selected is not None
@@ -25410,7 +25417,11 @@ class PortalImplementationDaemon:
             )
             self._reconcile_unselected_implementation_dispatch_intents(
                 reusable_dispatch_intents,
-                selected=selected if retain_selected_intent else None,
+                selected=(
+                    selected
+                    if retain_selected_intent or process_group_cleanup_unverified
+                    else None
+                ),
                 reason="retained_intent_not_preserved_after_dispatch",
             )
         provider_backoff_result = bool(
@@ -28535,6 +28546,7 @@ class PortalImplementationDaemon:
 
         acquired_lock = False
         retain_task_claim_for_handoff = False
+        process_group_cleanup_unverified = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         try:
             if authority_revalidation_only:
@@ -30241,6 +30253,10 @@ class PortalImplementationDaemon:
                 result["diagnostic_receipt_id"] = diagnostic.receipt_id
             self._record_event("implementation_finished", result)
             return result
+        except ProcessGroupCleanupUnverified:
+            process_group_cleanup_unverified = True
+            # Unknown child custody must retain this attempt and its resources.
+            raise
         except Exception as exc:
             if self._retain_task_claim_for_handoff_exception(exc):
                 retain_task_claim_for_handoff = True
@@ -30402,42 +30418,43 @@ class PortalImplementationDaemon:
             self._record_event("implementation_finished", result)
             return result
         finally:
-            try:
-                if acquired_lock and not self._release_implementation_lock(
-                    lock_path,
-                    lock_metadata,
-                ):
-                    logger.warning(
-                        "Refusing to remove implementation lock no longer "
-                        "owned by this attempt: %s",
+            if not process_group_cleanup_unverified:
+                try:
+                    if acquired_lock and not self._release_implementation_lock(
                         lock_path,
-                    )
-            except (OSError, RuntimeError):
-                logger.warning(
-                    "Failed to coordinate removal of implementation lock %s",
-                    lock_path,
-                    exc_info=True,
-                )
-            self._release_implementation_resource_claims(
-                acquired_resource_claims
-            )
-            acquired_resource_claims = []
-            try:
-                if (
-                    acquired_task_claim
-                    and not retain_task_claim_for_handoff
-                    and not self._release_implementation_task_claim(
-                        task_claim_path,
-                        task_claim_metadata,
-                    )
-                ):
+                        lock_metadata,
+                    ):
+                        logger.warning(
+                            "Refusing to remove implementation lock no longer "
+                            "owned by this attempt: %s",
+                            lock_path,
+                        )
+                except (OSError, RuntimeError):
                     logger.warning(
-                        "Refusing to remove implementation task claim no "
-                        "longer owned by this attempt: %s",
-                        task_claim_path,
+                        "Failed to coordinate removal of implementation lock %s",
+                        lock_path,
+                        exc_info=True,
                     )
-            except OSError:
-                logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
+                self._release_implementation_resource_claims(
+                    acquired_resource_claims
+                )
+                acquired_resource_claims = []
+                try:
+                    if (
+                        acquired_task_claim
+                        and not retain_task_claim_for_handoff
+                        and not self._release_implementation_task_claim(
+                            task_claim_path,
+                            task_claim_metadata,
+                        )
+                    ):
+                        logger.warning(
+                            "Refusing to remove implementation task claim no "
+                            "longer owned by this attempt: %s",
+                            task_claim_path,
+                        )
+                except OSError:
+                    logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
 
     @staticmethod
     def _manual_completion_authority_checkout_snapshot(
@@ -46506,6 +46523,9 @@ class PortalImplementationDaemon:
                     implementation_started=implementation_started,
                     provider_dispatched=provider_dispatched,
                 )
+        except ProcessGroupCleanupUnverified:
+            # The worktree still belongs to the unverified process group.
+            raise
         except Exception as exc:
             if self._retain_task_claim_for_handoff_exception(exc):
                 raise
