@@ -1309,7 +1309,7 @@ def test_proven_owner_death_fences_then_recovers_then_restarts_tracks(
 
 
 @pytest.mark.parametrize("health", ["unknown", "unhealthy"])
-def test_unknown_or_live_unhealthy_owner_fences_and_fails_closed(
+def test_unknown_or_live_unhealthy_owner_rechecks_without_midrun_fencing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     health: str,
@@ -1328,10 +1328,12 @@ def test_unknown_or_live_unhealthy_owner_fences_and_fails_closed(
         output=lambda _message: None,
     )
 
-    assert result["completed"] is False
-    assert "refusing a competing owner" in str(result["blocked"])
+    assert result["completed"] is True
+    assert not result["blocked"]
     assert "owner.recover" not in events
-    assert events[-1] == "owner.shutdown"
+    assert events.count("track.start") == events.count("track.stop") == 1
+    assert events.count("owner.health") >= 2
+    assert events[-2:] == ["track.stop", "owner.shutdown"]
 
 
 def test_unhealthy_owner_defers_fence_when_extra_gate_grok_is_live(
@@ -1370,7 +1372,7 @@ def test_unhealthy_owner_defers_fence_when_extra_gate_grok_is_live(
     assert "refusing a competing owner" not in str(result.get("blocked") or "")
     assert "owner.recover" not in events
     assert events[-2:] == ["track.stop", "owner.shutdown"]
-    assert any("preserving extra-gate grok descendants" in line for line in lines)
+    assert any("preserving owner and tracks" in line for line in lines)
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor,
     )

@@ -1695,6 +1695,7 @@ class ManagedLocalQuackOwnerLifecycle:
             process_births_match,
         )
 
+        self._last_probe_diagnostic = {}
         try:
             _status, identity = self._status_identity(
                 allow_proven_dead_endpoint_migration=(
@@ -1705,7 +1706,11 @@ class ManagedLocalQuackOwnerLifecycle:
             binding = self._binding_from_identity(identity)
         except SupervisorRunInterrupted:
             raise
-        except Exception:  # malformed/absent status is not proof of death
+        except Exception as exc:  # malformed/absent status is not proof of death
+            self._last_probe_diagnostic = {
+                "phase": "status_identity",
+                "error_class": type(exc).__name__,
+            }
             return QuackOwnerObservation(
                 process_birth=None,
                 liveness=OwnerLiveness.UNKNOWN,
@@ -1713,7 +1718,11 @@ class ManagedLocalQuackOwnerLifecycle:
             )
         try:
             current = read_process_birth(birth.pid)
-        except OSError:
+        except OSError as exc:
+            self._last_probe_diagnostic = {
+                "phase": "process_birth",
+                "error_class": type(exc).__name__,
+            }
             return QuackOwnerObservation(
                 process_birth=birth,
                 liveness=OwnerLiveness.UNKNOWN,
@@ -1745,7 +1754,11 @@ class ManagedLocalQuackOwnerLifecycle:
             readiness = self._authenticated_readiness_once(owner)
         except SupervisorRunInterrupted:
             raise
-        except Exception:
+        except Exception as exc:
+            self._last_probe_diagnostic = {
+                "phase": "authenticated_readiness",
+                "error_class": type(exc).__name__,
+            }
             return QuackOwnerObservation(
                 process_birth=birth,
                 liveness=OwnerLiveness.ALIVE,
@@ -2114,6 +2127,7 @@ class ManagedLocalQuackOwnerLifecycle:
             health = "unknown"
         return {
             "health": health,
+            "probe_diagnostic": dict(self._last_probe_diagnostic),
             "liveness": observation.liveness.value,
             "authenticated_ready": bool(observation.authenticated_ready),
             "binding": (
@@ -7761,6 +7775,8 @@ def stop_tracks(
                     f"daemon_pid={daemon_pid or 'unknown'}"
                 ),
             )
+            # Deliberate preservation is not proof of whole-tree closure.
+            all_fenced = False
             continue
         fenced, member_pids = _terminate_managed_process(
             process,
@@ -8607,6 +8623,8 @@ def run_supervisor_tracks(
         "startup": None,
         "last_health": None,
         "health_check_count": 0,
+        "deferred_health_count": 0,
+        "coordinator_effects_deferred": False,
         "recoveries": [],
         "shutdown": None,
     }
@@ -8788,25 +8806,34 @@ def run_supervisor_tracks(
                     )
                 )
                 health = str(owner_health.get("health") or "unknown").lower()
+                if health == "healthy":
+                    owner_lifecycle["coordinator_effects_deferred"] = False
                 if health != "healthy":
-                    extra_gate_live = _managed_tracks_must_preserve_extra_gate_grok(
-                        managed_tracks,
-                        processes,
-                        repo_root=resolved_repo_root,
-                    )
-                    if extra_gate_live and health != "dead":
-                        # One unhealthy owner health() fenced the inf PCTDD
-                        # campaign at 11:38:45 and SIGTERM-killed extra-gate
-                        # grok, then refused recovery and shutdown the owner.
-                        # Official unstick is rearm, never CAS. Extra-gate
-                        # aliases still cannot bypass safe_to_restart=False.
+                    if health != "dead":
+                        # The native owner watchdog abstains on live/unknown
+                        # owners. Preserve that boundary in the coordinator:
+                        # no fencing, replacement owner, or track rearm follows
+                        # a failed readiness sample. Retained daemons keep their
+                        # own exact task/claim admission; this is not a pause API.
+                        owner_lifecycle["coordinator_effects_deferred"] = True
+                        owner_lifecycle["deferred_health_count"] = int(
+                            owner_lifecycle["deferred_health_count"]
+                        ) + 1
+                        diagnostic = owner_health.get("probe_diagnostic")
+                        if not isinstance(diagnostic, Mapping):
+                            diagnostic = {}
+                        error_class = (
+                            diagnostic.get("error_class")
+                            or owner_health.get("error_class")
+                            or "none"
+                        )
+                        phase = diagnostic.get("phase") or "health_observation"
                         _emit(
                             output,
-                            (
-                                f"managed Quack owner health={health}; "
-                                "preserving extra-gate grok descendants; "
-                                "deferring fence until owner is proven dead"
-                            ),
+                            f"managed Quack owner health={health}; "
+                            "preserving owner and tracks; "
+                            f"deferring coordinator effects phase={phase} "
+                            f"error_class={error_class}",
                         )
                         continue
                     _emit(
@@ -8895,6 +8922,12 @@ def run_supervisor_tracks(
                         output,
                         "managed Quack owner recovered; fenced tracks restarted",
                     )
+                    owner_lifecycle["coordinator_effects_deferred"] = False
+            # A heartbeat may precede the next due owner sample. Keep the last
+            # uncertain observation in force until a fresh healthy observation
+            # or authenticated dead-owner recovery permits coordinator effects.
+            if owner_lifecycle["coordinator_effects_deferred"] is True:
+                continue
             for track in tuple(managed_tracks):
                 if track.name in bounded_finished_tracks:
                     continue
@@ -9306,7 +9339,28 @@ def run_supervisor_tracks(
             grace_seconds=stop_grace_seconds,
             output=output,
         )
-        if managed_quack_owner is not None:
+        if (
+            managed_quack_owner is not None
+            and stop_payload.get("all_trees_fenced") is not True
+        ):
+            owner_lifecycle["shutdown"] = {
+                "stopped": False,
+                "deferred": True,
+                "reason": "track_custody_not_closed",
+            }
+            if not blocked:
+                blocked = (
+                    "managed track custody is not closed; "
+                    "preserving required Quack owner"
+                )
+            _emit(
+                output,
+                "managed track custody is not closed; deferring owner shutdown",
+            )
+        if (
+            managed_quack_owner is not None
+            and stop_payload.get("all_trees_fenced") is True
+        ):
             try:
                 owner_lifecycle["shutdown"] = dict(
                     managed_quack_owner.shutdown()
