@@ -25,15 +25,15 @@
     "scripts/ops/agent_supervisor/spar_capture_runtime.py": "f4bc170fdd44e8bd6228bebb82e104f5ef5522258832ca02d80df09f4d38eb8e",
     "scripts/ops/agent_supervisor/spar_legacy_capture.py": "10104798edd3584019a1791cafac2f278e5df44eec3f69c9e4c0729b7b4d626a",
     "scripts/ops/agent_supervisor/spar_legacy_import_plan.py": "83f51622e3d7b54362ed88510d20c42b13f1706eb2f1d0ff7292bb249f802f7b",
-    "scripts/ops/agent_supervisor/spar_legacy_launch_transition.py": "d3fe10f52100fb5ade7812b8dae9899db0f28ee5f8d623e8b67cc098ee324e4a",
+    "scripts/ops/agent_supervisor/spar_legacy_launch_transition.py": "128cb5d5e702859933a14835a67c72f73c25306691956035cf1131a0c1842f55",
     "scripts/ops/agent_supervisor/spar_legacy_observation.py": "adbc803e7dfcae30788a889b91d1429791691e9e09dcd5de7ad3650afd1ababd",
     "scripts/ops/agent_supervisor/spar_legacy_origin.py": "9d3eb5a49d0efe126ef94d0bb644e56cf32614e0a828548d413bbad1fe60c40a",
     "scripts/ops/agent_supervisor/spar_merge_owner.py": "0f99d114011b4a9858280bc333ac7bd820dbb60fef0fd57914f00bb14ac67323",
     "scripts/ops/agent_supervisor/spar_merge_owner_handoff.py": "3e2cdce21547b98e0b68ef6719d11b34ec8186a32269da3ba8180f3fa2696d82",
     "scripts/ops/agent_supervisor/spar_retained_capture_driver.py": "11e21e028591957fa519d25cdc88653f9c5ede2e77bdba2cb93678f01c9efe0b",
-    "scripts/ops/agent_supervisor/spar_stopped_capture.py": "a98ea65f4e3af6c11cb92319b8a4c4f9598ae051daa2e24f585b557cc2292e69",
-    "scripts/ops/agent_supervisor/spar_stopped_capture_driver.py": "299c278c881617271c2aa536e50941ae58ed63590e5edbec5835a83964fda5e1",
-    "scripts/ops/agent_supervisor/spar_stopped_origin.py": "29822c76509054e57bbbcef8d7d3d8ed91c72cf1c4e6a2b049bfe6f20f0fab0b",
+    "scripts/ops/agent_supervisor/spar_stopped_capture.py": "cc7e092babae9bb334aae2ecad290dde07d049960bd2e9d87680a33b7dffb022",
+    "scripts/ops/agent_supervisor/spar_stopped_capture_driver.py": "be77468e16d8741517b2fd7a8cc267d70236ba49119de76c0e87eedd9a5cc164",
+    "scripts/ops/agent_supervisor/spar_stopped_origin.py": "08c1177f9476a3149f02e3baf1302cc8ef1d5812c00c46e3569bcb55500964b4",
     "scripts/ops/agent_supervisor/spar_stopped_task_observation.py": "25832633dd1475cca0c18d55df726fba987dedbc9a3d45b9072fb48a55b5c068",
     "scripts/run_spar_retained_capture.py": "714d49f842558d89c28b5800e98f64a6929677f115c212688950d1a09ed6a11f",
     "scripts/run_spar_stopped_capture.py": "2e4d1555643dc6ef08e32357376e62ca499da7e5946e54aa0527900ed19105a2"
@@ -514,7 +514,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:00f1b5ae344335efb96dc217683e4c5ec4aae5df9bcd80fabe5ef6896afce674",
+  "seal_cid": "sha256:828946b1686a9314d1a2933e2b73d0cc7e7e46ec429c90f307ed654828b43ed3",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",

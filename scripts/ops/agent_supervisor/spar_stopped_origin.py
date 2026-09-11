@@ -11,6 +11,7 @@ import stat
 from pathlib import Path
 
 from . import spar_merge_owner as role
+from .spar_stopped_capture import evidence_cid
 
 SCHEMA = "spar/native-stopped-queue-origin@1"
 REQUIRED_MARKER = "native-stopped-profile-required.json"
@@ -214,7 +215,7 @@ def _install_stopped_queue(captured, prepared, descriptor):
             raise role.SparMergeOwnerError("prepared origin is substituted or already initialized")
         connection.execute("BEGIN TRANSACTION")
         connection.execute("CREATE TABLE " + ORIGIN_TABLE + " (origin_cid VARCHAR PRIMARY KEY, origin_json VARCHAR NOT NULL)")
-        connection.execute("INSERT INTO " + ORIGIN_TABLE + " VALUES (?,?)", [role._cid(record), role._json(record).decode()])
+        connection.execute("INSERT INTO " + ORIGIN_TABLE + " VALUES (?,?)", [evidence_cid(record), role._json(record).decode()])
         connection.commit()
         connection.execute("CHECKPOINT")
         after = role.inventory(connection)
@@ -222,8 +223,8 @@ def _install_stopped_queue(captured, prepared, descriptor):
         validated_identity = retained_identity(writer=True)
     if candidate.with_suffix(candidate.suffix + ".wal").exists():
         raise role.SparMergeOwnerError("prepared native candidate still has a WAL")
-    body = {"schema": "spar/native-stopped-profile-requirement@1", "origin_cid": role._cid(record),
-            "capture_cid": role._cid(receipt), "database_path": str(database),
+    body = {"schema": "spar/native-stopped-profile-requirement@1", "origin_cid": evidence_cid(record),
+            "capture_cid": evidence_cid(receipt), "database_path": str(database),
             "captured_path": str(captured.path), "callback_settled": False, "completion_authority": False}
     # Ensure the complete capture directory entries are durable before any
     # canonical change. Input copies were individually fsynced by copy_entry.
@@ -289,7 +290,7 @@ def _install_stopped_queue(captured, prepared, descriptor):
     session._installed_queue_inode = (installed_info.st_dev, installed_info.st_ino)
     _sync_directory(queue_root)
     gate()
-    return {"installed": True, "origin_cid": role._cid(record), "database_uuid": prepared.database_uuid,
+    return {"installed": True, "origin_cid": evidence_cid(record), "database_uuid": prepared.database_uuid,
             "database_path": str(database), "callback_settled": False,
             "source_admitted": False, "completion_authority": False}
 
@@ -339,7 +340,7 @@ def load_stopped_origin(database, *, repository_id, target_branch, store_id, sco
         record = role._decode(str(rows[0][1]).encode())
         manifest = validate_record(record, database=database)
         if (
-            rows[0][0] != role._cid(record)
+            rows[0][0] != evidence_cid(record)
             or record["schema"] != SCHEMA
             or record["database_path"] != str(database)
         ):

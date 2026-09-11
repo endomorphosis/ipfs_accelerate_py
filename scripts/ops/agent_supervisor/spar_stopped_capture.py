@@ -35,6 +35,22 @@ CGROUP_ROOT = Path("/sys/fs/cgroup")
 PROCESS_FIELDS = {"pid", "parent_pid", "start_time_ticks", "boot_id"}
 
 
+def evidence_cid(value):
+    """Bound full native evidence separately from small recovery RPC messages.
+
+    Preserve the existing canonical identity encoding. This local stopped-state
+    protocol admits at most 4 MiB; remote cursor/receipt RPC bounds do not change.
+    """
+    try:
+        raw = json.dumps(value, sort_keys=True, separators=(",", ":"),
+                         allow_nan=False).encode()
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise role.SparMergeOwnerError("stopped evidence is not bounded JSON") from exc
+    if len(raw) > role.MAX_JSON_BYTES:
+        raise role.SparMergeOwnerError("stopped evidence exceeds native origin bound")
+    return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
 def require(value, reason):
     if not value:
         raise role.SparMergeOwnerError(reason)
@@ -675,7 +691,7 @@ def validate_task_observation(value, *, owner, bootstrap, source, task_files):
     body = {"schema": ADMISSION_SCHEMA, "observation": value, "canonical_task_files": task_files,
             "owner_identity": {k: identity[k] for k in native.IDENTITY_FIELDS}, "closed_owner": owner,
             "native_lineage_verified": True, "completion_authority": False, "callback_settled": False}
-    return {**body, "admission_cid": role._cid(body)}
+    return {**body, "admission_cid": evidence_cid(body)}
 
 
 class StoppedQueueCapture:

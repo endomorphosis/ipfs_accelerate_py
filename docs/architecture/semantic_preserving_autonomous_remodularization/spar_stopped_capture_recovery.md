@@ -59,7 +59,11 @@ claims remain visible and unchanged. The worker never opens canonical state.
 The full original queue, including opaque files and cursor source bytes, is
 copied under those same retained fences. Its existing import planner qualifies
 a separate prepared clone. The fresh receipt is written exclusively and fsynced;
-its bytes cannot recreate the capture object. The distinct installer requires
+its bytes cannot recreate the capture object. Full native stopped task evidence,
+capture receipts and installed origins use a separate bounded 4 MiB identity
+envelope with the existing canonical hash encoding. The smaller recovery RPC
+and original live-capture limits remain unchanged; no rows are omitted to fit
+an identity bound. The distinct installer requires
 the exact fresh producer object, checks all original and prepared content, and
 preserves full original copies before canonical replacement. It writes a
 separate durable `native-stopped-profile-required.json` marker. The staged

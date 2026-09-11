@@ -302,3 +302,18 @@ def test_native_origin_refuses_reverting_to_captured_configuration(tmp_path, mon
             next(fixture)
         except StopIteration:
             pass
+
+
+def test_stopped_origin_full_native_evidence_has_distinct_bound(source_transition):
+    from scripts.ops.agent_supervisor.spar_stopped_capture import evidence_cid
+    from ipfs_accelerate_py.agent_supervisor.merge.owner_recovery_runtime import OwnerRecoveryRuntimeError
+    case = source_transition
+    case.origin['schema'] = 'spar/native-stopped-queue-origin@1'
+    case.origin['capture']['full_native_task_evidence'] = 'x' * 700_000
+    result = qualify(case)
+    assert result.receipt['origin_cid'] == evidence_cid(case.origin)
+    result.require_current()
+    # The original live-capture route still retains its original smaller bound.
+    case.origin['schema'] = 'spar/native-legacy-queue-origin@1'
+    with pytest.raises(OwnerRecoveryRuntimeError):
+        qualify(case)

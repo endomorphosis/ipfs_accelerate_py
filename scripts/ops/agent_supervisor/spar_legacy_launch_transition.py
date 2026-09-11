@@ -151,8 +151,16 @@ def qualify_transition(*, board, paths, amendment, origin, scopes):
         coordinates = {key: manifest[key] for key in ("store_id", "repository_id", "target_branch")}
         pairs.append({"previous_scope_cid": role.recovery_scope_cid(**coordinates, scope_binding=before),
                       "current_scope_cid": role.recovery_scope_cid(**coordinates, scope_binding=after)})
+    # Only the distinct stopped-state protocol carries full native task facts.
+    # Its local origin has a separate bound; legacy and recovery RPC identities
+    # retain their existing admission and size limits.
+    if origin.get("schema") == "spar/native-stopped-queue-origin@1":
+        from .spar_stopped_capture import evidence_cid
+        origin_cid = evidence_cid(origin)
+    else:
+        origin_cid = role._cid(origin)
     receipt = {"schema": SCHEMA, "manifest_cid": role._cid(manifest),
-               "origin_cid": role._cid(origin), "bootstrap_receipt_id": amendment.bootstrap_receipt_id,
+               "origin_cid": origin_cid, "bootstrap_receipt_id": amendment.bootstrap_receipt_id,
                "old_config_cid": old_cid, "current_config_cid": new_cid, "scope_pairs": pairs,
                "configuration_delta": ["dependency_seal_cid"],
                "callback_settled": False, "signing_authority": False, "completion_authority": False}

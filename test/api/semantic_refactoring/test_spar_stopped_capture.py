@@ -552,3 +552,38 @@ def test_private_native_reader_uses_retained_bytes_and_checks_digest(tmp_path):
         manifest['files'][0]['file']=dict(entry,sha256='0'*64)
         with pytest.raises(RuntimeError,match='content differs'):_private_inspection(path,manifest)
     finally:os.close(fd)
+
+
+def test_full_native_task_evidence_uses_distinct_local_bound(stopped_fixture, monkeypatch):
+    """The actual 51-task store exceeds the generic 512-KiB recovery envelope."""
+    f = stopped_fixture
+    observe = stopped.observe_task_copy
+    def large_observation(*args, **kwargs):
+        value = observe(*args, **kwargs)
+        value['facts']['relations']['effect_claims']['rows'][0]['opaque_native_evidence'] = 'x' * 700_000
+        return value
+    monkeypatch.setattr(stopped, 'observe_task_copy', large_observation)
+    captured = capture(f)
+    assert len(role._json(captured.receipt)) > 512 * 1024
+    from ipfs_accelerate_py.agent_supervisor.merge.owner_recovery_runtime import OwnerRecoveryRuntimeError
+    with pytest.raises(OwnerRecoveryRuntimeError):
+        role._cid(captured.receipt)
+    prepared = role.prepare_offline_clone(offline_root=captured.path, destination=f.output/'large-prepared', manifest=captured.receipt['manifest'])
+    installed = origin.install_stopped_queue(captured, prepared)
+    marker = json.loads((f.armed.queue/origin.REQUIRED_MARKER).read_bytes())
+    assert marker['capture_cid'] == stopped.evidence_cid(captured.receipt)
+    assert marker['origin_cid'] == installed['origin_cid']
+    f.session.resources.close(); f.session._closed = True
+    loaded = origin.load_stopped_origin(f.armed.queue/'merge_queue.duckdb', repository_id=f.armed.context['repository_id'],
+        target_branch=f.armed.context['target_branch'], store_id=f.armed.context['store_id'], scopes=captured.receipt['manifest']['scope_bindings'])
+    assert loaded.database_uuid == installed['database_uuid']
+
+
+def test_stopped_evidence_identity_preserves_encoding_and_upper_bound():
+    from ipfs_accelerate_py.agent_supervisor.merge.owner_recovery_runtime import _cid
+    value = {'unicode': '\u00e9', 'rows': [None, True, 17]}
+    assert stopped.evidence_cid(value) == _cid(value)
+    with pytest.raises(role.SparMergeOwnerError, match='origin bound'):
+        stopped.evidence_cid({'value': 'x' * role.MAX_JSON_BYTES})
+    with pytest.raises(role.SparMergeOwnerError, match='bounded JSON'):
+        stopped.evidence_cid({'value': float('nan')})

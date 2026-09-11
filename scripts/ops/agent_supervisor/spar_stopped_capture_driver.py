@@ -108,7 +108,7 @@ class StoppedCaptureDriver:
         self.record('capture-attempt')
         self.captured=self.session.capture(destination=destination)
         self.stage='captured';self.record('captured')
-        return self.result(capture_cid=role._cid(self.captured.receipt))
+        return self.result(capture_cid=stopped.evidence_cid(self.captured.receipt))
 
     def prepare(self):
         stopped.require(self.stage=='captured','stopped prepare requires retained fresh capture')
@@ -137,7 +137,7 @@ class StoppedCaptureDriver:
                             'stopped closure changed after install')
             marker=stopped.native._json(self.session.queue_root/origin.REQUIRED_MARKER)
             stopped.require(marker.get('origin_cid')==self.installed['origin_cid']
-                and marker.get('capture_cid')==role._cid(self.captured.receipt),'stopped installed marker differs')
+                and marker.get('capture_cid')==stopped.evidence_cid(self.captured.receipt),'stopped installed marker differs')
             for entry in self.captured.receipt['manifest']['files']:
                 role.copy_entry(self.captured.path,entry,None,digest_only=True)
             self.record('finish-prepared')
