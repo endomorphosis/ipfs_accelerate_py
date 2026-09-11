@@ -72292,13 +72292,17 @@ class DatabaseImplementationDaemon:
         return outcomes
 
     def reconcile_expired_running_attempts(self) -> list[dict[str, Any]]:
-        """Retire exact local attempts whose coordination authority expired.
+        """Retire expired synthetic attempts; preserve unresolved real execution.
 
         No provider/effect receipt from the expired attempt is accepted for a
         later fence.  The old execution projection is terminalized with an
         explicit retry receipt, after which normal coordination may issue a
         new attempt number and fencing token.
+        Production and Portal attempts require the preceding native terminal
+        settlement routes; expiry alone never authorizes another callback.
         """
+
+        from .expired_attempt_custody import guard_generic_retirement
 
         expire_claim = getattr(self.coordinator, "expire_task_claim", None)
         if not callable(expire_claim):
@@ -72316,6 +72320,7 @@ class DatabaseImplementationDaemon:
                     continue
             claim = self.coordinator.get_task_claim(attempt.claim_id)
             if claim is None:
+                guard_generic_retirement(self, attempt, reason="claim_history_missing")
                 logger.warning(
                     "Dropping running attempt %s with no claim history",
                     attempt.attempt_id,
@@ -72401,6 +72406,7 @@ class DatabaseImplementationDaemon:
                 continue
             if claim_state == "accepted" and int(claim.expires_at_ms) > now:
                 continue
+            guard_generic_retirement(self, attempt, reason="claim_authority_expired")
             lease = expire_claim(claim, now_ms=now)
             outcome = {
                 "task_cid": attempt.task_cid,
@@ -73509,6 +73515,7 @@ class DatabaseImplementationDaemon:
             missing_completion_deferral,
             task_fence_mismatch_deferral,
         )
+        from .expired_attempt_custody import expired_execution_deferral
 
         self._idle_recovery_prefix = None
         try:
@@ -73517,6 +73524,8 @@ class DatabaseImplementationDaemon:
             deferred = missing_completion_deferral(exc)
             if deferred is None:
                 deferred = task_fence_mismatch_deferral(exc)
+            if deferred is None:
+                deferred = expired_execution_deferral(exc)
             if deferred is None:
                 raise
             deferred["recovery_prefix"] = dict(self._idle_recovery_prefix or {})
@@ -73531,9 +73540,15 @@ class DatabaseImplementationDaemon:
         if dispatch_control is not None:
             dispatch_control.reconciliation_started()
         completion_reconciliations = self.reconcile_prepared_task_completions()
+        self._idle_recovery_prefix = {
+            "completion_reconciliations": completion_reconciliations,
+        }
         portal_failure_reconciliations = self.reconcile_terminal_portal_failures()
+        self._idle_recovery_prefix["portal_failure_reconciliations"] = portal_failure_reconciliations
         expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
+        self._idle_recovery_prefix["expired_attempt_reconciliations"] = expired_attempt_reconciliations
         portal_failure_rearms = self.reconcile_recoverable_portal_failure_rearms()
+        self._idle_recovery_prefix["portal_failure_rearms"] = portal_failure_rearms
         reconciliation_write_count = (
             len(completion_reconciliations)
             + len(portal_failure_reconciliations)
