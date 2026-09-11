@@ -1516,6 +1516,22 @@
       "initial_focus": "projection-index-and-exact-resolver"
     }
   ],
+  "provider_policy_amendment": {
+    "schema": "sawm/operator-provider-policy-amendment@1",
+    "policy_revision": "SAWM-PROVIDER-20260911-TERRA-HIGH",
+    "board_namespace": "semantic-addressed-world-model-v1",
+    "prior_source_head": "354d1977fcf31d2a4b0eaabdf087d99c374cb968",
+    "prior_source_tree": "594560733cece15be72cbcdc14e6e2e064a368f6",
+    "lineage_authority_cid": "sha256:39423edba05f4da14ef7f334eb08bbf122ee8d7a87969f7ba364077324f4f7bb",
+    "field": "provider.fallback_reasoning_effort",
+    "prior_value": "medium",
+    "value": "high",
+    "fallback_trigger": "primary_quota_exhausted",
+    "prospective_only": true,
+    "requires_native_source_admission": true,
+    "task_completion_authority": false,
+    "historical_authority_rewrite": false
+  },
   "provider": {
     "primary_provider_id": "grok_cli",
     "primary_model_id": "grok-4.6",
@@ -1523,7 +1539,7 @@
     "fallback_provider_id": "codex",
     "fallback_model_id": "gpt-5.6-terra",
     "fallback_trigger": "primary_quota_exhausted",
-    "fallback_reasoning_effort": "medium",
+    "fallback_reasoning_effort": "high",
     "max_concurrency": 4,
     "secrets_from_environment_only": true,
     "secrets_in_argv_prompts_logs_or_receipts": false,
