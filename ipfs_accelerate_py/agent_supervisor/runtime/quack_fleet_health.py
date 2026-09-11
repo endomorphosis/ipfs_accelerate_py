@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from ..rescue import canonical_writer_custody as writer_custody
 from ..rescue.live_board_probe import birth_matches, process_identity
 from ..task_sources.typed_state_owner import (
     TYPED_STATE_OWNER_SOCKET_FILENAME,
@@ -25,9 +26,7 @@ _MAX_OWNER_STATUS_BYTES = 1024 * 1024
 
 
 def _valid_birth(birth: Any) -> bool:
-    return (isinstance(birth, Mapping) and type(birth.get("pid")) is int and birth["pid"] > 1
-            and type(birth.get("start_time_ticks")) is int and birth["start_time_ticks"] > 0
-            and isinstance(birth.get("boot_id"), str) and bool(birth["boot_id"]))
+    return writer_custody.valid_birth(birth)
 
 
 def _read_owner_status(state: Path) -> Mapping[str, Any] | None:
@@ -57,63 +56,14 @@ def _read_owner_status(state: Path) -> Mapping[str, Any] | None:
 
 
 def _read_kernel_locks() -> str:
-    """Read a bounded kernel snapshot without opening the canonical store."""
-    descriptor = os.open("/proc/locks", os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
-    try:
-        chunks = []
-        size = 0
-        while size <= _MAX_KERNEL_LOCK_BYTES:
-            chunk = os.read(descriptor, min(65536, _MAX_KERNEL_LOCK_BYTES + 1 - size))
-            if not chunk:
-                return b"".join(chunks).decode("ascii")
-            chunks.append(chunk)
-            size += len(chunk)
-        raise ValueError("kernel lock snapshot exceeds bound")
-    finally:
-        os.close(descriptor)
+    return writer_custody.read_kernel_locks(maximum_bytes=_MAX_KERNEL_LOCK_BYTES)
 
 
 def _canonical_writer_lock(database: Path, birth: Mapping[str, Any]) -> dict[str, Any]:
-    """Observe exact live PID/birth/inode custody; uncertainty never requests restart."""
-    unknown = {"verified": False, "reason": "canonical_writer_lock_observation_unavailable"}
-    try:
-        if (not _valid_birth(birth)
-                or not database.is_absolute() or database.resolve(strict=True) != database):
-            return unknown
-        if not birth_matches(process_identity(birth["pid"]), birth):
-            return {"verified": False, "reason": "native_identity_changed_during_writer_lock_probe"}
-        before = database.lstat()
-        if not stat.S_ISREG(before.st_mode) or before.st_uid != os.geteuid():
-            return unknown
-        expected = (os.major(before.st_dev), os.minor(before.st_dev), before.st_ino)
-        held = False
-        for line in _read_kernel_locks().splitlines():
-            fields = line.split()
-            if len(fields) > 1 and fields[1] == "->":
-                fields.pop(1)
-                # Blocked requests are not held locks, but still validate the
-                # complete snapshot before treating absence as restart evidence.
-                blocked = True
-            else:
-                blocked = False
-            if len(fields) != 8 or not fields[0].endswith(":"):
-                return unknown
-            major, minor, inode = fields[5].split(":")
-            lock_inode = (int(major, 16), int(minor, 16), int(inode))
-            pid = int(fields[4])
-            if (not blocked and fields[1:4] == ["POSIX", "ADVISORY", "WRITE"]
-                    and pid == birth["pid"] and lock_inode == expected and fields[6:] == ["0", "EOF"]):
-                held = True
-        after = database.lstat()
-        if ((before.st_dev, before.st_ino, before.st_mode, before.st_uid)
-                != (after.st_dev, after.st_ino, after.st_mode, after.st_uid)
-                or database.resolve(strict=True) != database):
-            return {"verified": False, "reason": "canonical_database_changed_during_writer_lock_probe"}
-        if not birth_matches(process_identity(birth["pid"]), birth):
-            return {"verified": False, "reason": "native_identity_changed_during_writer_lock_probe"}
-        return {"verified": True, "held": held}
-    except (OSError, ValueError, TypeError, KeyError):
-        return unknown
+    return writer_custody.observe_canonical_writer_lock(
+        database, birth, process_identity=process_identity,
+        birth_matches=birth_matches, kernel_locks=_read_kernel_locks,
+    )
 
 
 def probe_owner(deployment: Mapping[str, Any], role: str) -> dict[str, Any]:
