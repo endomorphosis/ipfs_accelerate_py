@@ -4526,8 +4526,10 @@ def _execute_quack_owner_mutation(
 def _consume_duckdb_result(connection: Any) -> None:
     try:
         connection.fetchall()
-    except Exception:
-        pass
+    except Exception as error:
+        from .duckdb_interrupts import reraise_process_interrupt
+
+        reraise_process_interrupt(error)
 
 
 def _quack_store_id() -> str:
@@ -4862,8 +4864,10 @@ def _attach_quack_once(uri: str, secret: str) -> tuple[Any, dict[str, Any]]:
         connection.execute("LOAD quack")
         try:
             connection.execute("SET httpfs_connection_caching = true")
-        except Exception:
-            pass
+        except Exception as error:
+            from .duckdb_interrupts import reraise_process_interrupt
+
+            reraise_process_interrupt(error)
         attach = (
             f"ATTACH '{uri}' AS {_QUACK_CONTROL_CATALOG} "
             "(READ_WRITE, DISABLE_SSL true"
@@ -4954,11 +4958,14 @@ def _attach_quack_once(uri: str, secret: str) -> tuple[Any, dict[str, Any]]:
             )
         connection = DuckDBConnection.wrap(connection)
         connection._quack_live_binding = binding
-    except Exception:
+    except BaseException as error:
         try:
             connection.close()
         except Exception:
             pass
+        from .duckdb_interrupts import reraise_process_interrupt
+
+        reraise_process_interrupt(error)
         raise
     return connection, binding
 
