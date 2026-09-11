@@ -107,3 +107,36 @@ checkpoint, actual supervisor/daemon child lineage, lost-response replay,
 malformed-request isolation, and the actual factory recovery call. These are
 disposable tests. This source path does not authorize adoption of SPAR's current
 legacy queue or claim that any live callback has closed.
+
+## Native import mapping producer
+
+`scripts.ops.agent_supervisor.spar_legacy_import_plan.produce_offline_import_plan`
+accepts an explicit offline queue directory, a new private inspection directory,
+and the declared repository, target, store, source and recovery scopes. It
+preserves every input file and verifies the file population and byte identities
+before opening only the new inspection copy with owner discovery disabled.
+Committed WAL is replayed in that copy. No input database handle, live owner
+credential, or signing-key API is opened.
+
+The producer joins each supported canonical train receipt to its preserved
+request ID, task, canonical identity, full candidate object ID and exact target
+metadata. Primary receipt keys come from the native train's forward key
+function. The literal `quarantine-<request_id>` producer is also supported.
+Unknown key forms, orphan receipts, mismatched coordinates and ambiguous scopes
+are refused; the tool never guesses a key by removing filename characters.
+The canonical publication ledger and complete five-stage recovery cursors retain
+their existing native keys and scopes. Other files, including opaque private
+material, are preserved without interpretation or use for signing.
+
+The returned manifest applies to the original supplied offline bundle, not the
+inspection copy whose WAL may have been replayed. It can feed the existing
+`prepare_offline_clone` importer. Revision one denotes the first imported
+snapshot in the new recovery store; it does not invent overwritten historical
+versions. Logical row inventory remains exact, including processing claims and
+unknown callback evidence.
+
+This producer establishes a mapping of preserved bytes, not original capture
+coherence, signature provenance, prior consumer closure, callback settlement,
+current source acceptance or completion. Those result fields remain false.
+Both native legacy launch gates continue to refuse until their independently
+admitted producers exist.
