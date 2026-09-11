@@ -22214,7 +22214,26 @@ class PortalImplementationDaemon:
     def run_once(self) -> dict[str, Any]:
         """Run one pass and establish its durable file-cursor boundary."""
 
-        result = self._run_once()
+        return self._run_pass_and_synchronize_cursors()
+
+    def reconcile_pending_merge_once(self) -> dict[str, Any]:
+        """Reconcile a queued candidate without selecting another implementation.
+
+        The database callback still owns the prior provider attempt. A rejected
+        or quarantined merge may make its task ready again; only the database
+        authority can decide whether a successor attempt should be admitted.
+        """
+
+        return self._run_pass_and_synchronize_cursors(allow_new_implementation=False)
+
+    def _run_pass_and_synchronize_cursors(
+        self, *, allow_new_implementation: bool = True
+    ) -> dict[str, Any]:
+        result = (
+            self._run_once()
+            if allow_new_implementation
+            else self._run_once(allow_new_implementation=False)
+        )
         coordinator = self._runtime_wake_coordinator
         if coordinator is not None:
             synchronize_file_cursors = getattr(
@@ -24461,7 +24480,7 @@ class PortalImplementationDaemon:
             ),
         }
 
-    def _run_once(self) -> dict[str, Any]:
+    def _run_once(self, *, allow_new_implementation: bool = True) -> dict[str, Any]:
         authority_guard: dict[str, Any] = {}
         if self.manual_completion_authority_task_ids:
             authority_guard = self._refresh_manual_completion_authority_guard()
@@ -25553,7 +25572,7 @@ class PortalImplementationDaemon:
                 selectable_tasks = provider_independent_tasks
         selected = (
             None
-            if virgin_transfer_selection_blocked
+            if virgin_transfer_selection_blocked or not allow_new_implementation
             else self._select_next_task(
                 selectable_tasks,
                 resolved_statuses,
@@ -25574,7 +25593,9 @@ class PortalImplementationDaemon:
             ),
         )
         selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
-        if virgin_transfer_selection_blocked:
+        if not allow_new_implementation:
+            selection_scope["selection_idle_reason"] = "database_pending_merge_reconciliation"
+        elif virgin_transfer_selection_blocked:
             selection_scope["selection_idle_reason"] = (
                 "virgin_transfer_rendezvous_pending"
             )

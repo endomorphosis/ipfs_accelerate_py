@@ -2554,6 +2554,10 @@ class _TaskSource:
 
 
 class _CompletingPortal:
+    def reconcile_pending_merge_once(self):
+        # This fixture has no implementation execution; run_once emits evidence.
+        return self.run_once()
+
     def __init__(
         self,
         paths: object,
@@ -6548,6 +6552,10 @@ def test_bridge_rejects_pending_merge_candidate_substitution(
     )
 
     class SubstitutedPendingPortal:
+        def reconcile_pending_merge_once(self):
+            # This fixture has no implementation execution; run_once emits evidence.
+            return self.run_once()
+
         def __init__(self, paths: object, task_alias: str) -> None:
             self.paths = paths
             self.task_alias = task_alias
@@ -6600,6 +6608,10 @@ def test_bridge_fails_closed_at_pending_merge_timeout(
             self.now += seconds
 
     class PendingPortal:
+        def reconcile_pending_merge_once(self):
+            # This fixture has no implementation execution; run_once emits evidence.
+            return self.run_once()
+
         def __init__(self, paths: object, task_alias: str) -> None:
             self.paths = paths
             self.task_alias = task_alias
@@ -23350,3 +23362,158 @@ def test_bridge_routes_only_owned_missing_output_quarantine_and_replays_completi
     record.status = "in_progress"
     assert replay_bridge.recover_post_merge_declared_outputs(authority) is None
     assert len(recovered_evidence) == 3
+
+def test_pending_merge_wait_never_reenters_implementation_dispatch(tmp_path, monkeypatch):
+    """A queue rejection must not start another provider under the same claim."""
+    calls = []
+
+    class RejectedQueuePortal(_ProjectionIdentityCompletingPortal):
+        def run_once(self):
+            calls.append("implementation")
+            if len(calls) == 1:
+                return _pending_merge_result(self.paths, self.task_alias)
+            raise AssertionError("a second provider could run before identity verification")
+
+        def reconcile_pending_merge_once(self):
+            calls.append("queue_reconciliation")
+            state = json.loads(self.paths.state.read_text())
+            state["task_statuses"][self.task_alias] = "ready"
+            self.paths.state.write_text(json.dumps(state))
+            return {"implementation_result": None, "merge_reconciliation": []}
+
+    monkeypatch.setattr(database_portal_bridge_module, "_sleep_seconds", lambda _: None)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()), attempt_root=tmp_path / "attempts",
+        portal_factory=RejectedQueuePortal, max_passes=1,
+    )
+    with pytest.raises(DatabasePortalBridgeError, match="pending-merge state"):
+        bridge.run_provider(_attempt())
+    assert calls == ["implementation", "queue_reconciliation"]
+
+
+def test_native_pending_merge_pass_keeps_ready_task_out_of_dispatch(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run([
+        "git", "-c", "user.name=Pending Merge Test",
+        "-c", "user.email=pending-merge@example.invalid", "commit", "--allow-empty", "-qm", "base",
+    ], cwd=repo, check=True)
+    record = _record()
+    record.dependencies = ()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record), attempt_root=repo / "attempts",
+        portal_factory=lambda *_: None, repository_root=repo,
+        task_header_prefix="## LGSWF-",
+    )
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    daemon = PortalImplementationDaemon(
+        todo_path=paths.task_projection, state_path=paths.state,
+        strategy_path=paths.strategy, events_path=paths.events, repo_root=repo,
+        task_header_prefix="## LGSWF-", implement=True,
+        implementation_command="must-not-run", worktree_pool_enabled=False,
+        maintenance_interval_seconds=0,
+    )
+    dispatches = []
+    reconciliations = []
+    monkeypatch.setattr(daemon, "_run_implementation", lambda *_: dispatches.append("provider") or {})
+    original_reconcile = daemon._reconcile_failed_merges
+    def reconcile(**kwargs):
+        reconciliations.append("queue")
+        return original_reconcile(**kwargs)
+    monkeypatch.setattr(daemon, "_reconcile_failed_merges", reconcile)
+    try:
+        result = daemon.reconcile_pending_merge_once()
+        assert result["implementation_result"] is None
+        assert result["selection_idle_reason"] == "database_pending_merge_reconciliation"
+        assert result["ready_count"] == 1
+        assert dispatches == []
+        assert reconciliations == ["queue"]
+        assert daemon.implement is True
+        # The ordinary entry point retains its normal implementation behavior.
+        daemon._runtime_last_source_digest = ""
+        daemon.run_once()
+        assert dispatches == ["provider"]
+    finally:
+        daemon.close_event_runtime()
+
+
+def test_pending_merge_adapter_without_maintenance_capability_never_falls_back(tmp_path, monkeypatch):
+    calls = []
+    class LegacyPortal(_ProjectionIdentityCompletingPortal):
+        reconcile_pending_merge_once = None
+        def run_once(self):
+            calls.append("implementation")
+            return _pending_merge_result(self.paths, self.task_alias)
+    monkeypatch.setattr(database_portal_bridge_module, "_sleep_seconds", lambda _: None)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()), attempt_root=tmp_path / "attempts",
+        portal_factory=LegacyPortal, max_passes=1,
+    )
+    with pytest.raises(DatabasePortalBridgeError, match="capability is unavailable"):
+        bridge.run_provider(_attempt())
+    assert calls == ["implementation"]
+
+
+@pytest.mark.parametrize("terminal_recorded", [True, False])
+def test_pending_merge_restart_never_reenters_implementation(tmp_path, terminal_recorded):
+    calls = []
+    class ResumingPortal(_ProjectionIdentityCompletingPortal):
+        def run_once(self):
+            calls.append("implementation")
+            raise AssertionError("recorded queue handoff must prevent redispatch")
+        def reconcile_pending_merge_once(self):
+            calls.append("queue_reconciliation")
+            return super().run_once()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()), attempt_root=tmp_path / "attempts",
+        portal_factory=ResumingPortal, max_passes=1,
+    )
+    paths, binding = bridge._ensure_attempt_projection(_attempt(), _record())
+    result = _pending_merge_result(paths, binding["task_alias"])
+    implementation = result["implementation_result"]
+    append_jsonl_event(paths.events, "merge_candidate_enqueued", {
+        **implementation, "request_id": implementation["merge_result"]["request_id"],
+    })
+    if terminal_recorded:
+        append_jsonl_event(paths.events, "implementation_finished", result["implementation_result"])
+        receipt = bridge.run_provider(_attempt())
+        assert receipt["accepted"] is True
+        assert calls == ["queue_reconciliation"]
+    else:
+        with pytest.raises(DatabasePortalBridgeError, match="handoff is incomplete"):
+            bridge.run_provider(_attempt())
+        assert calls == []
+
+
+@pytest.mark.parametrize("suffix", ["new_implementation", "nonpending_failure", "substituted_candidate", "later_enqueue"])
+def test_recorded_pending_merge_cannot_hide_a_later_unsettled_outcome(tmp_path, suffix):
+    calls = []
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()), attempt_root=tmp_path / "attempts",
+        portal_factory=lambda *_: calls.append("factory"), max_passes=1,
+    )
+    paths, binding = bridge._ensure_attempt_projection(_attempt(), _record())
+    original = _pending_merge_result(paths, binding["task_alias"])["implementation_result"]
+    append_jsonl_event(paths.events, "merge_candidate_enqueued", {
+        **original, "request_id": original["merge_result"]["request_id"],
+    })
+    append_jsonl_event(paths.events, "implementation_finished", original)
+    later = dict(original)
+    if suffix == "new_implementation":
+        append_jsonl_event(paths.events, "implementation_started", {
+            "task_id": binding["task_alias"], "attempt": 2,
+        })
+    elif suffix == "later_enqueue":
+        append_jsonl_event(paths.events, "merge_candidate_enqueued", {
+            **original, "request_id": "another-candidate",
+        })
+    else:
+        if suffix == "nonpending_failure":
+            later.update(returncode=1, board_completion={}, merge_result={"merged": False})
+        else:
+            later["merge_result"] = {**later["merge_result"], "request_id": "another-candidate"}
+        append_jsonl_event(paths.events, "implementation_finished", later)
+    with pytest.raises(DatabasePortalBridgeError, match="recorded pending-merge"):
+        bridge._recorded_pending_merge_identity(paths, binding)
+    assert calls == []
