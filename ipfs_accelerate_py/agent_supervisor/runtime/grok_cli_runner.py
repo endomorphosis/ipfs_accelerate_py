@@ -1907,38 +1907,126 @@ def _select_grok_isolation_backend(*, require_container_boundary: bool = False) 
 
 
 def _git_metadata_roots(workspace: Path) -> tuple[Path, ...]:
-    """Resolve linked-worktree Git metadata needed for read-only Git commands."""
+    """Resolve only initialized, committed submodules' Git metadata.
 
-    marker = workspace / ".git"
-    if not marker.is_file():
-        return ()
-    try:
-        prefix, separator, raw_git_dir = marker.read_text(
-            encoding="utf-8"
-        ).strip().partition(":")
-    except (OSError, UnicodeError):
-        return ()
-    if prefix.casefold() != "gitdir" or not separator or not raw_git_dir.strip():
-        return ()
-    git_dir = Path(raw_git_dir.strip())
-    if not git_dir.is_absolute():
-        git_dir = marker.parent / git_dir
-    try:
-        git_dir = git_dir.resolve(strict=True)
-    except OSError:
-        return ()
-    common_dir = git_dir
-    common_marker = git_dir / "commondir"
-    if common_marker.is_file():
+    Linked submodule worktrees can refer to metadata outside the outer Git
+    common directory. Discover them from each repository's committed
+    .gitmodules, never by scanning directories or trusting uncommitted paths.
+    Callers mount these exact metadata directories read-only.
+    """
+    roots: list[Path] = []
+    pending = [(workspace, 0)]
+    seen: set[Path] = set()
+
+    def exact_path(value: Path) -> Path:
+        lexical = Path(os.path.abspath(value))
+        resolved = lexical.resolve(strict=True)
+        if lexical != resolved:
+            raise ValueError("Git metadata path contains a symlink")
+        return resolved
+
+    def read_marker(path: Path) -> str:
         try:
-            raw_common = common_marker.read_text(encoding="utf-8").strip()
-            candidate = Path(raw_common)
-            if not candidate.is_absolute():
-                candidate = git_dir / candidate
-            common_dir = candidate.resolve(strict=True)
-        except (OSError, UnicodeError):
-            common_dir = git_dir
-    return tuple(dict.fromkeys((common_dir, git_dir)))
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, "rb") as handle:
+                before = os.fstat(handle.fileno())
+                if (not stat.S_ISREG(before.st_mode) or before.st_size > 4096
+                        or before.st_uid != os.geteuid()):
+                    raise ValueError("Git metadata marker is unsafe")
+                content = handle.read(4097)
+                after = os.fstat(handle.fileno())
+            current = path.lstat()
+            identity = lambda value: (value.st_dev, value.st_ino, value.st_mode,
+                                      value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+            if (len(content) > 4096 or identity(before) != identity(after)
+                    or identity(after) != identity(current)):
+                raise ValueError("Git metadata marker changed while reading")
+            return content.decode("utf-8").strip()
+        except (OSError, UnicodeError) as exc:
+            raise ValueError("Git metadata marker is unreadable") from exc
+
+    while pending:
+        repository, depth = pending.pop(0)
+        if depth > 8 or len(seen) >= 128:
+            raise ValueError("Initialized submodule metadata exceeds bound")
+        marker = repository / ".git"
+        if not os.path.lexists(marker):
+            continue  # A declared but uninitialized submodule has no metadata.
+        repository = exact_path(repository)
+        if repository in seen:
+            continue
+        seen.add(repository)
+        if marker.is_symlink():
+            raise ValueError("Git metadata marker is a symlink")
+        if marker.is_dir():
+            git_dir = exact_path(marker)
+        elif marker.is_file():
+            prefix, separator, value = read_marker(marker).partition(":")
+            if prefix.casefold() != "gitdir" or not separator or not value.strip():
+                raise ValueError("Git metadata marker is invalid")
+            target = Path(value.strip())
+            git_dir = exact_path(target if target.is_absolute() else repository / target)
+        else:
+            raise ValueError("Git metadata marker is not a regular file or directory")
+        common_dir = git_dir
+        common_marker = git_dir / "commondir"
+        if os.path.lexists(common_marker):
+            value = Path(read_marker(common_marker))
+            common_dir = exact_path(value if value.is_absolute() else git_dir / value)
+            backlink = Path(read_marker(git_dir / "gitdir"))
+            if not backlink.is_absolute():
+                backlink = git_dir / backlink
+            if exact_path(backlink) != marker:
+                raise ValueError("Linked Git metadata belongs to another worktree")
+        # Reject arbitrary home/config directories presented as metadata.
+        if (not any(part == ".git" or part.endswith(".git") for part in common_dir.parts)
+                or not (common_dir / "objects").is_dir()
+                or not (common_dir / "config").is_file()
+                or not (git_dir / "HEAD").is_file()
+                or any(path.is_symlink() for path in
+                       (common_dir / "objects", common_dir / "config", git_dir / "HEAD"))
+                or any(path.stat().st_uid != os.geteuid() for path in (common_dir, git_dir))):
+            raise ValueError("Git metadata directory is not a repository")
+        roots.extend((common_dir, git_dir))
+        command = ["git", "--no-optional-locks", "-c", "core.fsmonitor=false",
+                   "-C", str(repository), "config", "--no-includes", "--null",
+                   "--blob", "HEAD:.gitmodules", "--get-regexp", r"^submodule\..*\.path$"]
+        result = subprocess.run(command, env=_docker_control_env(), stdin=subprocess.DEVNULL,
+                                capture_output=True, timeout=10, check=False)
+        if result.returncode not in {0, 1}:
+            raise ValueError("Committed submodule declarations are unreadable")
+        if len(result.stdout) > 128 * 1024:
+            raise ValueError("Committed submodule declarations exceed bound")
+        for record in result.stdout.split(b"\0"):
+            if not record:
+                continue
+            _key, separator, raw_path = record.partition(b"\n")
+            if not separator:
+                raise ValueError("Committed submodule path record is invalid")
+            relative = Path(raw_path.decode("utf-8"))
+            if (not raw_path or relative.is_absolute() or ".." in relative.parts
+                    or relative == Path(".") or ".git" in relative.parts):
+                raise ValueError("Committed submodule path is unsafe")
+            # A .gitmodules entry alone does not grant an arbitrary nested
+            # repository a mount: the committed tree must contain its gitlink.
+            tree = subprocess.run(
+                ["git", "--no-optional-locks", "--literal-pathspecs", "-c",
+                 "core.fsmonitor=false", "-C", str(repository), "ls-tree", "-z",
+                 "HEAD", "--", str(relative)],
+                env=_docker_control_env(), stdin=subprocess.DEVNULL,
+                capture_output=True, timeout=10, check=False)
+            entries = [entry for entry in tree.stdout.split(b"\0") if entry]
+            if tree.returncode != 0:
+                raise ValueError("Committed submodule gitlink is unreadable")
+            if (len(entries) != 1 or not entries[0].startswith(b"160000 commit ")
+                    or entries[0].partition(b"\t")[2] != raw_path):
+                continue
+            child = repository / relative
+            if child.is_symlink():
+                raise ValueError("Initialized submodule path is a symlink")
+            if os.path.lexists(child / ".git"):
+                pending.append((child, depth + 1))
+    return tuple(dict.fromkeys(roots))
 
 
 def _docker_mount(
