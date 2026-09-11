@@ -14,6 +14,8 @@ checkout.
 
 from __future__ import annotations
 
+from .workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
+
 import hashlib
 import json
 import os
@@ -687,6 +689,7 @@ class WorktreeLifecycleStore:
 
     # -------------------------------------------------------------- acquisition
 
+    @_workspace_mutation_boundary('workspace_path')
     def begin_preparing(
         self,
         *,
@@ -1125,6 +1128,7 @@ class WorktreeLifecycleStore:
         )
         return current
 
+    @_workspace_mutation_boundary('workspace')
     def adopt_dead_owner(
         self,
         workspace: str | Path,
@@ -1252,6 +1256,7 @@ class WorktreeLifecycleStore:
                 )
                 return adopted
 
+    @_workspace_mutation_boundary('workspace')
     def finalize_exact_dead_owner(
         self,
         workspace: str | Path,
@@ -1355,6 +1360,7 @@ class WorktreeLifecycleStore:
         if int(expected_fence) != int(record.fence):
             raise FenceMismatchError(f"expected fence {expected_fence}, found {record.fence}")
 
+    @_workspace_mutation_boundary('workspace')
     def transition(
         self,
         workspace: str | Path,
@@ -1418,6 +1424,7 @@ class WorktreeLifecycleStore:
             )
             return updated
 
+    @_workspace_mutation_boundary('workspace', 'new_workspace')
     def rebind_workspace(
         self,
         workspace: str | Path,
@@ -1559,6 +1566,7 @@ class WorktreeLifecycleStore:
             expected_record=expected_record,
         )
 
+    @_workspace_mutation_boundary('workspace')
     def renew_lease(
         self,
         workspace: str | Path,
@@ -1785,6 +1793,7 @@ class WorktreeLifecycleStore:
             attempt_consumed=False,
         )
 
+    @_workspace_mutation_boundary('workspace')
     def reclaim_stale(
         self,
         workspace: str | Path,
@@ -1823,6 +1832,7 @@ class WorktreeLifecycleStore:
             _atomic_write_json(record_path, updated.to_dict())
             return updated
 
+    @_workspace_mutation_boundary('workspace')
     def reclaim_dead_owner_for_controlled_restart(
         self,
         workspace: str | Path,
@@ -1924,6 +1934,7 @@ class WorktreeLifecycleStore:
                 recovered.append(updated)
         return recovered
 
+    @_workspace_mutation_boundary('workspace')
     def compare_and_delete(
         self,
         workspace: str | Path,
@@ -1957,6 +1968,7 @@ class WorktreeLifecycleStore:
                 pass
             return True
 
+    @_workspace_mutation_boundary('workspace_path')
     def authorize_cleanup(
         self,
         *,

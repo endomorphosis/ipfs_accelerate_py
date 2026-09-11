@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from ..merge.workspace_quarantine import maintenance_boundary as _workspace_maintenance_boundary
+from ..merge.workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
+
 import argparse
 import fcntl
 import hashlib
@@ -16922,6 +16925,7 @@ class PortalImplementationSupervisor:
             self._record_event("stale_worktree_detection", result)
         return result
 
+    @_workspace_maintenance_boundary()
     def reconcile_backlogged_worktrees(
         self,
         *,
@@ -20045,6 +20049,7 @@ class PortalImplementationSupervisor:
     def _worktree_branch_can_delete_after_merge(branch: str) -> bool:
         return PortalImplementationSupervisor._worktree_branch_is_reconcilable(branch)
 
+    @_workspace_mutation_boundary("worktree_path")
     def _prune_completed_leftover_worktree(
         self,
         worktree_path: Path,
@@ -20563,6 +20568,7 @@ class PortalImplementationSupervisor:
             fragment = fragment.replace("--", "-")
         return fragment[:96] or "worktree"
 
+    @_workspace_mutation_boundary("worktree_path")
     def _rescue_dirty_worktree(
         self,
         worktree_path: Path,
@@ -20941,6 +20947,7 @@ class PortalImplementationSupervisor:
                 operation="cleanup_backlogged_worktrees",
             )
 
+    @_workspace_maintenance_boundary()
     def _cleanup_backlogged_worktrees_locked(self) -> dict[str, Any]:
         """Clean merged worktrees while holding the checkout mutation lock."""
 
@@ -21215,6 +21222,7 @@ class PortalImplementationSupervisor:
             self._record_event("merged_worktree_cleanup", result)
         return result
 
+    @_workspace_maintenance_boundary()
     def _prune_managed_submodule_worktrees(self) -> dict[str, Any]:
         """Prune stale registrations in explicitly managed submodule repositories.
 

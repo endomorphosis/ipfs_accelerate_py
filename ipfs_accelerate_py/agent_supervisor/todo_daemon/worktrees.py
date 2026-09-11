@@ -497,6 +497,9 @@ class WorktreeLease:
         self.release(reusable=exc_type is None)
 
 
+from ..merge.workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
+
+
 class WorktreePool:
     """Pool prepared Git worktrees without sharing task-local mutations.
 
@@ -575,6 +578,7 @@ class WorktreePool:
         )
         return result
 
+    @_workspace_mutation_boundary(pool=True)
     def acquire(
         self,
         *,
@@ -821,6 +825,7 @@ class WorktreePool:
         else:
             borrowed.release(reusable=True)
 
+    @_workspace_mutation_boundary(pool=True)
     def release(self, lease: WorktreeLease, *, reusable: bool = True) -> dict[str, Any]:
         """Release an exclusive lease, retaining it only after safe scrubbing."""
 
@@ -908,6 +913,7 @@ class WorktreePool:
             **lease.metadata,
         }
 
+    @_workspace_mutation_boundary(pool=True)
     def invalidate(self, *, cache_key: Optional[str] = None) -> dict[str, Any]:
         """Discard idle entries, optionally limited to one setup cache key."""
 
@@ -932,6 +938,7 @@ class WorktreePool:
             self._remove_lock(lock_path)
         return {"removed": removed, "skipped": skipped}
 
+    @_workspace_mutation_boundary(pool=True)
     def reconcile_orphaned_metadata(
         self,
         *,
@@ -1428,6 +1435,7 @@ class WorktreePool:
     def _read_state(self, entry_id: str) -> dict[str, Any]:
         return read_json_object(self._state_path(entry_id))
 
+    @_workspace_mutation_boundary(pool=True)
     def _write_state(self, state: Mapping[str, Any]) -> None:
         entry_id = str(state["lease_token"])
         path = self._state_path(entry_id)
@@ -1459,6 +1467,7 @@ class WorktreePool:
         finally:
             os.close(descriptor)
 
+    @_workspace_mutation_boundary(pool=True)
     def _try_claim(
         self,
         state: Mapping[str, Any],
@@ -1529,6 +1538,7 @@ class WorktreePool:
                 except FileExistsError:
                     return None
 
+    @_workspace_mutation_boundary(pool=True)
     def _reclaim_dead_leases(self) -> list[dict[str, Any]]:
         """Discard missing-workspace dead leases after exclusively fencing them.
 
@@ -1628,6 +1638,7 @@ class WorktreePool:
         reasons = self._metrics["rejection_reasons"]
         reasons[reason] = int(reasons.get(reason) or 0) + 1
 
+    @_workspace_mutation_boundary(pool=True)
     def _discard_state(self, state: Mapping[str, Any]) -> dict[str, Any]:
         raw_path = str(state.get("path") or "").strip()
         path = Path(raw_path) if raw_path else self.worktree_root
@@ -1741,51 +1752,56 @@ def managed_git_worktree(
 ) -> Iterator[GitWorktreeSession]:
     """Create a detached Git worktree and always remove/prune it on exit."""
 
-    worktree_path.parent.mkdir(parents=True, exist_ok=True)
-    raw_trace: dict[str, Any] = dict(trace_context or {})
-    raw_trace.update(
-        {
-            "worktree_path": str(worktree_path),
-            "metadata_path": metadata_rel,
-            "owner_path": owner_rel,
-        }
-    )
-    session = GitWorktreeSession(
-        repo_root=repo_root,
-        path=worktree_path,
-        metadata_rel=metadata_rel,
-        owner_rel=owner_rel,
-        raw_trace=raw_trace,
-    )
-    try:
-        add_result = run_command_fn(
-            ("git", "worktree", "add", "--detach", str(worktree_path), "HEAD"),
-            cwd=repo_root,
-            timeout_seconds=max(1, int(add_timeout_seconds)),
+    from ..merge.workspace_quarantine import mutation
+    with mutation(repo_root, worktree_path):
+        worktree_path.parent.mkdir(parents=True, exist_ok=True)
+        raw_trace: dict[str, Any] = dict(trace_context or {})
+        raw_trace.update(
+            {
+                "worktree_path": str(worktree_path),
+                "metadata_path": metadata_rel,
+                "owner_path": owner_rel,
+            }
         )
-        session.add_result = add_result
-        raw_trace["worktree_add"] = add_result.compact(limit=12000)
-        if add_result.ok and owner_writer is not None:
-            owner_writer(worktree_path / owner_rel)
-        yield session
-    finally:
-        remove_result = run_command_fn(
-            ("git", "worktree", "remove", "--force", str(worktree_path)),
-            cwd=repo_root,
-            timeout_seconds=max(1, int(remove_timeout_seconds)),
+        session = GitWorktreeSession(
+            repo_root=repo_root,
+            path=worktree_path,
+            metadata_rel=metadata_rel,
+            owner_rel=owner_rel,
+            raw_trace=raw_trace,
         )
-        raw_trace["worktree_remove"] = remove_result.compact(limit=12000)
-        if not remove_result.ok and worktree_path.exists():
-            shutil.rmtree(worktree_path, ignore_errors=True)
-        if prune_on_exit:
-            prune_result = run_command_fn(
-                ("git", "worktree", "prune", "--expire", "now"),
+        try:
+            add_result = run_command_fn(
+                ("git", "worktree", "add", "--detach", str(worktree_path), "HEAD"),
+                cwd=repo_root,
+                timeout_seconds=max(1, int(add_timeout_seconds)),
+            )
+            session.add_result = add_result
+            raw_trace["worktree_add"] = add_result.compact(limit=12000)
+            if add_result.ok and owner_writer is not None:
+                owner_writer(worktree_path / owner_rel)
+            yield session
+        finally:
+            remove_result = run_command_fn(
+                ("git", "worktree", "remove", "--force", str(worktree_path)),
                 cwd=repo_root,
                 timeout_seconds=max(1, int(remove_timeout_seconds)),
             )
-            raw_trace["worktree_prune_after_remove"] = prune_result.compact(limit=12000)
+            raw_trace["worktree_remove"] = remove_result.compact(limit=12000)
+            if not remove_result.ok and worktree_path.exists():
+                shutil.rmtree(worktree_path, ignore_errors=True)
+            from ..merge.workspace_quarantine import maintenance
+            with maintenance(repo_root) as can_prune:
+                if prune_on_exit and can_prune:
+                    prune_result = run_command_fn(
+                        ("git", "worktree", "prune", "--expire", "now"),
+                        cwd=repo_root,
+                        timeout_seconds=max(1, int(remove_timeout_seconds)),
+                    )
+                    raw_trace["worktree_prune_after_remove"] = prune_result.compact(limit=12000)
 
 
+@_workspace_mutation_boundary("worktree_root")
 def cleanup_stale_daemon_worktrees(
     *,
     repo_root: Path,
@@ -1809,12 +1825,15 @@ def cleanup_stale_daemon_worktrees(
         "skipped": [],
         "errors": [],
     }
-    prune_before = run_command_fn(
-        ("git", "worktree", "prune", "--expire", "now"),
-        cwd=repo_root,
-        timeout_seconds=60,
-    )
-    result["prune_before"] = prune_before.compact(limit=12000)
+    from ..merge.workspace_quarantine import maintenance
+    with maintenance(repo_root) as can_prune:
+        if can_prune:
+            prune_before = run_command_fn(
+                ("git", "worktree", "prune", "--expire", "now"), cwd=repo_root, timeout_seconds=60,
+            )
+            result["prune_before"] = prune_before.compact(limit=12000)
+        else:
+            result["prune_before"] = {"skipped": True, "reason": "retained_workspace_scope"}
     if not worktree_root.exists():
         return result
 
@@ -1919,12 +1938,14 @@ def cleanup_stale_daemon_worktrees(
                 {"path": str(candidate), "exception": f"{type(exc).__name__}: {exc}"}
             )
 
-    prune_after = run_command_fn(
-        ("git", "worktree", "prune", "--expire", "now"),
-        cwd=repo_root,
-        timeout_seconds=60,
-    )
-    result["prune_after"] = prune_after.compact(limit=12000)
-    if not prune_after.ok:
-        result["valid"] = False
+    with maintenance(repo_root) as can_prune:
+        if can_prune:
+            prune_after = run_command_fn(
+                ("git", "worktree", "prune", "--expire", "now"), cwd=repo_root, timeout_seconds=60,
+            )
+            result["prune_after"] = prune_after.compact(limit=12000)
+            if not prune_after.ok:
+                result["valid"] = False
+        else:
+            result["prune_after"] = {"skipped": True, "reason": "retained_workspace_scope"}
     return result
