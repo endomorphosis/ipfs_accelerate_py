@@ -7611,15 +7611,47 @@ def _extra_gate_grok_descendants_must_preserve(
     return False
 
 
+def _managed_tracks_must_preserve_extra_gate_grok(
+    tracks: Sequence[SupervisorTrack],
+    processes: Mapping[str, subprocess.Popen[bytes]],
+    *,
+    repo_root: Path,
+) -> bool:
+    """True when any managed track still has extra-gate grok in its pid tree.
+
+    After stop_tracks preserves grok, ``processes`` is empty so a process-only
+    scan missed daemon 416985 / grok 972440 and master exited on failed owner
+    recovery. Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+    """
+
+    for track in tracks:
+        resolved = track.resolve(repo_root)
+        daemon_fields = daemon_pid_health_fields(
+            resolved.daemon_pid_path,
+            cleanup_stale_marker=False,
+        )
+        if _restarting_track_must_preserve_extra_gate_grok(
+            processes.get(track.name),
+            daemon_fields,
+            state_dir=resolved.daemon_pid_path.parent,
+        ):
+            return True
+    return False
+
+
 def _restarting_track_must_preserve_extra_gate_grok(
     process: subprocess.Popen[bytes] | None,
     daemon_fields: Mapping[str, object] | None = None,
+    *,
+    state_dir: Path | None = None,
 ) -> bool:
     """Preserve extra-gate grok on master restarting-exited/stale.
 
     ``restarting stale`` always fenced the supervisor tree and skipped the
     exited-path preserve, so PCTDD-005 grok died. Daemon pid files can be
     missing after cleanup_stale_marker; scan the supervisor pid tree too.
+    When daemon_pid is missing and grok reparented to init, identity-pid
+    nested portal still records the live extra-gate runner.
     Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
     """
 
@@ -7631,10 +7663,16 @@ def _restarting_track_must_preserve_extra_gate_grok(
         pid = int(preserve_pid or 0)
     except (TypeError, ValueError):
         pid = 0
-    return _extra_gate_grok_descendants_must_preserve(
+    if _extra_gate_grok_descendants_must_preserve(
         process,
         daemon_pid=pid if pid > 1 else None,
-    )
+    ):
+        return True
+    if state_dir is None:
+        return False
+    from ..todo_daemon.supervisor_loop import extra_gate_nested_portal_has_live_grok
+
+    return extra_gate_nested_portal_has_live_grok(state_dir)
 
 
 def _terminate_managed_process(
@@ -7686,7 +7724,14 @@ def stop_tracks(
     grace_seconds: float = 10.0,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
-    """Stop exact marker-bound wrapper trees and verify no descendants remain."""
+    """Stop exact marker-bound wrapper trees and verify no descendants remain.
+
+    Extra-gate grok descendants are left running. SIGINT ``finally`` used
+    to fence every lane tree with zero preserving extra-gate lines, so a
+    fleet-ensure teardown killed in-progress extra-gate grok. Official
+    unstick is rearm, never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
 
     stopped: list[int] = []
     removed_runtime_markers: list[str] = []
@@ -7694,6 +7739,29 @@ def stop_tracks(
     _emit(output, "stopping supervisor wrapper and managed daemons")
     for track in tracks:
         process = processes.get(track.name)
+        resolved = track.resolve(repo_root)
+        daemon_fields = daemon_pid_health_fields(
+            resolved.daemon_pid_path,
+            cleanup_stale_marker=False,
+        )
+        if _restarting_track_must_preserve_extra_gate_grok(
+            process,
+            daemon_fields,
+            state_dir=resolved.daemon_pid_path.parent,
+        ):
+            daemon_pid = daemon_fields.get("daemon_pid") or daemon_fields.get(
+                "stale_daemon_pid"
+            )
+            _emit(
+                output,
+                (
+                    f"preserving extra-gate grok descendants for "
+                    f"{track.name} old_pid="
+                    f"{getattr(process, 'pid', None) or 'none'} "
+                    f"daemon_pid={daemon_pid or 'unknown'}"
+                ),
+            )
+            continue
         fenced, member_pids = _terminate_managed_process(
             process,
             grace_seconds=grace_seconds,
@@ -7712,7 +7780,6 @@ def stop_tracks(
             except subprocess.TimeoutExpired:
                 pass
         if fenced and process is not None:
-            resolved = track.resolve(repo_root)
             if _remove_stale_pid_marker_if_unchanged(
                 resolved.supervisor_pid_path,
                 process.pid,
@@ -8722,6 +8789,26 @@ def run_supervisor_tracks(
                 )
                 health = str(owner_health.get("health") or "unknown").lower()
                 if health != "healthy":
+                    extra_gate_live = _managed_tracks_must_preserve_extra_gate_grok(
+                        managed_tracks,
+                        processes,
+                        repo_root=resolved_repo_root,
+                    )
+                    if extra_gate_live and health != "dead":
+                        # One unhealthy owner health() fenced the inf PCTDD
+                        # campaign at 11:38:45 and SIGTERM-killed extra-gate
+                        # grok, then refused recovery and shutdown the owner.
+                        # Official unstick is rearm, never CAS. Extra-gate
+                        # aliases still cannot bypass safe_to_restart=False.
+                        _emit(
+                            output,
+                            (
+                                f"managed Quack owner health={health}; "
+                                "preserving extra-gate grok descendants; "
+                                "deferring fence until owner is proven dead"
+                            ),
+                        )
+                        continue
                     _emit(
                         output,
                         f"managed Quack owner health={health}; fencing tracks",
@@ -8761,6 +8848,29 @@ def run_supervisor_tracks(
                     assert isinstance(recoveries, list)
                     recoveries.append(recovery)
                     if recovery.get("recovered") is not True:
+                        extra_gate_live = (
+                            _managed_tracks_must_preserve_extra_gate_grok(
+                                managed_tracks,
+                                processes,
+                                repo_root=resolved_repo_root,
+                            )
+                        )
+                        if extra_gate_live:
+                            # Inbox-cap owner crash then failed recover
+                            # exited the inf master while PCTDD-005 grok
+                            # 972440 was still live. Official unstick is
+                            # rearm, never CAS. Extra-gate aliases still
+                            # cannot bypass safe_to_restart=False.
+                            _emit(
+                                output,
+                                (
+                                    "managed Quack owner recovery did not "
+                                    "produce an authenticated later "
+                                    "generation; preserving extra-gate grok "
+                                    "descendants; retrying owner recovery"
+                                ),
+                            )
+                            continue
                         blocked = (
                             "managed Quack owner recovery did not produce an "
                             "authenticated later generation"
@@ -8837,6 +8947,7 @@ def run_supervisor_tracks(
                         if _restarting_track_must_preserve_extra_gate_grok(
                             process,
                             daemon_fields,
+                            state_dir=resolved.daemon_pid_path.parent,
                         ):
                             _emit(
                                 output,
@@ -9103,6 +9214,7 @@ def run_supervisor_tracks(
                     if _restarting_track_must_preserve_extra_gate_grok(
                         process,
                         daemon_fields,
+                        state_dir=resolved.daemon_pid_path.parent,
                     ):
                         _emit(
                             output,

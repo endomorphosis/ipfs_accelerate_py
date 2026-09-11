@@ -15612,6 +15612,71 @@ def test_implementation_supervisor_idle_source_drift_requests_process_reload(
     ] is False
 
 
+def test_implementation_supervisor_cid_only_source_identity_is_not_pending(
+    tmp_path,
+    monkeypatch,
+):
+    """Dirty-file source_id CID churn must not latch reload pending.
+
+    Matching git tree/revision with a new source_id CID kept extra-gate
+    lanes in control_plane_update_pending until quiesce killed grok.
+    Extra-gate aliases still cannot bypass safe_to_restart=False.
+    """
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    supervisor._loaded_control_plane_source = {
+        "source_id": "loaded-cid",
+        "repository_revision": "same-revision",
+        "control_plane_tree_id": "same-tree",
+    }
+    supervisor._last_control_plane_source_probe_monotonic = 0.0
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_source_snapshot",
+        lambda: {
+            "source_id": "current-cid",
+            "repository_revision": "same-revision",
+            "control_plane_tree_id": "same-tree",
+        },
+    )
+
+    status = supervisor._control_plane_status_projection()
+
+    assert status["control_plane_update_pending"] is False
+    assert status["control_plane_source_id"] == "loaded-cid"
+    assert status["control_plane_current_source_id"] == "current-cid"
+    assert status["control_plane_source_tree_id"] == "same-tree"
+    assert status["control_plane_current_source_tree_id"] == "same-tree"
+    assert TodoImplementationSupervisor._control_plane_source_identity_is_cid_only(
+        status
+        | {
+            "control_plane_source_id": "loaded-cid",
+            "control_plane_current_source_id": "current-cid",
+        }
+    )
+    assert not TodoImplementationSupervisor._retained_startup_allows_normal_launch(
+        {
+            "safe_to_restart": False,
+            "blocked": True,
+            "quiesced": False,
+            "reconciled": False,
+            "reason": "database_portal_retained_reconciliation_blocked",
+        }
+    )
+
+
 def test_implementation_supervisor_active_source_drift_defers_without_attempt_charge(
     tmp_path,
     monkeypatch,

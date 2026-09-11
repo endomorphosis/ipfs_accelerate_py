@@ -12,7 +12,13 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 from .core import ManagedDaemonSpec, pid_alive, read_json
 from .specs import env_float, env_int, env_value
-from .supervisor import SupervisorStatusContext, heartbeat_snapshot, worktree_phase_worker_status
+from .supervisor import (
+    SupervisorStatusContext,
+    descendant_processes,
+    heartbeat_snapshot,
+    process_listing_is_grok_runner,
+    worktree_phase_worker_status,
+)
 from .supervisor_runtime import (
     RestartPolicy,
     SupervisedChild,
@@ -69,9 +75,164 @@ def failed_child_termination_should_keep_running(
         "control_plane_source_changed",
         "control_plane_reload_deferred",
         "extra_gate_in_progress_preserve_worker",
+        "control_plane_source_identity_cid_only",
     }:
         return True
     return reason.startswith("extra_gate_")
+
+
+def _supervised_child_has_grok_cli_runner(child: Any) -> bool:
+    """True when grok_cli_runner is still parent-linked under ``child``."""
+
+    try:
+        pid = int(getattr(child, "pid", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    if pid > 1:
+        try:
+            for item in descendant_processes(pid):
+                if process_listing_is_grok_runner(item):
+                    return True
+        except Exception:
+            pass
+    pid_path = getattr(child, "child_pid_path", None)
+    if pid_path:
+        try:
+            parent = Path(pid_path).parent
+            if parent.is_absolute() and extra_gate_nested_portal_has_live_grok(
+                parent
+            ):
+                return True
+        except Exception:
+            return False
+    return False
+
+
+_EXTRA_GATE_TASK_ALIASES = frozenset(
+    {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
+)
+
+
+def extra_gate_nested_portal_has_live_grok(state_dir: Any) -> bool:
+    """True when nested portal still records a live extra-gate runner pid.
+
+    Heartbeat ``cleanup_stale_marker`` dropped ``daemon_pid=missing``, grok
+    reparented to init, and master ``restarting exited`` scanned only the
+    supervisor tree (zero preserving extra-gate lines) so PCTDD-005 grok
+    583866 died mid-validate. Official unstick is rearm, never CAS.
+    Extra-gate aliases still cannot bypass ``safe_to_restart=False``.
+    """
+
+    try:
+        root = Path(state_dir)
+    except TypeError:
+        return False
+    if not root.is_dir():
+        return False
+    try:
+        attempt_roots = [
+            path
+            for path in root.iterdir()
+            if path.is_dir() and path.name.endswith("_database_portal_attempts")
+        ]
+    except OSError:
+        return False
+    newest: list[Path] = []
+    for attempt_root in attempt_roots:
+        try:
+            newest.extend(path for path in attempt_root.iterdir() if path.is_dir())
+        except OSError:
+            continue
+    newest.sort(
+        key=lambda path: path.stat().st_mtime if path.exists() else 0.0,
+        reverse=True,
+    )
+    # Idle extra-gate claims get newer mtimes than the live grok attempt.
+    # Capping at 32 missed PCTDD-006 grok 3921346 on lane-0 (800+ dirs)
+    # so SIGTERM/restarting-exited killed it. Scan every attempt for a
+    # live runner pid. Extra-gate aliases still cannot bypass
+    # safe_to_restart=False.
+    for child in newest:
+        portal_path = child / "portal-task-state.json"
+        if not portal_path.is_file():
+            continue
+        try:
+            payload = json.loads(portal_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError):
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        active = str(payload.get("active_task_id") or "")
+        alias = active
+        if alias not in _EXTRA_GATE_TASK_ALIASES:
+            bind_path = child / "database-attempt-binding.json"
+            if bind_path.is_file():
+                try:
+                    binding = json.loads(bind_path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeError, ValueError):
+                    binding = None
+                if isinstance(binding, Mapping):
+                    alias = str(binding.get("task_alias") or alias)
+        runner = payload.get("active_provider_runner")
+        runner_pid = 0
+        if isinstance(runner, Mapping):
+            try:
+                runner_pid = int(runner.get("pid") or 0)
+            except (TypeError, ValueError):
+                runner_pid = 0
+        if runner_pid <= 1 or not pid_alive(runner_pid):
+            continue
+        if alias in _EXTRA_GATE_TASK_ALIASES:
+            return True
+        # Portal cleared active_task_id while grok_cli_runner was still live.
+        listing = {"pid": runner_pid, "cmdline": "", "argv": ()}
+        try:
+            raw = Path(f"/proc/{runner_pid}/cmdline").read_bytes()
+            argv = tuple(
+                part.decode("utf-8", "replace")
+                for part in raw.split(b"\0")
+                if part
+            )
+            listing = {
+                "pid": runner_pid,
+                "argv": argv,
+                "cmdline": " ".join(argv),
+            }
+        except OSError:
+            pass
+        if process_listing_is_grok_runner(listing):
+            return True
+    return False
+
+
+def extra_gate_grok_must_keep_supervisor(
+    decision: SupervisorLoopDecision,
+    *,
+    child_still_alive: bool,
+    child: Any | None = None,
+) -> bool:
+    """Keep the supervisor attached when extra-gate grok is in the child tree.
+
+    Lane-0 supervisor 459540 had keep-running-before-recycle but still
+    terminated on a non-extra-gate recycle reason, then
+    ``supervised_child_termination_unproven`` exited and master
+    restarting-exited killed PCTDD-006 grok. Official unstick is rearm,
+    never CAS. Extra-gate aliases still cannot bypass
+    ``safe_to_restart=False``.
+    """
+
+    if failed_child_termination_should_keep_running(
+        decision,
+        child_still_alive=child_still_alive,
+    ):
+        return True
+    reason = str(getattr(decision, "reason", "") or "")
+    if reason in {"operator_stop", "operator_requested"}:
+        return False
+    # Daemon may already be dead while extra-gate grok reparented to init.
+    # Nested portal identity-pid still records the live runner, so keep the
+    # supervisor attached instead of restarting-exited with zero preserve.
+    return _supervised_child_has_grok_cli_runner(child)
 
 
 WatchdogQuiescentStatusPredicate = Callable[[Mapping[str, Any]], bool]
@@ -575,12 +736,17 @@ class SupervisorLoop:
                     break
                 self._safe_write_status("running", child=child, run_id=run_id, log_path=log_path)
                 if self.monotonic() - child_started_at >= self.config.watchdog_startup_grace_seconds:
+                    # Watchdog quiesce can reap the daemon before the
+                    # post-decision poll. Extra-gate keep-running must use
+                    # pre-watchdog liveness so control_plane_source_changed
+                    # cannot fall through to terminate/termination_blocked.
+                    child_alive_before_watchdog = True
                     decision = self.watchdog_decision(child)
                     if decision.action == "stop":
-                        if failed_child_termination_should_keep_running(
+                        if extra_gate_grok_must_keep_supervisor(
                             decision,
-                            child_still_alive=_poll_child_exit(child)
-                            is None,
+                            child_still_alive=child_alive_before_watchdog,
+                            child=child,
                         ):
                             # Do not SIGTERM a live extra-gate child on
                             # control_plane_source_changed. Lane-0 STOP then
@@ -598,10 +764,10 @@ class SupervisorLoop:
                                 self.last_exit_code = 0
                                 stop_requested = True
                                 break
-                            if failed_child_termination_should_keep_running(
+                            if extra_gate_grok_must_keep_supervisor(
                                 decision,
-                                child_still_alive=_poll_child_exit(child)
-                                is None,
+                                child_still_alive=child_alive_before_watchdog,
+                                child=child,
                             ):
                                 continue
                             final_status = "termination_blocked"
@@ -614,6 +780,16 @@ class SupervisorLoop:
                         stop_requested = True
                         break
                     if decision.action == "recycle":
+                        if extra_gate_grok_must_keep_supervisor(
+                            decision,
+                            child_still_alive=child_alive_before_watchdog,
+                            child=child,
+                        ):
+                            # Recycle used to terminate first. Extra-gate
+                            # grok in a dedicated session was SIGTERM-killed
+                            # before keep-running could attach. Official
+                            # unstick is rearm, never CAS.
+                            continue
                         self.last_recycle_reason = decision.reason
                         self._safe_write_status(
                             "recycling",
@@ -635,10 +811,10 @@ class SupervisorLoop:
                                 self.last_exit_code = 0
                                 recycled = True
                                 break
-                            if failed_child_termination_should_keep_running(
+                            if extra_gate_grok_must_keep_supervisor(
                                 decision,
-                                child_still_alive=_poll_child_exit(child)
-                                is None,
+                                child_still_alive=child_alive_before_watchdog,
+                                child=child,
                             ):
                                 continue
                             final_status = "termination_blocked"
