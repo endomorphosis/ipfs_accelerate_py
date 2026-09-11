@@ -5,6 +5,7 @@ import json
 import os
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -270,6 +271,9 @@ def test_optional_budget_and_absent_config_do_not_block_prior_continuation(
 def test_actual_run_job_keeps_old_report_and_validates_configured_handoff(
     sample, monkeypatch
 ):
+    # Handoff continuity should not depend on unrelated host disk allocations.
+    monkeypatch.setattr(repair.os, "fstatvfs", lambda _fd: SimpleNamespace(
+        f_frsize=4096, f_bavail=1 << 30, f_favail=1 << 20))
     board, directory, observation, _now, *_ = sample
     board["probe"] = {"argv": ["probe"]}
     cfg = {

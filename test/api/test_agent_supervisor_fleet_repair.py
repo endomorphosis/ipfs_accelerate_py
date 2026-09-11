@@ -2,6 +2,7 @@
 import time
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -137,6 +138,9 @@ def test_completion_runs_current_publication_gate(tmp_path, monkeypatch, status,
 
 
 def test_run_job_keeps_backoff_for_idle_healthy_probe(tmp_path, monkeypatch):
+    # This case exercises launch continuity; capacity failures have separate tests.
+    monkeypatch.setattr(repair.os, "fstatvfs", lambda _fd: SimpleNamespace(
+        f_frsize=4096, f_bavail=1 << 30, f_favail=1 << 20))
     cfg = config(tmp_path)
     cfg["repair_worker"].update(argv=["codex", "exec"], retry_seconds=100)
     board = dict(cfg["boards"][0], probe={"argv": ["probe"]})
