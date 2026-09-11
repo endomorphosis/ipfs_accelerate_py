@@ -18268,27 +18268,6 @@ class PortalImplementationSupervisor:
                 )
             quarantine_heads = (daemon.task_source.intent.owner_task_quarantines()
                 if _independent_custody_consumer is not None else {})
-            if retained_program and home_lane_retained and not quarantine_heads:
-                retained_lane_daemons = (
-                    self._bind_retained_recovery_lane_attempt_authorities(
-                        daemon=daemon,
-                        program=program,
-                        task_source=daemon.task_source,
-                        shard_count=effective_shard_count,
-                        shard_index=effective_shard_index,
-                        strict_sharding=effective_strict_sharding,
-                        owner_fence_held=owner_fence_held,
-                        managed_daemon_launch_lock_held=(
-                            managed_daemon_launch_lock_held
-                        ),
-                        authenticated_control_store_binding=(
-                            owner_binding
-                        ),
-                        expected_control_schema_profile=(
-                            expected_control_schema_profile
-                        ),
-                    )
-                )
             bridge = DatabasePortalExecutionBridge(
                 task_source=daemon.task_source,
                 attempt_root=attempt_root,
@@ -18363,6 +18342,11 @@ class PortalImplementationSupervisor:
                 ):
                     if reconciliation.get("blocked") is True:
                         return reconciliation
+                    if reconciliation.get("continuation_required") is True:
+                        # A durable local repair ends this turn even when its
+                        # own result is successful. Retained rearm must wait
+                        # for the next pass and must not reserve peer writers.
+                        return reconciliation
                     if (
                         _independent_custody_consumer is not None
                         and daemon.task_source.intent.owner_task_quarantines()
@@ -18434,6 +18418,33 @@ class PortalImplementationSupervisor:
                             "quiesced": False,
                             "safe_to_restart": False,
                         }
+                    # Local terminal/Portal recovery can be blocked or take a
+                    # bounded sequence of pages. It needs no peer execution
+                    # writer: acquire the exact retained lane authorities only
+                    # after that recovery admits retained reconciliation. This
+                    # keeps an unrelated lane launchable while local recovery
+                    # preserves an unknown callback or repairs historical rows.
+                    if retained_program and home_lane_retained and not quarantine_heads:
+                        retained_lane_daemons = (
+                            self._bind_retained_recovery_lane_attempt_authorities(
+                                daemon=daemon,
+                                program=program,
+                                task_source=daemon.task_source,
+                                shard_count=effective_shard_count,
+                                shard_index=effective_shard_index,
+                                strict_sharding=effective_strict_sharding,
+                                owner_fence_held=owner_fence_held,
+                                managed_daemon_launch_lock_held=(
+                                    managed_daemon_launch_lock_held
+                                ),
+                                authenticated_control_store_binding=(
+                                    owner_binding
+                                ),
+                                expected_control_schema_profile=(
+                                    expected_control_schema_profile
+                                ),
+                            )
+                        )
                     checkout_operation = (
                         "database_portal_retained_recovery_admission"
                     )
