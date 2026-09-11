@@ -97,6 +97,7 @@ from ..runtime.provider_failure_policy import (
     valid_grok_hard_quota_receipt,
     valid_grok_route_outcome,
 )
+from ..runtime import provider_capacity_custody
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
@@ -756,6 +757,7 @@ def _stable_owned_log_tail(
     maximum_bytes: int,
     *,
     reject_group_writable: bool = True,
+    require_complete: bool = False,
 ) -> tuple[str, str]:
     """Read one LF-framed bounded tail through a stable no-follow descriptor."""
 
@@ -805,6 +807,8 @@ def _stable_owned_log_tail(
 
         if not valid(before):
             raise OSError("log is not an owned stable regular file")
+        if require_complete and before.st_size > maximum_bytes:
+            raise OSError("complete log exceeds observation bound")
         tail_start = max(0, before.st_size - maximum_bytes)
         read_start = max(0, tail_start - 1)
         expected = before.st_size - read_start
@@ -14585,6 +14589,9 @@ class PortalImplementationDaemon:
     def run_once(self) -> dict[str, Any]:
         """Run one pass and establish its durable file-cursor boundary."""
 
+        retained = self._retained_provider_capacity_deferral()
+        if retained is not None:
+            return {"implementation_result": retained}
         result = self._run_once()
         coordinator = self._runtime_wake_coordinator
         if coordinator is not None:
@@ -18719,18 +18726,63 @@ class PortalImplementationDaemon:
                     }
                 )
             return audit
-        # Protected nonce-bound routes returned above without invoking this
-        # compatibility classifier.  Legacy, non-route provider commands keep
-        # their existing capacity/backoff accounting; the result never grants
-        # cross-provider fallback authority.
+        # Capacity telemetry does not prove that the task prompt was refused.
+        # Protected routes retain their existing typed CAS audit above.
         classified = classify_provider_capacity_failure(
             text,
             provider_labels=_provider_labels_from_implementation_command(
                 command
             ),
         )
+        observation = provider_capacity_custody.execution_observation(text)
+        receipts = extract_grok_failure_receipts(receipt_text)
+        valid_pre_dispatch = [
+            receipt for receipt in receipts
+            if returncode is not None
+            and valid_grok_failure_receipt(
+                receipt, nonce=receipt_nonce, model=primary_model,
+                returncode=returncode,
+            )
+            and receipt.get("failure_class") in {
+                "hard_quota_exhausted", "transient_capacity",
+            }
+        ]
+        # A suffix cannot prove that an earlier part of this dispatch did no
+        # task work. Require the complete bounded log for refundable refusal.
+        try:
+            complete_log = _stable_owned_log_tail(
+                log_path, PROVIDER_CAPACITY_LOG_TAIL_BYTES,
+                reject_group_writable=True, require_complete=True,
+            ) == (text, receipt_text)
+        except OSError:
+            complete_log = False
+        pre_dispatch = bool(
+            receipt_nonce and primary_model
+            and command_items.count("--grok-failure-receipt-nonce") == 1
+            and command_items.count("--model") == 1
+            and not any("fallback" in item for item in command_items)
+            and not extract_grok_route_outcomes(receipt_text)
+            and len(receipts) == len(valid_pre_dispatch) == 1
+            and complete_log
+            and "\ufffd" not in text
+            and not observation["task_execution_observed"]
+        )
+        if pre_dispatch:
+            receipt = valid_pre_dispatch[0]
+            classified.update({
+                "exhausted": True, "providers": ["grok"],
+                "reason": "provider_capacity_exhausted",
+                "failure_class": receipt["failure_class"],
+                "quota_probe_receipt": receipt,
+                "quota_probe_receipt_id": receipt["receipt_id"],
+            })
         if not classified["exhausted"]:
             return classified
+        classified.update({
+            "pre_dispatch_refusal_verified": pre_dispatch,
+            "retained_callback_required": not pre_dispatch,
+            "execution_observation": observation,
+        })
         if classified.get("failure_class") == "hard_quota_exhausted":
             classified["evidence"] = [
                 "runner_receipt:"
@@ -19452,7 +19504,26 @@ class PortalImplementationDaemon:
         worktree_path: Path | None = None,
         branch_name: str = "",
         cleanup_result: dict[str, Any] | None = None,
+        command: Sequence[str] = (),
     ) -> dict[str, Any]:
+        refundable = (
+            failure.get("pre_dispatch_refusal_verified") is True
+            and self._provider_capacity_failure_from_log(
+                log_path, command=command, returncode=returncode,
+            ).get("pre_dispatch_refusal_verified") is True
+        )
+        if not refundable:
+            try:
+                return self._retain_provider_capacity_failure(
+                    task=task, state=state, attempt=attempt, started_at=started_at,
+                    returncode=returncode, log_path=log_path, failure=failure,
+                    worktree_path=worktree_path, branch_name=branch_name,
+                    command=command,
+                )
+            except Exception as exc:
+                raise provider_capacity_custody.RetentionError(
+                    "provider capacity custody publication did not finish"
+                ) from exc
         finished_at = utc_now()
         now = _provider_capacity_now()
         if now.tzinfo is None:
@@ -19581,6 +19652,149 @@ class PortalImplementationDaemon:
                 reason="provider_capacity_deferred",
             )
         self._record_event("implementation_provider_exhausted", result)
+        return result
+
+    def _retained_provider_capacity_deferral(self) -> dict[str, Any] | None:
+        """Read only deny authority before maintenance or another callback."""
+        try:
+            receipt = provider_capacity_custody.read(
+                provider_capacity_custody.path_for(self.state_path)
+            )
+            if receipt is None:
+                for quarantine in self.worktree_lifecycle.iter_quarantines():
+                    authority = quarantine["fence_authority"]
+                    if authority.get(
+                        "schema"
+                    ) == provider_capacity_custody.SCHEMA and authority.get(
+                        "state_path"
+                    ) == str(
+                        self.state_path.resolve()
+                    ):
+                        receipt = dict(authority)
+                        break
+            if receipt is None:
+                return None
+            return {
+                **receipt,
+                "skipped": True,
+                "deferred": True,
+                "reason": provider_capacity_custody.REASON,
+                "retry_authorized": False,
+                "settlement_authority": False,
+                "completion_authority": False,
+                "cleanup_allowed": False,
+            }
+        except (OSError, ValueError, WorktreeLifecycleError) as exc:
+            # An unreadable custody record cannot be treated as its absence.
+            return {
+                "skipped": True,
+                "deferred": True,
+                "reason": provider_capacity_custody.REASON,
+                "custody_error": type(exc).__name__,
+                "attempt_consumed": "unknown",
+                "provider_dispatched": "unknown",
+                "retry_authorized": False,
+                "settlement_authority": False,
+                "completion_authority": False,
+                "cleanup_allowed": False,
+            }
+
+    def _retain_provider_capacity_failure(
+        self,
+        *,
+        task: PortalTask,
+        state: PortalTaskState,
+        attempt: int,
+        started_at: str,
+        returncode: int,
+        log_path: Path,
+        failure: Mapping[str, Any],
+        worktree_path: Path | None,
+        branch_name: str,
+        command: Sequence[str],
+    ) -> dict[str, Any]:
+        """Preserve a spent callback without inventing terminal custody."""
+        workspace = worktree_path or self.repo_root
+        start_binding: dict[str, Any] = {}
+        command_identity = self._implementation_command_identity(command)
+        for event in reversed(self._iter_events()):
+            if (
+                event.get("type") == "implementation_started"
+                and event.get("task_id") == task.task_id
+                and event.get("attempt") == attempt
+                and event.get("log_path") == str(log_path)
+                and self._implementation_command_identity(event.get("command") or ())
+                == command_identity
+            ):
+                start_binding = {
+                    key: event[key]
+                    for key in (
+                        "event_id",
+                        "stream_id",
+                        "sequence",
+                        "baseline_ref",
+                        "canonical_task_cid",
+                        "worktree_path",
+                        "branch",
+                    )
+                    if key in event
+                }
+                break
+        body = {
+            "schema": provider_capacity_custody.SCHEMA,
+            "state_path": str(self.state_path.resolve()),
+            "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
+            "attempt": attempt,
+            "started_at": started_at,
+            "returncode": returncode,
+            "worktree_path": str(workspace.resolve()),
+            "branch": branch_name,
+            "log_path": str(log_path.resolve()),
+            "log_identity": provider_capacity_custody.log_identity(log_path),
+            "command_sha256": command_identity,
+            "implementation_start": start_binding,
+            "database_attempt_authority": dict(self._database_attempt_authority or {}),
+            "execution_observation": dict(failure.get("execution_observation") or {}),
+            "providers": list(failure.get("providers") or []),
+            "attempt_consumed": True,
+            "provider_dispatched": "unknown",
+            "retry_authorized": False,
+            "settlement_authority": False,
+            "completion_authority": False,
+            "cleanup_allowed": False,
+            "callback_outcome": "unknown",
+        }
+        receipt = {**body, "receipt_id": content_identity(body)}
+        captured = self._active_worktree_lifecycle
+        if worktree_path is not None and captured is not None:
+            if (
+                captured.task_id != task.task_id
+                or captured.canonical_task_cid != self._canonical_ref(task)
+                or captured.attempt != self._worktree_lifecycle_attempt(task, attempt)
+                or Path(captured.workspace_path).resolve() != workspace.resolve()
+            ):
+                raise WorktreeLifecycleError("retained capacity lifecycle binding changed")
+            self.worktree_lifecycle.quarantine_current_owner(
+                captured,
+                fence_authority=receipt,
+                reason=provider_capacity_custody.REASON,
+            )
+        else:
+            provider_capacity_custody.publish(
+                provider_capacity_custody.path_for(self.state_path),
+                body,
+            )
+        # Quarantine publication is the durable effect barrier. A failure of
+        # these diagnostic projections leaves the native deny receipt intact.
+        self._record_task_attempt(state, task, attempt)
+        state.last_implementation_log_path = str(log_path)
+        state.last_implementation_worktree_path = str(workspace)
+        state.last_implementation_returncode = returncode
+        state.selection_idle_reason = provider_capacity_custody.REASON
+        state.save(self.state_path)
+        result = {**receipt, "deferred": True, "reason": provider_capacity_custody.REASON}
+        self._record_event("implementation_provider_capacity_retained", result)
         return result
 
     def _lgswf_writer_path(self, task_id: object) -> Path | None:
@@ -19727,6 +19941,9 @@ class PortalImplementationDaemon:
 
     @_workspace_mutation_boundary(pool=True)
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
+        retained = self._retained_provider_capacity_deferral()
+        if retained is not None:
+            return retained
         if self._board_task_is_completed(task.task_id):
             result = {
                 "skipped": True,
@@ -20014,7 +20231,9 @@ class PortalImplementationDaemon:
             return result
 
         acquired_lock = False
-        log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
+        log_path = self.implementation_log_dir / (
+            f"{task.task_id.lower()}-attempt-{attempt}-{secrets.token_hex(16)}.log"
+        )
         try:
             if authority_revalidation_only:
                 if self._implementation_cancel_requested():
@@ -20642,7 +20861,10 @@ class PortalImplementationDaemon:
                             started_at=started_at,
                             returncode=completed.returncode,
                             log_path=log_path,
-                            failure=provider_failure,
+                                failure=provider_failure,
+                                worktree_path=workspace_path,
+                                branch_name=baseline_branch,
+                                command=command,
                         )
                         deferral["context_receipt_path"] = str(
                             context_receipt_path
@@ -21349,6 +21571,11 @@ class PortalImplementationDaemon:
             self._record_event("implementation_finished", result)
             return result
         except Exception as exc:
+            if isinstance(exc, provider_capacity_custody.RetentionError):
+                # Publication failure cannot become a settled callback failure.
+                # Preserve active accounting/custody and let the native owner
+                # observe the unresolved callback through its existing guard.
+                raise
             if protected_path_snapshot is not None and not protected_path_violation:
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -30869,6 +31096,16 @@ class PortalImplementationDaemon:
             elif (
                 not protected_path_violation
                 and provider_failure.get("exhausted", False)
+                and provider_failure.get("pre_dispatch_refusal_verified") is not True
+            ):
+                # Quota after work (or with unknown dispatch custody) is not
+                # permission to discard a candidate or refund its attempt.
+                # Publish the native retention outside this setup try/except,
+                # so a persistence failure cannot enter setup-error cleanup.
+                pass
+            elif (
+                not protected_path_violation
+                and provider_failure.get("exhausted", False)
                 and (
                     worktree_path.resolve()
                     in self._worktree_pool_leases
@@ -31644,6 +31881,7 @@ class PortalImplementationDaemon:
                 worktree_path=worktree_path,
                 branch_name=branch_name,
                 cleanup_result=cleanup_result,
+                command=command,
             )
 
         finished_at = utc_now()

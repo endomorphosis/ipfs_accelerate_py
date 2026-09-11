@@ -1693,6 +1693,88 @@ class WorktreeLifecycleStore:
         return current
 
     @_workspace_mutation_boundary("workspace")
+    def quarantine_current_owner(
+        self,
+        captured: WorkspaceLifecycleRecord,
+        *,
+        fence_authority: Mapping[str, Any],
+        reason: str,
+    ) -> dict[str, Any]:
+        """Let the actual current owner retain its exact unresolved workspace.
+
+        This is a separate deny-only producer. It neither asserts a dead owner
+        nor relaxes the existing dead-owner admission or settlement protocol.
+        """
+        if (
+            type(fence_authority) is not dict
+            or not fence_authority
+            or type(reason) is not str
+            or not reason
+            or captured.is_terminal
+            or captured.record_id != captured.compute_record_id()
+            or captured.owner != current_process_birth(proc_root=self.proc_root)
+            or owner_liveness(captured.owner, proc_root=self.proc_root)
+            is not OwnerLiveness.ALIVE
+            or normalize_workspace_path(captured.repo_root)
+            != normalize_workspace_path(self.repo_root)
+        ):
+            raise WorktreeLifecycleError("current-owner quarantine admission failed")
+        authority = dict(fence_authority)
+        _validate_closed_json(authority)
+        workspace = captured.workspace_path
+        quarantine_path = self.quarantine_path_for(workspace)
+        index_path = self.task_index_path_for(
+            canonical_task_cid=captured.canonical_task_cid,
+            task_id=captured.task_id,
+            attempt=captured.attempt,
+        )
+        with serialized_lock_update(quarantine_path):
+            with serialized_lock_update(index_path):
+                with serialized_lock_update(self.workspace_path_for(workspace)):
+                    current = self._load_strict_workspace_record(workspace)
+                    if current != captured:
+                        raise WorktreeLifecycleError(
+                            "current-owner quarantine lifecycle changed"
+                        )
+                    self._require_exact_task_index(current, index_path=index_path)
+                    if current.owner != current_process_birth(proc_root=self.proc_root):
+                        raise OwnershipError("current-owner quarantine process changed")
+                    existing = self._load_strict_quarantine_payload(workspace)
+                    if existing is not None:
+                        if (
+                            existing["lifecycle_record"] != captured.to_dict()
+                            or existing["fence_authority"] != authority
+                            or existing["reason"] != reason
+                        ):
+                            raise WorktreeLifecycleError(
+                                "current-owner quarantine conflicts"
+                            )
+                        return dict(existing)
+                    body = {
+                        "schema": WORKTREE_LIFECYCLE_QUARANTINE_SCHEMA,
+                        "lifecycle_record": current.to_dict(),
+                        "lifecycle_authority_id": _canonical_json_identity(
+                            current.to_dict()
+                        ),
+                        "reason": reason,
+                        "fence_authority": authority,
+                        "fence_authority_id": _canonical_json_identity(authority),
+                        "quarantined_at": float(self.clock()),
+                        "worktree_deleted": False,
+                        "branch_deleted": False,
+                        "cleanup_allowed": False,
+                        "reuse_allowed": False,
+                        "evidence_reuse_allowed": False,
+                        "terminalized": False,
+                    }
+                    if not math.isfinite(body["quarantined_at"]):
+                        raise WorktreeLifecycleError(
+                            "current-owner quarantine time is invalid"
+                        )
+                    receipt = {**body, "quarantine_id": _canonical_json_identity(body)}
+                    self._publish_immutable_quarantine(quarantine_path, receipt)
+                    return dict(receipt)
+
     def quarantine_exact_dead_owner(
         self,
         workspace: str | Path,
