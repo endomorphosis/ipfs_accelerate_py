@@ -231,3 +231,24 @@ def test_revocation_cannot_release_retained_task_or_reactivate(tmp_path):
         assert task_snapshot(server) == before
     finally:
         server.stop()
+
+
+def test_full_history_cannot_issue_another_anchor_or_forget_its_fence(
+    tmp_path, monkeypatch
+):
+    server, _, token, _ = _server(tmp_path)
+    try:
+        apply(server, quarantine_request(server, token))
+        connection = server._connection
+        before = q.heads(connection)
+        # The last available history slot can remain valid, but it cannot
+        # authorize truncation or an additional native quarantine revision.
+        monkeypatch.setattr(q, "MAX_HISTORY", 1)
+        assert q.heads(connection) == before
+        with pytest.raises(q.QuarantineDenied, match="quarantine_population_bound"):
+            q.next_anchor(connection, "event:another")
+        with pytest.raises(q.QuarantineDenied, match="task_custody_quarantined"):
+            q.assert_task_unfenced(connection, "task:test")
+        assert q.heads(connection) == before
+    finally:
+        server.stop()

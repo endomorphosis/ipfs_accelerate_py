@@ -228,3 +228,141 @@ def test_nested_submodule_gc_observes_superproject_custody(tmp_path):
     collector = GitGarbageCollector(repo_root=repo / "external/module")
     assert collector.run(aggressive=True)["reason"] == "retained_workspace_scope"
     assert q.verify(repo, root) == frozen
+
+
+def _fifo_custody_reader(operation, path, repo, root, output):
+    try:
+        if operation == "direct":
+            q.read_regular(path)
+        elif operation == "registry":
+            q.records(path.parent)
+        elif operation == "mutation_lock":
+            with q.directory_guard(path.parent):
+                raise AssertionError("FIFO custody lock admitted")
+        else:
+            q.census(repo, root)
+    except QuarantineDenied as error:
+        output.put(str(error))
+    except BaseException as error:
+        output.put("unexpected: " + repr(error))
+    else:
+        output.put("unexpected admission")
+
+
+@pytest.mark.parametrize(
+    "operation", ["direct", "registry", "pool", "lifecycle", "claim", "mutation_lock"]
+)
+def test_fifo_custody_population_is_denied_without_waiting_for_writer(
+    tmp_path, operation
+):
+    import multiprocessing
+    import os
+
+    repo, root, _, _, lifecycle, _ = seed(tmp_path)
+    directory = {
+        "direct": tmp_path,
+        "registry": q.registry(repo),
+        "pool": root / ".pool-state",
+        "lifecycle": lifecycle.store_dir,
+        "claim": q.registry(repo).parent / "implementation-task-claims",
+        "mutation_lock": tmp_path / "fifo-lock-registry",
+    }[operation]
+    directory.mkdir(mode=0o700, exist_ok=True)
+    filename = (
+        "mutation.lock"
+        if operation == "mutation_lock"
+        else "fifo.lock" if operation == "claim" else "fifo.json"
+    )
+    path = directory / filename
+    os.mkfifo(path, 0o600)
+    # Isolate the actual native reader: a regression must fail in bounded time
+    # even though no process ever opens the other end of this FIFO.
+    context = multiprocessing.get_context("spawn")
+    output = context.Queue()
+    child = context.Process(
+        target=_fifo_custody_reader, args=(operation, path, repo, root, output)
+    )
+    child.start()
+    try:
+        child.join(timeout=10)
+        assert not child.is_alive(), "native custody read blocked opening a FIFO"
+        assert child.exitcode == 0
+        reason = output.get(timeout=1)
+        expected = (
+            "workspace_quarantine_lock_unowned"
+            if operation == "mutation_lock"
+            else "workspace_quarantine_file_invalid"
+        )
+        assert reason == expected
+        assert path.is_fifo()
+    finally:
+        if child.is_alive():
+            child.kill()
+            child.join(timeout=3)
+        output.close()
+        output.join_thread()
+
+
+@pytest.mark.parametrize("operation", ["registry", "census"])
+def test_native_census_bounds_the_scanner_including_unmatched_entries(
+    tmp_path, monkeypatch, operation
+):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    repo, root, _, _, _, _ = seed(tmp_path)
+    directory = q.registry(repo) if operation == "registry" else root / ".pool-state"
+    monkeypatch.setattr(q, "MAX_RECORDS", 2)
+    monkeypatch.setattr(q, "MAX_FILES", 2)
+    # Registry has one extra slot for mutation.lock; census counts every name.
+    bound = 3 if operation == "registry" else 2
+    native_scandir = q.os.scandir
+    consumed, closed = [], []
+
+    def endless_unmatched_entries():
+        for index in range(10_000):
+            assert index <= bound, "scanner consumed past its first excess entry"
+            consumed.append(index)
+            yield SimpleNamespace(path=str(directory / f"ignored-{index}.other"))
+
+    @contextmanager
+    def controlled_scandir(path):
+        if Path(path) == directory:
+            try:
+                yield endless_unmatched_entries()
+            finally:
+                closed.append(True)
+        else:
+            with native_scandir(path) as entries:
+                yield entries
+
+    monkeypatch.setattr(q.os, "scandir", controlled_scandir)
+    reason = "registry_bound" if operation == "registry" else "population_bound"
+    with pytest.raises(QuarantineDenied, match=reason):
+        q.records(directory) if operation == "registry" else q.census(repo, root)
+    assert consumed == list(range(bound + 1))
+    assert closed == [True]
+
+
+def test_disappeared_registry_does_not_become_an_empty_fence(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        q.records(tmp_path / "missing-registry")
+
+
+def test_registry_capacity_denies_new_freeze_before_overwriting_custody(
+    tmp_path, monkeypatch
+):
+    repo, root, _, _, _, _ = seed(tmp_path)
+    monkeypatch.setattr(q, "MAX_RECORDS", 1)
+    frozen = q.freeze(repo, root, expected=q.census(repo, root))
+    before = {path.name: path.read_bytes() for path in q.registry(repo).glob("*.json")}
+    other_root = tmp_path / "other-board-root"
+    proposed = q.plan(repo, other_root)
+    with pytest.raises(QuarantineDenied, match="workspace_quarantine_registry_bound"):
+        q.freeze(repo, other_root, expected=proposed["snapshot"])
+    assert {
+        path.name: path.read_bytes() for path in q.registry(repo).glob("*.json")
+    } == before
+    assert q.verify(repo, root) == frozen
+    # Re-acknowledging existing custody still works at full capacity.
+    assert q.freeze(repo, root, expected=frozen["snapshot"]) == frozen

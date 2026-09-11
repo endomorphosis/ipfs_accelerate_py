@@ -63,8 +63,12 @@ this protocol deliberately has no automatic custody-release or retry grant.
 
 Bounds: 4096 central events / 1 MiB of event bodies; 8192 rows / 4 MiB for each
 retained execution or coordination census; 8192 observed workspace/claim files /
-16 MiB, including bytes scanned in other lifecycle/claim rows. Workspace freeze
-records are individually bounded at 256 KiB. Exceeding a bound is a visible block.
+16 MiB, including unmatched directory entries and bytes scanned in other
+lifecycle/claim rows. Native directory enumeration stops after one excess entry;
+it does not first materialize an unlimited directory. Workspace freeze records
+are individually bounded at 256 KiB, with at most 256 records and one mutation
+lock entry. File and lock opens are nonblocking before regular-file validation,
+so a FIFO cannot stall a custody read. Exceeding a bound is a visible block.
 Fresh root creation, malformed/changed local acknowledgements, owner-generation
 changes, and incomplete subsequent audits require revalidation or remain blocked.
 

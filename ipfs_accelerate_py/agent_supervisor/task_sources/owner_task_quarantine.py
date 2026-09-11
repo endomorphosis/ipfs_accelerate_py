@@ -230,8 +230,8 @@ def anchor_value(rows: Any) -> dict[str, Any]:
 
 def next_anchor(connection: Any, event_id: str) -> dict[str, Any]:
     rows = connection.execute(
-        "SELECT event_id FROM domain_events WHERE event_type = ? ORDER BY global_sequence",
-        [EVENT],
+        "SELECT event_id FROM domain_events WHERE event_type = ? ORDER BY global_sequence LIMIT ?",
+        [EVENT, MAX_HISTORY + 1],
     ).fetchall()
     require(len(rows) < MAX_HISTORY, "quarantine_population_bound")
     return anchor_value([*rows, (event_id,)])
@@ -327,12 +327,13 @@ def append(
         # Bind a separate immutable-event population commitment in this same
         # owner transaction. Removing the only/last event cannot empty a fence.
         rows = connection.execute(
-            "SELECT event_id FROM domain_events WHERE event_type = ? ORDER BY global_sequence",
-            [EVENT],
+            "SELECT event_id FROM domain_events WHERE event_type = ? ORDER BY global_sequence LIMIT ?",
+            [EVENT, MAX_HISTORY + 1],
         ).fetchall()
         if not rows or str(rows[-1][0]) != receipt.event_id:
             # A Quack adapter stages writes; its read view remains the preceding snapshot.
             rows = [*rows, (receipt.event_id,)]
+        require(len(rows) <= MAX_HISTORY, "quarantine_population_bound")
         connection.execute(
             ANCHOR_SQL,
             [

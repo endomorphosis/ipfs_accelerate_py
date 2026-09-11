@@ -8,7 +8,9 @@ readers share a repository lock; installing the freeze takes it exclusively.
 from __future__ import annotations
 
 import fcntl
+from fnmatch import fnmatchcase
 import hashlib
+from itertools import islice
 import json
 import os
 import stat
@@ -27,6 +29,7 @@ from ..task_sources.control_plane_contracts import (
 SCHEMA = "ipfs_accelerate_py/agent-supervisor/workspace-root-quarantine@1"
 MAX_FILES = 8192
 MAX_BYTES = 16_777_216
+MAX_RECORDS = 256
 
 
 def registry(repo_root: Path) -> Path:
@@ -46,7 +49,7 @@ def directory_guard(directory: Path, *, exclusive: bool = False):
         "workspace_quarantine_registry_unowned",
     )
     path = directory / "mutation.lock"
-    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
     try:
         info = os.fstat(fd)
         require(
@@ -122,7 +125,8 @@ def claim_retained(repo_root: Path, metadata: dict[str, Any]) -> bool:
 
 
 def read_regular(path: Path, *, bound: int = MAX_BYTES) -> tuple[bytes, Any]:
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    # Opening a FIFO must not block before fstat can reject its type.
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         before = os.fstat(fd)
         require(
@@ -162,9 +166,26 @@ def read_regular(path: Path, *, bound: int = MAX_BYTES) -> tuple[bytes, Any]:
         os.close(fd)
 
 
+def bounded_entries(directory: Path, *, bound: int, reason: str) -> list[Path]:
+    # Path.glob/iterdir may materialize a whole directory internally. Bound the
+    # native scanner itself, including unmatched names, before filtering.
+    with os.scandir(directory) as entries:
+        paths = [Path(entry.path) for entry in islice(entries, bound + 1)]
+    require(len(paths) <= bound, reason)
+    return paths
+
+
 def records(directory: Path) -> list[dict[str, Any]]:
-    paths = list(directory.glob("*.json"))
-    require(len(paths) <= 256, "workspace_quarantine_registry_bound")
+    paths = [
+        path
+        for path in bounded_entries(
+            directory,
+            bound=MAX_RECORDS + 1,  # The native mutation.lock has its own slot.
+            reason="workspace_quarantine_registry_bound",
+        )
+        if fnmatchcase(path.name, "*.json")
+    ]
+    require(len(paths) <= MAX_RECORDS, "workspace_quarantine_registry_bound")
     result = []
     for path in sorted(paths):
         raw, _ = read_regular(path, bound=262144)
@@ -286,10 +307,15 @@ def census(repo_root: Path, worktree_root: Path) -> dict[str, Any]:
         except FileNotFoundError:
             continue
         require(stat.S_ISDIR(info.st_mode), "workspace_quarantine_directory_invalid")
-        paths = list(directory.glob(pattern))
-        require(len(paths) <= remaining_files, "workspace_quarantine_population_bound")
+        paths = bounded_entries(
+            directory,
+            bound=remaining_files,
+            reason="workspace_quarantine_population_bound",
+        )
         remaining_files -= len(paths)
         for path in paths:
+            if not fnmatchcase(path.name, pattern):
+                continue
             if path.name.startswith(".") and path.name.endswith(".update.lock"):
                 continue
             raw, info = read_regular(path, bound=remaining_bytes)
@@ -391,13 +417,15 @@ def freeze(
     with guard(repo_root, exclusive=True) as directory:
         current = census(repo_root, root)
         require(current == expected, "workspace_quarantine_census_changed")
-        prior = [record for record in records(directory) if record["root"] == str(root)]
+        installed = records(directory)
+        prior = [record for record in installed if record["root"] == str(root)]
         if prior:
             require(
                 len(prior) == 1 and prior[0]["snapshot"] == current,
                 "workspace_quarantine_retained_scope_changed",
             )
             return prior[0]
+        require(len(installed) < MAX_RECORDS, "workspace_quarantine_registry_bound")
         fresh = root.parent / ("independent-workspaces-" + key[:24])
         try:
             fresh.lstat()
