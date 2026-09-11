@@ -123,8 +123,20 @@ def _sync_directory(directory):
 
 def install_captured_queue(captured, prepared):
     """Retain the exact candidate inode across validation and canonical copy."""
-    if type(prepared) is not role.PreparedQueueStore:
+    from .spar_legacy_capture import CoherentLegacyCapture
+    if type(captured) is not CoherentLegacyCapture or type(prepared) is not role.PreparedQueueStore:
         raise role.SparMergeOwnerError("native retained capture and prepared clone required")
+    receipt = captured.require_current()
+    root = Path(receipt["queue_root"])
+    if (dict(prepared.manifest) != receipt["manifest"]
+        or prepared.database_path.is_relative_to(root)
+        or captured.path.is_relative_to(root)
+        or prepared.database_path == captured.path / receipt["manifest"]["database"]):
+        raise role.SparMergeOwnerError("native installation inputs do not bind a distinct preserved clone")
+    # Opening then closing any descriptor of an already-owned POSIX-lock inode
+    # would release this process's writer lock. The veto must precede the open.
+    role._refuse_observed_input_locks({
+        "candidate": role._file_identity(prepared.database_path.lstat())})
     descriptor = role._open_regular(prepared.database_path.parent, prepared.database_path.name)
     try:
         return _install_captured_queue(captured, prepared, descriptor)
