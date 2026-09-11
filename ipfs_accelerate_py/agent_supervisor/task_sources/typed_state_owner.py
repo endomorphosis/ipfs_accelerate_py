@@ -5693,6 +5693,28 @@ class TypedStateOwnerGateway:
                 owner_identity=self.identity,
             )
 
+    def verify_spar_semantic_source(self) -> dict[str, Any]:
+        """Launcher-only retained verifier; clients cannot submit evidence."""
+        from .spar_closeout_profile import SparCloseoutProfile
+        from ..semantic_state.spar_native_verification import NativeSparVerification
+        with self._transaction_lock:
+            profile = self._database_closeout_profile
+            if not self._database_status_binding or type(profile) is not SparCloseoutProfile:
+                raise TypedStateOwnerAuthorizationError("native verifier requires sealed SPAR launcher scope")
+            self._resolve_database_status_scope()
+            if profile._kit_source_forest is None:
+                raise TypedStateOwnerAuthorizationError("native verifier requires current kit persistence")
+            if profile._native_source_verification is None:
+                profile._native_source_verification = NativeSparVerification(
+                    profile._kit_source_forest, profile._repository_root,
+                    connection=self._connection, transaction_lock=self._transaction_lock,
+                    owner_identity=self.identity)
+            producer = profile._native_source_verification
+            task_cids = tuple(self._database_status_binding["task_cids"])
+        # The child holds no DB handle or writer credential. Keep ordinary
+        # owner service available, then compare every input before publication.
+        return producer.run(self._connection, self._transaction_lock, task_cids)
+
     def bind_database_status_scope(
         self,
         *,

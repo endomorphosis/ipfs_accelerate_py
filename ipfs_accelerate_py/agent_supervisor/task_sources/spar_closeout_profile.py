@@ -232,6 +232,7 @@ class SparCloseoutProfile:
         self.profile_cid = content_identity(p)
         self._kit_source_forest = None
         self._kit_source_forest_error = "kit_source_forest_producer_not_bound"
+        self._native_source_verification = None
 
     def assert_scope(self, binding: Mapping[str, Any]) -> None:
         p = self._profile
@@ -397,6 +398,13 @@ class SparCloseoutProfile:
         kit = (self._kit_source_forest.observe(source) if self._kit_source_forest is not None
                else {"admitted": False, "reason": self._kit_source_forest_error,
                      "completion_authority": False, "semantic_acceptance_authority": False})
+        from ..semantic_state.spar_native_verification import board_binding
+        verification = (self._native_source_verification.observe(
+            source, board_binding(facts, snapshot["completion_projection"]))
+            if self._native_source_verification is not None else {
+                "admitted": False, "reason": "native_verifier_execution_required",
+                "accepted_root": False, "completion_authority": False,
+                "semantic_acceptance_authority": False})
         if kit.get("admitted") is not True:
             blockers.append("kit_source_forest_cas_receipt_producer_and_admission_required")
         blockers.extend(
@@ -419,6 +427,7 @@ class SparCloseoutProfile:
             "goal_requirements": goal_requirements,
             "source_observation": source,
             "kit_source_forest_persistence": kit,
+            "native_source_verification": verification,
             "blockers": sorted(set(blockers)),
         }
         return {**result, "observation_cid": content_identity(result)}

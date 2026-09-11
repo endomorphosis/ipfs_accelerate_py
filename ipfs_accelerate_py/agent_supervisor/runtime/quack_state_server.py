@@ -3692,6 +3692,16 @@ class QuackStateServer:
             raise QuackStateServerControlError("typed command gateway is unavailable")
         return gateway.publish_spar_source_forest()
 
+    def verify_spar_semantic_source(self) -> dict[str, Any]:
+        """Execute the fixed source verifier from the qualified SPAR launcher."""
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError("native verification requires a ready owner")
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError("typed command gateway is unavailable")
+        return gateway.verify_spar_semantic_source()
+
     def bind_database_status_scope(self, **binding: Any) -> None:
         """Bind a non-federated sealed board to peer-bound read-only status."""
         with self._lock:

@@ -2062,6 +2062,14 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
         # read-only and re-admit its current source binding on every snapshot.
         kit_receipt = server.publish_spar_source_forest()
         print("native kit source forest persistence: " + json.dumps(kit_receipt), flush=True)
+        # First bounded producer is deliberately opt-in. Missing/limited
+        # semantic coverage cannot fail owner startup or complete any goal.
+        if os.environ.get("IPFS_ACCELERATE_SPAR_VERIFY_SOURCE") == "1":
+            try:
+                verification = server.verify_spar_semantic_source()
+                print("native SPAR source verification: " + json.dumps(verification), flush=True)
+            except Exception as exc:
+                print("native SPAR source verification deferred: " + type(exc).__name__ + ": " + str(exc)[:512], flush=True)
 
     except BaseException:
         server.stop()
