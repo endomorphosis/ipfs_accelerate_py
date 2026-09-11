@@ -377,7 +377,11 @@ def _public(native, operation="status", request_id=""):
 
 def _lane(native, command):
     native.supervisor_pipe.send(command)
-    assert native.supervisor_pipe.poll(5)
+    # Replacement and ancillary probes include a real child launch (10s),
+    # native child shutdown (5s), and, for ancillary, a preclaim reply (5s).
+    # The caller must allow those existing bounded operations to finish.
+    timeout = 25 if command in {"replace", "ancillary"} else 5
+    assert native.supervisor_pipe.poll(timeout)
     return native.supervisor_pipe.recv()
 
 
