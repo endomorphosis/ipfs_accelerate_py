@@ -1982,7 +1982,11 @@ def test_supervisor_loop_handles_exit_during_termination(
     if proof == "gone":
         assert launches["n"] == (2 if action == "recycle" else 1)
         assert result.status != "termination_blocked"
-        assert result.last_recycle_reason == "stale_child"
+        # The replacement child then exits in fake_poll; its own exit reason
+        # supersedes the previous child's recycle reason in the shared loop.
+        assert result.last_recycle_reason == (
+            "child_exited" if action == "recycle" else "stale_child"
+        )
         assert not pid_path.exists()
         assert not identity_path.exists()
     else:

@@ -2497,8 +2497,9 @@ def supervised_child_is_proven_dead(child: SupervisedChild) -> bool:
     A child may exit between polling and a termination request. A refused
     signal is not proof of a live child, but a dead root alone is insufficient:
     surviving group members must continue to fence a replacement launch.
-    Missing identity, changed generation, and unavailable group observations
-    all fail closed. This check never sends a termination signal.
+    If native cleanup already removed the marker, the complete original
+    launch/adoption handle can still prove that birth dead. Unavailable birth
+    or group observations fail closed. No signal or marker deletion is granted.
     """
 
     identity_path = child.identity_path or supervised_child_identity_path(
@@ -2506,8 +2507,32 @@ def supervised_child_is_proven_dead(child: SupervisedChild) -> bool:
     )
     identity = load_supervised_child_identity(identity_path)
     if not _supervised_child_identity_matches_handle(child, identity):
-        return False
-    if supervised_child_identity_liveness(identity) is not OwnerLiveness.DEAD:
+        # Only a completed removal of both markers uses retained custody.
+        # Present, malformed or replacement markers still require their own
+        # native identity/adoption path; they cannot be bypassed by an old handle.
+        for marker in (identity_path, child.child_pid_path):
+            try:
+                os.lstat(marker)
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return False
+            return False
+        birth = child.identity_process_birth
+        if not (
+            isinstance(birth, ProcessBirthIdentity)
+            and birth.pid == child.pid
+            and birth.pid > 1
+            and birth.start_time_ticks > 0
+            and birth.boot_id
+            and child.identity_record_id
+            and child.owned_process_group_id == child.pid
+        ):
+            return False
+        liveness = owner_liveness(birth)
+    else:
+        liveness = supervised_child_identity_liveness(identity)
+    if liveness is not OwnerLiveness.DEAD:
         return False
     try:
         os.killpg(int(child.owned_process_group_id), 0)
