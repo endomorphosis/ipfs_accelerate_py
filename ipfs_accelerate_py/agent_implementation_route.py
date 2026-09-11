@@ -27,6 +27,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 _AGENT_IMPLEMENTATION_PROVIDER_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
@@ -3057,7 +3058,8 @@ def _read_stable_agent_implementation_evidence_file(
             <= _AGENT_IMPLEMENTATION_MAX_SESSION_BYTES
         ):
             return None
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | os.O_NOFOLLOW
+        flags = (os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+                 | os.O_NOFOLLOW | os.O_NONBLOCK)
         descriptor = os.open(path, flags)
         try:
             opened = os.fstat(descriptor)
@@ -3224,6 +3226,57 @@ def _canonical_agent_quota_verifier_command(
     return tuple(command) if command == expected else None
 
 
+def _agent_native_quota_session_paths(
+    *,
+    grok_home: Path,
+    expected_session_id: str,
+    verifier_workspace: Path | str | None,
+) -> tuple[Path, Path, tuple[tuple[int, int, int], ...]] | None:
+    """Select an exact native session, without searching provider state.
+
+    Current Grok releases namespace sessions by encodeURIComponent(workspace).
+    Admit that exact workspace/UUID or the older direct UUID layout, never
+    ambiguous copies, symlinked directories, or another workspace's session.
+    Return directory identities so selection can be rechecked after the reads.
+    """
+    try:
+        home_metadata = grok_home.lstat()
+        if (grok_home.is_symlink()
+                or not stat_module.S_ISDIR(home_metadata.st_mode)
+                or home_metadata.st_uid != os.geteuid()):
+            return None
+        sessions = grok_home / "sessions"
+        candidates = [sessions / expected_session_id]
+        if verifier_workspace is not None:
+            raw_workspace = Path(verifier_workspace)
+            if not raw_workspace.is_absolute() or ".." in raw_workspace.parts:
+                return None
+            workspace = raw_workspace.resolve(strict=True)
+            if workspace != raw_workspace or not workspace.is_dir():
+                return None
+            encoded = quote(str(workspace), safe="!'()*-._~")
+            candidates.append(sessions / encoded / expected_session_id)
+        present = [directory for directory in candidates
+                   if os.path.lexists(directory / "updates.jsonl")
+                   or os.path.lexists(directory / "summary.json")]
+        if len(present) != 1:
+            return None
+        directory = present[0]
+        identities = [(home_metadata.st_dev, home_metadata.st_ino,
+                       home_metadata.st_mode)]
+        cursor = grok_home
+        for component in directory.relative_to(grok_home).parts:
+            cursor /= component
+            metadata = cursor.lstat()
+            if (not stat_module.S_ISDIR(metadata.st_mode)
+                    or metadata.st_uid != os.geteuid()):
+                return None
+            identities.append((metadata.st_dev, metadata.st_ino, metadata.st_mode))
+        return directory / "updates.jsonl", directory / "summary.json", tuple(identities)
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
 def validate_agent_implementation_quota_evidence(
     *,
     grok_home: Path | str,
@@ -3283,7 +3336,14 @@ def validate_agent_implementation_quota_evidence(
         uuid.UUID(expected_session_id)
     except ValueError:
         return None
-    record = home / "sessions" / expected_session_id / "updates.jsonl"
+    selected_session = _agent_native_quota_session_paths(
+        grok_home=home,
+        expected_session_id=expected_session_id,
+        verifier_workspace=verifier_workspace,
+    )
+    if selected_session is None:
+        return None
+    record, summary_path, _session_identity = selected_session
     try:
         home_resolved = home.resolve(strict=True)
         transcript_read = _read_stable_agent_implementation_evidence_file(
@@ -3396,7 +3456,6 @@ def validate_agent_implementation_quota_evidence(
         elif update_type == "user_message_chunk":
             user_message_count += 1
 
-    summary_path = record.parent / "summary.json"
     try:
         summary_read = _read_stable_agent_implementation_evidence_file(
             summary_path,
@@ -3427,11 +3486,24 @@ def validate_agent_implementation_quota_evidence(
         or user_message_count > 1
         or not isinstance(summary_info, dict)
         or summary_info.get("id") != recorded_session_id
+        or (
+            record.parent.parent != home / "sessions"
+            and summary_info.get("cwd") != str(verifier_workspace)
+        )
         or summary.get("current_model_id") != expected_model
         or summary_home != home_resolved
         or latest_failure not in _AGENT_IMPLEMENTATION_NATIVE_QUOTA_FAILURES
         or terminal_verdict not in _AGENT_IMPLEMENTATION_QUOTA_VERIFIER_RESULTS
     ):
+        return None
+    # Recheck exact layout and directory identities, as well as the existing
+    # stable-file reads. A competing layout or directory swap cannot acquire
+    # authority between reading the transcript and its terminal summary.
+    if _agent_native_quota_session_paths(
+        grok_home=home,
+        expected_session_id=expected_session_id,
+        verifier_workspace=verifier_workspace,
+    ) != selected_session:
         return None
     evidence_body: dict[str, object] = {
         "schema": _AGENT_IMPLEMENTATION_QUOTA_EVIDENCE_SCHEMA,
@@ -7286,4 +7358,3 @@ def decide_agent_implementation_fallback(
         reason_code="independent_quota_not_confirmed",
         verifier_status="not_confirmed",
     )
-
