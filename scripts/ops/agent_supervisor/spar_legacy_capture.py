@@ -170,6 +170,8 @@ class RetainedNativeLegacySession:
         self._resources = ExitStack()
         self._closed = False
         self._capture = None
+        self._retained_queue_locks = None
+        self._capture_input_identities = None
         self._sentinel = None
         self._sentinel_pidfd = None
         self._sentinel_birth = None
@@ -404,28 +406,61 @@ class RetainedNativeLegacySession:
         return self._closed_gate()
 
     def _queue_locks(self):
-        descriptors = []
-        for name in (".merge_queue.duckdb.rebuild.lock", ".merge_queue.duckdb.lock", "train/consumer.lock"):
-            descriptor = role._open_regular(self.queue_root, name)
-            self._resources.callback(os.close, descriptor)
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            descriptors.append(descriptor)
-        parent = role._open_directory(self.queue_root)
+        if self._retained_queue_locks is not None:
+            self._require_queue_locks()
+            return [entry[1] for entry in self._retained_queue_locks]
+        # A failed partial acquisition owns no capture result. Release only
+        # those new incomplete locks; never reacquire a retained full set.
+        resources = ExitStack()
+        entries = []
         try:
-            fd = os.open("merge_queue.duckdb", os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
-                         dir_fd=parent)
+            for name in (".merge_queue.duckdb.rebuild.lock", ".merge_queue.duckdb.lock", "train/consumer.lock"):
+                descriptor = role._open_regular(self.queue_root, name)
+                resources.callback(os.close, descriptor)
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                entries.append((self.queue_root / name, descriptor,
+                                role._file_identity(os.fstat(descriptor)), "FLOCK"))
+            parent = role._open_directory(self.queue_root)
+            try:
+                fd = os.open("merge_queue.duckdb", os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                             dir_fd=parent)
+            finally:
+                os.close(parent)
+            resources.callback(os.close, fd)
+            info = os.fstat(fd)
+            _require(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1,
+                     "native queue writer inode unsafe")
+            _require(hasattr(fcntl, "F_OFD_SETLK"), "native capture requires OFD writer lock")
+            fcntl.fcntl(fd, fcntl.F_OFD_SETLK, struct.pack("hhqqi", fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0))
+            entries.append((self.queue_root / "merge_queue.duckdb", fd,
+                            role._file_identity(info), "OFDLCK"))
+            self._retained_queue_locks = tuple(entries)
+            self._resources.enter_context(resources.pop_all())
         finally:
-            os.close(parent)
-        self._resources.callback(os.close, fd)
-        info = os.fstat(fd)
-        _require(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1,
-                 "native queue writer inode unsafe")
-        # OFD custody survives reading/closing the same inode in the copy loop;
-        # traditional process locks would be silently dropped by those closes.
-        _require(hasattr(fcntl, "F_OFD_SETLK"), "native capture requires OFD writer lock")
-        fcntl.fcntl(fd, fcntl.F_OFD_SETLK, struct.pack("hhqqi", fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0))
-        descriptors.append(fd)
-        return descriptors
+            resources.close()
+        self._require_queue_locks()
+        return [entry[1] for entry in self._retained_queue_locks]
+
+    def _require_queue_locks(self):
+        _require(not self._closed and self._retained_queue_locks is not None,
+                 "native queue locks not retained")
+        for path, descriptor, identity, kind in self._retained_queue_locks:
+            info, current = os.fstat(descriptor), path.lstat()
+            _require(stat.S_ISREG(current.st_mode) and current.st_nlink == 1
+                     and role._file_identity(info) == identity
+                     and role._file_identity(current) == identity,
+                     "native retained queue inode changed")
+            admitted = False
+            for line in Path(f"/proc/self/fdinfo/{descriptor}").read_text().splitlines():
+                parts = line.split()
+                if len(parts) != 9 or parts[:1] != ["lock:"]:
+                    continue
+                if parts[2:6] != [kind, "ADVISORY", "WRITE", str(os.getpid()) if kind == "FLOCK" else "-1"]:
+                    continue
+                major, minor, inode = parts[6].split(":")
+                admitted |= (int(major, 16), int(minor, 16), int(inode)) == (
+                    os.major(info.st_dev), os.minor(info.st_dev), info.st_ino) and parts[7:] == ["0", "EOF"]
+            _require(admitted, "native retained queue kernel lock missing")
 
     def import_context(self, *, queue_policy=None):
         return role._decode(role._json({**self._coordinates, "queue_policy": dict(
@@ -440,6 +475,10 @@ class RetainedNativeLegacySession:
                  "native import context differs from the captured source, store, or sealed namespace")
         self._queue_locks()
         identities = role.file_inventory(self.queue_root)
+        if self._capture_input_identities is None:
+            self._capture_input_identities = dict(identities)
+        _require(identities == self._capture_input_identities,
+                 "native first capture input namespace changed")
         entries = producer._entries(self.queue_root, identities)
         destination = Path(destination).absolute()
         fd = role._open_directory(destination.parent)

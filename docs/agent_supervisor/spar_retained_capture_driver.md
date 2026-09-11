@@ -13,7 +13,7 @@ performs inspection and closes its observation descriptors. It does not create
 an operation directory, install a unit drop-in or write any stop marker.
 
 ```text
-python3 -m scripts.ops.agent_supervisor.spar_retained_capture_driver \
+/usr/bin/python3 -I scripts/run_spar_retained_capture.py \
   --repository-root <accepted-native-checkout> \
   --config-path <absolute-native-config> \
   --fleet-config <absolute-current-fleet-config> \
@@ -21,6 +21,35 @@ python3 -m scripts.ops.agent_supervisor.spar_retained_capture_driver \
   --expected-source-commit <fresh-native-commit> \
   --expected-source-tree <fresh-native-tree>
 ```
+
+The driver eagerly imports the capture/prepare dependencies, verifies the native
+DuckDB version profile, opens only a policy-sealed in-memory DuckDB, inventories
+it and loads the migration catalog **before** native/fleet inspection or output,
+unit or HOLD writes. The exact interpreter and dependency bytes remain bound
+and are checked again before arming and each pre-install operation. Missing
+DuckDB therefore rejects at `stage=new`, with no native closure.
+
+If the selected isolated interpreter already imports DuckDB, that existing
+runtime is observed and retained. Otherwise, explicitly bind the reviewed
+installed native runtime; the driver never enables or searches the user site.
+Generate a code declaration with the intended native interpreter before the
+operation:
+
+```text
+python3 -c 'import json; from scripts.ops.agent_supervisor.spar_capture_runtime import observed_runtime; print(json.dumps(observed_runtime(), sort_keys=True))' > reviewed-runtime.json
+sha256sum reviewed-runtime.json
+```
+
+Review the declaration and bind its exact digest in the prepared invocation:
+`--runtime-manifest /absolute/reviewed-runtime.json
+--runtime-manifest-sha256 <reviewed-digest>`. This selects code, not process,
+task or database authority. It binds the interpreter executable hash, Python
+ABI, native DuckDB version, package sources, metadata and compiled extension.
+The isolated loader executes only verified package source bytes and a sealed
+memfd copy of the extension. It runs no `.pth`/site hooks, adds no site-package
+search path, reads no credentials and performs no installation or download.
+Unbound imports, changed hashes, wrong interpreter/ABI and mixed already-loaded
+DuckDB code reject admission.
 
 Add `--session` to retain the inspected process and its two fleet coordination
 locks for explicit JSON-line commands on stdin. The returned `inspection_cid`
@@ -75,7 +104,31 @@ cursor/opaque-byte inputs and bind the prepared inode, original cursor bytes and
 original row inventory. Unknown claims and callbacks stay unknown. Audit files
 contain public identities and checksums; the private raw bundle stays in the
 owned operation directory. Stage errors retain the native session and fleet
-locks; partially completed stages cannot be blindly repeated from audit JSON.
+locks. Failed capture and prepare operations can continue only in that same
+process with its original retained objects:
+
+```json
+{"action":"status"}
+{"action":"retry_capture"}
+{"action":"retry_prepare"}
+```
+
+Use the matching retry action only when `status` reports `capture-failed` or
+`prepare-failed`. Retry revalidates the native closed population, original
+session, HOLD/inhibition, runtime and retained capture. Native capture retains
+and verifies its original flock/OFD descriptors and the first input inventory;
+it never reacquires its own locks or replaces its initial input baseline.
+Each attempt uses fresh absent output paths (`raw-capture-002`,
+`inspection-copy-002` or `prepared-clone-002`), preserving all previous trees.
+Attempts are bounded to 32 per stage. No retry is admitted after an install
+attempt. A successful in-memory capture/preparation remains admitted if only
+its later audit write fails; the status identifies the actual completed stage.
+
+Error diagnostics include bounded exception/module names, a missing-module
+name when present, and structural traceback frames. They omit exception
+arguments, locals, source text and full filesystem paths. Captured pre-install
+failures remain available in the controller's status even if an audit write
+fails. Audit JSON cannot reconstruct any retained object or authorize a retry.
 
 `finish` verifies the installed origin marker and retained raw bundle, closes
 only the driver's exact sentinel by EOF, observes its normal exit, then releases
@@ -109,3 +162,13 @@ SPAR_RUN_HOST_CAPTURE_TEST=1 PYTHONDONTWRITEBYTECODE=1 \
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest \
   test/api/semantic_refactoring/test_spar_retained_capture_driver_host.py -q
 ```
+
+The exact isolated entry point and its explicit dependency binding are covered
+by `test_spar_capture_runtime.py`. The additional opt-in
+`test_spar_capture_isolated_host.py` invokes `/usr/bin/python3 -I` controllers
+with no user-site path, uses the normal JSON command loop, and completes real
+disposable host capture/prepare/install/finish after injected capture and
+prepare failures. It verifies that the same queue FDs survive retry and the
+sentinel exits normally only after installation. Native task/source/repair
+observations remain explicit public fixtures; these tests grant no live SPAR
+admission. Run them with the same host-test environment above.

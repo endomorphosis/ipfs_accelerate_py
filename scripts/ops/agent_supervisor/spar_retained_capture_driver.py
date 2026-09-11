@@ -26,6 +26,7 @@ import time
 from . import spar_legacy_capture as native
 from . import spar_legacy_origin as origin
 from . import spar_merge_owner as role
+from .spar_capture_runtime import CaptureRuntimeDenied, admit_runtime
 
 SCHEMA = "spar/retained-capture-driver@1"
 STOP_NAMES = ("HOLD", "OPERATOR_STOP", "watchdog.disabled", "watchdog.hold")
@@ -316,7 +317,8 @@ class RetainedCaptureDriver:
     """One process owns inspection, arming, closure, capture, and installation."""
 
     def __init__(self, *, repository_root, config_path, fleet_config, operation_root,
-                 expected_source_commit, expected_source_tree):
+                 expected_source_commit, expected_source_tree,
+                 runtime_manifest=None, runtime_manifest_sha256=None):
         self.root, self.config = _abs(repository_root), _abs(config_path)
         self.fleet_config, self.output = _abs(fleet_config), _abs(operation_root)
         self.expected_head, self.expected_tree = expected_source_commit, expected_source_tree
@@ -327,6 +329,12 @@ class RetainedCaptureDriver:
         self.inspection = self.captured = self.prepared = self.installed = None
         self.sequence = 0
         self.hold_bytes = None
+        self.runtime_manifest, self.runtime_manifest_sha256 = runtime_manifest, runtime_manifest_sha256
+        self.runtime = None
+        self.failures = []
+        self.attempts = {"capture": 0, "prepare": 0}
+        self._retry = None
+        self._closure = None
 
     def _result(self, **fields):
         return {"schema": SCHEMA, "stage": self.stage, "callback_settled": False,
@@ -335,6 +343,9 @@ class RetainedCaptureDriver:
 
     def inspect(self):
         require(self.stage == "new", "driver_inspection_already_used")
+        # Resolve every capture/prepare dependency in this exact process
+        # before acquiring native handles or creating any operational artifact.
+        self.runtime = admit_runtime(self.runtime_manifest, self.runtime_manifest_sha256)
         _absent(self.output)
         _owned_directory(self.output.parent)
         operator = native._native_operator(self.root)
@@ -354,7 +365,9 @@ class RetainedCaptureDriver:
             self.inspection = self._result(owner_identity=self.session.identity, source=self.session._source,
                 native_snapshot_cid=self.session.snapshot_cid, pre_stop_namespaces=self.session.namespaces,
                 fleet=idle, original_unit=self.inhibitor.before, unit_files=self.inhibitor.files_before,
-                operation_root=str(self.output), hold_path=str(hold))
+                operation_root=str(self.output), hold_path=str(hold),
+                runtime={"manifest": self.runtime.manifest, "manifest_cid": _cid(self.runtime.manifest),
+                         "isolated": bool(sys.flags.isolated), "executable": sys.executable})
             self.inspection["inspection_cid"] = _cid(self.inspection)
             self.inspection = json.loads(_json_bytes(self.inspection))
             return json.loads(_json_bytes(self.inspection))
@@ -367,6 +380,7 @@ class RetainedCaptureDriver:
             raise
 
     def _before_hold(self):
+        self.runtime.require_current()
         self.exclusion.require_idle()
         self.exclusion.require_no_stops()
         require(self.session._source_binding() == self.session._source
@@ -378,7 +392,7 @@ class RetainedCaptureDriver:
         _exclusive_write(self.output / f"{self.sequence:02d}-{event}.json", _json_bytes(self._result(
             inspection_cid=self.inspection["inspection_cid"], event=event,
             resources_retained=not self.session._closed,
-            installed=self.installed)))
+            installed=self.installed, failures=self.failures)))
 
     def arm(self, inspection_cid):
         require(self.stage == "inspected" and inspection_cid == self.inspection["inspection_cid"],
@@ -420,31 +434,107 @@ class RetainedCaptureDriver:
         closure = self.session.observe_closure()
         if closure is not None and self.stage != "closed":
             self.stage = "closed"
+            self._closure = role._decode(role._json(closure))
             _exclusive_write(self.output / "native-closure.json", _json_bytes(closure))
             self._record("native-closed")
         return self._result(closure=closure, resources_retained=True)
 
+    def _attempt_paths(self, action):
+        self.attempts[action] += 1
+        attempt = self.attempts[action]
+        require(attempt <= 32, "driver_preinstall_attempt_bound_exhausted")
+        suffix = "" if attempt == 1 else f"-{attempt:03d}"
+        names = ("raw-capture", "inspection-copy") if action == "capture" else ("prepared-clone",)
+        paths = tuple(self.output / (name + suffix) for name in names)
+        for path in paths:
+            _absent(path)
+        return paths
+
+    def _failed_preinstall(self, action, error, paths):
+        self.stage = action + "-failed"
+        # This tuple retains the actual original objects. A status document or
+        # caller-supplied stage never substitutes for any element of it.
+        self._retry = (action, self.session, self.captured)
+        failure = {"action": action, "attempt": self.attempts[action],
+                   "paths": [str(path) for path in paths], "diagnostic": _diagnostic(error)}
+        self.failures.append(failure)
+        try:
+            self._record(action + "-failed")
+        except Exception:
+            # The original diagnostic and handles remain available over stdin
+            # even when the failure is an inability to write an audit record.
+            pass
+
+    def _retry_admission(self, action):
+        require(self.stage == action + "-failed" and self._retry is not None,
+                "driver_retry_requires_same_process_failure")
+        previous, session, captured = self._retry
+        require(previous == action and session is self.session and captured is self.captured
+                and self.prepared is None and self.installed is None,
+                "driver_retry_retained_objects_differ")
+        self._held()
+        self.runtime.require_current()
+        require(self._closure is not None and self.session._closed_gate() == self._closure,
+                "driver_retry_native_closure_changed")
+        if action == "capture":
+            require(self.captured is None and self.session._capture is None,
+                    "driver_retry_capture_already_admitted")
+        else:
+            self.captured.require_current()
+
     def capture(self):
         require(self.stage == "closed", "driver_capture_requires_positive_native_closure")
+        return self._capture_attempt()
+
+    def retry_capture(self):
+        self._retry_admission("capture")
+        return self._capture_attempt()
+
+    def _capture_attempt(self):
         self._held()
+        self.runtime.require_current()
+        paths = self._attempt_paths("capture")
         self.stage = "capturing"
-        self.captured = self.session.capture(destination=self.output / "raw-capture",
-                                            inspection_destination=self.output / "inspection-copy")
-        _exclusive_write(self.output / "capture.json", _json_bytes(self.captured.receipt))
+        try:
+            self.captured = self.session.capture(destination=paths[0], inspection_destination=paths[1])
+        except Exception as error:
+            self._failed_preinstall("capture", error, paths)
+            raise
+        self._retry = None
         self.stage = "captured"
+        _exclusive_write(self.output / "capture.json", _json_bytes(self.captured.receipt))
         self._record("captured")
-        return self._result(capture_cid=role._cid(self.captured.receipt))
+        return self._result(capture_cid=role._cid(self.captured.receipt), capture_path=str(self.captured.path))
 
     def prepare(self):
         require(self.stage == "captured", "driver_prepare_requires_retained_capture")
+        return self._prepare_attempt()
+
+    def retry_prepare(self):
+        self._retry_admission("prepare")
+        return self._prepare_attempt()
+
+    def _prepare_attempt(self):
         self._held()
+        self.runtime.require_current()
         self.captured.require_current()
+        paths = self._attempt_paths("prepare")
         self.stage = "preparing"
-        self.prepared = role.prepare_offline_clone(offline_root=self.captured.path,
-            destination=self.output / "prepared-clone", manifest=self.captured.receipt["manifest"])
+        try:
+            self.prepared = role.prepare_offline_clone(offline_root=self.captured.path,
+                destination=paths[0], manifest=self.captured.receipt["manifest"])
+        except Exception as error:
+            self._failed_preinstall("prepare", error, paths)
+            raise
+        self._retry = None
         self.stage = "prepared"
         self._record("prepared")
         return self._result(prepared_database_uuid=self.prepared.database_uuid)
+
+    def status(self):
+        return self._result(resources_retained=self.session is not None and not self.session._closed,
+                            diagnostics=json.loads(_json_bytes(self.failures)), retry_available=(
+                                self._retry[0] if self._retry is not None else None))
 
     def install(self):
         require(self.stage == "prepared", "driver_install_requires_retained_prepared_clone")
@@ -481,12 +571,35 @@ class RetainedCaptureDriver:
         return self._result()
 
 
+
+def _diagnostic(error):
+    """Bounded structural traceback; never export locals, source or arguments."""
+    frames = []
+    current = error.__traceback__
+    while current is not None and len(frames) < 12:
+        code = current.tb_frame.f_code
+        frames.append({"file": Path(code.co_filename).name[:160],
+                       "function": code.co_name[:160], "line": current.tb_lineno})
+        current = current.tb_next
+    missing = getattr(error, "name", None) if isinstance(error, ModuleNotFoundError) else None
+    if type(missing) is not str or not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9.]{0,159}", missing):
+        missing = None
+    reason = str(error) if type(error) in {CaptureDriverDenied, CaptureRuntimeDenied} else type(error).__name__
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]{0,159}", reason):
+        reason = type(error).__name__
+    return {"code": reason, "exception": type(error).__name__[:160],
+            "exception_module": type(error).__module__[:160], "missing_module": missing,
+            "traceback": frames, "traceback_truncated": current is not None}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("repository-root", "config-path", "fleet-config", "operation-root",
                  "expected-source-commit", "expected-source-tree"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--session", action="store_true", help="retain handles for explicit JSON-line stages")
+    parser.add_argument("--runtime-manifest", help="explicit reviewed DuckDB runtime code binding")
+    parser.add_argument("--runtime-manifest-sha256", help="exact reviewed manifest digest")
     args = vars(parser.parse_args(argv))
     retain = args.pop("session")
     driver = RetainedCaptureDriver(**args)
@@ -520,16 +633,18 @@ def main(argv=None):
                     emit(driver.arm(command["inspection_cid"]))
                 else:
                     require(set(command) == {"action"} and action in {
-                        "request_closure", "poll", "capture", "prepare", "install", "finish", "close_inspection"},
+                        "request_closure", "poll", "capture", "prepare", "install", "finish", "close_inspection",
+                        "retry_capture", "retry_prepare", "status"},
                         "driver_command_not_admitted")
                     emit(getattr(driver, action)())
             except Exception as error:
-                reason = str(error) if type(error) is CaptureDriverDenied else type(error).__name__
-                emit(driver._result(error=reason, resources_retained=not driver.session._closed))
+                diagnostic = _diagnostic(error)
+                emit(driver._result(error=diagnostic["code"], diagnostic=diagnostic,
+                     resources_retained=driver.session is not None and not driver.session._closed))
         return 0
     except Exception as error:
-        reason = str(error) if type(error) is CaptureDriverDenied else type(error).__name__
-        emit(driver._result(error=reason))
+        diagnostic = _diagnostic(error)
+        emit(driver._result(error=diagnostic["code"], diagnostic=diagnostic))
         return 1
 
 
