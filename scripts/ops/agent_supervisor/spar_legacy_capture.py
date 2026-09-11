@@ -460,6 +460,8 @@ class RetainedNativeLegacySession:
                    "owner_identity": self.identity, "native_snapshot_cid": self.snapshot_cid,
                    "source": self._source, "pre_stop_namespaces": self.namespaces,
                    "closure": before, "manifest": result["manifest"],
+                   "preserved_inventory_cid": "sha256:" + hashlib.sha256(
+                       role._json(result["preserved_inventory"])).hexdigest(),
                    "capture_coherent": True, "consumer_processes_closed": True,
                    "callback_settled": False, "signing_authority": False,
                    "source_admitted": False, "completion_authority": False}

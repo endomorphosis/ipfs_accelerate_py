@@ -17,7 +17,7 @@ from . import spar_merge_owner as role
 SCHEMA = "spar/native-legacy-queue-origin@1"
 REQUIRED_MARKER = "native-legacy-profile-required.json"
 _FIELDS = {"schema", "database_uuid", "database_path", "manifest", "capture",
-           "receipt_imports", "cursor_imports"}
+           "receipt_imports", "cursor_imports", "cursor_source_bytes"}
 
 
 def required_profile(queue_root, requested):
@@ -42,6 +42,7 @@ def validate_record(record, *, database):
         or capture.get("queue_root") != str(database.parent)
         or capture.get("capture_coherent") is not True
         or capture.get("consumer_processes_closed") is not True
+        or type(capture.get("preserved_inventory_cid")) is not str
         or any(capture.get(key) is not False for key in (
             "callback_settled", "signing_authority", "source_admitted", "completion_authority"))
         or type(record["receipt_imports"]) is not list
@@ -75,12 +76,40 @@ def validate_record(record, *, database):
         ):
             raise role.SparMergeOwnerError("native migrated receipt content differs")
     cursors = record["cursor_imports"]
-    if len(cursors) != len(manifest["cursor_imports"]):
+    sources = record["cursor_source_bytes"]
+    if type(sources) is not list or len(cursors) != len(manifest["cursor_imports"]) or len(sources) != len(cursors):
         raise role.SparMergeOwnerError("native migrated cursor population differs")
-    for cursor, spec in zip(cursors, manifest["cursor_imports"]):
+    entries = {entry["path"]: entry for entry in manifest["files"]}
+    scopes = {role.recovery_scope_cid(
+        store_id=manifest["store_id"], repository_id=manifest["repository_id"],
+        target_branch=manifest["target_branch"], scope_binding=scope): scope
+        for scope in manifest["scope_bindings"]}
+    for cursor, spec, source in zip(cursors, manifest["cursor_imports"], sources):
         role._closed(cursor, {"scope_cid", "cursors", "state_cid"})
         if cursor["scope_cid"] != spec["scope_cid"] or cursor["state_cid"] != role._cid(cursor["cursors"]):
             raise role.SparMergeOwnerError("native migrated cursor content differs")
+        role._closed(source, {"path", "hex"})
+        entry = entries[spec["path"]]
+        if (source["path"] != spec["path"] or type(source["hex"]) is not str
+            or len(source["hex"]) != entry["size_bytes"] * 2):
+            raise role.SparMergeOwnerError("native migrated cursor source differs")
+        try:
+            raw = bytes.fromhex(source["hex"])
+        except ValueError as exc:
+            raise role.SparMergeOwnerError("native migrated cursor source encoding differs") from exc
+        if raw.hex() != source["hex"] or hashlib.sha256(raw).hexdigest() != entry["sha256"]:
+            raise role.SparMergeOwnerError("native migrated cursor source digest differs")
+        body = role._decode(raw)
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import _POST_MERGE_RECOVERY_CURSOR_SCHEMA
+        from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import content_identity
+        scope = scopes[spec["scope_cid"]]
+        if (body.get("schema") != _POST_MERGE_RECOVERY_CURSOR_SCHEMA
+            or body.get("target_repository_id") != manifest["repository_id"]
+            or body.get("target_branch") != manifest["target_branch"]
+            or body.get("attempt_root") != scope["attempt_root"]
+            or body.get("state_id") != content_identity({key: value for key, value in body.items() if key != "state_id"})
+            or body.get("cursors") != cursor["cursors"]):
+            raise role.SparMergeOwnerError("native migrated cursor differs from captured source bytes")
     return manifest
 
 
@@ -93,6 +122,17 @@ def _sync_directory(directory):
 
 
 def install_captured_queue(captured, prepared):
+    """Retain the exact candidate inode across validation and canonical copy."""
+    if type(prepared) is not role.PreparedQueueStore:
+        raise role.SparMergeOwnerError("native retained capture and prepared clone required")
+    descriptor = role._open_regular(prepared.database_path.parent, prepared.database_path.name)
+    try:
+        return _install_captured_queue(captured, prepared, descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _install_captured_queue(captured, prepared, descriptor):
     """One local held transaction; neither parameter can be an audit JSON object."""
     from .spar_legacy_capture import CoherentLegacyCapture
     from .spar_merge_owner_handoff import ORIGIN_TABLE
@@ -111,13 +151,33 @@ def install_captured_queue(captured, prepared):
         or candidate == captured.path / manifest["database"]
     ):
         raise role.SparMergeOwnerError("native installation inputs do not bind a distinct preserved clone")
+    baseline = role._json(prepared.preserved_inventory)
+    if (len(baseline) > role.MAX_INVENTORY_DIGEST_BYTES
+        or "sha256:" + hashlib.sha256(baseline).hexdigest() != receipt["preserved_inventory_cid"]):
+        raise role.SparMergeOwnerError("prepared preservation inventory differs from native capture")
     record = {"schema": SCHEMA, "database_uuid": prepared.database_uuid,
               "database_path": str(database), "manifest": manifest, "capture": receipt,
-              "receipt_imports": list(prepared.receipt_imports), "cursor_imports": list(prepared.cursor_imports)}
+              "receipt_imports": list(prepared.receipt_imports), "cursor_imports": list(prepared.cursor_imports),
+              "cursor_source_bytes": []}
+    entries = {entry["path"]: entry for entry in manifest["files"]}
+    for spec in manifest["cursor_imports"]:
+        raw = role.copy_entry(captured.path, entries[spec["path"]], None)
+        record["cursor_source_bytes"].append({"path": spec["path"], "hex": raw.hex()})
     validate_record(record, database=database)
-    role._refuse_observed_input_locks({"candidate": role._file_identity(candidate.lstat())})
+    def retained_identity(*, writer=False):
+        retained = os.fstat(descriptor)
+        current = candidate.lstat()
+        if role._file_identity(retained) != role._file_identity(current):
+            raise role.SparMergeOwnerError("prepared native database pathname changed from retained inode")
+        if writer and not role._writer_lock_held(candidate):
+            raise role.SparMergeOwnerError("prepared native database writer is not bound to retained inode")
+        return role._file_identity(retained)
+
+    role._refuse_observed_input_locks({"candidate": retained_identity()})
     role.verify_installed_schema(candidate)
+    retained_identity()
     with role.open_duckdb_connection(candidate, prefer_quack=False) as connection:
+        retained_identity(writer=True)
         before = role.inventory(connection)
         role.require_preserved(prepared.preserved_inventory, before)
         if role._owner_metadata(connection)["database_uuid"] != prepared.database_uuid or ORIGIN_TABLE in before:
@@ -129,7 +189,7 @@ def install_captured_queue(captured, prepared):
         connection.execute("CHECKPOINT")
         after = role.inventory(connection)
         role.require_preserved(before, {key: value for key, value in after.items() if key != ORIGIN_TABLE})
-        validated_identity = role._file_identity(candidate.lstat())
+        validated_identity = retained_identity(writer=True)
     if candidate.with_suffix(candidate.suffix + ".wal").exists():
         raise role.SparMergeOwnerError("prepared native candidate still has a WAL")
     body = {"schema": "spar/native-legacy-profile-requirement@1", "origin_cid": role._cid(record),
@@ -162,17 +222,14 @@ def install_captured_queue(captured, prepared):
 
     gate()
     stat_before = candidate.lstat()
-    if role._file_identity(stat_before) != validated_identity:
+    if retained_identity() != validated_identity:
         raise role.SparMergeOwnerError("prepared native database changed after validation")
     digest = hashlib.sha256()
-    descriptor = role._open_regular(candidate.parent, candidate.name)
-    try:
-        while chunk := os.read(descriptor, 1024 * 1024):
-            digest.update(chunk)
-        if role._file_identity(os.fstat(descriptor)) != role._file_identity(stat_before):
-            raise role.SparMergeOwnerError("prepared native database changed")
-    finally:
-        os.close(descriptor)
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    while chunk := os.read(descriptor, 1024 * 1024):
+        digest.update(chunk)
+    if retained_identity() != validated_identity:
+        raise role.SparMergeOwnerError("prepared native database changed")
     staging = queue_root / ".native-legacy-database.prepared"
     role.copy_entry(candidate.parent, {"path": candidate.name, "size_bytes": stat_before.st_size,
                     "sha256": digest.hexdigest()}, staging)
