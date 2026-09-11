@@ -93085,6 +93085,35 @@ class DatabaseImplementationDaemon:
             }
             retry_exhausted = False
             target_status = "superseded"
+        actual_database_disposition = (
+            "superseded_attempt_revoked"
+            if receipt.get("operation") == "database_superseded_attempt_revoked"
+            else (
+                "blocked_unknown_outcome"
+                if force_block
+                else (
+                    "provider_route_deferred_rearmed"
+                    if not attempt_consumed
+                    else "terminalized_for_retry"
+                )
+            )
+        )
+        if reconciliation_evidence:
+            intended_disposition = reconciliation_evidence.get(
+                "intended_database_disposition"
+            )
+            if actual_database_disposition not in {
+                intended_disposition,
+                "superseded_attempt_revoked",
+            }:
+                # Recheck at the finalizer's own read boundary. A retained
+                # supersession saga may encounter a later task revision
+                # carrying an old finalized receipt. That receipt cannot
+                # change the prepared disposition or release this claim.
+                # Preserve the entire saga/attempt for explicit recovery.
+                raise DatabaseImplementationConflictError(
+                    "terminal finalizer contradicts its prepared disposition"
+                )
         receipt["retry_exhausted"] = retry_exhausted
         if force_block:
             receipt["forced_block"] = True
@@ -93174,20 +93203,6 @@ class DatabaseImplementationDaemon:
                     )
         current = self.get_attempt(current.attempt_id) or current
         if current.status == "running":
-            actual_database_disposition = (
-                "superseded_attempt_revoked"
-                if receipt.get("operation")
-                == "database_superseded_attempt_revoked"
-                else (
-                    "blocked_unknown_outcome"
-                    if force_block
-                    else (
-                        "provider_route_deferred_rearmed"
-                        if not attempt_consumed
-                        else "terminalized_for_retry"
-                    )
-                )
-            )
             failed_phase_body: dict[str, Any] = {
                 "reason": str(reason)[:512],
                 "retry_exhausted": retry_exhausted,
