@@ -85,6 +85,8 @@ from ..task_sources.duckdb_state import (
     QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
     QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
     QUACK_MUTATION_QUEUE_BACKOFF,
+    QUACK_MUTATION_OWNER_TASK_QUARANTINE,
+    QUACK_MUTATION_QUARANTINE_ANCHOR,
     QUACK_MUTATION_TASK_REVISION_INSERT,
     QUACK_MUTATION_TASK_STATUS_CAS,
     QUACK_MUTATION_TASK_STATUS_TRANSITION,
@@ -211,6 +213,10 @@ _MUTATION_ALLOWED_TO: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
 
 _MUTATION_SQL_TEMPLATES: Final[Mapping[str, str]] = MappingProxyType(
     {
+        QUACK_MUTATION_QUARANTINE_ANCHOR: (
+            "INSERT INTO control_plane_metadata (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+        ),
         QUACK_MUTATION_TASK_STATUS_CAS: (
             "UPDATE tasks SET status = ?, revision = ?, updated_at = ?, "
             "body_json = ? WHERE task_cid = ? AND revision = ?"
@@ -3375,6 +3381,7 @@ class QuackStateServer:
                 QUACK_MUTATION_TASK_STATUS_TRANSITION,
                 QUACK_MUTATION_VALIDATION_RECORD,
                 QUACK_MUTATION_QUEUE_BACKOFF,
+                QUACK_MUTATION_OWNER_TASK_QUARANTINE,
             }
             or not isinstance(binding, dict)
             or binding != self._mutation_binding()
@@ -3677,6 +3684,8 @@ class QuackStateServer:
         *,
         connection: Any | None = None,
     ) -> bool:
+        if operation == QUACK_MUTATION_OWNER_TASK_QUARANTINE:
+            return self._quarantine_effects_present(steps, connection=connection)
         if operation == QUACK_MUTATION_TASK_STATUS_TRANSITION:
             return self._task_effects_present(steps, connection=connection)
         if operation == QUACK_MUTATION_VALIDATION_RECORD:
@@ -3686,6 +3695,52 @@ class QuackStateServer:
                 steps, connection=connection
             )
         raise QuackStateServerMutationError("operation_not_allowlisted")
+
+    def _quarantine_effects_present(self, steps, *, connection=None):
+        from ..task_sources import owner_task_quarantine as quarantine
+        active = connection if connection is not None else self._connection
+        if [step.get("template_id") for step in steps] != [
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT, QUACK_MUTATION_QUARANTINE_ANCHOR,
+        ]:
+            raise QuackStateServerMutationError("operation_shape_invalid")
+        event = _mutation_parameters(steps[0], 10)
+        row = active.execute(
+            "SELECT event_id, stream_id, sequence, global_sequence, event_type, "
+            "task_cid, attempt_id, session_id, recorded_at, body_json "
+            "FROM domain_events WHERE event_id = ?", [event[0]],
+        ).fetchone()
+        if row is None:
+            return False
+        if tuple(row[index] for index in range(10)) != tuple(event):
+            raise QuackStateServerMutationError("replay_integrity_failure")
+        quarantine.heads(active)
+        anchor = _mutation_parameters(steps[1], 3)
+        prefix = active.execute(
+            "SELECT event_id FROM domain_events WHERE event_type = ? AND global_sequence <= ? ORDER BY global_sequence",
+            [quarantine.EVENT, event[3]],
+        ).fetchall()
+        if (anchor[0] != quarantine.ANCHOR_KEY or anchor[2] != event[8]
+                or quarantine.strict_json(anchor[1]) != quarantine.anchor_value(prefix)):
+            raise QuackStateServerMutationError("replay_integrity_failure")
+        return True
+
+    def _validate_quarantine(self, steps):
+        from ..task_sources import owner_task_quarantine as quarantine
+        event = _mutation_parameters(steps[0], 10)
+        anchor = _mutation_parameters(steps[1], 3)
+        envelope = self._validate_domain_event(event)
+        body = envelope["body"]
+        if (event[1] != "stream:intent" or event[4] != quarantine.EVENT
+                or envelope["schema"] != "ipfs_accelerate_py/agent-supervisor/intent-event@1"
+                or event[5] != body.get("task_cid") or event[6] != body.get("attempt_id")
+                or envelope["subject_id"] != event[5]):
+            raise QuackStateServerMutationError("quarantine_event_binding_invalid")
+        quarantine.validate_append(self._connection, body, self._mutation_binding())
+        self._validate_event_head(event)
+        if (anchor[0] != quarantine.ANCHOR_KEY or anchor[2] != event[8]
+                or quarantine.strict_json(anchor[1]) != quarantine.next_anchor(self._connection, event[0])):
+            raise QuackStateServerMutationError("quarantine_anchor_invalid")
+        return {"task_cid": event[5], "event_id": event[0], "revision": body["revision"]}
 
     def _queue_backoff_effects_present(
         self,
@@ -4108,7 +4163,19 @@ class QuackStateServer:
         steps = request["steps"]
         self._connection.execute("BEGIN TRANSACTION")
         try:
-            if request["operation"] == QUACK_MUTATION_TASK_STATUS_TRANSITION:
+            from ..task_sources import owner_task_quarantine as quarantine
+            if request["operation"] != QUACK_MUTATION_OWNER_TASK_QUARANTINE:
+                event = _mutation_parameters(steps[-1], 10)
+                quarantine.assert_task_unfenced(self._connection, str(event[5]))
+            if request["operation"] == QUACK_MUTATION_OWNER_TASK_QUARANTINE:
+                if self._quarantine_effects_present(steps):
+                    self._connection.execute("ROLLBACK")
+                    event = _mutation_parameters(steps[0], 10)
+                    return [1] * len(steps), self._settle_mutation_replica(
+                        request, observed={"task_cid": event[5], "event_id": event[0], "idempotent_replay": True}
+                    )
+                observed = self._validate_quarantine(steps)
+            elif request["operation"] == QUACK_MUTATION_TASK_STATUS_TRANSITION:
                 if self._task_effects_present(steps):
                     self._connection.execute("ROLLBACK")
                     update = _mutation_parameters(steps[0], 6)
@@ -4167,11 +4234,13 @@ class QuackStateServer:
             return rowcounts, self._settle_mutation_replica(
                 request, observed=observed
             )
-        except BaseException:
+        except BaseException as exc:
             try:
                 self._connection.execute("ROLLBACK")
             except Exception:
                 pass
+            if isinstance(exc, quarantine.QuarantineDenied):
+                raise QuackStateServerMutationError(str(exc)) from exc
             raise
 
     def _settle_mutation_replica(

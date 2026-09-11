@@ -1201,6 +1201,7 @@ def bind_database_portal_execution_from_args(
     if not bool(getattr(parsed, "implement", False)):
         return None
     from .database_portal_bridge import DatabasePortalExecutionBridge
+    from .owner_task_quarantine import independent_workspace_root
     from .implementation_daemon import (
         DEFAULT_WORKTREE_SUBMODULE_PATHS,
         normalize_relative_path_list,
@@ -1395,7 +1396,7 @@ def bind_database_portal_execution_from_args(
             use_ephemeral_worktree=(
                 True if retained_policy is not None else not parsed.no_ephemeral_worktree
             ),
-            worktree_root=parsed.worktree_root,
+            worktree_root=independent_workspace_root(daemon, repo_root, parsed.worktree_root),
             merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
             merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
             worktree_submodule_paths=configured_worktree_submodule_paths,
@@ -1473,6 +1474,8 @@ def bind_database_portal_execution_from_args(
         portal_factory=portal_factory,
         task_header_prefix=parsed.task_prefix,
         worktree_submodule_paths=configured_worktree_submodule_paths,
+        workspace_repository_root=repo_root.resolve(),
+        workspace_root=(Path(parsed.worktree_root) if Path(parsed.worktree_root).is_absolute() else repo_root / parsed.worktree_root).resolve(),
     )
     binder(
         provider_fn=bridge.run_provider,

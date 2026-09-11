@@ -297,6 +297,7 @@ from .task_execution_policy import (
     TypedLocalOperation,
 )
 from .worktrees import WorktreeLease, WorktreePool
+from ..merge.workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
 
 REPO_ROOT = Path.cwd()
 
@@ -27675,6 +27676,7 @@ class PortalImplementationDaemon:
             for task in tasks
         )
 
+    @_workspace_mutation_boundary(pool=True)
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
         authority_revalidation_only = (
             self._manual_completion_authority_revalidation_only_task(task)
@@ -39070,6 +39072,7 @@ class PortalImplementationDaemon:
         body["authority_sha256"] = hashlib.sha256(encoded).hexdigest()
         return body
 
+    @_workspace_mutation_boundary(pool=True)
     def _run_implementation_in_ephemeral_worktree(
         self,
         *,
@@ -41950,6 +41953,7 @@ class PortalImplementationDaemon:
         )
         return result
 
+    @_workspace_mutation_boundary("worktree_path")
     def _cleanup_failed_setup_worktree(
         self,
         worktree_path: Path,
@@ -43953,6 +43957,7 @@ class PortalImplementationDaemon:
             "reason": "not_integrated",
         }
 
+    @_workspace_mutation_boundary(pool=True)
     def _create_seeded_worktree(
         self,
         worktree_path: Path,
@@ -61617,6 +61622,7 @@ class PortalImplementationDaemon:
         }
 
 
+    @_workspace_mutation_boundary("worktree_path")
     def _cleanup_merged_worktree(
         self,
         worktree_path: Path | None,
@@ -61807,6 +61813,7 @@ class PortalImplementationDaemon:
         self._record_event("cleanup_finished", result)
         return result
 
+    @_workspace_mutation_boundary("worktree_path")
     def _cleanup_worktree_submodules(
         self,
         worktree_path: Path,
@@ -65774,6 +65781,9 @@ class PortalImplementationDaemon:
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
 
     def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
+        from ..merge.workspace_quarantine import claim_retained
+        if claim_retained(self.repo_root, metadata):
+            return True
         repository_match = checkout_lock_repository_matches(
             metadata,
             self.repo_root,
@@ -65925,6 +65935,9 @@ class PortalImplementationDaemon:
         self,
         metadata: dict[str, Any],
     ) -> bool:
+        from ..merge.workspace_quarantine import claim_retained
+        if claim_retained(self.repo_root, metadata):
+            return True
         repository_id = str(metadata.get("repository_id") or "")
         if repository_id and repository_id != self.merge_target_repository_id:
             return False
@@ -87978,6 +87991,39 @@ class DatabaseImplementationDaemon:
             )
         return claim
 
+    def acknowledge_owner_task_quarantine(self, attempt_id: str, *, revoke: bool = False) -> Mapping[str, Any]:
+        from .owner_task_quarantine import acknowledge
+        return acknowledge(self, attempt_id=attempt_id, revoke=revoke)
+
+    def _current_owner_task_quarantines(self) -> dict[str, Any]:
+        from .owner_task_quarantine import current
+        return current(self)
+
+    def _running_attempts_for_independent_work(self, **kwargs: Any) -> list[DatabaseTaskAttempt]:
+        # This is an admission view only. Public observation still reports every
+        # running attempt, and no attempt row or callback custody is rewritten.
+        quarantined = self._current_owner_task_quarantines()
+        return [attempt for attempt in self.list_running_attempts(**kwargs)
+                if attempt.attempt_id not in quarantined]
+
+    def _assert_task_not_owner_quarantined(self, task_cid: str) -> None:
+        from ..task_sources.owner_task_quarantine import heads, require
+        intent = getattr(self.task_source, "intent", None)
+        if intent is not None:
+            with intent._connection() as connection:
+                fences = heads(connection)
+                require(not any(head["task_cid"] == task_cid for head in fences.values()),
+                        "task_custody_quarantined")
+
+    def _assert_owner_quarantine_independent_admission(self) -> None:
+        from ..task_sources.owner_task_quarantine import require
+        retained = self._current_owner_task_quarantines()
+        if retained:
+            current_heads = {key: value["event_id"] for key, value in self.task_source.intent.owner_task_quarantines().items()}
+            require(getattr(self, "_owner_quarantine_independent_admission", None) == current_heads,
+                    "quarantine_remaining_population_audit_required")
+
+
     def _protect_attempt_claim(
         self,
         attempt: DatabaseTaskAttempt,
@@ -87987,6 +88033,7 @@ class DatabaseImplementationDaemon:
     ) -> Any:
         """Protect a write using a previously identity-checked task claim."""
 
+        self._assert_task_not_owner_quarantined(attempt.task_cid)
         protect = getattr(self.coordinator, "protect_task_claim", None)
         if not callable(protect):
             raise DatabaseImplementationAuthorityError(
@@ -88006,6 +88053,7 @@ class DatabaseImplementationDaemon:
     def _protect_new_claim(self, claim: Any) -> Any:
         """Protect the claim before its first task/execution-store writes."""
 
+        self._assert_task_not_owner_quarantined(str(claim.task_cid))
         protect = getattr(self.coordinator, "protect_task_claim", None)
         if not callable(protect):
             raise DatabaseImplementationAuthorityError(
@@ -99934,6 +99982,7 @@ class DatabaseImplementationDaemon:
     ) -> DatabaseTaskAttempt | None:
         """Claim one ready task for this session; four sessions never share work."""
 
+        self._assert_owner_quarantine_independent_admission()
         self.sync_ready_tasks_into_coordination()
         ready_page = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
         ready_by_cid = {
@@ -101924,6 +101973,7 @@ class DatabaseImplementationDaemon:
         when a prior committed provider invocation was replayed.
         """
 
+        self._assert_owner_quarantine_independent_admission()
         self._protect_attempt_write(attempt)
         self._protect_attempt_control_binding(attempt)
         key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
@@ -102250,6 +102300,7 @@ class DatabaseImplementationDaemon:
     ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
         """Apply effect work once per attempt idempotency key."""
 
+        self._assert_owner_quarantine_independent_admission()
         self._protect_attempt_write(attempt)
         self._protect_attempt_control_binding(attempt)
         key = str(idempotency_key or f"effect:{attempt.attempt_id}").strip()
@@ -103456,7 +103507,7 @@ class DatabaseImplementationDaemon:
         outcomes: list[dict[str, Any]] = []
         now = self._now_ms()
         prefix = self.task_prefix
-        for attempt in self.list_running_attempts(
+        for attempt in self._running_attempts_for_independent_work(
             apply_selection=apply_selection
         ):
             if apply_selection and prefix:
@@ -106164,6 +106215,15 @@ class DatabaseImplementationDaemon:
                   END
               )
         """
+        quarantined = self._current_owner_task_quarantines()
+        if exact_attempt is not None and exact_attempt.attempt_id in quarantined:
+            return [{"reconciled": False, "blocked": True, "reason": "task_custody_quarantined",
+                     "attempt_id": exact_attempt.attempt_id}]
+        if quarantined:
+            # This bounded set contains only validated event identities. Quote
+            # each literal; task text and diagnostic prose never enter SQL.
+            literals = ",".join("'" + key.replace("'", "''") + "'" for key in quarantined)
+            candidate_clause += " AND attempts.attempt_id NOT IN (" + literals + ")"
         connection = self._require_connection()
         audit_rows: list[Any] = []
         maintenance_rows: list[Any] = []
@@ -107246,7 +107306,7 @@ class DatabaseImplementationDaemon:
         """
 
         outcomes: list[dict[str, Any]] = []
-        for attempt in self.list_running_attempts(apply_selection=False):
+        for attempt in self._running_attempts_for_independent_work(apply_selection=False):
             task = self.task_source.get(attempt.task_cid)
             task_status = str(getattr(task, "status", "") or "").strip().lower()
             task_receipt = dict(
@@ -107648,10 +107708,32 @@ class DatabaseImplementationDaemon:
         force: bool = False,
     ) -> dict[str, Any]:
         """Repair exact execution ART failures before a later reconciliation pass."""
+        self._owner_quarantine_independent_admission = None
         try:
-            return self._reconcile_quiesced_database_portal_attempts(
+            result = self._reconcile_quiesced_database_portal_attempts(
                 trigger=trigger, force=force
             )
+            from .owner_task_quarantine import admit_known_blockers
+            admitted = admit_known_blockers(self, result)
+            if admitted:
+                result = {**result, "owner_task_quarantines_admitted": admitted,
+                          "continuation_required": True, "safe_to_restart": False}
+            retained = self._current_owner_task_quarantines()
+            if retained:
+                result = {**result, "reconciled": False, "quiesced": False,
+                          "safe_to_restart": False, "completion_authorized": False,
+                          "owner_task_quarantines": sorted(retained),
+                          "independent_work_admitted": result.get("blocked") is False
+                              and result.get("repair_batch_pending") is not True
+                              and result.get("continuation_required") is not True}
+                if result["independent_work_admitted"]:
+                    self._owner_quarantine_independent_admission = {
+                        key: value["event_id"]
+                        for key, value in self.task_source.intent.owner_task_quarantines().items()
+                    }
+                else:
+                    self._owner_quarantine_independent_admission = None
+            return result
         except _DatabaseImplementationExecutionStorageArtFatal as exc:
             self._raise_after_execution_storage_art_failure(exc)
             raise AssertionError("execution ART recovery unexpectedly returned") from exc
@@ -107760,7 +107842,7 @@ class DatabaseImplementationDaemon:
         post_cas_blocked = any(
             item.get("blocked") is True for item in early_outcomes
         )
-        running_attempts = self.list_running_attempts(apply_selection=False)
+        running_attempts = self._running_attempts_for_independent_work(apply_selection=False)
         if post_cas_blocked or (
             (post_cas or terminal_repair_mutated) and not running_attempts
         ):
@@ -108535,6 +108617,12 @@ class DatabaseImplementationDaemon:
                 "execution ART recovery unexpectedly returned"
             ) from exc
         except Exception as exc:
+            from ..task_sources.owner_task_quarantine import QuarantineDenied
+            if isinstance(exc, QuarantineDenied):
+                return {"unchanged": True, "write_count": 0, "blocked": True,
+                        "selection_idle_reason": "owner_task_quarantine_unresolved",
+                        "reason": str(exc), "implementation_result": None,
+                        "safe_to_restart": False, "completion_authorized": False}
             from ..merge.database_coordination import (
                 DatabaseCoordinationStorageRepairedError,
             )
@@ -108563,6 +108651,8 @@ class DatabaseImplementationDaemon:
     def _run_once_database_authoritative(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
+        from .owner_task_quarantine import refresh
+        refresh(self)
         portal_startup_reconciliation: Mapping[str, Any] = {}
         if (
             self._database_portal_bridge is not None
@@ -108824,9 +108914,9 @@ class DatabaseImplementationDaemon:
             # Process absence (including a closed daemon record) is not
             # terminal attempt authority. The native expiry/completion passes
             # above must remove the running row before this barrier can clear.
-            owner_running = self.list_running_attempts(apply_selection=False)
+            owner_running = self._running_attempts_for_independent_work(apply_selection=False)
             selected_attempt_ids = {
-                attempt.attempt_id for attempt in self.list_running_attempts()
+                attempt.attempt_id for attempt in self._running_attempts_for_independent_work()
             }
             extra_gate_owned_outside = [
                 attempt
@@ -108945,7 +109035,7 @@ class DatabaseImplementationDaemon:
                 ),
             }
         # Prefer resume of this session's running attempts (crash recovery).
-        running = list(self.list_running_attempts())
+        running = list(self._running_attempts_for_independent_work())
         if extra_gate_owned_outside:
             seen = {attempt.attempt_id for attempt in running}
             running.extend(

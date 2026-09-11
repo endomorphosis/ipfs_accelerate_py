@@ -1125,6 +1125,9 @@ def test_commit_failure_is_never_reported_as_success(tmp_path: Path) -> None:
     class FailingCommitConnection:
         in_transaction = True
 
+        def execute(self, *args, **kwargs):
+            return coordinator._require().execute(*args, **kwargs)
+
         @staticmethod
         def commit() -> None:
             raise RuntimeError("injected DuckDB commit failure")
@@ -1142,6 +1145,7 @@ def test_exact_art_commit_failure_repairs_storage_but_requires_retry(
 ) -> None:
     coordinator, _clock = _open(tmp_path)
     actual = coordinator._require()
+    quarantine_row = actual.execute("SELECT value FROM coordination_metadata WHERE key = ?", ["owner_task_quarantine@1"]).fetchone()
     actual.close()
 
     class FatalException(RuntimeError):
@@ -1150,6 +1154,14 @@ def test_exact_art_commit_failure_repairs_storage_but_requires_retry(
     class FailedConnection:
         in_transaction = True
         closed = False
+
+        def execute(self, sql, params):
+            assert sql == "SELECT value FROM coordination_metadata WHERE key = ?"
+            assert params == ["owner_task_quarantine@1"]
+            return self
+
+        def fetchone(self):
+            return quarantine_row
 
         def commit(self) -> None:
             raise FatalException(

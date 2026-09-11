@@ -3254,6 +3254,8 @@ class DatabaseCoordinator:
             pass
 
     def _commit_if_idle(self, connection: Any) -> None:
+        from .owner_task_quarantine import verify
+        verify(connection)
         try:
             if getattr(connection, "in_transaction", False):
                 commit = getattr(connection, "commit", None)
@@ -3476,10 +3478,18 @@ class DatabaseCoordinator:
             """,
             [scope_key, LeaseState.ACCEPTED.value, now],
         ).fetchall()
+        from .owner_task_quarantine import records
+        quarantined = records(connection)
+        retained_lease_ids = {
+            str(row[0]) for row in connection.execute("SELECT lease_id, task_cid FROM fenced_leases").fetchall()
+            if str(row[1]) in quarantined
+        }
         expired_ids: list[str] = []
         for row in rows:
             mapping = _row_mapping(row)
             lease_id = str(_row_get(mapping, "lease_id", "0"))
+            if lease_id in retained_lease_ids:
+                continue
             token = int(_row_get(mapping, "fencing_token", "1", default=0))
             epoch = int(_row_get(mapping, "fence_epoch", "2", default=0))
             connection.execute(
@@ -3552,7 +3562,16 @@ class DatabaseCoordinator:
             """,
             [scope_key, LeaseState.ACCEPTED.value, now],
         ).fetchall()
-        return [_row_mapping(row) for row in rows]
+        from .owner_task_quarantine import records
+        quarantined = records(connection)
+        retained = connection.execute(
+            "SELECT * FROM fenced_leases WHERE scope_key = ? AND state = ? AND expires_at_ms <= ?",
+            [scope_key, LeaseState.ACCEPTED.value, now],
+        ).fetchall()
+        return [_row_mapping(row) for row in rows] + [
+            _row_mapping(row) for row in retained
+            if str(_row_get(_row_mapping(row), "task_cid", default="")) in quarantined
+        ]
 
     def _next_fence(
         self,
@@ -3650,6 +3669,8 @@ class DatabaseCoordinator:
         connection: Any,
         lease: FencedLease,
     ) -> None:
+        from .owner_task_quarantine import assert_unfenced
+        assert_unfenced(connection, lease.task_cid)
         connection.execute(
             """
             INSERT INTO fenced_leases(
@@ -3970,6 +3991,8 @@ class DatabaseCoordinator:
             connection = self._require()
             self._begin(connection)
             try:
+                from .owner_task_quarantine import assert_unfenced
+                assert_unfenced(connection, current.task_cid)
                 self._expire_scope(connection, current.scope_key, now)
                 row = connection.execute(
                     "SELECT * FROM fenced_leases WHERE lease_id = ?",
@@ -4111,6 +4134,8 @@ class DatabaseCoordinator:
             connection = self._require()
             self._begin(connection)
             try:
+                from .owner_task_quarantine import assert_unfenced
+                assert_unfenced(connection, current.task_cid)
                 self._expire_scope(connection, current.scope_key, now)
                 row = connection.execute(
                     "SELECT * FROM fenced_leases WHERE lease_id = ?",
@@ -4321,6 +4346,8 @@ class DatabaseCoordinator:
             connection = self._require()
             self._begin(connection)
             try:
+                from .owner_task_quarantine import assert_unfenced
+                assert_unfenced(connection, current.task_cid)
                 self._expire_scope(connection, current.scope_key, now)
                 row = connection.execute(
                     "SELECT * FROM fenced_leases WHERE lease_id = ?",
@@ -4494,6 +4521,8 @@ class DatabaseCoordinator:
 
         # Expire before inspecting any projection so a deadline boundary never
         # validates stale authority.
+        from .owner_task_quarantine import assert_unfenced
+        assert_unfenced(connection, identity["task_cid"])
         self._expire_scope(connection, scope_key, now)
         claim_row = connection.execute(
             "SELECT * FROM task_claims WHERE claim_id = ?",
@@ -4743,6 +4772,8 @@ class DatabaseCoordinator:
                 "cross-store writer resource claim must be exclusive"
             )
 
+        from .owner_task_quarantine import assert_unfenced
+        assert_unfenced(connection, identity["task_cid"])
         self._expire_scope(connection, scope_key, now)
         claim_row = connection.execute(
             "SELECT * FROM resource_claims WHERE claim_id = ?",
@@ -5693,7 +5724,7 @@ class DatabaseCoordinator:
                             ),
                         },
                     )
-                connection.commit()
+                self._commit_if_idle(connection)
                 return result
             except BaseException:
                 self._rollback_if_open(connection)
@@ -6006,7 +6037,7 @@ class DatabaseCoordinator:
                     raise DatabaseCoordinationStaleFenceError(
                         "terminal task claim and lease projections diverged"
                     )
-                connection.commit()
+                self._commit_if_idle(connection)
                 return terminal_claim, terminal_lease
             except BaseException:
                 self._rollback_if_open(connection)
@@ -6429,7 +6460,7 @@ class DatabaseCoordinator:
                         "terminal task-claim callback re-entered coordinator"
                     )
                 exact_terminal_claim()
-                connection.commit()
+                self._commit_if_idle(connection)
                 return result
             except BaseException:
                 self._rollback_if_open(connection)
@@ -6923,11 +6954,15 @@ class DatabaseCoordinator:
                         now,
                     ],
                 ).fetchall()
+                from .owner_task_quarantine import records
+                quarantined = records(connection)
                 unsettled: list[dict[str, Any]] = []
                 for row in rows:
                     task_cid = str(
                         _row_get(_row_mapping(row), "task_cid", "0", default="")
                     )
+                    if task_cid in quarantined:
+                        continue
                     item = self._prepared_completion_unlocked(
                         connection,
                         task_cid,
@@ -8715,7 +8750,7 @@ class DatabaseCoordinator:
                     connection,
                     **subject,
                 )
-                connection.execute("COMMIT")
+                self._commit_if_idle(connection)
                 return receipt
             except BaseException:
                 self._rollback_if_open(connection)
@@ -8794,7 +8829,7 @@ class DatabaseCoordinator:
                     raise DatabaseCoordinationConflictError(
                         "coordinator population advanced during cross-store capture"
                     )
-                connection.execute("COMMIT")
+                self._commit_if_idle(connection)
                 return MappingProxyType(dict(result))
             except BaseException:
                 self._rollback_if_open(connection)

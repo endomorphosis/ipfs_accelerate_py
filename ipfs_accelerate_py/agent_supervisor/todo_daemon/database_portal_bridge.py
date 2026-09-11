@@ -4102,11 +4102,15 @@ class DatabasePortalExecutionBridge:
         task_header_prefix: str = "## ",
         max_passes: int = 4,
         worktree_submodule_paths: Sequence[str] = (),
+        workspace_repository_root: Path | None = None,
+        workspace_root: Path | None = None,
     ) -> None:
         if not callable(portal_factory):
             raise TypeError("portal_factory must be callable")
         if isinstance(max_passes, bool) or not isinstance(max_passes, int) or max_passes < 1:
             raise ValueError("max_passes must be a positive integer")
+        self.workspace_repository_root = workspace_repository_root
+        self.workspace_root = workspace_root
         self.task_source = task_source
         self.attempt_root = Path(attempt_root).absolute()
         self.portal_factory = portal_factory

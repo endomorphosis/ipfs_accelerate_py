@@ -3759,6 +3759,11 @@ class IntentRepository:
         task_cid: str = "",
         attempt_id: str = "",
     ) -> IntentReceipt:
+        if task_cid:
+            from .owner_task_quarantine import EVENT, assert_task_unfenced
+            value = event_type.value if isinstance(event_type, IntentEventType) else str(event_type)
+            if value != EVENT:
+                assert_task_unfenced(connection, task_cid)
         global_sequence = self._next_global_sequence(connection)
         if global_sequence > MAX_EVENTS:
             raise IntentRepositoryBoundsError("domain event population exceeded")
@@ -5678,6 +5683,8 @@ class IntentRepository:
                 )
             task_row = row[0]
             resolved_cid = str(task_row[0])
+            from .owner_task_quarantine import assert_task_unfenced
+            assert_task_unfenced(connection, resolved_cid)
             previous_status = str(task_row[3])
             current_revision = int(task_row[4])
             if current_revision != expected:
@@ -6313,6 +6320,8 @@ class IntentRepository:
         clock = int(now_ms if now_ms is not None else self._clock_ms())
         _ = include_completion_candidates  # reserved for future selection modes
         with self._connection(write=False) as connection:
+            from .owner_task_quarantine import heads
+            quarantined = {entry["task_cid"] for entry in heads(connection).values()}
             task_rows = connection.execute(
                 """
                 SELECT task_cid, task_alias, goal_cid, ordinal, status, revision
@@ -6359,7 +6368,7 @@ class IntentRepository:
             revision = int(row[5])
             if status not in _READY_STATUSES:
                 continue
-            if tcid in active_blocks:
+            if tcid in active_blocks or tcid in quarantined:
                 continue
             if cooldown.get(tcid, 0) > clock:
                 continue
@@ -6382,6 +6391,15 @@ class IntentRepository:
             if len(ready) >= selected:
                 break
         return tuple(ready)
+
+    def owner_task_quarantines(self) -> Mapping[str, Mapping[str, Any]]:
+        from .owner_task_quarantine import heads
+        with self._connection() as connection:
+            return heads(connection)
+
+    def quarantine_retained_task(self, *, retained: Mapping[str, Any], expected_event_id: str = "", revoke: bool = False) -> Mapping[str, Any]:
+        from .owner_task_quarantine import append
+        return append(self, retained=retained, expected_event_id=expected_event_id, revoke=revoke)
 
     # -- recovery / rebuild --------------------------------------------------
 
@@ -6415,6 +6433,8 @@ class IntentRepository:
         """
 
         with self._connection(write=True) as connection:
+            from .owner_task_quarantine import heads, require
+            require(not heads(connection), "quarantine_forbids_projection_rebuild")
             events = connection.execute(
                 """
                 SELECT event_id, event_type, task_cid, body_json, global_sequence

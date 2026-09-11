@@ -662,6 +662,8 @@ QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE = "lease_queue_backoff_update@1"
 QUACK_MUTATION_TASK_STATUS_TRANSITION = "task_status_transition@1"
 QUACK_MUTATION_VALIDATION_RECORD = "validation_record@1"
 QUACK_MUTATION_QUEUE_BACKOFF = "queue_backoff@1"
+QUACK_MUTATION_OWNER_TASK_QUARANTINE = "owner_task_quarantine@1"
+QUACK_MUTATION_QUARANTINE_ANCHOR = "owner_task_quarantine_anchor@1"
 
 
 def _normalize_quack_mutation_sql(sql: str) -> str:
@@ -669,6 +671,8 @@ def _normalize_quack_mutation_sql(sql: str) -> str:
 
 
 _QUACK_OWNER_MUTATION_SQL_TO_TEMPLATE = {
+    _normalize_quack_mutation_sql("""INSERT INTO control_plane_metadata (key, value, updated_at) VALUES (?, ?, ?)
+ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"""): QUACK_MUTATION_QUARANTINE_ANCHOR,
     _normalize_quack_mutation_sql(
         """
         UPDATE tasks SET status = ?, revision = ?, updated_at = ?, body_json = ?
@@ -883,6 +887,8 @@ def _validate_quack_mutation_parameters(parameters: Sequence[Any]) -> None:
 
 def _quack_mutation_operation(steps: Sequence[Mapping[str, Any]]) -> str:
     templates = tuple(str(item.get("template_id") or "") for item in steps)
+    if templates == (QUACK_MUTATION_DOMAIN_EVENT_INSERT, QUACK_MUTATION_QUARANTINE_ANCHOR):
+        return QUACK_MUTATION_OWNER_TASK_QUARANTINE
     if templates in {
         (
             QUACK_MUTATION_TASK_STATUS_CAS,

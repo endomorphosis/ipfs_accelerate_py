@@ -16,6 +16,8 @@ the same repo-wide single-consumer lease.
 
 from __future__ import annotations
 
+from .workspace_quarantine import maintenance_boundary as _workspace_maintenance_boundary
+
 import fcntl
 import hashlib
 import inspect
@@ -3164,6 +3166,7 @@ class MergeTrain:
                     continue
         return total, children
 
+    @_workspace_maintenance_boundary(count_result=True)
     def _cleanup_abandoned_worktrees(self) -> int:
         """Remove crash-left train worktrees while holding the consumer lease."""
 
