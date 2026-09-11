@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import importlib.util
 import os
 import signal
 import socket
@@ -24,6 +25,17 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+# This probe also runs directly by filename, without importing the ML package.
+if __package__ and importlib.util.find_spec(f"{__package__}.canonical_writer_custody") is not None:
+    from . import canonical_writer_custody as writer_custody
+else:
+    _custody_spec = importlib.util.spec_from_file_location(
+        "native_board_writer_custody", Path(__file__).with_name("canonical_writer_custody.py")
+    )
+    assert _custody_spec and _custody_spec.loader
+    writer_custody = importlib.util.module_from_spec(_custody_spec)
+    _custody_spec.loader.exec_module(writer_custody)
 
 SCHEMA = "ipfs_accelerate_py/taskboard-fleet-live-probe@1"
 MAX_JSON_BYTES = 8 * 1024 * 1024
@@ -40,6 +52,22 @@ PROVIDER_MODULES = frozenset({
 
 def _object(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _owner_writer_custody(board: Mapping[str, Any], owner_status: Mapping[str, Any],
+                          birth: Mapping[str, Any]) -> dict[str, Any]:
+    """A native board's ready status is separate from kernel writer custody."""
+    path = board.get("database_path")
+    if path is None:
+        return {"configured": False, "verified": False}
+    unavailable = {"configured": True, "verified": False,
+        "reason": "canonical_database_path_binding_unavailable"}
+    if type(path) is not str or not path or owner_status.get("database_path") != path:
+        return unavailable
+    return {"configured": True, **writer_custody.observe_canonical_writer_lock(
+        Path(path), birth, process_identity=process_identity,
+        birth_matches=birth_matches, namespaces=writer_custody.observe_owner_namespaces,
+    )}
 
 
 def read_json_object(path: Path) -> dict[str, Any]:
@@ -681,6 +709,15 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
     providers = _provider_busy(lanes, board, now + max(0.0, time.monotonic() - started))
     if source_integrity["configured"] and source_integrity["valid"]:
         source_integrity = _source_integrity(board)
+    # Sample after any native-status wait. These observations route ordinary
+    # repair diagnosis; they cannot authorize native stop/restart or completion.
+    owner_writer_custody = (_owner_writer_custody(board, owner_status, expected_birth)
+        if owner_live else {"configured": board.get("database_path") is not None, "verified": False})
+    if owner_live and owner_writer_custody["configured"]:
+        if owner_writer_custody.get("verified") is not True:
+            reasons.append(owner_writer_custody.get("reason") or "canonical_writer_lock_observation_unavailable")
+        elif owner_writer_custody.get("held") is not True:
+            reasons.append("canonical_writer_lock_missing")
     if not source_integrity["valid"]:
         reasons.append("source_integrity_not_verified")
         health = "degraded"
@@ -699,6 +736,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         health = "healthy"
     candidate = bool(source_integrity["valid"] and not blocked and counts and sum(counts.values()) > 0
         and authority.get("task_count") == sum(counts.values())
+        and (not owner_writer_custody["configured"] or (
+            owner_writer_custody.get("verified") is True and owner_writer_custody.get("held") is True))
         and all(key in COMPLETED for key in counts))
     result: dict[str, Any] = {
         "schema": SCHEMA, "board_id": board_id, "health": health, "reason_codes": sorted(set(reasons)),
@@ -706,6 +745,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         "completion_candidate": candidate,
         "details": {"observed_at": datetime.fromtimestamp(now, UTC).isoformat(),
             "owner": _public_identity(owner) if owner_live else {}, "owner_ready": owner_ready,
+            "owner_writer_custody": owner_writer_custody,
             "lanes": lanes, "providers": providers, "task_counts": counts, "progress_source": source,
             "authenticated_task_observation": authenticated,
             "unsettled_goal_count": authority.get("unsettled_goal_count"),
