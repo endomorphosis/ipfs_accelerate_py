@@ -74,6 +74,64 @@ Two user services run continuously:
   transcripts cannot push the pending action out of the next job's context;
   the original report path remains available for verification.
 
+An operator can separately configure a board's `diagnostic_handoff`, for example
+`"monitoring-handoff.json"`. It is relative to
+`<state_dir>/repairs/<board_id>/`, not the live native checkout. This optional
+file helps a later repair find completed root investigations and the exact
+reports behind them. It supplements the previous job report; missing or rejected
+handoffs do not discard that report or change the repair queue, holds or budgets.
+Runtime upgrades preserve the configured path and install its reader.
+Reports kept elsewhere must first be explicitly copied as diagnostic reports
+into this private board directory, retaining their content hashes; the reader
+does not scan global reports or follow references outside its configured scope.
+
+The handoff uses this closed schema (example hashes and times must be replaced):
+
+```json
+{
+  "schema": "fleet-repair/diagnostic-handoff@1",
+  "board_id": "doep",
+  "observed_at": 1789120000,
+  "expires_at": 1789123600,
+  "source_heads": {".": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "source_integrity_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "completed_stages": ["source_qualification"],
+  "reports": [{
+    "path": "root-recovery/report.json",
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "stage": "source_qualification"
+  }]
+}
+```
+
+`diagnostic_handoff.source_binding(observation)` returns the exact source heads
+and integrity hash for this schema. The latter is SHA256 of the probe's
+`details.source_integrity` serialized as UTF-8 JSON with sorted keys, ASCII
+escaping and separators `(',', ':')`. Both must match the configured probe
+captured immediately before the new coding job, within three minutes. The
+handoff must be current and have a lifetime of at most 24 hours. These checks
+bind an observation of Git heads and cleanliness, not loaded code or exact dirty
+file bytes; the worker must still verify current native source and custody.
+
+Allowed stages are `incident_observation`, `source_qualification`,
+`generic_fix_qualification`, `native_fix_qualification`, `graceful_closure`,
+`preservation_archive`, `source_transition`, `native_observation`,
+`service_recreation`, `native_restart`, `post_start_verification`, and
+`independent_review`. Every listed stage needs an explicit matching report.
+At most eight reports are read, each at most 1 MiB; the handoff is limited to
+32 KiB and reads check a two-second overall budget. Files must be owned regular
+JSON paths beneath the board's owned `0700` repair directory. Symlinks, hardlinks,
+world-writable files, traversal and private credential/vault path names are
+rejected. Existing `0664` reports inside that private directory need no chmod.
+Pinned directory/file identities are rechecked, and report hashes must match.
+
+Only closed stage names, times, source observations, report paths and hashes
+enter the prompt. Report bodies, free-form prose, environment and commands are
+never copied. A stage is historical diagnostic data, not permission to replay
+old manifests, process identities or recovery tools, waive a gate, release a
+callback or claim completion. A stale, missing, malformed or oversized handoff
+produces a bounded unavailable note while ordinary repair continues.
+
 For a known stopped-owner condition, the watchdog invokes only the board's
 configured native ensure command. Otherwise it enqueues a repair. The coding
 worker first reproduces the incident, adds a regression test for the shared

@@ -104,7 +104,8 @@ def test_upgrade_preserves_holds_backoff_and_restarts_only_fleet_services(inputs
     board = config["boards"][0]
     hold = str(board_root / "custom.hold")
     board.update(hold_files=[hold], launch_only_hold_files=[hold], cooldown_seconds=777, max_backoff_seconds=999,
-                 max_ensure_attempts=4, publication={"board_id": "spar"})
+                 max_ensure_attempts=4, publication={"board_id": "spar"},
+                 diagnostic_handoff="monitoring-handoff.json")
     config["poll_seconds"] = 75
     config["repair_worker"]["retry_seconds"] = 1000
     config_path.write_text(json.dumps(config))
@@ -117,6 +118,7 @@ def test_upgrade_preserves_holds_backoff_and_restarts_only_fleet_services(inputs
     assert current["boards"][0]["launch_only_hold_files"] == [hold]
     assert current["boards"][0]["max_ensure_attempts"] == 4
     assert current["boards"][0]["publication"] == {"board_id": "spar"}
+    assert current["boards"][0]["diagnostic_handoff"] == "monitoring-handoff.json"
     assert current["repair_worker"]["retry_seconds"] == 1000
     assert current["poll_seconds"] == 75
     assert upgraded["release"] == first["release"]
@@ -127,6 +129,21 @@ def test_upgrade_preserves_holds_backoff_and_restarts_only_fleet_services(inputs
     ]
     assert "ipfs-taskboard-spar-ensure.service" not in calls[-1]
     assert config_path.with_suffix(".json.previous").exists()
+
+
+def test_real_installed_repair_imports_configured_handoff_loader(inputs):
+    _source, inventory, board_root, _home = inputs
+    result = installer.install(SCRIPT.parents[3], inventory, board_root, enable=False)
+    release = Path(result["release"])
+    code = ("from ipfs_accelerate_py.agent_supervisor.rescue.diagnostic_handoff "
+            "import load_diagnostic_handoff; "
+            "from pathlib import Path; "
+            "assert load_diagnostic_handoff({}, Path('/unused'), {}, observed_at=0) == {}; "
+            "print(load_diagnostic_handoff.__module__)")
+    process = subprocess.run([sys.executable, "-P", "-c", code], cwd=board_root,
+        env={**os.environ, "PYTHONPATH": str(release)}, capture_output=True, text=True, timeout=15)
+    assert process.returncode == 0, process.stderr
+    assert "diagnostic_handoff" in process.stdout
 
 
 @pytest.mark.parametrize("change", ["missing_config", "duplicate_id", "relative_runtime"])
