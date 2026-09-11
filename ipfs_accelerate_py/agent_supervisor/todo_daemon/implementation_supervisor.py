@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..merge.workspace_quarantine import maintenance_boundary as _workspace_maintenance_boundary
+
 import argparse
 import fcntl
 import hashlib
@@ -21784,6 +21786,7 @@ class PortalImplementationSupervisor:
                 operation="cleanup_backlogged_worktrees",
             )
 
+    @_workspace_maintenance_boundary()
     def _cleanup_backlogged_worktrees_locked(self) -> dict[str, Any]:
         """Clean merged worktrees while holding the checkout mutation lock."""
 
@@ -22140,6 +22143,7 @@ class PortalImplementationSupervisor:
             self._record_event("merged_worktree_cleanup", result)
         return result
 
+    @_workspace_maintenance_boundary()
     def _prune_managed_submodule_worktrees(self) -> dict[str, Any]:
         """Prune stale registrations in explicitly managed submodule repositories.
 

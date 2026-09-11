@@ -488,6 +488,9 @@ def lifecycle_store_dir(repo_root: Path) -> Path:
     return git_common_dir(repo_root) / WORKTREE_LIFECYCLE_DIRNAME
 
 
+from .workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
+
+
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(
@@ -595,14 +598,17 @@ class WorktreeLifecycleStore:
         }
 
     def _publish_task_index(self, record: WorkspaceLifecycleRecord) -> None:
-        _atomic_write_json(
-            self.task_index_path_for(
-                canonical_task_cid=record.canonical_task_cid,
-                task_id=record.task_id,
-                attempt=record.attempt,
-            ),
-            self._task_index_payload(record),
-        )
+        from .workspace_quarantine import mutation
+
+        with mutation(self.repo_root, Path(record.workspace_path)):
+            _atomic_write_json(
+                self.task_index_path_for(
+                    canonical_task_cid=record.canonical_task_cid,
+                    task_id=record.task_id,
+                    attempt=record.attempt,
+                ),
+                self._task_index_payload(record),
+            )
 
     def heal_stale_task_indexes(self) -> list[WorkspaceLifecycleRecord]:
         """Rewrite leftover active indexes whose workspace is already terminal.
@@ -751,6 +757,7 @@ class WorktreeLifecycleStore:
 
     # -------------------------------------------------------------- acquisition
 
+    @_workspace_mutation_boundary("workspace_path")
     def begin_preparing(
         self,
         *,
@@ -1189,6 +1196,7 @@ class WorktreeLifecycleStore:
         )
         return current
 
+    @_workspace_mutation_boundary("workspace")
     def adopt_dead_owner(
         self,
         workspace: str | Path,
@@ -1316,6 +1324,7 @@ class WorktreeLifecycleStore:
                 )
                 return adopted
 
+    @_workspace_mutation_boundary("workspace")
     def finalize_exact_dead_owner(
         self,
         workspace: str | Path,
@@ -1419,6 +1428,7 @@ class WorktreeLifecycleStore:
         if int(expected_fence) != int(record.fence):
             raise FenceMismatchError(f"expected fence {expected_fence}, found {record.fence}")
 
+    @_workspace_mutation_boundary("workspace")
     def transition(
         self,
         workspace: str | Path,
@@ -1482,6 +1492,7 @@ class WorktreeLifecycleStore:
             )
             return updated
 
+    @_workspace_mutation_boundary("workspace", "new_workspace")
     def rebind_workspace(
         self,
         workspace: str | Path,
@@ -1623,6 +1634,7 @@ class WorktreeLifecycleStore:
             expected_record=expected_record,
         )
 
+    @_workspace_mutation_boundary("workspace")
     def renew_lease(
         self,
         workspace: str | Path,
@@ -1803,6 +1815,7 @@ class WorktreeLifecycleStore:
             attempt_consumed=False,
         )
 
+    @_workspace_mutation_boundary("workspace")
     def reclaim_stale(
         self,
         workspace: str | Path,
@@ -1842,6 +1855,7 @@ class WorktreeLifecycleStore:
             self._publish_task_index(updated)
             return updated
 
+    @_workspace_mutation_boundary("workspace")
     def reclaim_dead_owner_for_controlled_restart(
         self,
         workspace: str | Path,
@@ -1950,6 +1964,7 @@ class WorktreeLifecycleStore:
         recovered.extend(self.heal_stale_task_indexes())
         return recovered
 
+    @_workspace_mutation_boundary("workspace")
     def compare_and_delete(
         self,
         workspace: str | Path,
@@ -2062,7 +2077,9 @@ class WorktreeLifecycleStore:
                 raise
 
         # Match begin_preparing's stable task-index -> workspace lock order.
-        with serialized_lock_update(index_path):
+        from .workspace_quarantine import mutation
+
+        with mutation(self.repo_root, Path(expected.workspace_path)), serialized_lock_update(index_path):
             with serialized_lock_update(record_path):
                 descriptors = []
                 try:
@@ -2108,7 +2125,10 @@ class WorktreeLifecycleStore:
         """Remove only this future candidate's exact rows into a durable journal."""
         from .worktree_lifecycle_delete_journal import operate
 
-        return operate(self, expected, handoff_receipt_id, mode="delete")
+        from .workspace_quarantine import mutation
+
+        with mutation(self.repo_root, Path(expected.workspace_path)):
+            return operate(self, expected, handoff_receipt_id, mode="delete")
 
     def resume_candidate_observed_delete(
         self, expected: WorkspaceLifecycleRecord, *, handoff_receipt_id: str
@@ -2116,7 +2136,10 @@ class WorktreeLifecycleStore:
         """Continue only an existing exact prepared candidate deletion."""
         from .worktree_lifecycle_delete_journal import operate
 
-        return operate(self, expected, handoff_receipt_id, mode="resume")
+        from .workspace_quarantine import mutation
+
+        with mutation(self.repo_root, Path(expected.workspace_path)):
+            return operate(self, expected, handoff_receipt_id, mode="resume")
 
     def observe_candidate_deletion(
         self, expected: WorkspaceLifecycleRecord, *, handoff_receipt_id: str
@@ -2126,6 +2149,7 @@ class WorktreeLifecycleStore:
 
         return operate(self, expected, handoff_receipt_id, mode="observe")
 
+    @_workspace_mutation_boundary("workspace_path")
     def authorize_cleanup(
         self,
         *,

@@ -397,6 +397,8 @@ from ..validation.project_dependency_preflight import PROJECT_DEPENDENCY_PREFLIG
 from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
 from ..validation.validation_runtime import PROOF_REUSE_STATE_ROOT_ENV, PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA, VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV, ValidationPythonLauncherReceipt, ValidationRuntimeError, canonical_validation_environment_contract, sealed_validation_python_runner, validation_environment_for_runner, validation_python_launcher_environment, validation_shell_command
 from .worktrees import WorktreeLease, WorktreePool
+from ..merge.workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
+from ..merge.workspace_quarantine import maintenance_boundary as _workspace_maintenance_boundary
 from .database_execution_schema import DAEMON_EXECUTION_SQL as _DAEMON_EXECUTION_SQL, DATABASE_IMPLEMENTATION_DAEMON_INTERFACE, DATABASE_IMPLEMENTATION_DAEMON_SCHEMA
 
 REPO_ROOT = Path.cwd()
@@ -28241,6 +28243,7 @@ class PortalImplementationDaemon:
             for task in tasks
         )
 
+    @_workspace_mutation_boundary(pool=True)
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
         authority_revalidation_only = (
             self._manual_completion_authority_revalidation_only_task(task)
@@ -44397,6 +44400,7 @@ class PortalImplementationDaemon:
         body["authority_sha256"] = hashlib.sha256(encoded).hexdigest()
         return body
 
+    @_workspace_mutation_boundary(pool=True)
     def _run_implementation_in_ephemeral_worktree(
         self,
         *,
@@ -47801,6 +47805,7 @@ class PortalImplementationDaemon:
         )
         return result
 
+    @_workspace_mutation_boundary("worktree_path")
     def _cleanup_failed_setup_worktree(
         self,
         worktree_path: Path,
@@ -49832,6 +49837,7 @@ class PortalImplementationDaemon:
         )
         state.waiting_count = len(state.waiting_task_ids)
 
+    @_workspace_mutation_boundary(pool=True)
     def _create_seeded_worktree(
         self,
         worktree_path: Path,
@@ -71603,6 +71609,7 @@ class PortalImplementationDaemon:
                 "provider_call_allowed": False,
             }
 
+    @_workspace_maintenance_boundary()
     def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
         """Continuously drain inactive worktrees whose branches are already merged."""
 
@@ -71762,6 +71769,7 @@ class PortalImplementationDaemon:
             self._record_event("merged_worktree_cleanup", result)
         return result
 
+    @_workspace_mutation_boundary("worktree_path")
     def _cleanup_merged_worktree(
         self,
         worktree_path: Path | None,
@@ -72349,6 +72357,7 @@ class PortalImplementationDaemon:
         self._record_event("cleanup_finished", result)
         return result
 
+    @_workspace_mutation_boundary("worktree_path")
     def _cleanup_worktree_submodules(
         self,
         worktree_path: Path,
@@ -76137,6 +76146,9 @@ class PortalImplementationDaemon:
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
 
     def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
+        from ..merge.workspace_quarantine import claim_retained
+        if claim_retained(self.repo_root, metadata):
+            return True
         repository_match = checkout_lock_repository_matches(
             metadata,
             self.repo_root,
@@ -76299,6 +76311,9 @@ class PortalImplementationDaemon:
         self,
         metadata: dict[str, Any],
     ) -> bool:
+        from ..merge.workspace_quarantine import claim_retained
+        if claim_retained(self.repo_root, metadata):
+            return True
         repository_id = str(metadata.get("repository_id") or "")
         if repository_id and repository_id != self.merge_target_repository_id:
             return False

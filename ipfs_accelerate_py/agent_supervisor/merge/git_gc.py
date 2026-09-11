@@ -26,6 +26,8 @@ Environment variables:
 
 from __future__ import annotations
 
+from .workspace_quarantine import maintenance_boundary as _workspace_maintenance_boundary
+
 import json
 import logging
 import os
@@ -245,12 +247,14 @@ class GitGarbageCollector:
 
         return self.run()
 
+    @_workspace_maintenance_boundary()
     def run(self, *, aggressive: bool = False) -> dict[str, Any]:
         """Run garbage collection operations."""
         if aggressive or self.needs_aggressive_gc():
             return self._run_aggressive()
         return self._run_standard()
 
+    @_workspace_maintenance_boundary()
     def _run_standard(self) -> dict[str, Any]:
         """Standard GC: prune worktrees, expire reflogs, auto gc."""
         results: dict[str, Any] = {
@@ -303,6 +307,7 @@ class GitGarbageCollector:
         )
         return results
 
+    @_workspace_maintenance_boundary()
     def _run_aggressive(self) -> dict[str, Any]:
         """Aggressive GC: full repack, prune all, expire all reflogs."""
         results: dict[str, Any] = {
@@ -403,6 +408,7 @@ class GitGarbageCollector:
         )
         return results
 
+    @_workspace_maintenance_boundary()
     def _prune_worktrees(self) -> dict[str, Any]:
         """Prune stale worktree references."""
         result = _run_git(["worktree", "prune"], cwd=self.repo_root)
@@ -413,6 +419,7 @@ class GitGarbageCollector:
             "output": (result.stdout + result.stderr).strip()[:500],
         }
 
+    @_workspace_maintenance_boundary()
     def _expire_reflogs(self, *, expire_all: bool = False) -> dict[str, Any]:
         """Expire old reflog entries."""
         if expire_all:
@@ -430,6 +437,7 @@ class GitGarbageCollector:
             "output": (result.stdout + result.stderr).strip()[:500],
         }
 
+    @_workspace_maintenance_boundary()
     def _run_git_gc(self, *, auto: bool = False, aggressive: bool = False) -> dict[str, Any]:
         """Run git gc with specified mode."""
         args = ["gc", "--quiet"]
@@ -458,6 +466,7 @@ class GitGarbageCollector:
             "output": (result.stdout + result.stderr).strip()[:500],
         }
 
+    @_workspace_maintenance_boundary()
     def _repack(self) -> dict[str, Any]:
         """Repack objects into fewer, larger pack files."""
         # -a: pack all objects, -d: remove redundant packs, --depth=250: deeper delta chains
@@ -476,6 +485,7 @@ class GitGarbageCollector:
             "output": (result.stdout + result.stderr).strip()[:500],
         }
 
+    @_workspace_maintenance_boundary()
     def _prune_objects(self) -> dict[str, Any]:
         """Prune unreachable objects."""
         result = _run_git(["prune", "--expire=now"], cwd=self.repo_root)
@@ -485,6 +495,7 @@ class GitGarbageCollector:
             "output": (result.stdout + result.stderr).strip()[:500],
         }
 
+    @_workspace_maintenance_boundary()
     def _gc_submodule_repos(self) -> dict[str, Any]:
         """Run light GC on submodule repositories."""
         results: list[dict[str, Any]] = []

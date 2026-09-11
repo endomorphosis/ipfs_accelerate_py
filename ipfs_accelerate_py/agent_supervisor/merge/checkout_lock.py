@@ -443,72 +443,74 @@ def serialized_lock_update(
     and its managed implementation daemon.
     """
 
-    if fcntl is None and msvcrt is None:
-        raise RuntimeError("durable lock replacement requires an advisory file-lock backend")
-    guard_path = lock_path.with_name(f".{lock_path.name}.update.lock")
-    guard_path.parent.mkdir(parents=True, exist_ok=True)
-    flags = os.O_CREAT | os.O_RDWR
-    flags |= getattr(os, "O_CLOEXEC", 0)
-    flags |= getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(guard_path, flags, 0o600)
-    locked = False
-    deadline = (
-        None if timeout_seconds is None else time.monotonic() + max(0.0, float(timeout_seconds))
-    )
-    try:
-        if fcntl is not None:
-            if deadline is None:
-                fcntl.flock(fd, fcntl.LOCK_EX)
-            else:
-                while True:
-                    try:
-                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                        break
-                    except BlockingIOError:
-                        remaining = deadline - time.monotonic()
-                        if remaining <= 0:
-                            raise TimeoutError("timed out serializing durable lock update")
-                        time.sleep(min(max(0.001, float(poll_seconds)), remaining))
-        else:
-            assert msvcrt is not None
-            if os.fstat(fd).st_size == 0:
-                os.write(fd, b"\0")
-            while True:
-                os.lseek(fd, 0, os.SEEK_SET)
-                try:
-                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-                    break
-                except OSError as exc:
-                    if exc.errno not in {
-                        errno.EACCES,
-                        errno.EAGAIN,
-                        errno.EDEADLK,
-                    }:
-                        raise
-                    if deadline is not None and deadline - time.monotonic() <= 0:
-                        raise TimeoutError("timed out serializing durable lock update")
-                    sleep_seconds = max(0.001, float(poll_seconds))
-                    if deadline is not None:
-                        sleep_seconds = min(
-                            sleep_seconds,
-                            max(0.0, deadline - time.monotonic()),
-                        )
-                    if sleep_seconds <= 0:
-                        raise TimeoutError("timed out serializing durable lock update")
-                    time.sleep(sleep_seconds)
-        locked = True
-        yield
-    finally:
+    from .workspace_quarantine import claim_update
+    with claim_update(lock_path):
+        if fcntl is None and msvcrt is None:
+            raise RuntimeError("durable lock replacement requires an advisory file-lock backend")
+        guard_path = lock_path.with_name(f".{lock_path.name}.update.lock")
+        guard_path.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_CREAT | os.O_RDWR
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(guard_path, flags, 0o600)
+        locked = False
+        deadline = (
+            None if timeout_seconds is None else time.monotonic() + max(0.0, float(timeout_seconds))
+        )
         try:
-            if locked:
-                if fcntl is not None:
-                    fcntl.flock(fd, fcntl.LOCK_UN)
+            if fcntl is not None:
+                if deadline is None:
+                    fcntl.flock(fd, fcntl.LOCK_EX)
                 else:
-                    assert msvcrt is not None
+                    while True:
+                        try:
+                            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            break
+                        except BlockingIOError:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                raise TimeoutError("timed out serializing durable lock update")
+                            time.sleep(min(max(0.001, float(poll_seconds)), remaining))
+            else:
+                assert msvcrt is not None
+                if os.fstat(fd).st_size == 0:
+                    os.write(fd, b"\0")
+                while True:
                     os.lseek(fd, 0, os.SEEK_SET)
-                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                    try:
+                        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                        break
+                    except OSError as exc:
+                        if exc.errno not in {
+                            errno.EACCES,
+                            errno.EAGAIN,
+                            errno.EDEADLK,
+                        }:
+                            raise
+                        if deadline is not None and deadline - time.monotonic() <= 0:
+                            raise TimeoutError("timed out serializing durable lock update")
+                        sleep_seconds = max(0.001, float(poll_seconds))
+                        if deadline is not None:
+                            sleep_seconds = min(
+                                sleep_seconds,
+                                max(0.0, deadline - time.monotonic()),
+                            )
+                        if sleep_seconds <= 0:
+                            raise TimeoutError("timed out serializing durable lock update")
+                        time.sleep(sleep_seconds)
+            locked = True
+            yield
         finally:
-            os.close(fd)
+            try:
+                if locked:
+                    if fcntl is not None:
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                    else:
+                        assert msvcrt is not None
+                        os.lseek(fd, 0, os.SEEK_SET)
+                        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            finally:
+                os.close(fd)
 
 
 def git_common_dir(repo_root: Path) -> Path:
