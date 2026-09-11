@@ -1539,13 +1539,16 @@ class WorktreeLifecycleStore:
         *,
         lease_id: str,
         expected_fence: int,
+        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
         return self.transition(
             workspace,
             WorkspaceLifecycleState.SETTLING,
             lease_id=lease_id,
             expected_fence=expected_fence,
+            expected_record=expected_record,
         )
+
 
     def mark_terminal(
         self,
