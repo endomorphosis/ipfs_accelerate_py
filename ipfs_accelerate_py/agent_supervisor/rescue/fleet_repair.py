@@ -367,9 +367,16 @@ report that. If present, read the fleet monitoring handoff at
 concurrent source changes and validation evidence. This is diagnostic context;
 recheck its source/process bindings and native authority before adoption.
 Otherwise inspect exact process births, live authoritative Quack
-state, lane logs, last failed attempts and existing recovery paths. Use an
-independently admitted native status reader or a grant issued to this reader's
-own peer/process birth. Do not extract another process's tokens from /proc
+state, lane logs, last failed attempts and existing recovery paths. Use the
+configured native status operator through its existing reader-admission and
+credential-handling contract, or a grant issued to this reader's own peer/process
+birth. Invoking that complete authorized operator is ordinary status access,
+including when it internally uses its intended private client-token vault to
+query the current live owner. Do not reject or replace the configured status
+command merely because it uses that native credential handoff. Retain all of
+its source, owner-identity, transport, task-population and receipt checks; its
+authenticated observation alone does not authorize source changes or completion.
+Do not extract another process's tokens from /proc
 environ, retained descriptors or logs, borrow a lane's credentials, or impersonate
 its PID/session to obtain task observations. When status_argv is empty or its
 monitor has stopped, implement the missing native reader/observation transition;
