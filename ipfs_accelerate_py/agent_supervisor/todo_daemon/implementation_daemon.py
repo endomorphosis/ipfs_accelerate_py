@@ -281,6 +281,7 @@ from .task_execution_policy import (
     TypedLocalOperation,
 )
 from .worktrees import WorktreeLease, WorktreePool
+from ..merge.workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
 
 REPO_ROOT = Path.cwd()
 
@@ -446,6 +447,8 @@ WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV = (
 )
 WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS = 30
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND = "implementation_resource_claim"
+IMPLEMENTATION_RESOURCE_CLAIM_COORDINATION_FILENAME = "overlap-coordination.lock"
+IMPLEMENTATION_RESOURCE_CLAIM_THREAD_LOCK = threading.Lock()
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME = "implementation-resource-claims"
 IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER = "virgin-transfer"
 IDLE_LANE_WORK_STEALING_MODES = frozenset(
@@ -19722,6 +19725,7 @@ class PortalImplementationDaemon:
             for task in tasks
         )
 
+    @_workspace_mutation_boundary(pool=True)
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
         if self._board_task_is_completed(task.task_id):
             result = {
@@ -29666,6 +29670,7 @@ class PortalImplementationDaemon:
         body["authority_sha256"] = hashlib.sha256(encoded).hexdigest()
         return body
 
+    @_workspace_mutation_boundary(pool=True)
     def _run_implementation_in_ephemeral_worktree(
         self,
         *,
@@ -32436,6 +32441,7 @@ class PortalImplementationDaemon:
         )
         return result
 
+    @_workspace_mutation_boundary("worktree_path")
     def _cleanup_failed_setup_worktree(
         self,
         worktree_path: Path,
@@ -34226,6 +34232,7 @@ class PortalImplementationDaemon:
             "reason": "not_integrated",
         }
 
+    @_workspace_mutation_boundary(pool=True)
     def _create_seeded_worktree(
         self,
         worktree_path: Path,
@@ -51788,6 +51795,7 @@ class PortalImplementationDaemon:
         }
 
 
+    @_workspace_mutation_boundary("worktree_path")
     def _cleanup_merged_worktree(
         self,
         worktree_path: Path | None,
@@ -51971,6 +51979,7 @@ class PortalImplementationDaemon:
         self._record_event("cleanup_finished", result)
         return result
 
+    @_workspace_mutation_boundary("worktree_path")
     def _cleanup_worktree_submodules(
         self,
         worktree_path: Path,
@@ -55403,6 +55412,17 @@ class PortalImplementationDaemon:
             / lock_filename
         )
 
+    def _implementation_resource_claim_coordination_path(self) -> Path:
+        """Return the repo-shared guard for overlap-check-and-publish."""
+
+        return (
+            checkout_mutation_lock_path(
+                self.repo_root,
+                lock_name=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME,
+            )
+            / IMPLEMENTATION_RESOURCE_CLAIM_COORDINATION_FILENAME
+        )
+
     def _task_implementation_resource_paths(
         self,
         task: PortalTask,
@@ -55685,6 +55705,9 @@ class PortalImplementationDaemon:
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
 
     def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
+        from ..merge.workspace_quarantine import claim_retained
+        if claim_retained(self.repo_root, metadata):
+            return True
         repository_match = checkout_lock_repository_matches(
             metadata,
             self.repo_root,
@@ -55836,6 +55859,9 @@ class PortalImplementationDaemon:
         self,
         metadata: dict[str, Any],
     ) -> bool:
+        from ..merge.workspace_quarantine import claim_retained
+        if claim_retained(self.repo_root, metadata):
+            return True
         repository_id = str(metadata.get("repository_id") or "")
         if repository_id:
             if repository_id != self.merge_target_repository_id:
@@ -58533,39 +58559,65 @@ class PortalImplementationDaemon:
     ]:
         """Acquire every affected submodule claim before provider dispatch.
 
-        Claims are acquired in canonical path order. If any acquisition loses
-        a race, every claim already acquired by this task is rolled back before
+        The overlap check and complete claim publication are serialized by one
+        short repo-shared guard. Exact lock filenames alone cannot fence a
+        parent path against a child path, so checking only the selection-time
+        snapshot would allow two lanes to publish overlapping claims. Claims
+        are acquired in canonical path order. If any acquisition loses a race,
+        every claim already acquired by this task is rolled back before
         returning, so no worker can hold a partial resource set.
         """
 
+        resource_paths = tuple(
+            sorted(self._task_implementation_resource_paths(task))
+        )
+        if not resource_paths:
+            return [], "", "acquired", None
         acquired: list[tuple[Path, dict[str, Any]]] = []
-        try:
-            for resource_path in sorted(
-                self._task_implementation_resource_paths(task)
-            ):
-                claim_path = self._implementation_resource_claim_path(
-                    resource_path
-                )
-                metadata = self._build_implementation_resource_claim_metadata(
-                    task,
-                    attempt,
-                    started_at,
-                    resource_path,
-                )
-                claimed, reason, existing = (
-                    self._try_acquire_implementation_resource_claim(
-                        claim_path,
-                        metadata,
-                    )
-                )
-                if claimed:
-                    acquired.append((claim_path, metadata))
-                    continue
-                self._release_implementation_resource_claims(acquired)
-                return [], resource_path, reason, existing
-        except BaseException:
-            self._release_implementation_resource_claims(acquired)
-            raise
+        coordination_path = self._implementation_resource_claim_coordination_path()
+        # ``flock`` is process-scoped on some supported platforms, so pair the
+        # cross-process advisory guard with a short in-process thread guard.
+        with IMPLEMENTATION_RESOURCE_CLAIM_THREAD_LOCK:
+            with serialized_lock_update(coordination_path):
+                active_claims = self._active_implementation_resource_claims((task,))
+                for resource_path in resource_paths:
+                    for claimed_path, existing in active_claims.items():
+                        # Preserve the established exact-lock result vocabulary;
+                        # the per-path O_EXCL path below returns ``lock_exists``.
+                        if resource_path == claimed_path:
+                            continue
+                        if self._resource_paths_overlap(resource_path, claimed_path):
+                            return (
+                                [],
+                                resource_path,
+                                "overlapping_claim_exists",
+                                existing,
+                            )
+                try:
+                    for resource_path in resource_paths:
+                        claim_path = self._implementation_resource_claim_path(
+                            resource_path
+                        )
+                        metadata = self._build_implementation_resource_claim_metadata(
+                            task,
+                            attempt,
+                            started_at,
+                            resource_path,
+                        )
+                        claimed, reason, existing = (
+                            self._try_acquire_implementation_resource_claim(
+                                claim_path,
+                                metadata,
+                            )
+                        )
+                        if claimed:
+                            acquired.append((claim_path, metadata))
+                            continue
+                        self._release_implementation_resource_claims(acquired)
+                        return [], resource_path, reason, existing
+                except BaseException:
+                    self._release_implementation_resource_claims(acquired)
+                    raise
         return acquired, "", "acquired", None
 
     def _release_implementation_resource_claim(

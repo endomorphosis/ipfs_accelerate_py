@@ -493,6 +493,9 @@ def lifecycle_store_dir(repo_root: Path) -> Path:
     return git_common_dir(repo_root) / WORKTREE_LIFECYCLE_DIRNAME
 
 
+from .workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
+
+
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(
@@ -1221,6 +1224,7 @@ class WorktreeLifecycleStore:
 
     # -------------------------------------------------------------- acquisition
 
+    @_workspace_mutation_boundary("workspace_path")
     def begin_preparing(
         self,
         *,
@@ -1688,6 +1692,7 @@ class WorktreeLifecycleStore:
         )
         return current
 
+    @_workspace_mutation_boundary("workspace")
     def quarantine_exact_dead_owner(
         self,
         workspace: str | Path,
@@ -1856,6 +1861,7 @@ class WorktreeLifecycleStore:
                         )
                     return dict(receipt)
 
+    @_workspace_mutation_boundary("workspace")
     def adopt_dead_owner(
         self,
         workspace: str | Path,
@@ -1985,6 +1991,7 @@ class WorktreeLifecycleStore:
                 )
                 return adopted
 
+    @_workspace_mutation_boundary("workspace")
     def finalize_exact_dead_owner(
         self,
         workspace: str | Path,
@@ -2072,6 +2079,7 @@ class WorktreeLifecycleStore:
                     index_path.unlink()
                 return terminal
 
+    @_workspace_mutation_boundary("workspace")
     def repair_partial_finalize(
         self,
         workspace: str | Path,
@@ -2203,6 +2211,7 @@ class WorktreeLifecycleStore:
         if int(expected_fence) != int(record.fence):
             raise FenceMismatchError(f"expected fence {expected_fence}, found {record.fence}")
 
+    @_workspace_mutation_boundary("workspace")
     def transition(
         self,
         workspace: str | Path,
@@ -2264,6 +2273,7 @@ class WorktreeLifecycleStore:
             )
             return updated
 
+    @_workspace_mutation_boundary("workspace", "new_workspace")
     def rebind_workspace(
         self,
         workspace: str | Path,
@@ -2408,6 +2418,7 @@ class WorktreeLifecycleStore:
             terminal_reason=reason,
         )
 
+    @_workspace_mutation_boundary("workspace")
     def renew_lease(
         self,
         workspace: str | Path,
@@ -2653,6 +2664,7 @@ class WorktreeLifecycleStore:
             attempt_consumed=False,
         )
 
+    @_workspace_mutation_boundary("workspace")
     def reclaim_stale(
         self,
         workspace: str | Path,
@@ -2693,6 +2705,7 @@ class WorktreeLifecycleStore:
             _atomic_write_json(record_path, updated.to_dict())
             return updated
 
+    @_workspace_mutation_boundary("workspace")
     def reclaim_dead_owner_for_controlled_restart(
         self,
         workspace: str | Path,
@@ -2790,6 +2803,7 @@ class WorktreeLifecycleStore:
                 recovered.append(updated)
         return recovered
 
+    @_workspace_mutation_boundary("workspace")
     def compare_and_delete(
         self,
         workspace: str | Path,
@@ -2825,6 +2839,7 @@ class WorktreeLifecycleStore:
                 pass
             return True
 
+    @_workspace_mutation_boundary("workspace_path")
     def authorize_cleanup(
         self,
         *,
