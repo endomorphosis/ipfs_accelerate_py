@@ -22,6 +22,9 @@ from typing import Any
 from .fleet_watchdog import _accepted_progress_counts, command, load_config, lock, read_json, write_json
 from .fleet_watchdog import repair_hold_paths as hold_paths
 
+DEFAULT_REPAIR_DISK_AVAILABLE_BYTES = 8 * 1024 ** 3
+DEFAULT_REPAIR_DISK_AVAILABLE_INODES = 50_000
+
 
 def repair_evidence(observation: dict[str, Any]) -> dict[str, Any]:
     """Stable reasons to revisit a repair; heartbeat and owner churn are absent."""
@@ -492,6 +495,15 @@ the watchdog configuration and staging a validated runtime release are within
 the user's authorization. Do not repeatedly publish diagnostic-only changes
 while leaving the same runtime blocker untouched. Continue the prior job's
 specific pending deployment or recovery work and verify actual task progress.
+Before creating a repair worktree, clone, test fixture or archive, measure its
+expected checkout and dependency footprint on the actual destination filesystem.
+Reuse qualified disposable checkouts when their source and ownership permit it;
+avoid concurrent large copies. Keep the configured disk and inode headroom after
+the estimated allocation, and recheck before each substantial allocation and
+validation phase. The launch storage check is admission, not a reservation or a
+guarantee against later clone/test growth. If headroom is insufficient, preserve
+current evidence and report the required space; do not delete or prune other
+workspaces, task state or unknown callback artifacts to make room.
 Keep reading scoped to this incident,
 avoid recursive searches through massive worktree archives. Retain evidence
 of root cause, recovery, regression tests, commits, deployments and remaining
@@ -595,6 +607,74 @@ def _launch_preflight(policy: dict[str, Any]) -> str | None:
     return None
 
 
+def _repair_temporary_directory(policy: dict[str, Any]) -> Path:
+    # systemd's user manager need not share this worker's environment. Bind the
+    # measured temporary root into the child environment at launch below.
+    value = policy.get("temporary_directory")
+    if value is None:
+        value = next((os.environ[key] for key in ("TMPDIR", "TEMP", "TMP")
+                      if os.environ.get(key)), "/tmp")
+    if not isinstance(value, str) or not value or not Path(value).is_absolute():
+        raise ValueError("temporary_directory must be an absolute directory path")
+    return Path(value)
+
+
+def _storage_preflight(policy: dict[str, Any], path: Path,
+                       state_directory: str) -> dict[str, Any] | None:
+    """Observe each allocation filesystem; this is not a space reservation."""
+    defaults = {"minimum_disk_available_bytes": DEFAULT_REPAIR_DISK_AVAILABLE_BYTES,
+                "minimum_disk_available_inodes": DEFAULT_REPAIR_DISK_AVAILABLE_INODES}
+    limits = {}
+    for field, default in defaults.items():
+        value = policy.get(field, default)
+        if type(value) is not int or value < 0:
+            return {"reason": "repair_storage_policy_invalid", "field": field,
+                    "error": "expected a nonnegative integer"}
+        limits[field] = value
+    try:
+        temporary = _repair_temporary_directory(policy)
+    except ValueError as exc:
+        return {"reason": "repair_storage_policy_invalid", "field": "temporary_directory",
+                "error": str(exc)}
+    targets = (("cwd", Path(policy["cwd"])), ("state", Path(state_directory)),
+               ("job", path.parent), ("temporary", temporary))
+    for role, target in targets:
+        details = {"role": role, "path": str(target), **limits}
+        ancestor = target.absolute()
+        try:
+            while True:
+                try:
+                    fd = os.open(ancestor, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+                    break
+                except FileNotFoundError:
+                    # Only future state/job directories may use their nearest
+                    # existing ancestor. An unavailable cwd/temp root is unknown.
+                    if role in {"cwd", "temporary"} or ancestor == ancestor.parent:
+                        raise
+                    ancestor = ancestor.parent
+            try:
+                device = os.fstat(fd).st_dev
+                details.update(observed_directory=str(ancestor), device=device)
+                sample = os.fstatvfs(fd)
+            finally:
+                os.close(fd)
+            if (sample.f_frsize <= 0 or sample.f_bavail < 0 or sample.f_favail < 0):
+                raise ValueError("filesystem available bytes or inodes are unknown")
+            # Capture every target through its own descriptor even on a shared
+            # device; a path replacement or newly unavailable root must refuse.
+            available_bytes = sample.f_bavail * sample.f_frsize
+            available_inodes = sample.f_favail
+            details.update(available_bytes=available_bytes, available_inodes=available_inodes)
+            if available_bytes < limits["minimum_disk_available_bytes"]:
+                return {"reason": "repair_storage_bytes_low", **details}
+            if available_inodes < limits["minimum_disk_available_inodes"]:
+                return {"reason": "repair_storage_inodes_low", **details}
+        except (OSError, ValueError) as exc:
+            return {"reason": "repair_storage_unavailable", **details,
+                    "error_type": type(exc).__name__, "error": str(exc)}
+    return None
+
+
 def _launch_selection(job: dict[str, Any]) -> dict[str, Any]:
     return {**_attempt_identity(job), "status": job.get("status"),
             "next_attempt_at": job.get("next_attempt_at"),
@@ -603,7 +683,8 @@ def _launch_selection(job: dict[str, Any]) -> dict[str, Any]:
 
 def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
                         *, selection: dict[str, Any] | None = None,
-                        attempt: dict[str, Any] | None = None) -> dict[str, Any]:
+                        attempt: dict[str, Any] | None = None,
+                        storage: dict[str, Any] | None = None) -> dict[str, Any]:
     """Retry a known pre-exec failure; never infer non-execution from job text."""
     with lock(path.parent / "queue.lock") as acquired:
         if not acquired:
@@ -615,12 +696,14 @@ def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
         if attempt is not None:
             if job.get("status") != "running" or _attempt_identity(job) != attempt:
                 return {"status": "completion_superseded"}
-            # Popen raised before creating a child. No coding work consumed this
-            # slot; retain its paths/identity in the launch failure audit below.
+            # A pre-spawn check refused or Popen raised before creating a child.
+            # Retain its paths/identity in the launch failure audit below.
             job["attempts"] = max(0, job.get("attempts", 1) - 1)
         now = time.time()
         retry = max(30, min(300, policy.get("launch_retry_seconds", 60)))
         failure = {"reason": reason, "observed_at": now, "attempt": attempt}
+        if storage is not None:
+            failure["storage"] = storage
         job.update(status="queued", next_attempt_at=now + retry,
                    launch_failures=job.get("launch_failures", 0) + 1,
                    last_launch_failure=failure)
@@ -631,7 +714,7 @@ def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
 
 
 def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[str, Any]:
-    policy = config["repair_worker"]
+    policy = dict(config["repair_worker"])
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
     selection = _launch_selection(read_json(path))
@@ -653,6 +736,16 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     unavailable = _launch_preflight(policy)
     if unavailable:
         return _defer_unstarted_job(path, policy, unavailable, selection=selection)
+    try:
+        # Bind one temporary root across all samples and argv construction,
+        # including an environment change during the native probe.
+        policy["temporary_directory"] = str(_repair_temporary_directory(policy))
+    except ValueError:
+        pass  # The storage check below records the invalid policy and defers.
+    storage = _storage_preflight(policy, path, config["state_dir"])
+    if storage:
+        return _defer_unstarted_job(path, policy, storage["reason"],
+                                   selection=selection, storage=storage)
     # A worker report cannot supply its own productive-repair baseline.
     from .fleet_watchdog import normalize_probe
     try:
@@ -665,6 +758,10 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     unavailable = _launch_preflight(policy)
     if unavailable:
         return _defer_unstarted_job(path, policy, unavailable, selection=selection)
+    storage = _storage_preflight(policy, path, config["state_dir"])
+    if storage:
+        return _defer_unstarted_job(path, policy, storage["reason"],
+                                   selection=selection, storage=storage)
     directory = path.parent
     with lock(directory / "queue.lock") as acquired:
         if not acquired:
@@ -703,12 +800,19 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
             "--property=TimeoutStopSec=30", "--property=Nice=10",
             "--property=CPUWeight=20", "--property=MemoryHigh=8G",
             "--property=MemoryMax=16G", "--property=UMask=0077",
+            *(f"--setenv={key}={_repair_temporary_directory(policy)}"
+              for key in ("TMPDIR", "TEMP", "TMP")),
             *policy["argv"], "-C", policy["cwd"],
             "--output-last-message", str(directory / f"last-message-{stamp}.txt"), "-"]
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
     with prompt.open("rb") as inp, log_path.open("wb") as log:
         os.chmod(log_path, 0o600)
+        storage = _storage_preflight(policy, path, config["state_dir"])
+        if storage:
+            return _defer_unstarted_job(path, policy, storage["reason"],
+                                       attempt=attempt, selection=claimed_selection,
+                                       storage=storage)
         try:
             process = subprocess.Popen(argv, stdin=inp, stdout=log, stderr=log)
         except OSError as exc:
