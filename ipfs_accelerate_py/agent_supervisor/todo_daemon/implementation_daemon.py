@@ -125534,6 +125534,11 @@ class DatabaseImplementationDaemon:
                 DatabaseCoordinationExpiredError,
             )
 
+            if isinstance(exc, DatabaseProviderCallbackOutcomeUnknownError):
+                # A persisted started callback is not stale/unstarted work.
+                # Keep its claim and attempt intact; the public tick yields
+                # until an existing exact recovery path can prove disposition.
+                raise
             if isinstance(exc, DatabaseImplementationAuthorityError):
                 # A successful merge can rotate the shared control receipt
                 # away from the exact claim tuple.  If the declared outputs
@@ -125608,7 +125613,6 @@ class DatabaseImplementationDaemon:
                 exc,
                 (
                     DatabasePortalBridgeConsumedNoProgressError,
-                    DatabaseProviderCallbackOutcomeUnknownError,
                 ),
             ):
                 task = self.task_source.get(attempt.task_cid)
@@ -127601,6 +127605,29 @@ class DatabaseImplementationDaemon:
         except Exception as exc:
             from .completion_deferral import missing_completion_deferral
 
+            if isinstance(exc, DatabaseProviderCallbackOutcomeUnknownError):
+                # Reconciliation before this callback may already have written.
+                # No terminal status, claim release, or new dispatch follows
+                # merely from an unresolved callback's diagnostic evidence.
+                return {
+                    "changed": False,
+                    "unchanged": None,
+                    "deferred": True,
+                    "skipped": True,
+                    "reason": "database_provider_callback_outcome_unknown",
+                    "selection_idle_reason": "database_provider_callback_outcome_unknown",
+                    "implementation_result": None,
+                    "active_task_id": str(exc.failure_evidence.get("task_cid") or ""),
+                    "attempt_id": str(exc.failure_evidence.get("attempt_id") or ""),
+                    "attempt_consumed": "unknown",
+                    "provider_dispatched": "unknown",
+                    "recovery_attempt_consumed": False,
+                    "recovery_provider_dispatched": False,
+                    "durable_state_uncertain": True,
+                    "completion_authority": False,
+                    "backoff_seconds": 5,
+                    "recovery_prefix": dict(self._idle_recovery_prefix or {}),
+                }
             if isinstance(exc, _DatabaseReconciliationConflictDeferral):
                 # Earlier callbacks may have committed before this conflict.
                 # Preserve their diagnostics without inventing a total write

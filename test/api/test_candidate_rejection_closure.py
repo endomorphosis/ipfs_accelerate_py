@@ -707,12 +707,15 @@ def _typed_outer(tmp_path, monkeypatch, *, repository, factory, tick=False):
             lease_ms=30000,
             max_task_attempts=4,
             provider_fn=bridge.run_provider,
-            **({"post_merge_recovery_fn": bridge.recover_post_merge_declared_outputs} if tick else {}),
             effect_fn=lambda *_: pytest.fail("no effect callback"),
             validation_fn=lambda *_: pytest.fail("no validation callback"),
             strict_task_sharding=True,
             require_real_execution=True,
         ).open()
+        if tick:
+            outer.bind_post_merge_recovery(
+                lambda: bridge.recover_post_merge_declared_outputs(outer)
+            )
         yield outer, bridge, source
     finally:
         if outer is not None:
