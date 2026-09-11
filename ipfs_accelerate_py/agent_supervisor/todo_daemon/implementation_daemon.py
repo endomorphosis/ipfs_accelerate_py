@@ -61886,12 +61886,16 @@ class PortalImplementationDaemon:
         return results
 
     def _cleanup_stale_worktrees(self, *, max_age_seconds: float = 0) -> dict[str, Any]:
-        """Remove worktrees whose branches are unmerged but have been inactive too long.
+        """Detect stale worktrees and delegate destructive cleanup to the supervisor.
 
         This prevents orphaned worktrees from accumulating after failed or
-        abandoned implementations. Only removes worktrees under our managed root
-        that have no active process and whose branch hasn't been updated within
-        ``max_age_seconds`` (default from env: 6 hours).
+        abandoned implementations.  The daemon deliberately does not remove a
+        stale checkout: only the supervisor reconciliation path scans durable
+        peer task state and protected-path snapshots, rescues dirty bytes, and
+        proves that non-forcing branch/worktree retirement is safe.  This pass
+        therefore only reports managed worktrees that have no active process
+        and whose branch has not been updated within ``max_age_seconds``
+        (default from env: 6 hours).
         """
         if max_age_seconds <= 0:
             max_age_seconds = float(
@@ -61958,21 +61962,6 @@ class PortalImplementationDaemon:
                 skipped.append({**detail, "reason": "unmanaged_branch"})
                 continue
 
-            if not worktree_path.exists():
-                # git still lists locked-initializing checkouts after the
-                # directory is gone. Age is irrelevant; prune immediately so
-                # extra-gate setup does not cwd into a PosixPath ENOENT.
-                cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
-                removed.append(
-                    {
-                        **detail,
-                        "age_seconds": 0.0,
-                        "cleanup_result": cleanup_result,
-                        "reason": "registered_workspace_missing",
-                    }
-                )
-                continue
-
             # Check age by looking at the most recent commit timestamp on the branch
             try:
                 age_result = subprocess.run(
@@ -61995,20 +61984,33 @@ class PortalImplementationDaemon:
                 skipped.append({**detail, "reason": "not_stale_yet", "age_seconds": age_seconds})
                 continue
 
-            # Stale: remove it
-            cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
-            removed.append({**detail, "age_seconds": age_seconds, "cleanup_result": cleanup_result})
+            skipped.append(
+                {
+                    **detail,
+                    "age_seconds": age_seconds,
+                    "reason": "stale_worktree_cleanup_delegated_to_supervisor",
+                    "remedy": "supervisor_worktree_reconciliation",
+                }
+            )
 
+        delegated = [
+            item
+            for item in skipped
+            if item.get("reason")
+            == "stale_worktree_cleanup_delegated_to_supervisor"
+        ]
         result = {
             "attempted": True,
             "max_age_seconds": max_age_seconds,
             "removed_count": len(removed),
+            "delegated_count": len(delegated),
             "skipped_count": len(skipped),
             "removed": removed,
+            "delegated": delegated[:30],
             "skipped": skipped[:30],
         }
-        if removed:
-            self._record_event("stale_worktree_cleanup", result)
+        if delegated:
+            self._record_event("stale_worktree_cleanup_delegated", result)
         return result
 
     def _cleanup_stale_locks(self, *, max_age_seconds: float = 0) -> dict[str, Any]:
