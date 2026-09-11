@@ -63,9 +63,17 @@ def test_database_background_cleanup_requires_native_proof_api(workspace, monkey
     head = _git(repo, 'rev-parse', branch)
     def forbidden(*args, **kwargs):
         pytest.fail('cleanup without canonical proof attempted Git mutation')
+    import subprocess
+    native_run = subprocess.run
+    def read_only_custody_lookup(argv, *args, **kwargs):
+        # The shared custody guard resolves the real Git common directory.
+        # No pruning, removal, or other Git mutation is permitted by this test.
+        if argv == ["git", "rev-parse", "--git-common-dir"]:
+            return native_run(argv, *args, **kwargs)
+        return forbidden(argv, *args, **kwargs)
     # The guard must precede prune and the historical migration-ref cleaner.
     monkeypatch.setattr(supervisor, '_cleanup_fenced_provider_migration_branches_locked', forbidden)
-    monkeypatch.setattr('ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.subprocess.run', forbidden)
+    monkeypatch.setattr('ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.subprocess.run', read_only_custody_lookup)
     result = supervisor._cleanup_backlogged_worktrees_locked()
     assert result['reason'] == 'canonical_completion_cleanup_api_unavailable'
     assert result['removed_count'] == 0

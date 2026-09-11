@@ -142,6 +142,9 @@ def test_terminal_disposition_conflict_is_reported_for_every_task(monkeypatch, p
 
     daemon = object.__new__(DatabaseImplementationDaemon)
     daemon.owner_session_id = "session:terminal-conflict"
+    # This constructor-free fixture isolates terminal-validator error reporting.
+    # Real owner/acknowledgement admission is exercised by the Quack custody suite.
+    monkeypatch.setattr(daemon, "_current_owner_task_quarantines", lambda: {})
     attempt = SimpleNamespace(
         attempt_id="attempt:terminal-conflict",
         claim_id="claim:terminal-conflict",

@@ -47,7 +47,8 @@ old claim files remain unchanged.
 
 A repository shared custody lock composes the pool, lifecycle, serialized claim
 updates, Portal implementation operation, and cleanup paths. Freeze installation
-holds it exclusively. Global Git worktree pruning, reflog expiration, and object GC are deferred
+holds it exclusively. Mutation paths must be disjoint from retained roots:
+both descendants and ancestor cleanup paths are denied. Global Git worktree pruning, reflog expiration, and object GC are deferred
 while custody exists, including maintenance from nested submodule repositories. A fresh root never reuses any ambiguous existing pool entry. The archive
 of an old board is diagnostic evidence and is not an input to this protocol.
 
