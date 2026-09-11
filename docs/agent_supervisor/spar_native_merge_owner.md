@@ -64,8 +64,9 @@ owner or granting workers access. It initializes only an absent private
 configured queue directory. An existing directory or legacy database without
 the canonical `legacy_merge_native_origins` record is refused, even if the
 queue is empty or a caller supplies a JSON origin/closure claim. The separate
-`native-legacy-capture@1` profile remains refused until coherent capture and
-old-consumer closure have independently admitted native producers.
+`native-legacy-capture@1` profile requires the installed native migrated origin
+described below. A directory, empty queue, audit report or caller closure flag
+cannot supply that origin.
 
 Fresh initialization creates the empty legacy queue schema and a new owner
 UUID, then records its exact namespace, immutable creation manifest and content
@@ -138,5 +139,78 @@ unknown callback evidence.
 This producer establishes a mapping of preserved bytes, not original capture
 coherence, signature provenance, prior consumer closure, callback settlement,
 current source acceptance or completion. Those result fields remain false.
-Both native legacy launch gates continue to refuse until their independently
-admitted producers exist.
+An import plan by itself does not open either native legacy launch gate.
+
+## Retained legacy capture and successor origin
+
+`RetainedNativeLegacySession` in `spar_legacy_capture.py` binds the reviewed
+current source/config/forest, actual service/MainPID, authenticated native
+closeout snapshot, and all six admitted supervisor/daemon births before the
+owner exits. Native observation runs in a fresh interpreter rooted in the
+accepted checkout, so candidate imports cannot substitute native source.
+The status observation has a separate bounded digest budget; it is not a
+queue receipt. Namespace permission failures remain explicitly unknown.
+
+The session opens a pidfd for the exact owner and retains the original cgroup
+descriptor. It requires every admitted lane birth to be dead and a complete
+native snapshot with no active task lease. These observations establish the
+drained native actor set; they do not settle queue claims or callback effects.
+
+The separately reviewed operator workflow is:
+
+1. Arm the session with the expected current commit and tree, while the native
+   owner is still ready. Keep the same session alive through installation.
+2. Install a unit drop-in with `Restart=no`, `SendSIGKILL=no`,
+   `TimeoutStopSec=infinity`, `RefuseManualStart=yes`, `Delegate=yes`,
+   `ExitType=cgroup`, and `ConditionPathExists=!<runtime>/HOLD`. Reload its
+   configuration and verify the effective properties. The hold is still absent.
+3. Call `retain_workflow_sentinel()`. It starts one fixed Python `-I -S` child
+   at `/`, with only its private standard streams and a credential-free fixed
+   environment. The child prints readiness and waits on stdin. It cannot
+   dispatch work, fork, access repository state, or receive owner credentials.
+   The manager attaches only that exact retained child to the native unit.
+4. Place the native hold. The existing retained-closeout handler exits
+   gracefully. Require actual owner pidfd exit, its own unchanged `stopped`
+   status, all admitted lane births dead, and a cgroup containing exactly the
+   known workflow sentinel. `cgroup_empty_observed` remains false in this
+   contract. An absent cgroup is never substituted for a population read.
+5. Use `session.capture(destination=..., inspection_destination=...)` to copy
+   the complete configured queue tree, including DB/WAL, receipts/cursors,
+   processing claims and opaque private bytes. The session derives repository,
+   target, store, source, config, sealed plan and lane scopes itself. It holds
+   the consumer/queue flocks and an OFD database writer lock throughout; reading
+   and closing copied file descriptors cannot silently release that lock.
+6. Build a distinct `prepare_offline_clone` using the captured manifest, then
+   call `spar_legacy_origin.install_captured_queue(captured, prepared)` while
+   retaining the same closure and inhibition. Every original byte remains in
+   the complete durable capture. Validation binds the candidate before its
+   connection closes and verifies the staged copy again before replacement.
+7. Close the session after the held transaction. Only its own sentinel receives
+   EOF; its normal exit and exact pidfd exit are recorded. Source adoption,
+   complete runtime/Git/worktree preservation, current launch amendment
+   admission and the later supervised start remain separate operator steps.
+
+The installer writes a permanent `native-legacy-profile-required.json` marker
+before its first canonical effect. An interrupted transaction retains this
+requirement and the original capture; it does not roll back, reset leases, or
+fall back to the filesystem queue. Normal native startup selects the required
+legacy profile and loads the canonical database origin, checking UUID, current
+repository/target/store/path/config/plan/lane coordinates and exact imported
+receipt/cursor population. The original source head remains history; the
+existing current-source amendment gate still controls each launch.
+
+The capture receipt distinguishes native process closure from unknown callback
+outcomes. All old queue rows, claim tokens, generations, consumer IDs and
+receipt bodies are preserved. Owner-backed train recovery has no abandoned
+claim takeover method; migration cannot release an old processing claim.
+Original private bytes are copied only within the explicitly authorized queue
+bundle. No live vault is inspected, signing key generated, or signing authority
+claimed. Native goal/root acceptance and board completion remain unchanged.
+
+Disposable host qualification on systemd 255 confirmed that ordinary exit and
+`RemainAfterExit=yes` both race cgroup removal. The retained sentinel contract
+was stable in three actual user-service trials, including an independently
+qualified update of a running service through its own temporary drop-in.
+The deployed native closeout handler also returned `stopped` after exact-pidfd
+SIGTERM with a progress-only status fixture. These tests changed only their
+uniquely named disposable units; they are not evidence of SPAR live adoption.
