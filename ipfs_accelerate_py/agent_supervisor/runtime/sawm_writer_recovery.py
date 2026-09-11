@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from . import native_graceful_recovery as process
+from . import native_phased_graceful_recovery as phased_process
 from . import owner_status_observation as observation
 
 PROGRAM = "semantic-addressed-world-model-v1"
@@ -656,7 +657,7 @@ def close_reviewed(
     state = _path(root, config["runtime_paths"]["state"])
     from ..merge.checkout_lock import serialized_lock_update
 
-    def gate():
+    def bindings_gate():
         startup_exclusion_gate()
         require(
             source_binding(root, config_path) == expected["source"],
@@ -678,7 +679,13 @@ def close_reviewed(
             canonical_writer_lost(database, owner) == expected["custody"],
             "writer_custody_changed",
         )
+
+    def population_gate():
         scoped_census(root, expected)
+
+    def gate():
+        bindings_gate()
+        population_gate()
 
     def lane_gate(index):
         # Zombies are already exited; native cleanup may reap them.
@@ -691,14 +698,16 @@ def close_reviewed(
         scoped_census(root, expected)
         startup_exclusion_gate()
 
-    result = process.gracefully_close_native_lanes(
+    result = phased_process.gracefully_close_native_lanes(
         controller=controller,
         lanes=lanes,
         lane_fence=lambda index: serialized_lock_update(
             state / f"lane-{index}" / f"sawm_lane_{index}_supervisor.lock",
             timeout_seconds=timeout_seconds,
         ),
-        effect_gate=gate,
+        effect_gate=bindings_gate,
+        population_gate=population_gate,
+        population_refusal=NativeScopeProcessObserved,
         lane_children_gate=lane_gate,
         closed_children_gate=final_gate,
         record_phase=record_phase,

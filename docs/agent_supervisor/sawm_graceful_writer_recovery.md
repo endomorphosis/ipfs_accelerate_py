@@ -58,3 +58,19 @@ provider return, a leased dirty worktree, and all existing execution/coordinatio
 rows. Its extension transport is substituted, so that test does not claim live
 sealed-extension or current live plan admission. The full native launch gate is
 still required by the operational caller.
+
+The separately qualified phased mechanism suspends the exact controller, all
+wrappers and all daemons before its population barrier. Each wrapper retains its
+native launch fence. Already spawned helper processes receive no signals or
+name-based exemption: the strict census waits only for observed disappearance.
+A helper waiting for its paused parent causes a bounded refusal and CONT of all
+surviving actors. Daemon TERM/CONT requests precede daemon exit waits; all daemon
+and helper closure must be observed before wrapper TERM. Wrapper stop flags are
+queued while suspended, then launch fences are released before wrapper CONT so
+native cleanup can acquire them. The original sequential helper remains intact.
+
+A scope refusal now retains bounded PID/birth/parent/group/session/cwd and argv
+hash evidence. Identity drift remains explicitly unverified. The operator emits
+that evidence, and the external bootstrap writes a private failure artifact
+only after mechanism finally has attempted CONT. None of these observations
+settles a callback, releases a claim or authorizes source adoption by itself.

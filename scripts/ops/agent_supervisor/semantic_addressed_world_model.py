@@ -1845,6 +1845,7 @@ def _writer_recovery_runtime() -> Any:
         from ipfs_accelerate_py.agent_supervisor.runtime import sawm_writer_recovery
         for module, name in ((sawm_writer_recovery, 'sawm_writer_recovery'),
                              (sawm_writer_recovery.process, 'native_graceful_recovery'),
+                             (sawm_writer_recovery.phased_process, 'native_phased_graceful_recovery'),
                              (sawm_writer_recovery.observation, 'owner_status_observation')):
             if Path(module.__file__).resolve() != (
                 REPO_ROOT / 'ipfs_accelerate_py/agent_supervisor/runtime' / (name+'.py')

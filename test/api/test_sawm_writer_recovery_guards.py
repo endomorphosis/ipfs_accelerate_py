@@ -223,7 +223,7 @@ def test_late_source_drift_denies_owner_and_controller_signals(tmp_path, monkeyp
         raise AssertionError("changed source passed the actual effect gate")
 
     monkeypatch.setattr(
-        recovery.process, "gracefully_close_native_lanes", native_boundary
+        recovery.phased_process, "gracefully_close_native_lanes", native_boundary
     )
     with pytest.raises(
         recovery.process.GracefulRecoveryUnverified, match="source_binding_changed"
