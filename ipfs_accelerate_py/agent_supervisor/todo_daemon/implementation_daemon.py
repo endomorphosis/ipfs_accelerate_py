@@ -110072,9 +110072,19 @@ def main(argv: list[str] | None = None) -> None:
     handlers_installed = threading.current_thread() is threading.main_thread()
     previous_term: Any = None
     previous_int: Any = None
+    stop_exit_code: int | None = None
 
     def request_stop(signum: int, _frame: object) -> None:
-        raise SystemExit(128 + signum)
+        nonlocal stop_exit_code
+        if stop_exit_code is None:
+            stop_exit_code = 128 + signum
+        raise SystemExit(stop_exit_code)
+
+    def raise_if_stop_requested() -> None:
+        # An inner adapter may catch or translate SystemExit. Keep the stop
+        # request after that call returns so another pass cannot be started.
+        if stop_exit_code is not None:
+            raise SystemExit(stop_exit_code)
 
     if handlers_installed:
         previous_term = signal.signal(signal.SIGTERM, request_stop)
@@ -110116,7 +110126,9 @@ def main(argv: list[str] | None = None) -> None:
             return
         last_idle_info_at: float | None = None
         while True:
+            raise_if_stop_requested()
             result = daemon.run_once()
+            raise_if_stop_requested()
             now = time.monotonic()
             emit_idle_info = (
                 bool(args.once)
@@ -110131,6 +110143,7 @@ def main(argv: list[str] | None = None) -> None:
             )
             if daemon_pass_is_idle(result) and emit_idle_info:
                 last_idle_info_at = now
+            raise_if_stop_requested()
             if args.once:
                 break
             wait_timeout = bounded_daemon_wait_timeout(
@@ -110138,6 +110151,7 @@ def main(argv: list[str] | None = None) -> None:
                 default_timeout=args.interval,
             )
             wait_for_wake = getattr(daemon, "wait_for_wake", None)
+            raise_if_stop_requested()
             if callable(wait_for_wake):
                 wait_for_wake(timeout=wait_timeout)
             else:
