@@ -589,3 +589,16 @@ def test_prepared_inventory_cannot_redefine_original_population(armed):
     with pytest.raises(role.SparMergeOwnerError, match="preservation inventory differs"):
         origin.install_captured_queue(captured, replace(prepared, preserved_inventory=replacement_baseline))
     assert (armed.queue / "merge_queue.duckdb").read_bytes() == original
+
+
+def test_locked_candidate_veto_does_not_drop_existing_posix_writer_lock(armed):
+    from scripts.ops.agent_supervisor import spar_legacy_origin as origin
+    armed.close_native()
+    captured = do_capture(armed)
+    prepared = role.prepare_offline_clone(offline_root=captured.path,
+        destination=armed.tmp / 'prepared', manifest=captured.receipt['manifest'])
+    with role.open_duckdb_connection(prepared.database_path, prefer_quack=False):
+        assert role._writer_lock_held(prepared.database_path)
+        with pytest.raises(role.SparMergeOwnerError, match='observed kernel lock'):
+            origin.install_captured_queue(captured, prepared)
+        assert role._writer_lock_held(prepared.database_path)
