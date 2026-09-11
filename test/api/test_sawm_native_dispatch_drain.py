@@ -374,9 +374,18 @@ def _peer_native(tmp_path, *, owner_target=_peer_owner):
             )
 
         roster()
-        supervisor_pipe.send("register")
-        assert supervisor_pipe.poll(5)
-        assert supervisor_pipe.recv() == {"registered": True}
+        # Registration is intentionally fail-soft in the real supervisor and
+        # normally repeats on its watchdog hook. A fixture's one-shot method
+        # return is not evidence that the owner admitted the child.
+        registration_deadline = time.monotonic() + 5
+        while True:
+            supervisor_pipe.send("register")
+            assert supervisor_pipe.poll(5)
+            assert supervisor_pipe.recv() == {"registered": True}
+            if roster()["state"]["lanes"][0]["daemon_birth"] == births["daemon"]:
+                break
+            assert time.monotonic() < registration_deadline
+            time.sleep(0.02)
         native = SimpleNamespace(
             client=client,
             public=_new_client(tmp_path, token=""),
@@ -410,6 +419,27 @@ def _failed_peer_owner(directory, pipe):
     pipe.send({"error_type": "DisposableStartupFailure"})
     # Deliberately remain alive after reporting failure: setup must still reap us.
     assert pipe.recv() == "stop"
+
+
+def _first_registration_refused_owner(directory, pipe):
+    original = drain.NativeDrainService.handle
+    refused = False
+
+    def handle(self, packet, *args):
+        nonlocal refused
+        if packet.get("operation") == "supervisor_boundary" and not refused:
+            refused = True
+            raise drain.DispatchObservationUnavailable()
+        return original(self, packet, *args)
+
+    drain.NativeDrainService.handle = handle
+    _peer_owner(directory, pipe)
+
+
+def test_fixture_requires_actual_registration_after_fail_soft_refusal(tmp_path):
+    with _peer_native(tmp_path, owner_target=_first_registration_refused_owner) as native:
+        assert _public(native)["state"]["lanes"][0]["daemon_birth"] == native.births["daemon"]
+        assert _lane(native, "preclaim")["new_dispatch_permitted"] is True
 
 
 def test_failed_owner_startup_reaps_fixture_child(tmp_path):
