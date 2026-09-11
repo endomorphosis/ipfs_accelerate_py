@@ -60242,6 +60242,17 @@ class PortalImplementationDaemon:
                     f"{provider!r} requires the Grok Build CLI (`grok`) with "
                     "login/auth (or XAI_API_KEY)"
                 )
+            if route_plan is not None:
+                # Preserve the explicitly configured closed quota tuple. The
+                # runner still requires fresh typed failure and independent
+                # native quota evidence before any fallback can dispatch.
+                return _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override=route_plan.primary_model_id,
+                    failure_receipt_nonce=secrets.token_hex(32),
+                    fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
+                    route_plan=route_plan,
+                )
             return _grok_cli_command(workspace_path=workspace_path)
         if (
             prefer_grok
@@ -70317,10 +70328,13 @@ class DatabaseImplementationDaemon:
         }
 
     def wait_for_wake(self, timeout: float = 0.0) -> None:
-        """Bounded idle wait; database authority uses polling, not FS notify."""
+        """Honor the runner's poll/retry deadline, interruptible by its signals."""
 
         if timeout and timeout > 0:
-            time.sleep(min(float(timeout), 1.0))
+            # The runner bounds this by the configured interval/retry deadline.
+            # Its SIGTERM/SIGINT handler raises SystemExit and interrupts sleep;
+            # truncating to one second instead creates a busy resumption loop.
+            time.sleep(float(timeout))
 
     def close_event_runtime(self) -> None:
         self.close()
