@@ -127626,7 +127626,10 @@ class DatabaseImplementationDaemon:
             with self._lock:
                 self._consecutive_embedded_sidecar_reopens = 0
         except Exception as exc:
-            from .completion_deferral import missing_completion_deferral
+            from .completion_deferral import (
+                missing_completion_deferral,
+                task_fence_mismatch_deferral,
+            )
 
             if isinstance(exc, DatabaseProviderCallbackOutcomeUnknownError):
                 # Reconciliation before this callback may already have written.
@@ -127675,6 +127678,8 @@ class DatabaseImplementationDaemon:
                     "recovery_prefix": dict(self._idle_recovery_prefix or {}),
                 }
             completion_wait = missing_completion_deferral(exc)
+            if completion_wait is None:
+                completion_wait = task_fence_mismatch_deferral(exc)
             if completion_wait is not None:
                 # Preserve completed prefix operations as observations, but do
                 # not claim a complete write count or manufacture settlement.
