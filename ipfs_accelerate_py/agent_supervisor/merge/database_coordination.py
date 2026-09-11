@@ -4440,6 +4440,18 @@ class DatabaseCoordinator:
                 self._rollback_if_open(connection)
                 raise
 
+    def prepare_unresolved_interruption(self, claim: Any, **kwargs: Any) -> dict[str, Any]:
+        from .unresolved_interruption_barrier import prepare
+        return prepare(self, claim, **kwargs)
+
+    def admit_unresolved_interruption(self, claim: Any, **kwargs: Any) -> dict[str, Any]:
+        from .unresolved_interruption_barrier import admit
+        return admit(self, claim, **kwargs)
+
+    def get_unresolved_interruption(self, claim: Any, reservation_receipt_id: str) -> dict[str, Any] | None:
+        from .unresolved_interruption_barrier import get
+        return get(self, claim, reservation_receipt_id)
+
     def prepare_task_completion(
         self,
         claim: TaskClaim | Mapping[str, Any],
@@ -6581,6 +6593,9 @@ class DatabaseCoordinator:
         *,
         max_evidence: int = MAX_DEPENDENCY_EVIDENCE,
     ) -> dict[str, Any]:
+        from .unresolved_interruption_barrier import pending
+
+        interruption_pending = pending(self, connection, task_cid)
         limit = max(1, min(int(max_evidence), MAX_DEPENDENCY_EVIDENCE))
         completion_row = connection.execute(
             """
@@ -6619,6 +6634,8 @@ class DatabaseCoordinator:
         blocked: list[str] = []
         satisfied: list[str] = []
         repairs: list[dict[str, Any]] = []
+        if interruption_pending:
+            repairs.append({"kind": "unresolved_interruption_pending", "task_cid": task_cid})
         if completion_row is not None:
             repairs.append(
                 {
@@ -6670,7 +6687,7 @@ class DatabaseCoordinator:
                 satisfied.append(dep)
         return {
             "task_cid": task_cid,
-            "claimable": completion_row is None and not missing and not blocked,
+            "claimable": completion_row is None and not missing and not blocked and not interruption_pending,
             "completion_status": completion_status,
             "completed_at_ms": completed_at_ms,
             "dependency_task_cids": deps,
@@ -7191,6 +7208,9 @@ _PROCESS_SERIALIZED_COORDINATOR_METHODS: Final[frozenset[str]] = frozenset(
         "protect_task_claim",
         "execute_with_task_and_resource_fences",
         "expire_task_claim",
+        "prepare_unresolved_interruption",
+        "admit_unresolved_interruption",
+        "get_unresolved_interruption",
         "prepare_task_completion",
         "complete_task_claim",
         "get_prepared_task_completion",

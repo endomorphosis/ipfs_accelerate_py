@@ -71458,7 +71458,10 @@ class DatabaseImplementationDaemon:
         task_alias: str,
         control_binding: Mapping[str, Any],
     ) -> DatabaseTaskAttempt:
+        from .native_doctor_callback import PROFILE_KEY, claim_profile
+
         self._protect_new_claim(claim)
+        declared_profile = claim_profile(self)
         now = self._now_ms()
         attempt = DatabaseTaskAttempt(
             attempt_id=str(claim.attempt_id),
@@ -71477,6 +71480,7 @@ class DatabaseImplementationDaemon:
             body={
                 "worktree_id": str(getattr(claim, "worktree_id", "") or ""),
                 "control_binding": dict(control_binding),
+                **({PROFILE_KEY: declared_profile} if declared_profile is not None else {}),
             },
         )
         connection = self._require_connection()
@@ -71580,6 +71584,9 @@ class DatabaseImplementationDaemon:
             [owner],
         ).fetchall()
         attempts = [self._attempt_from_row(row) for row in rows]
+        from .unresolved_interruption import continuation_admitted
+
+        attempts = [item for item in attempts if not continuation_admitted(self, item)]
         prefix = self.task_prefix
         if prefix:
             attempts = [
@@ -71862,6 +71869,28 @@ class DatabaseImplementationDaemon:
         idempotency_key: str = "",
         provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
     ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
+        from .native_doctor_callback import PROFILE_KEY, NativeDoctorCallback
+
+        callback = provider_fn or self._provider_fn
+        if PROFILE_KEY in attempt.body or type(callback) is NativeDoctorCallback:
+            # Recovery uses this same native lock. Keep the bounded callback
+            # and its outer receipt acceptance indivisible to current-owner
+            # recovery; its heartbeat continues using the coordinator lock.
+            with self._lock:
+                return self._run_provider_impl(
+                    attempt, idempotency_key=idempotency_key, provider_fn=provider_fn,
+                )
+        return self._run_provider_impl(
+            attempt, idempotency_key=idempotency_key, provider_fn=provider_fn,
+        )
+
+    def _run_provider_impl(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        idempotency_key: str = "",
+        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
+    ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
         """Run provider work once per attempt idempotency key.
 
         Returns ``(attempt, result, duplicated)`` where ``duplicated`` is True
@@ -71898,6 +71927,9 @@ class DatabaseImplementationDaemon:
                 )
             return attempt, {"status": "already_committed"}, True
         callback = provider_fn or self._provider_fn
+        from .native_doctor_callback import require_declared_callback
+
+        require_declared_callback(self, attempt, callback)
         if callback is None:
             if self.require_real_execution:
                 raise DatabaseImplementationAuthorityError(
@@ -72749,6 +72781,12 @@ class DatabaseImplementationDaemon:
         )
         if current is None:
             raise KeyError(f"unknown attempt: {attempt!r}")
+        from .unresolved_interruption import continuation_admitted
+
+        if continuation_admitted(self, current):
+            raise DatabaseImplementationAuthorityError(
+                "unresolved interruption authorizes only a distinct continuation"
+            )
         if current.status != "running":
             return {
                 "resumed": False,
@@ -73877,6 +73915,10 @@ class DatabaseImplementationDaemon:
         }
         portal_failure_reconciliations = self.reconcile_terminal_portal_failures()
         self._idle_recovery_prefix["portal_failure_reconciliations"] = portal_failure_reconciliations
+        from .unresolved_interruption import reconcile_declared
+
+        declared_continuations = reconcile_declared(self)
+        self._idle_recovery_prefix["declared_continuations"] = declared_continuations
         expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
         self._idle_recovery_prefix["expired_attempt_reconciliations"] = expired_attempt_reconciliations
         portal_failure_rearms = self.reconcile_recoverable_portal_failure_rearms()
