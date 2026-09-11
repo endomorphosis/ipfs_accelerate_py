@@ -9,6 +9,8 @@ left untouched as rollback evidence unless strict DuckDB-only mode is enabled.
 from __future__ import annotations
 
 import fcntl
+import json
+import logging
 import os
 import re
 import sqlite3
@@ -22,9 +24,18 @@ from typing import Any, Callable
 DEFAULT_LOCK_TIMEOUT_SECONDS = 30.0
 DEFAULT_MEMORY_LIMIT = "256MB"
 DUCKDB_ONLY_ENV = "IPFS_ACCELERATE_DUCKDB_ONLY"
+QUACK_ENDPOINT_ENV = "IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT"
+QUACK_TOKEN_ENV = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+QUACK_REQUIRE_ENV = "IPFS_ACCELERATE_AGENT_QUACK_REQUIRE"
+QUACK_PREFER_ENV = "IPFS_ACCELERATE_AGENT_QUACK_PREFER"
+QUACK_STORE_ID_ENV = "IPFS_ACCELERATE_AGENT_STATE_STORE_ID"
+QUACK_LIVE_OWNER_FILE_FALLBACK_TIMEOUT_SECONDS = 1.0
+_LOGGER = logging.getLogger(__name__)
 SQLITE_MAGIC = b"SQLite format 3\0"
 # Loopback Quack URIs are the multi-writer control-plane transport. File
-# connections remain one-writer; they must not be used as a silent fallback.
+# connections remain one-writer. Clients prefer a live owner advertised next
+# to the store; a file open is a logged fallback, not a silent one.
+# IPFS_ACCELERATE_AGENT_QUACK_REQUIRE restores fail-closed (no file fallback).
 _QUACK_TRANSPORT_URI_RE = re.compile(
     r"^quack:(?://)?(?:127\.0\.0\.1|localhost|::1):\d{1,5}$",
     re.IGNORECASE,
@@ -413,6 +424,7 @@ class DuckDBConnection:
         instance._closed = False
         instance._lock_context = None
         instance._default_catalog = None
+        instance._quack_session_queries = False
         return instance
 
     @property
@@ -434,16 +446,27 @@ class DuckDBConnection:
         if normalized in {"PRAGMA FOREIGN_KEYS=ON", "PRAGMA JOURNAL_MODE=WAL"}:
             return DuckDBCursor(self._connection)
         catalog = getattr(self, "_default_catalog", None)
-        if catalog and _quack_owner_mutation_required(normalized):
+        session_queries = catalog and getattr(self, "_quack_session_queries", False)
+        if session_queries:
+            # The attached catalog query macro reuses the remote connection.
+            # Route BEGIN/COMMIT/ROLLBACK and reads through the same session as
+            # mutations; local BEGIN does not cover remote.query updates.
+            self._connection.execute(
+                f"SELECT * FROM {catalog}.query(?)",
+                [_quack_prepared_sql(statement, parameters)],
+            )
+        elif catalog and _quack_owner_mutation_required(normalized):
             return _execute_quack_owner_mutation(
                 statement,
                 parameters,
                 dml=True,
             )
-        if catalog and not normalized.startswith("USE "):
+        if not session_queries and catalog and not normalized.startswith("USE "):
             self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(self._connection)
-        if parameters is None:
+        if session_queries:
+            pass
+        elif parameters is None:
             self._connection.execute(statement)
         else:
             self._connection.execute(statement, parameters)
@@ -459,21 +482,39 @@ class DuckDBConnection:
         sql: str,
         parameters: Iterable[Iterable[Any]],
     ) -> DuckDBCursor:
+        if getattr(self, "_quack_session_queries", False):
+            last = None
+            count = 0
+            for values in parameters:
+                last = self.execute(sql, values)
+                count += max(0, last.rowcount)
+            if last is None:
+                last = self.execute("SELECT 1 WHERE false")
+            last.rowcount = count
+            return last
         self._connection.executemany(sql, parameters)
         return DuckDBCursor(self._connection, dml=True)
 
     def executescript(self, sql: str) -> DuckDBCursor:
+        if getattr(self, "_quack_session_queries", False):
+            return self.execute(sql)
         self._connection.execute(sql)
         return DuckDBCursor(self._connection)
 
     def commit(self) -> None:
         if self._transaction_active:
-            self._connection.commit()
+            if getattr(self, "_quack_session_queries", False):
+                self.execute("COMMIT")
+            else:
+                self._connection.commit()
             self._transaction_active = False
 
     def rollback(self) -> None:
         if self._transaction_active:
-            self._connection.rollback()
+            if getattr(self, "_quack_session_queries", False):
+                self.execute("ROLLBACK")
+            else:
+                self._connection.rollback()
             self._transaction_active = False
 
     def close(self) -> None:
@@ -547,7 +588,274 @@ def is_quack_transport_target(target: object) -> bool:
 
 
 _QUACK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,}$")
+_QUACK_STATUS_FILENAME = "quack-state-server.status.json"
 _QUACK_CONTROL_CATALOG = "control_plane"
+
+
+class QuackEndpointDiscovery:
+    """Lookup of a live loopback Quack owner for one DuckDB file."""
+
+    def __init__(
+        self,
+        *,
+        uri: str = "",
+        token: str = "",
+        source: str = "none",
+        reason: str = "",
+        status_path: str = "",
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        self.uri = str(uri or "")
+        self.token = str(token or "")
+        self.source = str(source or "none")
+        self.reason = str(reason or "")
+        self.status_path = str(status_path or "")
+        self.details = dict(details or {})
+
+    @property
+    def found(self) -> bool:
+        return bool(self.uri)
+
+
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    raw = str(os.environ.get(name, "") or "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _resolve_store_path(path: Path | str) -> Path:
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    try:
+        return candidate.resolve()
+    except OSError:
+        return candidate
+
+
+def _owner_process_alive(identity: Mapping[str, Any] | None) -> bool:
+    if not isinstance(identity, Mapping):
+        return False
+    birth = identity.get("process_birth")
+    if not isinstance(birth, Mapping):
+        return False
+    pid = birth.get("pid")
+    if type(pid) is not int or pid <= 1:
+        return False
+    return Path(f"/proc/{pid}").exists()
+
+
+def _read_json_object(path: Path) -> Mapping[str, Any] | None:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, Mapping) else None
+
+
+def _candidate_quack_status_paths(database: Path) -> tuple[Path, ...]:
+    parent = database.parent
+    name = _QUACK_STATUS_FILENAME
+    return (
+        parent / "quack-owner" / name,
+        parent / "live" / "state" / "quack-owner" / name,
+        parent / "live" / "state" / "quack-owner-v2" / name,
+    )
+
+
+def _read_quack_client_token(
+    status_dir: Path,
+    status: Mapping[str, Any] | None = None,
+) -> str:
+    env_token = str(os.environ.get(QUACK_TOKEN_ENV, "") or "").strip()
+    if env_token:
+        return env_token
+    handle = ""
+    if isinstance(status, Mapping):
+        handle = str(status.get("secret_handle") or "").strip()
+        identity = status.get("identity")
+        if not handle and isinstance(identity, Mapping):
+            handle = str(identity.get("secret_handle") or "").strip()
+    if handle:
+        safe = handle.replace(":", "_").replace("/", "_")
+        vault = status_dir / f"{safe}.quack-token"
+        try:
+            raw = vault.read_text(encoding="ascii").strip()
+        except OSError:
+            raw = ""
+        except UnicodeDecodeError:
+            raw = ""
+        if raw and _QUACK_TOKEN_RE.fullmatch(raw):
+            return raw
+    return ""
+
+
+def _status_listen_uri(status: Mapping[str, Any]) -> str:
+    identity = status.get("identity")
+    if isinstance(identity, Mapping):
+        uri = quack_transport_uri(identity.get("listen_uri") or "")
+        if uri:
+            return uri
+    return quack_transport_uri(status.get("listen_uri") or "")
+
+
+def _status_database_path(status: Mapping[str, Any]) -> str:
+    return str(status.get("database_path") or "").strip()
+
+
+def _same_database(status_database: str, requested: Path) -> bool:
+    if not status_database:
+        return False
+    candidate = Path(status_database).expanduser()
+    if not candidate.is_absolute():
+        candidate = requested.parent / candidate
+    try:
+        return candidate.resolve() == requested
+    except OSError:
+        return str(candidate) == str(requested)
+
+
+def _reject_status(
+    status: Mapping[str, Any] | None,
+    requested: Path,
+    status_path: Path,
+) -> str:
+    if status is None:
+        return "status_unreadable"
+    if str(status.get("lifecycle") or "") != "ready":
+        return f"lifecycle_{status.get('lifecycle') or 'missing'}"
+    if not _same_database(_status_database_path(status), requested):
+        return "database_path_mismatch"
+    identity = status.get("identity")
+    if isinstance(identity, Mapping) and str(identity.get("status") or "") not in {
+        "",
+        "ready",
+    }:
+        return f"identity_status_{identity.get('status')}"
+    uri = _status_listen_uri(status)
+    if not uri:
+        return "listen_uri_missing"
+    if isinstance(identity, Mapping):
+        birth = identity.get("process_birth")
+        if isinstance(birth, Mapping) and type(birth.get("pid")) is int:
+            if not _owner_process_alive(identity):
+                return "owner_process_not_alive"
+    del status_path
+    return ""
+
+
+def discover_live_quack_endpoint(path: Path | str) -> QuackEndpointDiscovery:
+    """Find a live loopback Quack owner bound to this exact DuckDB file."""
+
+    requested = _resolve_store_path(path)
+    env_uri = quack_transport_uri(os.environ.get(QUACK_ENDPOINT_ENV, "") or "")
+    store_id = str(os.environ.get(QUACK_STORE_ID_ENV, "") or "").strip()
+    env_store_matches = False
+    if store_id:
+        env_store_matches = _same_database(store_id, requested) or _same_database(
+            str(_resolve_store_path(store_id)), requested
+        )
+    rejections: list[str] = []
+    for status_path in _candidate_quack_status_paths(requested):
+        if not status_path.is_file():
+            continue
+        status = _read_json_object(status_path)
+        if status is None:
+            rejections.append(f"{status_path}:status_unreadable")
+            continue
+        if not _same_database(_status_database_path(status), requested):
+            continue
+        reason = _reject_status(status, requested, status_path)
+        if reason:
+            rejections.append(f"{status_path}:{reason}")
+            continue
+        assert status is not None
+        uri = _status_listen_uri(status)
+        if env_uri and env_uri != uri:
+            rejections.append(f"{status_path}:env_uri_mismatch")
+            continue
+        return QuackEndpointDiscovery(
+            uri=uri,
+            token=_read_quack_client_token(status_path.parent, status),
+            source="status_file",
+            reason="ready_owner",
+            status_path=str(status_path),
+            details={
+                "lifecycle": str(status.get("lifecycle") or ""),
+                "database_path": _status_database_path(status),
+            },
+        )
+    if env_uri and env_store_matches:
+        return QuackEndpointDiscovery(
+            uri=env_uri,
+            token=str(os.environ.get(QUACK_TOKEN_ENV, "") or "").strip(),
+            source="env",
+            reason="env_endpoint_store_bound",
+            details={"store_id": store_id},
+        )
+    if env_uri:
+        rejections.append(f"{QUACK_ENDPOINT_ENV}:unbound_to_database")
+    reason = "no_live_owner"
+    if rejections:
+        reason = "owner_status_rejected"
+    return QuackEndpointDiscovery(
+        reason=reason,
+        details={"rejections": "; ".join(rejections) if rejections else "status_missing"},
+    )
+
+
+def _format_quack_prefer_log(
+    *,
+    action: str,
+    database: Path | str,
+    discovery: QuackEndpointDiscovery,
+    extra: Mapping[str, Any] | None = None,
+) -> str:
+    parts = [
+        "agent-supervisor quack prefer:",
+        action,
+        f"database={database}",
+        f"reason={discovery.reason}",
+        f"source={discovery.source}",
+    ]
+    if discovery.uri:
+        parts.append(f"uri={discovery.uri}")
+    if discovery.status_path:
+        parts.append(f"status_path={discovery.status_path}")
+    if discovery.token:
+        parts.append("token_present=true")
+    details = dict(discovery.details)
+    if extra:
+        details.update({str(key): extra[key] for key in extra})
+    for key, value in details.items():
+        if value in (None, "", (), [], {}):
+            continue
+        parts.append(f"{key}={value}")
+    return " ".join(parts)
+
+
+def _open_file_duckdb_connection(
+    path: Path | str,
+    *,
+    timeout_seconds: float,
+    memory_limit: str,
+    threads: int,
+) -> DuckDBConnection:
+    connection = DuckDBConnection(
+        path,
+        timeout_seconds=timeout_seconds,
+        memory_limit=memory_limit,
+        threads=threads,
+    )
+    connection._transport_mode = "file"
+    return connection
+
+
 _QUACK_OWNER_DML_PREFIXES = (
     "UPDATE ",
     "DELETE ",
@@ -654,6 +962,71 @@ def _consume_duckdb_result(connection: Any) -> None:
         pass
 
 
+def _quack_parameter_literal(value: Any) -> str:
+    """Render only supported data values for EXECUTE, never SQL identifiers.
+
+    Quack's attached query macro takes one SQL string. PREPARE delegates all
+    placeholder parsing to DuckDB, including comments and quoted question marks.
+    String/blob values are encoded so their contents cannot escape a literal.
+    """
+    import base64
+    import datetime
+    import decimal
+    import math
+
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return repr(value) if math.isfinite(value) else f"'{value}'::DOUBLE"
+    if isinstance(value, decimal.Decimal):
+        if not value.is_finite():
+            raise TypeError("non-finite Decimal Quack parameters are unsupported")
+        return str(value)
+    if isinstance(value, str):
+        encoded = base64.b64encode(value.encode("utf-8")).decode("ascii")
+        return f"decode(from_base64('{encoded}'))"
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        encoded = base64.b64encode(bytes(value)).decode("ascii")
+        return f"from_base64('{encoded}')"
+    if isinstance(value, datetime.datetime):
+        kind = "TIMESTAMPTZ" if value.tzinfo is not None else "TIMESTAMP"
+        return f"{kind} '{value.isoformat()}'"
+    if isinstance(value, datetime.date):
+        return f"DATE '{value.isoformat()}'"
+    if isinstance(value, datetime.time):
+        return f"TIME '{value.isoformat()}'"
+    raise TypeError(f"unsupported Quack bound value type: {type(value).__name__}")
+
+
+def _quack_prepared_sql(
+    statement: str,
+    parameters: Iterable[Any] | Mapping[str, Any] | None,
+) -> str:
+    if parameters is None:
+        return statement
+    if isinstance(parameters, Mapping):
+        values = []
+        for name, value in parameters.items():
+            key = str(name)
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key, re.ASCII):
+                raise ValueError("unsafe Quack named parameter identifier")
+            values.append(f'"{key}" := {_quack_parameter_literal(value)}')
+    else:
+        values = [_quack_parameter_literal(value) for value in parameters]
+    if not values:
+        return statement
+    # PREPARE replaces an existing statement with this private session-local
+    # name, so repeated requests do not accumulate prepared statement objects.
+    return (
+        f"PREPARE __agent_quack_bound_statement AS {statement.rstrip().rstrip(';')}\n; "
+        f"EXECUTE __agent_quack_bound_statement({', '.join(values)})"
+    )
+
+
 def open_quack_transport_connection(
     uri: str,
     *,
@@ -710,6 +1083,7 @@ def open_quack_transport_connection(
         raise
     wrapped = DuckDBConnection.wrap(connection)
     wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+    wrapped._quack_session_queries = True
     return wrapped
 
 
@@ -719,10 +1093,89 @@ def open_duckdb_connection(
     timeout_seconds: float = DEFAULT_LOCK_TIMEOUT_SECONDS,
     memory_limit: str = DEFAULT_MEMORY_LIMIT,
     threads: int = 1,
+    prefer_quack: bool | None = None,
 ) -> DuckDBConnection:
     if is_quack_transport_target(path):
-        return open_quack_transport_connection(path)
-    return DuckDBConnection(
+        connection = open_quack_transport_connection(path)
+        connection._transport_mode = "quack"
+        return connection
+    if prefer_quack is None:
+        prefer_quack = _env_flag(QUACK_PREFER_ENV, default=True)
+    if not prefer_quack:
+        return _open_file_duckdb_connection(
+            path,
+            timeout_seconds=timeout_seconds,
+            memory_limit=memory_limit,
+            threads=threads,
+        )
+    discovery = discover_live_quack_endpoint(path)
+    require = _env_flag(QUACK_REQUIRE_ENV, default=False)
+    if discovery.found:
+        try:
+            connection = open_quack_transport_connection(
+                discovery.uri, token=discovery.token
+            )
+        except Exception as exc:
+            message = _format_quack_prefer_log(
+                action="attach_failed",
+                database=path,
+                discovery=discovery,
+                extra={
+                    "error_type": type(exc).__name__,
+                    "error": exc,
+                },
+            )
+            if require:
+                _LOGGER.error("%s; file fallback disabled by %s", message, QUACK_REQUIRE_ENV)
+                raise DuckDBConnectionPolicyError(message) from exc
+            fallback_timeout = min(
+                float(timeout_seconds),
+                QUACK_LIVE_OWNER_FILE_FALLBACK_TIMEOUT_SECONDS,
+            )
+            _LOGGER.warning(
+                "%s; falling back to exclusive DuckDB file lock_timeout=%s",
+                message,
+                fallback_timeout,
+            )
+            try:
+                return _open_file_duckdb_connection(
+                    path,
+                    timeout_seconds=fallback_timeout,
+                    memory_limit=memory_limit,
+                    threads=threads,
+                )
+            except Exception as fallback_exc:
+                _LOGGER.error(
+                    "%s; file fallback also failed error_type=%s error=%s",
+                    message,
+                    type(fallback_exc).__name__,
+                    fallback_exc,
+                )
+                raise DuckDBConnectionPolicyError(
+                    message + f"; file fallback failed: {fallback_exc}"
+                ) from exc
+        connection._transport_mode = "quack"
+        _LOGGER.info(
+            _format_quack_prefer_log(
+                action="attached",
+                database=path,
+                discovery=discovery,
+            )
+        )
+        return connection
+    message = _format_quack_prefer_log(
+        action="no_live_owner",
+        database=path,
+        discovery=discovery,
+    )
+    if require:
+        _LOGGER.error("%s; file fallback disabled by %s", message, QUACK_REQUIRE_ENV)
+        raise DuckDBConnectionPolicyError(message)
+    if discovery.reason == "owner_status_rejected":
+        _LOGGER.warning("%s; falling back to exclusive DuckDB file", message)
+    else:
+        _LOGGER.info("%s; falling back to exclusive DuckDB file", message)
+    return _open_file_duckdb_connection(
         path,
         timeout_seconds=timeout_seconds,
         memory_limit=memory_limit,
