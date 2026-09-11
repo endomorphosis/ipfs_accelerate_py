@@ -23,7 +23,7 @@ def native_route(tmp_path, monkeypatch):
     events = []
     monkeypatch.setattr(state, "quack_owner_command_dir", lambda *a: pytest.fail("native route fell through to legacy inbox"))
     monkeypatch.setattr(state, "resolve_quack_attach_token", lambda *a: pytest.fail("native route borrowed ambient token"))
-    monkeypatch.setattr(state, "reset_quack_transport_cache", lambda: events.append("cache_reset"))
+    monkeypatch.setattr(state, "reset_quack_transport_cache", lambda **kwargs: events.append(("cache_reset", kwargs)))
     monkeypatch.setattr(typed, "kernel_process_birth_id", lambda: "exact-test-birth")
     monkeypatch.setattr(typed, "typed_owner_socket_path", lambda store: tmp_path / "owner.sock")
     def credential(**kwargs):
@@ -53,6 +53,7 @@ def test_native_socket_route_preserves_explicit_request_identity(native_route):
     assert events[0][1]["process_birth_id"] == "exact-test-birth"
     assert events[1][1]["token"] == "test-issued-token"
     assert events[2][3] == {"command_request_id": "a" * 32}
+    assert events[-1][1] == {"store_id": events[1][1]["store_id"]}
 
 
 @pytest.mark.parametrize("missing", [typed.TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV,
@@ -84,7 +85,7 @@ def test_native_denials_and_unknowns_never_fall_back(native_route, monkeypatch, 
         state.submit_quack_owner_command(
             "record_queue_retry", {"task_cid": "task:one"}, request_id="b" * 32,
         )
-    assert "cache_reset" not in events
+    assert not any(isinstance(event, tuple) and event[0] == "cache_reset" for event in events)
     if failure != "credential":
         assert "close" in events
         assert denied.value.request_id == "b" * 32

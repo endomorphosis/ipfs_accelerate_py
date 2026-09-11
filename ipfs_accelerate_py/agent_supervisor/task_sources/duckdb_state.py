@@ -42,8 +42,6 @@ from .quack_owner_mutation import (
     unlink_mutation_envelope_at,
     write_envelope_atomic_at,
 )
-from contextlib import contextmanager
-
 DEFAULT_LOCK_TIMEOUT_SECONDS = 30.0
 DEFAULT_MEMORY_LIMIT = "256MB"
 DUCKDB_ONLY_ENV = "IPFS_ACCELERATE_DUCKDB_ONLY"
@@ -2701,58 +2699,67 @@ def submit_quack_owner_command(
             typed_owner_socket_path,
         )
 
-        client_id = f"database-task-source:{os.getpid()}"
-        process_birth_id = kernel_process_birth_id()
-        connection = None
-        try:
-            grant = request_database_task_command_credential(
-                store_id=store_id,
-                client_id=client_id,
-                process_birth_id=process_birth_id,
-                timeout_seconds=min(float(timeout_seconds), 30.0),
-            )
-            connection = TypedStateOwnerConnection(
-                socket_path=typed_owner_socket_path(store_id),
-                token=grant,
-                client_id=client_id,
-                process_birth_id=process_birth_id,
-                store_id=store_id,
-                timeout_seconds=float(timeout_seconds),
-            )
-            try:
-                result = connection.execute_database_task_command(
-                    command_name,
-                    command_payload,
-                    command_request_id=request_id,
-                )
-            finally:
-                connection.close()
-        except TypedStateOwnerRemoteError as exc:
-            raise QuackOwnerCommandRemoteError(
-                exc.error_code,
-                "typed owner command rejected",
-                request_id=request_id,
-            ) from exc
-        except TypedStateOwnerDatabaseTaskOutcomeUnknownError as exc:
-            raise QuackOwnerCommandRemoteError(
-                "unknown_external_outcome",
-                "typed owner command outcome requires reconciliation",
-                request_id=request_id,
-            ) from exc
-        except (OSError, TypedStateOwnerError) as exc:
+        write_lock = quack_owner_mutation_write_lock_path(store_id)
+        if write_lock is None:
             raise DuckDBConnectionPolicyError(
-                "typed owner command transport failed closed"
-            ) from exc
-        if not isinstance(result, Mapping):
-            raise QuackOwnerCommandRemoteError(
-                "unknown_external_outcome",
-                "typed owner command returned no admissible result",
-                request_id=request_id,
+                "typed owner command has no accepted-root replica lock path"
             )
-        # Success is acknowledged only after the owner republishes its read
-        # replica. Retire any attachment to the withdrawn prior snapshot.
-        reset_quack_transport_cache()
-        return dict(result)
+        # Native readers hold this store lock through attachment, query and
+        # close. Keep it through publication and eviction so no reader can
+        # straddle this store's replica listener restart.
+        with exclusive_file_lock(write_lock, timeout_seconds=float(timeout_seconds)):
+            client_id = f"database-task-source:{os.getpid()}"
+            process_birth_id = kernel_process_birth_id()
+            connection = None
+            try:
+                grant = request_database_task_command_credential(
+                    store_id=store_id,
+                    client_id=client_id,
+                    process_birth_id=process_birth_id,
+                    timeout_seconds=min(float(timeout_seconds), 30.0),
+                )
+                connection = TypedStateOwnerConnection(
+                    socket_path=typed_owner_socket_path(store_id),
+                    token=grant,
+                    client_id=client_id,
+                    process_birth_id=process_birth_id,
+                    store_id=store_id,
+                    timeout_seconds=float(timeout_seconds),
+                )
+                try:
+                    result = connection.execute_database_task_command(
+                        command_name,
+                        command_payload,
+                        command_request_id=request_id,
+                    )
+                finally:
+                    connection.close()
+            except TypedStateOwnerRemoteError as exc:
+                raise QuackOwnerCommandRemoteError(
+                    exc.error_code,
+                    "typed owner command rejected",
+                    request_id=request_id,
+                ) from exc
+            except TypedStateOwnerDatabaseTaskOutcomeUnknownError as exc:
+                raise QuackOwnerCommandRemoteError(
+                    "unknown_external_outcome",
+                    "typed owner command outcome requires reconciliation",
+                    request_id=request_id,
+                ) from exc
+            except (OSError, TypedStateOwnerError) as exc:
+                raise DuckDBConnectionPolicyError(
+                    "typed owner command transport failed closed"
+                ) from exc
+            if not isinstance(result, Mapping):
+                raise QuackOwnerCommandRemoteError(
+                    "unknown_external_outcome",
+                    "typed owner command returned no admissible result",
+                    request_id=request_id,
+                )
+            # Success is acknowledged only after the owner republishes its read
+            # replica. Retire any attachment to the withdrawn prior snapshot.
+            reset_quack_transport_cache(store_id=store_id)
+            return dict(result)
     target = quack_owner_command_dir()
     if target is None:
         raise DuckDBConnectionPolicyError(
@@ -4779,41 +4786,49 @@ def quack_attach_error_is_contention(exc: BaseException) -> bool:
     return any(marker in text for marker in _QUACK_ATTACH_CONTENTION_MARKERS)
 
 
-def reset_quack_transport_cache(uri: object = "") -> None:
-    """Drop cached loopback Quack attachments (tests and owner restart).
+def reset_quack_transport_cache(uri: object = "", *, store_id: object = "") -> None:
+    """Evict one endpoint, one exact store, or all attachments for teardown.
 
-    When ``uri`` is supplied, evict only that exact admitted endpoint so one
-    temporarily unavailable owner cannot disrupt an unrelated Quack session.
+    Endpoint eviction preserves already borrowed connections. A completed
+    command holds its store's reader lock and may discard that store's old
+    replica attachments. Unrelated and unbound readers remain untouched.
+    The no-argument form is reserved for explicit global teardown.
     """
 
+    endpoint = str(uri or "").strip()
+    store = str(store_id or "").strip()
+    if endpoint and store:
+        raise DuckDBConnectionPolicyError(
+            "Quack cache eviction requires one endpoint or store selector"
+        )
+    if endpoint:
+        target = quack_transport_uri(uri)
+        if target:
+            with _QUACK_ATTACH_LOCK:
+                _QUACK_TRANSPORT_CACHE.pop(target, None)
+        return
     with _QUACK_ATTACH_LOCK:
-        cached = list(_QUACK_TRANSPORT_CACHE.items())
-        _QUACK_TRANSPORT_CACHE.clear()
+        if store:
+            cached = [
+                (key, connection)
+                for key, connection in _QUACK_TRANSPORT_CACHE.items()
+                if isinstance(
+                    binding := getattr(connection, "_quack_mutation_binding", None),
+                    Mapping,
+                ) and binding.get("store_id") == store
+            ]
+            for key, _connection in cached:
+                _QUACK_TRANSPORT_CACHE.pop(key)
+        else:
+            cached = list(_QUACK_TRANSPORT_CACHE.items())
+            _QUACK_TRANSPORT_CACHE.clear()
+    # Native close can wait on a connection's execution gate. Never hold the
+    # global attachment lock while doing it, or block another store's reads.
     for _uri, connection in cached:
         try:
             connection._discard_pooled_connection()
         except Exception:
             pass
-        target = quack_transport_uri(uri) if str(uri or "").strip() else ""
-        if target:
-            # Endpoint-scoped recovery may run while another same-process
-            # reader still holds the pooled wrapper.  Evict it for future
-            # attaches, but never close a session already borrowed elsewhere.
-            # A confirmed owner restart/global teardown uses the no-argument
-            # path below and may close every cached session under the lock.
-            _QUACK_TRANSPORT_CACHE.pop(target, None)
-            cached: list[tuple[str, DuckDBConnection]] = []
-        elif str(uri or "").strip():
-            cached = []
-        else:
-            cached = list(_QUACK_TRANSPORT_CACHE.items())
-            _QUACK_TRANSPORT_CACHE.clear()
-        for _uri, connection in cached:
-            try:
-                connection._pooled = False
-                connection.close()
-            except Exception:
-                pass
 
 
 def _probe_quack_connection(connection: Any) -> None:
