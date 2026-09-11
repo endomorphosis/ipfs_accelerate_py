@@ -6196,6 +6196,30 @@ def parse_agent_implementation_effect_authorization_context(
     grant a new provider effect and must be paired with the exact durable CAS
     record whose ``effect_started_at_ms`` is supplied here.
     """
+    return _parse_agent_implementation_effect_authorization_context_core(
+        value,
+        repo_root=repo_root,
+        effect_started_at_ms=effect_started_at_ms,
+        expected_signer_parent_pid=expected_signer_parent_pid,
+        max_age_ms=max_age_ms,
+    )
+
+
+def _parse_agent_implementation_effect_authorization_context_core(
+    value: object,
+    *,
+    repo_root: Path | str,
+    effect_started_at_ms: int,
+    expected_signer_parent_pid: int,
+    max_age_ms: int,
+    _terminal_workspace: str | None = None,
+) -> AgentImplementationEffectAuthorizationContext | None:
+    """Verify original signed route authority at its durable claim instant.
+
+    This is terminal/recovery validation only.  It deliberately does not
+    grant a new provider effect and must be paired with the exact durable CAS
+    record whose ``effect_started_at_ms`` is supplied here.
+    """
 
     expected = {
         "schema",
@@ -6302,7 +6326,7 @@ def parse_agent_implementation_effect_authorization_context(
         invocation_raw = route_raw.get("invocation_binding")
         if not isinstance(invocation_raw, Mapping):
             return None
-        route = bind_agent_implementation_route_invocation(
+        route = _bind_agent_implementation_route_invocation_core(
             route,
             invocation_raw,
             repo_root=repo_root,
@@ -6310,6 +6334,7 @@ def parse_agent_implementation_effect_authorization_context(
             now_ms=effect_started_at_ms,
             max_age_ms=max_age_ms,
             historical_effect_started_at_ms=effect_started_at_ms,
+            _terminal_workspace=_terminal_workspace,
         )
         invocation = route.invocation_binding
         if (
@@ -6333,7 +6358,7 @@ def parse_agent_implementation_effect_authorization_context(
                 return None
         elif quota_raw:
             return None
-        decision = decide_agent_implementation_fallback(
+        decision = _decide_agent_implementation_fallback_core(
             route,
             repo_root=repo_root,
             failure_receipt=receipt,
@@ -6345,6 +6370,7 @@ def parse_agent_implementation_effect_authorization_context(
             now_ms=effect_started_at_ms,
             max_age_ms=max_age_ms,
             historical_effect_started_at_ms=effect_started_at_ms,
+            _terminal_workspace=_terminal_workspace,
         )
     except (OSError, TypeError, ValueError):
         return None
@@ -6361,6 +6387,186 @@ def parse_agent_implementation_effect_authorization_context(
         decision=decision,
         context_id=str(value.get("context_id")),
     )
+
+
+@dataclass(frozen=True)
+class AgentImplementationTerminalCleanupEvidence:
+    """Immutable historical observation, never a provider launch context.
+
+    The result contains no route-plan, authorization-context, capability, or
+    decision objects. Serialized historical bindings support exact comparison;
+    they remain non-authoritative inputs to the strict public effect APIs.
+    """
+
+    evidence_json: str
+
+
+def observe_agent_implementation_terminal_cleanup(
+    *,
+    store_path: Path | str,
+    expected_store_identity: str,
+    logical_attempt_id: str,
+    repo_root: Path | str,
+    max_age_ms: int,
+) -> AgentImplementationTerminalCleanupEvidence | None:
+    """Reverify completed native Codex cleanup after workspace disposal.
+
+    Only a currently reobserved, noncreating native CAS record admits the
+    private historical lexical-workspace check. Ordinary effect parsing,
+    binding and fallback decisions retain their strict live path checks.
+    """
+    from .agent_supervisor.control.provider_attempt_store import (
+        DurableProviderAttemptCAS,
+    )
+
+    try:
+        if any(
+            not isinstance(v, str) or not v
+            for v in (
+                expected_store_identity,
+                logical_attempt_id,
+            )
+        ):
+            return None
+        store = DurableProviderAttemptCAS(
+            store_path,
+            expected_directory_identity=expected_store_identity,
+            create_if_missing=False,
+        )
+        terminal = store.observe(logical_attempt_id)
+        if terminal is None or terminal.state != "terminal":
+            return None
+        progress = terminal.terminal_cleanup_progress
+        if (
+            terminal.logical_attempt_id != logical_attempt_id
+            or terminal.terminal_returncode != 0
+            or terminal.effect_launch_receipt.get("provider_id") != "codex"
+            or progress.get("phase") != "completion_committed"
+            or not isinstance(progress.get("intent"), Mapping)
+            or progress["intent"].get("docker_absence", {}).get("kind")
+            != "fenced_effect_absence"
+        ):
+            return None
+        captured_route = terminal.authorization_context.get("route_binding")
+        captured_invocation = (
+            captured_route.get("invocation_binding")
+            if isinstance(captured_route, Mapping)
+            else None
+        )
+        workspace = (
+            captured_invocation.get("workspace_path")
+            if isinstance(captured_invocation, Mapping)
+            else None
+        )
+        if not isinstance(workspace, str) or not workspace:
+            return None
+        context = _parse_agent_implementation_effect_authorization_context_core(
+            terminal.authorization_context,
+            repo_root=repo_root,
+            effect_started_at_ms=terminal.effect_started_at_ms,
+            expected_signer_parent_pid=terminal.effect_launch_receipt.get(
+                "effect_owner_pid"
+            ),
+            max_age_ms=max_age_ms,
+            _terminal_workspace=workspace,
+        )
+        if context is None or context.route.invocation_binding is None:
+            return None
+        invocation = context.route.invocation_binding
+        outcome = terminal.terminal_outcome
+        if (
+            invocation.provider_attempt_store != str(store.directory)
+            or invocation.provider_attempt_store_identity != store.directory_identity
+            or invocation.logical_attempt_id != logical_attempt_id
+            or terminal.task_id != invocation.task_id
+            or terminal.worktree_id != invocation.worktree_id
+            or terminal.route_id != context.route.route_id
+            or terminal.decision_id != context.decision.content_id
+            or outcome.get("fallback_dispatched") is not True
+            or outcome.get("fallback_returncode") != 0
+            or outcome.get("fallback_capacity_receipt")
+            or outcome.get("reservation_id") != terminal.reservation_id
+            or outcome.get("decision_id") != terminal.decision_id
+            or outcome.get("effect_launch_receipt") != terminal.effect_launch_receipt
+            or outcome.get("effect_adoption_receipt")
+            != terminal.effect_adoption_receipt
+            or outcome.get("effect_quarantine_receipt") != terminal.quarantine_receipt
+            or outcome.get("effect_quarantine_terminalization_receipt")
+            != terminal.quarantine_terminalization_receipt
+            or not valid_agent_implementation_route_outcome(
+                outcome,
+                receipt=context.failure_receipt,
+                route=context.route,
+                runner_returncode=0,
+            )
+            or terminal.terminal_outcome_id
+            != "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    dict(outcome),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=True,
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest()
+        ):
+            return None
+        proof = {
+            "schema": "candidate-provider-cleanup@1",
+            "task_id": invocation.task_id,
+            "attempt": invocation.attempt,
+            "task_revision_cid": invocation.task_revision_cid,
+            "workspace_path": invocation.workspace_path,
+            "logical_attempt_id": invocation.logical_attempt_id,
+            "invocation_binding_id": invocation.content_id,
+            "provider_attempt_store": str(store.directory),
+            "provider_attempt_store_identity": store.directory_identity,
+            "reservation_id": terminal.reservation_id,
+            "terminal_outcome_id": terminal.terminal_outcome_id,
+            "cleanup_authority_id": terminal.terminal_cleanup_authority["authority_id"],
+            "cleanup_progress_id": progress["progress_id"],
+            "cleanup_completion_id": progress["completion_id"],
+            "provider_returncode": 0,
+            "completion_authority": False,
+        }
+        proof["proof_id"] = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    proof,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=True,
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
+        evidence = json.dumps(
+            {
+                "schema": "agent-implementation-terminal-cleanup-observation@1",
+                "provider_cleanup": proof,
+                "route_binding": context.route.as_binding_dict(),
+                "invocation_binding": invocation.as_dict(),
+                "failure_receipt": dict(context.failure_receipt),
+                "terminal_outcome": dict(outcome),
+                "reservation_content_id": terminal.content_id,
+                "completion_authority": False,
+                "new_effect_authority": False,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        if store.observe(logical_attempt_id) != terminal:
+            return None
+        # Repeat component admission after the bounded CAS/signature reads.
+        if str(resolve_agent_implementation_private_state_path(workspace)) != workspace:
+            return None
+        return AgentImplementationTerminalCleanupEvidence(evidence_json=evidence)
+    except (OSError, TypeError, ValueError, KeyError):
+        return None
 
 
 def _agent_implementation_route_id(
@@ -12346,6 +12552,31 @@ def verify_agent_implementation_invocation_binding(
     historical_effect_started_at_ms: int | None = None,
 ) -> AgentImplementationInvocationBinding:
     """Verify signature, exact route/authority equality, and accepted provenance."""
+    return _verify_agent_implementation_invocation_binding_core(
+        binding,
+        route=route,
+        repo_root=repo_root,
+        workspace=workspace,
+        expected_binding=expected_binding,
+        now_ms=now_ms,
+        max_age_ms=max_age_ms,
+        historical_effect_started_at_ms=historical_effect_started_at_ms,
+    )
+
+
+def _verify_agent_implementation_invocation_binding_core(
+    binding: AgentImplementationInvocationBinding | Mapping[str, object],
+    *,
+    route: AgentImplementationRoutePlan,
+    repo_root: Path | str,
+    workspace: Path | str,
+    expected_binding: Mapping[str, object] | None = None,
+    now_ms: int | None = None,
+    max_age_ms: int | None = None,
+    historical_effect_started_at_ms: int | None = None,
+    _terminal_workspace: str | None = None,
+) -> AgentImplementationInvocationBinding:
+    """Verify signature, exact route/authority equality, and accepted provenance."""
 
     parsed = (
         binding
@@ -12415,9 +12646,17 @@ def verify_agent_implementation_invocation_binding(
     ):
         raise ValueError("signed invocation does not exactly match route authority")
     try:
-        workspace_root = resolve_agent_implementation_private_state_path(
-            workspace
-        ).resolve(strict=True)
+        workspace_root = resolve_agent_implementation_private_state_path(workspace)
+        if _terminal_workspace is None:
+            workspace_root = workspace_root.resolve(strict=True)
+        elif (
+            not historical
+            or not Path(_terminal_workspace).is_absolute()
+            or str(workspace) != _terminal_workspace
+            or parsed.workspace_path != _terminal_workspace
+            or str(workspace_root) != _terminal_workspace
+        ):
+            raise ValueError("terminal observation workspace identity is invalid")
         if not historical:
             observed_head = os.fsdecode(
                 _agent_git_output(
@@ -12450,8 +12689,10 @@ def verify_agent_implementation_invocation_binding(
     # checks.  The accepted capsule is instead the already imported router's
     # source generation and must never be inferred from that candidate.
     Path(repo_root).expanduser().resolve(strict=True)
-    candidate = Path(workspace).expanduser().resolve(strict=True)
-    signed_workspace = Path(parsed.workspace_path).expanduser().resolve(strict=True)
+    candidate = workspace_root
+    signed_workspace = resolve_agent_implementation_private_state_path(parsed.workspace_path)
+    if _terminal_workspace is None:
+        signed_workspace = signed_workspace.resolve(strict=True)
     attempt_store, attempt_store_identity = (
         bind_agent_implementation_attempt_store(
             parsed.provider_attempt_store,
@@ -12605,6 +12846,41 @@ def bind_agent_implementation_route_invocation(
         max_age_ms=max_age_ms,
         historical_effect_started_at_ms=historical_effect_started_at_ms,
     )
+    return _bind_agent_implementation_route_invocation_core(
+        route,
+        binding,
+        repo_root=repo_root,
+        workspace=workspace,
+        expected_binding=expected_binding,
+        now_ms=now_ms,
+        max_age_ms=max_age_ms,
+        historical_effect_started_at_ms=historical_effect_started_at_ms,
+    )
+
+
+def _bind_agent_implementation_route_invocation_core(
+    route: AgentImplementationRoutePlan,
+    binding: AgentImplementationInvocationBinding | Mapping[str, object],
+    *,
+    repo_root: Path | str,
+    workspace: Path | str,
+    expected_binding: Mapping[str, object] | None = None,
+    now_ms: int | None = None,
+    max_age_ms: int | None = None,
+    historical_effect_started_at_ms: int | None = None,
+    _terminal_workspace: str | None = None,
+) -> AgentImplementationRoutePlan:
+    verified = _verify_agent_implementation_invocation_binding_core(
+        binding,
+        route=route,
+        repo_root=repo_root,
+        workspace=workspace,
+        expected_binding=expected_binding,
+        now_ms=now_ms,
+        max_age_ms=max_age_ms,
+        historical_effect_started_at_ms=historical_effect_started_at_ms,
+        _terminal_workspace=_terminal_workspace,
+    )
     return replace(route, invocation_binding=verified)
 
 
@@ -12739,6 +13015,45 @@ def decide_agent_implementation_fallback(
     Generic/untyped errors, overflowed evidence, and mixed auth diagnostics
     never authorize fallback.
     """
+    return _decide_agent_implementation_fallback_core(
+        route,
+        repo_root=repo_root,
+        failure_receipt=failure_receipt,
+        expected_nonce=expected_nonce,
+        expected_model=expected_model,
+        expected_probe_returncode=expected_probe_returncode,
+        independent_quota_evidence=independent_quota_evidence,
+        expected_invocation_binding=expected_invocation_binding,
+        now_ms=now_ms,
+        max_age_ms=max_age_ms,
+        historical_effect_started_at_ms=historical_effect_started_at_ms,
+    )
+
+
+def _decide_agent_implementation_fallback_core(
+    route: AgentImplementationRoutePlan,
+    *,
+    repo_root: Path | str,
+    failure_receipt: Mapping[str, object],
+    expected_nonce: str,
+    expected_model: str,
+    expected_probe_returncode: int,
+    independent_quota_evidence: object | None = None,
+    expected_invocation_binding: Mapping[str, object] | None = None,
+    now_ms: int | None = None,
+    max_age_ms: int | None = None,
+    historical_effect_started_at_ms: int | None = None,
+    _terminal_workspace: str | None = None,
+) -> AgentImplementationFallbackDecision:
+    """Decide the exceptional typed fallback for side-effecting agent work.
+
+    The function has no ambient defaults and revalidates the explicit route
+    binding against ``repo_root`` at each decision boundary. A caller must
+    supply a canonical frozen plan and the actual nonce-bound receipt;
+    caller-provided booleans/classes/hashes never create authority.
+    Generic/untyped errors, overflowed evidence, and mixed auth diagnostics
+    never authorize fallback.
+    """
 
     if historical_effect_started_at_ms is None:
         canonical_route = resolve_agent_implementation_route_binding(
@@ -12770,7 +13085,7 @@ def decide_agent_implementation_fallback(
             fallback_implementer_identity=route.fallback_implementer_identity,
         )
         if route.invocation_binding is not None:
-            canonical_route = bind_agent_implementation_route_invocation(
+            canonical_route = _bind_agent_implementation_route_invocation_core(
                 canonical_route,
                 route.invocation_binding,
                 repo_root=repo_root,
@@ -12781,6 +13096,7 @@ def decide_agent_implementation_fallback(
                 historical_effect_started_at_ms=(
                     historical_effect_started_at_ms
                 ),
+                _terminal_workspace=_terminal_workspace,
             )
     if canonical_route.route_id != route.route_id:
         raise ValueError("agent implementation route identity is invalid")
@@ -12818,7 +13134,7 @@ def decide_agent_implementation_fallback(
                 verifier_status="not_run",
             )
         try:
-            verify_agent_implementation_invocation_binding(
+            _verify_agent_implementation_invocation_binding_core(
                 invocation,
                 route=canonical_route,
                 repo_root=repo_root,
@@ -12829,6 +13145,7 @@ def decide_agent_implementation_fallback(
             historical_effect_started_at_ms=(
                 historical_effect_started_at_ms
             ),
+                _terminal_workspace=_terminal_workspace,
             )
         except (OSError, ValueError):
             return decision(

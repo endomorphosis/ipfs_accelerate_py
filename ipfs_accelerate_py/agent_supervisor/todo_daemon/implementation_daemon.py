@@ -345,6 +345,7 @@ from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor import validated_protected_attempt_latch
 from .supervisor_runtime import run_process_group_stream
+from .candidate_rejection_closure import CandidateClosureObservationUnknown
 from .contract_packet_provider_router import (
     IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
     PROVIDER_EXECUTION_RECEIPT_INTERFACE,
@@ -25368,6 +25369,7 @@ class PortalImplementationDaemon:
                 {"task_ids": sorted(revision_reset_task_ids)},
             )
         implementation_result: dict[str, Any] | None = None
+        candidate_closure_unknown = False
         try:
             if self.implement and selected is not None and resolved_statuses.get(selected.task_id) == "ready":
                 unresolved_for_selected = unresolved_merge_failures.get(selected.task_id)
@@ -25401,6 +25403,9 @@ class PortalImplementationDaemon:
                     self._record_event("implementation_skipped", implementation_result)
                 else:
                     implementation_result = self._run_implementation(selected, state)
+        except CandidateClosureObservationUnknown:
+            candidate_closure_unknown = True
+            raise
         finally:
             retain_selected_intent = bool(
                 selected is not None
@@ -25410,7 +25415,7 @@ class PortalImplementationDaemon:
             )
             self._reconcile_unselected_implementation_dispatch_intents(
                 reusable_dispatch_intents,
-                selected=selected if retain_selected_intent else None,
+                selected=selected if retain_selected_intent or candidate_closure_unknown else None,
                 reason="retained_intent_not_preserved_after_dispatch",
             )
         provider_backoff_result = bool(
@@ -25678,9 +25683,10 @@ class PortalImplementationDaemon:
         except ValueError:
             return DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS
 
+    @staticmethod
     def _protected_provider_effect_audit(
-        self,
         *,
+        repo_root: Path,
         command_items: Sequence[str],
         receipt_text: str,
         returncode: int | None,
@@ -25767,8 +25773,9 @@ class PortalImplementationDaemon:
             store = DurableProviderAttemptCAS(
                 str(store_path),
                 expected_directory_identity=str(store_identity),
+                create_if_missing=False,
             )
-            terminal = store.read(str(logical_attempt_id))
+            terminal = store.observe(str(logical_attempt_id))
             if terminal is None or terminal.state != "terminal":
                 return audit
             launch_owner_pid = terminal.effect_launch_receipt.get(
@@ -25783,7 +25790,7 @@ class PortalImplementationDaemon:
                 return audit
             context = parse_agent_implementation_effect_authorization_context(
                 terminal.authorization_context,
-                repo_root=self.repo_root,
+                repo_root=repo_root,
                 effect_started_at_ms=terminal.effect_started_at_ms,
                 expected_signer_parent_pid=launch_owner_pid,
                 max_age_ms=5 * 60 * 1000,
@@ -25918,6 +25925,40 @@ class PortalImplementationDaemon:
                 "historical_effect_started_at_ms": terminal.effect_started_at_ms,
             }
         )
+        # This is a separate cleanup observation, never task completion or a
+        # retry grant. The store validates the complete immutable CAS chain.
+        progress = terminal.terminal_cleanup_progress
+        if (
+            returncode == 0
+            and terminal.effect_launch_receipt.get("provider_id") == "codex"
+            and outcome.get("fallback_dispatched") is True
+            and progress.get("phase") == "completion_committed"
+            and isinstance(progress.get("intent"), Mapping)
+            and progress["intent"].get("docker_absence", {}).get("kind")
+            == "fenced_effect_absence"
+        ):
+            from .candidate_rejection_closure import sealed
+
+            audit["candidate_provider_cleanup"] = sealed(
+                {
+                    "schema": "candidate-provider-cleanup@1",
+                    "task_id": invocation.task_id,
+                    "attempt": invocation.attempt,
+                    "task_revision_cid": invocation.task_revision_cid,
+                    "workspace_path": invocation.workspace_path,
+                    "logical_attempt_id": invocation.logical_attempt_id,
+                    "invocation_binding_id": invocation.content_id,
+                    "provider_attempt_store": str(store_path),
+                    "provider_attempt_store_identity": str(store_identity),
+                    "reservation_id": terminal.reservation_id,
+                    "terminal_outcome_id": terminal.terminal_outcome_id,
+                    "cleanup_authority_id": terminal.terminal_cleanup_authority["authority_id"],
+                    "cleanup_progress_id": progress["progress_id"],
+                    "cleanup_completion_id": progress["completion_id"],
+                    "provider_returncode": returncode,
+                    "completion_authority": False,
+                }, "proof_id",
+            )
         if capacity_receipt:
             proof_body: dict[str, Any] = {
                 "schema": (
@@ -26059,6 +26100,7 @@ class PortalImplementationDaemon:
         if protected_provenance:
             return self._with_provider_cli_visibility(
                 self._protected_provider_effect_audit(
+                    repo_root=self.repo_root,
                     command_items=command_items,
                     receipt_text=receipt_text,
                     returncode=returncode,
@@ -26081,6 +26123,7 @@ class PortalImplementationDaemon:
                 or not binding_raw
             ):
                 return self._protected_provider_effect_audit(
+                    repo_root=self.repo_root,
                     command_items=command_items,
                     receipt_text=receipt_text,
                     returncode=returncode,
@@ -26110,6 +26153,7 @@ class PortalImplementationDaemon:
                 or binding.get("authorization") is not None
             ):
                 return self._protected_provider_effect_audit(
+                    repo_root=self.repo_root,
                     command_items=command_items,
                     receipt_text=receipt_text,
                     returncode=returncode,
@@ -28143,8 +28187,8 @@ class PortalImplementationDaemon:
     ) -> bool:
         """Allow a closed subclass to retain one durably prepared handoff."""
 
-        del exception
-        return False
+        from .candidate_rejection_closure import CandidateClosureObservationUnknown
+        return isinstance(exception, CandidateClosureObservationUnknown)
 
     def _board_task_is_completed(self, task_id: str) -> bool:
         """Return whether the live board already marked this task completed."""
@@ -28535,6 +28579,7 @@ class PortalImplementationDaemon:
 
         acquired_lock = False
         retain_task_claim_for_handoff = False
+        candidate_closure_unknown = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         try:
             if authority_revalidation_only:
@@ -30241,6 +30286,9 @@ class PortalImplementationDaemon:
                 result["diagnostic_receipt_id"] = diagnostic.receipt_id
             self._record_event("implementation_finished", result)
             return result
+        except CandidateClosureObservationUnknown:
+            candidate_closure_unknown = True
+            raise
         except Exception as exc:
             if self._retain_task_claim_for_handoff_exception(exc):
                 retain_task_claim_for_handoff = True
@@ -30402,42 +30450,43 @@ class PortalImplementationDaemon:
             self._record_event("implementation_finished", result)
             return result
         finally:
-            try:
-                if acquired_lock and not self._release_implementation_lock(
-                    lock_path,
-                    lock_metadata,
-                ):
-                    logger.warning(
-                        "Refusing to remove implementation lock no longer "
-                        "owned by this attempt: %s",
+            if not candidate_closure_unknown:
+                try:
+                    if acquired_lock and not self._release_implementation_lock(
                         lock_path,
-                    )
-            except (OSError, RuntimeError):
-                logger.warning(
-                    "Failed to coordinate removal of implementation lock %s",
-                    lock_path,
-                    exc_info=True,
-                )
-            self._release_implementation_resource_claims(
-                acquired_resource_claims
-            )
-            acquired_resource_claims = []
-            try:
-                if (
-                    acquired_task_claim
-                    and not retain_task_claim_for_handoff
-                    and not self._release_implementation_task_claim(
-                        task_claim_path,
-                        task_claim_metadata,
-                    )
-                ):
+                        lock_metadata,
+                    ):
+                        logger.warning(
+                            "Refusing to remove implementation lock no longer "
+                            "owned by this attempt: %s",
+                            lock_path,
+                        )
+                except (OSError, RuntimeError):
                     logger.warning(
-                        "Refusing to remove implementation task claim no "
-                        "longer owned by this attempt: %s",
-                        task_claim_path,
+                        "Failed to coordinate removal of implementation lock %s",
+                        lock_path,
+                        exc_info=True,
                     )
-            except OSError:
-                logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
+                self._release_implementation_resource_claims(
+                    acquired_resource_claims
+                )
+                acquired_resource_claims = []
+                try:
+                    if (
+                        acquired_task_claim
+                        and not retain_task_claim_for_handoff
+                        and not self._release_implementation_task_claim(
+                            task_claim_path,
+                            task_claim_metadata,
+                        )
+                    ):
+                        logger.warning(
+                            "Refusing to remove implementation task claim no "
+                            "longer owned by this attempt: %s",
+                            task_claim_path,
+                        )
+                except OSError:
+                    logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
 
     @staticmethod
     def _manual_completion_authority_checkout_snapshot(
@@ -44364,6 +44413,8 @@ class PortalImplementationDaemon:
         todo_update_result: dict[str, Any] = {}
         exception_result: dict[str, Any] = {}
         provider_failure: dict[str, Any] = {}
+        candidate_cleanup_evidence: dict[str, Any] = {}
+        candidate_cleanup_required = False
         timeout_result: dict[str, Any] = {}
         timeout_followup_event_type = ""
         pre_dispatch_no_change_result: dict[str, Any] | None = None
@@ -45335,6 +45386,23 @@ class PortalImplementationDaemon:
                     cleanup_result = dict(
                         failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
+            if (
+                returncode == 0 and provider_dispatched
+                and not protected_path_violation
+                and worktree_pool_entry_guard_binding(
+                    worktree_root=self.worktree_root, workspace_path=worktree_path,
+                ).get("pooled") is not True
+                and worktree_path.resolve() not in self._worktree_pool_leases
+            ):
+                candidate_cleanup_required = any(
+                    flag in command for flag in ("--agent-implementation-route-json", "--agent-implementation-recovery-json")
+                )
+                candidate_audit = self._provider_capacity_failure_from_log(
+                    log_path, command=command, returncode=returncode,
+                )
+                candidate_cleanup_evidence = dict(
+                    candidate_audit.get("candidate_provider_cleanup") or {}
+                )
             if returncode == 0 and not protected_path_violation:
                 self._mark_worktree_lifecycle_settling(worktree_path)
                 self._mark_active_phase(
@@ -45785,6 +45853,8 @@ class PortalImplementationDaemon:
                             attempt,
                             validation_result,
                             baseline_ref=baseline_ref,
+                            candidate_cleanup_evidence=candidate_cleanup_evidence,
+                            candidate_cleanup_required=candidate_cleanup_required,
                         )
                         commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
                         implementation_commit = str(commit_result.get("commit", ""))
@@ -47409,7 +47479,10 @@ class PortalImplementationDaemon:
             result["completion_receipt_degraded"] = (
                 completion_receipt_degraded
             )
-        if not merge_result.get("queued"):
+        if (
+            not merge_result.get("queued")
+            and failed_preservation_result.get("reason") != "candidate_provider_cleanup_unverified"
+        ):
             prior_lifecycle_finalize = (
                 cleanup_result.get("lifecycle_finalize")
                 if isinstance(cleanup_result, Mapping)
@@ -52442,18 +52515,57 @@ class PortalImplementationDaemon:
         validation_result: dict[str, Any],
         *,
         baseline_ref: str = "",
+        candidate_cleanup_evidence: Mapping[str, Any] | None = None,
+        candidate_cleanup_required: bool = False,
     ) -> dict[str, Any]:
-        return self._preserve_interrupted_worktree(
-            worktree_path,
-            branch_name,
-            task,
-            attempt,
-            evidence=validation_result,
-            rescue_suffix="failed-validation",
-            event_type="failed_validation_worktree_preserved",
-            evidence_field="validation_result",
-            baseline_ref=baseline_ref,
-        )
+        if candidate_cleanup_required and not candidate_cleanup_evidence:
+            # A synchronously returned wrapper is not proof that its protected
+            # provider effect/cleanup finished. Retain original workspace and
+            # lifecycle custody; even a rescue commit would race unknown work.
+            result = {
+                "task_id": task.task_id, "attempt": attempt,
+                "worktree_path": str(worktree_path), "branch": branch_name,
+                "preserved": False, "reason": "candidate_provider_cleanup_unverified",
+                "cleanup_result": {"cleaned": False, "reason": "candidate_provider_cleanup_unverified"},
+                "completion_authority": False,
+            }
+            try:
+                self._record_event("candidate_rejection_cleanup_unverified", result)
+            except Exception as exc:
+                raise CandidateClosureObservationUnknown(
+                    "candidate provider cleanup unverified; diagnostic append unavailable"
+                ) from exc
+            raise CandidateClosureObservationUnknown("candidate provider cleanup unverified")
+        try:
+            result = self._preserve_interrupted_worktree(
+                worktree_path,
+                branch_name,
+                task,
+                attempt,
+                evidence=validation_result,
+                rescue_suffix="failed-validation",
+                event_type="failed_validation_worktree_preserved",
+                evidence_field="validation_result",
+                baseline_ref=baseline_ref,
+                candidate_cleanup_evidence=candidate_cleanup_evidence,
+            )
+            cleanup = result.get("cleanup_result") or {}
+            finalized = cleanup.get("lifecycle_finalize") or {}
+            if candidate_cleanup_required and (
+                result.get("preserved") is not True
+                or cleanup.get("cleaned") is not True
+                or finalized.get("finalized") is not True
+                or not finalized.get("terminal_callback")
+                or not finalized.get("released_callback")
+            ):
+                raise CandidateClosureObservationUnknown("candidate lifecycle release remains unverified")
+            return result
+        except CandidateClosureObservationUnknown:
+            raise
+        except Exception as exc:
+            if candidate_cleanup_required:
+                raise CandidateClosureObservationUnknown("protected candidate preservation/closure incomplete") from exc
+            raise
 
     def _preserve_timed_out_worktree(
         self,
@@ -52695,6 +52807,7 @@ class PortalImplementationDaemon:
         event_type: str,
         evidence_field: str,
         baseline_ref: str = "",
+        candidate_cleanup_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         started_at = utc_now()
         pruned_seeded_context = self._drop_unchanged_seeded_worktree_context(
@@ -52722,7 +52835,27 @@ class PortalImplementationDaemon:
                 ["branch", "-f", rescue_branch, preserved_commit],
                 cwd=self.repo_root,
             )
-        cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+        lifecycle_callbacks = None
+        if candidate_cleanup_evidence and not (preserved_commit and rescue_branch):
+            raise CandidateClosureObservationUnknown("candidate preservation is incomplete")
+        if candidate_cleanup_evidence and preserved_commit and rescue_branch:
+            from .candidate_rejection_closure import CandidateLifecycleHandoff
+
+            handoff = CandidateLifecycleHandoff(
+                cleanup=candidate_cleanup_evidence,
+                record_event=self._record_event,
+                task_id=task.task_id,
+                attempt=attempt,
+                workspace_path=str(worktree_path),
+                branch=branch_name,
+                preserved_commit=preserved_commit,
+                rescue_branch=rescue_branch,
+            )
+            lifecycle_callbacks = (handoff.terminal, handoff.released)
+        cleanup_result = self._cleanup_merged_worktree(
+            worktree_path, branch_name,
+            **({"lifecycle_callbacks": lifecycle_callbacks} if lifecycle_callbacks else {}),
+        )
         result = {
             "task_id": task.task_id,
             "attempt": attempt,
@@ -71275,6 +71408,7 @@ class PortalImplementationDaemon:
             ]
             | None
         ) = None,
+        released_callback: Callable[[WorkspaceLifecycleRecord, WorkspaceLifecycleRecord], Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Terminalize only the captured lease/fence for a released workspace.
 
@@ -71284,6 +71418,9 @@ class PortalImplementationDaemon:
         lease therefore capture their record first and finalize this exact
         compare-and-swap identity.
         """
+
+        if released_callback is not None and terminal_callback is None:
+            raise ValueError("lifecycle release observation requires prior terminal callback")
 
         def _clear_captured_active() -> None:
             current = self._active_worktree_lifecycle
@@ -71343,10 +71480,14 @@ class PortalImplementationDaemon:
                             "a mapping or None"
                         )
                     terminal_callback_result = dict(callback_result)
-            deleted = self.worktree_lifecycle.compare_and_delete(
-                terminal.workspace_path,
-                expected_fence=terminal.fence,
-                lease_id=terminal.lease_id,
+            deleted = (
+                self.worktree_lifecycle.compare_and_delete_observed(terminal)
+                if released_callback is not None
+                else self.worktree_lifecycle.compare_and_delete(
+                    terminal.workspace_path,
+                    expected_fence=terminal.fence,
+                    lease_id=terminal.lease_id,
+                )
             )
             _clear_captured_active()
             if not deleted:
@@ -71359,11 +71500,18 @@ class PortalImplementationDaemon:
                     "attempt_consumed": False,
                     "provider_call_allowed": False,
                 }
+            released_callback_result: dict[str, Any] = {}
+            if released_callback is not None:
+                observed_release = released_callback(record, terminal)
+                if not isinstance(observed_release, Mapping):
+                    raise TypeError("lifecycle release callback must return a mapping")
+                released_callback_result = dict(observed_release)
             return {
                 "finalized": True,
                 "reason": reason,
                 "fence": terminal.fence,
                 "state": terminal.state.value,
+                **({"released_callback": released_callback_result} if released_callback_result else {}),
                 **(
                     {"terminal_callback": terminal_callback_result}
                     if terminal_callback_result
@@ -71551,6 +71699,7 @@ class PortalImplementationDaemon:
         allow_missing_pool_metadata_cleanup: bool = False,
         implementation_started: bool | None = None,
         provider_dispatched: bool | None = None,
+        lifecycle_callbacks: tuple[Callable[..., Any], Callable[..., Any]] | None = None,
     ) -> dict[str, Any]:
         """Clean one checkout under its exact pool publication guard."""
 
@@ -71561,6 +71710,7 @@ class PortalImplementationDaemon:
                 reusable=reusable,
                 implementation_started=implementation_started,
                 provider_dispatched=provider_dispatched,
+                lifecycle_callbacks=lifecycle_callbacks,
             )
         pool_binding = worktree_pool_entry_guard_binding(
             worktree_root=self.worktree_root,
@@ -71570,6 +71720,8 @@ class PortalImplementationDaemon:
             "valid": True,
             "reason": "non_pooled_worktree_preimage_unchanged",
         }
+        if lifecycle_callbacks is not None and pool_binding.get("pooled") is True:
+            raise ValueError("candidate closure does not admit pooled custody")
         if pool_binding.get("pooled") is True:
             observed_preimage = self._cleanup_worktree_mutation_preimage(
                 worktree_path,
@@ -71617,6 +71769,7 @@ class PortalImplementationDaemon:
                     reusable=False,
                     implementation_started=implementation_started,
                     provider_dispatched=provider_dispatched,
+                    lifecycle_callbacks=lifecycle_callbacks,
                 )
         with guarded_worktree_pool_mutation(
             repo_root=self.repo_root,
@@ -71676,6 +71829,7 @@ class PortalImplementationDaemon:
                 reusable=reusable,
                 implementation_started=implementation_started,
                 provider_dispatched=provider_dispatched,
+                lifecycle_callbacks=lifecycle_callbacks,
             )
 
     def _cleanup_worktree_mutation_preimage(
@@ -71896,6 +72050,7 @@ class PortalImplementationDaemon:
         reusable: bool = True,
         implementation_started: bool | None = None,
         provider_dispatched: bool | None = None,
+        lifecycle_callbacks: tuple[Callable[..., Any], Callable[..., Any]] | None = None,
     ) -> dict[str, Any]:
         started_at = utc_now()
         lifecycle_record = self._active_worktree_lifecycle
@@ -71936,6 +72091,8 @@ class PortalImplementationDaemon:
             except OSError:
                 lease_key = worktree_path
             lease = self._worktree_pool_leases.get(lease_key)
+        if lifecycle_callbacks is not None and lease is not None:
+            raise ValueError("candidate closure does not admit pooled custody")
         if lease is not None:
             missing_release_context: dict[str, Any] | None = None
             if (
@@ -72091,6 +72248,11 @@ class PortalImplementationDaemon:
                 self._finalize_exact_worktree_lifecycle(
                     lifecycle_record,
                     reason="worktree_cleaned",
+                    **(
+                        {"terminal_callback": lifecycle_callbacks[0],
+                         "released_callback": lifecycle_callbacks[1]}
+                        if lifecycle_callbacks is not None else {}
+                    ),
                 )
                 if lifecycle_record is not None
                 else {
@@ -99879,6 +100041,235 @@ class DatabaseImplementationDaemon:
 
         raise DatabasePortalBridgeDeferred(reason)
 
+    def _bound_candidate_rejection_closure(self, attempt, expected=None, *, callback=None):
+        from .database_portal_bridge import DatabasePortalExecutionBridge
+
+        bound = callback or self._provider_fn
+        bridge = getattr(bound, "__self__", None)
+        if (
+            self._uses_quack_command_gateway()
+            or type(bridge) is not DatabasePortalExecutionBridge
+            or getattr(bound, "__func__", None)
+            is not DatabasePortalExecutionBridge.run_provider
+        ):
+            return None
+        return bridge.verify_candidate_rejection_closure(attempt, expected)
+
+    def _candidate_callback_receipt(self, attempt, prior, *, key, callback=None):
+        """Reverify an exact rejection journal; codes never supply authority."""
+        from .candidate_rejection_closure import CALLBACK_SCHEMA, CLOSURE_SCHEMA, exact_seal
+        from .candidate_failure_diagnostics import normalize_candidate_failure_diagnostics
+
+        if not isinstance(prior, Mapping) or prior.get("schema") != CALLBACK_SCHEMA:
+            return None
+        if (
+            set(prior)
+            != {
+                "schema",
+                "original_intent",
+                "failure_fingerprint",
+                "closure",
+                "diagnostic_summary",
+                "callback_state",
+                "provider_effect_state",
+                "completion_authority",
+                "receipt_id",
+            }
+            or not exact_seal(prior)
+            or not exact_seal(prior.get("closure"))
+            or prior["closure"].get("schema") != CLOSURE_SCHEMA
+            or prior.get("callback_state") != "returned_candidate_rejection"
+            or prior.get("provider_effect_state") != "terminal_cleanup_complete"
+            or prior.get("completion_authority") is not False
+            or normalize_candidate_failure_diagnostics(prior.get("diagnostic_summary"))
+            != prior.get("diagnostic_summary")
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "candidate callback receipt malformed"
+            )
+        unknown = _sealed_database_provider_callback_unknown_evidence(
+            prior.get("original_intent")
+        )
+        identity = {
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "task_cid": attempt.task_cid,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "idempotency_key": key,
+        }
+        if (
+            any(unknown.get(k) != v for k, v in identity.items())
+            or prior.get("failure_fingerprint") != unknown["failure_fingerprint"]
+            or unknown.get("database_binding_id") != ""
+            or unknown.get("portal_failure_fingerprint") != ""
+            or any(
+                unknown.get(k) != prior["closure"].get(k)
+                for k in ("task_contract_digest", "repository_tree_id")
+            )
+            or self._bound_candidate_rejection_closure(
+                attempt, prior.get("closure"), callback=callback
+            )
+            != prior.get("closure")
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "candidate callback closure unavailable or foreign"
+            )
+        return dict(prior)
+
+    def _commit_candidate_callback_closure(
+        self,
+        attempt,
+        *,
+        key,
+        invocation_id,
+        original,
+        closure,
+        callback=None,
+        diagnostic_summary=None,
+    ):
+        from .candidate_rejection_closure import CALLBACK_SCHEMA, sealed
+        from .candidate_failure_diagnostics import normalize_candidate_failure_diagnostics
+
+        unknown = _sealed_database_provider_callback_unknown_evidence(original)
+        admitted = self._bound_candidate_rejection_closure(
+            attempt, closure, callback=callback
+        )
+        if admitted is None:
+            raise DatabaseImplementationAuthorityError(
+                "candidate callback closure unavailable"
+            )
+        identity = {
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "task_cid": attempt.task_cid,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "idempotency_key": key,
+            "task_contract_digest": admitted["task_contract_digest"],
+            "repository_tree_id": admitted["repository_tree_id"],
+            "database_binding_id": "",
+            "portal_failure_fingerprint": "",
+        }
+        if any(unknown.get(k) != v for k, v in identity.items()):
+            raise DatabaseImplementationAuthorityError(
+                "candidate closure has foreign original callback binding"
+            )
+        value = sealed(
+            {
+                "schema": CALLBACK_SCHEMA,
+                "original_intent": dict(unknown),
+                "failure_fingerprint": unknown["failure_fingerprint"],
+                "closure": admitted,
+                "diagnostic_summary": normalize_candidate_failure_diagnostics(
+                    diagnostic_summary
+                ),
+                "callback_state": "returned_candidate_rejection",
+                "provider_effect_state": "terminal_cleanup_complete",
+                "completion_authority": False,
+            }
+        )
+        self._protect_attempt_write(attempt)
+        updated = (
+            self._require_connection()
+            .execute(
+                "UPDATE provider_invocations SET result_json = ?, recorded_at_ms = ? "
+                "WHERE invocation_id = ? AND attempt_id = ? AND idempotency_key = ? AND result_json = ? "
+                "RETURNING invocation_id",
+                [
+                    _database_daemon_json(value),
+                    self._now_ms(),
+                    invocation_id,
+                    attempt.attempt_id,
+                    key,
+                    _database_daemon_json(original),
+                ],
+            )
+            .fetchone()
+        )
+        if updated is None:
+            observed = self.provider_invocation_recorded(
+                attempt.attempt_id, idempotency_key=key
+            )
+            if observed != value:
+                raise DatabaseImplementationConflictError(
+                    "candidate callback intent changed before closure"
+                )
+        self._record_event(
+            "provider_callback_candidate_rejected_closed",
+            attempt_id=attempt.attempt_id,
+            task_cid=attempt.task_cid,
+            body={
+                "idempotency_key": key,
+                "receipt_id": value["receipt_id"],
+                "failure_fingerprint": unknown["failure_fingerprint"],
+            },
+        )
+        return value
+
+    def _reconcile_closed_candidate_claim(self, attempt):
+        """Replay only a separately closed callback after ordinary retry CAS."""
+        from .candidate_rejection_closure import CALLBACK_SCHEMA
+
+        prior = self.provider_invocation_recorded(
+            attempt.attempt_id, idempotency_key=f"provider:{attempt.attempt_id}"
+        )
+        if isinstance(prior, Mapping) and prior.get("schema") == CALLBACK_SCHEMA:
+            self._release_closed_candidate_claim(attempt)
+
+    def _release_closed_candidate_claim(self, attempt):
+        """Release only a verified returned callback after exact retry CAS."""
+        key = f"provider:{attempt.attempt_id}"
+        prior = self.provider_invocation_recorded(attempt.attempt_id, idempotency_key=key)
+        receipt = self._candidate_callback_receipt(attempt, prior, key=key)
+        if receipt is None:
+            raise DatabaseImplementationAuthorityError(
+                "candidate claim has no closed callback"
+            )
+        task = self.task_source.get(attempt.task_cid)
+        control = (getattr(task, "body", {}) or {}).get("completion_receipt")
+        if (
+            getattr(task, "status", None) != "retrying"
+            or not isinstance(control, Mapping)
+            or control.get("operation") != "database_portal_retry"
+            or control.get("reason") != receipt["closure"]["reason"]
+            or any(
+                control.get(k) != getattr(attempt, k)
+                for k in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "candidate release requires exact canonical retry receipt"
+            )
+        if self.coordinator.get_prepared_task_completion(attempt.task_cid) is not None:
+            raise DatabaseImplementationAuthorityError(
+                "candidate release cannot cross prepared completion"
+            )
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        if claim is None:
+            raise DatabaseImplementationAuthorityError("candidate claim unavailable")
+        state = str(getattr(claim.state, "value", claim.state))
+        if state == "released":
+            return
+        if state != "accepted" or int(claim.expires_at_ms) <= self._now_ms():
+            raise DatabaseImplementationAuthorityError(
+                "candidate release requires current live accepted fence"
+            )
+        self._release_exact_attempt_lease(
+            attempt, reason="verified_candidate_rejection_closed"
+        )
+
     def run_provider(
         self,
         attempt: DatabaseTaskAttempt,
@@ -99922,6 +100313,10 @@ class DatabaseImplementationDaemon:
                 attempt.attempt_id, idempotency_key=key
             )
         if prior is not None:
+            from .database_portal_bridge import DatabasePortalCandidateRejectedClosed
+            closed = self._candidate_callback_receipt(attempt, prior, key=key, callback=provider_fn)
+            if closed is not None:
+                raise DatabasePortalCandidateRejectedClosed(closed["closure"], diagnostic_summary=closed["diagnostic_summary"])
             if prior.get("schema") == DATABASE_PROVIDER_CALLBACK_DEFERRED_SCHEMA:
                 try:
                     deferred = (
@@ -99982,6 +100377,19 @@ class DatabaseImplementationDaemon:
                     raise DatabaseImplementationConflictError(
                         "provider callback intent does not match the exact attempt"
                     )
+                closure = self._bound_candidate_rejection_closure(attempt, callback=provider_fn)
+                if closure is not None:
+                    row = self._require_connection().execute(
+                        "SELECT invocation_id FROM provider_invocations WHERE attempt_id = ? AND idempotency_key = ?",
+                        [attempt.attempt_id, key],
+                    ).fetchone()
+                    if row is None:
+                        raise DatabaseImplementationConflictError("candidate callback original intent disappeared")
+                    closed = self._commit_candidate_callback_closure(
+                        attempt, key=key, invocation_id=row[0], original=unknown,
+                        closure=closure, callback=provider_fn,
+                    )
+                    raise DatabasePortalCandidateRejectedClosed(closed["closure"], diagnostic_summary=closed["diagnostic_summary"])
                 raise DatabaseProviderCallbackOutcomeUnknownError(
                     failure_evidence=unknown
                 )
@@ -100087,8 +100495,15 @@ class DatabaseImplementationDaemon:
                     )
                 )
             except Exception as exc:
-                from .database_portal_bridge import DatabasePortalBridgeDeferred
+                from .database_portal_bridge import DatabasePortalBridgeDeferred, DatabasePortalCandidateRejectedClosed
 
+                if isinstance(exc, DatabasePortalCandidateRejectedClosed):
+                    self._commit_candidate_callback_closure(
+                        attempt, key=key, invocation_id=invocation_id,
+                        original=callback_intent, closure=exc.closure_receipt,
+                        callback=callback, diagnostic_summary=exc.diagnostic_summary,
+                    )
+                    raise
                 if (
                     not isinstance(exc, DatabasePortalBridgeDeferred)
                     or getattr(exc, "provider_dispatched", None) is not False
@@ -123415,6 +123830,7 @@ class DatabaseImplementationDaemon:
                     "failed_attempt_coordination_superseded"
                 ):
                     outcome["coordination"] = coordination
+                    self._reconcile_closed_candidate_claim(attempt)
                 # Legacy untyped retry receipts predate the carried seed
                 # contracts below.  Once their exact queue entry and control
                 # CAS are both durable, an idempotent replay is settled work,
@@ -123466,6 +123882,7 @@ class DatabaseImplementationDaemon:
                 "failed_attempt_coordination_superseded"
             ):
                 outcome["coordination"] = coordination
+                self._reconcile_closed_candidate_claim(attempt)
             outcomes.append(outcome)
         return outcomes
 
@@ -124927,6 +125344,13 @@ class DatabaseImplementationDaemon:
                 }
 
         try:
+            if attempt.committed_phase == ATTEMPT_PHASE_FAILED:
+                key = f"provider:{attempt.attempt_id}"
+                prior = self.provider_invocation_recorded(attempt.attempt_id, idempotency_key=key)
+                closed = self._candidate_callback_receipt(attempt, prior, key=key)
+                if closed is not None:
+                    from .database_portal_bridge import DatabasePortalCandidateRejectedClosed
+                    raise DatabasePortalCandidateRejectedClosed(closed["closure"], diagnostic_summary=closed["diagnostic_summary"])
             return self.resume_attempt(attempt)
         except Exception as exc:
             from .database_portal_bridge import (
@@ -125460,6 +125884,9 @@ class DatabaseImplementationDaemon:
                         terminal,
                         reason=reason,
                     )
+                from .database_portal_bridge import DatabasePortalCandidateRejectedClosed
+                if isinstance(exc, DatabasePortalCandidateRejectedClosed):
+                    self._release_closed_candidate_claim(terminal)
                 if deferred and backoff_seconds == 0:
                     # A zero-backoff typed deferral is immediately retryable.
                     # Release the exact fence after retry CAS so claim_next can
