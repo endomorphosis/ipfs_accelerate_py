@@ -1837,6 +1837,24 @@ def _native_dispatch_drain_runtime() -> Any:
         sys.path[:] = prior_path
 
 
+def _writer_recovery_runtime() -> Any:
+    """Resolve the recovery mechanism and observations from this exact checkout."""
+    prior_path = list(sys.path)
+    try:
+        sys.path.insert(0, str(REPO_ROOT))
+        from ipfs_accelerate_py.agent_supervisor.runtime import sawm_writer_recovery
+        for module, name in ((sawm_writer_recovery, 'sawm_writer_recovery'),
+                             (sawm_writer_recovery.process, 'native_graceful_recovery'),
+                             (sawm_writer_recovery.observation, 'owner_status_observation')):
+            if Path(module.__file__).resolve() != (
+                REPO_ROOT / 'ipfs_accelerate_py/agent_supervisor/runtime' / (name+'.py')
+            ).resolve():
+                raise OperatorError('native writer recovery runtime source differs')
+        return sawm_writer_recovery
+    finally:
+        sys.path[:] = prior_path
+
+
 def _delegate_repair_service_launch(arguments: Sequence[str]) -> int | None:
     """Import the lifetime helper from this checkout before native admission."""
     prior_path = list(sys.path)
@@ -29848,10 +29866,18 @@ def build_parser() -> argparse.ArgumentParser:
         "validate-dependencies", "validate-board", "materialize", "render", "check",
         "quack-start", "quack-status", "quack-ready", "quack-stop", "status",
         "quack-recover-stale", "preflight", "dry-run", "drain-request", "drain-status",
+        "writer-recovery-inspect",
     ):
         sub.add_parser(command)
     release = sub.add_parser("drain-release")
     release.add_argument("--request-id", required=True)
+    recover = sub.add_parser("writer-recovery-close")
+    recover.add_argument("--expected-manifest", type=Path, required=True)
+    recover.add_argument("--expected-sha256", required=True)
+    recover.add_argument("--journal", type=Path, required=True)
+    recover.add_argument("--watchdog-config", type=Path,
+                         default=Path.home()/".config/ipfs-taskboard-watchdog/fleet.json")
+    recover.add_argument("--timeout-seconds", type=float, default=30)
     launch = sub.add_parser("launch")
     launch.add_argument("--foreground", action="store_true")
     launch.add_argument("--duration-seconds", type=float, default=float("inf"))
@@ -29869,6 +29895,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return delegated
         config_path = args.config if args.config.is_absolute() else REPO_ROOT / args.config
         config = _config(config_path)
+        if args.command in {"writer-recovery-inspect", "writer-recovery-close"}:
+            recovery = _writer_recovery_runtime()
+            if _M70_SUCCESSOR_KEY not in config:
+                raise OperatorError("writer recovery requires the native M70 configuration")
+            _active_source_repair_materialization(config)
+            if args.command == "writer-recovery-inspect":
+                return _emit(recovery.inspect(REPO_ROOT,config_path,config))
+            raw = recovery.observation._read_bounded(args.expected_manifest,262144)
+            if hashlib.sha256(raw).hexdigest() != args.expected_sha256:
+                raise OperatorError("reviewed writer recovery manifest digest changed")
+            expected = recovery.observation._decode(raw)
+            exclusion = recovery.startup_exclusion(REPO_ROOT,config,args.watchdog_config)
+            with recovery.recovery_journal(args.journal,args.expected_sha256) as record_phase:
+                result = recovery.close_reviewed(root=REPO_ROOT,config_path=config_path,
+                    config=config,expected=expected,startup_exclusion_gate=exclusion,
+                    record_phase=record_phase,timeout_seconds=args.timeout_seconds)
+            return _emit(result)
         if args.command in {"drain-request", "drain-status", "drain-release"}:
             dispatch_runtime = _native_dispatch_drain_runtime()
             source = _isolated_exact_source_git("rev-parse", "HEAD", "HEAD^{tree}", cwd=REPO_ROOT, timeout=10)
