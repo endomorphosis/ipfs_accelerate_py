@@ -52,6 +52,9 @@ sys.path[:] = [
     ],
 ]
 
+from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import (
+    hashing_lock,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_command_binding import (
     ensure_provider_command_bindings,
     recover_provider_command_name_error,
@@ -1545,8 +1548,19 @@ def _repository_head(workspace: Path) -> str:
 
 
 def _workspace_content_fingerprint(workspace: Path) -> str:
-    """Hash every workspace path, file byte, mode, and symlink target."""
+    """Hash every workspace path, file byte, mode, and symlink target.
 
+    The digest is order-stable and single-threaded.  Concurrent lanes must
+    not each walk a multi-gigabyte worktree at once: under CPU or memory
+    pressure the hasher takes a host-wide exclusive lock so hashing cannot
+    hang the machine with overlapping SHA-256 streams.
+    """
+
+    with hashing_lock(kind="workspace-fingerprint", exclusive=True):
+        return _workspace_content_fingerprint_unlocked(workspace)
+
+
+def _workspace_content_fingerprint_unlocked(workspace: Path) -> str:
     digest = hashlib.sha256()
     try:
         for root, directories, files in os.walk(
