@@ -43,8 +43,10 @@ def ordinary_finalized_disposition(
                or task_identity[k] != control_claim[k]
                for k in CONTROL_FIELDS - {"revision"})
         or receipt.get("validation_spec_cid") != control_claim["validation_spec_cid"]
+        or any(name in receipt and type(receipt[name]) is not bool
+               for name in ("attempt_consumed", "forced_block"))
         or receipt.get("attempt_consumed") is False
-        or receipt.get("terminal_reconciliation")
+        or "terminal_reconciliation" in receipt
         or type(receipt.get("retry_exhausted")) is not bool
     ):
         return ""
@@ -54,6 +56,8 @@ def ordinary_finalized_disposition(
                 and receipt["retry_exhausted"]):
             return "blocked_unknown_outcome"
     elif operation in {"database_retry_rearmed", "database_retry_exhausted"}:
+        if receipt["retry_exhausted"] != (operation == "database_retry_exhausted"):
+            return ""
         expected_status = "blocked" if receipt["retry_exhausted"] else "retrying"
         if task_status == expected_status and not receipt.get("forced_block"):
             return "terminalized_for_retry"

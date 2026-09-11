@@ -53,3 +53,35 @@ def test_rejects_changed_authority(section, key, value):
     data = inputs()
     data[section][key] = value
     assert ordinary_finalized_disposition(**data) == ""
+
+
+@pytest.mark.parametrize("field", ["attempt_consumed", "forced_block"])
+@pytest.mark.parametrize("value", [None, 0, 1, "", "false", [], {}])
+def test_rejects_present_nonboolean_finalizer_flags(field, value):
+    data = inputs()
+    data["receipt"][field] = value
+    assert ordinary_finalized_disposition(**data) == ""
+
+
+@pytest.mark.parametrize("value", [None, False, 0, "", [], {}])
+def test_present_saga_marker_never_becomes_ordinary_finalization(value):
+    data = inputs()
+    data["receipt"]["terminal_reconciliation"] = value
+    assert ordinary_finalized_disposition(**data) == ""
+
+
+@pytest.mark.parametrize("exhausted", [False, True])
+def test_operation_must_agree_with_committed_retry_budget(exhausted):
+    data = inputs()
+    data["receipt"]["retry_exhausted"] = exhausted
+    data["task_status"] = "blocked" if exhausted else "retrying"
+    data["receipt"]["operation"] = (
+        "database_retry_rearmed" if exhausted else "database_retry_exhausted"
+    )
+    assert ordinary_finalized_disposition(**data) == ""
+
+
+def test_explicit_consumed_and_unforced_flags_retain_ordinary_receipt():
+    data = inputs()
+    data["receipt"].update(attempt_consumed=True, forced_block=False)
+    assert ordinary_finalized_disposition(**data) == "terminalized_for_retry"
