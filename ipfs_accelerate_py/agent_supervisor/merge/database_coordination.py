@@ -5914,6 +5914,114 @@ class DatabaseCoordinator:
                 self._rollback_if_open(connection)
                 raise
 
+    def observe_rearmed_failed_task_claim(
+        self,
+        claim: TaskClaim | Mapping[str, Any],
+        *,
+        failure_receipt: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Observe an exact historical failure after its operator rearm.
+
+        This performs no expiry sweep, fence refresh, settlement, or event
+        write. A later claim may own the task; its authority is untouched.
+        None means no rearm event exists, so ordinary settlement still applies.
+        Present but contradictory history always raises.
+        """
+        identity = self._task_claim_identity(claim)
+        receipt = self._validate_task_claim_failure_receipt(
+            failure_receipt, identity=identity,
+        )
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.TASK, scope=str(identity["task_cid"]),
+        )
+        with self._lock:
+            connection = self._require()
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                rows = connection.execute(
+                    """
+                    SELECT event_id, body_json FROM lease_events
+                    WHERE lease_id = ? AND scope_key = ? AND event_type = ?
+                      AND fencing_token = ? AND fence_epoch = ?
+                    ORDER BY event_id LIMIT 2
+                    """,
+                    [identity["lease_id"], scope_key,
+                     TASK_CLAIM_FAILURE_REARMED_EVENT,
+                     identity["fencing_token"], identity["fence_epoch"]],
+                ).fetchall()
+                if not rows:
+                    connection.execute("COMMIT")
+                    return None
+                if len(rows) != 1:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "historical failed claim must have exactly one rearm event"
+                    )
+                stored_claim = self.get_task_claim(str(identity["claim_id"]))
+                stored_attempt = self.get_task_attempt(str(identity["attempt_id"]))
+                lease = self.get_lease(str(identity["lease_id"]))
+                if (
+                    stored_claim is None or stored_attempt is None or lease is None
+                    or self._task_claim_identity(stored_claim) != identity
+                    or stored_claim.state is not LeaseState.RELEASED
+                    or lease.state is not LeaseState.RELEASED
+                    or stored_attempt.status is not AttemptStatus.FAILED
+                    or lease.lease_kind is not LeaseKind.TASK
+                    or lease.scope_key != scope_key
+                    or lease.mode is not LeaseMode.EXCLUSIVE
+                    or stored_claim.expires_at_ms != lease.expires_at_ms
+                    or any(getattr(lease, name) != value
+                           for name, value in identity.items())
+                    or any(getattr(stored_attempt, name) != identity[name]
+                           for name in ("attempt_id", "task_cid", "attempt_number",
+                                        "owner_session_id", "fencing_token", "fence_epoch"))
+                ):
+                    raise DatabaseCoordinationStaleFenceError(
+                        "historical rearm lost its exact released failed tuple"
+                    )
+                token_rows = connection.execute(
+                    """SELECT fencing_token, fence_epoch FROM token_history
+                    WHERE scope_key = ? AND fencing_token = ? AND fence_epoch = ? LIMIT 2""",
+                    [scope_key, identity["fencing_token"], identity["fence_epoch"]],
+                ).fetchall()
+                if len(token_rows) != 1:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "historical rearm lost its exact retained fencing record"
+                    )
+                self._validate_task_claim_failure_event_unlocked(
+                    connection, identity=identity, receipt=receipt,
+                )
+                row = _row_mapping(rows[0])
+                body = _decode_coordination_body(
+                    _row_get(row, "body_json", "1", default="{}"),
+                    table="lease_events",
+                    identity=str(_row_get(row, "event_id", "0", default="")),
+                )
+                expected = {
+                    "schema": TASK_CLAIM_FAILURE_REARM_SCHEMA,
+                    "operation": TASK_CLAIM_FAILURE_REARM_OPERATION,
+                    "task_cid": identity["task_cid"],
+                    "failure_settlement_id": receipt["settlement_id"],
+                    "control_status": "retrying",
+                    "control_revision": int(receipt["control_expected_revision"]) + 2,
+                    "control_receipt_id": canonical_content_cid({
+                        "operation": TASK_CLAIM_FAILURE_REARM_OPERATION,
+                        "settlement_id": receipt["settlement_id"],
+                    }),
+                }
+                expected["rearm_id"] = canonical_content_cid(expected)
+                if body != expected:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "historical rearm does not match its exact failure receipt"
+                    )
+                connection.execute("COMMIT")
+                return dict(expected)
+            except Exception:
+                try:
+                    connection.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
+
     def rearm_failed_task(
         self,
         *,
@@ -7093,6 +7201,7 @@ _PROCESS_SERIALIZED_COORDINATOR_METHODS: Final[frozenset[str]] = frozenset(
         "abort_prepared_task_completion",
         "settle_task_claim",
         "fail_task_claim",
+        "observe_rearmed_failed_task_claim",
         "rearm_failed_task",
         "claim_task",
         "claim_ready_task",

@@ -73318,11 +73318,48 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationAuthorityError(
                     "failed Portal attempt lost its exact claim history"
                 )
-            coordination = self._fail_coordination_claim(claim, receipt)
-            control = self._settle_portal_failure_control_task(
-                current,
-                receipt,
+            observe_rearmed = getattr(
+                self.coordinator, "observe_rearmed_failed_task_claim", None,
             )
+            historical_rearm = (
+                observe_rearmed(claim, failure_receipt=receipt)
+                if callable(observe_rearmed) else None
+            )
+            if historical_rearm is None:
+                coordination = self._fail_coordination_claim(claim, receipt)
+                control = self._settle_portal_failure_control_task(
+                    current, receipt,
+                )
+            else:
+                # Native immutable failure + rearm history proves the old
+                # settlement already happened. Never run its control CAS or
+                # current-fence mutation against a later attempt.
+                minimum_revision = int(receipt["control_expected_revision"]) + 2
+                if (
+                    not isinstance(historical_rearm, Mapping)
+                    or historical_rearm.get("task_cid") != current.task_cid
+                    or historical_rearm.get("failure_settlement_id") != receipt["settlement_id"]
+                    or historical_rearm.get("control_revision") != minimum_revision
+                    or not str(historical_rearm.get("rearm_id") or "")
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "historical failure replay lost its native rearm binding"
+                    )
+                task = self.task_source.get(current.task_cid)
+                revision = getattr(task, "revision", None)
+                status = str(getattr(task, "status", "") or "").strip().lower()
+                if (
+                    task is None
+                    or str(getattr(task, "task_cid", "")) != current.task_cid
+                    or type(revision) is not int
+                    or revision < minimum_revision
+                    or not status
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "canonical task is behind its retained failure rearm"
+                    )
+                coordination = {"claim_state": "released", "attempt_status": "failed"}
+                control = {"status": status, "revision": revision, "superseded": True}
             result = {
                 "attempt_id": current.attempt_id,
                 "claim_id": current.claim_id,
@@ -73337,6 +73374,11 @@ class DatabaseImplementationDaemon:
                 "control_revision": int(control["revision"]),
                 "control_superseded": bool(control["superseded"]),
             }
+            if historical_rearm is not None:
+                result["historical_rearm_replay"] = {
+                    "rearm_id": historical_rearm["rearm_id"],
+                    "control_revision": historical_rearm["control_revision"],
+                }
             if not self._terminal_portal_failure_event_exists(
                 current.attempt_id,
                 str(receipt["settlement_id"]),
