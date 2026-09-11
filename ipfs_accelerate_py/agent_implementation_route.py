@@ -4542,7 +4542,8 @@ def _read_stable_agent_implementation_evidence_file(
             <= _AGENT_IMPLEMENTATION_MAX_SESSION_BYTES
         ):
             return None
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | os.O_NOFOLLOW
+        flags = (os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+                 | os.O_NOFOLLOW | os.O_NONBLOCK)
         descriptor = os.open(path, flags)
         try:
             opened = os.fstat(descriptor)
@@ -4626,7 +4627,7 @@ def _agent_implementation_native_session_record(
         try:
             workspace = raw_workspace.resolve(strict=True)
             workspace_metadata = workspace.stat()
-            encoded_workspace = quote(str(workspace), safe="")
+            encoded_workspace = quote(str(workspace), safe="!'()*-._~")
         except (OSError, UnicodeError):
             return None
         if not stat_module.S_ISDIR(workspace_metadata.st_mode):
@@ -4840,7 +4841,7 @@ def _agent_native_quota_session_paths(
             return None
         if not stat_module.S_ISDIR(workspace_stat.st_mode):
             return None
-        encoded_workspace = urllib.parse.quote(str(workspace), safe="")
+        encoded_workspace = urllib.parse.quote(str(workspace), safe="!'()*-._~")
         if (
             not encoded_workspace
             or encoded_workspace in {".", ".."}
@@ -5046,7 +5047,7 @@ def validate_agent_implementation_quota_evidence(
     if session_paths is None:
         return None
     record, summary_path, scoped_workspace = session_paths
-    selected_record = record
+    selected_record = (record, scoped_workspace)
     selected_session = _agent_implementation_quota_session_directory(
         grok_home=home,
         expected_session_id=expected_session_id,
