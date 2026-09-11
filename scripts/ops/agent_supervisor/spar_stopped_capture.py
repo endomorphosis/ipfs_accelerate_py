@@ -110,6 +110,9 @@ class KeeperSuccession:
         self.queue_root = configured_queue_root(self.board)
         self.hold = self.board.path(self.board.runtime_paths["root"]) / "HOLD"
         self.source = self.operator.source_binding(self.config)
+        self.worker_path = Path(__file__).with_name("spar_stopped_task_observation.py")
+        self.worker_bytes = native._bytes(self.worker_path, 1024 * 1024)
+        self.worker_sha256 = hashlib.sha256(self.worker_bytes).hexdigest()
         self.task_runtime = dict(task_runtime)
         role._closed(self.task_runtime, {"manifest_path", "manifest_sha256", "helper_sha256"})
         self.runtime_probe = probe_task_runtime(self)
@@ -189,6 +192,8 @@ class KeeperSuccession:
         self.keeper = self.keeper_fd = self.keeper_birth = None
         self.stage = "inspected"
         self.retirement = None
+        self.retirement_recorded = False
+        self.finish_recorded = False
         self.require_current({helper_birth["pid"]})
 
     def controller_locks(self):
@@ -288,6 +293,12 @@ class KeeperSuccession:
         require(self.stage in {"overlapping", "overlapped"}, "keeper overlap cannot be aborted after retirement")
         _exact_birth(self.controller_birth); _exact_birth(self.helper_birth)
         require(self.controller_locks() == self.old_locks, "prior kernel custody changed")
+        if self.keeper is None:
+            self.require_current({self.helper_birth["pid"]})
+            self.keeper_resources.close()
+            self.stage = "inspected"
+            self.record("keeper-overlap-aborted")
+            return
         population = set(native._cgroup_population(self.cgroup_fd)[0])
         require(population in ({self.helper_birth["pid"]}, {self.helper_birth["pid"], self.keeper.pid}),
                 "unknown native population prevents helper rollback")
@@ -320,7 +331,7 @@ class KeeperSuccession:
         return self.complete_retirement(timeout=timeout)
 
     def complete_retirement(self, *, timeout=1):
-        require(self.stage == "retiring" and 0 < timeout <= 60,
+        require(self.stage in {"retiring", "retired"} and 0 < timeout <= 60,
                 "workflow retirement was not previously admitted")
         _exact_birth(self.keeper_birth)
         require(not native._exited(self.keeper_fd), "new workflow keeper exited during retirement")
@@ -333,11 +344,13 @@ class KeeperSuccession:
             "old_helper_pidfd_exit": True, "keeper": self.keeper_birth, "retired_kernel_locks": self.old_locks,
             "keeper_code_sha256": hashlib.sha256(native.SENTINEL_CODE.encode()).hexdigest(),
             "callback_settled": False, "task_or_store_authority": False}
-        self.record("failed-workflow-exit-observed")
+        if not self.retirement_recorded:
+            self.record("failed-workflow-exit-observed")
+            self.retirement_recorded = True
         return dict(self.retirement)
 
     def closed_gate(self):
-        require(self.stage == "retired" and self.retirement is not None
+        require(self.stage == "retired" and self.retirement is not None and self.retirement_recorded
                 and native._exited(self.controller_fd) and native._exited(self.old_helper_fd),
                 "failed workflow closure not retained")
         _exact_birth(self.keeper_birth)
@@ -345,12 +358,20 @@ class KeeperSuccession:
         return self.require_current({self.keeper.pid})
 
     def close_after_install(self):
-        self.closed_gate()
-        self.keeper.stdin.close()
-        self.keeper.wait(timeout=10)
-        require(self.keeper.returncode == 0 and native._exited(self.keeper_fd), "keeper normal exit unavailable")
-        self.stage = "finished"
-        self.record("keeper-normal-exit-observed")
+        require(self.stage in {"retired", "closing", "finished"}, "keeper closure was not admitted")
+        if self.stage == "retired":
+            self.closed_gate()
+            self.stage = "closing"
+        if self.stage == "closing":
+            if not self.keeper.stdin.closed:
+                self.keeper.stdin.close()
+            self.keeper.wait(timeout=10)
+            require(self.keeper.returncode == 0 and native._exited(self.keeper_fd), "keeper normal exit unavailable")
+            self.stage = "finished"
+        if not self.finish_recorded:
+            require(self.keeper.returncode == 0 and native._exited(self.keeper_fd), "keeper normal exit was not retained")
+            self.record("keeper-normal-exit-observed")
+            self.finish_recorded = True
         self.resources.close()
 
 
@@ -407,6 +428,21 @@ class StoppedCaptureSession:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.locks.append((path, fd, (before.st_dev, before.st_ino), ofd))
 
+    def _retain_replacement_queue(self, staging):
+        require(getattr(self, "_replacement", None) is None, "replacement writer already retained")
+        parent = role._open_directory(staging.parent)
+        try:
+            fd = os.open(staging.name, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        finally:
+            os.close(parent)
+        self.resources.callback(os.close, fd)
+        info = os.fstat(fd)
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+                and role._file_identity(info) == role._file_identity(staging.lstat()),
+                "replacement queue inode differs")
+        fcntl.fcntl(fd, fcntl.F_OFD_SETLK, struct.pack("hhqqi", fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0))
+        self._replacement = (staging, fd, (info.st_dev, info.st_ino))
+
     def _closed_gate(self):
         require(not self._closed and len(self.locks) == 9, "stopped-state native fences are not retained")
         self.fleet.require_current()
@@ -424,6 +460,15 @@ class StoppedCaptureSession:
                      if line.startswith("lock:")]
             require(len(lines) == 1, "native retained kernel fence missing")
             _verify_lock_line(lines[0], old, ofd=ofd, pid=os.getpid())
+        if getattr(self, "_replacement", None) is not None:
+            staging, fd, identity = self._replacement
+            path = self.queue_root / "merge_queue.duckdb" if getattr(self, "_installed_queue_inode", None) else staging
+            info = os.fstat(fd); current = path.lstat()
+            require((info.st_dev, info.st_ino) == identity == (current.st_dev, current.st_ino),
+                    "replacement queue writer inode changed")
+            lines = [line for line in Path(f"/proc/self/fdinfo/{fd}").read_text().splitlines() if line.startswith("lock:")]
+            require(len(lines) == 1, "replacement queue writer fence missing")
+            _verify_lock_line(lines[0], info, ofd=True, pid=os.getpid())
         if hasattr(self, "_task_inventory"):
             require(_task_inventory(self.succession.paths["database"]) == self._task_inventory,
                     "canonical task database or WAL changed under fresh fences")
@@ -462,7 +507,7 @@ class StoppedCaptureSession:
         workflow._owned_directory(inspect, create=True)
         for entry in task_files:
             role.copy_entry(task_copy, entry, inspect / entry["path"])
-        observed = observe_task_copy(self.succession, inspect / database.name)
+        observed = observe_task_copy(self.succession, inspect / database.name, task_files=task_files)
         admission = validate_task_observation(observed, owner=self.succession.owner,
             bootstrap=self.succession.bootstrap, source=self.succession.source, task_files=task_files)
         context = {"repository_id": native._repository_id(self.root),
@@ -494,26 +539,61 @@ class StoppedCaptureSession:
         return self._capture
 
 
-def _task_worker(succession, *, path=None, probe=False):
-    args = ["/usr/bin/python3", "-I", "-B", str(Path(__file__).with_name("spar_stopped_task_observation.py")),
+_FROZEN_WORKER_BOOTSTRAP = "import hashlib,sys;path=sys.argv.pop(1);raw=sys.stdin.buffer.read(1048577);assert len(raw)<=1048576;exec(compile(raw,path,'exec'),{'__name__':'__main__','__file__':path,'_SPAR_STOPPED_WORKER_SHA256':hashlib.sha256(raw).hexdigest()})"
+
+
+def _task_worker(succession, *, path=None, probe=False, task_files=None):
+    require(native._bytes(succession.worker_path, 1024 * 1024) == succession.worker_bytes,
+            "retained stopped task worker code changed")
+    args = ["/usr/bin/python3", "-I", "-B", "-c", _FROZEN_WORKER_BOOTSTRAP, str(succession.worker_path),
         "--root", str(succession.root), "--config", str(succession.config),
         "--runtime-manifest", succession.task_runtime["manifest_path"],
         "--runtime-sha256", succession.task_runtime["manifest_sha256"],
         "--runtime-helper-sha256", succession.task_runtime["helper_sha256"]]
-    args += ["--probe"] if probe else ["--copy", str(path)]
-    result = subprocess.run(args, cwd="/", capture_output=True, timeout=120, check=False,
-        env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"})
-    require(result.returncode == 0 and len(result.stdout) <= 16 * 1024 * 1024,
-            "native stopped task copy observation failed")
-    return json.loads(result.stdout)
+    with ExitStack() as inputs:
+        bindings = []
+        descriptors = []
+        if probe:
+            args += ["--probe"]
+        else:
+            require(type(task_files) is list and len(task_files) in (1, 2),
+                    "retained task input inventory required")
+            for entry in task_files:
+                descriptor = role._open_regular(Path(path).parent, entry["path"])
+                inputs.callback(os.close, descriptor)
+                info = os.fstat(descriptor)
+                require(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1,
+                        "retained task input is not an owned unique inode")
+                bindings.append({"file": entry, "device": info.st_dev, "inode": info.st_ino,
+                                 "descriptor": descriptor})
+                descriptors.append((descriptor, entry["path"], role._file_identity(info)))
+            args += ["--copy", str(path), "--input-manifest", role._json({"files": bindings}).decode()]
+        result = subprocess.run(args, cwd="/", input=succession.worker_bytes, capture_output=True,
+            timeout=120, check=False, pass_fds=tuple(fd for fd, _, _ in descriptors),
+            env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"})
+        require(result.returncode == 0 and len(result.stdout) <= 16 * 1024 * 1024,
+                "native stopped task copy observation failed")
+        for descriptor, name, before in descriptors:
+            require(role._file_identity(os.fstat(descriptor)) == before
+                    == role._file_identity((Path(path).parent / name).lstat()),
+                    "retained task input pathname or bytes changed during observation")
+        require(native._bytes(succession.worker_path, 1024 * 1024) == succession.worker_bytes,
+                "retained stopped task worker code changed")
+        value = json.loads(result.stdout)
+        require(value.get("runtime", {}).get("worker_sha256") == succession.worker_sha256,
+                "closed observation did not execute retained worker code")
+        expected = [{k: v for k, v in item.items() if k != "descriptor"} for item in bindings]
+        require(probe or value.get("input_binding") == expected,
+                "closed observation does not bind the retained task input files")
+        return value
 
 
 def probe_task_runtime(succession):
     return _task_worker(succession, probe=True)
 
 
-def observe_task_copy(succession, path):
-    value = _task_worker(succession, path=path)
+def observe_task_copy(succession, path, *, task_files):
+    value = _task_worker(succession, path=path, task_files=task_files)
     require(value.get("runtime") == succession.runtime_probe.get("runtime"),
             "native closed observation changed its dependency runtime")
     return value
@@ -539,6 +619,13 @@ def validate_task_observation(value, *, owner, bootstrap, source, task_files):
                 and type(entry["sha256"]) is str and len(entry["sha256"]) == 64
                 and all(c in "0123456789abcdef" for c in entry["sha256"]),
                 "canonical task copy digest differs")
+    bindings = value.get("input_binding")
+    require(type(bindings) is list and len(bindings) == len(task_files)
+            and [item.get("file") for item in bindings] == task_files
+            and all(set(item) == {"file", "device", "inode"}
+                    and type(item["device"]) is int and type(item["inode"]) is int
+                    and item["device"] > 0 and item["inode"] > 0 for item in bindings),
+            "closed native facts do not bind the canonical task copy digests")
     identity = owner["identity"]
     require(all(type(identity.get(k)) is int and identity[k] > 0 for k in (
                 "generation", "schema_revision", "fence_epoch", "startup_epoch")),

@@ -39,6 +39,7 @@ class StoppedCaptureDriver:
         self.sequence = 0
         self.stage = 'inspecting'
         self.session = self.captured = self.prepared = self.installed = None
+        self.finish_recorded = False
         self.succession = stopped.KeeperSuccession(
             repository_root=request['repository_root'], config_path=request['config_path'],
             controller_birth=request['controller_birth'], helper_birth=request['helper_birth'],
@@ -82,8 +83,12 @@ class StoppedCaptureDriver:
         stopped.require(self.stage in ('overlapped','retiring'),'stopped retirement requires retained overlap')
         self.require_runtime()
         self.stage='retiring'
-        if self.succession.stage=='overlapped':self.succession.retire()
-        else:self.succession.complete_retirement(timeout=1)
+        try:
+            if self.succession.stage=='overlapped':self.succession.retire()
+            else:self.succession.complete_retirement(timeout=1)
+        finally:
+            self.stage = ('retiring' if self.succession.stage == 'retired'
+                          and not self.succession.retirement_recorded else self.succession.stage)
         self.stage='retired';self.record('retired')
         return self.result()
 
@@ -124,18 +129,27 @@ class StoppedCaptureDriver:
         return self.result(installed=self.installed)
 
     def finish(self):
-        stopped.require(self.stage=='installed','stopped finish requires successful installation')
+        stopped.require(self.stage in ('installed','finishing','finished'),
+                        'stopped finish requires successful installation')
         self.require_runtime()
-        stopped.require(self.session._closed_gate()==self.captured.receipt['closure'],
-                        'stopped closure changed after install')
-        marker=stopped.native._json(self.session.queue_root/origin.REQUIRED_MARKER)
-        stopped.require(marker.get('origin_cid')==self.installed['origin_cid']
-            and marker.get('capture_cid')==role._cid(self.captured.receipt),'stopped installed marker differs')
-        for entry in self.captured.receipt['manifest']['files']:
-            role.copy_entry(self.captured.path,entry,None,digest_only=True)
-        self.session.resources.close();self.session._closed=True
-        self.succession.close_after_install()
-        self.stage='finished';self.record('finished')
+        if self.stage == 'installed':
+            stopped.require(self.session._closed_gate()==self.captured.receipt['closure'],
+                            'stopped closure changed after install')
+            marker=stopped.native._json(self.session.queue_root/origin.REQUIRED_MARKER)
+            stopped.require(marker.get('origin_cid')==self.installed['origin_cid']
+                and marker.get('capture_cid')==role._cid(self.captured.receipt),'stopped installed marker differs')
+            for entry in self.captured.receipt['manifest']['files']:
+                role.copy_entry(self.captured.path,entry,None,digest_only=True)
+            self.record('finish-prepared')
+            self.stage='finishing'
+        if self.stage == 'finishing':
+            if not self.session._closed:
+                self.session.resources.close();self.session._closed=True
+            self.succession.close_after_install()
+            self.stage='finished'
+        if not self.finish_recorded:
+            self.record('finished')
+            self.finish_recorded=True
         return self.result()
 
 
@@ -149,7 +163,7 @@ def main():
     driver=StoppedCaptureDriver(role._decode(raw))
     print(json.dumps(driver.result()),flush=True)
     commands={'overlap','abort_overlap','retire','fence','capture','prepare','install','finish','status'}
-    while driver.stage!='finished':
+    while not driver.finish_recorded:
         raw=sys.stdin.buffer.readline(65537)
         if not raw:
             print(json.dumps(driver.result(input_closed=True,custody_retained=True)),flush=True)

@@ -31,10 +31,10 @@
     "scripts/ops/agent_supervisor/spar_merge_owner.py": "0f99d114011b4a9858280bc333ac7bd820dbb60fef0fd57914f00bb14ac67323",
     "scripts/ops/agent_supervisor/spar_merge_owner_handoff.py": "3e2cdce21547b98e0b68ef6719d11b34ec8186a32269da3ba8180f3fa2696d82",
     "scripts/ops/agent_supervisor/spar_retained_capture_driver.py": "11e21e028591957fa519d25cdc88653f9c5ede2e77bdba2cb93678f01c9efe0b",
-    "scripts/ops/agent_supervisor/spar_stopped_capture.py": "032269528bab269f176edce935a6143a79934063b3253e4a4b5e8e8903600ff1",
-    "scripts/ops/agent_supervisor/spar_stopped_capture_driver.py": "43291e795edc8dddb1287175bd152f0757ceb14d73458efa4b24e6d086d81f1d",
-    "scripts/ops/agent_supervisor/spar_stopped_origin.py": "6283478b40e4047c82de168936ff4191205a578c05025c60394062784fa31844",
-    "scripts/ops/agent_supervisor/spar_stopped_task_observation.py": "0dcdc762632cf958184618e0ecc90bf431dde71a5bb3e7cd8f50f564fce50e0c",
+    "scripts/ops/agent_supervisor/spar_stopped_capture.py": "a98ea65f4e3af6c11cb92319b8a4c4f9598ae051daa2e24f585b557cc2292e69",
+    "scripts/ops/agent_supervisor/spar_stopped_capture_driver.py": "299c278c881617271c2aa536e50941ae58ed63590e5edbec5835a83964fda5e1",
+    "scripts/ops/agent_supervisor/spar_stopped_origin.py": "29822c76509054e57bbbcef8d7d3d8ed91c72cf1c4e6a2b049bfe6f20f0fab0b",
+    "scripts/ops/agent_supervisor/spar_stopped_task_observation.py": "25832633dd1475cca0c18d55df726fba987dedbc9a3d45b9072fb48a55b5c068",
     "scripts/run_spar_retained_capture.py": "714d49f842558d89c28b5800e98f64a6929677f115c212688950d1a09ed6a11f",
     "scripts/run_spar_stopped_capture.py": "2e4d1555643dc6ef08e32357376e62ca499da7e5946e54aa0527900ed19105a2"
   },
@@ -514,7 +514,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:b76d9dd98c404787650139f77e0f7ae8238c5e1fc5c12f292c8d4cafd9736043",
+  "seal_cid": "sha256:00f1b5ae344335efb96dc217683e4c5ec4aae5df9bcd80fabe5ef6896afce674",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",

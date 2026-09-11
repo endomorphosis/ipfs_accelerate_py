@@ -265,6 +265,7 @@ def _install_stopped_queue(captured, prepared, descriptor):
                     "sha256": digest.hexdigest()}, staging)
     staging_entry = {"path": staging.name, "size_bytes": stat_before.st_size,
                      "sha256": digest.hexdigest()}
+    session._retain_replacement_queue(staging)
     gate()
     role.copy_entry(queue_root, staging_entry, None, digest_only=True)
     # Verify the entire original tree except our two newly created records.

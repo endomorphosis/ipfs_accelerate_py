@@ -26,6 +26,8 @@ The native owner is never signaled or restarted. Positive exits of the failed
 controller and old helper are required, while the new helper continuously keeps
 the same cgroup populated. A timeout retains the new helper; `retire` can finish
 observing the already-admitted retirement without sending another signal.
+Failed exit journals can be retried after positive exits; a pre-signal refusal
+preserves the earlier abort authority.
 `abort_overlap` is available only before retirement and only while the original
 controller, helper, and all original locks remain positively intact.
 
@@ -41,7 +43,11 @@ or steal the competitor's locks.
 Only under these fresh fences are the canonical task DB and optional WAL copied
 to an immutable original directory and a separate inspection directory. The
 accepted native source runs in a fresh `/usr/bin/python3 -I -B` process using an
-explicit, hashed DuckDB runtime manifest. Eager native dependency probes run
+explicit, hashed DuckDB runtime manifest. The controller executes retained
+worker code bytes and passes retained read-only task input descriptors with
+exact digests. The worker verifies those bytes, produces its own private DB/WAL
+copy, and retains the produced descriptors through recovery and observation.
+Its actual database writer must bind that produced inode. Eager native dependency probes run
 before keeper overlap. The worker opens only the inspection copy, uses native
 `IntentRepository`/`DatabaseTaskSource` with schema installation disabled, and
 performs the accepted route and launch-source lineage checks without admitting
@@ -56,7 +62,9 @@ a separate prepared clone. The fresh receipt is written exclusively and fsynced;
 its bytes cannot recreate the capture object. The distinct installer requires
 the exact fresh producer object, checks all original and prepared content, and
 preserves full original copies before canonical replacement. It writes a
-separate durable `native-stopped-profile-required.json` marker. A missing or
+separate durable `native-stopped-profile-required.json` marker. The staged
+replacement has its own retained OFD writer before its canonical rename, which
+remains held through finalization. A missing or
 invalid installed stopped origin, a conflicting legacy marker, or an explicit
 wrong launch profile blocks native startup. Any installation failure retains
 the marker and custody for independent recovery; there is no installation retry
@@ -84,7 +92,9 @@ new output paths. Changed task, queue, source, or runtime facts deny retry.
 
 `finish` is admitted only after successful installation and exact origin marker
 validation. It closes the controller's own locks and lets its own helper exit
-normally, retaining the existing unit inhibition and HOLD. Source adoption,
+normally, retaining the existing unit inhibition and HOLD. Failed finalization
+journals can continue after actual closure without repeating lock/helper
+closure. Source adoption,
 native launch-source amendment CAS, owner startup, task settlement, callbacks,
 signing, Git publication, and branch completion remain separate native actions.
 A native source seal must include the new producer, consumer, runtime, and

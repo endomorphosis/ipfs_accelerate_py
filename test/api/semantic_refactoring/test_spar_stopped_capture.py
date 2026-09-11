@@ -122,8 +122,11 @@ def stopped_fixture(armed, monkeypatch, request):
             members.append(int(argv[-1]));return SimpleNamespace(returncode=0)
         return original_run(argv,**kwargs)
     monkeypatch.setattr(subprocess,'run',run)
-    monkeypatch.setattr(stopped,'observe_task_copy',lambda succession,path: observation(
-        succession.source,succession.bootstrap,succession.owner))
+    def fixture_observation(succession,path,*,task_files):
+        value=observation(succession.source,succession.bootstrap,succession.owner)
+        value['input_binding']=[{'file':entry,'device':1,'inode':i+1} for i,entry in enumerate(task_files)]
+        return value
+    monkeypatch.setattr(stopped,'observe_task_copy',fixture_observation)
     if host:
         monkeypatch.setattr(subprocess, 'run', original_run)
         monkeypatch.setattr(stopped.workflow, 'unit_snapshot', actual_unit_snapshot)
@@ -285,6 +288,7 @@ def test_closed_native_facts_must_match_exact_store_and_full_lineage(stopped_fix
     elif change=='plan':value['plan']['body']['source_head']='f'*40
     elif change=='bootstrap':value['bootstrap']=dict(value['bootstrap'],source_head='f'*40)
     else:value['task_cids']=[]
+    value['input_binding']=[{'file':{'path':'control.duckdb','size_bytes':1,'sha256':'a'*64},'device':1,'inode':1}]
     with pytest.raises(role.SparMergeOwnerError):
         stopped.validate_task_observation(value,owner=f.succession.owner,bootstrap=f.succession.bootstrap,
             source=f.succession.source,task_files=[{'path':'control.duckdb','size_bytes':1,'sha256':'a'*64}])
@@ -335,7 +339,9 @@ s.native.UNIT=value['unit'];s.native._native_operator=lambda root:operator
 s.native._repository_id=lambda root:'repo:spar'
 s.workflow._job_unit=lambda:value['repair_idle']
 s.probe_task_runtime=lambda succession:{'source':value['source'],'runtime':{'explicit_fixture':True},'canonical_database_opened':False}
-s.observe_task_copy=lambda succession,path:value['observation']
+def observed(succession,path,*,task_files):
+ result=dict(value['observation']);result['input_binding']=[{'file':entry,'device':1,'inode':i+1} for i,entry in enumerate(task_files)];return result
+s.observe_task_copy=observed
 if value['failure']:
  original=s.producer.produce_offline_import_plan;count=[]
  def injected(**kwargs):
@@ -448,3 +454,101 @@ def test_changed_fleet_after_retirement_cannot_rebind_fresh_fences(stopped_fixtu
         stopped.StoppedCaptureSession(f.succession,fleet_config=f.fleet.config)
     assert f.succession.keeper.poll() is None
     assert not f.output.exists()
+
+
+@pytest.mark.parametrize('phase',['failed-controller-graceful-exit-prepared','failed-workflow-exit-observed'])
+def test_retirement_audit_failure_preserves_actual_stage_and_single_signal(stopped_fixture,monkeypatch,phase):
+    from scripts.ops.agent_supervisor.spar_stopped_capture_driver import StoppedCaptureDriver
+    f=stopped_fixture;f.succession.overlap()
+    value=object.__new__(StoppedCaptureDriver);value.succession=f.succession;value.stage='overlapped'
+    value.require_runtime=lambda:None;value.record=lambda _:None;value.result=lambda:{'stage':value.stage}
+    record=f.succession.record;failures=[];signals=[]
+    original_signal=stopped.signal.pidfd_send_signal
+    def signal_once(*args):signals.append(args);return original_signal(*args)
+    monkeypatch.setattr(stopped.signal,'pidfd_send_signal',signal_once)
+    def fail_once(current):
+        if current==phase and not failures:
+            failures.append(current);raise OSError('disposable audit write failed')
+        return record(current)
+    monkeypatch.setattr(f.succession,'record',fail_once)
+    with pytest.raises(OSError):value.retire()
+    if phase=='failed-controller-graceful-exit-prepared':
+        assert value.stage=='overlapped' and f.process.poll() is None and not signals
+        value.abort_overlap();assert value.stage=='inspected'
+        f.succession.overlap();value.stage='overlapped'
+    else:
+        assert value.stage=='retiring' and f.succession.stage=='retired' and len(signals)==1
+    assert value.retire()['stage']=='retired'
+    assert len(signals)==1 and f.succession.retirement_recorded
+
+
+def test_failed_helper_spawn_allows_pre_retirement_abort(stopped_fixture,monkeypatch):
+    f=stopped_fixture
+    def fail(*args,**kwargs):raise OSError('disposable Popen failure')
+    monkeypatch.setattr(subprocess,'Popen',fail)
+    with pytest.raises(OSError):f.succession.overlap()
+    assert f.succession.stage=='overlapping' and f.succession.keeper is None
+    f.succession.abort_overlap()
+    assert f.succession.stage=='inspected' and f.process.poll() is None
+    assert f.succession.controller_locks()==f.succession.old_locks
+
+
+def test_worker_path_replacement_is_denied_before_execution(stopped_fixture,monkeypatch):
+    f=stopped_fixture;s=f.succession
+    s.worker_path=f.armed.tmp/'disposable-worker.py';s.worker_path.write_bytes(s.worker_bytes)
+    s.worker_path.write_text("print('invented facts')")
+    def denied(*args,**kwargs):raise AssertionError('changed worker was executed')
+    monkeypatch.setattr(subprocess,'run',denied)
+    with pytest.raises(role.SparMergeOwnerError,match='worker code changed'):
+        stopped._task_worker(s,probe=True)
+
+
+@pytest.mark.parametrize('phase',['keeper-normal-exit-observed','driver-finished'])
+def test_finish_audit_can_resume_after_actual_helper_exit(stopped_fixture,monkeypatch,phase):
+    from scripts.ops.agent_supervisor.spar_stopped_capture_driver import StoppedCaptureDriver
+    f=stopped_fixture;captured=capture(f)
+    prepared=role.prepare_offline_clone(offline_root=captured.path,destination=f.output/'prepared',manifest=captured.receipt['manifest'])
+    installed=origin.install_stopped_queue(captured,prepared)
+    # The replacement database has its own retained writer through installation.
+    denied=subprocess.run([sys.executable,'-c','import duckdb,sys;duckdb.connect(sys.argv[1])',str(f.armed.queue/'merge_queue.duckdb')],capture_output=True,timeout=10)
+    assert denied.returncode!=0 and b'lock' in denied.stderr.lower()
+    value=object.__new__(StoppedCaptureDriver);value.stage='installed';value.finish_recorded=False
+    value.require_runtime=lambda:None;value.session=f.session;value.succession=f.succession
+    value.captured=captured;value.installed=installed;value.result=lambda:{'stage':value.stage}
+    old_record=f.succession.record;failed=[]
+    def succession_record(current):
+        if phase==current and not failed:failed.append(1);raise OSError('disposable journal failure')
+        old_record(current)
+    def driver_record(current):
+        if phase=='driver-finished' and current=='finished' and not failed:
+            failed.append(1);raise OSError('disposable journal failure')
+    monkeypatch.setattr(f.succession,'record',succession_record);value.record=driver_record
+    with pytest.raises(OSError):value.finish()
+    assert f.session._closed and f.succession.keeper.poll()==0
+    assert value.finish()['stage']=='finished' and value.finish_recorded and f.succession.finish_recorded
+
+
+def test_private_native_reader_uses_retained_bytes_and_checks_digest(tmp_path):
+    from scripts.ops.agent_supervisor.spar_stopped_task_observation import _private_inspection
+    root=tmp_path/'input';root.mkdir(mode=0o700)
+    path=root/'control.duckdb';raw=b'original preserved input';path.write_bytes(raw)
+    fd=os.open(path,os.O_RDONLY)
+    try:
+        info=os.fstat(fd)
+        entry={'path':path.name,'size_bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+        manifest={'files':[{'file':entry,'descriptor':fd,'device':info.st_dev,'inode':info.st_ino}]}
+        path.rename(root/'retained-original')
+        path.write_bytes(b'substituted path content')
+        private,binding,produced,resources=_private_inspection(path,manifest)
+        try:
+            assert private.read_bytes()==raw
+            assert binding==[{'file':entry,'device':info.st_dev,'inode':info.st_ino}]
+            from scripts.ops.agent_supervisor.spar_stopped_task_observation import _private_paths_current
+            private.rename(private.with_name('preserved-produced'))
+            private.write_bytes(b'changed-produced-inode')
+            with pytest.raises(RuntimeError,match='private task input changed'):_private_paths_current(private,produced)
+            assert os.pread(produced['control.duckdb'][0],len(raw),0)==raw
+        finally:resources.close()
+        manifest['files'][0]['file']=dict(entry,sha256='0'*64)
+        with pytest.raises(RuntimeError,match='content differs'):_private_inspection(path,manifest)
+    finally:os.close(fd)
