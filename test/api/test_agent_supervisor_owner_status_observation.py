@@ -1,6 +1,7 @@
 """Actual peer sockets and kernel writer locks authenticate bounded observations."""
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import errno
 import json
@@ -145,27 +146,58 @@ def _owner(directory, control):
             os.close(fd)
 
 
-@pytest.fixture
-def native_owner(tmp_path):
-    context = multiprocessing.get_context("fork")
+@contextlib.contextmanager
+def _native_owner(tmp_path, *, owner_target=_owner):
+    # Earlier tests may initialize DuckDB native threads. A fresh interpreter
+    # must own this disposable database, without inheriting their locks.
+    context = multiprocessing.get_context("spawn")
     parent, child = context.Pipe()
-    process = context.Process(target=_owner, args=(str(tmp_path), child))
-    process.start()
-    child.close()
-    assert parent.poll(20), "isolated owner startup exceeded test budget"
-    ready = parent.recv()
-    assert ready.get("ready") is True, ready
+    process = context.Process(target=owner_target, args=(str(tmp_path), child))
     try:
+        process.start()
+        child.close()
+        assert parent.poll(20), "isolated owner startup exceeded test budget"
+        ready = parent.recv()
+        assert ready.get("ready") is True, ready
         yield tmp_path, parent, process, ready["scope"]
     finally:
-        if process.is_alive():
-            parent.send("stop")
-        process.join(5)
-        if process.is_alive():
-            process.terminate()
-            process.join(5)
-        parent.close()
-        assert not process.is_alive()
+        try:
+            if process.pid is not None:
+                if process.is_alive():
+                    try:
+                        parent.send("stop")
+                    except (BrokenPipeError, EOFError, OSError):
+                        pass
+                process.join(5)
+                if process.is_alive():
+                    process.terminate()
+                    process.join(5)
+                if process.is_alive():
+                    process.kill()
+                    process.join(5)
+                assert not process.is_alive()
+        finally:
+            child.close()
+            parent.close()
+
+
+@pytest.fixture
+def native_owner(tmp_path):
+    with _native_owner(tmp_path) as native:
+        yield native
+
+
+def _failed_owner_startup(directory, pipe):
+    pipe.send({"ready": False, "error_type": "DisposableStartupFailure"})
+    assert pipe.recv() == "stop"
+
+
+def test_failed_owner_startup_reaps_its_child(tmp_path):
+    previous = {p.pid for p in multiprocessing.active_children()}
+    with pytest.raises(AssertionError, match="DisposableStartupFailure"):
+        with _native_owner(tmp_path, owner_target=_failed_owner_startup):
+            pytest.fail("failed owner cannot yield a reader")
+    assert {p.pid for p in multiprocessing.active_children()} == previous
 
 
 def _read(base, **changes):
