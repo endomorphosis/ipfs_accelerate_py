@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -57,6 +58,8 @@ def armed(tmp_path, monkeypatch):
         _runtime_paths=lambda board: {"owner": owner},
         _assert_clean_current_tree=lambda _: (source["head"], source["tree"]),
         _source_forest=lambda _, head: {"head": head},
+        source_binding=lambda _: {**source, "forest": {"head": source["head"]},
+            "config_sha256": hashlib.sha256(config_path.read_bytes()).hexdigest()},
         authoritative_status=lambda _: {
             "authoritative_task_observation": True, "board_namespace": "SPAR",
             "owner_identity": identity, "leases": [], "closeout_snapshot": {

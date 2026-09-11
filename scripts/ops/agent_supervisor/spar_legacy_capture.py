@@ -11,7 +11,6 @@ from __future__ import annotations
 from contextlib import ExitStack
 import fcntl
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -20,7 +19,6 @@ import select
 import stat
 import struct
 import subprocess
-import sys
 
 from . import spar_merge_owner as role
 from . import spar_legacy_import_plan as producer
@@ -100,19 +98,10 @@ def _unit():
 
 
 def _native_operator(root):
-    path = root / "scripts/materialize_semantic_preserving_remodularization_program.py"
-    _bytes(path, 4 * 1024 * 1024)
-    name = "_spar_capture_native_" + hashlib.sha256(str(path).encode()).hexdigest()
-    spec = importlib.util.spec_from_file_location(name, path)
-    _require(spec is not None and spec.loader is not None, "native operator unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    try:
-        spec.loader.exec_module(module)
-    except BaseException:
-        sys.modules.pop(name, None)
-        raise
-    return module
+    from .spar_legacy_observation import NativeObservationClient, OPERATOR
+
+    _bytes(root / OPERATOR, 4 * 1024 * 1024)
+    return NativeObservationClient(root)
 
 
 def _namespaces(pid):
@@ -238,7 +227,9 @@ class RetainedNativeLegacySession:
             facts = snapshot["closeout_snapshot"]["closeout_facts"]
             _require(facts.get("truncated") is False and facts.get("all_relations_available") is True,
                      "native closeout observation incomplete")
-            self.snapshot_cid = role._cid(snapshot)
+            from .spar_legacy_observation import native_observation_cid
+
+            self.snapshot_cid = native_observation_cid(snapshot)
             _require(self._source_binding() == self._source and _unit() == self._unit_before
                      and _json(self._broker_path) == self._broker and _alive(self.birth),
                      "native admission changed during retain")
@@ -247,10 +238,10 @@ class RetainedNativeLegacySession:
             raise
 
     def _source_binding(self):
-        head, tree = self.operator._assert_clean_current_tree(self.config)
-        forest = self.operator._source_forest(self.config, head=head)
-        return {"head": head, "tree": tree, "forest": forest,
-                "config_sha256": hashlib.sha256(_bytes(self.config_path)).hexdigest()}
+        binding = self.operator.source_binding(self.config_path)
+        _require(binding["config_sha256"] == hashlib.sha256(_bytes(self.config_path)).hexdigest(),
+                 "native configuration changed after source observation")
+        return binding
 
     def _inhibition(self):
         unit = _unit()
