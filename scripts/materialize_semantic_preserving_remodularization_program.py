@@ -3687,10 +3687,14 @@ def supervise(
     )
     board, config = _load_config(config_path)
     from scripts.ops.agent_supervisor.spar_merge_owner_handoff import (
-        FRESH_PROFILE, BUNDLE_PROFILE, configured_queue_root,
+        FRESH_PROFILE, LEGACY_PROFILE, BUNDLE_PROFILE, configured_queue_root,
         start_native_queue_for_launch, NativeMergeBundleIssuer,
     )
-    if merge_owner_profile not in ("", FRESH_PROFILE):
+    from scripts.ops.agent_supervisor.spar_legacy_origin import REQUIRED_MARKER
+    native_required = configured_queue_root(board) / REQUIRED_MARKER
+    if not merge_owner_profile and (native_required.exists() or native_required.is_symlink()):
+        merge_owner_profile = LEGACY_PROFILE
+    if merge_owner_profile not in ("", FRESH_PROFILE, LEGACY_PROFILE):
         raise OperatorError("legacy queue capture and old-consumer closure are not independently admitted")
     if not dry_run:
         _assert_start_not_held(board)

@@ -48,7 +48,7 @@ def _scopes(*, board, paths, amendment):
 
 
 def configured_queue_root(board):
-    raw = board.payload.get("runtime_paths")
+    raw = getattr(board, "payload", {}).get("runtime_paths")
     if type(raw) is not dict or type(raw.get("merge_queue")) is not str:
         raise role.SparMergeOwnerError(
             "explicit configured native merge queue root required"
@@ -66,7 +66,7 @@ def configured_queue_root(board):
     return root
 
 
-def _load_origin(database, *, repository_id, target_branch, store_id, scopes):
+def _load_origin(database, *, repository_id, target_branch, store_id, scopes, profile=FRESH_PROFILE):
     # A positive observed lock veto precedes every canonical DB open. Absence
     # does not certify legacy closure; only this role's canonical origin is read.
     info = database.lstat()
@@ -103,15 +103,19 @@ def _load_origin(database, *, repository_id, target_branch, store_id, scopes):
                 "native fresh origin is missing or ambiguous"
             )
         record = role._decode(str(rows[0][1]).encode())
-        role._closed(record, {"schema", "database_uuid", "database_path", "manifest"})
+        from .spar_legacy_origin import SCHEMA as LEGACY_ORIGIN_SCHEMA, validate_record
+        if profile == LEGACY_PROFILE:
+            manifest = validate_record(record, database=database)
+        else:
+            role._closed(record, {"schema", "database_uuid", "database_path", "manifest"})
+            manifest = role.validate_manifest(record["manifest"])
         if (
             rows[0][0] != role._cid(record)
-            or record["schema"] != ORIGIN_SCHEMA
+            or record["schema"] != (LEGACY_ORIGIN_SCHEMA if profile == LEGACY_PROFILE else ORIGIN_SCHEMA)
             or record["database_path"] != str(database)
         ):
             raise role.SparMergeOwnerError("native fresh origin identity differs")
         metadata = role._owner_metadata(connection)
-        manifest = role.validate_manifest(record["manifest"])
         if metadata is None or metadata["database_uuid"] != record["database_uuid"]:
             raise role.SparMergeOwnerError(
                 "native fresh UUID differs from preserved origin"
@@ -126,7 +130,7 @@ def _load_origin(database, *, repository_id, target_branch, store_id, scopes):
             raise role.SparMergeOwnerError(
                 "current native source namespace differs from fresh origin; explicit migration required"
             )
-        if (
+        if profile != LEGACY_PROFILE and (
             manifest["receipt_imports"]
             or manifest["cursor_imports"]
             or manifest["wal"] is not None
@@ -135,7 +139,8 @@ def _load_origin(database, *, repository_id, target_branch, store_id, scopes):
         baseline = role.inventory(connection)
     role.verify_installed_schema(database)
     return role.PreparedQueueStore(
-        database, manifest, record["database_uuid"], baseline, (), ()
+        database, manifest, record["database_uuid"], baseline,
+        tuple(record.get("receipt_imports", ())), tuple(record.get("cursor_imports", ()))
     )
 
 
@@ -270,7 +275,7 @@ def start_native_queue_for_launch(
         LaunchSourceAmendment,
     )
 
-    if profile != FRESH_PROFILE:
+    if profile not in (FRESH_PROFILE, LEGACY_PROFILE):
         raise role.SparMergeOwnerError(
             "legacy queue capture and old-consumer closure are not independently admitted"
         )
@@ -283,15 +288,25 @@ def start_native_queue_for_launch(
         )
     root = configured_queue_root(board)
     scopes = _scopes(board=board, paths=paths, amendment=amendment)
-    prepared = prepare_fresh_native_queue(
-        queue_root=root,
+    coordinates = dict(
         repository_id=checkout_repository_id(board.repo_root),
         target_branch=str(board.payload.get("merge_target_branch") or ""),
         store_id=str(root / "merge_queue.duckdb"),
-        source_commit=amendment.launch_source_head,
-        source_tree=amendment.launch_repository_tree_id,
         scopes=scopes,
     )
+    if profile == LEGACY_PROFILE:
+        descriptor = role._open_directory(root)
+        try:
+            info = os.fstat(descriptor)
+            if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o077:
+                raise role.SparMergeOwnerError("native migrated root is not private and owned")
+        finally:
+            os.close(descriptor)
+        prepared = _load_origin(root / "merge_queue.duckdb", profile=profile, **coordinates)
+    else:
+        prepared = prepare_fresh_native_queue(
+            queue_root=root, source_commit=amendment.launch_source_head,
+            source_tree=amendment.launch_repository_tree_id, **coordinates)
     server = role.start_queue_owner(
         prepared,
         state_dir=root / "native-owner",
