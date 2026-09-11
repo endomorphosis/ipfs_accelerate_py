@@ -10954,6 +10954,8 @@ class PortalImplementationSupervisor:
     ) -> tuple[bool | None, str, str]:
         """Inspect whether a historical attempt has durable claim evidence."""
 
+        if self.config.owner_merge_bootstrap_profile:
+            return None, "", "native_owner_merge_custody_retained"
         try:
             daemon = self._build_worktree_reconciliation_daemon(
                 reclaim_dead_lifecycle_on_startup=False,
@@ -11611,6 +11613,12 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         """Release one exact lease, then archive its completed proof."""
 
+        if self.config.owner_merge_bootstrap_profile:
+            return {
+                **self._native_owner_merge_maintenance_deferral(),
+                "blocked": True,
+                "lease_released": False,
+            }
         lock_path = self._implementation_maintenance_lock_path()
         operation_id = str(recovery.get("operation_id") or "")
         receipt_id = str(recovery.get("receipt_id") or "")
@@ -17187,6 +17195,8 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         """Retry clean inactive implementation worktrees before cleanup."""
 
+        if self.config.owner_merge_bootstrap_profile:
+            return self._native_owner_merge_maintenance_deferral()
         if not self.config.worktree_reconciliation_enabled:
             return {"attempted": False, "reason": "worktree_reconciliation_disabled"}
         worktree_root = self.config.worktree_root
@@ -18014,6 +18024,8 @@ class PortalImplementationSupervisor:
         remains the sole completion and task-board authority.
         """
 
+        if self.config.owner_merge_bootstrap_profile:
+            return self._native_owner_merge_maintenance_deferral()
         if not self.config.worktree_reconciliation_enabled:
             return {
                 "attempted": False,
@@ -18928,11 +18940,34 @@ class PortalImplementationSupervisor:
             return "other_dirty"
         return "clean"
 
+    @staticmethod
+    def _native_owner_merge_maintenance_deferral() -> dict[str, Any]:
+        """Keep merge custody with the process-bound native daemon pair.
+
+        The wrapper has a typed task reader, but no queue capability. Legacy
+        replay cannot borrow its child's private pair or open the owned queue.
+        This observation neither settles pending work nor promises its replay.
+        """
+        return {
+            "attempted": False,
+            "deferred": True,
+            "reason": "native_owner_merge_custody_retained",
+            "custody_retained": True,
+            "completion_authority": False,
+            "task_authority": False,
+        }
+
     def _build_worktree_reconciliation_daemon(
         self,
         *,
         reclaim_dead_lifecycle_on_startup: bool | None = None,
     ) -> PortalImplementationDaemon:
+        if self.config.owner_merge_bootstrap_profile:
+            # Also protect less common predecessor/shutdown recovery callers.
+            # Their existing fail-closed paths retain unresolved custody.
+            raise RuntimeError(
+                "native owner merge custody forbids local reconciliation"
+            )
         return PortalImplementationDaemon(
             todo_path=self.config.todo_path,
             state_path=self.config.state_path,
@@ -19394,6 +19429,12 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         """Close an interrupted attempt only after proving it is quiescent."""
 
+        if self.config.owner_merge_bootstrap_profile:
+            return {
+                **self._native_owner_merge_maintenance_deferral(),
+                "reconciled": False,
+                "blocked": True,
+            }
         try:
             strict_custody = bool(
                 isinstance(preacquired_implementation_lock, Mapping)
