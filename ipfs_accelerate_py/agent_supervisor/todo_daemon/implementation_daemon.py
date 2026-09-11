@@ -107898,6 +107898,7 @@ class DatabaseImplementationDaemon:
                     merge_handoff_pending = False
                 nonconsuming_provider_route_deferred = bool(
                     not superseded_attempt
+                    and not finalized_disposition
                     and callback_state["safe_provider_route_deferred"]
                     and not callback_state["callback_boundary_crossed"]
                     and not callback_state["callback_authority_incomplete"]

@@ -10,8 +10,9 @@ from test.api.test_agent_supervisor_database_portal_bridge import (
 )
 
 
+@pytest.mark.parametrize("deferred", [False, True])
 @pytest.mark.parametrize("force_block,cap", [(False, 3), (False, 1), (True, 3)])
-def test_reconcile_after_ordinary_finalizer_cas(tmp_path, monkeypatch, force_block, cap):
+def test_reconcile_after_ordinary_finalizer_cas(tmp_path, monkeypatch, force_block, cap, deferred):
     _, daemon, bridge, attempt, paths = _seed_interrupted_database_portal_attempt(
         tmp_path, max_task_attempts=cap,
     )
@@ -21,6 +22,20 @@ def test_reconcile_after_ordinary_finalizer_cas(tmp_path, monkeypatch, force_blo
     daemon._record_database_portal_attempt_binding(
         attempt, json.loads(paths.binding.read_text()), "portal_entered",
     )
+    if deferred:
+        now = daemon._now_ms()
+        daemon._record_callback_dispatch_outcome(
+            attempt, dispatch_kind="provider", idempotency_key=f"provider:{attempt.attempt_id}",
+            outcome="deferred", updated_at_ms=now,
+            body={"exception_type": "DatabasePortalProviderRouteDeferred",
+                  "backoff_seconds": 5, "retry_not_before_ms": now + 5000},
+        )
+        bridge.portal_factory = lambda *_: SimpleNamespace(
+            reconcile_quiesced_active_attempt=lambda: {
+                "reconciled": True, "blocked": False,
+                "reason": "provider_route_deferred_quiesced",
+            }, close_event_runtime=lambda: None,
+        )
     original = daemon.coordinator.release
 
     def crash(*args, **kwargs):
