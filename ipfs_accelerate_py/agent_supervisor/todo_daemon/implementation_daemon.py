@@ -70058,6 +70058,132 @@ class DatabaseImplementationDaemon:
             "status": current.status,
         }
 
+    def _retire_portal_failure_receipt(
+        self, attempt: DatabaseTaskAttempt,
+    ) -> DatabaseTaskAttempt | None:
+        """Finish only a blocked owner row carrying this exact failure intent.
+
+        The owner CAS precedes lease release. Its receipt lets a restart finish
+        that cross-store boundary without treating a released failure as success.
+        """
+        current = self.get_attempt(attempt.attempt_id)
+        if current is None or current.status != "running":
+            return current
+        fields = ("claim_id", "attempt_id", "attempt_number", "task_cid", "owner_session_id", "fencing_token", "fence_epoch", "lease_id")
+        if any(getattr(current, name) != getattr(attempt, name) for name in fields):
+            raise DatabaseImplementationConflictError("Portal failure changed attempt identity")
+        if current.owner_session_id != self.owner_session_id:
+            raise DatabaseImplementationAuthorityError("Portal failure belongs to another owner")
+        task = self.task_source.get(current.task_cid)
+        body = getattr(task, "body", None)
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        if not (
+            task is not None and str(task.status) == "blocked"
+            and isinstance(receipt, Mapping)
+            and receipt.get("operation") == "database_portal_attempt_failure"
+            and receipt.get("control_result_revision") == int(task.revision)
+            and all(receipt.get(name) == getattr(current, name) for name in fields)
+        ):
+            return None
+        claim = self.coordinator.get_task_claim(current.claim_id)
+        lease = self.coordinator.get_lease(current.lease_id)
+        if claim is None or lease is None:
+            raise DatabaseImplementationAuthorityError("Portal failure has no exact claim/lease")
+        if any(getattr(claim, name) != getattr(current, name) for name in fields if name != "lease_id") or claim.lease_id != current.lease_id:
+            raise DatabaseImplementationConflictError("Portal failure claim identity differs")
+        for name in ("claim_id", "task_cid", "attempt_id", "owner_session_id", "fencing_token", "fence_epoch"):
+            if getattr(lease, name) != getattr(current, name):
+                raise DatabaseImplementationConflictError("Portal failure lease identity differs")
+        state = str(getattr(claim.state, "value", claim.state))
+        if state == "accepted":
+            lease = self._protect_attempt_write(current)
+            self.coordinator.release(
+                lease, reason="database_portal_attempt_failure",
+                expected_fencing_token=current.fencing_token,
+                expected_fence_epoch=current.fence_epoch, now_ms=self._now_ms(),
+            )
+        elif state == "released":
+            coordinated = self.coordinator.get_task_attempt(current.attempt_id)
+            if (str(getattr(lease.state, "value", lease.state)) != "released"
+                    or coordinated is None
+                    or str(getattr(coordinated.status, "value", coordinated.status)) != "released"
+                    or any(getattr(coordinated, name) != getattr(current, name) for name in
+                           ("attempt_id", "attempt_number", "task_cid", "owner_session_id", "fencing_token", "fence_epoch"))):
+                raise DatabaseImplementationAuthorityError("Portal failure lacks released attempt evidence")
+        else:
+            return None  # Expiry/takeover remains governed by its own reconciler.
+        phase = ATTEMPT_PHASE_BLOCKED if receipt.get("deferred") is True else ATTEMPT_PHASE_FAILED
+        return self.commit_phase(current, phase, body=dict(receipt), require_live_claim=False)
+
+    def reconcile_portal_failure_attempts(self) -> list[dict[str, Any]]:
+        outcomes = []
+        for attempt in self.list_running_attempts():
+            retired = self._retire_portal_failure_receipt(attempt)
+            if retired is not None and retired.status != "running":
+                outcomes.append({"attempt_id": retired.attempt_id, "task_cid": retired.task_cid,
+                                 "status": retired.status, "reason": "portal_failure_projection_repaired"})
+        return outcomes
+
+    def _block_portal_failed_attempt(
+        self, attempt: DatabaseTaskAttempt, error: Exception,
+    ) -> DatabaseTaskAttempt:
+        # resume_attempt may have committed CONTEXT/PROVIDER/EFFECT before an
+        # exception. Refresh the revision, preserving the original exact fence.
+        self._attempt_claim(attempt)
+        current = self.get_attempt(attempt.attempt_id)
+        assert current is not None
+        self._protect_attempt_write(current)
+        task = self.task_source.get(current.task_cid)
+        body = getattr(task, "body", None)
+        claimed = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        if not (
+            task is not None and str(task.status) == "in_progress"
+            and isinstance(claimed, Mapping) and claimed.get("operation") == "database_claim"
+            and claimed.get("claim_id") == current.claim_id
+            and claimed.get("attempt_id") == current.attempt_id
+            and claimed.get("owner_session_id") == current.owner_session_id
+            and claimed.get("control_claimed_revision") == int(task.revision)
+        ):
+            raise DatabaseImplementationConflictError("Portal failure owner row changed after claim")
+        summary = getattr(error, "result", {})
+        detail = summary.get("implementation", {}) if isinstance(summary, Mapping) else {}
+        setup_deferred = (
+            detail.get("failure_kind") == "lifecycle_setup"
+            and detail.get("attempt_consumed") is False
+            and (detail.get("provider_dispatched") is False
+                 or (detail.get("provider_dispatched") is None
+                     and detail.get("provider_call_allowed") is False))
+        )
+        if setup_deferred and (
+            current.committed_phase not in {ATTEMPT_PHASE_CLAIMED, ATTEMPT_PHASE_CONTEXT}
+            or self.provider_invocation_recorded(
+                current.attempt_id, idempotency_key=f"provider:{current.attempt_id}"
+            ) is not None
+        ):
+            raise DatabaseImplementationConflictError("setup failure conflicts with durable provider progress")
+        receipt = {
+            "operation": "database_portal_attempt_failure",
+            **{name: getattr(current, name) for name in
+               ("claim_id", "attempt_id", "attempt_number", "task_cid", "owner_session_id", "fencing_token", "fence_epoch", "lease_id")},
+            "control_expected_revision": int(task.revision),
+            "control_result_revision": int(task.revision) + 1,
+            "reason": str(error), "portal_retryable_failure": True,
+            "deferred": setup_deferred,
+            "attempt_consumed": False if setup_deferred else detail.get("attempt_consumed"),
+            "provider_dispatched": detail.get("provider_dispatched"),
+            "failure_kind": str(detail.get("failure_kind") or "portal_execution"),
+            "backoff_seconds": detail.get("backoff_seconds"),
+            "provider_call_allowed": detail.get("provider_call_allowed"),
+            "infrastructure_failure": detail.get("infrastructure_failure"),
+            "repair_required": True,
+        }
+        self._cas_task_status_database(current.task_cid, expected_revision=int(task.revision),
+                                       new_status="blocked", receipt=receipt)
+        retired = self._retire_portal_failure_receipt(current)
+        if retired is None or retired.status == "running":
+            raise DatabaseImplementationConflictError("Portal failure intent could not be retired")
+        return retired
+
     def _resume_attempt_without_process_crash(
         self,
         attempt: "DatabaseTaskAttempt",
@@ -70104,20 +70230,7 @@ class DatabaseImplementationDaemon:
                 raise
             failed = None
             try:
-                current = (
-                    attempt
-                    if isinstance(attempt, DatabaseTaskAttempt)
-                    else self.get_attempt(str(getattr(attempt, "attempt_id", "") or attempt))
-                )
-                if current is not None and current.status == "running":
-                    failed = self.commit_phase(
-                        current,
-                        ATTEMPT_PHASE_FAILED,
-                        body={
-                            "reason": str(exc),
-                            "portal_retryable_failure": True,
-                        },
-                    )
+                failed = self._block_portal_failed_attempt(attempt, exc)
             except Exception as fail_exc:
                 return {
                     "resumed": True,
@@ -70134,17 +70247,18 @@ class DatabaseImplementationDaemon:
                 "reason": str(exc),
                 "attempt_id": str(getattr(failed or attempt, "attempt_id", "") or ""),
                 "task_alias": str(getattr(failed or attempt, "task_alias", "") or ""),
-                "status": "failed",
+                "status": failed.status,
             }
 
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
+        portal_failure_reconciliations = self.reconcile_portal_failure_attempts()
         completion_reconciliations = self.reconcile_prepared_task_completions()
         expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
         reconciliation_write_count = len(completion_reconciliations) + len(
             expired_attempt_reconciliations
-        )
+        ) + len(portal_failure_reconciliations)
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
         if running:
