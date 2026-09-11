@@ -1,5 +1,6 @@
 """Older runtimes must retain callbacks when canonical cleanup proof is absent."""
 from dataclasses import replace
+import subprocess
 
 import pytest
 
@@ -61,14 +62,24 @@ def test_database_background_cleanup_requires_native_proof_api(workspace, monkey
         import shutil
         shutil.rmtree(path)
     head = _git(repo, 'rev-parse', branch)
-    def forbidden(*args, **kwargs):
+    run = subprocess.run
+    reads = []
+
+    def forbid_mutation(command, *args, **kwargs):
+        # The enclosing workspace guard resolves the shared Git registry
+        # before it reaches the canonical completion gate. Permit only that
+        # exact read; prune, ref deletion and every other command still fail.
+        if command == ['git', 'rev-parse', '--git-common-dir']:
+            reads.append(tuple(command))
+            return run(command, *args, **kwargs)
         pytest.fail('cleanup without canonical proof attempted Git mutation')
     # This native revision has no migration-ref cleaner. Guard every Git
     # mutation, including prune, at the subprocess boundary it actually uses.
-    monkeypatch.setattr('ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.subprocess.run', forbidden)
+    monkeypatch.setattr('ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.subprocess.run', forbid_mutation)
     result = supervisor._cleanup_backlogged_worktrees_locked()
     assert result['reason'] == 'canonical_completion_cleanup_api_unavailable'
     assert result['removed_count'] == 0
+    assert reads
     monkeypatch.undo()
     assert _git(repo, 'rev-parse', branch) == head
     assert path.exists() is not missing_source
