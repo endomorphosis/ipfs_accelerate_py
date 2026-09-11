@@ -427,3 +427,39 @@ def test_real_endpoint_unavailable_before_attach_recovers_with_original_deadline
     assert result["status"] == "ready" and result["revision"] == 1
     assert failures == ["IOException"]
     assert len(attempts) == 2 and len(set(attempts)) == 1
+
+
+@pytest.mark.parametrize("fenced", [False, True])
+def test_native_pinned_reader_keeps_caller_transaction(tmp_path, monkeypatch, fenced):
+    import duckdb
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import quack_read_continuity
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        _PinnedFencedIntentRepository,
+        _PinnedReadIntentRepository,
+    )
+
+    path = tmp_path / "pinned.duckdb"
+    _seed(path)
+    raw = duckdb.connect(str(path))
+    raw.execute("BEGIN")
+    raw.execute("UPDATE tasks SET priority='pinned-uncommitted' WHERE task_cid='task:test'")
+    wrapped = duckdb_state.DuckDBConnection.wrap(raw)
+    reader_type = _PinnedFencedIntentRepository if fenced else _PinnedReadIntentRepository
+    reader = reader_type(wrapped, **({"owner_id": "owner:test"} if fenced else {}))
+
+    def forbidden(**kwargs):
+        pytest.fail("a pinned reader must not open or replay a remote transaction")
+
+    monkeypatch.setattr(quack_read_continuity, "read_task_projection", forbidden)
+    monkeypatch.setattr(duckdb_state, "_open_quack_transport_connection_once", forbidden)
+    try:
+        assert reader.get_task("task:test")["priority"] == "pinned-uncommitted"
+        assert reader.list_tasks()[0]["priority"] == "pinned-uncommitted"
+        raw.execute("ROLLBACK")
+        assert reader.get_task("task:test")["priority"] != "pinned-uncommitted"
+        reader._closed = True
+        with pytest.raises(RuntimeError, match="not open"):
+            reader.get_task("task:test")
+    finally:
+        raw.close()

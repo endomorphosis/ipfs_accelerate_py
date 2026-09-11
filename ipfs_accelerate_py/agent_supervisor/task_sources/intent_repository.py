@@ -5134,8 +5134,8 @@ class IntentRepository:
         key = _identifier(task_cid_or_alias, noun="task_cid")
         # Only this concrete repository owns fresh remote handles. Subclasses or
         # bound/read-session overrides keep their original connection contract.
-        if (not self._quack_transport or type(self) is not IntentRepository
-                or "_connection" in self.__dict__):
+        if (type(self) is not IntentRepository
+                or "_connection" in self.__dict__ or not self._quack_transport):
             with self._connection(write=False) as connection:
                 return self._get_task_projection(connection, key)
         self._require_open()
