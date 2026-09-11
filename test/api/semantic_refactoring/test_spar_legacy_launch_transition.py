@@ -148,12 +148,16 @@ def test_source_transition_rejects_rewritten_bootstrap(source_transition):
         qualify(case)
 
 
-def test_current_scope_inherits_retained_cursor_and_restart_keeps_progress(source_transition, tmp_path):
+@pytest.mark.parametrize("native_transport", [False, True])
+def test_current_scope_inherits_retained_cursor_and_restart_keeps_progress(source_transition, tmp_path, native_transport):
     case = source_transition
+    def launch(prepared, state_dir):
+        return (role.start_queue_owner(prepared, state_dir=state_dir)
+                if native_transport else start(prepared, state_dir))
     prepared = role.prepare_offline_clone(offline_root=case.source, destination=tmp_path/'prepared', manifest=case.manifest)
     prepared = replace(prepared, launch_transition=qualify(case))
     manifest = {**case.manifest, 'scope_bindings':case.scopes}
-    server = start(prepared, tmp_path/'owner')
+    server = launch(prepared, tmp_path/'owner')
     client = None
     try:
         client, api = attach_recovery(server, manifest)
@@ -169,7 +173,7 @@ def test_current_scope_inherits_retained_cursor_and_restart_keeps_progress(sourc
     finally:
         if client: client.close()
         server.stop()
-    server = start(prepared, tmp_path/'owner')
+    server = launch(prepared, tmp_path/'owner')
     try:
         client, api = attach_recovery(server, manifest)
         assert api.load_cursors()['cursors'] == changed
@@ -270,3 +274,31 @@ def test_current_runtime_blob_uses_source_budget_not_small_receipt_budget(source
     _git(case.root,'commit','-qm','Large native runtime source')
     head = _git(case.root,'rev-parse','HEAD')
     assert transition._blob(case.root,head,'runtime.py',current=True) == body
+
+
+def test_native_origin_refuses_reverting_to_captured_configuration(tmp_path, monkeypatch):
+    from test.api.semantic_refactoring.test_spar_legacy_capture import armed as armed_fixture, installed_origin
+    fixture = armed_fixture.__wrapped__(tmp_path, monkeypatch)
+    case = next(fixture)
+    try:
+        installed_origin(case)
+        case.session.close()
+        coordinates = dict(repository_id=case.context['repository_id'], target_branch=case.context['target_branch'],
+                           store_id=case.context['store_id'], scopes=case.context['scope_bindings'])
+        database = case.queue/'merge_queue.duckdb'
+        prepared = handoff._load_origin(database,profile=handoff.LEGACY_PROFILE,**coordinates)
+        server = start(prepared, tmp_path/'owner-after-install')
+        try:
+            successor = [{**scope,'config_cid':'sha256:'+'f'*64} for scope in case.context['scope_bindings']]
+            server.provision_legacy_merge_recovery_schema(repository_id=case.context['repository_id'],
+                target_branch=case.context['target_branch'],migration_id='spar-native-launch:'+prepared.manifest_cid,
+                scope_bindings=successor)
+        finally:
+            server.stop()
+        with pytest.raises(role.SparMergeOwnerError,match='already transitioned away'):
+            handoff._load_origin(database,profile=handoff.LEGACY_PROFILE,**coordinates)
+    finally:
+        try:
+            next(fixture)
+        except StopIteration:
+            pass
