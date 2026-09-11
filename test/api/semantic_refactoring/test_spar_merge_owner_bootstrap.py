@@ -734,3 +734,66 @@ def test_source_object_id_requires_exact_git_format(preserved, length):
     manifest["source_commit"] = "a" * length
     with pytest.raises(native.SparMergeOwnerError, match="source generation"):
         native.validate_manifest(manifest)
+
+
+def add_publication_ledger(source, manifest, *, mapped=True):
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_train import (
+        DISTRIBUTED_LANE_ADMISSION_SCHEMA,
+    )
+    ledger = {
+        "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
+        "publications": {"prior-publication": {"digest": "preserved-digest"}},
+        "tasks": {"prior-task": {"fencing_epoch": 17}},
+    }
+    path = "train/distributed-publications.json"
+    (source / "train").mkdir(exist_ok=True)
+    (source / path).write_text(json.dumps(ledger))
+    if mapped:
+        manifest["receipt_imports"].append({
+            "path": path, "receipt_key": "distributed-publications",
+            "revision": 1, "receipt_cid": native._cid(ledger),
+        })
+    refresh_manifest(source, manifest)
+    return ledger
+
+
+@pytest.mark.parametrize("failure", ["unmapped", "wrong_key"])
+def test_publication_ledger_cannot_be_archived_without_native_import(
+    preserved, tmp_path, failure
+):
+    source, manifest, *_ = preserved
+    add_publication_ledger(source, manifest, mapped=failure != "unmapped")
+    if failure == "wrong_key":
+        manifest["receipt_imports"][-1]["receipt_key"] = "unrelated-receipt"
+    with pytest.raises(native.SparMergeOwnerError, match="publication ledger"):
+        native.prepare_offline_clone(
+            offline_root=source, destination=tmp_path / "clone", manifest=manifest
+        )
+    assert not (tmp_path / "clone").exists()
+
+
+def test_native_publication_ledger_survives_owner_migration_and_restart(
+    preserved, tmp_path
+):
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
+    from types import SimpleNamespace
+    source, manifest, *_ = preserved
+    ledger = add_publication_ledger(source, manifest)
+    prepared = native.prepare_offline_clone(
+        offline_root=source, destination=tmp_path / "clone", manifest=manifest
+    )
+    for generation in (1, 2):
+        server = start(prepared, tmp_path / "owner")
+        connection = None
+        try:
+            assert server.identity.generation == generation
+            connection, api = attach_recovery(server, manifest)
+            def read(key):
+                return api.get_receipt(key)["receipt"]
+            train = object.__new__(MergeTrain)
+            train._owner_recovery_runtime = SimpleNamespace(read_optional_receipt=read)
+            assert train._read_distributed_publication_ledger() == (ledger, "")
+        finally:
+            if connection is not None:
+                connection.close()
+            server.stop()

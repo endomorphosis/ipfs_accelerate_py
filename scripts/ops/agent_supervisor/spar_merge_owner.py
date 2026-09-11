@@ -425,25 +425,17 @@ def validate_manifest(value: Mapping[str, Any]) -> dict[str, Any]:
             _closed(item, fields)
             if _relative(item["path"]) not in names:
                 raise SparMergeOwnerError("offline import file is undeclared")
-    required_cursors = {
-        name
-        for name in names
-        if name.startswith("train/post-merge-recovery-cursors/")
-        and name.endswith(".json")
-    }
-    required_receipts = {
-        name
-        for name in names
-        if name.startswith("train/receipts/") and name.endswith(".json")
-    }
-    if not required_cursors.issubset(
-        {item["path"] for item in manifest["cursor_imports"]}
-    ) or not required_receipts.issubset(
-        {item["path"] for item in manifest["receipt_imports"]}
-    ):
-        raise SparMergeOwnerError(
-            "preserved canonical cursor or receipt lacks explicit import"
+    from ipfs_accelerate_py.agent_supervisor.merge.legacy_train_imports import (
+        validate_train_import_coverage,
+    )
+    try:
+        validate_train_import_coverage(
+            file_names=names,
+            receipt_imports=manifest["receipt_imports"],
+            cursor_imports=manifest["cursor_imports"],
         )
+    except ValueError as exc:
+        raise SparMergeOwnerError(str(exc)) from exc
     return _decode(_json(manifest))
 
 
