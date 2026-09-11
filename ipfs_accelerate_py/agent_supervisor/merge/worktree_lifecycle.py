@@ -2097,6 +2097,30 @@ class WorktreeLifecycleStore:
                     for descriptor in reversed(descriptors):
                         os.close(descriptor)
 
+    def delete_candidate_observed(
+        self, expected: WorkspaceLifecycleRecord, *, handoff_receipt_id: str
+    ):
+        """Remove only this future candidate's exact rows into a durable journal."""
+        from .worktree_lifecycle_delete_journal import operate
+
+        return operate(self, expected, handoff_receipt_id, mode="delete")
+
+    def resume_candidate_observed_delete(
+        self, expected: WorkspaceLifecycleRecord, *, handoff_receipt_id: str
+    ):
+        """Continue only an existing exact prepared candidate deletion."""
+        from .worktree_lifecycle_delete_journal import operate
+
+        return operate(self, expected, handoff_receipt_id, mode="resume")
+
+    def observe_candidate_deletion(
+        self, expected: WorkspaceLifecycleRecord, *, handoff_receipt_id: str
+    ):
+        """Read committed native evidence without creating, deleting or syncing."""
+        from .worktree_lifecycle_delete_journal import operate
+
+        return operate(self, expected, handoff_receipt_id, mode="observe")
+
     def authorize_cleanup(
         self,
         *,
