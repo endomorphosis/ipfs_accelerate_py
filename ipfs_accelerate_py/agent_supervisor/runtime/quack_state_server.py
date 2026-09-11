@@ -4647,8 +4647,9 @@ class QuackStateServer:
     ) -> Any:
         """Open the authoritative writer with the ordinary sealed policy.
 
-        The writer never loads Quack and never enables external access.  Quack
-        is loaded only on the distinct read-only transport replica.
+        The native loader may preload reviewed extensions before sealing the
+        writer. Its final external-access setting is false, and it never
+        serves a Quack listener. Only the distinct read-only replica listens.
         """
 
         del isolation_admission
@@ -4656,12 +4657,11 @@ class QuackStateServer:
             return self.connection_factory(self.config.database_path)
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
-        if isinstance(self.transport, InProcessQuackTransport):
+        if not isinstance(self.transport, InProcessQuackTransport):
             return open_duckdb_connection(
                 self.config.database_path,
                 threads=1,
                 memory_limit=DEFAULT_MEMORY_LIMIT,
-                quack_owner=True,
             )
         return open_quack_state_owner_connection(self.config.database_path)
 
@@ -7038,7 +7038,7 @@ class QuackStateServer:
                 secret_handle = self.config.resolved_secret_handle(server_id, generation)
                 assert self._vault is not None
                 self._vault.mint(secret_handle=secret_handle, generation=1)
-                token = self._vault.resolve(secret_handle)
+                self._vault.resolve(secret_handle)
 
                 identity = StateServerIdentity(
                     server_id=server_id,
@@ -7062,31 +7062,11 @@ class QuackStateServer:
                 )
                 self._identity = identity
 
-                assert self.transport is not None
-                # Publish identity before quack_serve occupies this connection.
-                # Auth callbacks open a fresh DuckDB session; DML on the serve
-                # connection after listen starts is reported as Authentication
-                # failed rather than lock contention.
+                # Publish identity before copying the non-authoritative
+                # transport replica. The canonical writer is never a Quack
+                # listener and keeps external access sealed off.
                 self._publish_identity_rows(connection, identity, capability)
-                # Last exclusive-writer window: quack_serve occupies this
-                # connection and later DML contends with auth callbacks.
                 self._unstall_stale_board_gates(connection)
-                public_obs = self.transport.start(
-                    connection,
-                    host=self.config.host,
-                    port=port,
-                    token=token,
-                    identity=identity,
-                )
-                # Track the provisional writer-backed endpoint so the replica
-                # refresh stops that exact listener before starting the
-                # canonical read-only endpoint.  Without this binding two
-                # Quack listeners can survive under one advertised URI, making
-                # readiness flaky and shutdown observationally false.
-                self._transport_connection = connection
-                self._transport_connection_is_writer = True
-                # Ensure transport observation never echoed the token.
-                self._vault.assert_absent_from(public_obs, surface_name="transport.start")
                 # A supervisor must never be able to reuse the HTTP Quack
                 # credential to obtain a generic SQL surface.  Only the owner
                 # retains it after identity mint; the replica transport later

@@ -1566,58 +1566,67 @@ def submit_quack_owner_command(
             typed_owner_socket_path,
         )
 
-        client_id = f"database-task-source:{os.getpid()}"
-        process_birth_id = kernel_process_birth_id()
-        connection = None
-        try:
-            grant = request_database_task_command_credential(
-                store_id=store_id,
-                client_id=client_id,
-                process_birth_id=process_birth_id,
-                timeout_seconds=min(float(timeout_seconds), 30.0),
-            )
-            connection = TypedStateOwnerConnection(
-                socket_path=typed_owner_socket_path(store_id),
-                token=grant,
-                client_id=client_id,
-                process_birth_id=process_birth_id,
-                store_id=store_id,
-                timeout_seconds=float(timeout_seconds),
-            )
-            try:
-                result = connection.execute_database_task_command(
-                    command_name,
-                    command_payload,
-                    command_request_id=request_id,
-                )
-            finally:
-                connection.close()
-        except TypedStateOwnerRemoteError as exc:
-            raise QuackOwnerCommandRemoteError(
-                exc.error_code,
-                "typed owner command rejected",
-                request_id=request_id,
-            ) from exc
-        except TypedStateOwnerDatabaseTaskOutcomeUnknownError as exc:
-            raise QuackOwnerCommandRemoteError(
-                "unknown_external_outcome",
-                "typed owner command outcome requires reconciliation",
-                request_id=request_id,
-            ) from exc
-        except (OSError, TypedStateOwnerError) as exc:
+        write_lock = quack_owner_mutation_write_lock_path(store_id)
+        if write_lock is None:
             raise DuckDBConnectionPolicyError(
-                "typed owner command transport failed closed"
-            ) from exc
-        if not isinstance(result, Mapping):
-            raise QuackOwnerCommandRemoteError(
-                "unknown_external_outcome",
-                "typed owner command returned no admissible result",
-                request_id=request_id,
+                "typed owner command has no accepted-root replica lock path"
             )
-        # Success is acknowledged only after the owner republishes its read
-        # replica. Retire any attachment to the withdrawn prior snapshot.
-        reset_quack_transport_cache()
-        return dict(result)
+        # Same-host native readers hold this store lock through attachment,
+        # query and close. Keep it through command publication and attachment
+        # eviction so no reader can straddle the replica listener restart.
+        with exclusive_file_lock(write_lock, timeout_seconds=float(timeout_seconds)):
+            client_id = f"database-task-source:{os.getpid()}"
+            process_birth_id = kernel_process_birth_id()
+            connection = None
+            try:
+                grant = request_database_task_command_credential(
+                    store_id=store_id,
+                    client_id=client_id,
+                    process_birth_id=process_birth_id,
+                    timeout_seconds=min(float(timeout_seconds), 30.0),
+                )
+                connection = TypedStateOwnerConnection(
+                    socket_path=typed_owner_socket_path(store_id),
+                    token=grant,
+                    client_id=client_id,
+                    process_birth_id=process_birth_id,
+                    store_id=store_id,
+                    timeout_seconds=float(timeout_seconds),
+                )
+                try:
+                    result = connection.execute_database_task_command(
+                        command_name,
+                        command_payload,
+                        command_request_id=request_id,
+                    )
+                finally:
+                    connection.close()
+            except TypedStateOwnerRemoteError as exc:
+                raise QuackOwnerCommandRemoteError(
+                    exc.error_code,
+                    "typed owner command rejected",
+                    request_id=request_id,
+                ) from exc
+            except TypedStateOwnerDatabaseTaskOutcomeUnknownError as exc:
+                raise QuackOwnerCommandRemoteError(
+                    "unknown_external_outcome",
+                    "typed owner command outcome requires reconciliation",
+                    request_id=request_id,
+                ) from exc
+            except (OSError, TypedStateOwnerError) as exc:
+                raise DuckDBConnectionPolicyError(
+                    "typed owner command transport failed closed"
+                ) from exc
+            if not isinstance(result, Mapping):
+                raise QuackOwnerCommandRemoteError(
+                    "unknown_external_outcome",
+                    "typed owner command returned no admissible result",
+                    request_id=request_id,
+                )
+            # Success is acknowledged only after the owner republishes its read
+            # replica. Retire any attachment to the withdrawn prior snapshot.
+            reset_quack_transport_cache()
+            return dict(result)
     target = quack_owner_command_dir()
     if target is None:
         raise DuckDBConnectionPolicyError(
