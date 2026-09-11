@@ -9,6 +9,7 @@ import re
 import shlex
 import subprocess
 import uuid
+from urllib.parse import quote
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -56,8 +57,12 @@ def _write_native_session_home(
     updates: list[dict[str, object]],
     *,
     session_id: str = _NATIVE_SESSION_ID,
+    workspace: Path | None = None,
 ) -> Path:
-    session = grok_home / "sessions" / session_id
+    session = grok_home / "sessions"
+    if workspace is not None:
+        session /= quote(str(workspace), safe="!'()*-._~")
+    session /= session_id
     session.mkdir(parents=True)
     (session / "updates.jsonl").write_text(
         "".join(json.dumps(item, sort_keys=True) + "\n" for item in updates),
@@ -66,7 +71,7 @@ def _write_native_session_home(
     (session / "summary.json").write_text(
         json.dumps(
             {
-                "info": {"id": session_id},
+                "info": {"id": session_id, **({"cwd": str(workspace)} if workspace else {})},
                 "current_model_id": "grok-4.6",
                 "grok_home": str(grok_home),
             },
@@ -884,6 +889,7 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
                 _spending_limit_terminal(session_id=session_id),
             ],
             session_id=session_id,
+            workspace=kwargs["cwd"],
         )
         return subprocess.CompletedProcess(command, 23)
 
@@ -907,7 +913,7 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
         failure_receipt=receipt,
     )
 
-    assert evidence is not None
+    assert isinstance(evidence, llm_router.AgentImplementationQuotaEvidence)
     assert captured["env"]["PWD"] == str(captured["cwd"])
     assert "OLDPWD" not in captured["env"]
 

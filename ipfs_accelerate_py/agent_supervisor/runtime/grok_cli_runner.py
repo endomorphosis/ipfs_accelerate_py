@@ -4266,7 +4266,22 @@ def _independently_verify_grok_quota(
 
     from ipfs_accelerate_py.llm_router import build_grok_cli_command, build_grok_cli_env
 
-    verifier_root = Path(tempfile.mkdtemp(prefix="asref-grok-quota-verifier-"))
+    # Current Grok namespaces sessions by the encoded absolute cwd. Keep the
+    # verifier path short and independent of inherited TMPDIR depth.
+    verifier_parent = Path("/tmp")
+    try:
+        parent_stat = verifier_parent.lstat()
+        if (
+            not stat.S_ISDIR(parent_stat.st_mode)
+            or parent_stat.st_uid != 0
+            or not stat.S_IMODE(parent_stat.st_mode) & stat.S_ISVTX
+        ):
+            return ""
+        verifier_root = Path(tempfile.mkdtemp(
+            prefix="asref-grok-quota-verifier-", dir=verifier_parent,
+        ))
+    except OSError:
+        return ""
     isolated_home: tempfile.TemporaryDirectory[str] | None = None
     try:
         verifier_workspace = verifier_root / "workspace"
@@ -4328,6 +4343,7 @@ def _independently_verify_grok_quota(
                 stderr=subprocess.DEVNULL,
                 timeout=90,
                 check=False,
+                umask=0o077,
             )
         except (OSError, subprocess.TimeoutExpired):
             return ""
@@ -4343,6 +4359,7 @@ def _independently_verify_grok_quota(
                 expected_session_id=verifier_session_id,
                 verifier_returncode=int(completed.returncode),
                 failure_receipt=failure_receipt,
+                verifier_workspace=verifier_workspace,
             )
         return _validate_quota_evidence_in_accepted_child(
             grok_home=verifier_home,
