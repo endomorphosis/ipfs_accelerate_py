@@ -130,6 +130,7 @@ def _advance_detached_head(repo, *, expected_head, target, expected_index_sha256
     process = None
     committed = False
     index_published = False
+    index_publication_durable = False
     effects_started = False
     lock_owned = None
     alternate = archive / (label + '-prepared.index')
@@ -209,8 +210,9 @@ def _advance_detached_head(repo, *, expected_head, target, expected_index_sha256
                     'owned_index_lock_replaced')
             # Keep index.lock present across BOTH index and ref publication.
             os.replace(index_temporary, index.name, src_dir_fd=parent, dst_dir_fd=parent)
-            os.fsync(parent)
             index_published = True
+            os.fsync(parent)
+            index_publication_durable = True
             phase(label + '_index_published', index_sha256=digest(prepared))
             _git_transaction_line(process, 'commit', 'commit: ok')
             committed = True
@@ -247,6 +249,7 @@ def _advance_detached_head(repo, *, expected_head, target, expected_index_sha256
                     pass
             if not committed:
                 phase(label + '_incomplete_preserved', index_published=index_published,
+                      index_publication_durable=index_publication_durable,
                       owned_index_lock_retained=effects_started, index_lock=str(lock_path),
                       alternate_index=str(alternate), automatic_rollback=False)
 

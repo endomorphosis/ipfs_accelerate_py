@@ -143,3 +143,31 @@ def test_archive_collision_preserves_existing_evidence(setup):
     with pytest.raises(FileExistsError):primitive(s)
     assert (s['archive']/'trial-original.index').read_bytes()==b'prior'
     assert not (s['child']/'added').exists()
+
+
+def test_index_directory_fsync_failure_records_actual_publication_but_not_durability(
+    setup, monkeypatch
+):
+    import os
+
+    s = setup
+    index = s["child"] / ".git/index"
+    original = index.read_bytes()
+    events = []
+    fsync = m.os.fsync
+
+    def fail(fd):
+        if (
+            os.readlink(f"/proc/self/fd/{fd}") == str(index.parent)
+            and index.read_bytes() != original
+        ):
+            raise OSError("injected index directory fsync failure")
+        return fsync(fd)
+
+    monkeypatch.setattr(m.os, "fsync", fail)
+    with pytest.raises(OSError):
+        primitive(s, phase=lambda name, **kw: events.append((name, kw)))
+    assert index.read_bytes() != original and (index.parent / "index.lock").exists()
+    assert m.detached_at(s["child"], s["old"])
+    assert events[-1][1]["index_published"] is True
+    assert events[-1][1]["index_publication_durable"] is False
