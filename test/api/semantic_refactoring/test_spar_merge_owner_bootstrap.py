@@ -797,3 +797,60 @@ def test_native_publication_ledger_survives_owner_migration_and_restart(
             if connection is not None:
                 connection.close()
             server.stop()
+
+
+def add_callback_receipt(source, manifest):
+    receipt = {"canonical": "SPAR-001", "candidate_commit": "a" * 40,
+               "status": "task_completion_callback_pending"}
+    path = "train/receipts/callback.json"
+    (source / path).parent.mkdir(parents=True, exist_ok=True)
+    (source / path).write_text(json.dumps(receipt))
+    manifest["receipt_imports"].append({"path": path, "receipt_key": "callback",
+        "revision": 1, "receipt_cid": native._cid(receipt)})
+    refresh_manifest(source, manifest)
+    return receipt
+
+
+@pytest.mark.parametrize("failure", ["wrong_key", "multiple_keys", "superseded"])
+def test_callback_current_head_cannot_be_rebound(preserved, tmp_path, failure):
+    source, manifest, *_ = preserved
+    receipt = add_callback_receipt(source, manifest)
+    if failure == "wrong_key":
+        manifest["receipt_imports"][0]["receipt_key"] = "unrelated"
+    elif failure == "multiple_keys":
+        manifest["receipt_imports"].append({**manifest["receipt_imports"][0],
+                                           "receipt_key": "call:back"})
+    else:
+        path = "history.json"
+        (source / path).write_text(json.dumps(receipt))
+        manifest["receipt_imports"].append({"path": path, "receipt_key": "callback",
+            "revision": 2, "receipt_cid": native._cid(receipt)})
+        refresh_manifest(source, manifest)
+    with pytest.raises(native.SparMergeOwnerError, match="canonical train receipt"):
+        native.prepare_offline_clone(offline_root=source, destination=tmp_path / "clone",
+                                     manifest=manifest)
+    assert not (tmp_path / "clone").exists()
+
+
+def test_callback_pending_receipt_survives_native_owner_restart(preserved, tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
+    from types import SimpleNamespace
+    source, manifest, *_ = preserved
+    receipt = add_callback_receipt(source, manifest)
+    prepared = native.prepare_offline_clone(offline_root=source,
+        destination=tmp_path / "clone", manifest=manifest)
+    for generation in (1, 2):
+        server = start(prepared, tmp_path / "owner")
+        connection = None
+        try:
+            assert server.identity.generation == generation
+            connection, api = attach_recovery(server, manifest)
+            train = object.__new__(MergeTrain)
+            train._owner_recovery_runtime = SimpleNamespace(
+                read_receipt=lambda key: api.get_receipt(key)["receipt"])
+            assert train._read_receipt("callback") == receipt
+            assert api.get_receipt("callback")["revision"] == 1
+        finally:
+            if connection is not None:
+                connection.close()
+            server.stop()
