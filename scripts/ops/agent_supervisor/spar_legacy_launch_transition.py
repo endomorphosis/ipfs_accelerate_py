@@ -17,6 +17,7 @@ import subprocess
 from . import spar_merge_owner as role
 
 SCHEMA = "spar/native-legacy-launch-scope-transition@1"
+MAX_SOURCE_BYTES = 16 * 1024 * 1024
 
 
 def _require(value, reason):
@@ -35,7 +36,7 @@ def _native_cid(value):
 
 def _git(root, *args):
     result = subprocess.run(["git", *args], cwd=root, capture_output=True, timeout=30)
-    _require(result.returncode == 0 and len(result.stdout) <= 4 * 1024 * 1024,
+    _require(result.returncode == 0 and len(result.stdout) <= MAX_SOURCE_BYTES,
              "legacy launch source Git evidence unavailable")
     return result.stdout
 
@@ -49,7 +50,7 @@ def _blob(root, head, relative, *, current=False):
     body = _git(root, "show", head + ":" + relative)
     if current:
         from .spar_legacy_capture import _bytes
-        _require(_bytes(root / path) == body, "legacy launch source differs from committed bytes")
+        _require(_bytes(root / path, MAX_SOURCE_BYTES) == body, "legacy launch source differs from committed bytes")
     return body
 
 

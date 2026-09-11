@@ -259,3 +259,14 @@ def test_second_configuration_does_not_reseed_current_cursor(source_transition, 
     _advance_source(case)
     with pytest.raises(OwnerRecoveryRuntimeError, match='different preserved state'):
         start(replace(prepared, launch_transition=qualify(case)), tmp_path/'owner')
+
+
+def test_current_runtime_blob_uses_source_budget_not_small_receipt_budget(source_transition):
+    case = source_transition
+    # The real native implementation_daemon source already exceeds 5 MiB.
+    body = b'# source-only bounded runtime qualification\n' + b'#' * (5 * 1024 * 1024)
+    (case.root/'runtime.py').write_bytes(body)
+    _git(case.root,'add','runtime.py')
+    _git(case.root,'commit','-qm','Large native runtime source')
+    head = _git(case.root,'rev-parse','HEAD')
+    assert transition._blob(case.root,head,'runtime.py',current=True) == body

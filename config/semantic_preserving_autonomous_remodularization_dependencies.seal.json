@@ -24,7 +24,7 @@
     "pyproject.toml": "6cdbe1b7d850640d6ca08f80431bd54dd0fe09545d252c4bc2be86f7f1cc39fe",
     "scripts/ops/agent_supervisor/spar_legacy_capture.py": "eb9ea8e58ada9af4082760c6fda7e36a76ae1a84eed17cfac44039af21f87aa1",
     "scripts/ops/agent_supervisor/spar_legacy_import_plan.py": "83f51622e3d7b54362ed88510d20c42b13f1706eb2f1d0ff7292bb249f802f7b",
-    "scripts/ops/agent_supervisor/spar_legacy_launch_transition.py": "eb15d32dd6a192ff3a490225c26f022901c2d65da746f163b11deddd07b81a03",
+    "scripts/ops/agent_supervisor/spar_legacy_launch_transition.py": "d3fe10f52100fb5ade7812b8dae9899db0f28ee5f8d623e8b67cc098ee324e4a",
     "scripts/ops/agent_supervisor/spar_legacy_observation.py": "adbc803e7dfcae30788a889b91d1429791691e9e09dcd5de7ad3650afd1ababd",
     "scripts/ops/agent_supervisor/spar_legacy_origin.py": "9d3eb5a49d0efe126ef94d0bb644e56cf32614e0a828548d413bbad1fe60c40a",
     "scripts/ops/agent_supervisor/spar_merge_owner.py": "0f99d114011b4a9858280bc333ac7bd820dbb60fef0fd57914f00bb14ac67323",
@@ -506,7 +506,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:1445acd1cd38604f4e2c7c037ad7ba2b90d6b2bb82ada0513db06feadd4bf78a",
+  "seal_cid": "sha256:e71fac75e6fcad39f7e38707a936bbb4fb97ec5048afdf67b037c489711b3d85",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",
