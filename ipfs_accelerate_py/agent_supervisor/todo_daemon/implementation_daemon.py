@@ -61886,12 +61886,16 @@ class PortalImplementationDaemon:
         return results
 
     def _cleanup_stale_worktrees(self, *, max_age_seconds: float = 0) -> dict[str, Any]:
-        """Remove worktrees whose branches are unmerged but have been inactive too long.
+        """Detect stale worktrees and delegate destructive cleanup to the supervisor.
 
         This prevents orphaned worktrees from accumulating after failed or
-        abandoned implementations. Only removes worktrees under our managed root
-        that have no active process and whose branch hasn't been updated within
-        ``max_age_seconds`` (default from env: 6 hours).
+        abandoned implementations.  The daemon deliberately does not remove a
+        stale checkout: only the supervisor reconciliation path scans durable
+        peer task state and protected-path snapshots, rescues dirty bytes, and
+        proves that non-forcing branch/worktree retirement is safe.  This pass
+        therefore only reports managed worktrees that have no active process
+        and whose branch has not been updated within ``max_age_seconds``
+        (default from env: 6 hours).
         """
         if max_age_seconds <= 0:
             max_age_seconds = float(
@@ -61958,21 +61962,6 @@ class PortalImplementationDaemon:
                 skipped.append({**detail, "reason": "unmanaged_branch"})
                 continue
 
-            if not worktree_path.exists():
-                # git still lists locked-initializing checkouts after the
-                # directory is gone. Age is irrelevant; prune immediately so
-                # extra-gate setup does not cwd into a PosixPath ENOENT.
-                cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
-                removed.append(
-                    {
-                        **detail,
-                        "age_seconds": 0.0,
-                        "cleanup_result": cleanup_result,
-                        "reason": "registered_workspace_missing",
-                    }
-                )
-                continue
-
             # Check age by looking at the most recent commit timestamp on the branch
             try:
                 age_result = subprocess.run(
@@ -61995,20 +61984,33 @@ class PortalImplementationDaemon:
                 skipped.append({**detail, "reason": "not_stale_yet", "age_seconds": age_seconds})
                 continue
 
-            # Stale: remove it
-            cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
-            removed.append({**detail, "age_seconds": age_seconds, "cleanup_result": cleanup_result})
+            skipped.append(
+                {
+                    **detail,
+                    "age_seconds": age_seconds,
+                    "reason": "stale_worktree_cleanup_delegated_to_supervisor",
+                    "remedy": "supervisor_worktree_reconciliation",
+                }
+            )
 
+        delegated = [
+            item
+            for item in skipped
+            if item.get("reason")
+            == "stale_worktree_cleanup_delegated_to_supervisor"
+        ]
         result = {
             "attempted": True,
             "max_age_seconds": max_age_seconds,
             "removed_count": len(removed),
+            "delegated_count": len(delegated),
             "skipped_count": len(skipped),
             "removed": removed,
+            "delegated": delegated[:30],
             "skipped": skipped[:30],
         }
-        if removed:
-            self._record_event("stale_worktree_cleanup", result)
+        if delegated:
+            self._record_event("stale_worktree_cleanup_delegated", result)
         return result
 
     def _cleanup_stale_locks(self, *, max_age_seconds: float = 0) -> dict[str, Any]:
@@ -105955,6 +105957,154 @@ class DatabaseImplementationDaemon:
             if observed is None or str(observed[0]) != encoded:
                 raise
 
+    def observe_terminal_attempt(
+        self, attempt: "DatabaseTaskAttempt",
+    ) -> dict[str, Any]:
+        """Observe one terminal attempt through its current execution owner.
+
+        This is not a recovery receipt. It grants no callback, retry, source,
+        completion, or cleanup authority. In particular, observing a malformed
+        historical phase does not validate it. No database or credential is
+        opened here: the retained daemon connection and writer fence are used.
+        """
+        with self._lock:
+            def require_owner() -> None:
+                if (
+                    self._closed or self._connection is None
+                    or not self._retained_embedded_writer_fence_current()
+                    or current_process_birth() != self.process_birth
+                    or self._active_external_callbacks != 0
+                    or attempt.owner_session_id != self.owner_session_id
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "terminal observation lacks the exact idle execution owner"
+                    )
+
+            require_owner()
+            connection = self._require_connection()
+            if getattr(connection, "in_transaction", False):
+                raise DatabaseImplementationConflictError(
+                    "terminal observation requires a fresh read transaction"
+                )
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                expected_metadata = {
+                    "interface": self.INTERFACE,
+                    "schema": self.SCHEMA,
+                    "authority_mode": self.authority_mode,
+                    "logical_owner_session_id": self.owner_session_id,
+                    "process_instance_id": self.process_instance_id,
+                    DATABASE_EXECUTION_STORE_IDENTITY_METADATA_KEY:
+                        self.execution_store_identity,
+                }
+                for key, expected in expected_metadata.items():
+                    row = connection.execute(
+                        "SELECT count(*) FROM daemon_execution_metadata WHERE key = ? AND value = ?",
+                        [key, expected],
+                    ).fetchone()
+                    if not expected or row is None or type(row[0]) is not int or row[0] != 1:
+                        raise DatabaseImplementationAuthorityError(
+                            "terminal observation execution identity changed"
+                        )
+                _database_inner_population_preflight(
+                    connection, table="daemon_execution_metadata",
+                    columns_and_types=(("key", "VARCHAR", False), ("value", "VARCHAR", False)),
+                    where_sql="key = ?",
+                    parameters=[self._process_instance_metadata_key(self.process_instance_id)],
+                    row_bound=1, text_byte_bound=16_384,
+                )
+                process = self._database_process_instance_record(self.process_instance_id)
+                if (
+                    not isinstance(process, Mapping)
+                    or process.get("state") != "active"
+                    or process.get("owner_session_id") != self.owner_session_id
+                    or process.get("process_birth") != self.process_birth.to_dict()
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "terminal observation process registration changed"
+                    )
+                remaining_rows, remaining_bytes = 512, 262_144
+                groups: dict[str, Any] = {}
+                phase_dispositions: list[dict[str, Any]] = []
+                dispositions = {
+                    "blocked_unknown_outcome", "terminalized_for_retry",
+                    "superseded_attempt_revoked", "provider_route_deferred_rearmed",
+                }
+                for name, table, _where, order, json_columns in _FENCED_PROVIDER_INNER_GROUP_SPECS:
+                    columns = _DAEMON_EXECUTION_REQUIRED_COLUMNS[table]
+                    # This is an exact attempt observation, not a task-wide
+                    # callback census. Unbound task events are not included.
+                    count, byte_count = _database_inner_population_preflight(
+                        connection, table=table, columns_and_types=columns,
+                        where_sql="attempt_id = ?", parameters=[attempt.attempt_id],
+                        row_bound=remaining_rows, text_byte_bound=remaining_bytes,
+                    )
+                    names = ", ".join(f'"{column}"' for column, _, _ in columns)
+                    rows = connection.execute(
+                        f'SELECT {names} FROM "{table}" WHERE attempt_id = ? '
+                        f'ORDER BY {order} LIMIT {remaining_rows + 1}',
+                        [attempt.attempt_id],
+                    ).fetchall()
+                    if len(rows) != count:
+                        raise DatabaseImplementationConflictError(
+                            "terminal observation population changed within snapshot"
+                        )
+                    remaining_rows -= count
+                    remaining_bytes -= byte_count
+                    groups[name] = _database_inner_population_group(
+                        group_name=name, table=table, columns_and_types=columns,
+                        json_columns=frozenset(json_columns), rows=rows,
+                    )
+                    if name == "attempt_phases":
+                        indexes = {column: index for index, (column, _, _) in enumerate(columns)}
+                        for row in rows:
+                            body = _database_daemon_strict_mapping_json(
+                                row[indexes["body_json"]], authority="observed terminal phase",
+                            )
+                            link = body.get("terminal_reconciliation")
+                            actual = body.get("database_disposition")
+                            intended = link.get("intended_database_disposition") if type(link) is dict else None
+                            phase_dispositions.append({
+                                "phase": row[indexes["phase"]],
+                                "actual": actual if type(actual) is str and actual in dispositions else None,
+                                "intended": intended if type(intended) is str and intended in dispositions else None,
+                                "attempt_consumed": body.get("attempt_consumed") if type(body.get("attempt_consumed")) is bool else None,
+                            })
+                observed = self.get_attempt(attempt.attempt_id)
+                if (
+                    observed is None or observed.status not in {"failed", "superseded"}
+                    or canonical_json(observed.to_dict()) != canonical_json(attempt.to_dict())
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "terminal observation does not bind the exact terminal attempt"
+                    )
+                require_owner()
+                connection.execute("COMMIT")
+            except BaseException as exc:
+                _rollback_database_execution_transaction(connection, exc)
+                raise
+            result = {
+                "schema": "ipfs_accelerate_py/agent-supervisor/terminal-attempt-observation@1",
+                "available": True,
+                "authority": "observation_only",
+                "recovery_authorized": False,
+                "completion_authorized": False,
+                "transaction_boundary": "single_execution_store_read_transaction",
+                "canonical_task_history_included": False,
+                "unbound_task_events_included": False,
+                "external_receipt_bytes_included": False,
+                "execution_store_identity": self.execution_store_identity,
+                "owner_session_id": self.owner_session_id,
+                "process_instance_id": self.process_instance_id,
+                "process_birth": self.process_birth.to_dict(),
+                "attempt_id": attempt.attempt_id,
+                "observed_at_ms": self._now_ms(),
+                "groups": groups,
+                "phase_dispositions": phase_dispositions,
+            }
+            result["observation_digest"] = self._database_canonical_digest(result)
+            return result
+
     def _repair_database_portal_terminal_receipts(
         self,
         *,
@@ -106459,6 +106609,24 @@ class DatabaseImplementationDaemon:
                     "error_type": type(exc).__name__,
                     "error": str(exc)[:512],
                 }
+                # The lane owns this execution store; an external status reader
+                # cannot substitute a central task row for this historical phase.
+                # Observe at most one failure per page and retain the recovery
+                # fence even if the observation is unavailable.
+                if not any("terminal_attempt_observation" in item for item in outcomes):
+                    try:
+                        failed_item["terminal_attempt_observation"] = (
+                            self.observe_terminal_attempt(attempt)
+                        )
+                    except Exception as observation_exc:
+                        _reraise_database_execution_storage_art_fatal(observation_exc)
+                        failed_item["terminal_attempt_observation"] = {
+                            "available": False,
+                            "authority": "observation_only",
+                            "recovery_authorized": False,
+                            "completion_authorized": False,
+                            "error_type": type(observation_exc).__name__,
+                        }
                 # Invalid terminal evidence remains a recovery fence for every task.
                 outcomes.append(failed_item)
         page_blocked = any(item.get("blocked") is True for item in outcomes)
