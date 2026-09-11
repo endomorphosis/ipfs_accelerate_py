@@ -170,3 +170,21 @@ def test_dead_original_birth_still_requires_absent_owned_group(tmp_path, monkeyp
         assert calls == [(child.pid, 0)]
     finally:
         _close_owned(child)
+
+
+@pytest.mark.parametrize('marker_name', ['identity_path', 'child_pid_path'])
+@pytest.mark.parametrize('error', [PermissionError, OSError])
+def test_unavailable_marker_is_not_completed_cleanup(tmp_path, monkeypatch, marker_name, error):
+    child = _child(tmp_path)
+    try:
+        assert runtime.terminate_supervised_child(child) is True
+        _close_owned(child)
+        original = runtime.os.lstat
+        def unavailable(path, *args, **kwargs):
+            if path == getattr(child, marker_name):
+                raise error('marker observation unavailable')
+            return original(path, *args, **kwargs)
+        monkeypatch.setattr(runtime.os, 'lstat', unavailable)
+        assert runtime.supervised_child_is_proven_dead(child) is False
+    finally:
+        _close_owned(child)
