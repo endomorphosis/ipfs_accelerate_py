@@ -753,6 +753,8 @@ def _runtime_paths(board: Any) -> dict[str, Path]:
 def _harden_runtime_directories(
     board: Any,
     paths: Mapping[str, Path],
+    *,
+    exclude_queue_root: Path | None = None,
 ) -> None:
     """Create exact SPAR runtime directories as private same-UID boundaries."""
 
@@ -794,6 +796,8 @@ def _harden_runtime_directories(
         candidates.add(merge_root / name)
 
     for path in sorted(candidates, key=lambda item: (len(item.parts), str(item))):
+        if exclude_queue_root is not None and (path == exclude_queue_root or path.is_relative_to(exclude_queue_root)):
+            continue
         resolved = path.resolve(strict=False)
         try:
             resolved.relative_to(runtime)
@@ -2768,12 +2772,14 @@ class _SparStateOwnerBootstrapBroker:
         board: Any,
         paths: Mapping[str, Path],
         execution_route_policy: Any,
+        merge_bundle_issuer: Any = None,
     ) -> None:
         self.channel = channel
         self.server = server
         self.board = board
         self.paths = paths
         self.execution_route_policy = execution_route_policy
+        self.merge_bundle_issuer = merge_bundle_issuer
         self.allowed_sessions = tuple(
             f"{board.board_namespace}-{index}" for index in range(board.max_lanes)
         )
@@ -2871,6 +2877,12 @@ class _SparStateOwnerBootstrapBroker:
                 self.server.revoke_typed_client_grant(grant_id)
             except Exception as exc:
                 failures.append(type(exc).__name__)
+        if self.merge_bundle_issuer is not None:
+            for session in tuple(self.merge_bundle_issuer.grants):
+                try:
+                    self.merge_bundle_issuer.revoke(session)
+                except Exception as exc:
+                    failures.append(type(exc).__name__)
         with self._lock:
             self.active_grants.clear()
         if failures:
@@ -3043,6 +3055,9 @@ class _SparStateOwnerBootstrapBroker:
             ),
             "--state-owner-bootstrap-fd": str(self.channel.fileno()),
         }
+        if self.merge_bundle_issuer is not None:
+            from scripts.ops.agent_supervisor.spar_merge_owner_handoff import BUNDLE_PROFILE
+            exact["--owner-merge-bootstrap-profile"] = BUNDLE_PROFILE
         if any(_exact_argv_option(argv, name) != value for name, value in exact.items()):
             raise OperatorError("supervisor birth differs from the sealed lane profile")
         supervisor_id = process_birth_id(supervisor)
@@ -3076,6 +3091,60 @@ class _SparStateOwnerBootstrapBroker:
             daemon_required_owner_command_operations,
             daemon_required_owner_operations,
         )
+
+        from ipfs_accelerate_py.agent_supervisor.task_sources.owner_merge_bootstrap import REQUEST_SCHEMA as MERGE_REQUEST_SCHEMA
+        if request.get("schema") == MERGE_REQUEST_SCHEMA:
+            from scripts.ops.agent_supervisor.spar_merge_owner import SparMergeOwnerError
+            from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import TypedStateOwnerAuthorizationError
+
+            def admitted_call(action):
+                try:
+                    return action()
+                except (SparMergeOwnerError, TypedStateOwnerAuthorizationError) as exc:
+                    raise OperatorError("native merge bundle admission refused") from exc
+            issuer = self.merge_bundle_issuer
+            if issuer is None:
+                raise OperatorError("native merge owner bundle is not admitted")
+            session = str(request.get("client_id") or "").removeprefix("database-implementation-daemon:")
+            with self._lock:
+                admitted_call(lambda: issuer.validate_request(request, session=session))
+                try:
+                    supplied = ProcessBirthIdentity.from_dict(dict(request.get("process_birth") or {}))
+                except (TypeError, ValueError, OverflowError) as exc:
+                    raise OperatorError("native merge bundle process birth malformed") from exc
+                observed = read_process_birth(peer_pid)
+                if (self.stopping.is_set() or peer_uid != os.geteuid() or request.get("pid") != peer_pid
+                    or observed is None or observed != supplied or process_birth_id(observed) != request.get("process_birth_id")):
+                    raise OperatorError("native merge bundle requesting peer differs")
+                self._validate_supervisor_parent(supplied, session)
+                prior_lane = self.current_by_session.get(session)
+                if prior_lane is not None and prior_lane.get("daemon_process_birth_id") != request["process_birth_id"]:
+                    self._require_dead(prior_lane.get("daemon_process_birth") or {}, noun="lane daemon")
+                    issuer.revoke(session)
+                replay = admitted_call(lambda: issuer.replay(request, session=session, task_owner_identity=self.server.identity.to_dict()))
+                if replay is not None:
+                    # The task grant must also still be current; no old bundle
+                    # may revive a revoked or replaced task session.
+                    task_grant = self.active_grants.get(session)
+                    if not task_grant:
+                        raise OperatorError("pending task grant unavailable")
+                    admitted_call(lambda: self.server.renew_typed_client_grant(task_grant, ttl_seconds=INTERNAL_CLIENT_GRANT_TTL_SECONDS))
+                    return replay
+                task_request = {key: request[key] for key in ("pid", "process_birth", "process_birth_id", "client_id", "store_id")}
+                task_request["schema"] = STATE_OWNER_BOOTSTRAP_REQUEST_SCHEMA
+                task_response = self._admit(task_request, peer_pid=peer_pid, peer_uid=peer_uid)
+                try:
+                    task_identity = self.server.identity.to_dict()
+                    response = admitted_call(lambda: issuer.issue(request, session=session, task_response=task_response, task_owner_identity=task_identity))
+                    if self.server.identity.to_dict() != task_identity or self.server.ready().get("ready") is not True:
+                        raise OperatorError("task owner changed during paired bundle issue")
+                    return response
+                except BaseException:
+                    grant_id = self.active_grants.pop(session, "")
+                    if grant_id:
+                        self.server.revoke_typed_client_grant(grant_id)
+                    issuer.revoke(session)
+                    raise
 
         if set(request) != {
             "schema",
@@ -3130,6 +3199,8 @@ class _SparStateOwnerBootstrapBroker:
                 ):
                     self._require_dead(prior_supervisor, noun="lane supervisor")
                 grant_id = self.active_grants.pop(session, "")
+                if self.merge_bundle_issuer is not None:
+                    self.merge_bundle_issuer.revoke(session)
                 if grant_id:
                     self.server.revoke_typed_client_grant(grant_id)
             token, grant = self.server.issue_typed_client_grant_record(
@@ -3241,6 +3312,8 @@ class _SparStateOwnerBootstrapBroker:
                 current["grant_renew_after"] = (
                     time.monotonic() + INTERNAL_CLIENT_GRANT_RENEWAL_SECONDS
                 )
+                if self.merge_bundle_issuer is not None:
+                    self.merge_bundle_issuer.renew(session)
                 changed = True
         if changed:
             self._persist()
@@ -3248,9 +3321,9 @@ class _SparStateOwnerBootstrapBroker:
     def _run(self) -> None:
         from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
             StateOwnerBootstrapError,
-            _receive_frame,
             _send_frame,
         )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.owner_merge_bootstrap import receive_bundle_frame as _receive_frame
 
         try:
             self.channel.settimeout(1.0)
@@ -3493,6 +3566,7 @@ def _bind_bootstrap_launch_plan(
     listener: socket.socket,
     store_id: str,
     launch_source_amendment: Any,
+    merge_bundle_profile: str = "",
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
         _generic_state_owner_bootstrap_binding,
@@ -3509,6 +3583,8 @@ def _bind_bootstrap_launch_plan(
         amendment_json,
     ):
         argv.append(f"--common-arg={value}")
+    if merge_bundle_profile:
+        argv.extend(("--common-arg=--owner-merge-bootstrap-profile", f"--common-arg={merge_bundle_profile}"))
     common_args = tuple(
         item.split("=", 1)[1]
         for item in argv
@@ -3597,6 +3673,7 @@ def supervise(
     implement: bool,
     dry_run: bool = False,
     duration_seconds: float = float("inf"),
+    merge_owner_profile: str = "",
 ) -> int:
     """Run the native configured-board fabric with exact daemon-birth grants."""
 
@@ -3609,6 +3686,16 @@ def supervise(
         main as multi_supervisor_main,
     )
     board, config = _load_config(config_path)
+    from scripts.ops.agent_supervisor.spar_merge_owner_handoff import (
+        FRESH_PROFILE, LEGACY_PROFILE, STOPPED_PROFILE, BUNDLE_PROFILE, configured_queue_root,
+        start_native_queue_for_launch, NativeMergeBundleIssuer,
+    )
+    from scripts.ops.agent_supervisor.spar_legacy_origin import required_profile
+    merge_owner_profile = required_profile(configured_queue_root(board), merge_owner_profile)
+    from scripts.ops.agent_supervisor.spar_stopped_origin import required_profile as stopped_required_profile
+    merge_owner_profile = stopped_required_profile(configured_queue_root(board), merge_owner_profile)
+    if merge_owner_profile not in ("", FRESH_PROFILE, LEGACY_PROFILE, STOPPED_PROFILE):
+        raise OperatorError("legacy queue capture and old-consumer closure are not independently admitted")
     if not dry_run:
         _assert_start_not_held(board)
     current_head, current_tree = _assert_clean_current_tree(config)
@@ -3652,6 +3739,7 @@ def supervise(
                 listener=listener,
                 store_id=program.store_id,
                 launch_source_amendment=launch_source_amendment,
+                merge_bundle_profile=BUNDLE_PROFILE if merge_owner_profile else "",
             )
             plan["launch_source_amendment"]["idempotent_replay"] = (
                 idempotent_replay
@@ -3660,7 +3748,7 @@ def supervise(
         finally:
             listener.close()
         return 0
-    _harden_runtime_directories(board, paths)
+    _harden_runtime_directories(board, paths, exclude_queue_root=configured_queue_root(board) if merge_owner_profile else None)
     launch_source_amendment, amendment_admission = (
         _admit_launch_source_amendment(
             board=board,
@@ -3687,8 +3775,11 @@ def supervise(
     listener: socket.socket | None = None
     broker: _SparStateOwnerBootstrapBroker | None = None
     monitor: _OwnerProjectionMonitor | None = None
+    queue_owner = None
     prior_sigterm: Any = None
     try:
+        if merge_owner_profile:
+            queue_owner = start_native_queue_for_launch(board=board, paths=paths, amendment=launch_source_amendment, profile=merge_owner_profile)
         listener = _new_bootstrap_listener(lane_count=board.max_lanes)
         broker = _SparStateOwnerBootstrapBroker(
             channel=listener,
@@ -3696,6 +3787,7 @@ def supervise(
             board=board,
             paths=paths,
             execution_route_policy=route_policy,
+            merge_bundle_issuer=NativeMergeBundleIssuer(queue_owner, amendment=launch_source_amendment, board=board) if queue_owner is not None else None,
         )
         broker.start()
         monitor = _OwnerProjectionMonitor(
@@ -3710,6 +3802,7 @@ def supervise(
             listener=listener,
             store_id=program.store_id,
             launch_source_amendment=launch_source_amendment,
+            merge_bundle_profile=BUNDLE_PROFILE if merge_owner_profile else "",
         )
         argv = list(plan["argv"])
         _apply_configured_board_environment(plan)
@@ -3789,6 +3882,11 @@ def supervise(
                 failures.append(type(exc).__name__)
         elif listener is not None:
             listener.close()
+        if queue_owner is not None:
+            try:
+                queue_owner.close()
+            except Exception as exc:
+                failures.append(type(exc).__name__)
         try:
             server.stop()
         except Exception as exc:
@@ -4109,6 +4207,7 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="authorize implementation-provider dispatch",
     )
+    supervise_parser.add_argument("--merge-owner-profile", choices=("native-fresh-origin@1", "native-legacy-capture@1", "native-stopped-capture@1"), default="", help="Explicit separate queue owner origin; legacy capture remains independently gated")
     supervise_parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -4151,6 +4250,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 implement=bool(arguments.implement),
                 dry_run=bool(arguments.dry_run),
                 duration_seconds=float(arguments.duration_seconds),
+                merge_owner_profile=arguments.merge_owner_profile,
             )
         if arguments.command == "authoritative-status":
             print(json.dumps(authoritative_status(config_path), indent=2, sort_keys=True))

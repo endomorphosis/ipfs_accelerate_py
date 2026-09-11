@@ -8945,6 +8945,7 @@ class PortalSupervisorConfig:
     database_owner_session_id: str = ""
     state_owner_bootstrap_fd: int = -1
     state_owner_bootstrap_store_id: str = ""
+    owner_merge_bootstrap_profile: str = ""
     require_launch_source_amendment: bool = False
     launch_source_amendment_json: str = ""
     reconciliation_only: bool = False
@@ -9177,6 +9178,14 @@ class PortalSupervisorConfig:
                 or self.database_owner_session_id
             )
         )
+        if self.owner_merge_bootstrap_profile:
+            from ..semantic_refactoring.residual_authority import SPAR_BOARD_NAMESPACE
+            if (self.owner_merge_bootstrap_profile != "native-owner-merge-pair@1"
+                or self.board_namespace != SPAR_BOARD_NAMESPACE
+                or not self.require_launch_source_amendment
+                or not self.launch_source_amendment_json
+                or self.state_owner_bootstrap_fd < 3):
+                raise SupervisorSchedulerConfigError("native merge bootstrap profile is not admitted")
         if self.require_launch_source_amendment and not self.launch_source_amendment_json:
             raise SupervisorSchedulerConfigError(
                 "required launch-source amendment is unavailable"
@@ -11014,6 +11023,8 @@ class PortalImplementationSupervisor:
     ) -> tuple[bool | None, str, str]:
         """Inspect whether a historical attempt has durable claim evidence."""
 
+        if self.config.owner_merge_bootstrap_profile:
+            return None, "", "native_owner_merge_custody_retained"
         try:
             daemon = self._build_worktree_reconciliation_daemon(
                 reclaim_dead_lifecycle_on_startup=False,
@@ -11671,6 +11682,12 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         """Release one exact lease, then archive its completed proof."""
 
+        if self.config.owner_merge_bootstrap_profile:
+            return {
+                **self._native_owner_merge_maintenance_deferral(),
+                "blocked": True,
+                "lease_released": False,
+            }
         lock_path = self._implementation_maintenance_lock_path()
         operation_id = str(recovery.get("operation_id") or "")
         receipt_id = str(recovery.get("receipt_id") or "")
@@ -17366,6 +17383,8 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         """Retry clean inactive implementation worktrees before cleanup."""
 
+        if self.config.owner_merge_bootstrap_profile:
+            return self._native_owner_merge_maintenance_deferral()
         if not self.config.worktree_reconciliation_enabled:
             return {"attempted": False, "reason": "worktree_reconciliation_disabled"}
         worktree_root = self.config.worktree_root
@@ -18193,6 +18212,8 @@ class PortalImplementationSupervisor:
         remains the sole completion and task-board authority.
         """
 
+        if self.config.owner_merge_bootstrap_profile:
+            return self._native_owner_merge_maintenance_deferral()
         if not self.config.worktree_reconciliation_enabled:
             return {
                 "attempted": False,
@@ -19107,11 +19128,34 @@ class PortalImplementationSupervisor:
             return "other_dirty"
         return "clean"
 
+    @staticmethod
+    def _native_owner_merge_maintenance_deferral() -> dict[str, Any]:
+        """Keep merge custody with the process-bound native daemon pair.
+
+        The wrapper has a typed task reader, but no queue capability. Legacy
+        replay cannot borrow its child's private pair or open the owned queue.
+        This observation neither settles pending work nor promises its replay.
+        """
+        return {
+            "attempted": False,
+            "deferred": True,
+            "reason": "native_owner_merge_custody_retained",
+            "custody_retained": True,
+            "completion_authority": False,
+            "task_authority": False,
+        }
+
     def _build_worktree_reconciliation_daemon(
         self,
         *,
         reclaim_dead_lifecycle_on_startup: bool | None = None,
     ) -> PortalImplementationDaemon:
+        if self.config.owner_merge_bootstrap_profile:
+            # Also protect less common predecessor/shutdown recovery callers.
+            # Their existing fail-closed paths retain unresolved custody.
+            raise RuntimeError(
+                "native owner merge custody forbids local reconciliation"
+            )
         return PortalImplementationDaemon(
             todo_path=self.config.todo_path,
             state_path=self.config.state_path,
@@ -19573,6 +19617,12 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         """Close an interrupted attempt only after proving it is quiescent."""
 
+        if self.config.owner_merge_bootstrap_profile:
+            return {
+                **self._native_owner_merge_maintenance_deferral(),
+                "reconciled": False,
+                "blocked": True,
+            }
         try:
             strict_custody = bool(
                 isinstance(preacquired_implementation_lock, Mapping)
@@ -27299,6 +27349,8 @@ class PortalImplementationSupervisor:
                     )
             if self.config.require_launch_source_amendment:
                 command.append("--require-launch-source-amendment")
+            if self.config.owner_merge_bootstrap_profile:
+                command.extend(["--owner-merge-bootstrap-profile", self.config.owner_merge_bootstrap_profile])
             if self.config.launch_source_amendment_json:
                 command.extend(
                     [
@@ -28651,6 +28703,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument("--owner-merge-bootstrap-profile", choices=("native-owner-merge-pair@1",), default="", help=argparse.SUPPRESS)
     parser.add_argument(
         "--require-launch-source-amendment",
         action="store_true",
@@ -29501,6 +29554,7 @@ def supervisor_config_from_args(
         state_owner_bootstrap_store_id=str(
             getattr(args, "state_owner_bootstrap_store_id", "") or ""
         ),
+        owner_merge_bootstrap_profile=str(getattr(args, "owner_merge_bootstrap_profile", "") or ""),
         require_launch_source_amendment=bool(
             getattr(args, "require_launch_source_amendment", False)
         ),

@@ -132095,6 +132095,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument("--owner-merge-bootstrap-profile", choices=("native-owner-merge-pair@1",), default="", help=argparse.SUPPRESS)
     parser.add_argument(
         "--require-launch-source-amendment",
         action="store_true",
@@ -132738,6 +132739,8 @@ def _request_process_bound_state_owner_bootstrap(
     *,
     client_id: str,
     store_id: str,
+    merge_config_cid: str = "",
+    merge_plan_cid: str = "",
 ) -> Any:
     """Harden this daemon before receiving its birth-bound owner credential.
 
@@ -132758,6 +132761,11 @@ def _request_process_bound_state_owner_bootstrap(
         "process_security",
         establish_state_authority_process_boundary,
     )
+    if merge_config_cid or merge_plan_cid:
+        if not merge_config_cid or not merge_plan_cid:
+            raise RuntimeError("paired native bootstrap lacks current source admission")
+        from ..task_sources.owner_merge_bootstrap import request_owner_merge_bootstrap
+        return _lgcvf_daemon_call("owner_bootstrap", lambda: request_owner_merge_bootstrap(descriptor, client_id=client_id, store_id=store_id, config_cid=merge_config_cid, plan_cid=merge_plan_cid))
     return _lgcvf_daemon_call(
         "owner_bootstrap",
         lambda: request_state_owner_bootstrap(
@@ -132884,10 +132892,18 @@ def main(
     else:
         preload_sealed_native_dependency_from_environment()
     args = _lgcvf_daemon_call("argument_parse", lambda: parse_args(argv))
+    owner_merge_attachment = None
     launch_source_amendment = _lgcvf_daemon_call(
         "launch_source_amendment",
         lambda: _launch_source_amendment_from_args(args, repo_root=REPO_ROOT),
     )
+    if getattr(args, "owner_merge_bootstrap_profile", ""):
+        from ..semantic_refactoring.residual_authority import SPAR_BOARD_NAMESPACE
+        if (getattr(args, "board_namespace", "") != SPAR_BOARD_NAMESPACE
+            or int(getattr(args, "state_owner_bootstrap_fd", -1)) < 3
+            or not getattr(args, "require_launch_source_amendment", False)
+            or launch_source_amendment is None):
+            raise RuntimeError("native paired bootstrap requires the complete admitted SPAR launch")
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -133003,11 +133019,20 @@ def main(
                 )
             )
         typed_task_source: Any = None
+        merge_bundle = None
         if bootstrap_fd >= 3:
             if not owner_session_id:
                 raise RuntimeError(
                     "state-owner bootstrap requires an explicit database owner session"
                 )
+            bootstrap_options = {}
+            if getattr(args, "owner_merge_bootstrap_profile", ""):
+                from ..semantic_refactoring.residual_authority import SPAR_BOARD_NAMESPACE
+                if (getattr(args, "board_namespace", "") != SPAR_BOARD_NAMESPACE
+                    or launch_source_amendment is None
+                    or not getattr(args, "require_launch_source_amendment", False)):
+                    raise RuntimeError("native paired bootstrap requires admitted SPAR launch source")
+                bootstrap_options = {"merge_config_cid": launch_source_amendment.launch_config_cid, "merge_plan_cid": launch_source_amendment.bootstrap_plan_root_cid}
             credentials = _request_process_bound_state_owner_bootstrap(
                 bootstrap_fd,
                 client_id=(
@@ -133021,7 +133046,13 @@ def main(
                     )
                     or ""
                 ),
+                **bootstrap_options,
             )
+            if bootstrap_options:
+                from ..task_sources.owner_merge_bootstrap import OwnerMergeBootstrapBundle
+                if type(credentials) is not OwnerMergeBootstrapBundle:
+                    raise RuntimeError("native paired bootstrap did not supply all roles")
+                merge_bundle, credentials = credentials, credentials.task
             state_owner_bootstrap_credentials = credentials
             bootstrap_process_instance_id = credentials.process_birth_id
             expected_endpoint = str(
@@ -133063,10 +133094,20 @@ def main(
                     execution_route_policy=credentials.execution_route_policy,
                     launch_source_amendment=launch_source_amendment,
                 )
+                if merge_bundle is not None:
+                    owner_merge_attachment = merge_bundle.attach_merge_runtime(
+                        repository_root=REPO_ROOT,
+                        attempt_root=args.state_dir / f"{args.state_prefix}_database_portal_attempts",
+                        board_namespace=args.board_namespace, lane_id=str(args.task_shard_index),
+                        admitted_config_cid=launch_source_amendment.launch_config_cid,
+                        admitted_plan_cid=launch_source_amendment.bootstrap_plan_root_cid,
+                    )
             except BaseException as exc:
                 _emit_lgcvf_daemon_diagnostic("owner_attach", exc)
                 if client is not None:
                     client.close()
+                if owner_merge_attachment is not None:
+                    owner_merge_attachment.close()
                 raise
             finally:
                 # The authenticated socket is already bound to this birth.
@@ -133123,17 +133164,26 @@ def main(
             _emit_lgcvf_daemon_diagnostic("daemon_construct", exc)
             if typed_task_source is not None:
                 typed_task_source.close()
+            if owner_merge_attachment is not None:
+                owner_merge_attachment.close()
             raise
-        _lgcvf_daemon_call(
-            "portal_bind",
-            lambda: bind_database_portal_execution_from_args(
-                daemon,
-                args,
-                repo_root=REPO_ROOT,
-                portal_daemon_class=PortalImplementationDaemon,
-                external_agent_container_dispatcher_factory=dispatcher_factory,
-            ),
-        )
+        try:
+            _lgcvf_daemon_call(
+                "portal_bind",
+                lambda: bind_database_portal_execution_from_args(
+                    daemon, args, repo_root=REPO_ROOT, portal_daemon_class=PortalImplementationDaemon,
+                    external_agent_container_dispatcher_factory=dispatcher_factory,
+                    **({"owner_merge_runtime": owner_merge_attachment.runtime,
+                        "admitted_owner_merge_config_cid": launch_source_amendment.launch_config_cid,
+                        "admitted_owner_merge_plan_cid": launch_source_amendment.bootstrap_plan_root_cid}
+                       if owner_merge_attachment is not None else {}),
+                ),
+            )
+        except BaseException:
+            if owner_merge_attachment is not None:
+                owner_merge_attachment.close()
+            daemon.close()
+            raise
     else:
         daemon = PortalImplementationDaemon(
             todo_path=args.todo_path,
@@ -133326,6 +133376,8 @@ def main(
                 if callable(close):
                     close()
         finally:
+            if owner_merge_attachment is not None:
+                owner_merge_attachment.close()
             if handlers_installed:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
