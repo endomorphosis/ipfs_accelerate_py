@@ -85,6 +85,42 @@ def _admit_native_supervisor_handoff(server, monkeypatch):
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", raising=False)
 
 
+
+def _admit_native_command_route(server, monkeypatch, route, stopping, errors):
+    """Exercise actual native command consumers for both launcher contracts."""
+    if route == "broker":
+        _admit_native_supervisor_handoff(server, monkeypatch)
+        return None
+    assert route == "legacy"
+    for name in (
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD",
+        "IPFS_ACCELERATE_AGENT_STATE_TYPED_OWNER_SOCKET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    identity = server.identity
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+                       server._vault.resolve(identity.secret_handle))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+                       str(server.mutation_inbox_path()))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+                       str(identity.generation))
+
+    def consume():
+        try:
+            while not stopping.is_set():
+                server.service_database_task_command_inbox(
+                    expected_store_generation=str(identity.generation), max_requests=8,
+                )
+                stopping.wait(0.005)
+        except BaseException as error:
+            errors.append(error)
+
+    worker = threading.Thread(target=consume)
+    worker.start()
+    return worker
+
+
 def _seed(database: Path) -> None:
     repo = open_intent_repository(database, owner_id="seed")
     try:
@@ -1935,8 +1971,9 @@ def test_remote_database_task_source_record_queue_backoff(
         assert local.projection_matches_events() is True
 
 
-def test_native_broker_command_holds_read_lock_through_refresh_and_cache_eviction(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("command_route", ["broker", "legacy"])
+def test_native_command_holds_read_lock_through_refresh_and_cache_eviction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command_route: str,
 ) -> None:
     """A real replica reader cannot cross either native publication boundary."""
     database = tmp_path / "control" / "control.duckdb"
@@ -1951,7 +1988,10 @@ def test_native_broker_command_holds_read_lock_through_refresh_and_cache_evictio
         capability_probe=lambda **_kwargs: probe_quack_capabilities(),
     )
     identity = server.start()
-    _admit_native_supervisor_handoff(server, monkeypatch)
+    legacy_stopping, legacy_errors = threading.Event(), []
+    legacy_worker = _admit_native_command_route(
+        server, monkeypatch, command_route, legacy_stopping, legacy_errors,
+    )
     for key, value in {
         "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE": identity.secret_handle,
         "IPFS_ACCELERATE_AGENT_STATE_STORE_ID": str(database),
@@ -2022,6 +2062,7 @@ def test_native_broker_command_holds_read_lock_through_refresh_and_cache_evictio
         assert reads[0].status == "in_progress"
         assert refreshes == ["refresh"]
         assert server.status()["read_replica"]["live"] is True
+        assert not legacy_errors, legacy_errors
     finally:
         refresh_release.set()
         eviction_release.set()
@@ -2030,6 +2071,10 @@ def test_native_broker_command_holds_read_lock_through_refresh_and_cache_evictio
         if reader.ident is not None:
             reader.join(10)
         monkeypatch.setattr(duckdb_state_module, "reset_quack_transport_cache", evict)
+        legacy_stopping.set()
+        if legacy_worker is not None:
+            legacy_worker.join(10)
+            assert not legacy_worker.is_alive()
         source.close()
         server.stop()
 
