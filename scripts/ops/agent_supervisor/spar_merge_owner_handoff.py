@@ -17,6 +17,7 @@ from . import spar_merge_owner as role
 
 FRESH_PROFILE = "native-fresh-origin@1"
 LEGACY_PROFILE = "native-legacy-capture@1"
+STOPPED_PROFILE = "native-stopped-capture@1"
 BUNDLE_PROFILE = "native-owner-merge-pair@1"
 ORIGIN_SCHEMA = "spar/native-fresh-queue-origin@1"
 ORIGIN_TABLE = "legacy_merge_native_origins"
@@ -68,6 +69,10 @@ def configured_queue_root(board):
 
 def _load_origin(database, *, repository_id, target_branch, store_id, scopes, profile=FRESH_PROFILE,
                  launch_context=None):
+    if profile == STOPPED_PROFILE:
+        from .spar_stopped_origin import load_stopped_origin
+        return load_stopped_origin(database, repository_id=repository_id, target_branch=target_branch,
+            store_id=store_id, scopes=scopes, profile=profile, launch_context=launch_context)
     # A positive observed lock veto precedes every canonical DB open. Absence
     # does not certify legacy closure; only this role's canonical origin is read.
     info = database.lstat()
@@ -294,7 +299,7 @@ def start_native_queue_for_launch(
         LaunchSourceAmendment,
     )
 
-    if profile not in (FRESH_PROFILE, LEGACY_PROFILE):
+    if profile not in (FRESH_PROFILE, LEGACY_PROFILE, STOPPED_PROFILE):
         raise role.SparMergeOwnerError(
             "legacy queue capture and old-consumer closure are not independently admitted"
         )
@@ -313,7 +318,7 @@ def start_native_queue_for_launch(
         store_id=str(root / "merge_queue.duckdb"),
         scopes=scopes,
     )
-    if profile == LEGACY_PROFILE:
+    if profile in (LEGACY_PROFILE, STOPPED_PROFILE):
         descriptor = role._open_directory(root)
         try:
             info = os.fstat(descriptor)

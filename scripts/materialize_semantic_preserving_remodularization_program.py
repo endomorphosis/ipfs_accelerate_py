@@ -3687,12 +3687,14 @@ def supervise(
     )
     board, config = _load_config(config_path)
     from scripts.ops.agent_supervisor.spar_merge_owner_handoff import (
-        FRESH_PROFILE, LEGACY_PROFILE, BUNDLE_PROFILE, configured_queue_root,
+        FRESH_PROFILE, LEGACY_PROFILE, STOPPED_PROFILE, BUNDLE_PROFILE, configured_queue_root,
         start_native_queue_for_launch, NativeMergeBundleIssuer,
     )
     from scripts.ops.agent_supervisor.spar_legacy_origin import required_profile
     merge_owner_profile = required_profile(configured_queue_root(board), merge_owner_profile)
-    if merge_owner_profile not in ("", FRESH_PROFILE, LEGACY_PROFILE):
+    from scripts.ops.agent_supervisor.spar_stopped_origin import required_profile as stopped_required_profile
+    merge_owner_profile = stopped_required_profile(configured_queue_root(board), merge_owner_profile)
+    if merge_owner_profile not in ("", FRESH_PROFILE, LEGACY_PROFILE, STOPPED_PROFILE):
         raise OperatorError("legacy queue capture and old-consumer closure are not independently admitted")
     if not dry_run:
         _assert_start_not_held(board)
@@ -4205,7 +4207,7 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="authorize implementation-provider dispatch",
     )
-    supervise_parser.add_argument("--merge-owner-profile", choices=("native-fresh-origin@1", "native-legacy-capture@1"), default="", help="Explicit separate queue owner origin; legacy capture remains independently gated")
+    supervise_parser.add_argument("--merge-owner-profile", choices=("native-fresh-origin@1", "native-legacy-capture@1", "native-stopped-capture@1"), default="", help="Explicit separate queue owner origin; legacy capture remains independently gated")
     supervise_parser.add_argument(
         "--dry-run",
         action="store_true",
