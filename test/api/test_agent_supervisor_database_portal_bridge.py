@@ -23533,7 +23533,8 @@ def test_recorded_pending_merge_refuses_missing_queue_history(tmp_path, history)
         bridge._recorded_pending_merge_identity(paths, binding)
 
 
-def test_recorded_pending_merge_fifo_is_rejected_without_waiting(tmp_path):
+@pytest.mark.parametrize("artifact", ["events", "state"])
+def test_recorded_pending_merge_fifo_is_rejected_without_waiting(tmp_path, artifact):
     import os
     import sys
     fifo = tmp_path / "portal-events.jsonl"
@@ -23545,14 +23546,41 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 import sys
 bridge = object.__new__(DatabasePortalExecutionBridge)
 try:
-    bridge._recorded_pending_merge_identity(SimpleNamespace(events=Path(sys.argv[1])), {})
+    paths = SimpleNamespace(events=Path(sys.argv[1]) if sys.argv[2] == "events" else Path(sys.argv[1]).with_name("absent-events"), state=Path(sys.argv[1]))
+    bridge._recorded_pending_merge_identity(paths, {})
 except DatabasePortalBridgeError:
     raise SystemExit(0)
 raise SystemExit(1)
 """
     result = subprocess.run(
-        [sys.executable, "-c", script, str(fifo)],
+        [sys.executable, "-c", script, str(fifo), artifact],
         cwd=Path(database_portal_bridge_module.__file__).parents[3],
         timeout=10, capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("read_mode", ["resume", "wait"])
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink", "oversize"])
+def test_pending_merge_state_artifact_cannot_bypass_bounded_reader(tmp_path, monkeypatch, read_mode, link_kind):
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()), attempt_root=tmp_path / "attempts",
+        portal_factory=lambda *_: None,
+    )
+    paths, binding = bridge._ensure_attempt_projection(_attempt(), _record())
+    result = _pending_merge_result(paths, binding["task_alias"])
+    identity = bridge._same_claim_pending_merge_identity(result, paths=paths, binding=binding)
+    if link_kind == "oversize":
+        monkeypatch.setattr(database_portal_bridge_module, "_MAX_DATABASE_PORTAL_PENDING_STATE_BYTES", 8)
+    else:
+        retained = paths.state.with_name("retained-state.json")
+        paths.state.rename(retained)
+        if link_kind == "symlink":
+            paths.state.symlink_to(retained)
+        else:
+            paths.state.hardlink_to(retained)
+    with pytest.raises(DatabasePortalBridgeError, match="pending-merge state is unreadable"):
+        if read_mode == "resume":
+            bridge._recorded_pending_merge_identity(paths, binding)
+        else:
+            bridge._pending_merge_state_is_current(paths, binding, identity)

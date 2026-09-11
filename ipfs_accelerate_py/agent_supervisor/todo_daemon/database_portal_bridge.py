@@ -1073,6 +1073,7 @@ def _post_commit_recovery_disposition(
 
 _MAX_DATABASE_PORTAL_BINDING_BYTES: Final[int] = 64 * 1024
 _MAX_DATABASE_PORTAL_PROJECTION_BYTES: Final[int] = 1024 * 1024
+_MAX_DATABASE_PORTAL_PENDING_STATE_BYTES: Final[int] = 1024 * 1024
 _POST_MERGE_RECOVERY_SCAN_LIMIT: Final[int] = 256
 _MERGE_CANDIDATE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
@@ -16442,7 +16443,7 @@ class DatabasePortalExecutionBridge:
                 paths.state.lstat()
             except FileNotFoundError:
                 return None
-            state = self._read_json_object(paths.state, noun="Portal pending-merge state")
+            state = self._read_pending_merge_state(paths)
             statuses = state.get("task_statuses")
             if isinstance(statuses, Mapping) and statuses.get(binding.get("task_alias")) == "merge-queued":
                 raise DatabasePortalBridgeError(
@@ -16468,6 +16469,20 @@ class DatabasePortalExecutionBridge:
         )
 
     @staticmethod
+    def _read_pending_merge_state(paths: DatabasePortalAttemptPaths) -> dict[str, Any]:
+        """Read the claim-private queue projection without blocking on special files."""
+
+        try:
+            value = json.loads(_bounded_file(
+                paths.state, limit=_MAX_DATABASE_PORTAL_PENDING_STATE_BYTES
+            ))
+        except (DatabasePortalBridgeError, UnicodeDecodeError, ValueError) as exc:
+            raise DatabasePortalBridgeError("Portal pending-merge state is unreadable") from exc
+        if not isinstance(value, dict):
+            raise DatabasePortalBridgeError("Portal pending-merge state is not an object")
+        return value
+
+    @staticmethod
     def _pending_merge_state_is_current(
         paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any],
@@ -16475,10 +16490,7 @@ class DatabasePortalExecutionBridge:
     ) -> bool:
         """Verify Portal still owns the exact candidate awaiting integration."""
 
-        state = DatabasePortalExecutionBridge._read_json_object(
-            paths.state,
-            noun="Portal pending-merge state",
-        )
+        state = DatabasePortalExecutionBridge._read_pending_merge_state(paths)
         (
             alias,
             portal_task_key,
