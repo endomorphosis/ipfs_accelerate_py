@@ -89154,7 +89154,113 @@ def _strip_control_plane_group_other_write(root: Path) -> None:
         os.chmod(path, mode & ~0o022)
 
 
-def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> int:
+def _wait_for_sealed_owner_exit(
+    child: subprocess.Popen[Any],
+    child_start_time_ticks: int,
+    *,
+    source_maintenance: Any | None = None,
+    parent_stop_state: tuple[Any, dict[str, int]] | None = None,
+) -> None:
+    """Retain the original parent through an explicitly admitted maintenance drain.
+
+    Maintenance never forwards an ordinary stop into the old inner forced
+    finalizers. The separately bound native drain closes descendants first.
+    Every incomplete observation keeps this parent and its capsule alive.
+    """
+    shutdown_requested, received_signal = (
+        parent_stop_state if parent_stop_state is not None
+        else (threading.Event(), {})
+    )
+    forwarded = False
+    forwarding_deadline: float | None = None
+    with _call_stop_signal_handlers(
+        shutdown_requested,
+        received_signal,
+        survive_external_sigterm=True,
+    ):
+        while child.poll() is None or (source_maintenance is not None and source_maintenance.requested):
+            if source_maintenance is not None and source_maintenance.requested:
+                if source_maintenance.observe()["complete"]:
+                    child.wait()
+                    break
+                time.sleep(0.2)
+                continue
+            if shutdown_requested.is_set() and not forwarded:
+                if source_maintenance is not None and not source_maintenance.reserve_ordinary_shutdown():
+                    continue
+                forwarded = True
+                forwarding_deadline = time.monotonic() + 10.0
+                _signal_dedicated_process_group(
+                    child,
+                    start_time_ticks=child_start_time_ticks,
+                    signum=int(
+                        received_signal.get("signum", signal.SIGTERM)
+                    ),
+                )
+            if (
+                forwarding_deadline is not None
+                and time.monotonic() >= forwarding_deadline
+            ):
+                _terminate_dedicated_process_group(
+                    child,
+                    start_time_ticks=child_start_time_ticks,
+                    grace_seconds=0.0,
+                )
+                break
+            try:
+                child.wait(timeout=0.2)
+            except subprocess.TimeoutExpired:
+                continue
+
+
+def _finish_source_maintenance_before_cleanup(source_maintenance: Any | None) -> None:
+    """Retain original custody before any remaining parent resources retire."""
+    if source_maintenance is not None and not source_maintenance.reserve_ordinary_shutdown():
+        source_maintenance.retain_until_closed()
+
+
+def _retire_sealed_owner_child(
+    child: subprocess.Popen[Any],
+    child_start_time_ticks: int | None,
+    *,
+    source_maintenance: Any | None = None,
+) -> None:
+    if source_maintenance is not None and not source_maintenance.reserve_ordinary_shutdown():
+        if not source_maintenance.complete:
+            source_maintenance.retain_until_closed()
+        child.wait()
+        return
+    _terminate_dedicated_process_group(
+        child, start_time_ticks=child_start_time_ticks, grace_seconds=10.0,
+    )
+
+
+def run_supervisor(
+    config_path: Path, *, implement: bool, duration: float,
+    source_maintenance: Any | None = None,
+) -> int:
+    """Keep native stop handlers installed through admitted maintenance cleanup."""
+    if source_maintenance is None:
+        return _run_supervisor_with_retained_child(
+            config_path, implement=implement, duration=duration,
+        )
+    shutdown_requested = threading.Event()
+    received_signal: dict[str, int] = {}
+    with _call_stop_signal_handlers(
+        shutdown_requested, received_signal, survive_external_sigterm=True,
+    ):
+        return _run_supervisor_with_retained_child(
+            config_path, implement=implement, duration=duration,
+            source_maintenance=source_maintenance,
+            parent_stop_state=(shutdown_requested, received_signal),
+        )
+
+
+def _run_supervisor_with_retained_child(
+    config_path: Path, *, implement: bool, duration: float,
+    source_maintenance: Any | None = None,
+    parent_stop_state: tuple[Any, dict[str, int]] | None = None,
+) -> int:
     """Delegate owner authority to exact code in one retained sealed capsule."""
 
     import shutil
@@ -89423,40 +89529,15 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         os.close(terminal_write)
         terminal_write = -1
         child_start_time_ticks = _dedicated_process_group_birth(child)
-        shutdown_requested = threading.Event()
-        received_signal: dict[str, int] = {}
-        forwarded = False
-        forwarding_deadline: float | None = None
-        with _call_stop_signal_handlers(
-            shutdown_requested,
-            received_signal,
-            survive_external_sigterm=True,
-        ):
-            while child.poll() is None:
-                if shutdown_requested.is_set() and not forwarded:
-                    forwarded = True
-                    forwarding_deadline = time.monotonic() + 10.0
-                    _signal_dedicated_process_group(
-                        child,
-                        start_time_ticks=child_start_time_ticks,
-                        signum=int(
-                            received_signal.get("signum", signal.SIGTERM)
-                        ),
-                    )
-                if (
-                    forwarding_deadline is not None
-                    and time.monotonic() >= forwarding_deadline
-                ):
-                    _terminate_dedicated_process_group(
-                        child,
-                        start_time_ticks=child_start_time_ticks,
-                        grace_seconds=0.0,
-                    )
-                    break
-                try:
-                    child.wait(timeout=0.2)
-                except subprocess.TimeoutExpired:
-                    continue
+        if source_maintenance is not None:
+            source_maintenance.bind(
+                child, start_time_ticks=child_start_time_ticks,
+                source_head=candidate_head, source_tree=candidate_tree,
+            )
+        _wait_for_sealed_owner_exit(
+            child, child_start_time_ticks, source_maintenance=source_maintenance,
+            parent_stop_state=parent_stop_state,
+        )
         child_returncode = int(child.returncode or 0)
         if child_returncode != 0:
             terminal_raw, terminal_read_failed = (
@@ -89480,6 +89561,10 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         return child_returncode
     finally:
         body_error = sys.exc_info()[1]
+        # Serialize an accepted drain against ordinary teardown before any
+        # launch guards, descriptors or capsule files can be retired. The
+        # maintenance-only outer scope retains original stop handlers here.
+        _finish_source_maintenance_before_cleanup(source_maintenance)
         cleanup_errors: list[BaseException] = []
         try:
             retire_launch_admission_bound(sys.exc_info())
@@ -89491,13 +89576,14 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             cleanup_errors.append(exc)
         if child is not None:
             try:
-                _terminate_dedicated_process_group(
-                    child,
-                    start_time_ticks=child_start_time_ticks,
-                    grace_seconds=10.0,
+                _retire_sealed_owner_child(
+                    child, child_start_time_ticks,
+                    source_maintenance=source_maintenance,
                 )
             except BaseException as exc:
                 cleanup_errors.append(exc)
+        if source_maintenance is not None:
+            source_maintenance.close()
         for descriptor in (
             None if sealed is None else sealed.descriptor,
             None if interpreter is None else interpreter.descriptor,
@@ -89815,6 +89901,7 @@ def _run_supervisor_owner_impl(
         failure_event = threading.Event()
         failure: dict[str, Any] = {}
         monitor_thread: threading.Thread | None = None
+        observation_requests: Any = None
         scheduler: subprocess.Popen[Any] | None = None
         scheduler_start_time_ticks: int | None = None
         owner_started = False
@@ -90050,6 +90137,15 @@ def _run_supervisor_owner_impl(
                 shutdown_requested=shutdown_requested,
                 received_signal=received_signal,
             )
+            from ipfs_accelerate_py.agent_supervisor.runtime.owner_observation_request import (
+                OwnerObservationRequests, observation_scope,
+            )
+
+            observation_requests = OwnerObservationRequests(observation_scope(
+                program_id=PROGRAM, owner_identity=identity.to_dict(),
+                source_head=candidate_head, source_tree=candidate_tree,
+                launch_admission_id=_identity(launch_admission),
+            ))
             monitor_thread = threading.Thread(
                 target=_status_monitor_loop,
                 kwargs={
@@ -90058,6 +90154,7 @@ def _run_supervisor_owner_impl(
                     "previous": initial_health["samples"][-1],
                     "last_progress_at": last_progress_at, "stop": stop,
                     "failure": failure, "failure_event": failure_event,
+                    "observation_requests": observation_requests,
                 },
                 name="aseh-live-health-monitor", daemon=True,
             )
@@ -90078,6 +90175,12 @@ def _run_supervisor_owner_impl(
                     if owner_start_recovery is None
                     else owner_start_recovery["receipt_cid"]
                 ),
+                "observation_request": {
+                    "scope": observation_requests.scope,
+                    "authenticated_observation": False,
+                    "completion_authority": False,
+                    "mutation_authority": False,
+                },
                 "initial_health_receipt_cid": initial_health["receipt_cid"],
                 "live_owner_program": {
                     "store_id": identity.store_id,
@@ -90094,6 +90197,10 @@ def _run_supervisor_owner_impl(
             )
             _set_sealed_owner_terminal_phase(terminal_phase, "running")
             while scheduler.poll() is None:
+                observation_requests.poll(observer_available=(
+                    monitor_thread.is_alive() and not stop.is_set()
+                    and not failure_event.is_set()
+                ))
                 if shutdown_requested.is_set():
                     raise OperatorStopRequested(
                         int(received_signal.get("signum") or signal.SIGTERM)
@@ -90117,6 +90224,8 @@ def _run_supervisor_owner_impl(
                 guard_cleanup_error = exc
             try:
                 stop.set()
+                if observation_requests is not None:
+                    observation_requests.close()
                 if scheduler is not None:
                     _terminate_scheduler(
                         scheduler,
@@ -92144,7 +92253,11 @@ def _post_admission_health_action(
         return "continue", "", next_edges
     if receipt.get("terminal") is True:
         if receipt.get("healthy") is True:
-            return "stop", "", 0
+            # Task terminality does not end the owner or scheduler lifetime.
+            # Keep sampling their authority until native shutdown; otherwise
+            # the final receipt expires and maintenance/closeout loses its
+            # live witness while these processes still hold custody.
+            return "continue", "", 0
         return "fail", "authoritative_terminal_not_admitted", unhealthy_edges
     if receipt.get("healthy") is True:
         return "continue", "", 0
@@ -92196,6 +92309,7 @@ def _status_monitor_loop(
     stop: threading.Event,
     failure: dict[str, Any],
     failure_event: threading.Event,
+    observation_requests: Any = None,
 ) -> None:
     interval = min(
         30.0,
@@ -92203,55 +92317,66 @@ def _status_monitor_loop(
     )
     prior = dict(previous)
     unhealthy_edges = 0
-    while not stop.wait(interval):
-        try:
-            current = _status_sample(board, paths, server, scheduler)
-            if _authoritative_progress_between(prior, current):
-                last_progress_at = float(current["observed_at"])
-            receipt = _health_receipt(
-                board, paths, samples=(prior, current), launched_at=launched_at,
-                last_progress_at=last_progress_at, failure=failure,
+    # A terminal sample cannot retire the retained owner's observer. Keep the
+    # same closure (including outage/progress budgets) across every sample.
+    from ipfs_accelerate_py.agent_supervisor.runtime.retained_observation import (
+        run_retained_observation,
+    )
+
+    def observe_once() -> None:
+        nonlocal prior, last_progress_at, unhealthy_edges
+        if observation_requests is not None:
+            observation_requests.sample_started()
+        current = _status_sample(board, paths, server, scheduler)
+        if _authoritative_progress_between(prior, current):
+            last_progress_at = float(current["observed_at"])
+        receipt = _health_receipt(
+            board, paths, samples=(prior, current), launched_at=launched_at,
+            last_progress_at=last_progress_at, failure=failure,
+        )
+        _atomic_json(paths["status_receipt"], receipt)
+        prior_authority = prior.get("authority")
+        current_authority = current.get("authority")
+        prior_available = (
+            isinstance(prior_authority, Mapping)
+            and prior_authority.get("available") is True
+        )
+        current_available = (
+            isinstance(current_authority, Mapping)
+            and current_authority.get("available") is True
+        )
+        action, reason_code, unhealthy_edges = (
+            _post_admission_health_action(
+                receipt,
+                prior_available=prior_available,
+                current_available=current_available,
+                unhealthy_edges=unhealthy_edges,
             )
-            _atomic_json(paths["status_receipt"], receipt)
-            prior_authority = prior.get("authority")
-            current_authority = current.get("authority")
-            prior_available = (
-                isinstance(prior_authority, Mapping)
-                and prior_authority.get("available") is True
-            )
-            current_available = (
-                isinstance(current_authority, Mapping)
-                and current_authority.get("available") is True
-            )
-            action, reason_code, unhealthy_edges = (
-                _post_admission_health_action(
-                    receipt,
-                    prior_available=prior_available,
-                    current_available=current_available,
-                    unhealthy_edges=unhealthy_edges,
-                )
-            )
-            if action == "stop":
-                return
-            if action == "fail":
-                _record_control_failure(
-                    paths, failure, failure_event,
-                    reason_code=reason_code,
-                    error_type=(
-                        "ASEHHealthQueryFailure"
-                        if reason_code.startswith("authoritative_status_")
-                        else "ASEHHealthGateFailure"
-                    ),
-                )
-                return
-            prior = current
-        except Exception as exc:
+        )
+        if action == "fail":
             _record_control_failure(
                 paths, failure, failure_event,
-                reason_code="health_monitor_failed",
-                error_type=type(exc).__name__,
+                reason_code=reason_code,
+                error_type=(
+                    "ASEHHealthQueryFailure"
+                    if reason_code.startswith("authoritative_status_")
+                    else "ASEHHealthGateFailure"
+                ),
             )
             return
+        prior = current
+
+    def on_error(exc: Exception) -> None:
+        _record_control_failure(
+            paths, failure, failure_event,
+            reason_code="health_monitor_failed",
+            error_type=type(exc).__name__,
+        )
+
+    run_retained_observation(
+        observe_once, stop=stop, failed=failure_event, interval=interval,
+        on_error=on_error,
+    )
 
 
 def _read_live_status_receipt(
@@ -92437,6 +92562,42 @@ def _admit_receipt_for_current_owner(
             "live status receipt belongs to a different published replica"
         )
     return current
+
+
+def request_status_refresh(config_path: Path) -> tuple[int, dict[str, Any]]:
+    """Ask the exact retained owner to sample; this is never status admission."""
+    from ipfs_accelerate_py.agent_supervisor.runtime.owner_observation_request import (
+        request_observation,
+    )
+
+    board, _ = _load(config_path)
+    paths = _paths(board)
+    launch = _secure_runtime_json(
+        paths["evidence"] / "control-plane" / "owner-launch.json",
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    unsigned = dict(launch)
+    receipt_cid = unsigned.pop("receipt_cid", "")
+    if (launch.get("schema") != "ipfs_accelerate_py/agent-supervisor/aseh-owner-launch@1"
+            or receipt_cid != _identity(unsigned)):
+        raise OperatorError("observation request launch reference differs")
+    capability = launch.get("observation_request")
+    if (not isinstance(capability, dict)
+            or set(capability) != {"scope", "authenticated_observation",
+                                    "completion_authority", "mutation_authority"}
+            or any(capability.get(key) is not False for key in
+                   ("authenticated_observation", "completion_authority", "mutation_authority"))):
+        raise OperatorError("current owner has no observation request route")
+    scope = capability["scope"]
+    if (not isinstance(scope, dict) or scope.get("program_id") != PROGRAM
+            or scope.get("owner_identity") != launch.get("identity")
+            or scope.get("launch_admission_id") != _identity(launch.get("materialized_launch_admission"))):
+        raise OperatorError("observation request owner scope differs")
+    # The mutable launch reference grants no authority. The receiver compares
+    # its frozen scope and the client checks kernel peer PID/birth/UID. Even a
+    # successful acknowledgment still requires a later native status command.
+    result = request_observation(scope)
+    return (0 if result["accepted"] else 1), result
 
 
 def status(config_path: Path, *, require_ready: bool) -> tuple[int, dict[str, Any]]:
@@ -92725,6 +92886,7 @@ def main(argv: list[str] | None = None) -> int:
     run = commands.add_parser("run")
     run.add_argument("--implement", action=argparse.BooleanOptionalAction, default=True)
     run.add_argument("--duration-seconds", type=float, default=float("inf"))
+    commands.add_parser("request-status-refresh")
     show = commands.add_parser("status")
     show.add_argument("--require-ready", action="store_true")
     args = parser.parse_args(argv)
@@ -92785,6 +92947,8 @@ def main(argv: list[str] | None = None) -> int:
             code = 0
         elif args.command == "preflight":
             code, payload = preflight(args.config)
+        elif args.command == "request-status-refresh":
+            code, payload = request_status_refresh(args.config)
         elif args.command == "status":
             code, payload = status(args.config, require_ready=args.require_ready)
         else:

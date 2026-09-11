@@ -2443,7 +2443,12 @@ class InProcessQuackTransport:
             try:
                 import duckdb
 
-                client = duckdb.connect(":memory:")
+                # Bound every disposable readiness client before extension load,
+                # including failures and retries inside a small CPU allocation.
+                client = duckdb.connect(
+                    ":memory:",
+                    config={"threads": 1, "memory_limit": DEFAULT_MEMORY_LIMIT},
+                )
                 try:
                     client.execute("LOAD quack")
                     for sql, params in query_attempts:
@@ -4642,8 +4647,9 @@ class QuackStateServer:
     ) -> Any:
         """Open the authoritative writer with the ordinary sealed policy.
 
-        The writer never loads Quack and never enables external access.  Quack
-        is loaded only on the distinct read-only transport replica.
+        The native loader may preload reviewed extensions before sealing the
+        writer. Its final external-access setting is false, and it never
+        serves a Quack listener. Only the distinct read-only replica listens.
         """
 
         del isolation_admission
@@ -4651,12 +4657,11 @@ class QuackStateServer:
             return self.connection_factory(self.config.database_path)
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
-        if isinstance(self.transport, InProcessQuackTransport):
+        if not isinstance(self.transport, InProcessQuackTransport):
             return open_duckdb_connection(
                 self.config.database_path,
                 threads=1,
                 memory_limit=DEFAULT_MEMORY_LIMIT,
-                quack_owner=True,
             )
         return open_quack_state_owner_connection(self.config.database_path)
 
@@ -4852,18 +4857,18 @@ class QuackStateServer:
         ):
             raise QuackStateServerReadyError("read-replica path is outside owner root")
         temporary_name = f".{replica.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-        source_descriptor: int | None = None
         target_descriptor: int | None = None
+        temporary_identity: tuple[int, int] | None = None
         started = time.monotonic()
         try:
             self._assert_database_namespace()
             self._connection.execute("CHECKPOINT")
             anchor = self._assert_database_namespace()
-            source_descriptor = os.open(
-                anchor.database_name,
-                os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
-                dir_fd=anchor.directory_descriptor,
-            )
+            # Closing ANY descriptor for this inode releases this process's
+            # POSIX locks, including DuckDB's live writer lock. Reuse the
+            # lifetime anchor; never open/close another canonical descriptor
+            # during refresh. Positional reads leave its offset untouched.
+            source_descriptor = anchor.database_descriptor
             before = os.fstat(source_descriptor)
             if (
                 anchor.database_identity is None
@@ -4888,14 +4893,17 @@ class QuackStateServer:
                 0o600,
                 dir_fd=anchor.directory_descriptor,
             )
+            created = os.fstat(target_descriptor)
+            temporary_identity = (created.st_dev, created.st_ino)
             digest = hashlib.sha256()
             copied = 0
             while copied < before.st_size:
                 if time.monotonic() - started > READ_REPLICA_COPY_TIMEOUT_SECONDS:
                     raise QuackStateServerReadyError("read-replica copy timed out")
-                chunk = os.read(
+                chunk = os.pread(
                     source_descriptor,
                     min(READ_REPLICA_COPY_CHUNK_BYTES, before.st_size - copied),
+                    copied,
                 )
                 if not chunk:
                     raise QuackStateServerReadyError(
@@ -4919,15 +4927,55 @@ class QuackStateServer:
                 )
             os.fchmod(target_descriptor, 0o600)
             os.fsync(target_descriptor)
-            os.close(target_descriptor)
-            target_descriptor = None
+            # A failed/concurrent operation may replace the temporary directory
+            # entry. Keep our descriptor through promotion and refuse an entry
+            # that no longer names the complete regular file we created.
+            completed = os.fstat(target_descriptor)
+            pending = os.stat(
+                temporary_name,
+                dir_fd=anchor.directory_descriptor,
+                follow_symlinks=False,
+            )
+            if any(
+                not stat.S_ISREG(observed.st_mode)
+                or (observed.st_dev, observed.st_ino) != temporary_identity
+                or observed.st_size != copied
+                for observed in (completed, pending)
+            ):
+                raise QuackStateServerReadyError(
+                    "read-replica temporary entry changed before promotion"
+                )
             os.replace(
                 temporary_name,
                 replica.name,
                 src_dir_fd=anchor.directory_descriptor,
                 dst_dir_fd=anchor.directory_descriptor,
             )
+            temporary_identity = None
+            promoted = os.fstat(target_descriptor)
             os.fsync(anchor.directory_descriptor)
+            published = os.stat(
+                replica.name,
+                dir_fd=anchor.directory_descriptor,
+                follow_symlinks=False,
+            )
+            # Keep the same file bound across the final directory flush. A
+            # changed output must not produce a successful digest receipt.
+            for observed in (os.fstat(target_descriptor), published):
+                if (
+                    not stat.S_ISREG(observed.st_mode)
+                    or (observed.st_dev, observed.st_ino) != (created.st_dev, created.st_ino)
+                    or observed.st_size != copied
+                    or any(
+                        getattr(observed, name) != getattr(promoted, name)
+                        for name in stable_fields
+                    )
+                ):
+                    raise QuackStateServerReadyError(
+                        "read-replica changed during final directory sync"
+                    )
+            os.close(target_descriptor)
+            target_descriptor = None
             self._assert_database_namespace()
             return f"sha256:{digest.hexdigest()}", copied
         except QuackStateServerError:
@@ -4937,14 +4985,16 @@ class QuackStateServer:
                 f"read-replica refresh failed: {type(exc).__name__}"
             ) from exc
         finally:
-            if source_descriptor is not None:
-                os.close(source_descriptor)
             if target_descriptor is not None:
                 os.close(target_descriptor)
-            try:
-                os.unlink(temporary_name, dir_fd=anchor.directory_descriptor)
-            except FileNotFoundError:
-                pass
+            if temporary_identity is not None:
+                try:
+                    pending = os.stat(temporary_name, dir_fd=anchor.directory_descriptor,
+                                      follow_symlinks=False)
+                    if (pending.st_dev, pending.st_ino) == temporary_identity:
+                        os.unlink(temporary_name, dir_fd=anchor.directory_descriptor)
+                except FileNotFoundError:
+                    pass
 
     def _wait_for_transport_endpoint_closed(self) -> None:
         """Independently observe endpoint closure before replacing a replica."""
@@ -6988,7 +7038,7 @@ class QuackStateServer:
                 secret_handle = self.config.resolved_secret_handle(server_id, generation)
                 assert self._vault is not None
                 self._vault.mint(secret_handle=secret_handle, generation=1)
-                token = self._vault.resolve(secret_handle)
+                self._vault.resolve(secret_handle)
 
                 identity = StateServerIdentity(
                     server_id=server_id,
@@ -7012,31 +7062,11 @@ class QuackStateServer:
                 )
                 self._identity = identity
 
-                assert self.transport is not None
-                # Publish identity before quack_serve occupies this connection.
-                # Auth callbacks open a fresh DuckDB session; DML on the serve
-                # connection after listen starts is reported as Authentication
-                # failed rather than lock contention.
+                # Publish identity before copying the non-authoritative
+                # transport replica. The canonical writer is never a Quack
+                # listener and keeps external access sealed off.
                 self._publish_identity_rows(connection, identity, capability)
-                # Last exclusive-writer window: quack_serve occupies this
-                # connection and later DML contends with auth callbacks.
                 self._unstall_stale_board_gates(connection)
-                public_obs = self.transport.start(
-                    connection,
-                    host=self.config.host,
-                    port=port,
-                    token=token,
-                    identity=identity,
-                )
-                # Track the provisional writer-backed endpoint so the replica
-                # refresh stops that exact listener before starting the
-                # canonical read-only endpoint.  Without this binding two
-                # Quack listeners can survive under one advertised URI, making
-                # readiness flaky and shutdown observationally false.
-                self._transport_connection = connection
-                self._transport_connection_is_writer = True
-                # Ensure transport observation never echoed the token.
-                self._vault.assert_absent_from(public_obs, surface_name="transport.start")
                 # A supervisor must never be able to reuse the HTTP Quack
                 # credential to obtain a generic SQL surface.  Only the owner
                 # retains it after identity mint; the replica transport later

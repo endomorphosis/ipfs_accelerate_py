@@ -415,7 +415,7 @@ _MAX_POST_MERGE_RECOVERY_CURSOR_BYTES: Final[int] = 64 * 1024
 _POST_MERGE_COMPLETION_STATUSES: Final[frozenset[str]] = frozenset(
     {"merged", "already_merged", "deduplicated", "completed"}
 )
-_DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
+DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "schema",
         "interface",
@@ -440,6 +440,8 @@ _DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
         "binding_id",
     }
 )
+# Share the producer's exact schema with source-reload activity verification.
+_DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS = DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS
 
 
 def _is_implementation_conflict(exc: BaseException) -> bool:
