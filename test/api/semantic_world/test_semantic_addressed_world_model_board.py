@@ -3569,6 +3569,10 @@ def test_m58_operator_launch_transaction_commits_only_after_scheduler_accepts(
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         f"sawm_operator_m58_handoff_{scheduler_outcome}_test",
     )
+    # Native bootstrap has separate public-entry tests; isolate handoff here.
+    monkeypatch.setattr(
+        operator, "_sealed_quack_native_runtime", lambda _path: contextlib.nullcontext()
+    )
     from ipfs_accelerate_py.agent_supervisor.runtime import (
         configured_board_scheduler as scheduler,
     )
@@ -3703,6 +3707,10 @@ def test_m58_operator_cleanup_preserves_primary_and_discards_after_rollback_erro
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         "sawm_operator_m58_cleanup_error_test",
     )
+    # Native bootstrap has separate public-entry tests; isolate handoff here.
+    monkeypatch.setattr(
+        operator, "_sealed_quack_native_runtime", lambda _path: contextlib.nullcontext()
+    )
     from ipfs_accelerate_py.agent_supervisor.runtime import (
         configured_board_scheduler as scheduler,
     )
@@ -3826,6 +3834,10 @@ def test_m58_operator_published_pid_closes_handoff_without_rollback(
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         f"sawm_operator_m58_published_pid_{scheduler_outcome}_test",
     )
+    # Native bootstrap has separate public-entry tests; isolate handoff here.
+    monkeypatch.setattr(
+        operator, "_sealed_quack_native_runtime", lambda _path: contextlib.nullcontext()
+    )
     from ipfs_accelerate_py.agent_supervisor.runtime import (
         configured_board_scheduler as scheduler,
     )
@@ -3940,6 +3952,10 @@ def test_m58_operator_baseexception_restores_environment_and_cleans_reservation(
     operator = _load(
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         "sawm_operator_m58_baseexception_cleanup_test",
+    )
+    # Native bootstrap has separate public-entry tests; isolate handoff here.
+    monkeypatch.setattr(
+        operator, "_sealed_quack_native_runtime", lambda _path: contextlib.nullcontext()
     )
     from ipfs_accelerate_py.agent_supervisor.runtime import (
         configured_board_scheduler as scheduler,

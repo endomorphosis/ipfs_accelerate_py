@@ -21460,14 +21460,14 @@ def _validate_offline_quack_start(
 
 @contextmanager
 def _sealed_quack_native_runtime(config_path: Path) -> Iterator[Any]:
-    """Hold the protected native DuckDB dependency for one Quack lifetime.
+    """Hold the protected native DuckDB dependency for one operator lifetime.
 
     The operator's validation environment intentionally excludes ambient user
     site packages.  Consequently a plain ``import duckdb`` may resolve an
     older validation dependency even though the board admits newer, exact
     DuckDB and extension bytes.  Reuse the configured-board native authority
     before any offline validator can import DuckDB, and retain its sealed
-    descriptor until the foreground owner has stopped.
+    descriptor through owner serving or client admission and launch cleanup.
     """
 
     aliases = ("_duckdb", "duckdb")
@@ -29957,18 +29957,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 discovery = discover_live_quack_endpoint(store)
                 if discovery.uri:
                     live_environment = _snapshot_live_quack_environment()
-                    try:
-                        return _emit(
-                            {
-                                "action": "checked_live",
-                                **_live_preflight_with_restart_pin_refresh(config, probe_provider=False),
-                            }
-                        )
-                    finally:
-                        error_redaction_secrets.update(
-                            _live_quack_environment_secrets()
-                        )
-                        _restore_live_quack_environment(live_environment)
+                    with _sealed_quack_native_runtime(config_path):
+                        try:
+                            return _emit(
+                                {
+                                    "action": "checked_live",
+                                    **_live_preflight_with_restart_pin_refresh(config, probe_provider=False),
+                                }
+                            )
+                        finally:
+                            error_redaction_secrets.update(
+                                _live_quack_environment_secrets()
+                            )
+                            _restore_live_quack_environment(live_environment)
                 if _successor_materialization_configured(config):
                     active_materialization = _active_source_repair_materialization(
                         config
@@ -30230,94 +30231,95 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         live: dict[str, Any]
         live_environment = _snapshot_live_quack_environment()
-        try:
-            live = _live_preflight_with_restart_pin_refresh(
-                config,
-                probe_provider=real_launch,
-                retire_provider_token_handoff=real_launch,
-                before_token_handoff_retirement=(
-                    reserve_coordinator_pid_before_retirement
-                    if real_detached_launch
-                    else None
-                ),
-                token_handoff_transaction_sink=(
-                    retain_token_handoff_transaction
-                    if real_launch
-                    else None
-                ),
-            )
-            scheduler_args = [
-                "--repo-root", str(REPO_ROOT), "--config", str(config_path)
-            ]
-            if args.command == "preflight":
-                result = int(
-                    scheduler_runtime.main([*scheduler_args, "preflight"])
+        with _sealed_quack_native_runtime(config_path):
+            try:
+                live = _live_preflight_with_restart_pin_refresh(
+                    config,
+                    probe_provider=real_launch,
+                    retire_provider_token_handoff=real_launch,
+                    before_token_handoff_retirement=(
+                        reserve_coordinator_pid_before_retirement
+                        if real_detached_launch
+                        else None
+                    ),
+                    token_handoff_transaction_sink=(
+                        retain_token_handoff_transaction
+                        if real_launch
+                        else None
+                    ),
                 )
-            else:
-                launch_args = [*scheduler_args, "launch", "--implement"]
-                if args.command == "dry-run":
-                    launch_args.append("--dry-run")
+                scheduler_args = [
+                    "--repo-root", str(REPO_ROOT), "--config", str(config_path)
+                ]
+                if args.command == "preflight":
+                    result = int(
+                        scheduler_runtime.main([*scheduler_args, "preflight"])
+                    )
                 else:
-                    if args.foreground:
-                        launch_args.append("--foreground")
-                    if math.isfinite(args.duration_seconds):
-                        launch_args.extend(
-                            ["--duration-seconds", str(args.duration_seconds)]
+                    launch_args = [*scheduler_args, "launch", "--implement"]
+                    if args.command == "dry-run":
+                        launch_args.append("--dry-run")
+                    else:
+                        if args.foreground:
+                            launch_args.append("--foreground")
+                        if math.isfinite(args.duration_seconds):
+                            launch_args.extend(
+                                ["--duration-seconds", str(args.duration_seconds)]
+                            )
+                    result = int(
+                        scheduler_runtime.main(
+                            launch_args,
+                            coordinator_pid_reservation=(
+                                coordinator_pid_reservation
+                                if real_detached_launch
+                                else None
+                            ),
+                            coordinator_credential_handoff=(
+                                token_handoff_transaction
+                                if real_detached_launch
+                                else None
+                            ),
                         )
-                result = int(
-                    scheduler_runtime.main(
-                        launch_args,
-                        coordinator_pid_reservation=(
-                            coordinator_pid_reservation
-                            if real_detached_launch
-                            else None
-                        ),
-                        coordinator_credential_handoff=(
-                            token_handoff_transaction
-                            if real_detached_launch
-                            else None
-                        ),
                     )
-                )
-            if result == 0 and real_launch:
-                if token_handoff_transaction is None:
-                    raise OperatorError(
-                        "successful launch lacks its credential transaction"
-                    )
-                if real_detached_launch:
+                if result == 0 and real_launch:
+                    if token_handoff_transaction is None:
+                        raise OperatorError(
+                            "successful launch lacks its credential transaction"
+                        )
+                    if real_detached_launch:
+                        if token_handoff_transaction.state != "committed":
+                            raise OperatorError(
+                                "detached coordinator did not commit its credential "
+                                "handoff"
+                            )
+                    elif token_handoff_transaction.state == "begun":
+                        token_handoff_transaction.commit()
                     if token_handoff_transaction.state != "committed":
                         raise OperatorError(
-                            "detached coordinator did not commit its credential "
-                            "handoff"
+                            "launch credential transaction is not committed"
                         )
-                elif token_handoff_transaction.state == "begun":
-                    token_handoff_transaction.commit()
-                if token_handoff_transaction.state != "committed":
-                    raise OperatorError(
-                        "launch credential transaction is not committed"
+                    credential_receipt = token_handoff_transaction.commit()
+                    if (
+                        not isinstance(credential_receipt, Mapping)
+                        or credential_receipt.get("retired") is not True
+                    ):
+                        raise OperatorError(
+                            "credential retirement commit lacks its receipt"
+                        )
+                    live["quack"]["provider_token_handoff"] = dict(
+                        credential_receipt
                     )
-                credential_receipt = token_handoff_transaction.commit()
-                if (
-                    not isinstance(credential_receipt, Mapping)
-                    or credential_receipt.get("retired") is not True
-                ):
-                    raise OperatorError(
-                        "credential retirement commit lacks its receipt"
-                    )
-                live["quack"]["provider_token_handoff"] = dict(
-                    credential_receipt
-                )
-        except BaseException as primary_error:
-            cleanup_operator_launch_state(primary_error=primary_error)
-            raise
-        else:
-            cleanup_operator_launch_state()
-        finally:
-            # Scheduler environment construction consumes these exact live
-            # bindings synchronously.  Restore the caller's ambient process
-            # only after scheduler acceptance or rejection, on every exit.
-            error_redaction_secrets.update(_live_quack_environment_secrets())
-            _restore_live_quack_environment(live_environment)
+            except BaseException as primary_error:
+                cleanup_operator_launch_state(primary_error=primary_error)
+                raise
+            else:
+                cleanup_operator_launch_state()
+            finally:
+                # Scheduler environment construction consumes these exact live
+                # bindings synchronously.  Restore the caller's ambient process
+                # only after scheduler acceptance or rejection, on every exit.
+                error_redaction_secrets.update(_live_quack_environment_secrets())
+                _restore_live_quack_environment(live_environment)
         if result:
             return result
         # Only secret-free preflight facts are emitted by this facade.  Use the
