@@ -162,3 +162,14 @@ handoff and real Quack lifecycle qualification still precede deployment. SPAR's
 independent datasets, current forest, required-mode, capstone, fixed-point and
 goal/closeout acceptance gates remain unchanged. Fifty-one task receipts do not
 settle the remaining goals or the legacy queue.
+
+## Preserved train import coverage
+
+`merge.legacy_train_imports.validate_train_import_coverage` checks the canonical
+file-to-owner import coverage of a separately validated offline manifest. Native
+migration callers still verify coherent capture, hashes, revision history and
+scopes. The existing `train/distributed-publications.json` must map explicitly
+to the owner's `distributed-publications` receipt key and remain its current
+head. A copied but unimported ledger would otherwise make the migrated train
+read an empty publication/fence history. The checker does not discover files,
+infer unknown receipt keys, open a database, or authorize migration or completion.
