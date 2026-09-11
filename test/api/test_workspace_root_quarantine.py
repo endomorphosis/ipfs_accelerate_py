@@ -118,6 +118,65 @@ def test_whole_root_retained_and_independent_fresh_pool_allocates(tmp_path):
     assert q.census(repo, root) == before
 
 
+def test_root_census_preserves_existing_native_workspace_quarantine(tmp_path):
+    repo, root, pool, lease, lifecycle, record = seed(tmp_path)
+    receipt = lifecycle.quarantine_current_owner(
+        record, fence_authority={"observation": "unknown"}, reason="retained_unknown",
+    )
+    path = lifecycle.quarantine_path_for(lease.path)
+    original = path.read_bytes()
+    before = q.census(repo, root)
+    assert str(path) in {row["path"] for row in before["files"]}
+    frozen = q.freeze(repo, root, expected=before)
+    assert q.verify(repo, root) == frozen
+    with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
+        pool.release(lease)
+    assert path.read_bytes() == original
+    assert lifecycle.load_quarantine(lease.path) == receipt
+    assert q.verify(repo, root) == frozen
+
+
+@pytest.mark.parametrize("outside", [False, True])
+@pytest.mark.parametrize(
+    "damage", ["nested_shape", "nested_identity", "receipt_identity", "filename", "unknown_file"]
+)
+def test_root_census_rejects_invalid_native_quarantine_before_scope_filter(
+    tmp_path, outside, damage,
+):
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        _canonical_json_bytes,
+    )
+
+    repo, root, _, lease, lifecycle, record = seed(tmp_path)
+    if outside:
+        workspace = tmp_path / "outside"
+        workspace.mkdir()
+        record = lifecycle.begin_preparing(
+            task_id="outside-task", attempt=1, lane_id="outside-lane",
+            workspace_path=workspace, branch="attempt/outside", merge_target="main",
+            state_dir=str(tmp_path / "outside-state"),
+        )
+    else:
+        workspace = lease.path
+    receipt = lifecycle.quarantine_current_owner(
+        record, fence_authority={"observation": "unknown"}, reason="retained_unknown",
+    )
+    path = lifecycle.quarantine_path_for(workspace)
+    if damage == "nested_shape":
+        receipt["lifecycle_record"].pop("owner")
+    elif damage == "nested_identity":
+        receipt["lifecycle_record"]["record_id"] = "sha256:" + "f" * 64
+    elif damage == "receipt_identity":
+        receipt["quarantine_id"] = "sha256:" + "f" * 64
+    elif damage == "filename":
+        path = path.rename(path.with_name("quarantine-" + "f" * 64 + ".json"))
+    else:
+        path = path.rename(path.with_name("unknown-native-record.json"))
+    path.write_bytes(_canonical_json_bytes(receipt))
+    with pytest.raises(QuarantineDenied):
+        q.census(repo, root)
+
+
 def test_freeze_waits_for_native_mutation_scope_and_then_denies_late_writer(tmp_path):
     repo, root, _, _, _, _ = seed(tmp_path)
     entered = threading.Event()
@@ -597,3 +656,36 @@ def test_retained_root_denies_ancestor_cleanup_and_allows_disjoint_sibling(tmp_p
         assert effects == []
     with q.mutation(repo, root.parent / "disjoint-sibling"):
         assert q.verify(repo, root) == frozen
+
+
+@pytest.mark.parametrize("replacement", ["same_bytes_new_inode", "changed_bytes"])
+def test_root_census_rejects_quarantine_changed_during_strict_read(
+    tmp_path, monkeypatch, replacement,
+):
+    repo, root, _, lease, lifecycle, record = seed(tmp_path)
+    lifecycle.quarantine_current_owner(
+        record, fence_authority={"observation": "unknown"}, reason="retained_unknown",
+    )
+    path = lifecycle.quarantine_path_for(lease.path)
+    original = path.read_bytes()
+    real_read = WorktreeLifecycleStore._load_strict_quarantine_payload
+
+    def changed_read(self, *args, **kwargs):
+        result = real_read(self, *args, **kwargs)
+        if kwargs.get("receipt_path") == path:
+            if replacement == "same_bytes_new_inode":
+                changed = path.with_suffix(".replacement")
+                changed.write_bytes(original)
+                changed.chmod(0o600)
+                changed.replace(path)
+            else:
+                path.write_bytes(original.replace(b"retained_unknown", b"retained_unknowx"))
+        return result
+
+    monkeypatch.setattr(
+        WorktreeLifecycleStore, "_load_strict_quarantine_payload", changed_read,
+    )
+    with pytest.raises(
+        QuarantineDenied, match="workspace_quarantine_lifecycle_quarantine_changed",
+    ):
+        q.census(repo, root)

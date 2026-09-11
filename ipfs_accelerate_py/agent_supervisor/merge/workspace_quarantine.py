@@ -275,7 +275,10 @@ def mutation(repo_root: Path, workspace: Path):
 
 
 def census(repo_root: Path, worktree_root: Path) -> dict[str, Any]:
-    from .worktree_lifecycle import WorktreeLifecycleStore, WorkspaceLifecycleRecord
+    from .worktree_lifecycle import (
+        WorktreeLifecycleStore, WorkspaceLifecycleRecord, WorktreeLifecycleError,
+        _canonical_json_bytes,
+    )
 
     root = worktree_root.resolve()
     pool = root / ".pool-state"
@@ -365,6 +368,33 @@ def census(repo_root: Path, worktree_root: Path) -> dict[str, Any]:
                     continue
             else:
                 value = strict_json(raw.decode())
+                if path.name.startswith("quarantine-"):
+                    try:
+                        receipt = lifecycle._load_strict_quarantine_payload(
+                            None, receipt_path=path,
+                        )
+                    except WorktreeLifecycleError as exc:
+                        raise QuarantineDenied(
+                            "workspace_quarantine_lifecycle_quarantine_invalid"
+                        ) from exc
+                    require(
+                        receipt is not None
+                        and raw == _canonical_json_bytes(receipt),
+                        "workspace_quarantine_lifecycle_quarantine_changed",
+                    )
+                    verified_raw, verified_info = read_regular(path, bound=len(raw))
+                    require(
+                        verified_raw == raw
+                        and all(
+                            getattr(verified_info, field) == getattr(info, field)
+                            for field in (
+                                "st_dev", "st_ino", "st_mode", "st_uid", "st_gid",
+                                "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns",
+                            )
+                        ),
+                        "workspace_quarantine_lifecycle_quarantine_changed",
+                    )
+                    value = receipt["lifecycle_record"]
                 require(
                     type(value) is dict and type(value.get("workspace_path")) is str,
                     "workspace_quarantine_lifecycle_entry_invalid",

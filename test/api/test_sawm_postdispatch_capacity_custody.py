@@ -234,6 +234,7 @@ def test_actual_callback_keeps_workspace_budget_log_and_blocks_replay(
     assert result["callback_outcome"] == "unknown"
     assert result["settlement_authority"] is False
     assert state.implementation_attempts[task.task_id] == 1
+
     original = {p: p.read_bytes() for p in (log, workspace / "candidate.py")}
     quarantine = daemon.worktree_lifecycle.load_quarantine(workspace)
     assert quarantine["terminalized"] is False
@@ -526,3 +527,88 @@ def test_outer_portal_does_not_turn_retention_io_failure_into_terminal_failure(
         daemon._run_implementation(task, state)
     assert state.implementation_in_progress is True
     assert state.implementation_attempts[task.task_id] == 1
+
+
+def test_current_owner_quarantine_binds_exact_workspace_root_and_replays(tmp_path):
+    from test.api.test_workspace_root_quarantine import seed
+    from ipfs_accelerate_py.agent_supervisor.merge import workspace_quarantine as roots
+
+    repo, root, _, _, lifecycle, _ = seed(tmp_path)
+    frozen = roots.freeze(repo, root, expected=roots.census(repo, root))
+    outside = tmp_path / "independent-workspace"
+    outside.mkdir()
+    captured = lifecycle.begin_preparing(
+        task_id="independent-task", attempt=1, lane_id="independent-lane",
+        workspace_path=outside, branch="attempt/independent", merge_target="main",
+        state_dir=str(tmp_path / "independent-state"),
+    )
+    original = lifecycle.workspace_path_for(outside).read_bytes()
+    assert roots.verify(repo, root) == frozen
+    first = lifecycle.quarantine_current_owner(
+        captured, fence_authority={"observation": "unknown"}, reason=custody.REASON,
+    )
+    second = lifecycle.quarantine_current_owner(
+        captured, fence_authority={"observation": "unknown"}, reason=custody.REASON,
+    )
+    assert second == first
+    assert lifecycle.workspace_path_for(outside).read_bytes() == original
+    assert roots.verify(repo, root) == frozen
+
+def test_current_owner_quarantine_refuses_the_actual_frozen_workspace(tmp_path):
+    from test.api.test_workspace_root_quarantine import seed
+    from ipfs_accelerate_py.agent_supervisor.merge import workspace_quarantine as roots
+    from ipfs_accelerate_py.agent_supervisor.merge.quarantine_validation import (
+        QuarantineDenied,
+    )
+
+    repo, root, _, lease, lifecycle, captured = seed(tmp_path)
+    frozen = roots.freeze(repo, root, expected=roots.census(repo, root))
+    with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
+        lifecycle.quarantine_current_owner(
+            captured, fence_authority={"observation": "unknown"}, reason=custody.REASON,
+        )
+    assert lifecycle.load_quarantine(lease.path) is None
+    assert roots.verify(repo, root) == frozen
+
+
+def test_dead_owner_quarantine_keeps_its_existing_frozen_root_boundary(tmp_path):
+    from test.api.test_workspace_root_quarantine import seed
+    from ipfs_accelerate_py.agent_supervisor.merge import workspace_quarantine as roots
+    from ipfs_accelerate_py.agent_supervisor.merge.quarantine_validation import (
+        QuarantineDenied,
+    )
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        WorkspaceLifecycleRecord,
+    )
+
+    repo, root, _, _, lifecycle, _ = seed(tmp_path)
+    workspace = root / "dead-owner"
+    workspace.mkdir()
+    child = subprocess.run(
+        [sys.executable, "-c", "\n".join([
+            "import json, sys",
+            "from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle "
+            "import WorktreeLifecycleStore",
+            "store = WorktreeLifecycleStore(repo_root=sys.argv[1])",
+            "record = store.begin_preparing(task_id='dead-owner-task', attempt=1, "
+            "lane_id='dead-lane', workspace_path=sys.argv[2], "
+            "branch='attempt/dead', merge_target='main', state_dir=sys.argv[3])",
+            "print(json.dumps(record.to_dict()))",
+        ]), str(repo), str(workspace), str(tmp_path / "dead-state")],
+        check=True, text=True, capture_output=True,
+    )
+    captured = WorkspaceLifecycleRecord.from_dict(json.loads(child.stdout))
+    frozen = roots.freeze(repo, root, expected=roots.census(repo, root))
+    with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
+        lifecycle.quarantine_exact_dead_owner(
+            workspace,
+            expected_record_id=captured.record_id, expected_fence=captured.fence,
+            expected_lease_id=captured.lease_id, expected_task_id=captured.task_id,
+            expected_canonical_task_cid=captured.canonical_task_cid,
+            expected_attempt=captured.attempt, expected_branch=captured.branch,
+            expected_merge_target=captured.merge_target,
+            expected_repo_root=captured.repo_root, expected_state_dir=captured.state_dir,
+            fence_authority={"observation": "unknown"},
+        )
+    assert lifecycle.load_quarantine(workspace) is None
+    assert roots.verify(repo, root) == frozen

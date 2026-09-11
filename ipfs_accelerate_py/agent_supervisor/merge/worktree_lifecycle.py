@@ -1692,7 +1692,6 @@ class WorktreeLifecycleStore:
         )
         return current
 
-    @_workspace_mutation_boundary("workspace")
     def quarantine_current_owner(
         self,
         captured: WorkspaceLifecycleRecord,
@@ -1705,6 +1704,22 @@ class WorktreeLifecycleStore:
         This is a separate deny-only producer. It neither asserts a dead owner
         nor relaxes the existing dead-owner admission or settlement protocol.
         """
+        return self._quarantine_current_owner(
+            captured.workspace_path,
+            captured=captured,
+            fence_authority=fence_authority,
+            reason=reason,
+        )
+
+    @_workspace_mutation_boundary("workspace")
+    def _quarantine_current_owner(
+        self,
+        workspace: str | Path,
+        *,
+        captured: WorkspaceLifecycleRecord,
+        fence_authority: Mapping[str, Any],
+        reason: str,
+    ) -> dict[str, Any]:
         if (
             type(fence_authority) is not dict
             or not fence_authority
@@ -1717,11 +1732,12 @@ class WorktreeLifecycleStore:
             is not OwnerLiveness.ALIVE
             or normalize_workspace_path(captured.repo_root)
             != normalize_workspace_path(self.repo_root)
+            or normalize_workspace_path(workspace)
+            != normalize_workspace_path(captured.workspace_path)
         ):
             raise WorktreeLifecycleError("current-owner quarantine admission failed")
         authority = dict(fence_authority)
         _validate_closed_json(authority)
-        workspace = captured.workspace_path
         quarantine_path = self.quarantine_path_for(workspace)
         index_path = self.task_index_path_for(
             canonical_task_cid=captured.canonical_task_cid,
@@ -1775,6 +1791,7 @@ class WorktreeLifecycleStore:
                     self._publish_immutable_quarantine(quarantine_path, receipt)
                     return dict(receipt)
 
+    @_workspace_mutation_boundary("workspace")
     def quarantine_exact_dead_owner(
         self,
         workspace: str | Path,

@@ -20861,10 +20861,10 @@ class PortalImplementationDaemon:
                             started_at=started_at,
                             returncode=completed.returncode,
                             log_path=log_path,
-                                failure=provider_failure,
-                                worktree_path=workspace_path,
-                                branch_name=baseline_branch,
-                                command=command,
+                            failure=provider_failure,
+                            worktree_path=workspace_path,
+                            branch_name=baseline_branch,
+                            command=command,
                         )
                         deferral["context_receipt_path"] = str(
                             context_receipt_path
