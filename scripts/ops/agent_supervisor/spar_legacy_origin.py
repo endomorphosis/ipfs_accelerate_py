@@ -107,6 +107,9 @@ def install_captured_queue(captured, prepared):
         connection.execute("CHECKPOINT")
         after = role.inventory(connection)
         role.require_preserved(before, {key: value for key, value in after.items() if key != ORIGIN_TABLE})
+        # Bind the candidate while its validated connection still owns it.
+        # Later hashing must not bless a new version after validation.
+        validated_identity = role._file_identity(candidate.lstat())
     if candidate.with_suffix(candidate.suffix + ".wal").exists():
         raise role.SparMergeOwnerError("prepared native candidate still has a WAL")
     body = {"schema": "spar/native-legacy-profile-requirement@1", "origin_cid": role._cid(record),
@@ -139,6 +142,8 @@ def install_captured_queue(captured, prepared):
 
     gate()
     stat_before = candidate.lstat()
+    if role._file_identity(stat_before) != validated_identity:
+        raise role.SparMergeOwnerError("prepared native database changed after validation")
     digest = hashlib.sha256()
     descriptor = role._open_regular(candidate.parent, candidate.name)
     try:
@@ -151,7 +156,10 @@ def install_captured_queue(captured, prepared):
     staging = queue_root / ".native-legacy-database.prepared"
     role.copy_entry(candidate.parent, {"path": candidate.name, "size_bytes": stat_before.st_size,
                     "sha256": digest.hexdigest()}, staging)
+    staging_entry = {"path": staging.name, "size_bytes": stat_before.st_size,
+                     "sha256": digest.hexdigest()}
     gate()
+    role.copy_entry(queue_root, staging_entry, None, digest_only=True)
     # Verify the entire original tree except our two newly created records.
     original = role.file_inventory(queue_root)
     for name in (REQUIRED_MARKER, staging.name):
@@ -167,6 +175,9 @@ def install_captured_queue(captured, prepared):
         _sync_directory(candidate.parent)
         _sync_directory(queue_root)
     gate()
+    # The copied inode is another mutable boundary. Check its validated bytes
+    # again after closure checks and any WAL retirement, immediately before use.
+    role.copy_entry(queue_root, staging_entry, None, digest_only=True)
     os.replace(staging, database)
     _sync_directory(queue_root)
     gate()

@@ -322,3 +322,56 @@ def test_interrupted_origin_install_keeps_native_requirement_and_old_bytes(armed
         handoff._load_origin(armed.queue / "merge_queue.duckdb", profile=handoff.LEGACY_PROFILE,
                     repository_id=armed.context["repository_id"], target_branch=armed.context["target_branch"],
                     store_id=armed.context["store_id"], scopes=armed.context["scope_bindings"])
+
+
+def test_origin_install_refuses_candidate_changed_after_logical_validation(armed, monkeypatch):
+    from scripts.ops.agent_supervisor import spar_legacy_origin as origin
+    armed.close_native()
+    captured = do_capture(armed)
+    prepared = role.prepare_offline_clone(offline_root=captured.path,
+            destination=armed.tmp / "prepared", manifest=captured.receipt["manifest"])
+    before = bytes_before(armed.queue)
+    sync = origin._sync_directory
+    changed = False
+
+    def mutate_after_validation(directory):
+        nonlocal changed
+        if not changed:
+            changed = True
+            with role.open_duckdb_connection(prepared.database_path, prefer_quack=False) as connection:
+                connection.execute("DELETE FROM merge_requests WHERE request_id=?", [armed.unknown.request_id])
+                connection.execute("CHECKPOINT")
+        return sync(directory)
+
+    monkeypatch.setattr(origin, "_sync_directory", mutate_after_validation)
+    with pytest.raises(role.SparMergeOwnerError, match="prepared native database changed"):
+        origin.install_captured_queue(captured, prepared)
+    assert changed
+    assert (armed.queue / "merge_queue.duckdb").read_bytes() == before["merge_queue.duckdb"]
+    assert bytes_before(captured.path) == before
+
+
+def test_origin_install_refuses_staging_changed_before_replacement(armed, monkeypatch):
+    from scripts.ops.agent_supervisor import spar_legacy_origin as origin
+    armed.close_native()
+    captured = do_capture(armed)
+    prepared = role.prepare_offline_clone(offline_root=captured.path,
+            destination=armed.tmp / "prepared", manifest=captured.receipt["manifest"])
+    before = bytes_before(armed.queue)
+    copy = role.copy_entry
+    changed = False
+
+    def mutate_staging(root, entry, destination, **kwargs):
+        nonlocal changed
+        result = copy(root, entry, destination, **kwargs)
+        if destination is not None and Path(destination).name == ".native-legacy-database.prepared":
+            changed = True
+            Path(destination).write_bytes(b"substituted after staging copy")
+        return result
+
+    monkeypatch.setattr(role, "copy_entry", mutate_staging)
+    with pytest.raises(role.SparMergeOwnerError):
+        origin.install_captured_queue(captured, prepared)
+    assert changed
+    assert (armed.queue / "merge_queue.duckdb").read_bytes() == before["merge_queue.duckdb"]
+    assert bytes_before(captured.path) == before
