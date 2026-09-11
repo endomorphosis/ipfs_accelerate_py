@@ -1428,6 +1428,7 @@ def _open_quack_transport_connection_once(
     uri: str,
     *,
     token: str = "",
+    deadline_monotonic: float | None = None,
 ) -> DuckDBConnection:
     """Attach to the exclusive Quack state-owner (multi-reader/multi-writer).
 
@@ -1450,129 +1451,132 @@ def _open_quack_transport_connection_once(
             "DuckDB is required for Quack transport"
         ) from exc
     connection = duckdb.connect(":memory:")
+    from .quack_read_continuity import owned_connection_deadline
+
     try:
-        connection.execute("LOAD quack")
-        # Remote clients are read-only at the Quack SQL surface.  Every
-        # intended mutation is a closed, authenticated owner-inbox bundle;
-        # token possession alone must not retain arbitrary remote DML power.
-        attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_ONLY"
-        secret = str(
-            token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
-        ).strip()
-        admitted_handle_binding: dict[str, Any] = {}
-        if not secret:
-            secret, admitted_handle_binding = _resolve_quack_token_handle(uri=text)
-        if secret:
-            if not _QUACK_TOKEN_RE.fullmatch(secret):
+        with owned_connection_deadline(connection, deadline_monotonic):
+            connection.execute("LOAD quack")
+            # Remote clients are read-only at the Quack SQL surface.  Every
+            # intended mutation is a closed, authenticated owner-inbox bundle;
+            # token possession alone must not retain arbitrary remote DML power.
+            attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_ONLY"
+            secret = str(
+                token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
+            ).strip()
+            admitted_handle_binding: dict[str, Any] = {}
+            if not secret:
+                secret, admitted_handle_binding = _resolve_quack_token_handle(uri=text)
+            if secret:
+                if not _QUACK_TOKEN_RE.fullmatch(secret):
+                    raise DuckDBConnectionPolicyError(
+                        "quack attach token must be an opaque url-safe secret"
+                    )
+                attach += f", TOKEN '{secret}'"
+            attach += ")"
+            attached = connection.execute(attach)
+            _consume_duckdb_result(attached)
+            used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
+            _consume_duckdb_result(used)
+            # Prove the attached control catalog is visible on this connection.
+            probed = connection.execute(
+                f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
+            )
+            _consume_duckdb_result(probed)
+            identity_row = connection.execute(
+                f"""
+                SELECT server_id, store_id, database_uuid, schema_revision,
+                       generation, process_birth_id, listen_uri,
+                       extension_fingerprint
+                FROM {_QUACK_CONTROL_CATALOG}.state_servers
+                WHERE listen_uri = ? AND status = 'ready' AND stopped_at IS NULL
+                ORDER BY generation DESC, started_at DESC
+                LIMIT 1
+                """,
+                [text],
+            ).fetchone()
+            if identity_row is None or len(identity_row) != 8:
                 raise DuckDBConnectionPolicyError(
-                    "quack attach token must be an opaque url-safe secret"
+                    "quack transport did not publish a complete live server binding"
                 )
-            attach += f", TOKEN '{secret}'"
-        attach += ")"
-        attached = connection.execute(attach)
-        _consume_duckdb_result(attached)
-        used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
-        _consume_duckdb_result(used)
-        # Prove the attached control catalog is visible on this connection.
-        probed = connection.execute(
-            f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
-        )
-        _consume_duckdb_result(probed)
-        identity_row = connection.execute(
-            f"""
-            SELECT server_id, store_id, database_uuid, schema_revision,
-                   generation, process_birth_id, listen_uri,
-                   extension_fingerprint
-            FROM {_QUACK_CONTROL_CATALOG}.state_servers
-            WHERE listen_uri = ? AND status = 'ready' AND stopped_at IS NULL
-            ORDER BY generation DESC, started_at DESC
-            LIMIT 1
-            """,
-            [text],
-        ).fetchone()
-        if identity_row is None or len(identity_row) != 8:
-            raise DuckDBConnectionPolicyError(
-                "quack transport did not publish a complete live server binding"
-            )
-        binding = {
-            "server_id": str(identity_row[0]),
-            "store_id": str(identity_row[1]),
-            "database_uuid": str(identity_row[2]),
-            "schema_revision": int(identity_row[3]),
-            "generation": int(identity_row[4]),
-            "process_birth_id": str(identity_row[5]),
-            "listen_uri": str(identity_row[6]),
-            "extension_fingerprint": str(identity_row[7]),
-        }
-        expected_store = str(
-            os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
-        ).strip()
-        expected_generation = str(
-            os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION", "") or ""
-        ).strip()
-        expected_schema = str(
-            os.environ.get("IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION", "") or ""
-        ).strip()
-        if expected_store and binding["store_id"] != expected_store:
-            raise DuckDBConnectionPolicyError(
-                "quack transport store identity differs from the admitted environment"
-            )
-        if expected_generation and binding["generation"] != int(expected_generation):
-            raise DuckDBConnectionPolicyError(
-                "quack transport generation differs from the admitted environment"
-            )
-        if expected_schema and binding["schema_revision"] != int(expected_schema):
-            raise DuckDBConnectionPolicyError(
-                "quack transport schema revision differs from the admitted environment"
-            )
-        schema_row = connection.execute(
-            f"""
-            SELECT value
-            FROM {_QUACK_CONTROL_CATALOG}.control_plane_metadata
-            WHERE key = 'schema_fingerprint'
-            """
-        ).fetchone()
-        binding["schema_fingerprint"] = str(schema_row[0] if schema_row else "")
-        generation_row = connection.execute(
-            f"""
-            SELECT schema_revision, database_uuid, birth_id
-            FROM {_QUACK_CONTROL_CATALOG}.store_generations
-            WHERE generation = ?
-            """,
-            [binding["generation"]],
-        ).fetchone()
-        if (
-            generation_row is None
-            or int(generation_row[0]) != binding["schema_revision"]
-            or str(generation_row[1]) != binding["database_uuid"]
-            or str(generation_row[2]) != binding["process_birth_id"]
-            or not binding["schema_fingerprint"]
-        ):
-            raise DuckDBConnectionPolicyError(
-                "quack transport store generation does not match server binding"
-            )
-        if admitted_handle_binding:
-            exact_handle_binding = {
-                "server_id": binding["server_id"],
-                "store_id": binding["store_id"],
-                "database_uuid": binding["database_uuid"],
-                "schema_revision": binding["schema_revision"],
-                "schema_fingerprint": binding["schema_fingerprint"],
-                "generation": binding["generation"],
-                "process_birth_id": binding["process_birth_id"],
-                "listen_uri": binding["listen_uri"],
-                "extension_fingerprint": binding["extension_fingerprint"],
+            binding = {
+                "server_id": str(identity_row[0]),
+                "store_id": str(identity_row[1]),
+                "database_uuid": str(identity_row[2]),
+                "schema_revision": int(identity_row[3]),
+                "generation": int(identity_row[4]),
+                "process_birth_id": str(identity_row[5]),
+                "listen_uri": str(identity_row[6]),
+                "extension_fingerprint": str(identity_row[7]),
             }
-            mismatched = [
-                name
-                for name, value in exact_handle_binding.items()
-                if admitted_handle_binding.get(name) != value
-            ]
-            if mismatched:
+            expected_store = str(
+                os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
+            ).strip()
+            expected_generation = str(
+                os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION", "") or ""
+            ).strip()
+            expected_schema = str(
+                os.environ.get("IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION", "") or ""
+            ).strip()
+            if expected_store and binding["store_id"] != expected_store:
                 raise DuckDBConnectionPolicyError(
-                    "quack live binding differs from the admitted owner status: "
-                    + ", ".join(mismatched)
+                    "quack transport store identity differs from the admitted environment"
                 )
+            if expected_generation and binding["generation"] != int(expected_generation):
+                raise DuckDBConnectionPolicyError(
+                    "quack transport generation differs from the admitted environment"
+                )
+            if expected_schema and binding["schema_revision"] != int(expected_schema):
+                raise DuckDBConnectionPolicyError(
+                    "quack transport schema revision differs from the admitted environment"
+                )
+            schema_row = connection.execute(
+                f"""
+                SELECT value
+                FROM {_QUACK_CONTROL_CATALOG}.control_plane_metadata
+                WHERE key = 'schema_fingerprint'
+                """
+            ).fetchone()
+            binding["schema_fingerprint"] = str(schema_row[0] if schema_row else "")
+            generation_row = connection.execute(
+                f"""
+                SELECT schema_revision, database_uuid, birth_id
+                FROM {_QUACK_CONTROL_CATALOG}.store_generations
+                WHERE generation = ?
+                """,
+                [binding["generation"]],
+            ).fetchone()
+            if (
+                generation_row is None
+                or int(generation_row[0]) != binding["schema_revision"]
+                or str(generation_row[1]) != binding["database_uuid"]
+                or str(generation_row[2]) != binding["process_birth_id"]
+                or not binding["schema_fingerprint"]
+            ):
+                raise DuckDBConnectionPolicyError(
+                    "quack transport store generation does not match server binding"
+                )
+            if admitted_handle_binding:
+                exact_handle_binding = {
+                    "server_id": binding["server_id"],
+                    "store_id": binding["store_id"],
+                    "database_uuid": binding["database_uuid"],
+                    "schema_revision": binding["schema_revision"],
+                    "schema_fingerprint": binding["schema_fingerprint"],
+                    "generation": binding["generation"],
+                    "process_birth_id": binding["process_birth_id"],
+                    "listen_uri": binding["listen_uri"],
+                    "extension_fingerprint": binding["extension_fingerprint"],
+                }
+                mismatched = [
+                    name
+                    for name, value in exact_handle_binding.items()
+                    if admitted_handle_binding.get(name) != value
+                ]
+                if mismatched:
+                    raise DuckDBConnectionPolicyError(
+                        "quack live binding differs from the admitted owner status: "
+                        + ", ".join(mismatched)
+                    )
     except Exception:
         try:
             connection.close()

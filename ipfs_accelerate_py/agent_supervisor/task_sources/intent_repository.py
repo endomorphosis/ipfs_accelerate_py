@@ -278,6 +278,10 @@ class IntentRepositoryUnknownOutcomeError(IntentRepositoryError):
     """A remote owner effect committed without fresh projection settlement."""
 
 
+class IntentRepositoryReadUnavailableError(IntentRepositoryError):
+    """An exact pure task read remained unavailable; no mutation was retried."""
+
+
 class IntentRepositoryIntegrityError(IntentRepositoryError):
     """Schema, identity, or projection integrity failure."""
 
@@ -5128,73 +5132,100 @@ class IntentRepository:
 
     def get_task(self, task_cid_or_alias: str) -> Mapping[str, Any] | None:
         key = _identifier(task_cid_or_alias, noun="task_cid")
-        with self._connection(write=False) as connection:
-            rows = connection.execute(
-                """
-                SELECT task_cid, task_alias, goal_cid, plan_cid, objective_id,
-                       ordinal, status, revision, priority, created_at,
-                       updated_at, identity_json, body_json
-                FROM tasks
-                WHERE task_cid = ? OR task_alias = ?
-                ORDER BY task_cid
-                LIMIT 2
-                """,
-                [key, key],
+        # Only this concrete repository owns fresh remote handles. Subclasses or
+        # bound/read-session overrides keep their original connection contract.
+        if (not self._quack_transport or type(self) is not IntentRepository
+                or "_connection" in self.__dict__):
+            with self._connection(write=False) as connection:
+                return self._get_task_projection(connection, key)
+        self._require_open()
+        from . import duckdb_state
+        from .quack_read_continuity import QuackReadUnavailable, read_task_projection
+        expected_store = str(
+            os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
+        ).strip()
+        if not expected_store:
+            raise IntentRepositoryIntegrityError(
+                "quack read transaction has no accepted-root store identity"
+            )
+        try:
+            return read_task_projection(
+                open_connection=lambda deadline: duckdb_state._open_quack_transport_connection_once(
+                    self._open_target, deadline_monotonic=deadline
+                ),
+                read_projection=lambda connection: self._get_task_projection(connection, key),
+                store_id=expected_store, endpoint=self._open_target,
+            )
+        except QuackReadUnavailable as error:
+            raise IntentRepositoryReadUnavailableError(str(error)) from None
+
+    def _get_task_projection(self, connection: Any, key: str) -> Mapping[str, Any] | None:
+        rows = connection.execute(
+            """
+            SELECT task_cid, task_alias, goal_cid, plan_cid, objective_id,
+                   ordinal, status, revision, priority, created_at,
+                   updated_at, identity_json, body_json
+            FROM tasks
+            WHERE task_cid = ? OR task_alias = ?
+            ORDER BY task_cid
+            LIMIT 2
+            """,
+            [key, key],
+        ).fetchall()
+        if not rows:
+            return None
+        if len(rows) > 1:
+            raise IntentRepositoryIntegrityError(
+                "task CID/alias lookup is ambiguous"
+            )
+        row = rows[0]
+        tcid = str(row[0])
+        deps = [
+            str(item[0])
+            for item in connection.execute(
+                "SELECT dependency_task_cid FROM task_dependencies "
+                "WHERE task_cid = ? ORDER BY dependency_task_cid",
+                [tcid],
             ).fetchall()
-            if not rows:
-                return None
-            if len(rows) > 1:
-                raise IntentRepositoryIntegrityError(
-                    "task CID/alias lookup is ambiguous"
-                )
-            row = rows[0]
-            tcid = str(row[0])
-            deps = [
-                str(item[0])
-                for item in connection.execute(
-                    "SELECT dependency_task_cid FROM task_dependencies "
-                    "WHERE task_cid = ? ORDER BY dependency_task_cid",
-                    [tcid],
-                ).fetchall()
-            ]
-            outputs = [
-                {
-                    "ordinal": int(item[0]),
-                    "path": str(item[1]),
-                    "effect": _decode_json(item[2], noun="output effect"),
-                }
-                for item in connection.execute(
-                    "SELECT ordinal, path, effect_json FROM task_outputs "
-                    "WHERE task_cid = ? ORDER BY ordinal",
-                    [tcid],
-                ).fetchall()
-            ]
-            acceptance = [
-                {
-                    "ordinal": int(item[0]),
-                    "criterion": str(item[1]),
-                    "evidence_policy": _decode_json(
-                        item[2], noun="acceptance policy"
-                    ),
-                }
-                for item in connection.execute(
-                    "SELECT ordinal, criterion, evidence_policy_json "
-                    "FROM task_acceptance WHERE task_cid = ? ORDER BY ordinal",
-                    [tcid],
-                ).fetchall()
-            ]
-            validations = [
-                {
-                    "ordinal": int(item[0]),
-                    "argv": _decode_json(item[1], noun="validation argv"),
-                    "policy": _decode_json(item[2], noun="validation policy"),
-                }
-                for item in connection.execute(
-                    "SELECT ordinal, argv_json, policy_json "
-                    "FROM task_validations WHERE task_cid = ? ORDER BY ordinal",
-                    [tcid],
-                ).fetchall()
-            ]
+        ]
+        outputs = [
+            {
+                "ordinal": int(item[0]),
+                "path": str(item[1]),
+                "effect": _decode_json(item[2], noun="output effect"),
+            }
+            for item in connection.execute(
+                "SELECT ordinal, path, effect_json FROM task_outputs "
+                "WHERE task_cid = ? ORDER BY ordinal",
+                [tcid],
+            ).fetchall()
+        ]
+        acceptance = [
+            {
+                "ordinal": int(item[0]),
+                "criterion": str(item[1]),
+                "evidence_policy": _decode_json(
+                    item[2], noun="acceptance policy"
+                ),
+            }
+            for item in connection.execute(
+                "SELECT ordinal, criterion, evidence_policy_json "
+                "FROM task_acceptance WHERE task_cid = ? ORDER BY ordinal",
+                [tcid],
+            ).fetchall()
+        ]
+        validations = [
+            {
+                "ordinal": int(item[0]),
+                "argv": _decode_json(item[1], noun="validation argv"),
+                "policy": _decode_json(item[2], noun="validation policy"),
+            }
+            for item in connection.execute(
+                "SELECT ordinal, argv_json, policy_json "
+                "FROM task_validations WHERE task_cid = ? ORDER BY ordinal",
+                [tcid],
+            ).fetchall()
+        ]
         return MappingProxyType(
             {
                 "task_cid": tcid,
@@ -7523,6 +7554,7 @@ __all__ = (
     "IntentRepositoryConflictError",
     "IntentRepositoryTransitionError",
     "IntentRepositoryUnknownOutcomeError",
+    "IntentRepositoryReadUnavailableError",
     "IntentRepositoryIntegrityError",
     "IntentRepositoryBoundsError",
     "IntentRepositoryNotOpenError",
