@@ -2153,6 +2153,11 @@ def supervised_child_is_proven_dead(child: SupervisedChild) -> bool:
             return False
     identity = load_supervised_child_identity(identity_path)
     if not _supervised_child_identity_matches_handle(child, identity):
+        # Only a completed removal of both markers uses retained custody.
+        # Present, malformed or replacement markers still require their own
+        # native identity/adoption path; they cannot be bypassed by an old handle.
+        if os.path.lexists(identity_path) or os.path.lexists(child.child_pid_path):
+            return False
         # Native maintenance can fence the child and remove both markers
         # before returning a recycle decision. The immutable launched/adopted
         # handle still identifies that original birth. Its death does not

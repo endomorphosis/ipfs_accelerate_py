@@ -86,7 +86,7 @@ def test_dead_frozen_birth_does_not_authorize_marker_cleanup_or_signal(tmp_path,
             child.identity_path.write_text('unavailable\n' if marker == 'malformed' else json.dumps({'replacement': True}))
         before = {p: p.read_bytes() for p in (child.child_pid_path, child.identity_path) if p.exists()}
         monkeypatch.setattr(runtime, 'terminate_pid_tree', lambda *_a, **_k: pytest.fail('stale handle signalled a process'))
-        assert runtime.supervised_child_is_proven_dead(child) is True
+        assert runtime.supervised_child_is_proven_dead(child) is (marker == 'missing')
         assert runtime.terminate_supervised_child(child) is False
         assert runtime.clear_child_pid_file(child) is False
         assert {p: p.read_bytes() for p in before} == before
@@ -141,7 +141,7 @@ def test_valid_replacement_generation_is_preserved_and_native_adoption_refuses_i
         # differs, so original desired launch must refuse this replacement.
         replacement = runtime.launch_supervised_child(replace(spec, command=(*spec.command, '--foreign-owner')))
         before = {p: p.read_bytes() for p in (replacement.child_pid_path, replacement.identity_path)}
-        assert runtime.supervised_child_is_proven_dead(original) is True
+        assert runtime.supervised_child_is_proven_dead(original) is False
         assert runtime.terminate_supervised_child(original) is False
         assert runtime.clear_child_pid_file(original) is False
         with pytest.raises(RuntimeError):
