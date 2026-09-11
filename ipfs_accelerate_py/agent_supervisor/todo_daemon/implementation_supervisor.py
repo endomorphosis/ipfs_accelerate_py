@@ -8464,6 +8464,9 @@ class PortalImplementationSupervisor:
             spec=spec,
             command=command,
             log_prefix=f"{prefix}_implementation_daemon",
+            # The reusable loop launches from child_env; ManagedDaemonSpec's
+            # launch_env alone is only consumed by wrapper-based entry points.
+            child_env=dict(spec.launch_env),
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
                 fast_restart_backoff_seconds=min(2.0, max(0.0, float(self.config.check_interval))),

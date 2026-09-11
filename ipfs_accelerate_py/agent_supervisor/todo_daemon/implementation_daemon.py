@@ -68574,13 +68574,17 @@ class DatabaseImplementationDaemon:
         if isinstance(completion, Mapping):
             completion = completion.get("mode") or completion.get("kind")
         manual_completion = str(completion or "").strip().lower() == "manual"
-        review_raw = body.get("review_only")
+        review_raw = body.get("review_only", body.get("review only"))
         review_only = review_raw is True or str(review_raw or "").strip().lower() in {
             "1",
             "true",
             "yes",
         }
-        return manual_completion or review_only
+        schedulable_raw = body.get("is_schedulable", body.get("is schedulable", True))
+        unschedulable = schedulable_raw is False or str(schedulable_raw).strip().lower() in {
+            "0", "false", "no", "off",
+        }
+        return manual_completion or review_only or unschedulable
 
     def _automatic_claim_exclusions(self) -> set[str]:
         ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
@@ -68606,50 +68610,64 @@ class DatabaseImplementationDaemon:
             for task_cid in exclude_task_cids
             if str(task_cid)
         }
-        excluded.update(self._automatic_claim_exclusions())
-        if self.task_prefix:
-            ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-            excluded.update(
-                str(task.task_cid)
-                for task in ready.tasks
-                if not str(task.task_alias or "").startswith(self.task_prefix)
+        def eligible_record(task: Any) -> bool:
+            if self._automatic_claim_forbidden(task):
+                return False
+            if self.task_prefix and not str(task.task_alias or "").startswith(self.task_prefix):
+                return False
+            return not (
+                self.strict_task_sharding and self.task_shard_count > 1
+            ) or self._task_belongs_to_shard(
+                self._shard_key_for_task(task, task_cid=str(task.task_cid))
             )
-        accept_task_cid = None
-        if self.strict_task_sharding and self.task_shard_count > 1:
-            def accept_task_cid(task_cid: str) -> bool:
-                record = self.task_source.get(task_cid)
-                return self._task_belongs_to_shard(
-                    self._shard_key_for_task(record, task_cid=task_cid)
-                )
 
-            ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-            excluded.update(
-                str(task.task_cid)
-                for task in ready.tasks
-                if not accept_task_cid(str(task.task_cid))
-            )
+        # The coordination registry is a cache, and may retain a ready bit
+        # after the authoritative task was blocked, cancelled, or lost a
+        # dependency/preflight prerequisite. Never let that cache grant work.
+        eligible = {
+            str(task.task_cid): task
+            for task in self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT).tasks
+            if eligible_record(task)
+        }
+        if not eligible:
+            return None
         claim = self.coordinator.claim_ready_task(
             owner_session_id=self.owner_session_id,
             lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
             exclude_task_cids=excluded,
             now_ms=self._now_ms(),
-            accept_task_cid=accept_task_cid,
+            accept_task_cid=lambda task_cid: str(task_cid) in eligible,
         )
         if claim is None:
             return None
-        task = self.task_source.get(claim.task_cid)
-        task_alias = (
-            str(task.task_alias)
-            if task is not None and getattr(task, "task_alias", None)
-            else str(claim.task_cid)
-        )
-        # Move durable task status through the database only (never Markdown).
-        if task is not None and str(task.status).lower() in {
-            "todo",
-            "ready",
-            "open",
-        }:
+        task = eligible[str(claim.task_cid)]
+
+        def release_unstarted_claim() -> None:
+            # Release only the exact fenced allocation made above. No
+            # provider/execution attempt exists and no owner task is reset.
+            self.coordinator.release(
+                claim.as_fenced_lease(),
+                reason="authoritative_claim_eligibility_changed",
+                expected_fencing_token=int(claim.fencing_token),
+                expected_fence_epoch=int(claim.fence_epoch),
+                now_ms=self._now_ms(),
+            )
+
+        try:
+            current = next((
+                item for item in self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT).tasks
+                if str(item.task_cid) == str(claim.task_cid)
+            ), None)
+            if (
+                current is None or not eligible_record(current)
+                or int(current.revision) != int(task.revision)
+            ):
+                release_unstarted_claim()
+                return None
             self._protect_new_claim(claim)
+            # Always CAS the exact revision which was observed ready. This
+            # prevents a peer's status update between the eligibility read and
+            # this mutation from being overwritten or executed as stale work.
             self._cas_task_status_database(
                 task.task_cid,
                 expected_revision=int(task.revision),
@@ -68661,6 +68679,14 @@ class DatabaseImplementationDaemon:
                     "owner_session_id": self.owner_session_id,
                 },
             )
+        except Exception as exc:
+            from ..task_sources.database_task_source import TaskSourceConflictError
+
+            release_unstarted_claim()
+            if isinstance(exc, TaskSourceConflictError):
+                return None
+            raise
+        task_alias = str(task.task_alias or claim.task_cid)
         attempt = self._insert_attempt_from_claim(claim, task_alias=task_alias)
         self._record_event(
             "task_claimed",
@@ -71439,4 +71465,3 @@ def _validated_provider_route_receipt(
     ):
         raise RuntimeError("provider route receipt binding is invalid")
     return dict(payload)
-
