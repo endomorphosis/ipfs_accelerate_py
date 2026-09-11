@@ -31,6 +31,15 @@ def guard_generic_retirement(daemon: Any, attempt: Any, *, reason: str) -> None:
     )
     if not real_execution:
         return
+    control = getattr(daemon, "_native_dispatch_control", None)
+    observe = getattr(control, "retained_attempt_custody", None)
+    if callable(observe):
+        try:
+            observe(daemon, attempt)
+        except Exception:
+            # An optional reader failure cannot release retained effects or
+            # turn expiry into a callback retry.
+            pass
     raise ExpiredExecutionCustodyPending(
         {
             "reason": reason,

@@ -206,6 +206,12 @@ def _peer_lane(directory, pipe):
     pipe.send(drain._birth(os.getpid()))
     while True:
         command = pipe.recv()
+        if isinstance(command, dict):
+            try:
+                pipe.send(client.exchange("custody_boundary", command))
+            except drain.DispatchObservationUnavailable:
+                pipe.send({"observation_rejected": True})
+            continue
         if command == "stop":
             return
         if command == "preclaim":
@@ -425,7 +431,7 @@ def _lane(native, command):
     # Replacement and ancillary probes include a real child launch (10s),
     # native child shutdown (5s), and, for ancillary, a preclaim reply (5s).
     # The caller must allow those existing bounded operations to finish.
-    timeout = 25 if command in {"replace", "ancillary"} else 5
+    timeout = 25 if isinstance(command, str) and command in {"replace", "ancillary"} else 5
     assert native.supervisor_pipe.poll(timeout)
     return native.supervisor_pipe.recv()
 
@@ -433,6 +439,7 @@ def _lane(native, command):
 def test_real_owner_ack_is_not_pause_and_retained_work_is_not_closure(peer_native):
     native = peer_native
     assert _lane(native, "preclaim")["new_dispatch_permitted"] is True
+
     ack = _public(native, "request")
     assert ack["request_received"] is True
     assert ack["state"]["dispatch_pause_observed"] is False
@@ -460,6 +467,67 @@ def test_real_owner_ack_is_not_pause_and_retained_work_is_not_closure(peer_nativ
     assert TOKEN not in json.dumps(state)
     _public(native, "release", ack["state"]["request_id"])
     assert _lane(native, "preclaim")["new_dispatch_permitted"] is True
+
+
+def _disposable_observation(root):
+    from ipfs_accelerate_py.agent_supervisor.runtime.attempt_custody_observation import observe_attempt
+
+    root.mkdir()
+    daemon = _open_daemon(root, session="session:observed")
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.commit_phase(daemon.claim_next(), "context")
+        return observe_attempt(daemon, attempt)
+    finally:
+        daemon.close()
+
+
+def test_native_reader_receives_only_registered_lane_observation(peer_native):
+    native = peer_native
+    value = _disposable_observation(native.root / "execution-fixture")
+    for client in (native.public, native.client):
+        # Even a token-holding coordinator cannot report on a lane's behalf.
+        with pytest.raises(drain.DispatchObservationUnavailable):
+            client.exchange("custody_boundary", {"observation": value})
+    reply = _lane(native, {"observation": value})
+    assert reply["request_received"] is True
+    state = _public(native)["state"]
+    assert state["lanes"][0]["attempt_observation"] == value
+    assert state["lanes"][0]["daemon_birth"] == native.births["daemon"]
+    assert state["lanes"][0]["retained_work_reported"] is True
+    assert state["callback_custody_known"] is False
+    assert state["task_authority"] is False
+    assert state["completion_authority"] is False
+    native.owner_pipe.send("state")
+    assert native.owner_pipe.recv() == [(17,)]
+    assert TOKEN not in json.dumps(state)
+    _lane(native, "preclaim")
+    assert _public(native)["state"]["lanes"][0]["attempt_observation"] is None
+
+
+def test_native_unreadable_or_replaced_lane_never_reuses_retained_observation(peer_native):
+    native = peer_native
+    value = _disposable_observation(native.root / "execution-fixture")
+    assert _lane(native, {"observation": value}).get("request_received") is True
+    _lane(native, {"observation": None})
+    state = _public(native)["state"]
+    assert state["lanes"][0]["retained_work_reported"] is True
+    assert state["lanes"][0]["attempt_observation"] is None
+    assert _lane(native, {"observation": value}).get("request_received") is True
+    _lane(native, "replace")
+    assert _public(native)["state"]["lanes"][0]["attempt_observation"] is None
+
+
+def test_native_malformed_custody_cannot_ack_pause(peer_native):
+    native = peer_native
+    value = _disposable_observation(native.root / "execution-fixture")
+    _public(native, "request")
+    native.roster()
+    value["retry_authorized"] = True
+    assert _lane(native, {"observation": value}) == {"observation_rejected": True}
+    state = _public(native)["state"]
+    assert state["dispatch_pause_observed"] is False
+    assert state["lanes"][0]["attempt_observation"] is None
 
 
 def test_real_new_epoch_replacement_and_listener_reopen_invalidate_old_ack(peer_native):
@@ -652,11 +720,16 @@ def test_stale_lane_boundary_never_establishes_paused_state(peer_native, monkeyp
     )
     state.boundary(native.births["daemon"], "preclaim")
     assert state.projection()["dispatch_pause_observed"] is True
+    state.boundary(native.births["daemon"], "retained_work")
+    value = _disposable_observation(native.root / "execution-fixture")
+    state.lanes["lane-0"]["attempt_observation"] = value
+    assert state.projection()["lanes"][0]["attempt_observation"] == value
     clock = time.monotonic()
     monkeypatch.setattr(
         drain.time, "monotonic", lambda: clock + drain.FRESH_SECONDS + 1
     )
     assert state.projection()["dispatch_pause_observed"] is False
+    assert state.projection()["lanes"][0]["attempt_observation"] is None
     assert scope["owner_identity"]["generation"] == 1
 
 

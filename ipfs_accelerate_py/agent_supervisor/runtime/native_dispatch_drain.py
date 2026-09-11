@@ -25,7 +25,8 @@ from . import owner_status_observation as observation
 
 SCHEMA = "ipfs_accelerate_py/sawm-native-dispatch-drain@1"
 PROGRAM = "semantic-addressed-world-model-v1"
-MAX_PACKET = 16384
+# At most sixteen bounded 6 KiB observations plus the existing lane roster.
+MAX_PACKET = 131072
 MAX_LANES = 16
 FRESH_SECONDS = 45.0
 IO_SECONDS = 1.0
@@ -138,6 +139,7 @@ class DrainState:
                     "last_seen": 0.0,
                     "phase": "unknown",
                     "command_sha256": "",
+                    "attempt_observation": None,
                 }
         self.lanes = current
         self.master_birth = master
@@ -168,6 +170,7 @@ class DrainState:
                 ack_epoch=-1,
                 last_seen=0.0,
                 phase="unknown",
+                attempt_observation=None,
             )
 
     def boundary(self, daemon: dict[str, Any], phase: str) -> None:
@@ -192,6 +195,7 @@ class DrainState:
         if _parent(row["supervisor_birth"]["pid"]) != self.master_birth["pid"]:
             raise DispatchObservationUnavailable()
         row["phase"] = phase
+        row["attempt_observation"] = None
         row["last_seen"] = time.monotonic()
         row["ack_epoch"] = self.epoch if self.request_id and phase == "preclaim" else -1
 
@@ -229,6 +233,8 @@ class DrainState:
                     ),
                     "retained_work_reported": row["phase"] == "retained_work",
                     "last_observed_phase": row["phase"],
+                    "attempt_observation": copy.deepcopy(row.get("attempt_observation"))
+                    if fresh and row["phase"] == "retained_work" else None,
                 }
             )
         try:
@@ -353,6 +359,7 @@ class NativeDrainService:
             "coordinator_boundary",
             "supervisor_boundary",
             "lane_boundary",
+            "custody_boundary",
         }:
             unsigned = {k: v for k, v in packet.items() if k != "proof"}
             token = self.server._vault.resolve(self.server.secret_handle)
@@ -373,6 +380,21 @@ class NativeDrainService:
                 candidate.register_daemon(
                     packet["birth"], body["daemon_birth"], body["command_sha256"]
                 )
+            elif operation == "custody_boundary":
+                from .attempt_custody_observation import validate_observation
+
+                if set(body) != {"observation"} or candidate.master_birth != master:
+                    raise DispatchObservationUnavailable()
+                observed = (
+                    validate_observation(body["observation"])
+                    if body["observation"] is not None else None
+                )
+                candidate.boundary(packet["birth"], "retained_work")
+                matching = [row for row in candidate.lanes.values()
+                            if row["daemon_birth"] == packet["birth"]]
+                if len(matching) != 1:
+                    raise DispatchObservationUnavailable()
+                matching[0]["attempt_observation"] = observed
             else:
                 if set(body) != {"phase"} or candidate.master_birth != master:
                     raise DispatchObservationUnavailable()
@@ -553,6 +575,13 @@ class NativeDispatchClient:
                 or reply["state"].get("terminal_custody") != "unknown"
             ):
                 raise DispatchObservationUnavailable()
+            from .attempt_custody_observation import validate_observation
+
+            for row in reply["state"].get("lanes", []):
+                if row.get("attempt_observation") is not None:
+                    if row.get("fresh") is not True or row.get("retained_work_reported") is not True:
+                        raise DispatchObservationUnavailable()
+                    validate_observation(row["attempt_observation"])
             return reply
         except Exception:  # noqa: BLE001 - optional observation must not retire native work
             raise DispatchObservationUnavailable() from None
@@ -586,6 +615,25 @@ class NativeDispatchClient:
             self.exchange("lane_boundary", {"phase": "retained_work"})
         except DispatchObservationUnavailable:
             pass  # Missing diagnostics never cancel an already admitted obligation.
+
+    def retained_attempt_custody(self, daemon: Any, attempt: Any) -> None:
+        """Relay only this admitted lane's typed read, without new credentials.
+
+        An unavailable read clears the prior observation and still reports
+        retained work. Neither the relay nor its control owner settles it.
+        """
+        from .attempt_custody_observation import (
+            AttemptObservationUnavailable, observe_attempt,
+        )
+
+        try:
+            observed = observe_attempt(daemon, attempt)
+        except AttemptObservationUnavailable:
+            observed = None
+        try:
+            self.exchange("custody_boundary", {"observation": observed})
+        except DispatchObservationUnavailable:
+            pass
 
     def coordinator_boundary(self, processes: Mapping[str, Any]) -> dict[str, Any]:
         try:
