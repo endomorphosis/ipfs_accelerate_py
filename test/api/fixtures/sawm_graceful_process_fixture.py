@@ -1,6 +1,6 @@
 """Disposable process tree executing the retained native signal/adoption methods.
 
-The method bodies are loaded from this checkout (unchanged since SAWM25f).
+The selected method bodies are loaded from this checkout.
 Only process launch/cleanup dependencies are replaced by owned local fixtures;
 this does not represent full native board or callback qualification.
 """
@@ -26,6 +26,12 @@ FILE = Path(__file__).resolve()
 
 
 def native_method(relative, name, namespace):
+    # Retain the real package for relative imports in the isolated child.
+    module_name = ".".join(Path(relative).with_suffix("").parts)
+    namespace.setdefault("__name__", module_name)
+    namespace.setdefault("__package__", module_name.rpartition(".")[0])
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
     source = (ROOT / relative).read_text()
     nodes = [
         n
