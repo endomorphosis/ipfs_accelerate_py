@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DatabasePortalBridgeError,
+    DatabasePortalBridgeDeferred,
     DatabasePortalExecutionBridge,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -118,6 +119,26 @@ class _TaskSource:
 
     def get_task(self, task_cid: str) -> object | None:
         return self.record if task_cid == "task:cid:004" else None
+
+
+@pytest.mark.parametrize("setup", (False, True))
+def test_bridge_preserves_setup_failure_metadata_and_transient_deferral(tmp_path, setup):
+    detail = {
+        "deferred": True, "attempt_consumed": False, "provider_dispatched": False,
+        "failure_kind": "lifecycle_setup" if setup else "provider_capacity",
+        "reason": "validation_project_dependency_preflight_failed" if setup else "resource_capacity_deferred",
+        "backoff_seconds": 300,
+    }
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()), attempt_root=tmp_path / "attempts",
+        portal_factory=lambda *_args: SimpleNamespace(run_once=lambda: {"implementation_result": detail}),
+    )
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+    assert type(caught.value) is (DatabasePortalBridgeError if setup else DatabasePortalBridgeDeferred)
+    assert caught.value.result["implementation"]["attempt_consumed"] is False
+    assert caught.value.result["implementation"]["provider_dispatched"] is False
+    assert caught.value.result["implementation"]["backoff_seconds"] == 300
 
 
 class _CompletingPortal:
