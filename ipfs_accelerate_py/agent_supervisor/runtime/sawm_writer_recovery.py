@@ -320,6 +320,45 @@ def _no_children(binding: process.ProcessBinding, allowed: set[int]) -> None:
     )
 
 
+class NativeScopeProcessObserved(process.GracefulRecoveryUnverified):
+    """The strict population refusal with bounded, non-authoritative evidence."""
+
+    def __init__(self, diagnostic: Mapping[str, Any]):
+        super().__init__("additional_native_scope_process")
+        self.diagnostic = dict(diagnostic)
+
+
+def _scope_refusal(pid, values, cwd, args, flags):
+    # Do not expose argv or process environment; hashes identify the observation.
+    diagnostic = {
+        "schema": "sawm/rejected-scope-process@1",
+        "pid": pid,
+        "birth": int(values[19]),
+        "parent": int(values[1]),
+        "process_group": int(values[2]),
+        "session": int(values[3]),
+        "argv_sha256": hashlib.sha256(args).hexdigest(),
+        "cwd": str(cwd),
+        "scope_flags": dict(flags),
+        "observed_at": time.time(),
+        "stable_identity": False,
+        "callback_settlement_authority": False,
+    }
+    try:
+        after = process._stat(pid)
+        diagnostic["stable_identity"] = (
+            values[19] == after[19]
+            and values[1:4] == after[1:4]
+            and after[0] not in {"Z", "X"}
+            and process._read_proc(Path("/proc") / str(pid) / "cmdline") == args
+            and os.readlink(Path("/proc") / str(pid) / "cwd") == str(cwd)
+        )
+    except (OSError, ValueError, process.GracefulRecoveryUnverified):
+        # An exited/replaced or unobservable actor still cannot authorize closure.
+        pass
+    return NativeScopeProcessObserved(diagnostic)
+
+
 def scoped_census(root: Path, expected: Mapping[str, Any]) -> dict[str, Any]:
     """Observe this checkout's remaining actors without claiming global visibility."""
     bindings = [
@@ -382,7 +421,21 @@ def scoped_census(root: Path, expected: Mapping[str, Any]) -> dict[str, Any]:
         )
         if not in_scope and pid not in known:
             continue
-        require(pid in known, "additional_native_scope_process")
+        if pid not in known:
+            raise _scope_refusal(
+                pid,
+                values,
+                cwd,
+                args,
+                {
+                    "known_pid": False,
+                    "known_parent": int(values[1]) in known,
+                    "owned_group": int(values[2]) in groups,
+                    "owned_session": int(values[3]) in sessions,
+                    "cwd_under_root": cwd == root or cwd.is_relative_to(root),
+                    "root_in_argv": os.fsencode(root) in args,
+                },
+            )
         process.require_exact_process(known[pid])
         observed.append(pid)
     for relative, original in expected["markers"].items():

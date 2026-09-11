@@ -187,3 +187,26 @@ def test_existing_m70_gate_reuses_48_after_actual_process_exit_and_endpoint_clos
         )
     )
     assert operator._m70_published_owner_is_process_dead(config) is False
+
+
+def test_public_scope_refusal_preserves_bounded_diagnostic(
+    operator, monkeypatch, capsys
+):
+    runtime = operator._writer_recovery_runtime()
+    diagnostic = {
+        "schema": "sawm/rejected-scope-process@1",
+        "pid": 12345,
+        "birth": 123456,
+        "stable_identity": False,
+        "callback_settlement_authority": False,
+    }
+
+    def refused(*args):
+        raise runtime.NativeScopeProcessObserved(diagnostic)
+
+    monkeypatch.setattr(runtime, "inspect", refused)
+    result = operator.main(["writer-recovery-inspect"])
+    value = json.loads(capsys.readouterr().out)
+    assert result != 0 and value["valid"] is False
+    assert value["rejected_process"] == diagnostic
+    assert value["error"] == "additional_native_scope_process"

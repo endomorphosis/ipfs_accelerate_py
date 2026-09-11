@@ -147,7 +147,7 @@ def test_reparented_or_renamed_scoped_actor_is_never_unrelated(
     binding = dataclasses.asdict(recovery.process.observe_process(os.getpid()))
     binding.update(pid=991991, process_group=991991, session=991991)
     expected = {"owner": binding, "controller": binding, "lanes": [], "markers": {}}
-    fields = ["S", "1", "881881", "881881"]
+    fields = ["S", "1", "881881", "881881", *(["0"] * 15), "123456"]
     fields[{"group": 2, "session": 3, "parent": 1}[lineage]] = "991991"
     real_iter = Path.iterdir
     monkeypatch.setattr(

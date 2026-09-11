@@ -30332,6 +30332,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except QuackExtensionCustodyBlocker as exc:
         return _emit(exc.as_dict())
     except Exception as exc:
+        if (args.command in {"writer-recovery-inspect", "writer-recovery-close"}
+                and "recovery" in locals()
+                and isinstance(exc, recovery.NativeScopeProcessObserved)):
+            return _emit({"schema": "sawm/operator-error@1", "valid": False,
+                          "error": "additional_native_scope_process",
+                          "rejected_process": exc.diagnostic})
         return _emit({"schema": "sawm/operator-error@1", "valid": False,
                       "error": _credential_safe_error(
                           exc,
