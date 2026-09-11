@@ -66,6 +66,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment im
     PROVIDER_COMMAND_ENV_WRAPPER_ENV,
     PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV,
     ProviderCommandEnvironmentError,
+    _sealed_launcher_source,
+    project_provider_command_environment,
+    provider_command_environment_sha256,
     sealed_provider_command_environment,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import (
@@ -84,6 +87,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     ValidationRuntimeError,
 )
 from ipfs_accelerate_py.llm_router import (
+    build_grok_cli_env,
     AGENT_IMPLEMENTATION_CODEX_IMAGE_ID,
     AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL,
     AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX,
@@ -373,6 +377,18 @@ _SEALED_GROK_DISALLOWED_TOOLS = (
     "use_tool,call_mcp_tool,list_mcp_resources,list_mcp_resource_templates,"
     "read_mcp_resource,fetch_mcp_resource,task,Agent,memory,lsp,spawn_subagent"
 )
+# Terminal execution belongs only to the pinned Docker implementation boundary.
+# Host routes and the independent quota verifier retain the file-only profile.
+_DOCKER_TASK_GROK_TOOLS = _SEALED_GROK_TOOLS + ",run_terminal_cmd"
+_DOCKER_TASK_GROK_DISALLOWED_TOOLS = ",".join(
+    name for name in _SEALED_GROK_DISALLOWED_TOOLS.split(",")
+    if name not in {"run_terminal_cmd", "run_terminal_command"}
+)
+_GROK_CONTAINER_COMMAND_WRAPPER = Path("/opt/ipfs-accelerate/provider-command-env")
+_GROK_CONTAINER_BOOTSTRAP = Path("/opt/ipfs-accelerate/task-bootstrap.py")
+_GROK_PARENT_FORMAL_TOOLCHAIN_SHA256_ENV = "IPFS_ACCELERATE_AGENT_PARENT_FORMAL_TOOLCHAIN_SHA256"
+_GROK_TEX_TOOLCHAIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_TEX_TOOLCHAIN_JSON"
+_GROK_TEX_TOOLCHAIN_SHA256_ENV = "IPFS_ACCELERATE_AGENT_GROK_TEX_TOOLCHAIN_SHA256"
 _ALTERNATE_PROVIDER_EXECUTABLES = (
     "codex",
     "copilot",
@@ -2598,6 +2614,10 @@ class _DockerContainerLease:
         except FileNotFoundError:
             pass
         try:
+            shutil.rmtree(self.lease_root / "task-launchers")
+        except FileNotFoundError:
+            pass
+        try:
             (self.lease_root / "cas-owned").unlink()
         except FileNotFoundError:
             pass
@@ -2635,6 +2655,156 @@ def _restore_mask_permissions(mask_root: Path) -> None:
             continue
 
 
+def _grok_task_tex_toolchain(base_env: Mapping[str, str]) -> dict[str, str]:
+    """Admit an optional exact, hash-inventoried formatting toolchain only."""
+    raw = base_env.get(_GROK_TEX_TOOLCHAIN_ENV, "")
+    if not raw:
+        return {}
+    if len(raw.encode()) > 8192:
+        raise ValueError("Grok TeX profile exceeds bound")
+    profile = json.loads(raw)
+    keys = {"schema", "root", "wrapper", "manifest", "manifest_sha256", "wrapper_sha256"}
+    if not isinstance(profile, dict) or set(profile) != keys or any(not isinstance(value, str) or any(c in value for c in "\x00\r\n") for value in profile.values()) or profile["schema"] != "grok-docker-tex-toolchain/v1":
+        raise ValueError("Grok TeX profile is invalid")
+    for name in ("root", "wrapper", "manifest"):
+        item = Path(profile[name])
+        if not item.is_absolute() or item.resolve(strict=True) != item or item.stat().st_uid not in {0, os.getuid()}:
+            raise ValueError("Grok TeX profile paths are not canonical owned paths")
+    root, wrapper, manifest = (Path(profile[name]) for name in ("root", "wrapper", "manifest"))
+    if not root.is_dir() or not (root / "texmf-dist").is_dir() or not (root / "bin/aarch64-linux/pdflatex").is_file():
+        raise ValueError("Grok TeX root is not the declared formatting toolchain")
+    if not wrapper.is_file() or not os.access(wrapper, os.X_OK) or manifest.stat().st_size > 8 * 1024 * 1024:
+        raise ValueError("Grok TeX profile files are unavailable")
+    for name, target in (("manifest_sha256", manifest), ("wrapper_sha256", wrapper)):
+        with target.open("rb") as handle:
+            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+        if not re.fullmatch(r"[0-9a-f]{64}", profile[name]) or digest != profile[name]:
+            raise ValueError("Grok TeX profile digest mismatch")
+    expected = json.loads(manifest.read_text(encoding="utf-8"))
+    if not isinstance(expected, dict) or expected.get("schema") != "grok-tex-tree/v1" or expected.get("root") != str(root) or not isinstance(expected.get("members"), dict):
+        raise ValueError("Grok TeX tree manifest is invalid")
+    observed: dict[str, object] = {}
+    size = 0
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        for name in sorted(dirs + files):
+            item = Path(directory) / name
+            info = item.lstat()
+            relative = str(item.relative_to(root))
+            if len(observed) >= 25000 or info.st_uid not in {0, os.getuid()}:
+                raise ValueError("Grok TeX tree exceeds ownership or member bound")
+            if stat.S_ISLNK(info.st_mode):
+                if not item.resolve(strict=True).is_relative_to(root):
+                    raise ValueError("Grok TeX tree symlink escapes its root")
+                member = {"kind": "symlink", "target": os.readlink(item)}
+            elif stat.S_ISDIR(info.st_mode):
+                member = {"kind": "directory"}
+            elif stat.S_ISREG(info.st_mode):
+                size += info.st_size
+                if size > 2 * 1024**3:
+                    raise ValueError("Grok TeX tree exceeds byte bound")
+                with item.open("rb") as handle:
+                    digest = hashlib.file_digest(handle, "sha256").hexdigest()
+                member = {"kind": "file", "bytes": info.st_size, "sha256": digest}
+            else:
+                raise ValueError("Grok TeX tree has a non-file member")
+            if not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o002:
+                raise ValueError("Grok TeX tree is world writable")
+            observed[relative] = member
+    if observed != expected["members"]:
+        raise ValueError("Grok TeX tree differs from its exact manifest")
+    return {"root": str(root), "wrapper": str(wrapper),
+            "sha256": hashlib.sha256(json.dumps(profile, sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
+
+
+def _grok_task_container_environment(
+    *, base_env: Mapping[str, str], child_env: Mapping[str, str],
+    workspace: Path, grok_home: Path, tex_toolchain: Mapping[str, str] | None = None,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Translate the non-secret command declaration to the pinned toolchain.
+
+    This is provider-side discovery and evidence generation, not authoritative
+    validation. Unmounted managed roots fail closed rather than being invented.
+    """
+    approved = project_provider_command_environment(base_env)
+    parent_formal = approved.pop(FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV, "") or child_env.get(FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV, "")
+    for name in ("IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+                 "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT"):
+        if name in approved:
+            root = Path(approved[name]).resolve(strict=True)
+            if not any(root.is_relative_to(parent) for parent in (workspace, Path("/usr"))):
+                raise ValueError("Grok task managed command root is not mounted")
+    fixed = _codex_task_container_environment()
+    fixed.pop("CODEX_HOME")
+    fixed.update(HOME=str(grok_home), GROK_HOME=str(grok_home),
+                 XDG_CONFIG_HOME=str(grok_home / "xdg-config"),
+                 XDG_DATA_HOME=str(grok_home / "xdg-data"),
+                 XDG_STATE_HOME=str(grok_home / "xdg-state"))
+    fixed.update({name: value for name, value in build_grok_cli_env(
+        base_env={"PATH": "/usr/bin:/bin"}, isolate_alternate_providers=True,
+    ).items() if name != "PATH"})
+    approved.update({name: fixed[name] for name in (
+        "PATH", "LANG", "LC_ALL", "PYTHONNOUSERSITE", "PYTHONDONTWRITEBYTECODE", "PYTHONPATH"
+    )})
+    approved.update(TMPDIR="/tmp", IPFS_ACCELERATE_AGENT_VALIDATION_PATH=fixed["PATH"],
+                    IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON=str(_CODEX_TASK_TOOLCHAIN_PYTHON))
+    if tex_toolchain:
+        tex_path = f"{tex_toolchain['root']}/bin/aarch64-linux:{Path(tex_toolchain['wrapper']).parent}:{fixed['PATH']}"
+        tex_env = {"PATH": tex_path, "IPFS_ACCELERATE_AGENT_VALIDATION_PATH": tex_path,
+                   "TEXMFHOME": "/tmp/ipfs-texmf-home", "TEXMFVAR": "/tmp/ipfs-texmf-var",
+                   "TEXMFCONFIG": "/tmp/ipfs-texmf-config", _GROK_TEX_TOOLCHAIN_SHA256_ENV: tex_toolchain["sha256"]}
+        approved.update(tex_env)
+        fixed.update(tex_env)
+    # Credentials remain environment/file based and never enter either source
+    # file or argv. Only the primary provider's admitted names may survive.
+    for name in ("XAI_API_KEY", "GROK_API_KEY", "ipfs_accelerate_py_XAI_API_KEY"):
+        if name in child_env:
+            fixed[name] = child_env[name]
+    if parent_formal:
+        # The host declaration is provenance, not the identity of this remapped
+        # container environment. Its effective contract is hashed separately.
+        fixed[_GROK_PARENT_FORMAL_TOOLCHAIN_SHA256_ENV] = parent_formal
+        approved[_GROK_PARENT_FORMAL_TOOLCHAIN_SHA256_ENV] = parent_formal
+    fixed[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = str(_GROK_CONTAINER_COMMAND_WRAPPER)
+    fixed[PROVIDER_COMMAND_ENV_DIGEST_ENV] = provider_command_environment_sha256(approved)
+    return fixed, approved
+
+
+def _write_grok_task_container_launchers(
+    *, directory: Path, environment: Mapping[str, str], approved: Mapping[str, str],
+    required_commands: Sequence[str],
+) -> tuple[Path, Path]:
+    """Materialize non-secret, owner-only sources for exact read-only mounts."""
+    directory.mkdir(mode=0o700)
+    wrapper = directory / "provider-command-env"
+    content = _sealed_launcher_source(approved)
+    content = (f"#!{_CODEX_TASK_TOOLCHAIN_PYTHON} -I\n".encode()
+               + content.split(b"\n", 1)[1])
+    wrapper.write_bytes(content)
+    wrapper.chmod(0o500)
+    bootstrap = directory / "task-bootstrap.py"
+    # -I starts this interpreter without image/ambient Python configuration.
+    # Copy only explicitly admitted names, then completely replace the image
+    # environment. Secret VALUES never appear in this generated source.
+    bootstrap.write_text(
+        "import hashlib, os, subprocess, sys\n"
+        f"names = {tuple(sorted(environment))!r}\n"
+        "clean = {name: os.environ[name] for name in names if name in os.environ}\n"
+        "os.environ.clear(); os.environ.update(clean)\n"
+        f"wrapper = {str(_GROK_CONTAINER_COMMAND_WRAPPER)!r}\n"
+        f"expected = {hashlib.sha256(content).hexdigest()!r}\n"
+        "with open(wrapper, 'rb') as source:\n"
+        "    assert hashlib.sha256(source.read()).hexdigest() == expected, 'task launcher changed'\n"
+        f"required = {tuple(dict.fromkeys(('python', 'git', *required_commands)))!r}\n"
+        "result = subprocess.run([wrapper, '--preflight', *required], env=clean, stdout=sys.stderr, check=False)\n"
+        "if result.returncode: raise SystemExit(result.returncode)\n"
+        "if len(sys.argv) < 2: raise SystemExit(64)\n"
+        "os.execve(sys.argv[1], sys.argv[1:], clean)\n",
+        encoding="utf-8",
+    )
+    bootstrap.chmod(0o500)
+    return wrapper, bootstrap
+
+
 def _docker_grok_command(
     *,
     grok_command: Sequence[str],
@@ -2651,8 +2821,10 @@ def _docker_grok_command(
     cidfile: Path,
     docker_bin: str = "",
     isolation_image: str = "",
+    task_execution: bool = False,
+    required_commands: Sequence[str] = (),
 ) -> list[str]:
-    """Wrap Grok in a peer-provider capability boundary without shell tools.
+    """Wrap Grok in the peer-provider capability boundary.
 
     Grok necessarily retains its own read-only auth and writable ephemeral
     session state.  This boundary withholds peer providers; it is not a
@@ -2665,6 +2837,32 @@ def _docker_grok_command(
     image = str(isolation_image).strip()
     if re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None:
         raise ValueError("Docker Grok isolation image is not an immutable image ID")
+    if task_execution and image != _CODEX_TASK_TOOLCHAIN_IMAGE_ID:
+        raise ValueError("Grok task execution requires the pinned task-toolchain image")
+    task_environment: dict[str, str] = {}
+    launchers: tuple[Path, Path] | None = None
+    tex_toolchain: dict[str, str] = {}
+    if task_execution:
+        tex_toolchain = _grok_task_tex_toolchain(base_env)
+        if tex_toolchain and any(
+            Path(tex_toolchain[name]).is_relative_to(workspace)
+            or workspace.is_relative_to(Path(tex_toolchain[name]))
+            for name in ("root", "wrapper")
+        ):
+            raise ValueError("Grok TeX toolchain overlaps the writable workspace")
+        task_environment, approved = _grok_task_container_environment(
+            base_env=base_env, child_env=child_env, workspace=workspace, grok_home=grok_home,
+            tex_toolchain=tex_toolchain,
+        )
+        launchers = _write_grok_task_container_launchers(
+            directory=mask_root.parent / "task-launchers", environment=task_environment,
+            approved=approved, required_commands=(
+                *required_commands,
+                *(("latexmk", "pdflatex", "bibtex", Path(tex_toolchain["wrapper"]).name) if tex_toolchain else ()),
+            ),
+        )
+        child_env.clear()
+        child_env.update(task_environment)
     container_grok = Path("/opt/ipfs-accelerate/grok")
     command = [
         docker,
@@ -2699,6 +2897,11 @@ def _docker_grok_command(
         "--workdir",
         str(workspace),
     ]
+    if task_execution:
+        command.extend(["--network=bridge", "--runtime=runc",
+                        f"--entrypoint={_CODEX_TASK_TOOLCHAIN_PYTHON}"])
+        for override in _CODEX_DOCKER_IMAGE_ENV_OVERRIDES:
+            command.extend(["--env", override])
     # Docker receives values through its already-sanitized process environment;
     # secrets are never serialized into argv or process listings.
     for name in sorted(child_env):
@@ -2709,6 +2912,21 @@ def _docker_grok_command(
     host_usr = _existing_path(Path("/usr"))
     if host_usr is not None:
         command.extend(_docker_mount(host_usr, read_only=True))
+    if task_execution:
+        if host_usr is None:
+            raise ValueError("Grok task execution requires the host /usr toolchain")
+        host_ca = _existing_path(Path("/etc/ssl/certs"))
+        if host_ca is None:
+            raise ValueError("Grok task execution requires host CA certificates")
+        command.extend(_docker_mount(host_ca, read_only=True))
+        command.extend(_docker_mount(_host_codex_task_toolchain_python(),
+                                     destination=_CODEX_TASK_TOOLCHAIN_PYTHON, read_only=True))
+        assert launchers is not None
+        for source, destination in zip(launchers, (_GROK_CONTAINER_COMMAND_WRAPPER, _GROK_CONTAINER_BOOTSTRAP)):
+            command.extend(_docker_mount(source, destination=destination, read_only=True))
+        if tex_toolchain:
+            for name in ("root", "wrapper"):
+                command.extend(_docker_mount(Path(tex_toolchain[name]), read_only=True))
     for git_root in _git_metadata_roots(workspace):
         command.extend(_docker_mount(git_root, read_only=True))
     command.extend(_docker_mount(workspace, read_only=False))
@@ -2762,7 +2980,21 @@ def _docker_grok_command(
 
     inner = list(grok_command)
     inner[0] = str(container_grok)
-    command.extend([image, *inner])
+    if task_execution:
+        if "--sandbox" in inner:
+            raise ValueError("Grok Docker task profile already has a nested sandbox")
+        inner.extend(["--sandbox", "off"])
+        # Tool widening happens here, after exact Docker/toolchain admission.
+        for flag, expected, replacement in (
+            ("--tools", _SEALED_GROK_TOOLS, _DOCKER_TASK_GROK_TOOLS),
+            ("--disallowed-tools", _SEALED_GROK_DISALLOWED_TOOLS, _DOCKER_TASK_GROK_DISALLOWED_TOOLS),
+        ):
+            if inner.count(flag) != 1 or inner[inner.index(flag) + 1] != expected:
+                raise ValueError("Grok task tool profile is not the sealed source profile")
+            inner[inner.index(flag) + 1] = replacement
+        command.extend([image, "-I", str(_GROK_CONTAINER_BOOTSTRAP), *inner])
+    else:
+        command.extend([image, *inner])
     return command
 
 
@@ -6372,10 +6604,9 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     provider_home=_policy_path.parent,
                     prompt_path=Path(prompt_path).resolve(strict=True),
                 )
-                isolation_image = _docker_isolation_image_id(
+                isolation_image = _docker_codex_task_toolchain_image_id(
                     docker_lease.docker_bin,
                     docker_config=docker_lease.docker_config,
-                    base_env=base_env,
                 )
                 if not isolation_image:
                     raise ValueError(
@@ -6396,6 +6627,8 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     cidfile=docker_lease.cidfile,
                     docker_bin=docker_lease.docker_bin,
                     isolation_image=isolation_image,
+                    task_execution=True,
+                    required_commands=command_environment.required_commands,
                 )
                 # Docker is pinned to the validated local socket and empty
                 # runner-owned config. Only explicitly named sanitized

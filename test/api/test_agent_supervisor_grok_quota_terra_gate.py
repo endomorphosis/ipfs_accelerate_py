@@ -203,6 +203,7 @@ def _install_fake_grok_docker_primary(
             return None
 
     class FakeCommandEnvironment:
+        required_commands = ()
         wrapper_path = "/opt/provider-command-wrapper"
         contract_sha256 = "sha256:" + "1" * 64
         formal_toolchain_contract_sha256 = "sha256:" + "2" * 64
@@ -276,8 +277,8 @@ def _install_fake_grok_docker_primary(
     )
     monkeypatch.setattr(
         grok_cli_runner,
-        "_docker_isolation_image_id",
-        lambda *_args, **_kwargs: "sha256:" + "e" * 64,
+        "_docker_codex_task_toolchain_image_id",
+        lambda *_args, **_kwargs: grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID,
     )
     monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_create_run)
     monkeypatch.setattr(
