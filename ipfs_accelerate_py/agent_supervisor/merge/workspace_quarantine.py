@@ -268,8 +268,9 @@ def require_unfenced(directory: Path, workspace: Path) -> None:
 
 @contextmanager
 def mutation(repo_root: Path, workspace: Path):
-    with guard(repo_root) as directory:
-        require_unfenced(directory, Path(workspace))
+    with repository_guards(repo_root) as directories:
+        for directory in directories:
+            require_unfenced(directory, Path(workspace))
         yield
 
 
@@ -507,8 +508,11 @@ def mutation_boundary(*workspace_names: str, pool: bool = False):
                     if bound.arguments.get(name) is not None
                 ]
             if not paths:
-                with guard(Path(repo_root)) as directory:
-                    require(not records(directory), "workspace_mutation_path_unbound")
+                with repository_guards(Path(repo_root)) as directories:
+                    require(
+                        not any(records(directory) for directory in directories),
+                        "workspace_mutation_path_unbound",
+                    )
                     return function(*args, **kwargs)
             with ExitStack() as stack:
                 for path in paths:
@@ -521,8 +525,13 @@ def mutation_boundary(*workspace_names: str, pool: bool = False):
 
 
 @contextmanager
-def maintenance(repo_root: Path):
-    """Hold root and submodule custody guards throughout a global Git operation."""
+def repository_guards(repo_root: Path):
+    """Retain each enclosing Git store's custody lock, outermost first.
+
+    A nested supervisor may mutate a workspace inside a root frozen by its
+    superproject. All mutation paths must share that parent freeze lock, even
+    when their own registry has no retained workspaces.
+    """
     from contextlib import ExitStack
 
     common = registry(Path(repo_root)).parent.resolve()
@@ -539,6 +548,13 @@ def maintenance(repo_root: Path):
             stack.enter_context(directory_guard(root / "agent-workspace-quarantine"))
             for root in sorted(roots, key=lambda item: len(item.parts))
         ]
+        yield directories
+
+
+@contextmanager
+def maintenance(repo_root: Path):
+    """Hold root and submodule custody guards throughout a global Git operation."""
+    with repository_guards(repo_root) as directories:
         yield not any(records(directory) for directory in directories)
 
 
