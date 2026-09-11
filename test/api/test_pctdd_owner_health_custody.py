@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -142,9 +143,12 @@ def test_retained_track_custody_never_stops_required_owner(
 
 def test_unverified_tree_is_not_reported_as_whole_tree_fencing(tmp_path, monkeypatch):
     track = _track(tmp_path)
-    process = SimpleNamespace(pid=54321)
+    def wait(*, timeout):
+        raise subprocess.TimeoutExpired("retained-test-child", timeout)
+
+    process = SimpleNamespace(pid=54321, wait=wait)
     monkeypatch.setattr(runner, "_terminate_managed_process", lambda *a, **k: (False, ()))
-    monkeypatch.setattr(runner, "_remove_track_runtime_markers", lambda *a, **k: pytest.fail("unknown tree cannot retire markers"), raising=False)
+    monkeypatch.setattr(runner, "_remove_stale_pid_marker_if_unchanged", lambda *a, **k: pytest.fail("unknown tree cannot retire markers"))
     result = runner.stop_tracks(
         [track], {"lane": process}, repo_root=tmp_path, output=lambda message: None
     )
