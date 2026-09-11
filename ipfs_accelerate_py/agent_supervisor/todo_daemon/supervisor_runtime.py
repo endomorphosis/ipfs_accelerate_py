@@ -2153,6 +2153,29 @@ def supervised_child_is_proven_dead(child: SupervisedChild) -> bool:
             return False
     identity = load_supervised_child_identity(identity_path)
     if not _supervised_child_identity_matches_handle(child, identity):
+        # Native maintenance can fence the child and remove both markers
+        # before returning a recycle decision. The immutable launched/adopted
+        # handle still identifies that original birth. Its death does not
+        # authorize signalling or removing a replacement generation's markers.
+        birth = child.identity_process_birth
+        if not (
+            isinstance(birth, ProcessBirthIdentity)
+            and birth.pid == child.pid
+            and birth.pid > 1
+            and birth.start_time_ticks > 0
+            and birth.boot_id
+            and child.identity_record_id
+            and child.owned_process_group_id == child.pid
+            and owner_liveness(birth) is OwnerLiveness.DEAD
+        ):
+            return False
+        # A dead root must not hide surviving descendants in its owned group.
+        try:
+            os.killpg(child.owned_process_group_id, 0)
+        except ProcessLookupError:
+            return True
+        except (OSError, ValueError, TypeError):
+            return False
         return False
     return supervised_child_identity_liveness(identity) is OwnerLiveness.DEAD
 
