@@ -384,6 +384,7 @@ def _preserved_candidate_pass(
     route_fixture,
     complete=True,
     omit_post=False,
+    journal=False,
 ):
     """Exercise native audit + real preservation helper and lifecycle callbacks.
 
@@ -437,7 +438,7 @@ def _preserved_candidate_pass(
     daemon._worktree_pool_effective_paths = {}
     daemon.worktree_submodule_paths = ()
     daemon.worktree_lifecycle = WorktreeLifecycleStore(
-        repo_root=repository, store_dir=tmp_path / "workspace-lifecycle"
+        repo_root=repository, **({} if journal else {"store_dir": tmp_path / "workspace-lifecycle"})
     )
     prior = daemon.worktree_lifecycle.begin_preparing(
         task_id=task.task_id,
@@ -549,16 +550,26 @@ def _preserved_candidate_pass(
         returncode=0,
     )
     proof = audit.get("candidate_provider_cleanup")
-    preserved = daemon._preserve_failed_validation_worktree(
-        worktree,
-        branch,
-        task,
-        1,
-        validation,
-        baseline_ref=signed.baseline_commit,
-        candidate_cleanup_evidence=proof,
-        candidate_cleanup_required=True,
-    )
+    # Existing tests retain the legacy @1 producer contract. New journal tests
+    # use the actual future constructor and canonical native lifecycle store.
+    constructor = closure.CandidateLifecycleHandoff.__init__
+    def legacy_handoff(self, **kwargs):
+        kwargs.pop("journal_validation", None)
+        constructor(self, **kwargs)
+    with monkeypatch.context() as legacy:
+        if not journal:
+            legacy.setattr(closure.CandidateLifecycleHandoff, "__init__", legacy_handoff)
+        preserved = daemon._preserve_failed_validation_worktree(
+            worktree,
+            branch,
+            task,
+            1,
+            validation,
+            baseline_ref=signed.baseline_commit,
+            candidate_cleanup_evidence=proof,
+            candidate_cleanup_required=True,
+        )
+
     result = {
         "task_id": task.task_id,
         "task_cid": portal_cid,
@@ -584,7 +595,7 @@ from contextlib import contextmanager
 
 
 @contextmanager
-def _typed_outer(tmp_path, monkeypatch, *, repository, factory):
+def _typed_outer(tmp_path, monkeypatch, *, repository, factory, tick=False):
     from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
         OwnerLiveness,
     )
@@ -696,6 +707,7 @@ def _typed_outer(tmp_path, monkeypatch, *, repository, factory):
             lease_ms=30000,
             max_task_attempts=4,
             provider_fn=bridge.run_provider,
+            **({"post_merge_recovery_fn": bridge.recover_post_merge_declared_outputs} if tick else {}),
             effect_fn=lambda *_: pytest.fail("no effect callback"),
             validation_fn=lambda *_: pytest.fail("no validation callback"),
             strict_task_sharding=True,

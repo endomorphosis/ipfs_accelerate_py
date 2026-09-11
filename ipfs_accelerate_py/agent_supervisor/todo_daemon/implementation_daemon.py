@@ -52845,9 +52845,8 @@ class PortalImplementationDaemon:
         )
         rescue_branch = ""
         implementation_commit = str(commit_result.get("commit", ""))
-        preserved_commit = (
-            implementation_commit
-            or str(commit_result.get("candidate_commit", ""))
+        preserved_commit = implementation_commit or str(
+            commit_result.get("candidate_commit", "")
         )
         if preserved_commit:
             rescue_branch = self._interrupted_worktree_rescue_branch_name(
@@ -52873,10 +52872,14 @@ class PortalImplementationDaemon:
                 branch=branch_name,
                 preserved_commit=preserved_commit,
                 rescue_branch=rescue_branch,
+                journal_validation=(
+                    evidence if evidence.get("reason") == "proposal_gate_failed" else None
+                ),
             )
             lifecycle_callbacks = (handoff.terminal, handoff.released)
         cleanup_result = self._cleanup_merged_worktree(
-            worktree_path, branch_name,
+            worktree_path,
+            branch_name,
             **({"lifecycle_callbacks": lifecycle_callbacks} if lifecycle_callbacks else {}),
         )
         result = {
@@ -71431,7 +71434,10 @@ class PortalImplementationDaemon:
             ]
             | None
         ) = None,
-        released_callback: Callable[[WorkspaceLifecycleRecord, WorkspaceLifecycleRecord], Mapping[str, Any]] | None = None,
+        released_callback: Callable[
+            [WorkspaceLifecycleRecord, WorkspaceLifecycleRecord], Mapping[str, Any]
+        ]
+        | None = None,
     ) -> dict[str, Any]:
         """Terminalize only the captured lease/fence for a released workspace.
 
@@ -71443,7 +71449,13 @@ class PortalImplementationDaemon:
         """
 
         if released_callback is not None and terminal_callback is None:
-            raise ValueError("lifecycle release observation requires prior terminal callback")
+            raise ValueError(
+                "lifecycle release observation requires prior terminal callback"
+            )
+
+        from .candidate_rejection_closure import journal_handoff
+
+        handoff = journal_handoff(terminal_callback, released_callback)
 
         def _clear_captured_active() -> None:
             current = self._active_worktree_lifecycle
@@ -71503,15 +71515,22 @@ class PortalImplementationDaemon:
                             "a mapping or None"
                         )
                     terminal_callback_result = dict(callback_result)
-            deleted = (
-                self.worktree_lifecycle.compare_and_delete_observed(terminal)
-                if released_callback is not None
-                else self.worktree_lifecycle.compare_and_delete(
-                    terminal.workspace_path,
-                    expected_fence=terminal.fence,
-                    lease_id=terminal.lease_id,
+            deletion = None
+            if handoff is not None:
+                deletion = self.worktree_lifecycle.delete_candidate_observed(
+                    terminal, handoff_receipt_id=terminal_callback_result["receipt_id"]
                 )
-            )
+                deleted = True
+            else:
+                deleted = (
+                    self.worktree_lifecycle.compare_and_delete_observed(terminal)
+                    if released_callback is not None
+                    else self.worktree_lifecycle.compare_and_delete(
+                        terminal.workspace_path,
+                        expected_fence=terminal.fence,
+                        lease_id=terminal.lease_id,
+                    )
+                )
             _clear_captured_active()
             if not deleted:
                 return {
@@ -71525,7 +71544,11 @@ class PortalImplementationDaemon:
                 }
             released_callback_result: dict[str, Any] = {}
             if released_callback is not None:
-                observed_release = released_callback(record, terminal)
+                observed_release = released_callback(
+                    record,
+                    terminal,
+                    **({"deletion": deletion} if handoff is not None else {}),
+                )
                 if not isinstance(observed_release, Mapping):
                     raise TypeError("lifecycle release callback must return a mapping")
                 released_callback_result = dict(observed_release)
@@ -71534,7 +71557,11 @@ class PortalImplementationDaemon:
                 "reason": reason,
                 "fence": terminal.fence,
                 "state": terminal.state.value,
-                **({"released_callback": released_callback_result} if released_callback_result else {}),
+                **(
+                    {"released_callback": released_callback_result}
+                    if released_callback_result
+                    else {}
+                ),
                 **(
                     {"terminal_callback": terminal_callback_result}
                     if terminal_callback_result
@@ -72155,17 +72182,14 @@ class PortalImplementationDaemon:
                     "deleted_branch": False,
                     "submodule_cleanup": [],
                     "reason": str(
-                        pool_release.get("reason")
-                        or "worktree_pool_release_deferred"
+                        pool_release.get("reason") or "worktree_pool_release_deferred"
                     ),
                     "pool_release": pool_release,
                 }
                 if lifecycle_deferred:
                     result.update(
                         {
-                            "failure_kind": (
-                                LifecycleFailureKind.LIFECYCLE_RACE.value
-                            ),
+                            "failure_kind": (LifecycleFailureKind.LIFECYCLE_RACE.value),
                             "attempt_consumed": False,
                             "provider_call_allowed": False,
                         }
@@ -72230,11 +72254,17 @@ class PortalImplementationDaemon:
         errors: list[str] = []
         try:
             if worktree_path is not None:
-                submodule_cleanup = self._cleanup_worktree_submodules(worktree_path, branch_name)
+                submodule_cleanup = self._cleanup_worktree_submodules(
+                    worktree_path, branch_name
+                )
             if worktree_path is not None and (
-                worktree_path.exists() or self._worktree_path_registered_in_repo(self.repo_root, worktree_path)
+                worktree_path.exists()
+                or self._worktree_path_registered_in_repo(self.repo_root, worktree_path)
             ):
-                self._run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=self.repo_root)
+                self._run_git(
+                    ["worktree", "remove", "--force", str(worktree_path)],
+                    cwd=self.repo_root,
+                )
                 removed_worktree = True
             if self._git_ref_exists(branch_name):
                 self._run_git(["branch", "-D", branch_name], cwd=self.repo_root)
@@ -72267,23 +72297,32 @@ class PortalImplementationDaemon:
             "removed_worktree": removed_worktree,
             "deleted_branch": deleted_branch,
             "submodule_cleanup": submodule_cleanup,
-            "lifecycle_finalize": (
-                self._finalize_exact_worktree_lifecycle(
-                    lifecycle_record,
-                    reason="worktree_cleaned",
-                    **(
-                        {"terminal_callback": lifecycle_callbacks[0],
-                         "released_callback": lifecycle_callbacks[1]}
-                        if lifecycle_callbacks is not None else {}
-                    ),
-                )
-                if lifecycle_record is not None
-                else {
-                    "finalized": False,
-                    "reason": "no_lifecycle_record",
-                }
-            ),
         }
+        if lifecycle_callbacks is not None:
+            from .candidate_rejection_closure import journal_handoff
+
+            handoff = journal_handoff(*lifecycle_callbacks)
+            if handoff is not None:
+                handoff.capture_cleanup_disposition(result)
+        result["lifecycle_finalize"] = (
+            self._finalize_exact_worktree_lifecycle(
+                lifecycle_record,
+                reason="worktree_cleaned",
+                **(
+                    {
+                        "terminal_callback": lifecycle_callbacks[0],
+                        "released_callback": lifecycle_callbacks[1],
+                    }
+                    if lifecycle_callbacks is not None
+                    else {}
+                ),
+            )
+            if lifecycle_record is not None
+            else {
+                "finalized": False,
+                "reason": "no_lifecycle_record",
+            }
+        )
         self._record_event("cleanup_finished", result)
         return result
 
@@ -100078,13 +100117,72 @@ class DatabaseImplementationDaemon:
             return None
         return bridge.verify_candidate_rejection_closure(attempt, expected)
 
+    def _recover_bound_candidate_rejection_closure(self, attempt, *, callback):
+        from .database_portal_bridge import DatabasePortalExecutionBridge
+
+        bound = callback or self._provider_fn
+        bridge = getattr(bound, "__self__", None)
+        if (
+            self._uses_quack_command_gateway()
+            or type(bridge) is not DatabasePortalExecutionBridge
+            or getattr(bound, "__func__", None)
+            is not DatabasePortalExecutionBridge.run_provider
+        ):
+            return None
+        from . import candidate_journal_recovery
+
+        handoff = candidate_journal_recovery.has_handoff(bridge, attempt)
+        if handoff is False:
+            return None
+        if handoff is None:
+            raise CandidateClosureObservationUnknown(
+                "candidate journal classification unavailable"
+            )
+        # The hint only chooses a custody-preserving error path. All mutation
+        # still requires the complete independently verified native context.
+        try:
+            result = self._run_with_attempt_heartbeat(
+                attempt,
+                lambda: {
+                    "closure": bridge.recover_candidate_rejection_closure(
+                        attempt, admitted_daemon=self
+                    )
+                },
+            )
+            if result["closure"] is None:
+                raise CandidateClosureObservationUnknown(
+                    "candidate journal proof unavailable"
+                )
+            return result["closure"]
+        except CandidateClosureObservationUnknown:
+            raise
+        except Exception as exc:
+            raise CandidateClosureObservationUnknown(
+                "candidate journal replay retains original callback custody"
+            ) from exc
+
     def _candidate_callback_receipt(self, attempt, prior, *, key, callback=None):
         """Reverify an exact rejection journal; codes never supply authority."""
-        from .candidate_rejection_closure import CALLBACK_SCHEMA, CLOSURE_SCHEMA, exact_seal
+        from .candidate_rejection_closure import (
+            CALLBACK_SCHEMA,
+            CLOSURE_SCHEMA,
+            RECOVERED_CLOSURE_SCHEMA,
+            exact_seal,
+        )
         from .candidate_failure_diagnostics import normalize_candidate_failure_diagnostics
 
         if not isinstance(prior, Mapping) or prior.get("schema") != CALLBACK_SCHEMA:
             return None
+
+        def unavailable(message):
+            retained = prior.get("closure")
+            if (
+                isinstance(retained, Mapping)
+                and retained.get("schema") == RECOVERED_CLOSURE_SCHEMA
+            ):
+                raise CandidateClosureObservationUnknown(message)
+            raise DatabaseImplementationAuthorityError(message)
+
         if (
             set(prior)
             != {
@@ -100100,19 +100198,23 @@ class DatabaseImplementationDaemon:
             }
             or not exact_seal(prior)
             or not exact_seal(prior.get("closure"))
-            or prior["closure"].get("schema") != CLOSURE_SCHEMA
+            or prior["closure"].get("schema")
+            not in {CLOSURE_SCHEMA, RECOVERED_CLOSURE_SCHEMA}
             or prior.get("callback_state") != "returned_candidate_rejection"
             or prior.get("provider_effect_state") != "terminal_cleanup_complete"
             or prior.get("completion_authority") is not False
             or normalize_candidate_failure_diagnostics(prior.get("diagnostic_summary"))
             != prior.get("diagnostic_summary")
         ):
-            raise DatabaseImplementationAuthorityError(
-                "candidate callback receipt malformed"
+            unavailable("candidate callback receipt malformed")
+        try:
+            unknown = _sealed_database_provider_callback_unknown_evidence(
+                prior.get("original_intent")
             )
-        unknown = _sealed_database_provider_callback_unknown_evidence(
-            prior.get("original_intent")
-        )
+        except (TypeError, ValueError):
+            if prior["closure"].get("schema") == RECOVERED_CLOSURE_SCHEMA:
+                unavailable("candidate journal original callback malformed")
+            raise
         identity = {
             "attempt_id": attempt.attempt_id,
             "claim_id": attempt.claim_id,
@@ -100137,9 +100239,7 @@ class DatabaseImplementationDaemon:
             )
             != prior.get("closure")
         ):
-            raise DatabaseImplementationAuthorityError(
-                "candidate callback closure unavailable or foreign"
-            )
+            unavailable("candidate callback closure unavailable or foreign")
         return dict(prior)
 
     def _commit_candidate_callback_closure(
@@ -100337,16 +100437,17 @@ class DatabaseImplementationDaemon:
             )
         if prior is not None:
             from .database_portal_bridge import DatabasePortalCandidateRejectedClosed
-            closed = self._candidate_callback_receipt(attempt, prior, key=key, callback=provider_fn)
+
+            closed = self._candidate_callback_receipt(
+                attempt, prior, key=key, callback=provider_fn
+            )
             if closed is not None:
-                raise DatabasePortalCandidateRejectedClosed(closed["closure"], diagnostic_summary=closed["diagnostic_summary"])
+                raise DatabasePortalCandidateRejectedClosed(
+                    closed["closure"], diagnostic_summary=closed["diagnostic_summary"]
+                )
             if prior.get("schema") == DATABASE_PROVIDER_CALLBACK_DEFERRED_SCHEMA:
                 try:
-                    deferred = (
-                        _sealed_database_provider_callback_deferred_evidence(
-                            prior
-                        )
-                    )
+                    deferred = _sealed_database_provider_callback_deferred_evidence(prior)
                 except ValueError as exc:
                     raise DatabaseImplementationAuthorityError(
                         "provider callback deferral evidence is malformed"
@@ -100362,8 +100463,7 @@ class DatabaseImplementationDaemon:
                     "idempotency_key": key,
                 }
                 if not all(
-                    deferred.get(name) == value
-                    for name, value in expected_identity.items()
+                    deferred.get(name) == value for name, value in expected_identity.items()
                 ):
                     raise DatabaseImplementationConflictError(
                         "provider callback deferral does not match the exact attempt"
@@ -100376,9 +100476,7 @@ class DatabaseImplementationDaemon:
                 )
             if prior.get("schema") == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA:
                 try:
-                    unknown = _sealed_database_provider_callback_unknown_evidence(
-                        prior
-                    )
+                    unknown = _sealed_database_provider_callback_unknown_evidence(prior)
                 except ValueError as exc:
                     raise DatabaseImplementationAuthorityError(
                         "provider callback intent evidence is malformed"
@@ -100394,31 +100492,63 @@ class DatabaseImplementationDaemon:
                     "idempotency_key": key,
                 }
                 if not all(
-                    unknown.get(name) == value
-                    for name, value in expected_identity.items()
+                    unknown.get(name) == value for name, value in expected_identity.items()
                 ):
                     raise DatabaseImplementationConflictError(
                         "provider callback intent does not match the exact attempt"
                     )
-                closure = self._bound_candidate_rejection_closure(attempt, callback=provider_fn)
-                if closure is not None:
-                    row = self._require_connection().execute(
-                        "SELECT invocation_id FROM provider_invocations WHERE attempt_id = ? AND idempotency_key = ?",
-                        [attempt.attempt_id, key],
-                    ).fetchone()
-                    if row is None:
-                        raise DatabaseImplementationConflictError("candidate callback original intent disappeared")
-                    closed = self._commit_candidate_callback_closure(
-                        attempt, key=key, invocation_id=row[0], original=unknown,
-                        closure=closure, callback=provider_fn,
-                    )
-                    raise DatabasePortalCandidateRejectedClosed(closed["closure"], diagnostic_summary=closed["diagnostic_summary"])
-                raise DatabaseProviderCallbackOutcomeUnknownError(
-                    failure_evidence=unknown
+                closure = self._bound_candidate_rejection_closure(
+                    attempt, callback=provider_fn
                 )
+                from .candidate_rejection_closure import RECOVERED_CLOSURE_SCHEMA
+
+                if closure is None or closure.get("schema") == RECOVERED_CLOSURE_SCHEMA:
+                    try:
+                        closure = self._recover_bound_candidate_rejection_closure(
+                            attempt, callback=provider_fn
+                        )
+                    except CandidateClosureObservationUnknown:
+                        raise
+                    except Exception as exc:
+                        # Failed native replay, heartbeat or publication remains
+                        # the original unresolved callback, never ordinary retry.
+                        raise DatabaseProviderCallbackOutcomeUnknownError(
+                            failure_evidence=unknown
+                        ) from exc
+                if closure is not None:
+                    row = (
+                        self._require_connection()
+                        .execute(
+                            "SELECT invocation_id FROM provider_invocations WHERE attempt_id = ? AND idempotency_key = ?",
+                            [attempt.attempt_id, key],
+                        )
+                        .fetchone()
+                    )
+                    if row is None:
+                        raise DatabaseImplementationConflictError(
+                            "candidate callback original intent disappeared"
+                        )
+                    try:
+                        closed = self._commit_candidate_callback_closure(
+                            attempt,
+                            key=key,
+                            invocation_id=row[0],
+                            original=unknown,
+                            closure=closure,
+                            callback=provider_fn,
+                        )
+                    except Exception as exc:
+                        if closure.get("schema") == RECOVERED_CLOSURE_SCHEMA:
+                            raise CandidateClosureObservationUnknown(
+                                "candidate journal callback publication unverified"
+                            ) from exc
+                        raise
+                    raise DatabasePortalCandidateRejectedClosed(
+                        closed["closure"], diagnostic_summary=closed["diagnostic_summary"]
+                    )
+                raise DatabaseProviderCallbackOutcomeUnknownError(failure_evidence=unknown)
             if self.require_real_execution and (
-                str(prior.get("status") or "").strip().lower()
-                in {"", "noop"}
+                str(prior.get("status") or "").strip().lower() in {"", "noop"}
                 or prior.get("accepted") is not True
             ):
                 raise DatabaseImplementationAuthorityError(
@@ -100504,9 +100634,7 @@ class DatabaseImplementationDaemon:
                 task_cid=attempt.task_cid,
                 body={
                     "idempotency_key": key,
-                    "failure_fingerprint": callback_intent[
-                        "failure_fingerprint"
-                    ],
+                    "failure_fingerprint": callback_intent["failure_fingerprint"],
                     "provider_effect_state": "unknown_may_have_started",
                 },
             )
@@ -100518,14 +100646,30 @@ class DatabaseImplementationDaemon:
                     )
                 )
             except Exception as exc:
-                from .database_portal_bridge import DatabasePortalBridgeDeferred, DatabasePortalCandidateRejectedClosed
+                from .database_portal_bridge import (
+                    DatabasePortalBridgeDeferred,
+                    DatabasePortalCandidateRejectedClosed,
+                )
 
                 if isinstance(exc, DatabasePortalCandidateRejectedClosed):
-                    self._commit_candidate_callback_closure(
-                        attempt, key=key, invocation_id=invocation_id,
-                        original=callback_intent, closure=exc.closure_receipt,
-                        callback=callback, diagnostic_summary=exc.diagnostic_summary,
-                    )
+                    try:
+                        self._commit_candidate_callback_closure(
+                            attempt,
+                            key=key,
+                            invocation_id=invocation_id,
+                            original=callback_intent,
+                            closure=exc.closure_receipt,
+                            callback=callback,
+                            diagnostic_summary=exc.diagnostic_summary,
+                        )
+                    except Exception as publication_error:
+                        from .candidate_rejection_closure import RECOVERED_CLOSURE_SCHEMA
+
+                        if exc.closure_receipt.get("schema") == RECOVERED_CLOSURE_SCHEMA:
+                            raise CandidateClosureObservationUnknown(
+                                "candidate journal callback publication unverified"
+                            ) from publication_error
+                        raise
                     raise
                 if (
                     not isinstance(exc, DatabasePortalBridgeDeferred)
@@ -100538,9 +100682,7 @@ class DatabaseImplementationDaemon:
                     idempotency_key=key,
                     callback_intent=callback_intent,
                     reason=str(getattr(exc, "reason", "") or str(exc)),
-                    backoff_seconds=int(
-                        getattr(exc, "backoff_seconds", 0) or 0
-                    ),
+                    backoff_seconds=int(getattr(exc, "backoff_seconds", 0) or 0),
                 )
                 self._protect_attempt_write(attempt)
                 connection = self._require_connection()

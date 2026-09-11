@@ -19,6 +19,10 @@ PROVIDER_SCHEMA = "candidate-provider-cleanup@1"
 TERMINAL_SCHEMA = "candidate-rejection-lifecycle-terminal@1"
 RELEASED_SCHEMA = "candidate-rejection-lifecycle-released@1"
 CLOSURE_SCHEMA = "database-portal-candidate-rejection-closure@1"
+JOURNAL_TERMINAL_SCHEMA = "candidate-rejection-lifecycle-terminal@2"
+JOURNAL_RELEASED_SCHEMA = "candidate-rejection-lifecycle-released@2"
+RECOVERED_CLOSURE_SCHEMA = "database-portal-candidate-rejection-journal-closure@1"
+DISPOSITION_SCHEMA = "candidate-rejection-cleanup-disposition@1"
 CALLBACK_SCHEMA = "database-provider-callback-candidate-rejected@1"
 TERMINAL_EVENT = "candidate_rejection_lifecycle_terminal"
 RELEASED_EVENT = "candidate_rejection_lifecycle_released"
@@ -89,6 +93,7 @@ class CandidateLifecycleHandoff:
         branch: str,
         preserved_commit: str,
         rescue_branch: str,
+        journal_validation: Mapping[str, Any] | None = None,
     ) -> None:
         if (
             not exact_seal(cleanup, "proof_id")
@@ -112,6 +117,51 @@ class CandidateLifecycleHandoff:
             "completion_authority": False,
         }
         self._terminal: dict[str, Any] | None = None
+        self._journal_validation = (
+            rejection_validation(journal_validation)
+            if journal_validation is not None
+            else None
+        )
+        self._disposition: dict[str, Any] | None = None
+
+    @property
+    def journal_enabled(self) -> bool:
+        return self._journal_validation is not None
+
+    def capture_cleanup_disposition(self, cleanup: Mapping[str, Any]) -> None:
+        """Capture only the completed nonpooled producer branch, before deletion."""
+        if (
+            not self.journal_enabled
+            or self._disposition is not None
+            or self._terminal is not None
+            or cleanup.get("cleaned") is not True
+            or cleanup.get("removed_worktree") is not True
+            or cleanup.get("deleted_branch") is not True
+            or cleanup.get("pooled") is True
+            or cleanup.get("pool_release") is not None
+            or cleanup.get("branch") != self._binding["branch"]
+            or cleanup.get("worktree_path") != self._binding["worktree_path"]
+            or cleanup.get("error")
+            or not isinstance(cleanup.get("submodule_cleanup"), list)
+        ):
+            raise CandidateClosureObservationUnknown(
+                "candidate cleanup disposition unavailable"
+            )
+        self._disposition = sealed(
+            {
+                "schema": DISPOSITION_SCHEMA,
+                "validation": self._journal_validation,
+                "cleaned": True,
+                "removed_worktree": True,
+                "deleted_branch": True,
+                "submodule_cleanup_count": len(cleanup["submodule_cleanup"]),
+                "pooled": False,
+                "queue_publication": False,
+                "provider_dispatched": True,
+                "attempt_consumed": True,
+                "completion_authority": False,
+            }
+        )
 
     def terminal(
         self,
@@ -122,6 +172,7 @@ class CandidateLifecycleHandoff:
         cleanup = self._binding["provider_cleanup"]
         if (
             self._terminal is not None
+            or (self.journal_enabled and self._disposition is None)
             or not validate_lifecycle_pair(before, after)
             or before["task_id"] != self._binding["task_id"]
             or before["attempt"] != self._binding["attempt"]
@@ -132,8 +183,11 @@ class CandidateLifecycleHandoff:
             raise ValueError("candidate lifecycle terminal binding mismatch")
         value = sealed(
             {
-                "schema": TERMINAL_SCHEMA,
+                "schema": JOURNAL_TERMINAL_SCHEMA
+                if self.journal_enabled
+                else TERMINAL_SCHEMA,
                 **self._binding,
+                **({"disposition": self._disposition} if self.journal_enabled else {}),
                 "prior": before,
                 "terminal": after,
             }
@@ -154,6 +208,8 @@ class CandidateLifecycleHandoff:
         self,
         prior: WorkspaceLifecycleRecord,
         terminal: WorkspaceLifecycleRecord,
+        *,
+        deletion=None,
     ) -> dict[str, Any]:
         value = self._terminal
         if (
@@ -162,10 +218,31 @@ class CandidateLifecycleHandoff:
             or value["terminal"] != terminal.to_dict()
         ):
             raise ValueError("candidate lifecycle release has no exact predecessor")
+        observed = None
+        if self.journal_enabled:
+            from ..merge.worktree_lifecycle_delete_journal import (
+                CandidateObservedDeletion,
+            )
+
+            if type(deletion) is not CandidateObservedDeletion:
+                raise CandidateClosureObservationUnknown(
+                    "native deletion observation required"
+                )
+            observed = deletion.to_dict()
+            if (
+                observed["prepared"]["binding"]["terminal"] != terminal.to_dict()
+                or observed["committed"]["handoff_receipt_id"] != value["receipt_id"]
+            ):
+                raise CandidateClosureObservationUnknown(
+                    "native deletion handoff mismatch"
+                )
         released = sealed(
             {
-                "schema": RELEASED_SCHEMA,
+                "schema": JOURNAL_RELEASED_SCHEMA
+                if self.journal_enabled
+                else RELEASED_SCHEMA,
                 **self._binding,
+                **({"deletion": observed} if self.journal_enabled else {}),
                 "terminal_receipt_id": value["receipt_id"],
                 "compare_delete_succeeded": True,
             }
@@ -181,9 +258,65 @@ class CandidateLifecycleHandoff:
         return released
 
 
+def rejection_validation(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Closed, bounded rejected-proposal summary; it never supplies authority."""
+    if not isinstance(value, Mapping):
+        raise TypeError("candidate validation must be a mapping")
+    proposal = value.get("proposal_gate")
+    if (
+        value.get("passed") is not False
+        or value.get("returncode") != 78
+        or value.get("reason") != "proposal_gate_failed"
+        or not isinstance(proposal, Mapping)
+        or proposal.get("attempted") is not True
+        or proposal.get("accepted") is not False
+        or any(
+            not isinstance(proposal.get(k), str) or not 1 <= len(proposal[k]) <= 1024
+            for k in ("receipt_id", "proposal_id", "policy_id")
+        )
+        or not isinstance(proposal.get("reason_codes"), list)
+        or len(proposal["reason_codes"]) > 32
+        or any(not isinstance(k, str) or len(k) > 128 for k in proposal["reason_codes"])
+    ):
+        raise ValueError("candidate journal requires exact proposal rejection")
+    return {
+        "passed": False,
+        "returncode": 78,
+        "reason": "proposal_gate_failed",
+        "proposal_gate": {
+            k: proposal[k]
+            for k in (
+                "attempted",
+                "accepted",
+                "receipt_id",
+                "proposal_id",
+                "policy_id",
+                "reason_codes",
+            )
+        },
+    }
+
+
+def journal_handoff(terminal_callback, released_callback):
+    """Only the exact future producer object can select native journal deletion."""
+    value = getattr(terminal_callback, "__self__", None)
+    if type(value) is not CandidateLifecycleHandoff or not value.journal_enabled:
+        return None
+    if (
+        getattr(terminal_callback, "__func__", None)
+        is not CandidateLifecycleHandoff.terminal
+        or getattr(released_callback, "__self__", None) is not value
+        or getattr(released_callback, "__func__", None)
+        is not CandidateLifecycleHandoff.released
+    ):
+        raise CandidateClosureObservationUnknown("candidate journal callback mismatch")
+    return value
+
+
 def observe_provider_cleanup(*, repo_root, command_items, receipt_text):
     """Join exact owned command/log to a native terminal-only observation."""
     from ipfs_accelerate_py import agent_implementation_route as routes
+
     from ..runtime.provider_failure_policy import extract_grok_failure_receipts
 
     def unique(pairs):

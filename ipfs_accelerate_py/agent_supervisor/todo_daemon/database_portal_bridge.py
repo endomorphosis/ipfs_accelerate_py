@@ -1252,9 +1252,16 @@ class DatabasePortalCandidateRejectedClosed(DatabasePortalCandidateRetry):
     """Exact bridge-produced closure, separately reverified by the outer daemon."""
 
     def __init__(self, receipt: Mapping[str, Any], *, diagnostic_summary=None):
-        from .candidate_rejection_closure import CLOSURE_SCHEMA, exact_seal
+        from .candidate_rejection_closure import (
+            CLOSURE_SCHEMA,
+            RECOVERED_CLOSURE_SCHEMA,
+            exact_seal,
+        )
 
-        if not exact_seal(receipt) or receipt.get("schema") != CLOSURE_SCHEMA:
+        if not exact_seal(receipt) or receipt.get("schema") not in {
+            CLOSURE_SCHEMA,
+            RECOVERED_CLOSURE_SCHEMA,
+        }:
             raise ValueError("candidate rejection closure is malformed")
         super().__init__(str(receipt["reason"]), diagnostic_summary=diagnostic_summary)
         self.closure_receipt = dict(receipt)
@@ -15892,18 +15899,77 @@ class DatabasePortalExecutionBridge:
         expected: Mapping[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Read only this bound attempt; unavailable proof keeps callback custody."""
+        from .candidate_rejection_closure import RECOVERED_CLOSURE_SCHEMA
+        from . import candidate_journal_recovery
+        from ..merge.worktree_lifecycle import WorktreeLifecycleError
+
         try:
-            paths, binding = self._recovery_attempt_binding(
-                attempt, recovery_name="candidate rejection closure"
+            recovered = (
+                expected is not None and expected.get("schema") == RECOVERED_CLOSURE_SCHEMA
             )
-            receipt = self._candidate_rejection_closure_receipt(
-                attempt=attempt, paths=paths, binding=binding
-            )
-        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            receipt = None
+            if not recovered:
+                paths, binding = self._recovery_attempt_binding(
+                    attempt, recovery_name="candidate rejection closure"
+                )
+                receipt = self._candidate_rejection_closure_receipt(
+                    attempt=attempt, paths=paths, binding=binding
+                )
+            if receipt is None and (expected is None or recovered):
+                receipt = candidate_journal_recovery.observe(self, attempt)
+        except (
+            DatabasePortalBridgeError,
+            WorktreeLifecycleError,
+            OSError,
+            TypeError,
+            ValueError,
+            KeyError,
+            RecursionError,
+        ):
             return None
         if expected is not None and receipt != dict(expected):
             return None
         return receipt
+
+    def recover_candidate_rejection_closure(
+        self, attempt: Any, *, admitted_daemon
+    ) -> dict[str, Any] | None:
+        """Resume an existing journal under the actual bound outer attempt guard.
+
+        This explicit mutation API never runs from the ordinary verifier. It is
+        invoked inside the outer daemon's exact-lease heartbeat, after original
+        unknown callback identity checks; none of its input is a new grant.
+        """
+        from .implementation_daemon import (
+            DatabaseImplementationDaemon,
+            DatabaseImplementationAuthorityError,
+        )
+        from . import candidate_journal_recovery
+
+        bound = getattr(admitted_daemon, "_provider_fn", None)
+        if (
+            type(admitted_daemon) is not DatabaseImplementationDaemon
+            or getattr(bound, "__self__", None) is not self
+            or getattr(bound, "__func__", None)
+            is not DatabasePortalExecutionBridge.run_provider
+            or admitted_daemon._task_source is not self.task_source
+            or admitted_daemon._uses_quack_command_gateway()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "candidate journal has no bound attempt admission"
+            )
+
+        def protect():
+            admitted_daemon._require_execution_authority(
+                "candidate deletion journal recovery"
+            )
+            admitted_daemon._require_typed_attempt_admission(attempt)
+            admitted_daemon._protect_attempt_write(attempt)
+
+        protect()
+        return candidate_journal_recovery.resume(
+            self, attempt, protect_attempt_write=protect
+        )
 
     def _validation_retry_receipt(
         self,
@@ -22381,6 +22447,8 @@ class DatabasePortalExecutionBridge:
                             attempt=attempt, paths=paths, binding=binding,
                             implementation=implementation,
                         ) if paths.events.is_file() else None
+                        if closure is None and paths.events.is_file():
+                            closure = self.verify_candidate_rejection_closure(attempt)
                         if closure is not None:
                             raise DatabasePortalCandidateRejectedClosed(
                                 closure, diagnostic_summary=summarize_candidate_failure(implementation),
