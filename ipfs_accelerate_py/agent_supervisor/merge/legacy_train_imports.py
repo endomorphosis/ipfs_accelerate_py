@@ -59,3 +59,23 @@ def validate_train_import_coverage(
         {r["path"] for r in receipts}
     ):
         raise ValueError("preserved canonical cursor or receipt lacks explicit import")
+
+    for path in sorted(required_receipts):
+        current = [receipt for receipt in receipts if receipt["path"] == path]
+        if len(current) != 1:
+            raise ValueError("canonical train receipt requires one explicit import")
+        head = current[0]
+        key = head["receipt_key"]
+        # Check the forward mapping used by MergeTrain._receipt_path. It is
+        # lossy: equality is necessary, but does not establish that the caller
+        # supplied the original key or independently close a callback.
+        if type(key) is not str:
+            raise ValueError("canonical train receipt key is invalid")
+        safe = "".join(c for c in key if c.isalnum() or c in "-_")[:180]
+        if path != f"train/receipts/{safe}.json":
+            raise ValueError("canonical train receipt key differs from its native path")
+        versions = [receipt for receipt in receipts if receipt["receipt_key"] == key]
+        if any(type(r["revision"]) is not int or r["revision"] < 1 for r in versions):
+            raise ValueError("canonical train receipt revision is invalid")
+        if any(r is not head and r["revision"] >= head["revision"] for r in versions):
+            raise ValueError("canonical train receipt must remain the receipt head")
