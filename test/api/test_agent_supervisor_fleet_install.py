@@ -64,6 +64,27 @@ def test_install_uses_safe_python_path_and_separate_native_ensure_unit(inputs):
     assert result["ensure_services"] == ["ipfs-taskboard-spar-ensure.service"]
 
 
+@pytest.mark.parametrize("standalone", [False, True])
+def test_real_installed_probe_imports_its_dependencies_outside_source(inputs, standalone):
+    _source, inventory, board_root, _home = inputs
+    source = SCRIPT.parents[3]
+    shadow = board_root / "ipfs_accelerate_py"
+    shadow.mkdir()
+    (shadow / "__init__.py").write_text("raise RuntimeError('live checkout shadow')\n")
+    result = installer.install(source, inventory, board_root, enable=False)
+    release = Path(result["release"])
+    config = json.loads(Path(result["config"]).read_text())
+    probe = config["boards"][0]["probe"]
+    if standalone:
+        argv = [sys.executable, "-P", str(release / "ipfs_accelerate_py/agent_supervisor/rescue/live_board_probe.py")]
+    else:
+        argv = probe["argv"][:4]
+    process = subprocess.run([*argv, "--help"], cwd=board_root,
+        env={**os.environ, **probe["env"]}, capture_output=True, text=True, timeout=15)
+    assert process.returncode == 0, process.stderr
+    assert "--inventory" in process.stdout
+
+
 @pytest.mark.skipif(shutil.which("systemd-analyze") is None, reason="systemd is unavailable")
 def test_generated_service_files_pass_systemd_validation(inputs):
     source, inventory, board_root, home = inputs
