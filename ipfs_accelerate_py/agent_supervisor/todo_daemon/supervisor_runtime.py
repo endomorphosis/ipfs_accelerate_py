@@ -2156,7 +2156,13 @@ def supervised_child_is_proven_dead(child: SupervisedChild) -> bool:
         # Only a completed removal of both markers uses retained custody.
         # Present, malformed or replacement markers still require their own
         # native identity/adoption path; they cannot be bypassed by an old handle.
-        if os.path.lexists(identity_path) or os.path.lexists(child.child_pid_path):
+        for marker in (identity_path, child.child_pid_path):
+            try:
+                os.lstat(marker)
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return False
             return False
         # Native maintenance can fence the child and remove both markers
         # before returning a recycle decision. The immutable launched/adopted
