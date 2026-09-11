@@ -255,3 +255,135 @@ def test_exclusive_artifacts_never_overwrite_or_follow_symlink(tmp_path):
     with pytest.raises(FileExistsError):
         driver._exclusive_write(link, b"replacement")
     assert target.read_bytes() == b"other operation"
+
+
+def _close_fixture_driver(retained, monkeypatch):
+    value = retained.driver
+    inspected = value.inspect()
+    monkeypatch.setattr(capture, "RetainedNativeLegacySession", type(value.session))
+    value.arm(inspected["inspection_cid"])
+    value.request_closure()
+    retained.armed.close_native()
+    # This fixture uses no real sentinel; the separate host suite does.
+    value.session._sentinel = value.session._sentinel_pidfd = None
+    value.session.hold_path.write_bytes(value.hold_bytes)
+    retained.closure_report = value.poll()
+    assert retained.closure_report["stage"] == "closed"
+    return value
+
+
+def _tree_bytes(path):
+    return {name: (path / name).read_bytes() for name in driver.role.file_inventory(path)}
+
+
+def test_failed_capture_retries_same_native_handles_into_fresh_output(retained, monkeypatch):
+    value = _close_fixture_driver(retained, monkeypatch)
+    original = capture.producer.produce_offline_import_plan
+    calls = []
+
+    def fail_once(**kwargs):
+        result = original(**kwargs)
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise ModuleNotFoundError("private diagnostic must not be exported", name="duckdb")
+        return result
+
+    monkeypatch.setattr(capture.producer, "produce_offline_import_plan", fail_once)
+    canonical = _tree_bytes(value.session.queue_root)
+    session, pidfd, cgroup = value.session, value.session.pidfd, value.session.cgroup_fd
+    with pytest.raises(ModuleNotFoundError):
+        value.capture()
+    assert value.stage == "capture-failed"
+    descriptors = tuple(item[1] for item in session._retained_queue_locks)
+    raw = _tree_bytes(value.output / "raw-capture")
+    inspection = _tree_bytes(value.output / "inspection-copy")
+    diagnostic = value.status()["diagnostics"][0]["diagnostic"]
+    assert diagnostic["missing_module"] == "duckdb" and diagnostic["traceback"]
+    assert "private diagnostic" not in json.dumps(diagnostic)
+    assert value.retry_capture()["stage"] == "captured"
+    assert value.session is session and session.pidfd == pidfd and session.cgroup_fd == cgroup
+    assert tuple(item[1] for item in session._retained_queue_locks) == descriptors
+    assert value.captured is session._capture
+    assert value.captured.path == value.output / "raw-capture-002"
+    assert _tree_bytes(value.output / "raw-capture") == raw == canonical
+    assert _tree_bytes(value.output / "inspection-copy") == inspection
+    assert _tree_bytes(session.queue_root) == canonical
+    assert value.status()["retry_available"] is None
+    with pytest.raises(driver.CaptureDriverDenied):
+        value.retry_capture()
+
+
+@pytest.mark.parametrize("change", ["released-lock", "changed-input"])
+def test_capture_retry_revalidates_original_custody_and_input(retained, monkeypatch, change):
+    value = _close_fixture_driver(retained, monkeypatch)
+    original = capture.producer.produce_offline_import_plan
+
+    def fail(**kwargs):
+        raise OSError("injected pre-install failure")
+
+    monkeypatch.setattr(capture.producer, "produce_offline_import_plan", fail)
+    with pytest.raises(OSError):
+        value.capture()
+    monkeypatch.setattr(capture.producer, "produce_offline_import_plan", original)
+    if change == "released-lock":
+        descriptor = value.session._retained_queue_locks[0][1]
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+    else:
+        (value.session.queue_root / "private/callback-signing-material").write_bytes(b"changed")
+    with pytest.raises(driver.role.SparMergeOwnerError):
+        value.retry_capture()
+    assert value.captured is None and value.installed is None
+    assert not (value.output / "raw-capture-002").exists()
+    assert not value.session._closed
+
+
+def test_failed_preparation_preserves_capture_and_retries_new_clone(retained, monkeypatch):
+    value = _close_fixture_driver(retained, monkeypatch)
+    value.capture()
+    captured = value.captured
+    raw = _tree_bytes(captured.path)
+    original = driver.role.prepare_offline_clone
+    calls = []
+
+    def fail_once(**kwargs):
+        result = original(**kwargs)
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise OSError("injected after disposable clone migration")
+        return result
+
+    monkeypatch.setattr(driver.role, "prepare_offline_clone", fail_once)
+    with pytest.raises(OSError):
+        value.prepare()
+    assert value.stage == "prepare-failed" and value.prepared is None
+    first = _tree_bytes(value.output / "prepared-clone")
+    assert value.retry_prepare()["stage"] == "prepared"
+    assert value.captured is captured and value.captured is value.session._capture
+    assert value.prepared.database_path.parent == value.output / "prepared-clone-002"
+    assert _tree_bytes(value.output / "prepared-clone") == first
+    assert _tree_bytes(captured.path) == raw
+    assert value.installed is None and not value.session._closed
+    with pytest.raises(driver.CaptureDriverDenied):
+        value.retry_prepare()
+
+
+def test_runtime_change_blocks_arm_before_output_or_inhibition(retained, monkeypatch):
+    value = retained.driver
+    inspected = value.inspect()
+
+    def changed():
+        raise driver.CaptureRuntimeDenied("runtime_dependency_hash_changed")
+
+    monkeypatch.setattr(value.runtime, "require_current", changed)
+    with pytest.raises(driver.CaptureRuntimeDenied):
+        value.arm(inspected["inspection_cid"])
+    assert retained.events == [] and not retained.output.exists()
+    assert not value.session.hold_path.exists()
+
+
+def test_closed_poll_export_cannot_rewrite_retained_retry_gate(retained, monkeypatch):
+    value = _close_fixture_driver(retained, monkeypatch)
+    original = json.loads(json.dumps(value._closure))
+    retained.closure_report["closure"]["native_actors_closed"] = False
+    retained.closure_report["closure"]["unit"]["MainPID"] = "99999"
+    assert value._closure == original
