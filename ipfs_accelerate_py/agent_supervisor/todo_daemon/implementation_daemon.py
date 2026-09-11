@@ -90806,10 +90806,11 @@ class DatabaseImplementationDaemon:
         from those exact records.  The callers in the claim path separately
         require the supplied admission's own admitted predecessor fence before
         this population check and again immediately before consumption.
-        Successive controller generations may mint the same pin set after a
-        Quack restart.  Each member still needs its own valid compact
-        historical admission or consumption; they no longer have to share one
-        owner_live_generation.
+        Successive controller generations may replace the canonical pin set.
+        Derive the population cohort from its current canonical members, not
+        from a possibly older admission supplied only to select the manifest.
+        Every current member must still share one controller/owner cohort;
+        individually valid compact receipts cannot splice different cohorts.
 
         This deliberately applies only to the additive historical schemas.
         The normalized @2/@3 paths retain their existing execution-store
@@ -90833,6 +90834,7 @@ class DatabaseImplementationDaemon:
             pins = tuple(authority["pins"])
             if not authority["manifest_validator"](manifest) or not pins:
                 return False
+            cohort_key = None
             for occurrence in pins:
                 task = self.task_source.get(str(occurrence["task_cid"]))
                 if (
@@ -90855,11 +90857,18 @@ class DatabaseImplementationDaemon:
                     )
                 ):
                     return False
-                # Members may be minted by successive controller generations
-                # after Quack restart.  Requiring one owner_live_generation
-                # across the whole pin set forbids every claim once any pin
-                # is rearmed later.  Each compact record still has to be a
-                # valid historical admission for its own pin.
+                member_cohort = tuple(
+                    member_admission.get(field)
+                    for field in (
+                        "controller_quiescence_receipt_id",
+                        "owner_binding_cid",
+                        "owner_live_generation",
+                    )
+                )
+                if cohort_key is None:
+                    cohort_key = member_cohort
+                elif member_cohort != cohort_key:
+                    return False
                 if consumption is None:
                     if not self._retained_recovery_admission_is_current_for_task(
                         task,
