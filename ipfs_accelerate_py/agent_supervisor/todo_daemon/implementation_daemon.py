@@ -20349,6 +20349,7 @@ class PortalImplementationDaemon:
                                 attempt=attempt,
                                 checkpoint_dir=checkpoint_dir,
                             ),
+                            inherit_environment=False,
                             pass_fds=self._accepted_control_plane_pass_fds(
                                 command
                             ),
@@ -29824,6 +29825,7 @@ class PortalImplementationDaemon:
                                 stdout=log_fh,
                                 input_text=prompt,
                                 env=provider_environment,
+                                inherit_environment=False,
                                 pass_fds=self._accepted_control_plane_pass_fds(
                                     command
                                 ),
@@ -44692,6 +44694,7 @@ class PortalImplementationDaemon:
                             stdout=log_fh,
                             input_text=rescue_prompt,
                             env=provider_environment,
+                            inherit_environment=False,
                             timeout_seconds=min(
                                 float(self.implementation_timeout),
                                 3600.0,
@@ -61401,12 +61404,26 @@ class PortalImplementationDaemon:
         attempt: int,
         checkpoint_dir: Path,
     ) -> dict[str, str]:
-        environment = {
+        from ..runtime.multi_supervisor_runner import (
+            provider_subprocess_environment,
+            scrub_state_credentials_from_environment,
+        )
+
+        # Construct the complete provider environment. The process launcher
+        # must not overlay this onto the trusted daemon's owner credentials.
+        source = scrub_state_credentials_from_environment(
+            os.environ,
+            secret_handle=os.environ.get(
+                "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE", ""
+            ),
+        )
+        environment = provider_subprocess_environment(source)
+        environment.update({
             IMPLEMENTATION_CHECKPOINT_DIR_ENV: str(checkpoint_dir),
             IMPLEMENTATION_TASK_ID_ENV: task.task_id,
             IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
             IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
-        }
+        })
         if (
             str(
                 os.environ.get(
@@ -67917,6 +67934,7 @@ class DatabaseImplementationDaemon:
 
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
+        return False
 
     @staticmethod
     def _todo_vector_record_int(record: dict[str, Any], key: str) -> int:
@@ -68677,6 +68695,8 @@ class DatabaseImplementationDaemon:
                     "claim_id": claim.claim_id,
                     "attempt_id": claim.attempt_id,
                     "owner_session_id": self.owner_session_id,
+                    "control_expected_revision": int(task.revision),
+                    "control_claimed_revision": int(task.revision) + 1,
                 },
             )
         except Exception as exc:
@@ -69515,6 +69535,44 @@ class DatabaseImplementationDaemon:
                 "cross-store reconciliation does not match execution attempt "
                 + ", ".join(mismatched)
             )
+        if not succeeded:
+            # The coordinator has already durably expired the exact claim or
+            # aborted its unchanged completion preparation. Requeue only the
+            # owner row still bearing that claim's own in_progress receipt;
+            # a later block/cancel/completion/claim must remain untouched.
+            task = self.task_source.get(current.task_cid)
+            body = getattr(task, "body", None)
+            receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+            if (
+                task is not None and str(task.status) == "in_progress"
+                and isinstance(receipt, Mapping)
+                and receipt.get("operation") == "database_claim"
+                and receipt.get("claim_id") == current.claim_id
+                and receipt.get("attempt_id") == current.attempt_id
+                and receipt.get("owner_session_id") == current.owner_session_id
+                and receipt.get("control_claimed_revision") == int(task.revision)
+            ):
+                from ..task_sources.database_task_source import TaskSourceConflictError
+
+                try:
+                    self._cas_task_status_database(
+                        current.task_cid,
+                        expected_revision=int(task.revision),
+                        new_status="ready",
+                        receipt={
+                            "operation": "database_requeue_reconciled_attempt",
+                            "claim_id": current.claim_id,
+                            "attempt_id": current.attempt_id,
+                            "owner_session_id": current.owner_session_id,
+                            "reason": str(reconciliation.get("reason") or reconciliation.get("status") or ""),
+                            "provider_evidence_reused": False,
+                            "effect_evidence_reused": False,
+                        },
+                    )
+                except TaskSourceConflictError:
+                    # Another owner mutation won. The expired local attempt
+                    # still retires; its stale status must never overwrite it.
+                    pass
         expected_status = "succeeded" if succeeded else "failed"
         expected_phase = (
             ATTEMPT_PHASE_COMPLETE if succeeded else ATTEMPT_PHASE_FAILED

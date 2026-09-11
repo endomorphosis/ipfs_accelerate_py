@@ -124,6 +124,21 @@ def test_peer_status_change_between_ready_read_and_cas_is_not_overwritten(daemon
     assert daemon.claim_next().task_cid == "task:2"
 
 
+@pytest.mark.parametrize("status", ["blocked", "cancelled"])
+def test_expiry_does_not_requeue_an_intervening_authoritative_status(daemon, monkeypatch, status):
+    attempt = daemon.claim_next()
+    assert attempt.task_cid == "task:1"
+    changed = change_status(daemon, status).task
+    claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+    monkeypatch.setattr(daemon, "_clock_ms", lambda: claim.expires_at_ms + 1)
+    outcomes = daemon.reconcile_expired_running_attempts()
+    assert len(outcomes) == 1 and outcomes[0]["status"] == "expired"
+    preserved = daemon.task_source.get("task:1")
+    assert preserved.status == status and preserved.revision == changed.revision
+    assert daemon.task_source.get("task:2").status == "ready"
+    assert not daemon.list_running_attempts()
+
+
 @pytest.mark.parametrize("body", [{"review only": "true"}, {"is schedulable": "false"},
                                   {"review_only": True}, {"completion": "manual"}])
 def test_native_metadata_cannot_make_inactive_task_automatic(body):
