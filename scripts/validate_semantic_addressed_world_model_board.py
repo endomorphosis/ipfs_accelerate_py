@@ -5395,6 +5395,78 @@ def _configured_board_dependency_errors(
     return errors
 
 
+def _provider_policy_errors(
+    config: Mapping[str, Any], *, multi_lane_selected: bool,
+) -> list[str]:
+    """Validate the current route without rewriting historical medium policy.
+
+    This amendment is an operator source change. Its presence does not admit
+    a live launch: the unchanged native source/capsule checks still bind the
+    committed scheduler and validator before any provider can execute.
+    """
+
+    errors: list[str] = []
+    effort = "medium"
+    if "provider_policy_amendment" in config:
+        expected_amendment = {
+            "schema": "sawm/operator-provider-policy-amendment@1",
+            "policy_revision": "SAWM-PROVIDER-20260911-TERRA-HIGH",
+            "board_namespace": "semantic-addressed-world-model-v1",
+            "prior_source_head": "354d1977fcf31d2a4b0eaabdf087d99c374cb968",
+            "prior_source_tree": "594560733cece15be72cbcdc14e6e2e064a368f6",
+            "lineage_authority_cid": "sha256:39423edba05f4da14ef7f334eb08bbf122ee8d7a87969f7ba364077324f4f7bb",
+            "field": "provider.fallback_reasoning_effort",
+            "prior_value": "medium",
+            "value": "high",
+            "fallback_trigger": "primary_quota_exhausted",
+            "prospective_only": True,
+            "requires_native_source_admission": True,
+            "task_completion_authority": False,
+            "historical_authority_rewrite": False
+        }
+        lineage = {
+            "schema": "sawm/operator-control-authority-reference@1",
+            "migration_revision": "SAWM-R2-M70",
+            "authority_cid": expected_amendment["lineage_authority_cid"],
+        }
+        if (
+            json.dumps(config.get("provider_policy_amendment"), sort_keys=True)
+            != json.dumps(expected_amendment, sort_keys=True)
+            or config.get("board_namespace") != BOARD_NAMESPACE
+            or config.get(_M70_SUCCESSOR_KEY) != lineage
+        ):
+            errors.append("prospective provider policy amendment mismatch")
+        else:
+            effort = "high"
+    provider = config.get("provider") if isinstance(config.get("provider"), Mapping) else {}
+    expected_provider = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.6",
+        "primary_executable": "/home/barberb/.local/bin/grok",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_reasoning_effort": effort,
+        "secrets_from_environment_only": True,
+        "secrets_in_argv_prompts_logs_or_receipts": False,
+        "probe_before_live_launch": True,
+        "provider_results_are_completion_authority": False,
+    }
+    provider_without_cap = dict(provider)
+    provider_cap = provider_without_cap.pop("max_concurrency", None)
+    provider_cap_valid = (
+        type(provider_cap) is int
+        and (provider_cap >= 4 if multi_lane_selected else provider_cap == 1)
+    )
+    if (
+        type(config.get("provider")) is not dict
+        or provider_without_cap != expected_provider
+        or not provider_cap_valid
+    ):
+        errors.append("ordered provider route mismatch")
+    return errors
+
+
 def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     errors: list[str] = []
@@ -6214,32 +6286,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append(
             "M31/M29/M28/M27/M26/M25/M24/M23 exact four-lane identity mismatch"
         )
-    provider = config.get("provider") if isinstance(config.get("provider"), Mapping) else {}
-    expected_provider = {
-        "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
-        "primary_executable": "/home/barberb/.local/bin/grok",
-        "fallback_provider_id": "codex",
-        "fallback_model_id": "gpt-5.6-terra",
-        "fallback_trigger": "primary_quota_exhausted",
-        "fallback_reasoning_effort": "medium",
-        "secrets_from_environment_only": True,
-        "secrets_in_argv_prompts_logs_or_receipts": False,
-        "probe_before_live_launch": True,
-        "provider_results_are_completion_authority": False,
-    }
-    provider_without_cap = dict(provider)
-    provider_cap = provider_without_cap.pop("max_concurrency", None)
-    provider_cap_valid = (
-        type(provider_cap) is int
-        and (provider_cap >= 4 if multi_lane_selected else provider_cap == 1)
+    config_errors.extend(
+        _provider_policy_errors(config, multi_lane_selected=multi_lane_selected)
     )
-    if (
-        type(config.get("provider")) is not dict
-        or provider_without_cap != expected_provider
-        or not provider_cap_valid
-    ):
-        config_errors.append("ordered provider route mismatch")
     m22_key = "live_preflight_receipt_compatibility_successor_materialization"
     m22_selected = not m24_selected and not m23_selected and any(
         (
