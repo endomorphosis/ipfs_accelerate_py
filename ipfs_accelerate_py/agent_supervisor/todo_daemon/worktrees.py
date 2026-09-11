@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Optional, Sequence
 
+from ..runtime.checkout_storage import CheckoutStoragePolicy, checkout_allocation
+
 from ..merge.worktree_lifecycle import (
     OwnerLiveness,
     ProcessBirthIdentity,
@@ -1839,6 +1841,7 @@ class WorktreePool:
         command_timeout_seconds: int = 120,
         state_dirname: str = ".pool-state",
         reuse_authorizer: Optional[WorktreeReuseAuthorizer] = None,
+        storage_policy: CheckoutStoragePolicy | None = None,
     ) -> None:
         self.repo_root = repo_root.resolve()
         self.worktree_root = worktree_root.resolve()
@@ -1847,6 +1850,7 @@ class WorktreePool:
         self.command_timeout_seconds = max(1, int(command_timeout_seconds))
         self.state_root = self.worktree_root / state_dirname
         self.reuse_authorizer = reuse_authorizer
+        self.storage_policy = storage_policy
         try:
             common_dir_result = _run_command_with_timeout(
                 run_command_fn,
@@ -3708,73 +3712,77 @@ class WorktreePool:
             raise ValueError("pooled worktree path must be inside worktree_root") from exc
         if path.exists():
             raise FileExistsError(f"pooled worktree path already exists: {path}")
-        lock_path = self.state_root / f"{entry_id}.lock"
-        self._create_lock(lock_path)
-        state: dict[str, Any] = {
-            "schema": WORKTREE_POOL_SCHEMA,
-            "lease_token": entry_id,
-            "path": str(path),
-            "repo_root": str(self.repo_root),
-            "repo_common_dir": str(self.repo_common_dir),
-            "cache_key": cache_key,
-            "base_commit": base_commit,
-            "dependency_paths": list(dependencies),
-            "state": "initializing",
-            "lease_pid": os.getpid(),
-            "created_at_epoch": time.time(),
-            "last_used_at_epoch": time.time(),
-            "use_count": 1,
-        }
-        self._write_state(state)
-        add_command = ["git", "worktree", "add"]
-        if branch_name:
-            add_command.extend(["-b", branch_name])
-        else:
-            add_command.append("--detach")
-        add_command.extend([str(path), base_commit])
-        add = self._run(add_command, cwd=self.repo_root)
-        if not add.ok:
-            self._discard_state(state)
-            self._remove_lock(lock_path)
-            raise RuntimeError(f"failed to create pooled worktree: {add.stderr or add.stdout}")
-        try:
-            if prepare is not None:
-                prepare(path)
-            if activate is not None:
-                activate(path)
-            clean, reason = self._repositories_clean(path, dependencies)
-            if not clean:
-                raise RuntimeError(f"prepared worktree is not reusable: {reason}")
-            dependency_heads = self._dependency_heads(path, dependencies)
-            if len(dependency_heads) != len(dependencies):
-                raise RuntimeError(
-                    "prepared worktree dependency is missing or has no resolvable HEAD"
-                )
-        except BaseException:
-            self._discard_state(state)
-            self._remove_lock(lock_path)
-            raise
-        elapsed = time.monotonic() - started
-        state.update(
-            {
-                "state": "leased",
-                "branch": branch_name,
-                "dependency_heads": dependency_heads,
-                "cold_setup_seconds": elapsed,
+        with checkout_allocation(
+            repo_root=self.repo_root, destination=path, ref=base_commit,
+            dependency_paths=dependencies, policy=self.storage_policy,
+        ):
+            lock_path = self.state_root / f"{entry_id}.lock"
+            self._create_lock(lock_path)
+            state: dict[str, Any] = {
+                "schema": WORKTREE_POOL_SCHEMA,
+                "lease_token": entry_id,
+                "path": str(path),
+                "repo_root": str(self.repo_root),
+                "repo_common_dir": str(self.repo_common_dir),
+                "cache_key": cache_key,
+                "base_commit": base_commit,
+                "dependency_paths": list(dependencies),
+                "state": "initializing",
+                "lease_pid": os.getpid(),
+                "created_at_epoch": time.time(),
+                "last_used_at_epoch": time.time(),
+                "use_count": 1,
             }
-        )
-        self._write_state(state)
-        self._metrics["cold_acquisitions"] += 1
-        self._metrics["setup_seconds"] += elapsed
-        return self._lease_from_state(
-            state,
-            base_ref=base_ref,
-            branch_name=branch_name,
-            reused=False,
-            setup_seconds=elapsed,
-            estimated_seconds_saved=0.0,
-            invalidation_reasons=invalidation_reasons,
-        )
+            self._write_state(state)
+            add_command = ["git", "worktree", "add"]
+            if branch_name:
+                add_command.extend(["-b", branch_name])
+            else:
+                add_command.append("--detach")
+            add_command.extend([str(path), base_commit])
+            add = self._run(add_command, cwd=self.repo_root)
+            if not add.ok:
+                self._discard_state(state)
+                self._remove_lock(lock_path)
+                raise RuntimeError(f"failed to create pooled worktree: {add.stderr or add.stdout}")
+            try:
+                if prepare is not None:
+                    prepare(path)
+                if activate is not None:
+                    activate(path)
+                clean, reason = self._repositories_clean(path, dependencies)
+                if not clean:
+                    raise RuntimeError(f"prepared worktree is not reusable: {reason}")
+                dependency_heads = self._dependency_heads(path, dependencies)
+                if len(dependency_heads) != len(dependencies):
+                    raise RuntimeError(
+                        "prepared worktree dependency is missing or has no resolvable HEAD"
+                    )
+            except BaseException:
+                self._discard_state(state)
+                self._remove_lock(lock_path)
+                raise
+            elapsed = time.monotonic() - started
+            state.update(
+                {
+                    "state": "leased",
+                    "branch": branch_name,
+                    "dependency_heads": dependency_heads,
+                    "cold_setup_seconds": elapsed,
+                }
+            )
+            self._write_state(state)
+            self._metrics["cold_acquisitions"] += 1
+            self._metrics["setup_seconds"] += elapsed
+            return self._lease_from_state(
+                state,
+                base_ref=base_ref,
+                branch_name=branch_name,
+                reused=False,
+                setup_seconds=elapsed,
+                estimated_seconds_saved=0.0,
+                invalidation_reasons=invalidation_reasons,
+            )
 
     def _lease_from_state(
         self,

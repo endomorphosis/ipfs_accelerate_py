@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import argparse
 import base64
 import ctypes
@@ -258,6 +260,11 @@ from ..task_sources.task_source import (
     order_ready_by_fairness_and_critical_path,
     recompute_readiness_statuses,
 )
+from ..runtime.checkout_storage import (
+    CheckoutStorageDeferred, CheckoutStoragePolicy, checkout_allocation,
+    verified_branch_reference,
+)
+
 from ..runtime.resource_scheduler import (
     CapacityDriftAction,
     CapacityDriftDecision,
@@ -6923,6 +6930,14 @@ class PooledWorktreeCreateDeferred(ImplementationRetryDeferred):
         self.detail = str(detail or "")
 
 
+class WorktreeStorageAdmissionDeferred(ImplementationRetryDeferred):
+    """Retry unavailable checkout capacity without dispatching a provider."""
+
+    def __init__(self, refusal: CheckoutStorageDeferred) -> None:
+        super().__init__(refusal.reason, backoff_seconds=30)
+        self.storage = dict(refusal.details)
+
+
 class WorktreeSubmoduleInitializationDeferred(ImplementationRetryDeferred):
     """Fail closed when a configured implementation dependency is unavailable."""
 
@@ -8278,6 +8293,7 @@ class PortalImplementationDaemon:
         worktree_pool_enabled: bool | None = None,
         worktree_pool_max_entries: int | None = None,
         worktree_pool: WorktreePool | None = None,
+        worktree_storage_policy: CheckoutStoragePolicy | None = None,
         maintenance_interval_seconds: float | None = None,
         implementation_context_budget: ContextBudget | Mapping[str, Any] | None = None,
         implementation_context_tokenizer: Any = None,
@@ -8559,11 +8575,13 @@ class PortalImplementationDaemon:
             if worktree_pool_max_entries is None
             else int(worktree_pool_max_entries)
         )
+        self.worktree_storage_policy = worktree_storage_policy
         self.worktree_pool = worktree_pool
         if self.worktree_pool is None and self.worktree_pool_enabled:
             self.worktree_pool = WorktreePool(
                 repo_root=self.repo_root,
                 worktree_root=self.worktree_root,
+                storage_policy=worktree_storage_policy,
                 max_entries=max(1, configured_pool_size),
             )
         self._worktree_pool_leases: dict[Path, WorktreeLease] = {}
@@ -46703,6 +46721,8 @@ class PortalImplementationDaemon:
                         "backoff_seconds": int(exc.backoff_seconds),
                     }
                 )
+            if isinstance(exc, WorktreeStorageAdmissionDeferred):
+                exception_result["storage_admission"] = exc.storage
             if protected_path_violation:
                 exception_result["reason"] = "implementation_protected_path_mutated"
                 exception_result["protected_path_violation"] = (
@@ -49811,6 +49831,19 @@ class PortalImplementationDaemon:
         )
         state.waiting_count = len(state.waiting_task_ids)
 
+    @contextmanager
+    def _checkout_storage_admission(self, *, repo_root: Path, destination: Path,
+                                    ref: str, dependency_paths: Sequence[str] = ()):
+        try:
+            with checkout_allocation(
+                repo_root=repo_root, destination=destination, ref=ref,
+                dependency_paths=dependency_paths,
+                policy=getattr(self, "worktree_storage_policy", None),
+            ) as estimates:
+                yield estimates
+        except CheckoutStorageDeferred as exc:
+            raise WorktreeStorageAdmissionDeferred(exc) from exc
+
     def _create_seeded_worktree(
         self,
         worktree_path: Path,
@@ -49842,6 +49875,8 @@ class PortalImplementationDaemon:
                     activate=activate,
                     authorize_reuse=self._authorize_pooled_worktree_reuse,
                 )
+            except CheckoutStorageDeferred as exc:
+                raise WorktreeStorageAdmissionDeferred(exc) from exc
             except RuntimeError as exc:
                 message = str(exc)
                 if message.startswith("failed to create pooled worktree"):
@@ -49901,25 +49936,30 @@ class PortalImplementationDaemon:
                 baseline_ref = self._run_git(["rev-parse", "HEAD"], cwd=lease_path).stdout.strip()
             return baseline_ref
 
-        self._run_git(
-            ["worktree", "add", "-b", branch_name, str(worktree_path), self._main_branch_name()],
-            cwd=self.repo_root,
-        )
-        baseline_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
-        self._initialize_worktree_submodules(
-            worktree_path,
-            branch_name=branch_name,
-            offline_local_only=offline_local_only,
-            task=task,
-        )
-        if seed_context:
-            self._link_shared_worktree_paths(worktree_path)
-            self._seed_untracked_worktree_context(
-                worktree_path,
-                task=task,
-                overwrite_existing=True,
+        with self._checkout_storage_admission(
+            repo_root=self.repo_root, destination=worktree_path,
+            ref=self._main_branch_name(),
+            dependency_paths=self._effective_worktree_submodule_paths(task),
+        ) as estimates:
+            self._run_git(
+                ["worktree", "add", "-b", branch_name, str(worktree_path), estimates[0].commit],
+                cwd=self.repo_root,
             )
-        return baseline_ref
+            baseline_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
+            self._initialize_worktree_submodules(
+                worktree_path,
+                branch_name=branch_name,
+                offline_local_only=offline_local_only,
+                task=task,
+            )
+            if seed_context:
+                self._link_shared_worktree_paths(worktree_path)
+                self._seed_untracked_worktree_context(
+                    worktree_path,
+                    task=task,
+                    overwrite_existing=True,
+                )
+            return baseline_ref
 
     def _effective_pooled_worktree_path(self, requested_path: Path) -> Path:
         """Return the stable leased checkout behind a provisional task path."""
@@ -50303,62 +50343,13 @@ class PortalImplementationDaemon:
                         }
                     )
                     continue
-                # Initialize exactly the configured dependency. Recursing here
-                # can follow repository cycles (datasets -> kit -> accelerate
-                # -> datasets) and fail on unrelated, deeply nested gitlinks.
-                # A failed dependency fetch is an expected retryable setup
-                # outcome. Do not route it through ``_run_git``, whose
-                # contract raises before bounded evidence can be persisted.
-                result = subprocess.run(
-                    [
-                        "git",
-                        "submodule",
-                        "update",
-                        "--init",
-                        "--",
-                        relative,
-                    ],
-                    cwd=worktree_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                if result.returncode != 0:
-                    init_failures.append(
-                        {
-                            "valid": False,
-                            "path": relative,
-                            "reason": "submodule_update_failed",
-                            "returncode": int(result.returncode),
-                            "stderr_sha256": hashlib.sha256(
-                                str(result.stderr or "").encode("utf-8")
-                            ).hexdigest(),
-                        }
-                    )
-                elif self._is_git_worktree(target):
-                    self._initialize_nested_worktree_submodules(
-                        target,
-                        branch_name=branch_name,
-                        parent_relative=relative,
-                        offline_local_only=offline_local_only,
-                    )
-                    # Validate submodule initialization
-                    validation = self._validate_submodule_init(target, relative)
-                    if not validation.get("valid"):
-                        init_failures.append(validation)
-                else:
-                    init_failures.append(
-                        {
-                            "valid": False,
-                            "path": relative,
-                            "reason": "submodule_update_target_invalid",
-                            "returncode": int(result.returncode),
-                            "stderr_sha256": hashlib.sha256(
-                                str(result.stderr or "").encode("utf-8")
-                            ).hexdigest(),
-                        }
-                    )
-                continue
+                # Missing local objects have no bounded checkout/object-store
+                # estimate. A fetch is a separate allocation; do not turn this
+                # admission refusal into an unestimated network fallback.
+                raise WorktreeStorageAdmissionDeferred(CheckoutStorageDeferred(
+                    "checkout_dependency_source_unavailable", path=relative,
+                    source=str(self.repo_root),
+                ))
             init_failures.append(
                 {
                     "valid": False,
@@ -50874,6 +50865,12 @@ class PortalImplementationDaemon:
             )
             if discovered_source is not None:
                 source = discovered_source
+        if (not self._is_git_worktree(worktree_path / relative)
+                and gitlink_ref and not self._git_ref_exists_in_repo(source, gitlink_ref)):
+            raise WorktreeStorageAdmissionDeferred(CheckoutStorageDeferred(
+                "checkout_dependency_source_unavailable", source=str(source),
+                path=source_key, commit=gitlink_ref,
+            ))
         base_ref = self._resolve_submodule_worktree_base_ref(
             source,
             gitlink_ref or "HEAD",
@@ -50932,44 +50929,60 @@ class PortalImplementationDaemon:
                     # implementation can commit into it.
                     self._run_git(["switch", "-C", expected_branch, base_ref], cwd=target)
             return True
-        if target.exists() or target.is_symlink():
-            if target.is_symlink() or target.is_file():
-                target.unlink()
-            elif target.is_dir():
-                shutil.rmtree(target)
-            else:
-                target.unlink()
-        # A task may update the parent gitlink or run ``submodule update`` and
-        # remove this checkout while Git still records it as a worktree. Drop
-        # only this stale registration before recreating the managed path.
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", str(target)],
-            cwd=source,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        target.parent.mkdir(parents=True, exist_ok=True)
+        allocation_ref = base_ref
         if branch_name:
-            submodule_branch = self._submodule_worktree_branch_name(branch_name, source_key)
-            if self._git_ref_exists_in_repo(source, submodule_branch):
-                self._run_git(["worktree", "add", str(target), submodule_branch], cwd=source)
-                return True
-            try:
-                self._run_git(["worktree", "add", "-b", submodule_branch, str(target), base_ref], cwd=source)
-            except RuntimeError:
-                if offline_local_only:
+            candidate_branch = self._submodule_worktree_branch_name(branch_name, source_key)
+            if self._git_ref_exists_in_repo(source, candidate_branch):
+                allocation_ref = candidate_branch
+        with self._checkout_storage_admission(
+            repo_root=source, destination=target, ref=allocation_ref,
+        ) as estimates:
+            if target.exists() or target.is_symlink():
+                if target.is_symlink() or target.is_file():
+                    target.unlink()
+                elif target.is_dir():
+                    shutil.rmtree(target)
+                else:
+                    target.unlink()
+            # A task may update the parent gitlink or run ``submodule update`` and
+            # remove this checkout while Git still records it as a worktree. Drop
+            # only this stale registration before recreating the managed path.
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(target)],
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if branch_name:
+                submodule_branch = self._submodule_worktree_branch_name(branch_name, source_key)
+                if self._git_ref_exists_in_repo(source, submodule_branch):
+                    with verified_branch_reference(source, submodule_branch, estimates[0].commit):
+                        self._run_git(["worktree", "add", "--no-checkout", str(target), submodule_branch], cwd=source)
+                        self._run_git(["read-tree", "--reset", "-u", estimates[0].commit], cwd=target)
+                    return True
+                try:
+                    self._run_git(["worktree", "add", "-b", submodule_branch, str(target), estimates[0].commit], cwd=source)
+                except WorktreeStorageAdmissionDeferred:
                     raise
-                fallback_ref = self._fallback_submodule_worktree_ref(
-                    source,
-                    bad_ref=base_ref,
-                    source_key=source_key,
-                    worktree_path=worktree_path,
-                )
-                self._run_git(["worktree", "add", "-b", submodule_branch, str(target), fallback_ref], cwd=source)
+                except RuntimeError:
+                    if offline_local_only:
+                        raise
+                    fallback_ref = self._fallback_submodule_worktree_ref(
+                        source,
+                        bad_ref=base_ref,
+                        source_key=source_key,
+                        worktree_path=worktree_path,
+                    )
+                    with self._checkout_storage_admission(
+                        repo_root=source, destination=target, ref=fallback_ref,
+                    ) as fallback_estimates:
+                        self._run_git(["worktree", "add", "-b", submodule_branch, str(target),
+                                       fallback_estimates[0].commit], cwd=source)
+                return True
+            self._run_git(["worktree", "add", "--detach", str(target), estimates[0].commit], cwd=source)
             return True
-        self._run_git(["worktree", "add", "--detach", str(target), base_ref], cwd=source)
-        return True
 
     def _discover_local_submodule_source(
         self,
