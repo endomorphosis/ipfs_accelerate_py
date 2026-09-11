@@ -44,6 +44,22 @@ def test_exact_expired_read_preserves_all_native_rows(retained):
     assert obs.observe_attempt(daemon, attempt) == value
 
 
+def test_durably_expired_claim_remains_observable_without_settlement(retained):
+    daemon, attempt = retained
+    daemon.coordinator.expire_task_claim(
+        daemon.coordinator.get_task_claim(attempt.claim_id), now_ms=7000,
+    )
+    before = retained_rows(daemon)
+    value = obs.observe_attempt(daemon, attempt)
+    assert value["claim"]["state"] == "expired"
+    assert value["coordination_attempt"]["status"] == "expired"
+    assert value["execution"]["status"] == "running"
+    assert value["execution"]["committed_phase"] == "context"
+    assert value["callback_outcome"] == "unknown"
+    assert value["retry_authorized"] is False
+    assert retained_rows(daemon) == before
+
+
 @pytest.mark.parametrize("reader", ["get_attempt", "get_task_claim", "get_task_attempt"])
 def test_missing_native_row_is_unavailable_not_no_effects(retained, monkeypatch, reader):
     daemon, attempt = retained

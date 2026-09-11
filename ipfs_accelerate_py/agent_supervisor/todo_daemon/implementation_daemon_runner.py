@@ -86,12 +86,21 @@ def bounded_daemon_wait_timeout(
 
     timeout = max(0.0, float(default_timeout))
     retry_after = result.get("next_wake_after_seconds")
-    if isinstance(retry_after, bool) or not isinstance(retry_after, (int, float)):
-        return timeout
-    retry_after = float(retry_after)
-    if not math.isfinite(retry_after):
-        return timeout
-    return min(timeout, max(0.0, retry_after))
+    if (
+        not isinstance(retry_after, bool)
+        and isinstance(retry_after, (int, float))
+        and math.isfinite(float(retry_after))
+    ):
+        timeout = min(timeout, max(0.0, float(retry_after)))
+    backoff = result.get("backoff_seconds")
+    if (
+        not isinstance(backoff, bool)
+        and isinstance(backoff, (int, float))
+        and math.isfinite(float(backoff))
+        and float(backoff) > 0
+    ):
+        timeout = max(timeout, min(30.0, float(backoff)))
+    return timeout
 
 
 class DaemonHookTimeoutError(TimeoutError):

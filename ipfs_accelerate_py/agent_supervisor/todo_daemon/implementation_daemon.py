@@ -73757,7 +73757,9 @@ class DatabaseImplementationDaemon:
         """Bounded idle wait; database authority uses polling, not FS notify."""
 
         if timeout and timeout > 0:
-            time.sleep(min(float(timeout), 1.0))
+            # Preserve the runner's bounded custody/transport backoff. A one
+            # second cap otherwise makes every lane repeat the same reads.
+            time.sleep(min(float(timeout), 30.0))
 
     def close_event_runtime(self) -> None:
         self.close()
