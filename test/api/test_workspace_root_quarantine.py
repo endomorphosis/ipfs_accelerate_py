@@ -85,6 +85,36 @@ def test_whole_root_retained_and_independent_fresh_pool_allocates(tmp_path):
     assert q.census(repo, root) == before
 
 
+def test_retained_root_denies_ancestor_cleanup_and_allows_disjoint_sibling(tmp_path):
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    repo, root, _, _, _, _ = seed(tmp_path)
+    frozen = q.freeze(repo, root, expected=q.census(repo, root))
+    # An ancestor cleanup can recursively remove a nested retained workspace.
+    # Exercise the native boundary without invoking Git or its cleanup body.
+    daemon = object.__new__(PortalImplementationDaemon)
+    daemon.repo_root = repo
+    daemon._worktree_pool_effective_paths = {}
+    effects = []
+    daemon._cleanup_merged_worktree = lambda *args, **kwargs: (
+        effects.append(args) or {"cleaned": False}
+    )
+    daemon._record_event = lambda *args, **kwargs: None
+    for target in (root.parent, root, root / "nested"):
+        with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
+            daemon._cleanup_failed_setup_worktree(
+                target, "attempt/ancestor", task=SimpleNamespace(task_id="other"),
+                attempt=1, implementation_started=False, provider_dispatched=False,
+                exception_result={},
+            )
+        assert effects == []
+    with q.mutation(repo, root.parent / "disjoint-sibling"):
+        assert q.verify(repo, root) == frozen
+
+
 def test_freeze_waits_for_native_mutation_scope_and_then_denies_late_writer(tmp_path):
     repo, root, _, _, _, _ = seed(tmp_path)
     entered = threading.Event()
@@ -292,7 +322,8 @@ def test_nested_submodule_gc_observes_superproject_custody(tmp_path):
     assert q.verify(repo, root) == frozen
 
 
-def _fifo_custody_reader(operation, path, repo, root, output):
+def _fifo_custody_reader(operation, path, repo, root, output, ready):
+    ready.set()
     try:
         if operation == "direct":
             q.read_regular(path)
@@ -341,11 +372,13 @@ def test_fifo_custody_population_is_denied_without_waiting_for_writer(
     # even though no process ever opens the other end of this FIFO.
     context = multiprocessing.get_context("spawn")
     output = context.Queue()
+    ready = context.Event()
     child = context.Process(
-        target=_fifo_custody_reader, args=(operation, path, repo, root, output)
+        target=_fifo_custody_reader, args=(operation, path, repo, root, output, ready)
     )
     child.start()
     try:
+        assert ready.wait(timeout=45), "custody reader process failed to initialize"
         child.join(timeout=10)
         assert not child.is_alive(), "native custody read blocked opening a FIFO"
         assert child.exitcode == 0

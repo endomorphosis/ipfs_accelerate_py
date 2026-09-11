@@ -256,9 +256,12 @@ def within(path: Path, root: Path) -> bool:
 
 
 def require_unfenced(directory: Path, workspace: Path) -> None:
+    target = workspace.resolve()
     for record in records(directory):
+        retained = Path(record["root"])
+        # A recursive mutation of an ancestor can also destroy retained state.
         require(
-            not within(workspace.resolve(), Path(record["root"])),
+            not within(target, retained) and not within(retained, target),
             "workspace_root_quarantined",
         )
 
