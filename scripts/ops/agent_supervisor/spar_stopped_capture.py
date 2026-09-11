@@ -224,6 +224,8 @@ class KeeperSuccession:
                                   "callback_settled": False, "at": time.time()}))
 
     def require_current(self, population):
+        require(native._bytes(self.fleet_config) == self.fleet_bytes,
+                "stopped recovery fleet configuration changed")
         unit = workflow.unit_snapshot(native.UNIT)
         require(_files(native.UNIT) == self.unit_files and unit == self.unit,
                 "native inhibited unit changed")

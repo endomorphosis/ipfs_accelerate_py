@@ -438,3 +438,13 @@ def test_fresh_receipt_is_immutable_after_capture(stopped_fixture):
     captured=capture(stopped_fixture)
     (captured.path.parent/'stopped-capture-receipt.json').write_text('{}')
     with pytest.raises(role.SparMergeOwnerError):captured.require_current()
+
+
+def test_changed_fleet_after_retirement_cannot_rebind_fresh_fences(stopped_fixture):
+    f=stopped_fixture;retire(f)
+    original=f.fleet.config.read_bytes()
+    f.fleet.config.write_bytes(original+b'\n')
+    with pytest.raises(role.SparMergeOwnerError,match='fleet configuration changed'):
+        stopped.StoppedCaptureSession(f.succession,fleet_config=f.fleet.config)
+    assert f.succession.keeper.poll() is None
+    assert not f.output.exists()

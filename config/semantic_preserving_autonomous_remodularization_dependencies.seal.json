@@ -31,7 +31,7 @@
     "scripts/ops/agent_supervisor/spar_merge_owner.py": "0f99d114011b4a9858280bc333ac7bd820dbb60fef0fd57914f00bb14ac67323",
     "scripts/ops/agent_supervisor/spar_merge_owner_handoff.py": "3e2cdce21547b98e0b68ef6719d11b34ec8186a32269da3ba8180f3fa2696d82",
     "scripts/ops/agent_supervisor/spar_retained_capture_driver.py": "11e21e028591957fa519d25cdc88653f9c5ede2e77bdba2cb93678f01c9efe0b",
-    "scripts/ops/agent_supervisor/spar_stopped_capture.py": "93b32c97bd28d94687c329fd06e56e883774140a3f201d8e962bbb78c58e0ec3",
+    "scripts/ops/agent_supervisor/spar_stopped_capture.py": "032269528bab269f176edce935a6143a79934063b3253e4a4b5e8e8903600ff1",
     "scripts/ops/agent_supervisor/spar_stopped_capture_driver.py": "43291e795edc8dddb1287175bd152f0757ceb14d73458efa4b24e6d086d81f1d",
     "scripts/ops/agent_supervisor/spar_stopped_origin.py": "6283478b40e4047c82de168936ff4191205a578c05025c60394062784fa31844",
     "scripts/ops/agent_supervisor/spar_stopped_task_observation.py": "0dcdc762632cf958184618e0ecc90bf431dde71a5bb3e7cd8f50f564fce50e0c",
@@ -514,7 +514,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:00e915612b4d0124607dcef7a4cb5648ce43d46a8ef71c07852505823fbca5c0",
+  "seal_cid": "sha256:b76d9dd98c404787650139f77e0f7ae8238c5e1fc5c12f292c8d4cafd9736043",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",
