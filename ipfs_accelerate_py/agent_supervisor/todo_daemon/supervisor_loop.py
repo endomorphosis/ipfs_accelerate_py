@@ -100,6 +100,9 @@ class SupervisorLoopConfig:
     watchdog_quiescent_status_predicate: Optional[
         WatchdogQuiescentStatusPredicate
     ] = None
+    child_launcher: Optional[
+        Callable[[SupervisedChildSpec, Path], SupervisedChild]
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -531,10 +534,13 @@ class SupervisorLoop:
                     launch_lock_path = resolved_child_pid_path.with_name(
                         f".{resolved_child_pid_path.name}.launch.lock"
                     )
-                child = adopt_or_launch_supervised_child(
-                    child_spec,
-                    launch_lock_path=launch_lock_path,
-                )
+                if self.config.child_launcher is None:
+                    child = adopt_or_launch_supervised_child(
+                        child_spec,
+                        launch_lock_path=launch_lock_path,
+                    )
+                else:
+                    child = self.config.child_launcher(child_spec, launch_lock_path)
             except Exception as exc:
                 self.last_exit_code = 127
                 self.last_recycle_reason = "launch_failed"

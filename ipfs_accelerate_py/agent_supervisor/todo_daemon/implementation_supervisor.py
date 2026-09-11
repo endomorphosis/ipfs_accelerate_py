@@ -224,6 +224,14 @@ CONTROL_PLANE_SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
     "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
     "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_custody_prelaunch.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/merge/owner_task_quarantine.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/owner_task_quarantine.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/owner_task_quarantine.py",
+    "ipfs_accelerate_py/agent_supervisor/merge/workspace_quarantine.py",
 )
 
 DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA = (
@@ -565,8 +573,9 @@ def _read_control_plane_source_snapshot() -> dict[str, Any]:
     for relative_path in CONTROL_PLANE_SOURCE_PATHS:
         path = repository_root / relative_path
         try:
-            source = path.read_bytes()
-        except OSError as exc:
+            from ..merge.workspace_quarantine import read_regular
+            source, _identity = read_regular(path, bound=16 * 1024 * 1024)
+        except Exception as exc:
             sources.append(
                 {
                     "path": relative_path,
@@ -7633,6 +7642,10 @@ class PortalImplementationSupervisor:
                                         "managed_child_quiescence": quiescence,
                                     }
                                 else:
+                                    independent_startup = {}
+                                    def consume_independent_startup(daemon):
+                                        independent_startup.update(self._with_native_independent_launch_scope(
+                                            daemon, lambda scope, _binding: scope.diagnostic()))
                                     if retained_recovery_required:
                                         with self._database_reconciliation_program_environment(
                                             fenced_program
@@ -7643,8 +7656,9 @@ class PortalImplementationSupervisor:
                                                 managed_daemon_launch_lock_held=True,
                                                 managed_daemon_cleanup=quiescence,
                                                 trigger="supervisor_startup_prelaunch",
+                                                _independent_custody_consumer=consume_independent_startup,
                                             )
-                                        if not self._retained_startup_allows_normal_launch(
+                                        if not independent_startup and not self._retained_startup_allows_normal_launch(
                                             retained_startup
                                         ):
                                             raise _DatabasePortalRetainedStartupBlocked(
@@ -7703,6 +7717,11 @@ class PortalImplementationSupervisor:
                                             "database_portal_reload_projection": projection,
                                             "managed_child_quiescence": quiescence,
                                         }
+                                    elif independent_startup:
+                                        # Unknown retained callbacks remain unknown. Do not
+                                        # run ordinary quiescent maintenance on their rows.
+                                        result = {**independent_startup, "stuck": False,
+                                                  "maintenance_blocked": False}
                                     else:
                                         fence_stack.close()
                                         result = self._run_once_with_maintenance(
@@ -9767,12 +9786,119 @@ class PortalImplementationSupervisor:
 
         return max(5.0, min(float(self.config.check_interval), 60.0))
 
+    def _native_independent_launch_binding(self, spec=None, launch_lock_path=None):
+        """Bind custody to the configured native lane and exact child launch."""
+        from ..task_sources.owner_task_quarantine import require
+        program = self.config.database_program
+        require(program is not None and program.authority_mode == "quack"
+                and program.task_source_kind == "duckdb",
+                "independent_launch_quack_program_required")
+        command = tuple(self._build_daemon_command())
+        binding = {
+            "command": list(command),
+            "owner_scope": self._managed_daemon_owner_scope(),
+            "lane_paths": [str(path.resolve()) for path in _database_program_lane_paths(
+                program=program, repo_root=self.config.repo_root,
+                state_dir=self.config.state_dir)],
+            "sharding": list(self._effective_managed_daemon_sharding()),
+            "launch_lock": str(self._managed_daemon_launch_lock_path().resolve()),
+        }
+        if spec is not None:
+            expected_environment = _managed_daemon_child_environment(database_program=program)
+            expected_environment.update({
+                REPOSITORY_ROOT_ENV: str(self.config.repo_root.resolve()),
+                SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(self._managed_daemon_identity_path()),
+                SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                    self._managed_daemon_owner_scope(), sort_keys=True, separators=(",", ":")),
+            })
+            require(tuple(spec.command) == command
+                    and spec.repo_root.resolve() == self.config.repo_root.resolve()
+                    and spec.resolve(spec.child_pid_path).resolve()
+                        == self._managed_daemon_pid_path().resolve()
+                    and dict(spec.env) == expected_environment
+                    and Path(launch_lock_path).resolve()
+                        == self._managed_daemon_launch_lock_path().resolve()
+                    and spec.stdin_devnull is True and spec.start_new_session is True,
+                    "independent_launch_child_spec_changed")
+            binding["child"] = {
+                "log_path": str(spec.resolve(spec.log_path).resolve()),
+                "latest_log_path": str(spec.resolve(spec.latest_log_path).resolve())
+                    if spec.latest_log_path is not None else "",
+                "environment": dict(spec.env),
+                "child_pid_path": str(spec.resolve(spec.child_pid_path).resolve()),
+            }
+        return binding
+
+    def _with_native_independent_launch_scope(self, daemon, consumer, *, spec=None, launch_lock_path=None):
+        from .native_custody_prelaunch import native_independent_launch_scope
+        from ..task_sources.owner_task_quarantine import require
+        binding = self._native_independent_launch_binding(spec, launch_lock_path)
+        paths = binding["lane_paths"]
+        require(daemon.execution_path.resolve() == Path(paths[2])
+                and daemon.coordination_path.resolve() == Path(paths[1])
+                and daemon.owner_session_id == self.config.database_owner_session_id
+                and [daemon.task_shard_count, daemon.task_shard_index,
+                     daemon.strict_task_sharding] == binding["sharding"],
+                "independent_launch_native_lane_changed")
+        with native_independent_launch_scope(
+            daemon=daemon, binding=binding,
+            imported_source=self._loaded_control_plane_source,
+            source_probe=self._control_plane_source_snapshot,
+        ) as scope:
+            return consumer(scope, binding)
+
+    def _launch_database_child_with_current_custody(self, spec, launch_lock_path):
+        """Fence the actual spawn; a prior status mapping never authorizes it."""
+        from .supervisor_runtime import adopt_supervised_child, launch_supervised_child
+        from ..task_sources.owner_task_quarantine import require
+        from .native_custody_prelaunch import _source_identity
+        with self._database_portal_reload_mutation_fence() as program:
+            with serialized_lock_update(launch_lock_path):
+                self._native_independent_launch_binding(spec, launch_lock_path)
+                require(_source_identity(self._control_plane_source_snapshot())
+                        == _source_identity(self._loaded_control_plane_source),
+                        "independent_launch_loaded_source_changed")
+                adopted = adopt_supervised_child(spec)
+                if adopted is not None:
+                    return adopted
+                cleanup = self._terminate_managed_daemon_tree(
+                    grace_seconds=2.0, _launch_lock_held=True)
+                require(cleanup.get("quiesced") is True,
+                        "independent_launch_managed_child_custody_unknown")
+                child = None
+
+                def consume(daemon):
+                    nonlocal child
+                    def start(scope, binding):
+                        # Re-evaluate the configured command/environment after
+                        # the native audit, immediately before consuming it.
+                        current_binding = self._native_independent_launch_binding(spec, launch_lock_path)
+                        child = scope.consume(current_binding, lambda: launch_supervised_child(spec))
+                        return child
+                    child = self._with_native_independent_launch_scope(
+                        daemon, start, spec=spec, launch_lock_path=launch_lock_path)
+
+                with self._database_reconciliation_program_environment(program):
+                    result = self._reconcile_interrupted_database_portal_attempts_bound(
+                        program, owner_fence_held=True,
+                        managed_daemon_launch_lock_held=True,
+                        managed_daemon_cleanup=cleanup,
+                        trigger="supervisor_actual_child_launch",
+                        _independent_custody_consumer=consume)
+                if child is not None:
+                    return child
+                require(self._retained_startup_allows_normal_launch(result),
+                        "database_portal_retained_startup_blocked")
+                return launch_supervised_child(spec)
+
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
         managed_daemon_environment = _managed_daemon_child_environment(
             database_program=self.config.database_program,
         )
+        if self.config.database_program is not None and self.config.database_program.authority_mode == "quack":
+            managed_daemon_environment[REPOSITORY_ROOT_ENV] = str(self.config.repo_root.resolve())
         if self._database_managed_daemon_identity_required():
             managed_daemon_environment.update(
                 {
@@ -9860,6 +9986,10 @@ class PortalImplementationSupervisor:
                 else max(0, int(self.config.max_restarts))
             ),
             child_env=managed_daemon_environment,
+            child_launcher=(self._launch_database_child_with_current_custody
+                if self.config.database_program is not None
+                and self._retained_fenced_provider_program_applicable(self.config.database_program)
+                else None),
             status_static_fields={
                 "todo_path": str(self.config.todo_path),
                 "state_path": str(self.config.state_path),
@@ -17760,6 +17890,7 @@ class PortalImplementationSupervisor:
         managed_daemon_launch_lock_held: bool = False,
         managed_daemon_cleanup: Mapping[str, Any] | None = None,
         trigger: str = "supervisor_signal_shutdown",
+        _independent_custody_consumer: Callable[[Any], Any] | None = None,
     ) -> dict[str, Any]:
         """Run reconciliation with the accepted program bindings active."""
 
@@ -18135,7 +18266,9 @@ class PortalImplementationSupervisor:
                     for pin in (*_RETAINED_PINS, _PCTDD005_PIN)
                     if isinstance(pin, Mapping)
                 )
-            if retained_program and home_lane_retained:
+            quarantine_heads = (daemon.task_source.intent.owner_task_quarantines()
+                if _independent_custody_consumer is not None else {})
+            if retained_program and home_lane_retained and not quarantine_heads:
                 retained_lane_daemons = (
                     self._bind_retained_recovery_lane_attempt_authorities(
                         daemon=daemon,
@@ -18161,6 +18294,8 @@ class PortalImplementationSupervisor:
                 attempt_root=attempt_root,
                 portal_factory=portal_factory,
                 task_header_prefix=self.config.task_prefix,
+                workspace_repository_root=self.config.repo_root,
+                workspace_root=self.config.worktree_root,
             )
             daemon.bind_execution_callbacks(
                 provider_fn=bridge.run_provider,
@@ -18209,6 +18344,9 @@ class PortalImplementationSupervisor:
                     "quiesced": False,
                     "safe_to_restart": False,
                 }
+            if quarantine_heads:
+                from .owner_task_quarantine import refresh
+                refresh(daemon)
             orphaned_claim_reconciliations: list[dict[str, Any]] = []
             shutdown_repair_deadline = time.monotonic() + 30.0
             prior_progress_token = ""
@@ -18224,6 +18362,12 @@ class PortalImplementationSupervisor:
                     or reconciliation.get("blocked") is True
                 ):
                     if reconciliation.get("blocked") is True:
+                        return reconciliation
+                    if (
+                        _independent_custody_consumer is not None
+                        and daemon.task_source.intent.owner_task_quarantines()
+                    ):
+                        _independent_custody_consumer(daemon)
                         return reconciliation
                     if reconciliation.get("reconciled") is not True:
                         return reconciliation

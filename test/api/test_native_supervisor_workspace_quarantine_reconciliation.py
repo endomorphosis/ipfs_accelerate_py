@@ -130,3 +130,18 @@ def test_native_rescue_holds_shared_custody_through_actual_git_effect(tmp_path, 
     assert q.verify(repo, root) == freezes[0]
     with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
         rescue(supervisor, lease.path)
+
+
+def test_nested_native_rescue_preserves_parent_frozen_workspace(tmp_path):
+    from test.api.test_workspace_root_quarantine import nested_repository
+    repo, root, module = nested_repository(tmp_path)
+    workspace = root / "nested-native-workspace"
+    _git(module, "worktree", "add", "-b", "attempt/nested-retained", str(workspace), "HEAD")
+    supervisor = _supervisor(module, worktree_root=root)
+    (workspace / "README").write_bytes(b"retained unknown nested callback output\n")
+    before = git_preimage(workspace)
+    frozen = q.freeze(repo, root, expected=q.census(repo, root))
+    with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
+        rescue(supervisor, workspace)
+    assert git_preimage(workspace) == before
+    assert q.verify(repo, root) == frozen
