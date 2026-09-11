@@ -114,6 +114,13 @@ def _owner(directory, control):
                             connection.execute("SELECT SUM(a.i * b.i) FROM range(10000000) a(i), range(10000000) b(i)")
                         return original_bounded_snapshot()
                     listener._bounded_snapshot = long_query_once
+                elif command == "forbid_parameter_conversion":
+                    execute = DuckDBConnection.execute
+                    def without_conversion(self, query, *args, **kwargs):
+                        if args or kwargs:
+                            raise AssertionError("optional parameter conversion entered")
+                        return execute(self, query)
+                    DuckDBConnection.execute = without_conversion
                 elif command == "normal_mutation":
                     connection.execute("UPDATE tasks SET revision=revision+1 WHERE task_cid='task:b'")
                 elif command == "state":
@@ -452,4 +459,18 @@ def test_well_formed_request_requires_exact_requester_binding(native_owner, mism
     assert reply["task_authority"] is None
     assert reply["completion_authority"] is False
     assert _read(base)["peer_authenticated_observation"] is True
+    assert process.is_alive()
+
+
+def test_cold_owner_observation_does_not_require_optional_parameter_conversion(native_owner):
+    base, control, process, _scope = native_owner
+    control.send("forbid_parameter_conversion")
+    assert control.recv() == {"ready": True}
+    result = _read(base)
+    assert result["peer_authenticated_observation"] is True
+    assert result["task_authority"]["task_revisions"] == {"TEST-001": 2, "TEST-002": 3}
+    assert result["completion_authority"] is False
+    control.send("normal_mutation")
+    assert control.recv() == {"ready": True}
+    assert _read(base)["task_authority"]["task_revisions"]["TEST-002"] == 4
     assert process.is_alive()
