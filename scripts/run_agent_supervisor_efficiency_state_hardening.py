@@ -89154,7 +89154,113 @@ def _strip_control_plane_group_other_write(root: Path) -> None:
         os.chmod(path, mode & ~0o022)
 
 
-def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> int:
+def _wait_for_sealed_owner_exit(
+    child: subprocess.Popen[Any],
+    child_start_time_ticks: int,
+    *,
+    source_maintenance: Any | None = None,
+    parent_stop_state: tuple[Any, dict[str, int]] | None = None,
+) -> None:
+    """Retain the original parent through an explicitly admitted maintenance drain.
+
+    Maintenance never forwards an ordinary stop into the old inner forced
+    finalizers. The separately bound native drain closes descendants first.
+    Every incomplete observation keeps this parent and its capsule alive.
+    """
+    shutdown_requested, received_signal = (
+        parent_stop_state if parent_stop_state is not None
+        else (threading.Event(), {})
+    )
+    forwarded = False
+    forwarding_deadline: float | None = None
+    with _call_stop_signal_handlers(
+        shutdown_requested,
+        received_signal,
+        survive_external_sigterm=True,
+    ):
+        while child.poll() is None or (source_maintenance is not None and source_maintenance.requested):
+            if source_maintenance is not None and source_maintenance.requested:
+                if source_maintenance.observe()["complete"]:
+                    child.wait()
+                    break
+                time.sleep(0.2)
+                continue
+            if shutdown_requested.is_set() and not forwarded:
+                if source_maintenance is not None and not source_maintenance.reserve_ordinary_shutdown():
+                    continue
+                forwarded = True
+                forwarding_deadline = time.monotonic() + 10.0
+                _signal_dedicated_process_group(
+                    child,
+                    start_time_ticks=child_start_time_ticks,
+                    signum=int(
+                        received_signal.get("signum", signal.SIGTERM)
+                    ),
+                )
+            if (
+                forwarding_deadline is not None
+                and time.monotonic() >= forwarding_deadline
+            ):
+                _terminate_dedicated_process_group(
+                    child,
+                    start_time_ticks=child_start_time_ticks,
+                    grace_seconds=0.0,
+                )
+                break
+            try:
+                child.wait(timeout=0.2)
+            except subprocess.TimeoutExpired:
+                continue
+
+
+def _finish_source_maintenance_before_cleanup(source_maintenance: Any | None) -> None:
+    """Retain original custody before any remaining parent resources retire."""
+    if source_maintenance is not None and not source_maintenance.reserve_ordinary_shutdown():
+        source_maintenance.retain_until_closed()
+
+
+def _retire_sealed_owner_child(
+    child: subprocess.Popen[Any],
+    child_start_time_ticks: int | None,
+    *,
+    source_maintenance: Any | None = None,
+) -> None:
+    if source_maintenance is not None and not source_maintenance.reserve_ordinary_shutdown():
+        if not source_maintenance.complete:
+            source_maintenance.retain_until_closed()
+        child.wait()
+        return
+    _terminate_dedicated_process_group(
+        child, start_time_ticks=child_start_time_ticks, grace_seconds=10.0,
+    )
+
+
+def run_supervisor(
+    config_path: Path, *, implement: bool, duration: float,
+    source_maintenance: Any | None = None,
+) -> int:
+    """Keep native stop handlers installed through admitted maintenance cleanup."""
+    if source_maintenance is None:
+        return _run_supervisor_with_retained_child(
+            config_path, implement=implement, duration=duration,
+        )
+    shutdown_requested = threading.Event()
+    received_signal: dict[str, int] = {}
+    with _call_stop_signal_handlers(
+        shutdown_requested, received_signal, survive_external_sigterm=True,
+    ):
+        return _run_supervisor_with_retained_child(
+            config_path, implement=implement, duration=duration,
+            source_maintenance=source_maintenance,
+            parent_stop_state=(shutdown_requested, received_signal),
+        )
+
+
+def _run_supervisor_with_retained_child(
+    config_path: Path, *, implement: bool, duration: float,
+    source_maintenance: Any | None = None,
+    parent_stop_state: tuple[Any, dict[str, int]] | None = None,
+) -> int:
     """Delegate owner authority to exact code in one retained sealed capsule."""
 
     import shutil
@@ -89423,40 +89529,15 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         os.close(terminal_write)
         terminal_write = -1
         child_start_time_ticks = _dedicated_process_group_birth(child)
-        shutdown_requested = threading.Event()
-        received_signal: dict[str, int] = {}
-        forwarded = False
-        forwarding_deadline: float | None = None
-        with _call_stop_signal_handlers(
-            shutdown_requested,
-            received_signal,
-            survive_external_sigterm=True,
-        ):
-            while child.poll() is None:
-                if shutdown_requested.is_set() and not forwarded:
-                    forwarded = True
-                    forwarding_deadline = time.monotonic() + 10.0
-                    _signal_dedicated_process_group(
-                        child,
-                        start_time_ticks=child_start_time_ticks,
-                        signum=int(
-                            received_signal.get("signum", signal.SIGTERM)
-                        ),
-                    )
-                if (
-                    forwarding_deadline is not None
-                    and time.monotonic() >= forwarding_deadline
-                ):
-                    _terminate_dedicated_process_group(
-                        child,
-                        start_time_ticks=child_start_time_ticks,
-                        grace_seconds=0.0,
-                    )
-                    break
-                try:
-                    child.wait(timeout=0.2)
-                except subprocess.TimeoutExpired:
-                    continue
+        if source_maintenance is not None:
+            source_maintenance.bind(
+                child, start_time_ticks=child_start_time_ticks,
+                source_head=candidate_head, source_tree=candidate_tree,
+            )
+        _wait_for_sealed_owner_exit(
+            child, child_start_time_ticks, source_maintenance=source_maintenance,
+            parent_stop_state=parent_stop_state,
+        )
         child_returncode = int(child.returncode or 0)
         if child_returncode != 0:
             terminal_raw, terminal_read_failed = (
@@ -89480,6 +89561,10 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         return child_returncode
     finally:
         body_error = sys.exc_info()[1]
+        # Serialize an accepted drain against ordinary teardown before any
+        # launch guards, descriptors or capsule files can be retired. The
+        # maintenance-only outer scope retains original stop handlers here.
+        _finish_source_maintenance_before_cleanup(source_maintenance)
         cleanup_errors: list[BaseException] = []
         try:
             retire_launch_admission_bound(sys.exc_info())
@@ -89491,13 +89576,14 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             cleanup_errors.append(exc)
         if child is not None:
             try:
-                _terminate_dedicated_process_group(
-                    child,
-                    start_time_ticks=child_start_time_ticks,
-                    grace_seconds=10.0,
+                _retire_sealed_owner_child(
+                    child, child_start_time_ticks,
+                    source_maintenance=source_maintenance,
                 )
             except BaseException as exc:
                 cleanup_errors.append(exc)
+        if source_maintenance is not None:
+            source_maintenance.close()
         for descriptor in (
             None if sealed is None else sealed.descriptor,
             None if interpreter is None else interpreter.descriptor,
