@@ -178,6 +178,18 @@ class DatabaseCoordinationStaleFenceError(
     code = "DQP_STALE_FENCE"
 
 
+class DatabaseCoordinationTaskFenceMismatchError(DatabaseCoordinationStaleFenceError):
+    """An exact task claim disagrees with its retained latest fence history.
+
+    Evidence is diagnostic only. It cannot identify a replacement owner or
+    authorize releasing, retrying, or completing the retained attempt.
+    """
+
+    def __init__(self, message: str, *, evidence: Mapping[str, Any]) -> None:
+        super().__init__(message)
+        self.evidence = dict(evidence)
+
+
 class DatabaseCoordinationNotReadyError(DependencyNotReadyError):
     """Task claim blocked by unsatisfied dependencies."""
 
@@ -3313,8 +3325,22 @@ class DatabaseCoordinator:
             int(_row_get(latest_fence, "max_token", "0", default=0)) != token
             or int(_row_get(latest_fence, "max_epoch", "1", default=0)) != epoch
         ):
-            raise DatabaseCoordinationStaleFenceError(
-                "task claim is not the latest fencing epoch and token"
+            raise DatabaseCoordinationTaskFenceMismatchError(
+                "task claim is not the latest fencing epoch and token",
+                evidence={
+                    "reason": "task_claim_latest_fence_mismatch",
+                    "task_cid": task_cid,
+                    "claim_id": claim_id,
+                    "attempt_id": attempt_id,
+                    "expected_fencing_token": token,
+                    "expected_fence_epoch": epoch,
+                    "observed_fencing_token": int(
+                        _row_get(latest_fence, "max_token", "0", default=0)
+                    ),
+                    "observed_fence_epoch": int(
+                        _row_get(latest_fence, "max_epoch", "1", default=0)
+                    ),
+                },
             )
 
         completion_row = connection.execute(
@@ -7440,6 +7466,7 @@ __all__ = [
     "DatabaseCoordinationConflictError",
     "DatabaseCoordinationExpiredError",
     "DatabaseCoordinationStaleFenceError",
+    "DatabaseCoordinationTaskFenceMismatchError",
     "DatabaseCoordinationNotReadyError",
     "DatabaseCoordinationNotOpenError",
     "DatabaseCoordinationBoundsError",

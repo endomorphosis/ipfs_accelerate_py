@@ -73505,13 +73505,18 @@ class DatabaseImplementationDaemon:
 
     def run_once(self) -> dict[str, Any]:
         """Preserve unsettled attempts while required completion evidence is absent."""
-        from .completion_deferral import missing_completion_deferral
+        from .completion_deferral import (
+            missing_completion_deferral,
+            task_fence_mismatch_deferral,
+        )
 
         self._idle_recovery_prefix = None
         try:
             return self._run_once_impl()
         except Exception as exc:
             deferred = missing_completion_deferral(exc)
+            if deferred is None:
+                deferred = task_fence_mismatch_deferral(exc)
             if deferred is None:
                 raise
             deferred["recovery_prefix"] = dict(self._idle_recovery_prefix or {})
