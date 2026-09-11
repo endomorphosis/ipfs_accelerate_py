@@ -11,6 +11,35 @@ from ipfs_accelerate_py.agent_supervisor.merge.quarantine_validation import Quar
 
 completed_workspace = _completed_workspace
 
+
+def test_nested_supervisor_rescue_preserves_parent_frozen_workspace(tmp_path):
+    from test.api.test_workspace_root_quarantine import nested_repository
+    from test.api.test_agent_supervisor_reconciliation_auto_unblock import _supervisor
+
+    repo, root, module = nested_repository(tmp_path)
+    workspace = root / "nested-native-workspace"
+    _git(module, "worktree", "add", "-b", "attempt/nested-retained", str(workspace), "HEAD")
+    supervisor = _supervisor(module, worktree_root=root)
+    (workspace / "README").write_bytes(b"retained unknown nested callback output\n")
+
+    def preimage():
+        return (
+            _git(workspace, "branch", "--show-current"),
+            _git(workspace, "rev-parse", "HEAD"),
+            _git(workspace, "status", "--porcelain"),
+            (workspace / "README").read_bytes(),
+        )
+
+    branch, head, status, _ = before = preimage()
+    frozen = q.freeze(repo, root, expected=q.census(repo, root))
+    with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
+        supervisor._rescue_dirty_worktree(
+            workspace, branch=branch, head=head, target_ref="HEAD",
+            status_lines=status.splitlines(), reason="retained callback custody",
+        )
+    assert preimage() == before
+    assert q.verify(repo, root) == frozen
+
 def test_completed_rescue_prune_cannot_remove_workspace_inside_frozen_root(completed_workspace):
     case = completed_workspace
     head = _git(case.repo, 'rev-parse', case.branch)

@@ -322,6 +322,74 @@ def test_nested_submodule_gc_observes_superproject_custody(tmp_path):
     assert q.verify(repo, root) == frozen
 
 
+def nested_repository(tmp_path):
+    repo, root, _, _, _, _ = seed(tmp_path)
+    module = tmp_path / "nested-source"
+    module.mkdir()
+    _git(module, "init")
+    _git(module, "config", "user.name", "test")
+    _git(module, "config", "user.email", "test@example.invalid")
+    (module / "README").write_text("nested base\n")
+    _git(module, "add", "README")
+    _git(module, "commit", "-m", "nested base")
+    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add",
+         str(module), "external/module")
+    return repo, root, repo / "external/module"
+
+
+def test_nested_mutation_retains_parent_freeze_lock_until_exit(tmp_path):
+    repo, root, module = nested_repository(tmp_path)
+    before = q.census(repo, root)
+    finished = threading.Event()
+    outcomes = []
+
+    def freeze():
+        try:
+            outcomes.append(q.freeze(repo, root, expected=before))
+        except BaseException as error:
+            outcomes.append(error)
+        finally:
+            finished.set()
+
+    with q.mutation(module, root / "nested-workspace"):
+        worker = threading.Thread(target=freeze)
+        worker.start()
+        assert not finished.wait(0.05)
+    worker.join(timeout=5)
+    assert finished.is_set() and len(outcomes) == 1
+    assert isinstance(outcomes[0], dict), outcomes
+    for target in (root, root / "nested-workspace", root.parent):
+        with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
+            with q.mutation(module, target):
+                pytest.fail("nested mutation admitted into parent freeze")
+    # Physical overlap determines denial; unrelated module work can continue.
+    with q.mutation(module, Path(outcomes[0]["fresh_root"]) / "independent"):
+        assert q.verify(repo, root) == outcomes[0]
+
+
+@pytest.mark.parametrize("bound_path", [True, False])
+def test_nested_boundary_rejects_unreadable_or_unbound_parent_custody(
+    tmp_path, bound_path
+):
+    from types import SimpleNamespace
+
+    repo, root, module = nested_repository(tmp_path)
+    frozen = q.freeze(repo, root, expected=q.census(repo, root))
+    effects = []
+
+    @q.mutation_boundary("workspace")
+    def mutate(self, workspace=None):
+        effects.append(workspace)
+
+    owner = SimpleNamespace(repo_root=module)
+    if bound_path:
+        # Parent records must be validated before a disjoint path can proceed.
+        next(q.registry(repo).glob("*.json")).write_text("{malformed")
+    with pytest.raises((QuarantineDenied, ValueError)):
+        mutate(owner, Path(frozen["fresh_root"]) if bound_path else None)
+    assert effects == []
+
+
 def _fifo_custody_reader(operation, path, repo, root, output, ready):
     ready.set()
     try:
