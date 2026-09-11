@@ -74,6 +74,7 @@ def test_native_pause_retains_existing_claim_and_resumes_its_obligation(tmp_path
 
 # Disposable native peer/custody qualification: a real DuckDB writer owns both
 # native FLOCKs, and a separate master->supervisor->daemon tree uses real peers.
+import contextlib
 import fcntl
 import json
 import multiprocessing
@@ -316,57 +317,101 @@ def _peer_supervisor(directory, pipe):
             close(child, child_pipe)
 
 
-@pytest.fixture
-def peer_native(tmp_path):
-    context = multiprocessing.get_context("fork")
+def _stop_fixture_process(process, pipe):
+    """Reap our child even when its startup handshake did not finish."""
+    if process.pid is None:
+        return
+    try:
+        if process.is_alive():
+            try:
+                pipe.send("stop")
+            except (BrokenPipeError, EOFError, OSError):
+                pass
+            process.join(5)
+        if process.is_alive():
+            process.terminate()
+            process.join(5)
+        if process.is_alive():
+            process.kill()
+            process.join(5)
+        assert not process.is_alive()
+    finally:
+        process.join(0)
+
+
+@contextlib.contextmanager
+def _peer_native(tmp_path, *, owner_target=_peer_owner):
+    # DuckDB may already have started native threads in earlier tests. Forking
+    # that interpreter can inherit locked native state before the ready message.
+    context = multiprocessing.get_context("spawn")
     (tmp_path / "state").mkdir()
     (tmp_path / "state/configured-board-master.pid").write_text(str(os.getpid()))
     owner_pipe, owner_child = context.Pipe()
-    owner = context.Process(target=_peer_owner, args=(str(tmp_path), owner_child))
-    owner.start()
-    assert owner_pipe.poll(10)
-    assert owner_pipe.recv() == {"ready": True}
     supervisor_pipe, supervisor_child = context.Pipe()
+    owner = context.Process(target=owner_target, args=(str(tmp_path), owner_child))
     supervisor = context.Process(
         target=_peer_supervisor, args=(str(tmp_path), supervisor_child)
     )
-    supervisor.start()
-    assert supervisor_pipe.poll(10)
-    births = supervisor_pipe.recv()
-    client = _new_client(tmp_path)
-
-    def roster():
-        return client.exchange(
-            "coordinator_boundary",
-            {"lanes": [{"lane": "lane-0", "supervisor_birth": births["supervisor"]}]},
-        )
-
-    roster()
-    supervisor_pipe.send("register")
-    assert supervisor_pipe.poll(5)
-    assert supervisor_pipe.recv() == {"registered": True}
-    native = SimpleNamespace(
-        client=client,
-        public=_new_client(tmp_path, token=""),
-        root=tmp_path,
-        supervisor_pipe=supervisor_pipe,
-        owner_pipe=owner_pipe,
-        supervisor=supervisor,
-        owner=owner,
-        births=births,
-        roster=roster,
-    )
     try:
+        owner.start()
+        assert owner_pipe.poll(10)
+        assert owner_pipe.recv() == {"ready": True}
+        supervisor.start()
+        assert supervisor_pipe.poll(10)
+        births = supervisor_pipe.recv()
+        client = _new_client(tmp_path)
+
+        def roster():
+            return client.exchange(
+                "coordinator_boundary",
+                {"lanes": [{"lane": "lane-0", "supervisor_birth": births["supervisor"]}]},
+            )
+
+        roster()
+        supervisor_pipe.send("register")
+        assert supervisor_pipe.poll(5)
+        assert supervisor_pipe.recv() == {"registered": True}
+        native = SimpleNamespace(
+            client=client,
+            public=_new_client(tmp_path, token=""),
+            root=tmp_path,
+            supervisor_pipe=supervisor_pipe,
+            owner_pipe=owner_pipe,
+            supervisor=supervisor,
+            owner=owner,
+            births=births,
+            roster=roster,
+        )
         yield native
     finally:
-        if supervisor.is_alive():
-            supervisor_pipe.send("stop")
-            supervisor.join(5)
-        if owner.is_alive():
-            owner_pipe.send("stop")
-            owner.join(5)
-        assert not supervisor.is_alive()
-        assert not owner.is_alive()
+        try:
+            _stop_fixture_process(supervisor, supervisor_pipe)
+        finally:
+            try:
+                _stop_fixture_process(owner, owner_pipe)
+            finally:
+                for pipe in (owner_pipe, owner_child, supervisor_pipe, supervisor_child):
+                    pipe.close()
+
+
+@pytest.fixture
+def peer_native(tmp_path):
+    with _peer_native(tmp_path) as native:
+        yield native
+
+
+def _failed_peer_owner(directory, pipe):
+    pipe.send({"error_type": "DisposableStartupFailure"})
+    # Deliberately remain alive after reporting failure: setup must still reap us.
+    assert pipe.recv() == "stop"
+
+
+def test_failed_owner_startup_reaps_fixture_child(tmp_path):
+    previous = {p.pid for p in multiprocessing.active_children()}
+    with pytest.raises(AssertionError):
+        with _peer_native(tmp_path, owner_target=_failed_peer_owner):
+            pytest.fail("failed startup cannot yield a native reader")
+    assert {p.pid for p in multiprocessing.active_children()} == previous
 
 
 def _public(native, operation="status", request_id=""):
