@@ -92597,6 +92597,27 @@ class DatabaseImplementationDaemon:
             and _typed_mapping_contains(binding, expected)
         )
 
+    def _database_attempt_finalized_disposition(
+        self, attempt: "DatabaseTaskAttempt", task: Any,
+    ) -> str:
+        """Recognize this attempt's ordinary CAS, not a replacement epoch."""
+        from .ordinary_finalizer_replay import ordinary_finalized_disposition
+
+        if task is None:
+            return ""
+        return ordinary_finalized_disposition(
+            attempt_identity=self._database_attempt_identity(attempt),
+            control_claim=dict(attempt.body.get("control_claim") or {}),
+            task_identity={
+                "task_cid": task.task_cid,
+                "revision": task.revision,
+                "execution_spec_cid": self._task_execution_spec_cid(task),
+                "validation_spec_cid": self._retry_budget_validation_spec_cid(task),
+            },
+            task_status=str(task.status),
+            receipt=dict(task.body.get("completion_receipt") or {}),
+        )
+
     @staticmethod
     def _retained_recovery_pair_binds_attempt(
         attempt: "DatabaseTaskAttempt",
@@ -107862,10 +107883,19 @@ class DatabaseImplementationDaemon:
                     )
                 )
                 canonical_task = self.task_source.get(current.task_cid)
-                superseded_attempt = not self._database_attempt_has_exact_control(
-                    current,
-                    canonical_task,
+                finalized_disposition = self._database_attempt_finalized_disposition(
+                    current, canonical_task,
                 )
+                superseded_attempt = not (
+                    self._database_attempt_has_exact_control(current, canonical_task)
+                    or finalized_disposition
+                )
+                if finalized_disposition:
+                    # The canonical ordinary failure already decided the outcome.
+                    # Do not infer a fresh callback outcome or resume an attempt
+                    # whose terminal task CAS is durable.
+                    preserve_for_resume = False
+                    merge_handoff_pending = False
                 nonconsuming_provider_route_deferred = bool(
                     not superseded_attempt
                     and callback_state["safe_provider_route_deferred"]
@@ -107877,7 +107907,7 @@ class DatabaseImplementationDaemon:
                     and not current.phase_committed(ATTEMPT_PHASE_EFFECT)
                 )
                 retry_receipt: Mapping[str, Any] = {}
-                intended_disposition = (
+                intended_disposition = finalized_disposition or (
                     "superseded_attempt_revoked"
                     if superseded_attempt
                     else (
@@ -107972,13 +108002,13 @@ class DatabaseImplementationDaemon:
                         else "preserved_for_exact_phase_resume"
                     )
                 else:
-                    force_block = bool(
-                        (
-                            provider_unknown
-                            or effect_unknown
-                            or callback_unknown
+                    force_block = (
+                        finalized_disposition == "blocked_unknown_outcome"
+                        if finalized_disposition
+                        else bool(
+                            (provider_unknown or effect_unknown or callback_unknown)
+                            and not superseded_attempt
                         )
-                        and not superseded_attempt
                     )
                     terminal, retry_receipt = self._finalize_failed_attempt(
                         current,
