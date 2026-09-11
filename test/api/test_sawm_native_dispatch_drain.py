@@ -94,6 +94,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 )
 
 TOKEN = "disposable-test-owner-token-not-a-production-credential"
+# Cold imports of the native lane implementation can exceed ten seconds.
+# This bounds fixture startup only; peer I/O and all production gates retain
+# their existing deadlines.
+FIXTURE_STARTUP_SECONDS = 30
 
 
 def _configuration():
@@ -261,7 +265,7 @@ def _peer_supervisor(directory, pipe):
             },
         )
         child = launch_supervised_child(spec)
-        assert parent_pipe.poll(10)
+        assert parent_pipe.poll(FIXTURE_STARTUP_SECONDS)
         birth = parent_pipe.recv()
         assert (
             child.identity_process_birth.start_time_ticks == birth["start_time_ticks"]
@@ -360,10 +364,10 @@ def _peer_native(tmp_path, *, owner_target=_peer_owner):
     )
     try:
         owner.start()
-        assert owner_pipe.poll(10)
+        assert owner_pipe.poll(FIXTURE_STARTUP_SECONDS)
         assert owner_pipe.recv() == {"ready": True}
         supervisor.start()
-        assert supervisor_pipe.poll(10)
+        assert supervisor_pipe.poll(FIXTURE_STARTUP_SECONDS)
         births = supervisor_pipe.recv()
         client = _new_client(tmp_path)
 
