@@ -1309,7 +1309,7 @@ def test_proven_owner_death_fences_then_recovers_then_restarts_tracks(
 
 
 @pytest.mark.parametrize("health", ["unknown", "unhealthy"])
-def test_unknown_or_live_unhealthy_owner_fences_and_fails_closed(
+def test_unknown_or_live_unhealthy_owner_rechecks_without_midrun_fencing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     health: str,
@@ -1328,10 +1328,12 @@ def test_unknown_or_live_unhealthy_owner_fences_and_fails_closed(
         output=lambda _message: None,
     )
 
-    assert result["completed"] is False
-    assert "refusing a competing owner" in str(result["blocked"])
+    assert result["completed"] is True
+    assert not result["blocked"]
     assert "owner.recover" not in events
-    assert events[-1] == "owner.shutdown"
+    assert events.count("track.start") == events.count("track.stop") == 1
+    assert events.count("owner.health") >= 2
+    assert events[-2:] == ["track.stop", "owner.shutdown"]
 
 
 def test_intentional_shutdown_cannot_bounce_owner(
