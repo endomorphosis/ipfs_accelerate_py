@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import signal
 import time
+from pathlib import Path
 
 from . import native_graceful_recovery as process
 
@@ -26,16 +27,26 @@ def gracefully_close_native_lanes(
     lane_children_gate,
     closed_children_gate,
     record_phase,
+    idle_supervisors=(),
     timeout_seconds=30,
 ):
+    """Close bound active lanes followed by explicitly observed idle wrappers.
+
+    Fence and child-gate indices address active lanes first, then idle wrappers.
+    Idle wrappers must have no live child; omitting a daemon is not closure
+    evidence. Population and source gates still apply to the complete roster.
+    """
     process._require(
         type(timeout_seconds) in {int, float} and 0 < timeout_seconds <= 300,
         "recovery_timeout_bound",
     )
-    process._require(1 <= len(lanes) <= 32, "recovery_lane_bound")
+    lanes = tuple(lanes)
+    idle_supervisors = tuple(idle_supervisors)
+    supervisors = [lane.supervisor for lane in lanes] + list(idle_supervisors)
+    process._require(1 <= len(supervisors) <= 32, "recovery_lane_bound")
     bindings = [
         controller,
-        *[lane.supervisor for lane in lanes],
+        *supervisors,
         *[lane.daemon for lane in lanes],
     ]
     process._require(
@@ -47,11 +58,30 @@ def gracefully_close_native_lanes(
             lane.supervisor.parent == controller.pid
             and lane.daemon.parent == lane.supervisor.pid
             for lane in lanes
-        ),
+        ) and all(wrapper.parent == controller.pid for wrapper in idle_supervisors),
         "lane_parent_binding_changed",
     )
     suspended = []
     controller_terminated = False
+
+    def idle_children_closed():
+        for wrapper in idle_supervisors:
+            if process._exited(descriptors[wrapper.pid]):
+                continue
+            process.require_exact_process(wrapper)
+            task = Path("/proc") / str(wrapper.pid) / "task"
+            tids = sorted(task.iterdir())
+            process._require(0 < len(tids) <= 512, "idle_wrapper_thread_bound")
+            for tid in tids:
+                children = process._read_proc(tid / "children").decode("ascii").split()
+                for child in children:
+                    try:
+                        state = process._stat(int(child))[0]
+                    except (FileNotFoundError, ProcessLookupError):
+                        continue
+                    process._require(state in {"Z", "X"}, "idle_supervisor_has_live_child")
+            process._require(tids == sorted(task.iterdir()), "idle_wrapper_threads_changed")
+            process.require_exact_process(wrapper)
 
     with contextlib.ExitStack() as actors:
         descriptors = {
@@ -94,6 +124,7 @@ def gracefully_close_native_lanes(
             while True:
                 effect_gate()
                 still_suspended()
+                idle_children_closed()
                 try:
                     population_gate()
                     return
@@ -106,9 +137,9 @@ def gracefully_close_native_lanes(
             pause(controller, "controller")
             # No wrapper may launch another daemon or maintenance helper while
             # another lane closes. Keep the existing native launch fences.
-            for index, lane in enumerate(lanes):
+            for index, supervisor in enumerate(supervisors):
                 fences.enter_context(lane_fence(index))
-                pause(lane.supervisor, "supervisor")
+                pause(supervisor, "supervisor")
             for lane in lanes:
                 pause(lane.daemon, "daemon")
             wait_quiet()
@@ -131,26 +162,26 @@ def gracefully_close_native_lanes(
                 )
                 record_phase("daemon_exit_observed")
             wait_quiet()
-            for index, lane in enumerate(lanes):
+            for index, _ in enumerate(supervisors):
                 lane_children_gate(index)
             record_phase("all_daemons_and_helpers_closed")
 
             # Queue every native wrapper stop flag while all threads remain
             # stopped, then release fences BEFORE any wrapper cleanup runs.
-            for lane in lanes:
+            for supervisor in supervisors:
                 record_phase("supervisor_graceful_exit_prepared")
                 effect_gate()
                 still_suspended()
                 population_gate()
                 signal.pidfd_send_signal(
-                    descriptors[lane.supervisor.pid], signal.SIGTERM
+                    descriptors[supervisor.pid], signal.SIGTERM
                 )
             fences.close()
-            for lane in lanes:
-                resume(lane.supervisor)
-            for lane in lanes:
+            for supervisor in supervisors:
+                resume(supervisor)
+            for supervisor in supervisors:
                 process._wait_exit(
-                    descriptors[lane.supervisor.pid], time.monotonic() + timeout_seconds
+                    descriptors[supervisor.pid], time.monotonic() + timeout_seconds
                 )
                 record_phase("lane_exit_observed")
             wait_quiet()
@@ -191,7 +222,7 @@ def gracefully_close_native_lanes(
         record_phase("controller_exit_observed")
     return {
         "controller_exited": True,
-        "closed_lanes": list(range(len(lanes))),
+        "closed_lanes": list(range(len(supervisors))),
         "callback_settlement_authority": False,
         "completion_authority": False,
     }

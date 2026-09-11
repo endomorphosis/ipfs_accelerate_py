@@ -130,6 +130,14 @@ def wrapper(directory, mode):
     class NativeSignalFixture:
         def _run_forever_loop(self):
             nonlocal child
+            if mode == "idle_all" or (mode == "idle" and directory.name == "lane-1"):
+                (directory / "births").touch()
+                (directory / "roster.json").write_text(json.dumps({
+                    "controller": os.getppid(), "supervisor": os.getpid(), "daemon": None,
+                }))
+                (directory / "daemon-ready").touch()
+                while True:
+                    time.sleep(0.01)
             while True:
                 child = adopt(None, launch_lock_path=directory / "lane.lock")
                 with (directory / "births").open("a") as stream:
