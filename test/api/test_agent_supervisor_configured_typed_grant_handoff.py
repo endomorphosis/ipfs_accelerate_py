@@ -31183,7 +31183,9 @@ def test_aseh_r39_materialized_launch_and_exact_admission_are_wired() -> None:
 
 
 def test_aseh_r30_launch_guards_are_fresh_and_bounded_to_birth() -> None:
-    parent = inspect.getsource(aseh_operator.run_supervisor)
+    wrapper = inspect.getsource(aseh_operator.run_supervisor)
+    assert "return _run_supervisor_with_retained_child(" in wrapper
+    parent = inspect.getsource(aseh_operator._run_supervisor_with_retained_child)
     owner = inspect.getsource(aseh_operator._run_supervisor_owner_impl)
 
     parent_guard = parent.index("launch_git_guard_scope.__enter__()")
@@ -36626,7 +36628,9 @@ def test_aseh_launch_admission_fail_closes_when_deadline_expires() -> None:
     with aseh_operator._bounded_launch_admission(timeout_seconds=1.0):
         assert aseh_operator._ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE is True
     assert aseh_operator._ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE is False
-    run_supervisor = inspect.getsource(aseh_operator.run_supervisor)
+    wrapper = inspect.getsource(aseh_operator.run_supervisor)
+    assert "return _run_supervisor_with_retained_child(" in wrapper
+    run_supervisor = inspect.getsource(aseh_operator._run_supervisor_with_retained_child)
     assert "retire_launch_admission_bound" in run_supervisor
     assert run_supervisor.index(
         "launch_admission_bound_scope = _bounded_launch_admission"

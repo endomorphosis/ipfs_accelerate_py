@@ -92463,6 +92463,22 @@ def _post_admission_health_action(
             # the final receipt expires and maintenance/closeout loses its
             # live witness while these processes still hold custody.
             return "continue", "", 0
+        if (
+            prior_available
+            and current_available
+            and receipt.get("health_without_lane_admitted") is True
+            and receipt.get("lane_heartbeat_fresh") is False
+        ):
+            # Terminal task rows may predate this owner's lane startup. Apply
+            # the same bounded lane recovery as an unfinished board, keeping
+            # every source/corpus/owner check and the unhealthy receipt intact.
+            # Waiting for heartbeats supplies no completion or merge authority.
+            if _recent_live_work(receipt):
+                return "continue", "", 0
+            next_edges = unhealthy_edges + 1
+            if next_edges <= 2:
+                return "continue", "", next_edges
+            return "fail", "authoritative_terminal_not_admitted", next_edges
         return "fail", "authoritative_terminal_not_admitted", unhealthy_edges
     if receipt.get("healthy") is True:
         return "continue", "", 0
