@@ -1563,6 +1563,18 @@ class WorktreeLifecycleStore:
         with self._captured_effect_guard(expected):
             return effect()
 
+    @_workspace_mutation_boundary('workspace')
+    def run_effect_if_unclaimed(
+        self, workspace: str | Path, *, effect: Callable[[], Any],
+    ) -> Any:
+        """Keep a new workspace claim excluded across previously unowned cleanup."""
+        with serialized_lock_update(self.workspace_path_for(workspace)):
+            # Missing and malformed records are distinct: malformed bytes do
+            # not confer absence authority through a permissive JSON reader.
+            if os.path.lexists(self.workspace_path_for(workspace)):
+                raise OwnershipError("workspace lifecycle appeared before effect")
+            return effect()
+
     def _require_owner(
         self,
         record: WorkspaceLifecycleRecord,
