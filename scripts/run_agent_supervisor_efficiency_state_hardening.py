@@ -23318,7 +23318,6 @@ def _run(
             cwd=cwd,
             executor_contract=executor_contract,
         )
-    command = tuple(argv)
     command_env = None if env is None else dict(env)
     if argv and str(argv[0]) in {"git", str(TRUSTED_GIT)}:
         # Prevent stat-cache writes from status and worktree diff; diff has
@@ -23326,9 +23325,13 @@ def _run(
         # available and leave non-Git executor environments unchanged.
         command_env = dict(os.environ) if command_env is None else command_env
         command_env["GIT_OPTIONAL_LOCKS"] = "0"
-        command = (argv[0], "-c", "diff.autoRefreshIndex=false", *argv[1:])
+        # Preserve the exact declared argv required by validation receipts.
+        command_env["GIT_CONFIG_PARAMETERS"] = (
+            command_env.get("GIT_CONFIG_PARAMETERS", "")
+            + " 'diff.autoRefreshIndex=false'"
+        ).strip()
     return subprocess.run(
-        command, cwd=ROOT if cwd is None else cwd,
+        tuple(argv), cwd=ROOT if cwd is None else cwd,
         env=command_env,
         text=True, capture_output=True, check=False, timeout=timeout,
     )

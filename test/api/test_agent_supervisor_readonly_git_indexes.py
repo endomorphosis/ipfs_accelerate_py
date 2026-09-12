@@ -119,8 +119,10 @@ def test_intentional_index_and_checkout_mutations_still_work(
         if runner == "trusted":
             operator._git(*args)
         else:
-            result = operator._run(("/usr/bin/git", *args), cwd=repository)
+            command = ("/usr/bin/git", *args)
+            result = operator._run(command, cwd=repository)
             assert result.returncode == 0, result.stderr
+            assert result.args == command
 
     before = index_binding(repository)
     (repository / "new.txt").write_text("intentional staged source\n")
@@ -140,12 +142,14 @@ def test_operator_validation_diff_preserves_index(
     invalidate_cached_stat(repository / "tracked.txt")
     before = index_binding(repository)
     monkeypatch.setenv("GIT_OPTIONAL_LOCKS", "1")
+    command = (executable, "diff", "--check")
     result = operator._run(
-        (executable, "diff", "--check"),
+        command,
         cwd=repository,
         env=dict(os.environ) if explicit_env else None,
     )
     assert result.returncode == 0
+    assert result.args == command
     assert index_binding(repository) == before
 
 
@@ -182,3 +186,24 @@ def test_readonly_diff_helpers_preserve_index(repository: Path, monkeypatch, rea
             result = scheduler._git_run(("diff", "--check"), cwd=repository)
         assert result.returncode == 0 and result.stdout == ""
     assert index_binding(repository) == before
+
+
+def test_validation_git_preserves_existing_config_and_exact_command(
+    repository: Path,
+) -> None:
+    supplied = {
+        "GIT_CONFIG_PARAMETERS": "'test.existing=retained' 'diff.autoRefreshIndex=true'",
+    }
+    command = ("/usr/bin/git", "config", "--get", "test.existing")
+    result = operator._run(command, cwd=repository, env=supplied)
+    assert result.returncode == 0 and result.stdout.strip() == "retained"
+    assert result.args == command
+    invalidate_cached_stat(repository / "tracked.txt")
+    before = index_binding(repository)
+    command = ("/usr/bin/git", "diff", "--check")
+    result = operator._run(command, cwd=repository, env=supplied)
+    assert result.returncode == 0 and result.args == command
+    assert index_binding(repository) == before
+    assert supplied == {
+        "GIT_CONFIG_PARAMETERS": "'test.existing=retained' 'diff.autoRefreshIndex=true'",
+    }
