@@ -559,6 +559,13 @@ def test_ephemeral_provider_dispatch_rechecks_exact_lifecycle_token(
     repo = tmp_path / "repo"
     _repository(repo)
     daemon = _daemon(repo)
+    # Exercise the post-admission boundary with a fixture provider grant.
+    # The real kernel is tested separately; an abstention would never reach
+    # the ownership race this regression must exercise.
+    monkeypatch.setattr(
+        daemon, "_evaluate_pre_implementation_provider_gate",
+        lambda **_kwargs: {"skip_provider": False, "provider_authorized": True},
+    )
     task = _diff_task("src/alpha.py")
     state = PortalTaskState()
     provider_calls: list[bool] = []
@@ -638,13 +645,22 @@ def test_ephemeral_provider_dispatch_rechecks_exact_lifecycle_token(
     assert not observed.is_terminal
 
 
+@pytest.mark.parametrize("reuse_token", [False, True])
 def test_provider_environment_window_rechecks_token_before_spawn(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    reuse_token: bool,
 ) -> None:
     repo = tmp_path / "repo"
     _repository(repo)
     daemon = _daemon(repo)
+    # Exercise the post-admission boundary with a fixture provider grant.
+    # The real kernel is tested separately; an abstention would never reach
+    # the ownership race this regression must exercise.
+    monkeypatch.setattr(
+        daemon, "_evaluate_pre_implementation_provider_gate",
+        lambda **_kwargs: {"skip_provider": False, "provider_authorized": True},
+    )
     task = _diff_task("src/alpha.py")
     state = PortalTaskState()
     environment = daemon._implementation_process_environment
@@ -685,7 +701,15 @@ def test_provider_environment_window_rechecks_token_before_spawn(
             workspace_path=terminal.workspace_path,
             branch="implementation/environment-b",
             merge_target="main",
+            **({"lease_id": captured.lease_id} if reuse_token else {}),
         )
+        if reuse_token:
+            replacement["record"] = daemon.worktree_lifecycle.mark_active(
+                captured.workspace_path, lease_id=captured.lease_id,
+                expected_fence=replacement["record"].fence,
+            )
+            assert replacement["record"].fence == captured.fence
+            assert replacement["record"].record_id != captured.record_id
         return result
 
     def provider_must_not_run(*_args, **_kwargs):
@@ -793,6 +817,13 @@ def test_timeout_salvage_prepare_window_blocks_model_validator(
     repo = tmp_path / "repo"
     _repository(repo)
     daemon = _daemon(repo)
+    # Exercise the post-admission boundary with a fixture provider grant.
+    # The real kernel is tested separately; an abstention would never reach
+    # the ownership race this regression must exercise.
+    monkeypatch.setattr(
+        daemon, "_evaluate_pre_implementation_provider_gate",
+        lambda **_kwargs: {"skip_provider": False, "provider_authorized": True},
+    )
     task = _diff_task("src/alpha.py")
     prepare = daemon._prepare_worktree_for_validation
     validator_calls: list[bool] = []
@@ -1002,7 +1033,15 @@ def test_no_change_completion_requires_exact_cleanup_finalization(
     repo = tmp_path / "repo"
     _repository(repo)
     daemon = _daemon(repo)
+    # Exercise the post-admission boundary with a fixture provider grant.
+    # The real kernel is tested separately; an abstention would never reach
+    # the ownership race this regression must exercise.
+    monkeypatch.setattr(
+        daemon, "_evaluate_pre_implementation_provider_gate",
+        lambda **_kwargs: {"skip_provider": False, "provider_authorized": True},
+    )
     task = _diff_task("src/alpha.py")
+    task.metadata["no_change_completion"] = "allowed"
     state = PortalTaskState()
     cleanup = daemon._cleanup_merged_worktree
     advanced: list[WorkspaceLifecycleRecord] = []

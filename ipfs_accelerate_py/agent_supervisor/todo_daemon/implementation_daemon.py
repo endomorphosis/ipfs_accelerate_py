@@ -44622,26 +44622,42 @@ class PortalImplementationDaemon:
                                 if birth_callback is not None:
                                     birth_callback(process)
 
-                            return run_process_group_stream(
-                                command,
-                                cwd=worktree_path,
-                                stdout=log_fh,
-                                input_text=prompt,
-                                env=provider_environment,
-                                inherit_environment=False,
-                                pass_fds=self._accepted_control_plane_pass_fds(
-                                    command
-                                ),
-                                timeout_seconds=timeout_policy.max_timeout_seconds,
-                                progress_timeout_seconds=(
-                                    timeout_policy.progress_timeout_seconds
-                                    if timeout_policy.progress_aware
-                                    else None
-                                ),
-                                max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                                progress_paths=(checkpoint_dir,),
-                                on_started=provider_started,
-                                on_progress=progress_observer,
+                            # Preparation and decision callbacks may replace the
+                            # lifecycle. Retain the originally captured record
+                            # across the actual provider effect; path lookup or
+                            # a matching lease/fence alone cannot admit dispatch.
+                            if lifecycle_record is None:
+                                raise OwnershipError(
+                                    "lifecycle ownership missing before provider dispatch"
+                                )
+
+                            def run_provider() -> subprocess.CompletedProcess[str]:
+                                return run_process_group_stream(
+                                    command,
+                                    cwd=worktree_path,
+                                    stdout=log_fh,
+                                    input_text=prompt,
+                                    env=provider_environment,
+                                    inherit_environment=False,
+                                    pass_fds=self._accepted_control_plane_pass_fds(
+                                        command
+                                    ),
+                                    timeout_seconds=timeout_policy.max_timeout_seconds,
+                                    progress_timeout_seconds=(
+                                        timeout_policy.progress_timeout_seconds
+                                        if timeout_policy.progress_aware
+                                        else None
+                                    ),
+                                    max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                                    progress_paths=(checkpoint_dir,),
+                                    on_started=provider_started,
+                                    on_progress=progress_observer,
+                                )
+
+                            return self._run_captured_worktree_effect(
+                                worktree_path,
+                                lifecycle_record=lifecycle_record,
+                                effect=run_provider,
                             )
 
                         completed = self._decision_runtime_mutation(
@@ -46443,11 +46459,29 @@ class PortalImplementationDaemon:
             else str(merge_result.get("stderr") or merge_result.get("reason") or "")
         )
         no_change_guard = commit_result.get("no_change_guard") or {}
-        no_change_completion = bool(
+        no_change_candidate = bool(
             not implementation_commit
             and commit_result.get("reason") == "no_changes"
             and isinstance(no_change_guard, dict)
             and no_change_guard.get("allowed")
+        )
+        no_change_finalization = cleanup_result.get("lifecycle_finalize")
+        no_change_cleanup_authorized = bool(
+            cleanup_result.get("cleaned") is True
+            and isinstance(no_change_finalization, Mapping)
+            and no_change_finalization.get("finalized") is True
+        )
+        if no_change_candidate and not no_change_cleanup_authorized:
+            returncode = 1
+            state.last_implementation_returncode = returncode
+            validation_result = {
+                **validation_result,
+                "passed": False,
+                "returncode": 1,
+                "reason": "no_change_lifecycle_finalization_failed",
+            }
+        no_change_completion = bool(
+            no_change_candidate and no_change_cleanup_authorized
         )
         # Board completion is intentionally stricter than validation success:
         # merge-queued candidates remain incomplete until integrated into the
