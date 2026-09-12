@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import stat
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -1224,6 +1225,44 @@ def _git_source(repo_root: Path, revision: str | None, path: str) -> tuple[str |
     return source, str(blob or "").strip()
 
 
+def _git_entry_mode(repo_root: Path, revision: str | None, path: str) -> str:
+    """Read the Git object mode without following a candidate symlink."""
+
+    if revision is not None:
+        raw = _git(repo_root, "ls-tree", "-z", revision, "--", f":(literal){path}", binary=True)
+        records = raw.split(b"\0") if isinstance(raw, bytes) else []
+        records = [record for record in records if record]
+        if len(records) == 1:
+            header, separator, raw_path = records[0].partition(b"\t")
+            mode = header.split(b" ", 1)[0].decode("ascii")
+            if separator and raw_path.decode("utf-8", errors="surrogateescape") == path:
+                if mode in {"100644", "100755", "120000", "160000"}:
+                    return mode
+        raise ValueError(f"unable to bind baseline Git mode: {path}")
+
+    try:
+        observed = (repo_root / path).lstat().st_mode
+    except FileNotFoundError:
+        observed = 0
+    if stat.S_ISLNK(observed):
+        return "120000"
+    if stat.S_ISREG(observed):
+        return "100755" if observed & stat.S_IXUSR else "100644"
+    # An initialized or absent gitlink is identified by its stage-zero index
+    # entry, not by treating an arbitrary directory as a source file.
+    raw = _git(repo_root, "ls-files", "--stage", "-z", "--", f":(literal){path}", binary=True)
+    records = raw.split(b"\0") if isinstance(raw, bytes) else []
+    records = [record for record in records if record]
+    if len(records) == 1:
+        header, separator, raw_path = records[0].partition(b"\t")
+        fields = header.split()
+        if (separator and len(fields) == 3 and fields[0] == b"160000"
+                and fields[2] == b"0"
+                and raw_path.decode("utf-8", errors="surrogateescape") == path):
+            return "160000"
+    raise ValueError(f"unable to bind candidate Git mode: {path}")
+
+
 def collect_git_candidate_diff(
     repo_root: Path | str,
     *,
@@ -1296,6 +1335,10 @@ def collect_git_candidate_diff(
                 before_blob_id=before_blob,
                 after_blob_id=after_blob,
                 binary=binary,
+                metadata={
+                    "before_mode": _git_entry_mode(root, base_revision, old_path) if old_path else "",
+                    "after_mode": _git_entry_mode(root, candidate_revision, new_path) if new_path else "",
+                },
             )
         )
 
@@ -1328,7 +1371,11 @@ def collect_git_candidate_diff(
                 before_blob_id=old_entry.before_blob_id,
                 after_blob_id=new_entry.after_blob_id,
                 binary=old_entry.binary or new_entry.binary,
-                metadata={"detected_from_unstaged_blob_identity": True},
+                metadata={
+                    "detected_from_unstaged_blob_identity": True,
+                    "before_mode": old_entry.metadata["before_mode"],
+                    "after_mode": new_entry.metadata["after_mode"],
+                },
             )
         )
     reconciled.extend(entry for entry in entries if id(entry) not in replaced)

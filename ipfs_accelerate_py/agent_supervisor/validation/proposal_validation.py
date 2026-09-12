@@ -357,7 +357,12 @@ _ARCHIVE_MAGIC = (
 _GENERATED_MARKERS_RE = re.compile(
     r"(?im)^\s*(?:[#/;*-]+\s*)?(?:"
     r"@generated\b|"
-    r"generated\s+(?:file|code)\b|"
+    # A noun phrase in ordinary prose ("generated code effects are ...") is
+    # not a declaration that this file was generated. Require header syntax
+    # or an explicit generator/source after this otherwise ambiguous phrase.
+    r"generated\s+(?:file|code)\b"
+    r"(?=[^\S\r\n]*(?:$|[:;.!-])|[^\S\r\n]+(?:by|from)\b)|"
+    r"code\s+generated\b[^\r\n]{0,200}\bdo\s+not\s+edit\b|"
     r"automatically\s+generated\b|"
     r"do\s+not\s+edit"
     r"(?:\s+(?:this|the)\s+(?:file|code))?\s*[.!]?\s*$|"
