@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 import pytest
-from test_agent_supervisor_implementation_protected_paths import (
+from test.api.test_agent_supervisor_implementation_protected_paths import (
     ProcessBirthIdentity,
     _persist_active_attempt_state,
     _persist_stale_implementation_lock,
