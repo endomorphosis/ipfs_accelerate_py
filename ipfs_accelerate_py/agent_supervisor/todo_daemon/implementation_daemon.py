@@ -42364,6 +42364,7 @@ class PortalImplementationDaemon:
                 evidence_field="retained_candidate_recovery",
                 baseline_ref=baseline_commit,
                 retained_recovery_lifecycle=current_lifecycle,
+                retained_recovery_fingerprint=workspace_identity,
             )
             preserved_commit = str(
                 preservation.get("preserved_commit") or ""
@@ -52622,93 +52623,104 @@ class PortalImplementationDaemon:
         evidence_field: str,
         baseline_ref: str = "",
         retained_recovery_lifecycle: WorkspaceLifecycleRecord | None = None,
+        retained_recovery_fingerprint: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         started_at = utc_now()
-        pruned_seeded_context = self._drop_unchanged_seeded_worktree_context(
-            worktree_path,
-            task=task,
-        )
-        commit_result = self._commit_worktree_changes(
-            worktree_path,
-            task,
-            attempt,
-            baseline_ref=baseline_ref,
-        )
-        rescue_branch = ""
-        implementation_commit = str(commit_result.get("commit", ""))
-        preserved_commit = (
-            implementation_commit
-            or str(commit_result.get("candidate_commit", ""))
-        )
-        if preserved_commit:
-            rescue_branch = self._interrupted_worktree_rescue_branch_name(
-                branch_name,
-                rescue_suffix,
-            )
-            self._run_git(
-                ["branch", "-f", rescue_branch, preserved_commit],
-                cwd=self.repo_root,
-            )
-        recovery_cleanup_lifecycle: WorkspaceLifecycleRecord | None = None
-        cleanup_caller_lease_id = ""
-        if retained_recovery_lifecycle is not None:
-            # The terminal retained-candidate fence must remain intact while
-            # candidate commit and rescue publication can still fail.  Only
-            # after the exact rescue ref is observed at the expected commit do
-            # we authorize its original lease to clean this workspace.
-            if not preserved_commit or not rescue_branch:
-                raise RuntimeError(
-                    "retained candidate rescue was not published"
+        if retained_recovery_lifecycle is not None and (
+            normalize_workspace_path(retained_recovery_lifecycle.workspace_path)
+            != normalize_workspace_path(worktree_path)
+            or retained_recovery_lifecycle.branch != branch_name
+            or retained_recovery_lifecycle.task_id != task.task_id
+            or retained_recovery_lifecycle.canonical_task_cid != self._canonical_ref(task)
+            or retained_recovery_lifecycle.attempt != attempt
+            or not isinstance(retained_recovery_fingerprint, Mapping)
+        ):
+            raise OwnershipError("retained candidate effect identity changed")
+
+        def preserve() -> dict[str, Any]:
+            if retained_recovery_lifecycle is not None:
+                reproduced = self._retained_workspace_content_fingerprint(
+                    worktree_path, baseline_ref=baseline_ref,
                 )
-            published_commit = self._run_git(
-                [
-                    "rev-parse",
-                    "--verify",
-                    f"refs/heads/{rescue_branch}^{{commit}}",
-                ],
-                cwd=self.repo_root,
-            ).stdout.strip()
-            if published_commit != preserved_commit:
-                raise RuntimeError(
-                    "retained candidate rescue publication changed"
+                if dict(reproduced) != dict(retained_recovery_fingerprint):
+                    raise RuntimeError("retained candidate fingerprint changed")
+            pruned = self._drop_unchanged_seeded_worktree_context(
+                worktree_path, task=task,
+            )
+            committed = self._commit_worktree_changes(
+                worktree_path, task, attempt, baseline_ref=baseline_ref,
+            )
+            implementation = str(committed.get("commit", ""))
+            preserved = implementation or str(committed.get("candidate_commit", ""))
+            rescue = ""
+            if preserved:
+                rescue = self._interrupted_worktree_rescue_branch_name(
+                    branch_name, rescue_suffix,
                 )
-            recovery_cleanup_lifecycle = self.worktree_lifecycle.mark_terminal(
-                worktree_path,
-                lease_id=retained_recovery_lifecycle.lease_id,
-                expected_fence=retained_recovery_lifecycle.fence,
-                reason="verification_deferred_candidate_recovery_authorized",
-            )
-            cleanup_caller_lease_id = recovery_cleanup_lifecycle.lease_id
-        if retained_recovery_lifecycle is None:
-            cleanup_result = self._cleanup_merged_worktree(
-                worktree_path,
-                branch_name,
-            )
-        else:
-            # Pooled lease release rechecks lifecycle authority through the
-            # active owner accessor.  Rebind that accessor only for this exact
-            # rescue-published lease and restore it immediately afterward.
-            previous_active_lifecycle = self._active_worktree_lifecycle
-            self._active_worktree_lifecycle = recovery_cleanup_lifecycle
+                self._run_git(
+                    ["branch", "-f", rescue, preserved], cwd=self.repo_root,
+                )
+            if retained_recovery_lifecycle is not None:
+                if not preserved or not rescue:
+                    raise RuntimeError("retained candidate rescue was not published")
+                published = self._run_git(
+                    ["rev-parse", "--verify", f"refs/heads/{rescue}^{{commit}}"],
+                    cwd=self.repo_root,
+                ).stdout.strip()
+                if published != preserved:
+                    raise RuntimeError("retained candidate rescue publication changed")
+            return {
+                "pruned_seeded_context": pruned,
+                "commit_result": committed,
+                "implementation_commit": implementation,
+                "preserved_commit": preserved,
+                "rescue_branch": rescue,
+            }
+
+        def clean_retained(
+            prepared: dict[str, Any], authorized: WorkspaceLifecycleRecord,
+        ) -> dict[str, Any]:
+            previous = self._active_worktree_lifecycle
+            self._active_worktree_lifecycle = authorized
             try:
-                cleanup_result = self._cleanup_merged_worktree(
-                    worktree_path,
-                    branch_name,
-                    caller_lease_id=cleanup_caller_lease_id,
+                # The native recovery transaction already holds both exact
+                # lifecycle guards. The ordinary wrapper would reacquire them.
+                cleanup = self._cleanup_merged_worktree_unchecked(
+                    worktree_path, branch_name,
+                    caller_lease_id=authorized.lease_id,
                 )
             finally:
-                self._active_worktree_lifecycle = previous_active_lifecycle
+                self._active_worktree_lifecycle = previous
+            if cleanup.get("cleaned") is not True:
+                self._record_event("cleanup_finished", cleanup)
+                raise RuntimeError("retained candidate cleanup did not complete")
+            cleanup["lifecycle_finalize"] = {
+                "finalized": True, "reason": "cleanup_finished",
+                "fence": authorized.fence, "state": authorized.state.value,
+            }
+            return {**prepared, "cleanup_result": cleanup}
+
+        recovery_cleanup_lifecycle: WorkspaceLifecycleRecord | None = None
         recovery_cleanup_lifecycle_released: bool | None = None
-        if recovery_cleanup_lifecycle is not None:
-            recovery_cleanup_lifecycle_released = False
-            if cleanup_result.get("cleaned") is True:
-                recovery_cleanup_lifecycle_released = (
-                    self.worktree_lifecycle.compare_and_delete(
-                        recovery_cleanup_lifecycle.workspace_path,
-                        expected_fence=recovery_cleanup_lifecycle.fence,
-                        lease_id=recovery_cleanup_lifecycle.lease_id,
-                    )
+        if retained_recovery_lifecycle is None:
+            prepared = preserve()
+            cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+        else:
+            prepared, recovery_cleanup_lifecycle = (
+                self.worktree_lifecycle.recover_exact_terminal_after_effect(
+                    retained_recovery_lifecycle,
+                    reason="verification_deferred_candidate_recovery_authorized",
+                    prepare=preserve, cleanup=clean_retained,
                 )
+            )
+            cleanup_result = prepared["cleanup_result"]
+            recovery_cleanup_lifecycle_released = True
+            self._record_event("cleanup_finished", cleanup_result)
+        pruned_seeded_context = prepared["pruned_seeded_context"]
+        commit_result = prepared["commit_result"]
+        implementation_commit = prepared["implementation_commit"]
+        preserved_commit = prepared["preserved_commit"]
+        rescue_branch = prepared["rescue_branch"]
         result = {
             "task_id": task.task_id,
             "attempt": attempt,

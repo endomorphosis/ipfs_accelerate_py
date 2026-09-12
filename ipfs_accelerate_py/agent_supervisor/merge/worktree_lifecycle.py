@@ -1484,6 +1484,37 @@ class WorktreeLifecycleStore:
         with self._captured_effect_guard(expected):
             return effect()
 
+    def recover_exact_terminal_after_effect(
+        self, expected: WorkspaceLifecycleRecord, *, reason: str,
+        prepare: Callable[[], Any],
+        cleanup: Callable[[Any, WorkspaceLifecycleRecord], Any],
+    ) -> tuple[Any, WorkspaceLifecycleRecord]:
+        """Keep terminal candidate custody through preservation and cleanup.
+
+        Preparation must positively preserve the candidate before cleanup is
+        authorized. Both callbacks run under the existing index/workspace
+        guards and must not reacquire them. A failed preparation leaves the
+        original fence; a failed cleanup retains its authorized fence.
+        """
+        if not expected.is_terminal:
+            raise OwnershipError("retained recovery requires a terminal lifecycle")
+        with self._captured_effect_guard(expected, allow_terminal=True):
+            prepared = prepare()
+            record_path, index_path = self._require_captured_effect_record(
+                expected, allow_terminal=True,
+            )
+            authorized = replace(
+                expected, fence=expected.fence + 1,
+                updated_at=float(self.clock()), terminal_reason=str(reason),
+            )
+            _atomic_write_json(record_path, authorized.to_dict())
+            _atomic_write_json(index_path, self._effect_index_payload(authorized))
+            result = cleanup(prepared, authorized)
+            self._require_captured_effect_record(authorized, allow_terminal=True)
+            record_path.unlink()
+            index_path.unlink()
+            return result, authorized
+
     def finalize_exact_after_effect(
         self, expected: WorkspaceLifecycleRecord, *, reason: str,
         effect: Callable[[], Any],

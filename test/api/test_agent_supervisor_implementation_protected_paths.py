@@ -2764,9 +2764,11 @@ def test_shared_terminal_verification_deferral_does_not_consume_attempt(
     }
 
 
+@pytest.mark.parametrize("acquire_successor", [False, True])
 def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    acquire_successor: bool,
 ) -> None:
     daemon, _repo, _workspace, _protected = (
         _protected_git_worktree_daemon(tmp_path)
@@ -2902,17 +2904,18 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
     assert cleanup_authorization.reason == (
         "verification_deferred_candidate_recovery_required"
     )
-    retry_lifecycle = daemon.worktree_lifecycle.begin_preparing(
-        task_id=task.task_id,
-        canonical_task_cid=canonical_task_cid,
-        attempt=3,
-        lane_id=daemon._worktree_lifecycle_lane_id(),
-        workspace_path=tmp_path / "worktrees" / "retry-attempt-3",
-        branch=f"{result['branch']}-retry",
-        merge_target="main",
-        state_dir=str(daemon.state_path.parent),
-    )
-    assert retry_lifecycle.state.value == "preparing"
+    if acquire_successor:
+        retry_lifecycle = daemon.worktree_lifecycle.begin_preparing(
+            task_id=task.task_id,
+            canonical_task_cid=canonical_task_cid,
+            attempt=3,
+            lane_id=daemon._worktree_lifecycle_lane_id(),
+            workspace_path=tmp_path / "worktrees" / "retry-attempt-3",
+            branch=f"{result['branch']}-retry",
+            merge_target="main",
+            state_dir=str(daemon.state_path.parent),
+        )
+        assert retry_lifecycle.state.value == "preparing"
     assert provider_inheritance == [False]
     assert queue_outcomes == []
     assert diagnostics == []
@@ -2954,6 +2957,41 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         "retained_candidate = True\n",
         encoding="utf-8",
     )
+    if acquire_successor:
+        # The independently admitted successor owns this same task/attempt.
+        # Reject its predecessor before any commit, rescue ref or cleanup.
+        index_path = daemon.worktree_lifecycle.task_index_path_for(
+            canonical_task_cid=canonical_task_cid, task_id=task.task_id, attempt=3,
+        )
+        record_path = daemon.worktree_lifecycle.workspace_path_for(retained_path)
+
+        def unchanged_evidence():
+            return {
+                "index": index_path.read_bytes(),
+                "lifecycle": record_path.read_bytes(),
+                "refs": _git(daemon.repo_root, "show-ref"),
+                "head": _git(retained_path, "rev-parse", "HEAD"),
+                "status": _git(retained_path, "status", "--porcelain"),
+                "candidate": retained_output.read_bytes(),
+                "state": daemon.state_path.read_bytes(),
+            }
+
+        before = unchanged_evidence()
+        with pytest.raises(
+            worktree_lifecycle_module.OwnershipError,
+            match="lifecycle task index changed before effect",
+        ):
+            daemon.recover_retained_verification_deferred_candidate(
+                task=task, retained_candidate_receipt=retained_receipt,
+            )
+        assert unchanged_evidence() == before
+        assert daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=canonical_task_cid, task_id=task.task_id, attempt=3,
+        ) == retry_lifecycle
+        assert provider_inheritance == [False]
+        assert queue_outcomes == [] and diagnostics == []
+        return
+
     original_commit = daemon._commit_worktree_changes
     monkeypatch.setattr(
         daemon,
@@ -2986,6 +3024,8 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         "_commit_worktree_changes",
         original_commit,
     )
+
+    unchecked_cleanup = daemon._cleanup_merged_worktree_unchecked
 
     def exact_owner_cleanup(
         worktree_path,
@@ -3025,7 +3065,7 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         assert exact_owner.reason == (
             "verification_deferred_recovery_owner_after_rescue"
         )
-        return original_cleanup(
+        return unchecked_cleanup(
             worktree_path,
             branch_name,
             reusable=reusable,
@@ -3034,7 +3074,7 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
 
     monkeypatch.setattr(
         daemon,
-        "_cleanup_merged_worktree",
+        "_cleanup_merged_worktree_unchecked",
         exact_owner_cleanup,
     )
     recovery = daemon.recover_retained_verification_deferred_candidate(
