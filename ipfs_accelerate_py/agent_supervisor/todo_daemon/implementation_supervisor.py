@@ -47,6 +47,7 @@ from ..merge.checkout_lock import (
     board_scoped_checkout_mutation_lock_path,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
+    checkout_lock_repository_matches,
     checkout_mutation_lease_state,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
@@ -24242,10 +24243,20 @@ class PortalImplementationSupervisor:
         if str(metadata.get("kind") or "") != "merge":
             return "kind_mismatch"
         try:
-            if Path(str(metadata.get("repo_root") or "")).resolve() != (
-                self.config.repo_root.resolve()
-            ):
+            if checkout_lock_repository_matches(metadata, self.config.repo_root) is not True:
                 return "repository_mismatch"
+            # New native journals intentionally leave repo_root empty during
+            # rolling migration. Physical Git identity alone also admits sibling
+            # worktrees, whereas this recovery intent belongs to one checkout.
+            worktree_root = metadata.get("worktree_root") or metadata.get("repo_root")
+            if not isinstance(worktree_root, str) or not worktree_root.strip():
+                return "repository_invalid"
+            expected_worktree = self.config.repo_root.resolve()
+            if Path(worktree_root).resolve() != expected_worktree:
+                return "worktree_mismatch"
+            legacy_root = metadata.get("repo_root")
+            if legacy_root and Path(str(legacy_root)).resolve() != expected_worktree:
+                return "worktree_mismatch"
         except (OSError, RuntimeError, ValueError):
             return "repository_invalid"
         protected_paths = metadata.get("protected_paths")
