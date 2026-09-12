@@ -36596,6 +36596,7 @@ class PortalImplementationDaemon:
                     validation_task,
                     log_path,
                     force_uncached=True,
+                    baseline_ref=baseline_ref,
                 )
                 command_results = (
                     validation.get("results")
@@ -38181,6 +38182,7 @@ class PortalImplementationDaemon:
                     validation_task,
                     validation_log,
                     force_uncached=True,
+                    baseline_ref=baseline_ref,
                 )
                 validation_results.append(
                     {
@@ -43245,6 +43247,7 @@ class PortalImplementationDaemon:
                 log_path,
                 state=state,
                 proposal_validation=proposal_validation,
+                baseline_ref=resolved_baseline,
             )
             validation_result = self._apply_implementation_failure_review(
                 task=task,
@@ -57805,6 +57808,7 @@ class PortalImplementationDaemon:
             log_path,
             state=state,
             proposal_validation=refreshed_proposal,
+            baseline_ref=baseline_ref,
         )
         rerun_result = dict(rerun)
         if not rerun_result.get("passed", False):
@@ -59003,6 +59007,7 @@ class PortalImplementationDaemon:
                     state=state,
                     proposal_validation=proposal_validation,
                     force_uncached=True,
+                    baseline_ref=baseline_ref,
                 )
             )
             rejected["no_change_policy_gate"] = no_change_policy_gate
@@ -59018,6 +59023,7 @@ class PortalImplementationDaemon:
                 log_path,
                 state=state,
                 force_uncached=True,
+                baseline_ref=baseline_ref,
             )
         )
         result["proposal_gate"] = proposal_gate
@@ -59164,6 +59170,7 @@ class PortalImplementationDaemon:
                 log_path,
                 state=state,
                 proposal_validation=proposal_validation,
+                baseline_ref=baseline_ref,
             )
             # Keep the live proposal object only for in-process re-stabilize.
             # Event/log JSON cannot serialize ProposalValidationResult.
@@ -59225,6 +59232,7 @@ class PortalImplementationDaemon:
             log_path,
             state=state,
             proposal_validation=rebound_validation,
+            baseline_ref=baseline_ref,
         )
         rebound_result = self._verify_post_validation_candidate_binding(
             workspace_path,
@@ -59699,6 +59707,7 @@ class PortalImplementationDaemon:
                         log_path,
                         state=state,
                         force_uncached=True,
+                        baseline_ref=baseline_ref,
                     )
             except Exception as exc:
                 validation_result = {
@@ -60330,6 +60339,7 @@ class PortalImplementationDaemon:
                 log_path if log_path is not None else Path(os.devnull),
                 state=state,
                 proposal_validation=revalidated_proposal,
+                baseline_ref=baseline_ref,
             )
             # Prevent recursive review loops.
             if not rerun.get("passed", False):
@@ -62663,6 +62673,7 @@ class PortalImplementationDaemon:
             state=state,
             proposal_validation=proposal_validation,
             force_uncached=True,
+            baseline_ref=baseline_ref,
         )
         validated["proposal_validation"] = proposal_validation
         if validated.get("passed") is True and not (
@@ -63322,7 +63333,9 @@ class PortalImplementationDaemon:
         state: PortalTaskState | None = None,
         proposal_validation: Any = None,
         force_uncached: bool = False,
+        baseline_ref: str = "",
     ) -> dict[str, Any]:
+        lifecycle_record = self._active_worktree_lifecycle
         authority_context_id = ""
         authority_revalidation_required = False
         if self.manual_completion_authority_task_ids:
@@ -63601,6 +63614,18 @@ class PortalImplementationDaemon:
                 result["scope_adjudication"] = (
                     compact_scope_adjudication(scope_adjudication)
                 )
+
+        if baseline_ref and result.get("passed", False):
+            result = self._run_captured_worktree_effect(
+                workspace_path,
+                lifecycle_record=lifecycle_record,
+                effect=lambda: self._enforce_baseline_diff_check(
+                    workspace_path=workspace_path,
+                    task=task,
+                    baseline_ref=baseline_ref,
+                    validation_result=result,
+                ),
+            )
 
         scheduler_options = proof_options.get("proof_scheduler_options")
         proof_state_path = ""
@@ -63933,6 +63958,103 @@ class PortalImplementationDaemon:
                 os.chmod(path, original)
             except OSError:
                 pass
+
+    @staticmethod
+    def _declares_bare_git_diff_check(
+        commands: Sequence[str],
+    ) -> bool:
+        """Return whether a command has an exact bare ``git diff --check`` clause."""
+
+        for command in commands:
+            normalized = normalize_validation_command_text(str(command)).strip()
+            try:
+                lexer = shlex.shlex(
+                    normalized,
+                    posix=True,
+                    punctuation_chars=";&|",
+                )
+                lexer.whitespace_split = True
+                lexer.commenters = ""
+                segments: list[list[str]] = [[]]
+                for token in lexer:
+                    if token in {"&&", "||", ";"}:
+                        segments.append([])
+                    else:
+                        segments[-1].append(token)
+            except ValueError:
+                continue
+            if any(segment == ["git", "diff", "--check"] for segment in segments):
+                return True
+        return False
+
+    def _enforce_baseline_diff_check(
+        self,
+        *,
+        workspace_path: Path,
+        task: PortalTask,
+        baseline_ref: str,
+        validation_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Bind a declared bare whitespace check to baseline-to-candidate bytes."""
+
+        result = dict(validation_result)
+        baseline = str(baseline_ref or "").strip()
+        if (
+            not baseline
+            or not result.get("passed", False)
+            or not self._declares_bare_git_diff_check(task.validation)
+        ):
+            return result
+
+        started_at = utc_now()
+        resolved_baseline = ""
+        output = ""
+        returncode = 1
+        from ..validation.candidate_diff_check import check_candidate_diff
+
+        checked = check_candidate_diff(
+            workspace_path,
+            baseline,
+            timeout=min(float(self.implementation_timeout), 600.0),
+        )
+        resolved_baseline = checked["baseline"]
+        returncode = checked["returncode"]
+        output = checked["output"]
+
+        bound_command = f"git diff --check {resolved_baseline or baseline} --"
+        record = {
+            "command": bound_command,
+            "raw_command": "git diff --check",
+            "validation_id": "candidate-diff-check:"
+            + hashlib.sha256(bound_command.encode("utf-8")).hexdigest(),
+            "returncode": returncode,
+            "passed": returncode == 0,
+            "stage": "candidate_invariant",
+            "ordinal": len(result.get("results") or []),
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "output": output,
+            "cache_hit": False,
+            "materialization": "isolated_temporary_index",
+        }
+        records = list(result.get("results") or [])
+        records.append(record)
+        result["results"] = records
+        result["attempted"] = True
+        result["candidate_diff_check"] = {
+            key: value for key, value in record.items() if key != "output"
+        }
+        if returncode != 0:
+            result.update(
+                {
+                    "passed": False,
+                    "returncode": returncode,
+                    "reason": "candidate_diff_check_failed",
+                    "error": "validation_command_failed",
+                    "failed_command": bound_command,
+                }
+            )
+        return result
 
     @staticmethod
     @sealed_validation_python_runner
