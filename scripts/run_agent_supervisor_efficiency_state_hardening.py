@@ -8976,7 +8976,7 @@ def _r30_candidate_git_guard_protocol(candidate_head: str) -> dict[str, Any]:
             "mechanism": "fresh_interpreter_traceme_exact_exec_v1",
             "operation_allowlist": ["update-ref", "update-index"],
         },
-        "git_environment": _trusted_git_environment(),
+        "git_environment": _trusted_git_guard_environment(),
         "parent_loss_cleanup": {
             "mechanism": (
                 "exact_parent_pdeathsig_sigcont_plus_protocol_eof_v1"
@@ -23340,6 +23340,33 @@ def _run(
     )
 
 
+def _trusted_git_guard_environment() -> dict[str, str]:
+    """Keep the original R30 environment for intentional Git transactions.
+
+    Only update-ref/update-index guard children use this immutable protocol.
+    Read-only observations use _trusted_git_environment instead, so preserving
+    historical guard CIDs cannot enable an observational index refresh.
+    """
+
+    return {
+        "PATH": "/usr/bin:/bin",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        # Repository-local hooks and fsmonitor commands are external-effect
+        # paths, not observations.  Disable both at Git's highest-precedence
+        # command configuration for every sealed Git invocation.
+        "GIT_CONFIG_COUNT": "2",
+        "GIT_CONFIG_KEY_0": "core.hooksPath",
+        "GIT_CONFIG_VALUE_0": os.devnull,
+        "GIT_CONFIG_KEY_1": "core.fsmonitor",
+        "GIT_CONFIG_VALUE_1": "false",
+        "LC_ALL": "C",
+        "LANG": "C",
+    }
+
+
 def _trusted_git_environment() -> dict[str, str]:
     """Return the closed environment for every pre-seal Git observation."""
 
@@ -24176,7 +24203,7 @@ def _r30_git_guard_launcher(
             ) from OSError(error, os.strerror(error))
         require_exact_parent("immediately before exact exec")
         command = (str(git), operation, "--stdin")
-        os.execve(descriptor, command, _trusted_git_environment())
+        os.execve(descriptor, command, _trusted_git_guard_environment())
     except OSError as exc:
         raise OperatorError(
             "R30 Git guard exact exec is unavailable"
@@ -24746,7 +24773,7 @@ def _prepared_candidate_git_guard(
     initial_index_flags_digest = _ordinary_git_index_flags_digest()
 
     git = _trusted_git_executable()
-    environment = _trusted_git_environment()
+    environment = _trusted_git_guard_environment()
     reference: subprocess.Popen[bytes] | None = None
     index: subprocess.Popen[bytes] | None = None
     reference_trace: _GitGuardSyscallTrace | None = None
