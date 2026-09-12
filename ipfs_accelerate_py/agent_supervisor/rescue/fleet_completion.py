@@ -26,6 +26,7 @@ from pathlib import Path
 import re
 import signal
 import subprocess
+import tempfile
 import time
 from typing import Any, Mapping
 from urllib.parse import urlparse
@@ -241,6 +242,67 @@ def _ancestor(root: Path, older: str, newer: str) -> bool:
     return result.returncode == 0
 
 
+def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> None:
+    """Publish only a review branch; GitHub performs the normal PR merge.
+
+    An account's successful direct push can bypass branch rules. Neither that
+    capability nor local validation substitutes for required hosted checks.
+    A deterministic head branch lets a retry reuse the same PR after CI recovers.
+    """
+    path = remote.split(":", 1)[1] if remote.startswith("git@github.com:") else urlparse(remote).path.lstrip("/")
+    repo = path.removesuffix(".git")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) or not _OID.fullmatch(candidate):
+        raise PublicationHold("publication requires an exact GitHub repository and commit")
+    branch = f"fleet-publication/{candidate}"
+    _git(root, "push", remote, f"{candidate}:refs/heads/{branch}")
+    prs = json.loads(_run([
+        "gh", "pr", "list", "--repo", repo, "--base", "main", "--head", branch,
+        "--state", "open", "--json", "number,headRefOid", "--limit", "2",
+    ], root))
+    if not isinstance(prs, list) or len(prs) > 1:
+        raise PublicationHold("publication pull request is ambiguous")
+    if not prs:
+        with tempfile.TemporaryDirectory(prefix="fleet-publication-pr-") as directory:
+            body = Path(directory) / "body.md"
+            body.write_text("Integrates the accepted taskboard source after local validation "
+                            "and the live completion gate. Required GitHub checks and reviews "
+                            "must pass before the fleet publisher can merge this exact head.\n")
+            _run([
+                "gh", "pr", "create", "--repo", repo, "--base", "main", "--head", branch,
+                "--title", "Integrate accepted taskboard work", "--body-file", str(body),
+            ], root)
+        raise PublicationHold("publication pull request created; awaiting required GitHub checks and reviews")
+    pr = prs[0]
+    if (not isinstance(pr, dict) or type(pr.get("number")) is not int or pr["number"] <= 0
+            or pr.get("headRefOid") != candidate):
+        raise PublicationHold("publication pull request head differs from the validated candidate")
+    number = str(pr["number"])
+
+    def current_ready() -> None:
+        state = json.loads(_run([
+            "gh", "pr", "view", number, "--repo", repo, "--json",
+            "number,state,isDraft,baseRefName,headRefOid,mergeable,mergeStateStatus,reviewDecision",
+        ], root))
+        if not isinstance(state, dict) or any((
+            state.get("number") != pr["number"], state.get("state") != "OPEN",
+            state.get("isDraft") is not False, state.get("baseRefName") != "main",
+            state.get("headRefOid") != candidate, state.get("mergeable") != "MERGEABLE",
+            state.get("mergeStateStatus") != "CLEAN",
+            state.get("reviewDecision") not in ("", "APPROVED"),
+        )):
+            raise PublicationHold("publication PR is not ready at the exact validated head; required checks or reviews may be blocked")
+
+    current_ready()
+    try:
+        # Use the exit status, supported by older installed gh versions too.
+        _run(["gh", "pr", "checks", number, "--repo", repo, "--required"], root)
+    except PublicationHold:
+        raise PublicationHold("required GitHub checks are unsuccessful or unavailable; retain the PR for retry") from None
+    current_ready()
+    _run(["gh", "pr", "merge", number, "--repo", repo, "--merge",
+          "--match-head-commit", candidate], root)
+
+
 def publish_completed_board(manifest: Mapping[str, Any], state_dir: str | Path) -> dict[str, Any]:
     """Try publication once, returning and atomically recording a typed receipt.
 
@@ -294,7 +356,45 @@ def publish_completed_board(manifest: Mapping[str, Any], state_dir: str | Path) 
                     published[ident] = main
                     _atomic_json(state / "publication.json", receipt)
                     continue
-                key = hashlib.sha256(f"{ident}:{source}:{main}:{time.time_ns()}".encode()).hexdigest()[:16]
+                key = hashlib.sha256(json.dumps([ident, source, main, published], sort_keys=True).encode()).hexdigest()
+                candidate_record = state / f"candidate-{key}.json"
+                retained = json.loads(candidate_record.read_text()) if candidate_record.exists() else None
+                if retained is not None:
+                    expected = {"source": source, "main": main, "dependencies": dict(published)}
+                    if not isinstance(retained, dict) or any(retained.get(k) != v for k, v in expected.items()):
+                        raise PublicationHold("retained publication candidate binding changed")
+                    integration = Path(retained.get("integration", "")).resolve()
+                    if not integration.is_relative_to(state / "integrations"):
+                        raise PublicationHold("retained publication checkout escaped its state directory")
+                    candidate = retained.get("head", "")
+                    if (not isinstance(candidate, str) or not _OID.fullmatch(candidate)
+                            or _git(integration, "rev-parse", "HEAD") != candidate
+                            or _git(integration, "status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=none")
+                            or not _ancestor(root, source, candidate) or not _ancestor(root, main, candidate)
+                            or any(_gitlinks(integration, candidate).get(path) != published[dep]
+                                   for path, dep in dependencies.items())):
+                        raise PublicationHold("retained publication candidate changed")
+                    row["integration_worktree"] = str(integration)
+                    row["candidate_head"] = candidate
+                    for command in repo["validation"]:
+                        _command(command, integration)
+                    if (_git(integration, "rev-parse", "HEAD") != candidate
+                            or _git(integration, "status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=none")):
+                        raise PublicationHold("publication validation changed the retained integration")
+                    if _source_heads(repositories) != heads:
+                        raise PublicationHold("accepted source changed during publication")
+                    _completion_gate(manifest, heads)
+                    if _fetch_main(root, remote, ident) != main:
+                        raise PublicationHold(f"{ident}: GitHub main advanced during validation; retry required")
+                    _merge_reviewed_pull_request(integration, remote, candidate)
+                    observed = _fetch_main(root, remote, ident)
+                    if not _ancestor(root, candidate, observed):
+                        raise PublicationHold(f"{ident}: pull request has not merged into GitHub main")
+                    row.update(status="published", published_head=observed)
+                    published[ident] = observed
+                    _atomic_json(state / "publication.json", receipt)
+                    continue
+                key = key[:16] + "-" + str(time.time_ns())
                 integration = state / "integrations" / f"{ident}-{key}"
                 integration.parent.mkdir(exist_ok=True)
                 _git(root, "worktree", "add", "--detach", str(integration), main)
@@ -328,16 +428,19 @@ def publish_completed_board(manifest: Mapping[str, Any], state_dir: str | Path) 
                 if _source_heads(repositories) != heads:
                     raise PublicationHold("accepted source changed during publication")
                 _completion_gate(manifest, heads)
-                # Fetch again to detect movement during validation. The subsequent
-                # normal push provides Git's final server-side concurrency check.
+                # Fetch again to detect movement during validation. GitHub must
+                # perform a normal checked PR merge; never push directly to main.
                 if _fetch_main(root, remote, ident) != main:
                     raise PublicationHold(f"{ident}: GitHub main advanced during validation; retry required")
-                _git(integration, "push", remote, f"{candidate}:refs/heads/main")
+                _atomic_json(candidate_record, {"source": source, "main": main,
+                    "dependencies": dict(published), "head": candidate, "integration": str(integration)})
+                row["candidate_head"] = candidate
+                _merge_reviewed_pull_request(integration, remote, candidate)
                 observed = _fetch_main(root, remote, ident)
                 if not _ancestor(root, candidate, observed):
                     raise PublicationHold(f"{ident}: published commit is not reachable from GitHub main")
-                row.update(status="published", published_head=candidate)
-                published[ident] = candidate
+                row.update(status="published", published_head=observed)
+                published[ident] = observed
                 _atomic_json(state / "publication.json", receipt)
             receipt["status"] = "published"
         except (PublicationHold, OSError, ValueError, TypeError, KeyError, subprocess.TimeoutExpired) as exc:

@@ -102,6 +102,19 @@ def test_repair_prompt_preserves_authority_and_llama_stop(tmp_path):
     assert "AST/hash/state in a separate DuckDB + Quack instance" in prompt
 
 
+def test_repair_prompt_requires_hosted_checks_even_for_bypass_capable_accounts(tmp_path):
+    cfg = config(tmp_path)
+    prompt = repair_prompt(cfg["boards"][0], {}, cfg, tmp_path / "report.json")
+    assert "Never push directly to GitHub\nmain" in prompt
+    assert "--match-head-commit" in prompt
+    assert "all required checks\nhave succeeded" in prompt
+    assert "required reviews are satisfied" in prompt
+    assert "Local tests do not replace required hosted checks" in prompt
+    assert "a ruleset bypass, or a branch-protection bypass" in prompt
+    assert "billing, quota, or an outage" in prompt
+    assert "if it still pushes directly to main, repair and test that path" in prompt
+
+
 @pytest.mark.parametrize("health,busy,token,verified", [
     ("healthy", False, "old", False),
     ("healthy", False, None, False),

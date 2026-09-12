@@ -172,6 +172,30 @@ def _accepted_progress_counts(observation: dict[str, Any]) -> dict[str, int]:
     return {key: value for key, value in values.items() if type(value) is int and value >= 0}
 
 
+def _ready_owner_epoch(details: Any) -> list[Any] | None:
+    """A fresh authenticated owner may establish a new bounded launch budget.
+
+    Work can remain blocked throughout a healthy owner's lifetime. Its repair
+    queue activity must not consume the attempts to restart a later stopped
+    owner. This observation supplies no task progress or completion authority.
+    """
+    if not isinstance(details, dict):
+        return None
+    owner = details.get("owner")
+    custody = details.get("owner_writer_custody")
+    if (details.get("authenticated_task_observation") is not True
+            or details.get("owner_ready") is not True
+            or not isinstance(owner, dict) or not isinstance(custody, dict)
+            or custody.get("configured") is not True
+            or custody.get("verified") is not True or custody.get("held") is not True):
+        return None
+    pid, birth, boot = (owner.get(key) for key in ("pid", "start_time_ticks", "boot_id"))
+    if (type(pid) is not int or pid <= 1 or type(birth) is not int or birth <= 0
+            or not isinstance(boot, str) or not boot):
+        return None
+    return [pid, birth, boot]
+
+
 def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[str, Any], now: float) -> dict[str, Any]:
     state = dict(previous)
     state.update(board_id=board["id"], observed_at=now, observation=observation)
@@ -221,10 +245,16 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
             state["incident_since"] = now
     state.setdefault("incident_since", now)
     state.setdefault("attempts", 0)
+    # Preserve a legacy unknown launch budget until positive readiness is seen.
+    # Merely upgrading the watchdog cannot replay an interrupted launch.
+    state.setdefault("ensure_attempts", previous.get("attempts", 0))
+    epoch = _ready_owner_epoch(details)
+    if epoch is not None and epoch != previous.get("ensure_owner_epoch"):
+        state.update(ensure_attempts=0, ensure_owner_epoch=epoch)
     state.setdefault("next_action_at", 0)
     state["health"] = health
     if health == "healthy" and observation.get("completion_candidate") is not True:
-        state.update(incident_since=now, attempts=0)
+        state.update(incident_since=now, attempts=0, ensure_attempts=0)
         state.pop("pending_action", None)
     return state
 
@@ -243,7 +273,7 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     # An inconclusive probe cannot authorize relaunching an already-live owner.
     recovery = state["observation"].get("recovery_action")
     if (recovery == "ensure" and board.get("ensure") and not hold_paths(board)
-            and state.get("attempts", 0) < board.get("max_ensure_attempts", 2)):
+            and state.get("ensure_attempts", state.get("attempts", 0)) < board.get("max_ensure_attempts", 2)):
         return "ensure"
     return "repair"
 
@@ -308,6 +338,8 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                      last_action_at=now, next_action_at=now + min(
                          board.get("max_backoff_seconds", 3600),
                          board.get("cooldown_seconds", 180) * 2 ** min(attempts - 1, 8)))
+        if action == "ensure":
+            state["ensure_attempts"] = state.get("ensure_attempts", 0) + 1
         write_json(path, state)
         if action == "publish":
             from .fleet_completion import publish_completed_board
