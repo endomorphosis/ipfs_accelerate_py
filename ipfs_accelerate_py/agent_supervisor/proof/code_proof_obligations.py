@@ -1200,7 +1200,7 @@ def _git(repo_root: Path, *arguments: str, binary: bool = False) -> str | bytes 
     return result.stdout.decode("utf-8", errors="surrogateescape")
 
 
-def _git_source(repo_root: Path, revision: str | None, path: str) -> tuple[str | None, str]:
+def _git_source(repo_root: Path, revision: str | None, path: str, *, binary_metadata: dict[str, object] | None = None) -> tuple[str | None, str]:
     if revision is None:
         absolute = repo_root / path
         if absolute.is_symlink():
@@ -1216,6 +1216,20 @@ def _git_source(repo_root: Path, revision: str | None, path: str) -> tuple[str |
         if not isinstance(raw, bytes):
             return None, ""
         blob = _git(repo_root, "rev-parse", f"{revision}:{path}")
+    # Metadata describes actual opaque bytes read by the local collector;
+    # providers cannot grant themselves binary path authority with these fields.
+    if binary_metadata is not None:
+        try:
+            is_binary = b"\0" in raw
+            if not is_binary:
+                raw.decode("utf-8")
+        except UnicodeDecodeError:
+            is_binary = True
+        if is_binary:
+            binary_metadata.update({
+                "size_bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(),
+                "media_type": "application/pdf" if raw.startswith(b"%PDF-") and b"%%EOF" in raw[-1024:] else "application/zip" if raw.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")) else "application/octet-stream",
+            })
     if b"\0" in raw:
         return None, str(blob or "").strip()
     try:
@@ -1315,11 +1329,13 @@ def collect_git_candidate_diff(
 
     entries: list[CandidateDiffEntry] = []
     for status, old_path, new_path in changes:
+        before_metadata: dict[str, object] = {}
+        after_metadata: dict[str, object] = {}
         before_source, before_blob = (
-            _git_source(root, base_revision, old_path) if old_path else (None, "")
+            _git_source(root, base_revision, old_path, binary_metadata=before_metadata) if old_path else (None, "")
         )
         after_source, after_blob = (
-            _git_source(root, candidate_revision, new_path) if new_path else (None, "")
+            _git_source(root, candidate_revision, new_path, binary_metadata=after_metadata) if new_path else (None, "")
         )
         binary = bool(
             (old_path and before_source is None and before_blob)
@@ -1336,6 +1352,8 @@ def collect_git_candidate_diff(
                 after_blob_id=after_blob,
                 binary=binary,
                 metadata={
+                    **{"before_" + k: v for k, v in before_metadata.items()},
+                    **{"after_" + k: v for k, v in after_metadata.items()},
                     "before_mode": _git_entry_mode(root, base_revision, old_path) if old_path else "",
                     "after_mode": _git_entry_mode(root, candidate_revision, new_path) if new_path else "",
                 },
