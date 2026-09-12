@@ -2194,14 +2194,25 @@ class WorktreeLifecycleStore:
         """Fence all provably dead records owned by one restarted lane."""
 
         recovered: list[WorkspaceLifecycleRecord] = []
+        expected_repo = normalize_workspace_path(self.repo_root)
         for record in list(self.iter_records()):
-            if record.is_terminal:
+            # A shared Git registry includes other repositories and lanes.
+            # Exclude their records before opening an effect guard: their
+            # missing or incompatible routing indexes are not this restart's
+            # recovery scope. The selected record is revalidated under locks.
+            if (
+                record.is_terminal
+                or not record.repo_root
+                or normalize_workspace_path(record.repo_root) != expected_repo
+                or not self._same_lane_state_dir(record, expected_state_dir)
+            ):
                 continue
             updated = self.reclaim_dead_owner_for_controlled_restart(
                 record.workspace_path,
                 expected_state_dir=expected_state_dir,
                 reclaimer_lease_id=reclaimer_lease_id,
                 reason=reason,
+                expected_record=record,
             )
             if updated is not None:
                 recovered.append(updated)

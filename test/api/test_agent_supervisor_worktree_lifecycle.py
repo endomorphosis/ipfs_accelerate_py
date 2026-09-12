@@ -322,6 +322,69 @@ def test_same_process_owner_rejects_pid_reuse(tmp_path: Path) -> None:
     assert same_process_owner(other, current) is False
 
 
+@pytest.mark.parametrize("scope", ["other_repository", "other_lane"])
+@pytest.mark.parametrize("index_damage", ["missing", "changed_identity"])
+def test_restart_ignores_unrelated_damaged_indexes(
+    tmp_path: Path, scope: str, index_damage: str,
+) -> None:
+    store = _store(tmp_path, startup_grace_seconds=0.0)
+    state = tmp_path / "state/lane-0"
+    dead = ProcessBirthIdentity(pid=2**30-9, start_time_ticks=1, boot_id="dead-boot")
+    selected = store.begin_preparing(
+        task_id="OWN", canonical_task_cid="cid:own", attempt=1, lane_id="lane-0",
+        workspace_path=tmp_path/"own-workspace", branch="implementation/own",
+        merge_target="main", state_dir=str(state), owner=dead,
+    )
+    foreign_store = store
+    foreign_state = tmp_path/"state/lane-1"
+    if scope == "other_repository":
+        repo = tmp_path/"foreign-repository"; repo.mkdir(); (repo/".git").mkdir()
+        foreign_store = WorktreeLifecycleStore(repo_root=repo, store_dir=store.store_dir)
+        # Even a matching lane path cannot make a foreign repository ours.
+        foreign_state = state
+    foreign = foreign_store.begin_preparing(
+        task_id="FOREIGN", canonical_task_cid="cid:foreign", attempt=1, lane_id="lane-1",
+        workspace_path=tmp_path/"foreign-workspace", branch="implementation/foreign",
+        merge_target="main", state_dir=str(foreign_state), owner=dead,
+    )
+    index = foreign_store.task_index_path_for(
+        canonical_task_cid=foreign.canonical_task_cid, task_id=foreign.task_id, attempt=foreign.attempt)
+    if index_damage == "missing":
+        index.unlink()
+    else:
+        value = json.loads(index.read_text()); value["record_id"] = "foreign-successor"
+        index.write_text(json.dumps(value))
+    workspace = foreign_store.workspace_path_for(foreign.workspace_path)
+    before_record = workspace.read_bytes()
+    before_index = index.read_bytes() if index.exists() else None
+
+    recovered = store.reclaim_dead_owners_for_controlled_restart(expected_state_dir=state)
+
+    assert [r.task_id for r in recovered] == [selected.task_id]
+    assert recovered[0].fence == selected.fence+1
+    assert workspace.read_bytes() == before_record
+    assert (index.read_bytes() if index.exists() else None) == before_index
+
+
+def test_restart_keeps_rejecting_a_damaged_index_in_its_own_lane(tmp_path: Path) -> None:
+    store = _store(tmp_path, startup_grace_seconds=0.0)
+    state = tmp_path/"state/lane-0"
+    record = store.begin_preparing(
+        task_id="OWN", canonical_task_cid="cid:own", attempt=1, lane_id="lane-0",
+        workspace_path=tmp_path/"own-workspace", branch="implementation/own",
+        merge_target="main", state_dir=str(state),
+        owner=ProcessBirthIdentity(pid=2**30-9, start_time_ticks=1, boot_id="dead-boot"),
+    )
+    index = store.task_index_path_for(canonical_task_cid=record.canonical_task_cid,
+                                     task_id=record.task_id, attempt=record.attempt)
+    index.unlink()
+    before = store.workspace_path_for(record.workspace_path).read_bytes()
+    with pytest.raises(OwnershipError, match="lifecycle task index changed before effect"):
+        store.reclaim_dead_owners_for_controlled_restart(expected_state_dir=state)
+    assert store.workspace_path_for(record.workspace_path).read_bytes() == before
+    assert not index.exists()
+
+
 def test_find_nonterminal_for_task_returns_newest_same_repo(
     tmp_path: Path,
 ) -> None:
