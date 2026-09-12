@@ -40781,6 +40781,22 @@ class PortalImplementationDaemon:
             )
             for entry in entries
         ]
+        # Git -C may discover a copy only after an untracked destination is
+        # staged.  The filesystem mutation is still a destination addition.
+        # Normalize only this incidental copy provenance for the fingerprint;
+        # proposal validation retains the original complete COPY entry.
+        for item in payload:
+            if item.get("change_kind") == "copy":
+                item.update(
+                    old_path="",
+                    change_kind="add",
+                    before_source=None,
+                    before_blob_id="",
+                )
+                metadata = dict(item.get("metadata") or {})
+                if "before_mode" in metadata:
+                    metadata["before_mode"] = ""
+                item["metadata"] = metadata
         encoded = json.dumps(
             payload,
             sort_keys=True,
