@@ -5009,28 +5009,12 @@ def test_supervisor_reconciles_dead_protected_attempt_before_guard(
     daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
         tmp_path
     )
-    task = _task(outputs=["src/example.py"])
-    _seed_active_lifecycle(
-        daemon,
-        task,
-        workspace,
-        ProcessBirthIdentity(
-            pid=2**30 - 7,
-            start_time_ticks=1,
-            boot_id="dead-owner",
-        ),
+    task, _lock, _claim = _persist_live_shaped_interrupted_attempt(
+        daemon, workspace=workspace,
     )
-    daemon._require_implementation_protected_snapshot(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
+    monkeypatch.setattr(
+        PortalImplementationDaemon, "_load_tasks", lambda _self: [task],
     )
-    _persist_active_attempt_state(
-        daemon,
-        task=task,
-        workspace=workspace,
-    )
-    _persist_stale_implementation_lock(daemon, task)
     supervisor = _protected_git_worktree_supervisor(daemon, repo)
     for method_name in (
         "detect_stale_worktrees",
@@ -5096,6 +5080,51 @@ def test_supervisor_reconciles_dead_protected_attempt_before_guard(
     assert lifecycle is not None
     assert lifecycle.is_terminal
     assert not daemon._implementation_lock_path().exists()
+
+
+def test_strict_restart_preserves_incomplete_legacy_attempt_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    _persist_stale_implementation_lock(daemon, task)
+    # The private mode selects the exact predecessor/journal protocol. Legacy
+    # partial state must not be promoted to a complete native attempt record.
+    lock = daemon._implementation_lock_path()
+    lock.chmod(0o600)
+    preserved = {
+        path: path.read_bytes() for path in (
+            daemon.state_path, daemon._implementation_protected_active_snapshot_path(),
+            daemon.worktree_lifecycle.workspace_path_for(workspace),
+        )
+    }
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    _stub_supervisor_maintenance_tail(supervisor, monkeypatch)
+    result = supervisor.run_once(include_refill=False)
+    assert result["maintenance_blocked"] is True
+    assert result["interrupted_implementation_reconciliation"]["reconciled"] is False
+    assert all(path.read_bytes() == data for path, data in preserved.items())
+    assert lock.exists()
 
 
 @pytest.mark.parametrize(

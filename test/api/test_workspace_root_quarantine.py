@@ -388,6 +388,7 @@ def test_nested_boundary_rejects_unreadable_or_unbound_parent_custody(
 
 
 def _fifo_custody_reader(operation, path, repo, root, output):
+    output.put("reader_ready")
     try:
         if operation == "direct":
             q.read_regular(path)
@@ -441,6 +442,9 @@ def test_fifo_custody_population_is_denied_without_waiting_for_writer(
     )
     child.start()
     try:
+        # Native capsule import can precede the read by more than ten seconds.
+        # Bound startup separately; retain the exact I/O timeout after admission.
+        assert output.get(timeout=60) == "reader_ready"
         child.join(timeout=10)
         assert not child.is_alive(), "native custody read blocked opening a FIFO"
         assert child.exitcode == 0
