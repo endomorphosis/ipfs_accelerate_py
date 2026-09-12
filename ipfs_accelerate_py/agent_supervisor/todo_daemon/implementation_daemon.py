@@ -28323,6 +28323,26 @@ class PortalImplementationDaemon:
         )
         if acquired_task_claim_metadata is not None:
             task_claim_metadata = acquired_task_claim_metadata
+        if (not acquired_task_claim
+                and task_claim_reason in {"source_maintenance_drain_active",
+                                          "source_maintenance_drain_unverified",
+                                          "maintenance_coordination_failed"}):
+            result = {
+                "skipped": True,
+                "deferred": True,
+                "retryable": True,
+                "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
+                "reason": f"implementation_{task_claim_reason}",
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "dispatch_intent_created": False,
+                "backoff_seconds": 0,
+            }
+            self._record_event("implementation_retry_deferred", result)
+            return result
         if not acquired_task_claim:
             result = {
                 "skipped": True,
@@ -77902,6 +77922,24 @@ class PortalImplementationDaemon:
                     PROTECTED_PATH_MAINTENANCE_COORDINATION_TIMEOUT_SECONDS
                 ),
             ):
+                # Source maintenance must close admission before publishing a
+                # new intent. Ordinary maintenance retains its bounded-wait
+                # handoff below; only the explicit native drain opts out.
+                maintenance_claim = (
+                    self._active_protected_path_maintenance_claim_serialized(
+                        maintenance_lock_path
+                    )
+                )
+                if (maintenance_claim is not None
+                        and ("dispatch_admission" in maintenance_claim
+                             or "coordination_error" in maintenance_claim)):
+                    drain_reason = (
+                        "source_maintenance_drain_active"
+                        if maintenance_claim.get("dispatch_admission") == "drain"
+                        and "coordination_error" not in maintenance_claim
+                        else "source_maintenance_drain_unverified"
+                    )
+                    return False, drain_reason, None, None, maintenance_claim
                 acquired, reason, existing = (
                     self._try_acquire_implementation_task_claim(
                         lock_path,
