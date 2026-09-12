@@ -15619,11 +15619,25 @@ class PortalImplementationDaemon:
             "protected_paths",
             "snapshot",
         }
+        canonical_marker_fields = {"canonical_task_key", "canonical_task_cid"}
+        marker_fields = set(marker)
+        # The original exact v1 envelope predates the canonical identity pair.
+        # Current native producers add both fields.  Preserve that legacy
+        # envelope while requiring a complete, exact binding whenever either
+        # canonical field is present; never discard or ignore extra claims.
+        canonical_marker_matches = (
+            marker_fields == expected_marker_fields
+            or (
+                marker_fields == expected_marker_fields | canonical_marker_fields
+                and marker.get("canonical_task_key") == canonical_task_key
+                and marker.get("canonical_task_cid") == canonical_task_cid
+            )
+        )
         workspace = str(marker.get("workspace_path") or "")
         branch = str(state.active_branch or "").removeprefix("refs/heads/")
         projected_identity = state.task_identities.get(task_id, {})
         if (
-            set(marker) != expected_marker_fields
+            not canonical_marker_matches
             or marker.get("schema")
             != "implementation-protected-path-active-v1"
             or marker.get("task_id") != task_id
