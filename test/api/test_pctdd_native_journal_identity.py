@@ -3,7 +3,7 @@
 import copy
 
 import pytest
-import test_agent_supervisor_implementation_protected_paths as native
+from test.api import test_agent_supervisor_implementation_protected_paths as native
 
 from ipfs_accelerate_py.agent_supervisor.merge import checkout_lock as locks
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
