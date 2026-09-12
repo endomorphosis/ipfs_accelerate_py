@@ -86611,6 +86611,7 @@ def _r21_nonblocking_named_lock(
     *,
     name: str,
     lock_class: str,
+    retained_descriptors: list[int] | None = None,
 ) -> Any:
     """Acquire one exact descriptor-relative lock without waiting or following."""
 
@@ -86662,6 +86663,8 @@ def _r21_nonblocking_named_lock(
             or stat.S_IMODE(after.st_mode) != 0o600
         ):
             raise OperatorError("R21 owner-start lock changed during admission")
+        if retained_descriptors is not None:
+            retained_descriptors.append(descriptor)
         yield {
             "lock_class": lock_class,
             "name": name,
@@ -86683,6 +86686,8 @@ def _r21_nonblocking_named_lock(
         raise OperatorError("R21 owner-start lock observation is unavailable") from exc
     finally:
         if descriptor >= 0:
+            if retained_descriptors is not None and descriptor in retained_descriptors:
+                retained_descriptors.remove(descriptor)
             try:
                 if locked:
                     fcntl.flock(descriptor, fcntl.LOCK_UN)
@@ -86860,6 +86865,7 @@ def _r21_owner_start_contention_observation(
     try:
         owner_handle.assert_canonical_parent()
         directory_fd = owner_handle.directory_fileno()
+        retained_lock_descriptors = [owner_handle.fileno()]
         owner_opened = os.fstat(owner_handle.fileno())
         locks.append(
             {
@@ -86877,18 +86883,21 @@ def _r21_owner_start_contention_observation(
             directory_fd,
             name=f".{database.name}.migration.lock",
             lock_class="migration",
+            retained_descriptors=retained_lock_descriptors,
         ) as migration_lock:
             locks.append(dict(migration_lock))
             with _r21_nonblocking_named_lock(
                 directory_fd,
                 name=f".{database.name}.intent.lock",
                 lock_class="intent",
+                retained_descriptors=retained_lock_descriptors,
             ) as intent_lock:
                 locks.append(dict(intent_lock))
                 with _r21_nonblocking_named_lock(
                     directory_fd,
                     name=f".{database.name}.lock",
                     lock_class="database",
+                    retained_descriptors=retained_lock_descriptors,
                 ) as database_lock:
                     locks.append(dict(database_lock))
                     marker_absent = _r21_path_absent(
@@ -86956,6 +86965,53 @@ def _r21_owner_start_contention_observation(
                         witness = context[
                             "candidate_authorization_witness"
                         ]
+                        # Empty legacy WAL custody is a separate pre-baseline
+                        # operation. R23 still begins with WAL absence and its
+                        # receipt must continue to report wal_mutated=False.
+                        from ipfs_accelerate_py.agent_supervisor.runtime.empty_owner_wal import (
+                            EmptyOwnerWalError,
+                            preserve_empty_owner_wal,
+                        )
+
+                        def empty_wal_native_guard() -> None:
+                            owner_handle.assert_canonical_parent()
+                            if (
+                                str(getattr(server.lifecycle, "value", "") or "")
+                                != expected_lifecycle
+                                or server.identity is not None
+                            ):
+                                raise OperatorError(
+                                    "empty WAL preservation owner is not inert"
+                                )
+                            _assert_candidate_authorization_witness(
+                                witness,
+                                expected_head=str(context["candidate_head"]),
+                                expected_tree=str(context["candidate_tree"]),
+                                boundary="empty WAL preservation current source",
+                            )
+                            _r21_owner_start_endpoint_observation(
+                                paths=paths,
+                                server=server,
+                                marker_absent=_r21_path_absent(
+                                    directory_fd, owner_marker_path.name
+                                ),
+                            )
+
+                        try:
+                            preserve_empty_owner_wal(
+                                directory_fd=directory_fd,
+                                directory_path=database.parent,
+                                database_name=database.name,
+                                lock_descriptors=retained_lock_descriptors,
+                                source_identity={key: context[key] for key in (
+                                    "candidate_head", "candidate_tree", "store_id"
+                                )},
+                                native_guard=empty_wal_native_guard,
+                            )
+                        except EmptyOwnerWalError as exc:
+                            raise OperatorError(
+                                "owner-start empty WAL preservation refused"
+                            ) from exc
                         wal_observation = _r21_owner_start_file_observation(
                             directory_fd,
                             f"{database.name}.wal",
