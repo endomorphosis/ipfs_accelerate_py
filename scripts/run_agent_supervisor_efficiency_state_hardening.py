@@ -87754,6 +87754,88 @@ def _r21_start_server_with_one_safe_retry(
     return fresh_server, identity, recovered
 
 
+def _r45_inherited_owner_start_permission_context(
+    *,
+    board: Any,
+    launch_admission: Mapping[str, Any],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+) -> dict[str, Any]:
+    """Retain R23 permission custody through the admitted R45 receipt chain.
+
+    R45 changes the active receipt, but retains the exact R1-R30 prefix.
+    Revalidate both that prefix and the current launch before projecting the
+    permission context. This does not grant permission from a receipt hint.
+    """
+    unsigned = dict(launch_admission)
+    admission_cid = str(unsigned.pop("admission_cid", "") or "")
+    if admission_cid != _identity(unsigned):
+        raise OperatorError("R45 owner-start launch admission CID differs")
+    chain = _admit_exact_r45_transition_chain(
+        launch_admission.get("repair_transition_chain")
+    )
+    transition = launch_admission.get("repair_transition")
+    if (
+        not isinstance(transition, Mapping)
+        or dict(transition) != dict(chain[-1])
+        or launch_admission.get("historical_live_authorizing_receipt_cid")
+        != transition.get("receipt_cid")
+    ):
+        raise OperatorError("R45 owner-start active receipt differs")
+    _assert_exact_run_launch_admission(
+        launch_admission,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    r30_chain = _admit_exact_r30_transition_chain(list(chain[:-4]))
+    r23 = r30_chain[-6]
+    r30 = r30_chain[-1]
+    if (
+        r23.get("schema")
+        != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
+        or r23.get("receipt_cid") != ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
+    ):
+        raise OperatorError("R45 inherited R23 permission receipt differs")
+    durable_value = r30.get("durable_candidate_witness")
+    anchor_witness = r30.get("candidate_authorization_witness")
+    if not isinstance(durable_value, Mapping) or not isinstance(
+        anchor_witness, Mapping
+    ):
+        raise OperatorError("R45 inherited R30 witness is absent")
+    durable = _validate_r30_durable_candidate_witness(durable_value)
+    if (
+        durable.get("head") != r30.get("repair_head")
+        or durable.get("tree") != r30.get("repair_tree")
+        or durable.get("authorization_v1_witness_cid")
+        != _identity(dict(anchor_witness))
+    ):
+        raise OperatorError("R45 inherited R30 witness differs")
+    current_witness = dict(candidate_authorization_witness)
+    _assert_candidate_authorization_witness(
+        current_witness,
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        boundary="R45 inherited owner-start permission",
+    )
+    store_id = board.resolved_database_program().store_id
+    return _validate_r23_owner_start_permission_context(
+        {
+            "candidate_head": candidate_head,
+            "candidate_tree": candidate_tree,
+            "candidate_authorization_witness": current_witness,
+            "bootstrap_receipt_id": str(launch_admission["bootstrap_receipt_id"]),
+            "repair_transition_receipt_cid": str(transition["receipt_cid"]),
+            "materialized_launch_admission_cid": admission_cid,
+            "store_id": store_id,
+        },
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        expected_witness=current_witness,
+        expected_store_id="data/aseh/control.duckdb",
+    )
+
+
 def _r23_owner_start_permission_context_from_launch_admission(
     *,
     board: Any,
@@ -87762,7 +87844,24 @@ def _r23_owner_start_permission_context_from_launch_admission(
     candidate_tree: str,
     candidate_authorization_witness: Mapping[str, str],
 ) -> dict[str, Any] | None:
-    """Project unchanged R23 permission authority through retained R30."""
+    """Project unchanged R23 permission authority through admitted repairs."""
+
+    transition = (
+        launch_admission.get("repair_transition")
+        if isinstance(launch_admission, Mapping) else None
+    )
+    if (
+        isinstance(transition, Mapping)
+        and transition.get("schema")
+        == REPAIR_HISTORICAL_LIVE_EVIDENCE_REVISION_CLOSURE_TRANSITION_SCHEMA
+    ):
+        return _r45_inherited_owner_start_permission_context(
+            board=board,
+            launch_admission=launch_admission,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=candidate_authorization_witness,
+        )
 
     parents = _git("show", "-s", "--format=%P", candidate_head).split()
     exact_r23 = parents == [
