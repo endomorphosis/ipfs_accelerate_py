@@ -68733,6 +68733,16 @@ class DatabaseImplementationDaemon:
         }
         if not eligible:
             return None
+        # A newer control revision may explicitly reopen a previously completed
+        # task. Retire only its stale coordination projection, preserving the
+        # original completion and attempt history before normal fenced claiming.
+        for task in eligible.values():
+            self.coordinator.reconcile_reopened_task(
+                task_cid=str(task.task_cid),
+                expected_control_revision=int(task.revision),
+                read_control_task=self.task_source.get,
+                now_ms=self._now_ms(),
+            )
         claim = self.coordinator.claim_ready_task(
             owner_session_id=self.owner_session_id,
             lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
