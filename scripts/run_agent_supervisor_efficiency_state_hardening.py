@@ -5760,6 +5760,9 @@ STATUS_REPLICA_RETRY_DELAY_SECONDS: Final = 0.05
 AUTHORIZATION_TRANSITION_LOCK_TIMEOUT_SECONDS: Final = 5.0
 R19_HISTORICAL_LIFECYCLE_LOCK_TIMEOUT_SECONDS: Final = 5.0
 STATUS_RECEIPT_MAX_BYTES: Final = 1_048_576
+# Launch references retain the complete source-transition admission chain,
+# which already exceeds the smaller health/status receipt bound.
+OWNER_LAUNCH_REFERENCE_MAX_BYTES: Final = 8 * 1024 * 1024
 LIVE_REPLAY_MAX_BYTES: Final = 1_073_741_824
 LIVE_REPLAY_IO_TIMEOUT_SECONDS: Final = 60.0
 LIVE_REPLAY_SCHEMA: Final = (
@@ -92594,7 +92597,7 @@ def request_status_refresh(config_path: Path) -> tuple[int, dict[str, Any]]:
     paths = _paths(board)
     launch = _secure_runtime_json(
         paths["evidence"] / "control-plane" / "owner-launch.json",
-        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        max_bytes=OWNER_LAUNCH_REFERENCE_MAX_BYTES,
     )
     unsigned = dict(launch)
     receipt_cid = unsigned.pop("receipt_cid", "")
