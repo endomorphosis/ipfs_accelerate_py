@@ -314,7 +314,8 @@ def _csv(value: str) -> list[str]:
 
 def _git(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ("git", *args), cwd=cwd, text=True, capture_output=True,
+        ("git", "--no-optional-locks", "-c", "diff.autoRefreshIndex=false", *args),
+        cwd=cwd, text=True, capture_output=True,
         check=False, timeout=60,
     )
 
