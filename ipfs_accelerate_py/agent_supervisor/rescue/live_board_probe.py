@@ -718,6 +718,35 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             reasons.append(owner_writer_custody.get("reason") or "canonical_writer_lock_observation_unavailable")
         elif owner_writer_custody.get("held") is not True:
             reasons.append("canonical_writer_lock_missing")
+    # The native runner can finish its implementation lanes while the Quack
+    # owner remains alive to settle goals and current-source acceptance. A
+    # fresh, owner-bound database population distinguishes that normal stop
+    # from missing workers on an unfinished or merely cached task projection.
+    implementation_frontier_complete = bool(
+        database_authority and authenticated and owner_ready
+        and source_integrity["valid"]
+        and owner_writer_custody.get("configured") is True
+        and owner_writer_custody.get("verified") is True
+        and owner_writer_custody.get("held") is True
+        and counts and sum(counts.values()) > 0
+        and authority.get("task_count") == sum(counts.values())
+        and all(key in COMPLETED for key in counts)
+    )
+    expected_stopped_lanes = []
+    if implementation_frontier_complete:
+        for lane in lanes:
+            if (lane["status"] == "stopped"
+                    and not lane["supervisor"] and not lane["daemon"]
+                    and type(lane["last_exit_code"]) is int
+                    and (lane["last_exit_code"] == 0 or (
+                        lane["last_exit_code"] == 143
+                        and lane["last_recycle_reason"] == "supervisor_signal_shutdown"))
+                    and lane["stalled_without_active_worker"] is False):
+                index = lane["lane"]
+                expected_stopped_lanes.append(index)
+                reasons = [reason for reason in reasons if reason not in {
+                    f"lane_{index}_supervisor_missing", f"lane_{index}_daemon_missing",
+                }]
     if not source_integrity["valid"]:
         reasons.append("source_integrity_not_verified")
         health = "degraded"
@@ -748,6 +777,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "owner_writer_custody": owner_writer_custody,
             "lanes": lanes, "providers": providers, "task_counts": counts, "progress_source": source,
             "authenticated_task_observation": authenticated,
+            "implementation_frontier_complete": implementation_frontier_complete,
+            "expected_stopped_lanes": expected_stopped_lanes,
             "unsettled_goal_count": authority.get("unsettled_goal_count"),
             "completion_receipt_count": authority.get("completion_receipt_count"),
             "task_count": authority.get("task_count", sum(counts.values()) if counts else None),

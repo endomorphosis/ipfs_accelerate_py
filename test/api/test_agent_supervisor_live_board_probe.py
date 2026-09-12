@@ -697,6 +697,92 @@ def test_database_terminal_tasks_do_not_hide_unsettled_goals(board, monkeypatch)
     assert result['complete'] is False
 
 
+def _stopped_terminal_lane(board, monkeypatch, *, goal_status="active"):
+    config, _, lane = board
+    native = _database_native_status(config, goal_status=goal_status)
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+    monkeypatch.setattr(probe, "_owner_writer_custody", lambda *_: {
+        "configured": True, "verified": True, "held": True,
+    })
+    status = {"supervisor_pid": None, "daemon_pid": None, "status": "stopped",
+              "updated_at": 1, "last_exit_code": 143,
+              "last_recycle_reason": "supervisor_signal_shutdown"}
+    _write(lane / "pcpr_lane_0_supervisor_status.json", status)
+    return config, lane, native, status
+
+
+@pytest.mark.parametrize("goal_status", ["active", "completed"])
+def test_successful_task_frontier_recognizes_stopped_lanes_without_closing_goals(
+    board, monkeypatch, goal_status,
+):
+    config, _, _, _ = _stopped_terminal_lane(board, monkeypatch, goal_status=goal_status)
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["implementation_frontier_complete"] is True
+    assert result["details"]["expected_stopped_lanes"] == [0]
+    assert not any("missing" in reason for reason in result["reason_codes"])
+    assert result["health"] == ("blocked" if goal_status == "active" else "healthy")
+    assert result["completion_candidate"] is (goal_status == "completed")
+    assert result["complete"] is False
+    assert "recovery_action" not in result
+    if goal_status == "active":
+        assert "board_has_unsettled_goals" in result["reason_codes"]
+
+
+@pytest.mark.parametrize("status", ["todo", "in_progress", "blocked", "quarantined", "failed", "cancelled"])
+def test_stopped_lanes_still_require_repair_for_unsuccessful_tasks(board, monkeypatch, status):
+    config, _, native, _ = _stopped_terminal_lane(board, monkeypatch)
+    native["tasks"][0]["status"] = status
+    native["completion_snapshot"]["completion_projection"]["task_states"][0]["status"] = status
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["implementation_frontier_complete"] is False
+    assert result["details"]["expected_stopped_lanes"] == []
+    assert "lane_0_daemon_missing" in result["reason_codes"]
+    assert "lane_0_supervisor_missing" in result["reason_codes"]
+
+
+@pytest.mark.parametrize("drift", ["stale", "owner", "unverified_writer", "missing_writer", "unconfigured_writer", "source"])
+def test_terminal_lane_observation_requires_current_native_owner_and_source(board, monkeypatch, drift):
+    config, _, native, _ = _stopped_terminal_lane(board, monkeypatch)
+    if drift == "stale":
+        native["observed_at"] = 900
+    elif drift == "owner":
+        native["owner_identity"] = {**native["owner_identity"], "generation": 9}
+    elif drift == "source":
+        monkeypatch.setattr(probe, "_source_integrity", lambda _: {"configured": True, "valid": False})
+    else:
+        field = {"unverified_writer": "verified", "missing_writer": "held",
+                 "unconfigured_writer": "configured"}[drift]
+        monkeypatch.setattr(probe, "_owner_writer_custody", lambda *_: {
+            "configured": True, "verified": True, "held": True, field: False,
+        })
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["expected_stopped_lanes"] == []
+    assert "lane_0_daemon_missing" in result["reason_codes"]
+
+
+@pytest.mark.parametrize("patch", [
+    {"status": "running"}, {"last_exit_code": 78}, {"last_exit_code": 1},
+    {"last_exit_code": False}, {"last_recycle_reason": "unexpected"},
+    {"stalled_without_active_worker": True}, {"supervisor_pid": 60}, {"daemon_pid": 61},
+])
+def test_task_completion_does_not_hide_abnormal_or_partial_worker_stop(board, monkeypatch, patch):
+    config, lane, _, status = _stopped_terminal_lane(board, monkeypatch)
+    _write(lane / "pcpr_lane_0_supervisor_status.json", {**status, **patch})
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["expected_stopped_lanes"] == []
+    assert any("missing" in reason for reason in result["reason_codes"])
+
+
+def test_cached_task_totals_cannot_excuse_missing_workers(board, monkeypatch):
+    config, _, _, _ = _stopped_terminal_lane(board, monkeypatch)
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({"task_authority": {
+        "status_counts": {"completed": 1}, "task_count": 1, "authenticated_query": True,
+    }}, ""))
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["implementation_frontier_complete"] is False
+    assert "lane_0_daemon_missing" in result["reason_codes"]
+
+
 @pytest.mark.parametrize('drift', ['owner', 'namespace', 'task', 'age', 'goals'])
 def test_database_native_status_rejects_stale_or_foreign_population(board, monkeypatch, drift):
     config, _, _ = board
