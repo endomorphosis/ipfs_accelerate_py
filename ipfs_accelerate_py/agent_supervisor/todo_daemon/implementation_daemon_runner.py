@@ -697,7 +697,86 @@ def compact_daemon_pass_result(result: Mapping[str, Any]) -> dict[str, Any]:
         "write_count",
         "backoff_seconds",
     )
-    return {key: result[key] for key in keys if key in result}
+    compact = {key: result[key] for key in keys if key in result}
+    observations = _compact_recovery_observations(result)
+    if observations is not None:
+        compact["recovery_observations"] = observations
+    return compact
+
+
+def _compact_recovery_observations(
+    result: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Keep rejected recovery visible without copying receipts or task bodies.
+
+    Observation-only recovery correctly leaves a pass idle. Omitting those
+    results from its heartbeat, however, makes a blocked recovery look like
+    an ordinary empty frontier. These summaries grant no retry authority and
+    do not change write accounting or the idle-log throttle.
+    """
+    stages = (
+        "unknown_callback_reopens",
+        "terminal_retry_reconciliations",
+        "terminal_portal_reconciliations",
+        "protected_path_recovery_reconciliations",
+        "external_protected_checkout_recovery_reconciliations",
+        "inflight_process_recovery_reconciliations",
+        "validation_retry_seed_conflict_recovery_reconciliations",
+        "leftover_wait_deferral_budget_recovery_reconciliations",
+        "pooled_worktree_create_recovery_reconciliations",
+        "completion_reconciliations",
+        "expired_attempt_reconciliations",
+        "stale_in_progress_unstalls",
+        "inflight_deferral_unstalls",
+    )
+    text_fields = (
+        "task_cid", "task_alias", "attempt_id", "status", "reason",
+        "error_type", "error_id",
+    )
+    flag_fields = (
+        "operator_review_required", "recovery_deferred",
+        "provider_dispatched", "attempt_consumed",
+    )
+    entries: list[dict[str, Any]] = []
+    truncated = False
+    for stage in stages:
+        outcomes = result.get(stage)
+        if not isinstance(outcomes, (list, tuple)):
+            continue
+        truncated |= len(outcomes) > 64
+        for outcome in outcomes[:64]:
+            if not isinstance(outcome, Mapping) or outcome.get("changed") is not False:
+                continue
+            status = outcome.get("status")
+            if not (
+                (isinstance(status, str)
+                 and status in {"blocked", "quarantined", "unknown", "retrying"})
+                or outcome.get("operator_review_required") is True
+                or outcome.get("recovery_deferred") is True
+            ):
+                continue
+            if len(entries) >= 16:
+                truncated = True
+                continue
+            entry: dict[str, Any] = {"stage": stage, "changed": False}
+            for field in text_fields:
+                value = outcome.get(field)
+                if isinstance(value, str) and value:
+                    entry[field] = value[:512]
+                    truncated |= len(value) > 512
+            for field in flag_fields:
+                value = outcome.get(field)
+                if type(value) is bool:
+                    entry[field] = value
+            entries.append(entry)
+    if not entries and not truncated:
+        return None
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/recovery-observation-summary@1",
+        "entries": entries,
+        "truncated": truncated,
+        "retry_authority": False,
+    }
 
 
 def log_daemon_pass_result(
