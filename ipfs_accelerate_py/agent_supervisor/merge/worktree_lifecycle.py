@@ -21,10 +21,11 @@ import re
 import tempfile
 import time
 import uuid
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 
 from .checkout_lock import git_common_dir, serialized_lock_update
 from ..proof.formal_verification_contracts import content_identity
@@ -597,10 +598,14 @@ class WorktreeLifecycleStore:
             "state": record.state.value,
         }
 
-    def _publish_task_index(self, record: WorkspaceLifecycleRecord) -> None:
+    def _publish_task_index(
+        self, record: WorkspaceLifecycleRecord, *, _locked: bool = False,
+    ) -> None:
         from .workspace_quarantine import mutation
 
-        with mutation(self.repo_root, Path(record.workspace_path)):
+        def publish() -> None:
+            if self._load_captured_workspace_record(record.workspace_path) != record:
+                raise OwnershipError("lifecycle changed before task index publication")
             _atomic_write_json(
                 self.task_index_path_for(
                     canonical_task_cid=record.canonical_task_cid,
@@ -609,6 +614,13 @@ class WorktreeLifecycleStore:
                 ),
                 self._task_index_payload(record),
             )
+
+        with mutation(self.repo_root, Path(record.workspace_path)):
+            if _locked:
+                publish()
+            else:
+                with self._indexed_workspace_update(record.workspace_path):
+                    publish()
 
     def heal_stale_task_indexes(self) -> list[WorkspaceLifecycleRecord]:
         """Rewrite leftover active indexes whose workspace is already terminal.
@@ -637,7 +649,7 @@ class WorktreeLifecycleStore:
                 continue
             try:
                 self._publish_task_index(record)
-            except OSError:
+            except (OSError, WorktreeLifecycleError):
                 continue
             healed.append(record)
         return healed
@@ -690,7 +702,7 @@ class WorktreeLifecycleStore:
         ):
             try:
                 self._publish_task_index(record)
-            except OSError:
+            except (OSError, WorktreeLifecycleError):
                 pass
         return record
 
@@ -1416,6 +1428,141 @@ class WorktreeLifecycleStore:
 
     # -------------------------------------------------------------- transitions
 
+    def _load_captured_workspace_record(
+        self, workspace: str | Path,
+    ) -> WorkspaceLifecycleRecord:
+        """Read the canonical record shape without borrowing orphan-adoption rules."""
+        payload = _load_json_dict(self.workspace_path_for(workspace))
+        if not isinstance(payload, dict):
+            raise OwnershipError("lifecycle record unavailable before effect")
+        try:
+            record = WorkspaceLifecycleRecord.from_dict(payload)
+            def encoded(value: Any) -> str:
+                return json.dumps(
+                    value, sort_keys=True, separators=(",", ":"), allow_nan=False,
+                )
+            if (
+                encoded(payload) != encoded(record.to_dict())
+                or record.record_id != record.compute_record_id()
+                or normalize_workspace_path(record.workspace_path)
+                != normalize_workspace_path(workspace)
+            ):
+                raise ValueError("captured lifecycle record is not canonical")
+        except (TypeError, ValueError, WorktreeLifecycleError) as exc:
+            raise OwnershipError("lifecycle record malformed before effect") from exc
+        return record
+
+    @staticmethod
+    def _effect_index_payload(record: WorkspaceLifecycleRecord) -> dict[str, Any]:
+        return {
+            "schema": WORKTREE_LIFECYCLE_SCHEMA,
+            "workspace_path": record.workspace_path,
+            "record_id": record.record_id,
+            "task_id": record.task_id,
+            "canonical_task_cid": record.canonical_task_cid,
+            "attempt": record.attempt,
+            "fence": record.fence,
+            "lease_id": record.lease_id,
+            "state": record.state.value,
+        }
+
+    def _require_effect_index_binding(
+        self, index_path: Path, record: WorkspaceLifecycleRecord,
+    ) -> None:
+        """Bind the routing index to its exact canonical workspace record.
+
+        Legacy heartbeats updated the workspace record alone. Its full record
+        remains lease/fence authority; the index is a typed identity pointer.
+        """
+        index = _load_json_dict(index_path)
+        expected = self._effect_index_payload(record)
+        identity_fields = {
+            "schema", "workspace_path", "record_id", "task_id",
+            "canonical_task_cid", "attempt",
+        }
+        if (
+            not isinstance(index, dict) or set(index) != set(expected)
+            or any(type(index.get(key)) is not type(value)
+                   for key, value in expected.items())
+            or any(index.get(key) != expected[key] for key in identity_fields)
+            or index["fence"] < 1 or not index["lease_id"]
+            or index["state"] not in {state.value for state in WorkspaceLifecycleState}
+        ):
+            raise OwnershipError("lifecycle task index changed before effect")
+
+    @contextmanager
+    def _indexed_workspace_update(
+        self, workspace: str | Path, *, extra_workspace: str | Path | None = None,
+    ) -> Iterator[None]:
+        """Make every legacy index writer respect acquisition's lock order."""
+        record_path = self.workspace_path_for(workspace)
+        if not os.path.lexists(record_path):
+            with serialized_lock_update(record_path):
+                if os.path.lexists(record_path):
+                    raise OwnershipError("lifecycle appeared during index lock acquisition")
+                yield
+            return
+        initial = self._load_captured_workspace_record(workspace)
+        index_path = self.task_index_path_for(
+            canonical_task_cid=initial.canonical_task_cid,
+            task_id=initial.task_id, attempt=initial.attempt,
+        )
+        record_paths = {record_path}
+        if extra_workspace is not None:
+            record_paths.add(self.workspace_path_for(extra_workspace))
+        with serialized_lock_update(index_path):
+            with ExitStack() as locks:
+                for path in sorted(record_paths, key=str):
+                    locks.enter_context(serialized_lock_update(path))
+                current = self._load_captured_workspace_record(workspace)
+                if self.task_index_path_for(
+                    canonical_task_cid=current.canonical_task_cid,
+                    task_id=current.task_id, attempt=current.attempt,
+                ) != index_path:
+                    raise OwnershipError("lifecycle identity changed during index lock acquisition")
+                self._require_effect_index_binding(index_path, current)
+                yield
+
+    def _require_captured_effect_record(
+        self, expected: WorkspaceLifecycleRecord, *, allow_terminal: bool,
+    ) -> tuple[Path, Path]:
+        current = self._load_captured_workspace_record(expected.workspace_path)
+        if current != expected or (current.is_terminal and not allow_terminal):
+            raise OwnershipError("lifecycle captured record changed before effect")
+        index_path = self.task_index_path_for(
+            canonical_task_cid=expected.canonical_task_cid,
+            task_id=expected.task_id, attempt=expected.attempt,
+        )
+        self._require_effect_index_binding(index_path, expected)
+        return self.workspace_path_for(expected.workspace_path), index_path
+
+    @contextmanager
+    def _captured_effect_guard(
+        self, expected: WorkspaceLifecycleRecord, *, allow_terminal: bool = False,
+    ) -> Iterator[None]:
+        """Use acquisition's index-before-workspace lock order for an effect."""
+        from .workspace_quarantine import mutation
+
+        index_path = self.task_index_path_for(
+            canonical_task_cid=expected.canonical_task_cid,
+            task_id=expected.task_id, attempt=expected.attempt,
+        )
+        record_path = self.workspace_path_for(expected.workspace_path)
+        with mutation(Path(self.repo_root), Path(expected.workspace_path)):
+            with serialized_lock_update(index_path):
+                with serialized_lock_update(record_path):
+                    self._require_captured_effect_record(
+                        expected, allow_terminal=allow_terminal,
+                    )
+                    yield
+
+    def run_exact_owner_effect(
+        self, expected: WorkspaceLifecycleRecord, *, effect: Callable[[], Any],
+    ) -> Any:
+        """Run only while the full captured record and its index remain owned."""
+        with self._captured_effect_guard(expected):
+            return effect()
+
     def _require_owner(
         self,
         record: WorkspaceLifecycleRecord,
@@ -1445,7 +1592,7 @@ class WorktreeLifecycleStore:
         if isinstance(new_state, str):
             new_state = WorkspaceLifecycleState(new_state)
         record_path = self.workspace_path_for(workspace)
-        with serialized_lock_update(record_path):
+        with self._indexed_workspace_update(workspace):
             current = self.load_workspace(workspace)
             if current is None:
                 raise WorktreeLifecycleError("lifecycle record missing")
@@ -1577,15 +1724,10 @@ class WorktreeLifecycleStore:
                     pass
             return updated
 
-        # Lock both paths in a stable order.  When filenames collide, one
-        # advisory guard is enough (non-recursive flock would deadlock).
-        if old_path == new_path:
-            with serialized_lock_update(old_path):
-                return _rebind_body()
-        first, second = sorted([old_path, new_path], key=lambda item: str(item))
-        with serialized_lock_update(first):
-            with serialized_lock_update(second):
-                return _rebind_body()
+        with self._indexed_workspace_update(
+            old_normalized, extra_workspace=new_normalized,
+        ):
+            return _rebind_body()
 
     def mark_active(
         self,
@@ -1648,7 +1790,7 @@ class WorktreeLifecycleStore:
         """Heartbeat: advance fence and push expiry without changing state."""
 
         record_path = self.workspace_path_for(workspace)
-        with serialized_lock_update(record_path):
+        with self._indexed_workspace_update(workspace):
             current = self.load_workspace(workspace)
             if current is None:
                 raise WorktreeLifecycleError("lifecycle record missing")
@@ -1663,6 +1805,13 @@ class WorktreeLifecycleStore:
                 expires_at=now + self.lease_seconds,
             )
             _atomic_write_json(record_path, updated.to_dict())
+            _atomic_write_json(
+                self.task_index_path_for(
+                    canonical_task_cid=updated.canonical_task_cid,
+                    task_id=updated.task_id, attempt=updated.attempt,
+                ),
+                self._effect_index_payload(updated),
+            )
             return updated
 
     # ---------------------------------------------------------------- cleanup
@@ -1835,7 +1984,7 @@ class WorktreeLifecycleStore:
 
         clock_now = float(self.clock() if now is None else now)
         record_path = self.workspace_path_for(workspace)
-        with serialized_lock_update(record_path):
+        with self._indexed_workspace_update(workspace):
             current = self.load_workspace(workspace)
             if current is None:
                 return None
@@ -1855,7 +2004,7 @@ class WorktreeLifecycleStore:
                 lease_id=reclaimer_lease_id or current.lease_id,
             )
             _atomic_write_json(record_path, updated.to_dict())
-            self._publish_task_index(updated)
+            self._publish_task_index(updated, _locked=True)
             return updated
 
     @_workspace_mutation_boundary("workspace")
@@ -1885,7 +2034,7 @@ class WorktreeLifecycleStore:
         expected_repo = normalize_workspace_path(self.repo_root)
         clock_now = float(self.clock() if now is None else now)
         record_path = self.workspace_path_for(workspace)
-        with serialized_lock_update(record_path):
+        with self._indexed_workspace_update(workspace):
             current = self.load_workspace(workspace)
             if current is None or current.is_terminal:
                 return None
@@ -1978,7 +2127,7 @@ class WorktreeLifecycleStore:
         """Remove the lifecycle record only when fence (and optional lease) match."""
 
         record_path = self.workspace_path_for(workspace)
-        with serialized_lock_update(record_path):
+        with self._indexed_workspace_update(workspace):
             current = self.load_workspace(workspace)
             if current is None:
                 return True
