@@ -63,6 +63,66 @@ from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
 POLICY_PATH = "implementation_plan/policies/analyzer-approvals.json"
 
 
+@pytest.fixture(autouse=True)
+def _isolated_provider_route_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep CLI argument-parser exports from leaking into another fixture."""
+    for name in (
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        implementation_daemon_module._GROK_MODEL_ENV,
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+        "IMPLEMENTATION_DAEMON_COMMAND",
+    ):
+        # Set even absent fields so monkeypatch restores parser-created values.
+        monkeypatch.setenv(name, "")
+
+
+def _sealed_mock_provider(
+    daemon: PortalImplementationDaemon,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Use the native six-field route with an explicit mocked process boundary.
+
+    Availability is a fixture seam. Neither provider executable can make a
+    model call, even if a test accidentally reaches the process boundary.
+    """
+    route = implementation_daemon_module._CANONICAL_INVOCATION_NULL_GROK_ROUTE
+    values = {
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV: route.primary_provider_id,
+        implementation_daemon_module._GROK_MODEL_ENV: route.primary_model_id,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV: route.fallback_provider_id,
+        implementation_daemon_module._CODEX_MODEL_ENV: route.fallback_model_id,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV: route.fallback_trigger,
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV: route.fallback_reasoning_effort,
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    daemon.implementation_command = ""
+    stub = tmp_path / "provider-boundary-must-be-mocked"
+    stub.write_text("#!/bin/sh\nexit 97\n", encoding="utf-8")
+    stub.chmod(0o700)
+    monkeypatch.setattr(
+        implementation_daemon_module, "_grok_binary", lambda: str(stub)
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module, "_grok_cli_available", lambda: True
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_trusted_codex_quota_fallback_executable",
+        lambda **_kwargs: str(stub),
+    )
+    assert (
+        implementation_daemon_module._configured_agent_implementation_route_plan(
+            daemon.repo_root
+        )
+        == route
+    )
+
+
 def _daemon(
     tmp_path: Path,
     *,
@@ -785,10 +845,8 @@ def test_undeclared_shared_checkout_mutation_fails_before_validation_or_completi
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text('{"human_review_asserted": false}\n', encoding="utf-8")
-    daemon = _daemon(tmp_path)
+    daemon, repo, _workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    _sealed_mock_provider(daemon, tmp_path, monkeypatch)
     validation_calls: list[str] = []
     completion_calls: list[str] = []
 
@@ -844,6 +902,7 @@ def test_external_protected_update_preserves_candidate_without_consuming_attempt
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     daemon, repo, _workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    _sealed_mock_provider(daemon, tmp_path, monkeypatch)
     seeded_context_path = (
         repo / "docs" / "architecture" / "untracked-operator-context.md"
     )
@@ -915,15 +974,18 @@ def test_validation_mutation_fails_before_shared_checkout_completion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("before\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
+    daemon, repo, _workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    _sealed_mock_provider(daemon, tmp_path, monkeypatch)
     completion_calls: list[str] = []
+
+    def provider(_command, **kwargs):
+        output = Path(kwargs["cwd"]) / "src/example.py"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text("VALUE = 1\n", encoding="utf-8")
+        return subprocess.CompletedProcess(["fake-agent"], 0)
+
     monkeypatch.setattr(
-        implementation_daemon_module,
-        "run_process_group_stream",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(["fake-agent"], 0),
+        implementation_daemon_module, "run_process_group_stream", provider
     )
     monkeypatch.setattr(
         daemon,
@@ -1232,6 +1294,10 @@ def test_crash_reconciliation_accepts_missing_ephemeral_workspace_when_shared_is
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
+    proof = result.pop("reconciliation_proof")
+    assert proof["scan_outside_lease"] is True
+    assert proof["critical_section_entered"] is True
+    assert proof["lease_hold_bounded"] is True
     assert result == {
         "blocked": False,
         "reason": "crash_reconciliation_ephemeral_workspace_missing",
@@ -1310,26 +1376,16 @@ def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
         result["protected_path_reconciliation"]["reason"]
         == "crash_reconciliation_unchanged"
     )
-    assert (
-        result["worktree_lifecycle_precheck"]["reason"]
-        == "worktree_lifecycle_quiescence_verified"
-    )
-    assert (
-        result["worktree_lifecycle_reconciliation"]["finalized"]
-        is True
-    )
-    assert (
-        daemon.worktree_lifecycle.load_workspace(workspace)
-        is None
-    )
-    assert (
-        daemon.worktree_lifecycle.load_task_attempt(
-            canonical_task_cid=lifecycle.canonical_task_cid,
-            task_id=lifecycle.task_id,
-            attempt=lifecycle.attempt,
-        )
-        is None
-    )
+    terminal = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    assert terminal.record_id == lifecycle.record_id
+    assert terminal.fence == lifecycle.fence + (0 if terminal_lifecycle else 1)
+    assert result["worktree_lifecycle_reconciliation"]["reconciled"] is True
+    assert result["worktree_lifecycle_reconciliation"]["fence"] == terminal.fence
+    assert daemon.worktree_lifecycle.load_task_attempt(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id, attempt=lifecycle.attempt,
+    ) == terminal
     assert not daemon._implementation_protected_active_snapshot_path().exists()
     assert not daemon._implementation_protected_incident_path().exists()
     state = PortalTaskState.load(daemon.state_path)
@@ -1342,7 +1398,12 @@ def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
     protected.write_text("operator board revision after clean stop\n", encoding="utf-8")
     restart = daemon._reconcile_implementation_protected_path_fence()
 
-    assert restart == {"blocked": False, "reason": "no_active_snapshot"}
+    assert restart == {
+        "blocked": False,
+        "reason": "no_active_snapshot",
+        "scan_outside_lease": True,
+        "critical_section_entered": False,
+    }
     assert not daemon._implementation_protected_incident_path().exists()
 
 
@@ -1419,8 +1480,8 @@ def test_quiesced_shutdown_preserves_fence_for_live_lifecycle_owner(
         "worktree_lifecycle_reconciliation_blocked"
     )
     assert (
-        result["worktree_lifecycle_precheck"]["reason"]
-        == "worktree_lifecycle_owner_alive"
+        result["worktree_lifecycle_reconciliation"]["reason"]
+        == "worktree_lifecycle_owner_still_active"
     )
     assert snapshot_path.exists()
     assert PortalTaskState.load(
@@ -1543,48 +1604,48 @@ def test_quiesced_shutdown_phase_drift_preserves_snapshot_state_and_lock(
         "lock": lock_path.read_bytes(),
     }
     original_reconcile = (
-        daemon._reconcile_exact_quiesced_worktree_lifecycle
+        daemon.worktree_lifecycle.reconcile_exact_dead_owner_after_effect
     )
     drifted_evidence: dict[str, bytes] = {}
 
     def drift_before_finalize(*args, **kwargs):
-        if kwargs.get("action") == "finalize":
-            if phase_drift == "delete":
-                record_path.unlink()
-                index_path.unlink()
-            else:
-                record_payload = json.loads(
-                    record_path.read_text(encoding="utf-8")
-                )
-                record_payload["owner"] = ProcessBirthIdentity(
-                    pid=2**30 - 9,
-                    start_time_ticks=2,
-                    boot_id="replacement-dead-owner",
-                ).to_dict()
-                if phase_drift == "successor":
-                    record_payload["fence"] += 1
-                    record_payload["lease_id"] = "successor-lease"
-                record_path.write_text(
-                    json.dumps(record_payload),
+        # Inject drift at the actual native captured-custody second pass.
+        if phase_drift == "delete":
+            record_path.unlink()
+            index_path.unlink()
+        else:
+            record_payload = json.loads(
+                record_path.read_text(encoding="utf-8")
+            )
+            record_payload["owner"] = ProcessBirthIdentity(
+                pid=2**30 - 9,
+                start_time_ticks=2,
+                boot_id="replacement-dead-owner",
+            ).to_dict()
+            if phase_drift == "successor":
+                record_payload["fence"] += 1
+                record_payload["lease_id"] = "successor-lease"
+            record_path.write_text(
+                json.dumps(record_payload),
+                encoding="utf-8",
+            )
+            index_payload = json.loads(
+                index_path.read_text(encoding="utf-8")
+            )
+            if phase_drift == "successor":
+                index_payload["fence"] += 1
+                index_payload["lease_id"] = "successor-lease"
+                index_path.write_text(
+                    json.dumps(index_payload),
                     encoding="utf-8",
                 )
-                index_payload = json.loads(
-                    index_path.read_text(encoding="utf-8")
-                )
-                if phase_drift == "successor":
-                    index_payload["fence"] += 1
-                    index_payload["lease_id"] = "successor-lease"
-                    index_path.write_text(
-                        json.dumps(index_payload),
-                        encoding="utf-8",
-                    )
-                drifted_evidence["record"] = record_path.read_bytes()
-                drifted_evidence["index"] = index_path.read_bytes()
+            drifted_evidence["record"] = record_path.read_bytes()
+            drifted_evidence["index"] = index_path.read_bytes()
         return original_reconcile(*args, **kwargs)
 
     monkeypatch.setattr(
-        daemon,
-        "_reconcile_exact_quiesced_worktree_lifecycle",
+        daemon.worktree_lifecycle,
+        "reconcile_exact_dead_owner_after_effect",
         drift_before_finalize,
     )
 
@@ -2272,7 +2333,7 @@ def test_ephemeral_fence_waits_for_checkout_transaction_before_verifying(
         attempt=1,
         workspace_path=workspace,
     )
-    lock_path = checkout_mutation_lock_path(repo)
+    lock_path = daemon._repo_merge_lock_path()
     transaction_visible = threading.Event()
 
     def commit_peer_update() -> None:
@@ -2510,6 +2571,7 @@ def test_ephemeral_lock_retry_does_not_redispatch_provider_or_block(
     daemon, _repo, _workspace, _protected = (
         _protected_git_worktree_daemon(tmp_path)
     )
+    _sealed_mock_provider(daemon, tmp_path, monkeypatch)
     task = _task(outputs=["src/example.py"])
     state = PortalTaskState()
     provider_workspaces: list[Path] = []
@@ -2638,10 +2700,8 @@ def test_shared_terminal_verification_deferral_does_not_consume_attempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("unchanged\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
+    daemon, repo, _workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    _sealed_mock_provider(daemon, tmp_path, monkeypatch)
     task = _task(outputs=["src/example.py"])
     canonical_task_cid = daemon._canonical_ref(task)
     state = PortalTaskState(
@@ -2704,13 +2764,16 @@ def test_shared_terminal_verification_deferral_does_not_consume_attempt(
     }
 
 
+@pytest.mark.parametrize("acquire_successor", [False, True])
 def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    acquire_successor: bool,
 ) -> None:
     daemon, _repo, _workspace, _protected = (
         _protected_git_worktree_daemon(tmp_path)
     )
+    _sealed_mock_provider(daemon, tmp_path, monkeypatch)
     task = _task(outputs=["src/example.py"])
     canonical_task_cid = daemon._canonical_ref(task)
     state = PortalTaskState(
@@ -2841,17 +2904,18 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
     assert cleanup_authorization.reason == (
         "verification_deferred_candidate_recovery_required"
     )
-    retry_lifecycle = daemon.worktree_lifecycle.begin_preparing(
-        task_id=task.task_id,
-        canonical_task_cid=canonical_task_cid,
-        attempt=3,
-        lane_id=daemon._worktree_lifecycle_lane_id(),
-        workspace_path=tmp_path / "worktrees" / "retry-attempt-3",
-        branch=f"{result['branch']}-retry",
-        merge_target="main",
-        state_dir=str(daemon.state_path.parent),
-    )
-    assert retry_lifecycle.state.value == "preparing"
+    if acquire_successor:
+        retry_lifecycle = daemon.worktree_lifecycle.begin_preparing(
+            task_id=task.task_id,
+            canonical_task_cid=canonical_task_cid,
+            attempt=3,
+            lane_id=daemon._worktree_lifecycle_lane_id(),
+            workspace_path=tmp_path / "worktrees" / "retry-attempt-3",
+            branch=f"{result['branch']}-retry",
+            merge_target="main",
+            state_dir=str(daemon.state_path.parent),
+        )
+        assert retry_lifecycle.state.value == "preparing"
     assert provider_inheritance == [False]
     assert queue_outcomes == []
     assert diagnostics == []
@@ -2893,6 +2957,41 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         "retained_candidate = True\n",
         encoding="utf-8",
     )
+    if acquire_successor:
+        # The independently admitted successor owns this same task/attempt.
+        # Reject its predecessor before any commit, rescue ref or cleanup.
+        index_path = daemon.worktree_lifecycle.task_index_path_for(
+            canonical_task_cid=canonical_task_cid, task_id=task.task_id, attempt=3,
+        )
+        record_path = daemon.worktree_lifecycle.workspace_path_for(retained_path)
+
+        def unchanged_evidence():
+            return {
+                "index": index_path.read_bytes(),
+                "lifecycle": record_path.read_bytes(),
+                "refs": _git(daemon.repo_root, "show-ref"),
+                "head": _git(retained_path, "rev-parse", "HEAD"),
+                "status": _git(retained_path, "status", "--porcelain"),
+                "candidate": retained_output.read_bytes(),
+                "state": daemon.state_path.read_bytes(),
+            }
+
+        before = unchanged_evidence()
+        with pytest.raises(
+            worktree_lifecycle_module.OwnershipError,
+            match="lifecycle task index changed before effect",
+        ):
+            daemon.recover_retained_verification_deferred_candidate(
+                task=task, retained_candidate_receipt=retained_receipt,
+            )
+        assert unchanged_evidence() == before
+        assert daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=canonical_task_cid, task_id=task.task_id, attempt=3,
+        ) == retry_lifecycle
+        assert provider_inheritance == [False]
+        assert queue_outcomes == [] and diagnostics == []
+        return
+
     original_commit = daemon._commit_worktree_changes
     monkeypatch.setattr(
         daemon,
@@ -2925,6 +3024,8 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         "_commit_worktree_changes",
         original_commit,
     )
+
+    unchecked_cleanup = daemon._cleanup_merged_worktree_unchecked
 
     def exact_owner_cleanup(
         worktree_path,
@@ -2964,7 +3065,7 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         assert exact_owner.reason == (
             "verification_deferred_recovery_owner_after_rescue"
         )
-        return original_cleanup(
+        return unchecked_cleanup(
             worktree_path,
             branch_name,
             reusable=reusable,
@@ -2973,7 +3074,7 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
 
     monkeypatch.setattr(
         daemon,
-        "_cleanup_merged_worktree",
+        "_cleanup_merged_worktree_unchecked",
         exact_owner_cleanup,
     )
     recovery = daemon.recover_retained_verification_deferred_candidate(
@@ -4091,7 +4192,7 @@ def test_generated_board_producer_retains_lease_for_unsafe_protected_output(
             callback=unsafe_producer,
         )
 
-    lock_path = checkout_mutation_lock_path(repo)
+    lock_path = supervisor._repo_merge_lock_path()
     assert lock_path.exists()
     assert json.loads(lock_path.read_text(encoding="utf-8"))["lease_id"]
     events = [
@@ -4275,7 +4376,7 @@ def test_supervisor_does_not_freeze_on_peer_worktree_merge_lock(
     tmp_path: Path,
 ) -> None:
     supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
-    lock_path = checkout_mutation_lock_path(repo)
+    lock_path = supervisor._repo_merge_lock_path()
     metadata = checkout_lock_metadata(
         kind="merge",
         repo_root=repo,
@@ -4293,11 +4394,12 @@ def test_supervisor_does_not_freeze_on_peer_worktree_merge_lock(
     )
     lock_path.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
     lock_path.chmod(0o600)
+    before = lock_path.read_bytes()
     result = supervisor._recover_retained_generated_checkout_lease()
-    assert result.get("retained_lease") is False
-    assert result.get("peer_merge_lock") is True
-    assert result.get("released_stale_merge_lock") is True
-    assert not lock_path.exists()
+    assert result["blocked"] is False and result["pending"] is True
+    assert result["adopted"] is False and result["recovered"] is False
+    assert result["reason"] == "daemon_protected_checkout_recovery_pending"
+    assert lock_path.read_bytes() == before
 
 
 def test_generated_dirty_repair_recovers_retained_lease_when_disabled(
@@ -4338,7 +4440,7 @@ def test_fresh_generated_dirty_repair_journals_before_callback_and_retains(
 
     def incomplete_repair() -> list[str]:
         lease = checkout_lock_module.read_checkout_mutation_lease(
-            checkout_mutation_lock_path(repo)
+            supervisor._repo_merge_lock_path()
         )
         assert lease is not None
         observed_journal.update(lease.metadata)
@@ -4360,7 +4462,7 @@ def test_fresh_generated_dirty_repair_journals_before_callback_and_retains(
         observed_journal["protected_recovery_owner"]
         == "implementation_supervisor"
     )
-    assert checkout_mutation_lock_path(repo).exists()
+    assert supervisor._repo_merge_lock_path().exists()
     assert supervisor._retained_generated_checkout_lease() is True
 
 
@@ -4394,7 +4496,7 @@ def test_generated_board_callback_exception_survives_guard_failure(
             ),
         )
 
-    assert checkout_mutation_lock_path(repo).exists()
+    assert supervisor._repo_merge_lock_path().exists()
     assert supervisor._supervisor_checkout_transaction_depth() == 0
     assert supervisor._retained_generated_checkout_lease() is True
 
@@ -4420,7 +4522,7 @@ def test_generated_board_replacement_failed_release_is_not_durable(
             callback=lambda: ["unchanged"],
         )
 
-    assert checkout_mutation_lock_path(repo).exists()
+    assert supervisor._repo_merge_lock_path().exists()
     assert supervisor._retained_generated_checkout_lease() is True
     assert supervisor._current_supervisor_checkout_lease() is not None
 
@@ -4568,7 +4670,7 @@ def test_supervisor_adopts_and_recovers_journal_after_restart(
 
     def interrupted_producer() -> list[str]:
         lease = checkout_lock_module.read_checkout_mutation_lease(
-            checkout_mutation_lock_path(repo)
+            supervisor._repo_merge_lock_path()
         )
         assert lease is not None
         observed_journal.update(lease.metadata)
@@ -4604,7 +4706,7 @@ def test_supervisor_adopts_and_recovers_journal_after_restart(
     assert intent["protected_paths"] == ["tasks.todo.md"]
 
     stale = checkout_lock_module.read_checkout_mutation_lease(
-        checkout_mutation_lock_path(repo)
+        supervisor._repo_merge_lock_path()
     )
     assert stale is not None
     dead_owner = checkout_lock_module.update_checkout_mutation_lease(
@@ -4622,7 +4724,7 @@ def test_supervisor_adopts_and_recovers_journal_after_restart(
     assert result["recovered"] is True
     assert result["retained_lease"] is False
     assert result["adoption"]["adopted"] is True
-    assert not checkout_mutation_lock_path(repo).exists()
+    assert not supervisor._repo_merge_lock_path().exists()
     assert _git(repo, "status", "--porcelain", "--", "tasks.todo.md") == ""
     assert _git(repo, "log", "-1", "--pretty=%ae") == (
         BACKLOG_REFINERY_AUTHOR_EMAIL
@@ -7272,6 +7374,7 @@ def test_ephemeral_timeout_mutation_is_not_validated_committed_or_enqueued(
         use_ephemeral_worktree=True,
         worktree_root=tmp_path / "worktrees",
     )
+    _sealed_mock_provider(daemon, tmp_path, monkeypatch)
     calls: list[str] = []
 
     def seed(worktree_path: Path, _branch: str, *, task=None) -> str:

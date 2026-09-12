@@ -1484,6 +1484,37 @@ class WorktreeLifecycleStore:
         with self._captured_effect_guard(expected):
             return effect()
 
+    def recover_exact_terminal_after_effect(
+        self, expected: WorkspaceLifecycleRecord, *, reason: str,
+        prepare: Callable[[], Any],
+        cleanup: Callable[[Any, WorkspaceLifecycleRecord], Any],
+    ) -> tuple[Any, WorkspaceLifecycleRecord]:
+        """Keep terminal candidate custody through preservation and cleanup.
+
+        Preparation must positively preserve the candidate before cleanup is
+        authorized. Both callbacks run under the existing index/workspace
+        guards and must not reacquire them. A failed preparation leaves the
+        original fence; a failed cleanup retains its authorized fence.
+        """
+        if not expected.is_terminal:
+            raise OwnershipError("retained recovery requires a terminal lifecycle")
+        with self._captured_effect_guard(expected, allow_terminal=True):
+            prepared = prepare()
+            record_path, index_path = self._require_captured_effect_record(
+                expected, allow_terminal=True,
+            )
+            authorized = replace(
+                expected, fence=expected.fence + 1,
+                updated_at=float(self.clock()), terminal_reason=str(reason),
+            )
+            _atomic_write_json(record_path, authorized.to_dict())
+            _atomic_write_json(index_path, self._effect_index_payload(authorized))
+            result = cleanup(prepared, authorized)
+            self._require_captured_effect_record(authorized, allow_terminal=True)
+            record_path.unlink()
+            index_path.unlink()
+            return result, authorized
+
     def finalize_exact_after_effect(
         self, expected: WorkspaceLifecycleRecord, *, reason: str,
         effect: Callable[[], Any],
@@ -2029,6 +2060,7 @@ class WorktreeLifecycleStore:
         reclaimer: ProcessBirthIdentity | None = None,
         reason: str = "controlled_restart_dead_owner",
         now: float | None = None,
+        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord | None:
         """Fence a dead same-lane owner during an explicit controlled restart.
 
@@ -2046,6 +2078,8 @@ class WorktreeLifecycleStore:
         record_path = self.workspace_path_for(workspace)
         with self._indexed_workspace_update(workspace):
             current = self.load_workspace(workspace)
+            if expected_record is not None and current != expected_record:
+                return None
             if current is None or current.is_terminal:
                 return None
             if (
@@ -2097,6 +2131,58 @@ class WorktreeLifecycleStore:
                 },
             )
             return updated
+
+    def reconcile_exact_dead_owner_after_effect(
+        self,
+        expected: WorkspaceLifecycleRecord,
+        *,
+        expected_state_dir: str | Path,
+        effect: Callable[[], Any],
+        reason: str = "controlled_shutdown_quiesced_owner",
+    ) -> tuple[Any, WorkspaceLifecycleRecord | None]:
+        """Retain the original lifecycle generation across a restart effect.
+
+        Native adoption and phase changes use these same index/workspace locks.
+        A refusal or exception from the effect leaves the lifecycle untouched;
+        it never supplies authority to adopt a newer owner seen on a later pass.
+        """
+        with self._captured_effect_guard(expected, allow_terminal=True):
+            if (
+                not expected.repo_root or not expected.state_dir
+                or not str(expected_state_dir).strip()
+                or normalize_workspace_path(expected.repo_root)
+                != normalize_workspace_path(self.repo_root)
+                or normalize_workspace_path(expected.state_dir)
+                != normalize_workspace_path(expected_state_dir)
+                or (
+                    not expected.is_terminal
+                    and owner_liveness(expected.owner, proc_root=self.proc_root)
+                    is not OwnerLiveness.DEAD
+                )
+            ):
+                raise OwnershipError("controlled restart owner is not the captured dead lane owner")
+            result = effect()
+            if isinstance(result, Mapping) and result.get("blocked", False):
+                return result, None
+            record_path, index_path = self._require_captured_effect_record(
+                expected, allow_terminal=True,
+            )
+            terminal = expected
+            if not expected.is_terminal:
+                now = float(self.clock())
+                terminal = replace(
+                    expected,
+                    state=WorkspaceLifecycleState.TERMINAL,
+                    owner=current_process_birth(proc_root=self.proc_root),
+                    lease_id=new_lease_id(seed="controlled-restart-reclaim"),
+                    fence=expected.fence + 1,
+                    updated_at=now,
+                    expires_at=now,
+                    terminal_reason=reason,
+                )
+                _atomic_write_json(record_path, terminal.to_dict())
+                _atomic_write_json(index_path, self._effect_index_payload(terminal))
+            return result, terminal
 
     def reclaim_dead_owners_for_controlled_restart(
         self,
