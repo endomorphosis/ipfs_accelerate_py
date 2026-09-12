@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
-from test_agent_supervisor_implementation_protected_paths import (
+from test.api.test_agent_supervisor_implementation_protected_paths import (
     _persist_live_shaped_interrupted_attempt,
     _protected_git_worktree_daemon,
     _protected_git_worktree_supervisor,
