@@ -133302,9 +133302,19 @@ def main(
     handlers_installed = threading.current_thread() is threading.main_thread()
     previous_term: Any = None
     previous_int: Any = None
+    stop_exit_code: int | None = None
 
     def request_stop(signum: int, _frame: object) -> None:
-        raise SystemExit(128 + signum)
+        nonlocal stop_exit_code
+        if stop_exit_code is None:
+            stop_exit_code = 128 + signum
+        raise SystemExit(stop_exit_code)
+
+    def raise_if_stop_requested() -> None:
+        # Native adapters can catch or translate SystemExit. Retain the first
+        # stop request so returning from one cannot start another daemon pass.
+        if stop_exit_code is not None:
+            raise SystemExit(stop_exit_code)
 
     if handlers_installed:
         previous_term = signal.signal(signal.SIGTERM, request_stop)
@@ -133346,9 +133356,11 @@ def main(
             return
         last_idle_info_at: float | None = None
         while True:
+            raise_if_stop_requested()
             try:
                 result = _lgcvf_daemon_call("runtime_pass", daemon.run_once)
             except BaseException as exc:
+                raise_if_stop_requested()
                 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
                     TransactionConflictKind,
                     TransactionError,
@@ -133384,11 +133396,13 @@ def main(
                     "implementation_result": None,
                     "backoff_seconds": 1.0,
                 }
+            raise_if_stop_requested()
             materialize_database_task_state_compatibility_projection(
                 daemon,
                 state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
                 result=result,
             )
+            raise_if_stop_requested()
             now = time.monotonic()
             emit_idle_info = (
                 bool(args.once)
@@ -133403,6 +133417,7 @@ def main(
             )
             if daemon_pass_is_idle(result) and emit_idle_info:
                 last_idle_info_at = now
+            raise_if_stop_requested()
             if args.once:
                 break
             wait_timeout = bounded_daemon_wait_timeout(
@@ -133410,6 +133425,7 @@ def main(
                 default_timeout=args.interval,
             )
             wait_for_wake = getattr(daemon, "wait_for_wake", None)
+            raise_if_stop_requested()
             if callable(wait_for_wake):
                 wait_for_wake(timeout=wait_timeout)
             else:
