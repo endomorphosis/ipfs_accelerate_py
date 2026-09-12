@@ -947,3 +947,142 @@ def test_current_head_denies_missing_intermediate_history(recovery_owner, kind):
         )
         with pytest.raises(TypedStateOwnerError):
             own.api.get_receipt("train:gapped")
+
+
+@pytest.mark.parametrize("boundary", ["bind", "migration_replay"])
+@pytest.mark.parametrize("kind", ["cursor", "receipt"])
+@pytest.mark.parametrize("corruption", ["digest", "noncanonical"])
+def test_native_admission_checks_intermediate_content(
+    recovery_owner, boundary, kind, corruption
+):
+    """Intact endpoints/counts cannot qualify substituted middle records."""
+    own = recovery_owner
+    if kind == "cursor":
+        advance(own.api, operation_id="history:first")
+        advance(own.api, operation_id="history:second", value="request:128")
+        table, column, revision = "legacy_merge_recovery_cursor_history", "cursors_json", 1
+    else:
+        lease = own.api.acquire_consumer_lease(operation_id="history:lease")
+        head = {"revision": 0, "receipt_cid": ""}
+        for version in range(1, 4):
+            head = own.api.publish_receipt(
+                "train:preserved", {"version": version},
+                expected_revision=head["revision"],
+                expected_receipt_cid=head["receipt_cid"],
+                lease_id=lease["lease_id"], fence_epoch=lease["fence_epoch"],
+                operation_id=f"history:receipt:{version}",
+            )["head"]
+        table, column, revision = "legacy_merge_recovery_receipt_versions", "receipt_json", 2
+    raw = own.connection.execute(
+        f"SELECT {column} FROM {table} WHERE revision=?", [revision]
+    ).fetchone()[0]
+    changed = json.loads(raw)
+    if corruption == "digest":
+        changed["completed_requests" if kind == "cursor" else "version"] = "substituted"
+        replacement = recovery._json(changed)
+    else:
+        replacement = json.dumps(changed, indent=2)
+    own.connection.execute(
+        f"UPDATE {table} SET {column}=? WHERE revision=?", [replacement, revision]
+    )
+    before = own.connection.execute(f"SELECT * FROM {table} ORDER BY ALL").fetchall()
+    # Establish the regression: the current operational head is intact. Full
+    # history qualification belongs at the native admission boundary, not on
+    # each polling read of an already admitted owner.
+    if kind == "cursor":
+        assert own.api.load_cursors()["revision"] == 2
+    else:
+        assert own.api.get_receipt("train:preserved")["revision"] == 3
+    with pytest.raises(recovery.OwnerRecoveryRuntimeError):
+        if boundary == "bind":
+            recovery._OwnerRecoveryRuntimeService(
+                own.gateway, expected_identity=dict(own.gateway.identity),
+                repository_id="repo:one", target_branch="main",
+            )
+        else:
+            own.gateway.provision_legacy_merge_recovery_schema(
+                expected_identity=dict(own.gateway.identity),
+                repository_id="repo:one", target_branch="main",
+                migration_id="migration:reviewed", scope_bindings=[SCOPE],
+            )
+    assert own.connection.execute(f"SELECT * FROM {table} ORDER BY ALL").fetchall() == before
+
+
+@pytest.mark.parametrize("corrupt_second_page", [False, True])
+def test_native_history_audit_reads_beyond_first_page(recovery_owner, corrupt_second_page):
+    own = recovery_owner
+    cursors = own.api.load_cursors()["cursors"]
+    for revision in range(1, 131):
+        cursors = {**cursors, "completed_requests": f"request:{revision}"}
+        cid, raw = recovery._cid(cursors), recovery._json(cursors)
+        own.connection.execute(
+            "INSERT INTO legacy_merge_recovery_cursor_history VALUES (?,?,?,?)",
+            [own.scope_cid, revision, cid, raw],
+        )
+    own.connection.execute(
+        "UPDATE legacy_merge_recovery_cursors SET revision=?,state_cid=?,cursors_json=? WHERE scope_cid=?",
+        [revision, cid, raw, own.scope_cid],
+    )
+    if corrupt_second_page:
+        own.connection.execute(
+            "UPDATE legacy_merge_recovery_cursor_history SET state_cid='substituted' WHERE revision=129"
+        )
+    before = own.connection.execute(
+        "SELECT * FROM legacy_merge_recovery_cursor_history ORDER BY revision"
+    ).fetchall()
+
+    def bind():
+        return recovery._OwnerRecoveryRuntimeService(
+            own.gateway, expected_identity=dict(own.gateway.identity),
+            repository_id="repo:one", target_branch="main",
+        )
+
+    if corrupt_second_page:
+        with pytest.raises(recovery.OwnerRecoveryRuntimeError, match="content identity"):
+            bind()
+    else:
+        bind()
+    assert own.connection.execute(
+        "SELECT * FROM legacy_merge_recovery_cursor_history ORDER BY revision"
+    ).fetchall() == before
+    assert own.api.load_cursors()["revision"] == 130
+
+
+@pytest.mark.parametrize("limit", ["MAX_PRESERVED_HISTORY_ROWS", "MAX_PRESERVED_HISTORY_BYTES"])
+def test_native_history_bound_refusal_does_not_mutate_or_retire_owner(
+    recovery_owner, monkeypatch, limit
+):
+    own = recovery_owner
+    head = own.api.load_cursors()
+    monkeypatch.setattr(recovery, limit, 0)
+    with pytest.raises(recovery.OwnerRecoveryRuntimeError, match="bound"):
+        own.gateway.provision_legacy_merge_recovery_schema(
+            expected_identity=dict(own.gateway.identity), repository_id="repo:one",
+            target_branch="main", migration_id="migration:new", scope_bindings=[SCOPE],
+        )
+    assert own.connection.execute(
+        "SELECT COUNT(*) FROM legacy_merge_recovery_migrations WHERE migration_id='migration:new'"
+    ).fetchone()[0] == 0
+    assert own.api.load_cursors() == head
+    assert not own.connection._owner_binding_retired
+
+
+def test_native_history_audit_cannot_pad_earlier_cursor_profile(recovery_owner):
+    own = recovery_owner
+    first = advance(own.api, operation_id="profile:first")
+    advance(own.api, operation_id="profile:second", value="request:128")
+    legacy = {k: v for k, v in first["cursors"].items() if not k.startswith("false_")}
+    assert len(legacy) == 5
+    raw = recovery._json(legacy)
+    own.connection.execute(
+        "UPDATE legacy_merge_recovery_cursor_history SET state_cid=?,cursors_json=? WHERE revision=1",
+        [recovery._cid(legacy), raw],
+    )
+    with pytest.raises(recovery.OwnerRecoveryRuntimeError, match="closed contract"):
+        recovery._OwnerRecoveryRuntimeService(
+            own.gateway, expected_identity=dict(own.gateway.identity),
+            repository_id="repo:one", target_branch="main",
+        )
+    assert own.connection.execute(
+        "SELECT cursors_json FROM legacy_merge_recovery_cursor_history WHERE revision=1"
+    ).fetchone()[0] == raw
