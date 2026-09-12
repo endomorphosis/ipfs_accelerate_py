@@ -400,9 +400,20 @@ Implement
 the reusable fix and native recovery needed to restore progress, with regression
 coverage in an isolated branch or
 worktree of ipfs_accelerate_py. Validate the affected code. Preserve all dirty
-user work. Integrate reusable tested fixes with the respective GitHub main
-using normal non-forced pushes, then deploy through the board's existing
-sealed recovery/requalification controls. Source/configuration changes,
+user work. Publish reusable tested fixes to an isolated repair branch and open
+or update a pull request against the respective GitHub main. Merge only after
+GitHub confirms the exact pull request head is mergeable, all required checks
+have succeeded, and required reviews are satisfied. Recheck the head immediately
+before a normal merge with --match-head-commit. Never push directly to GitHub
+main or use --admin, a ruleset bypass, or a branch-protection bypass. A normal
+non-forced push can still bypass required checks when this account has bypass
+rights; successful push output is not evidence that repository rules passed.
+Local tests do not replace required hosted checks. If checks cannot start due
+to billing, quota, or an outage, retain the tested branch and pull request,
+report the specific blocker, and let a later repair retry the normal checks.
+Do not disable repository rules or treat unavailable checks as successful.
+Deploy through the board's existing sealed recovery/requalification controls.
+Source/configuration changes,
 controlled owner restarts, and reviewed recovery transitions needed for this
 task are authorized. If the existing transition cannot admit a necessary fix,
 implement and test the missing transition while preserving its real acceptance
@@ -419,7 +430,9 @@ accepted candidate worktrees through the existing merge queue. Resolve local
 origin chains to their actual GitHub repositories. Publish submodules first,
 then validated parent integration against freshly fetched origin/main. Resolve
 conflicts with tests and preserved history; never force push. Existing generic
-publisher: ipfs_accelerate_py.agent_supervisor.rescue.fleet_completion.
+publisher: ipfs_accelerate_py.agent_supervisor.rescue.fleet_completion. Its
+publication path must enforce the same pull request and required-check policy;
+if it still pushes directly to main, repair and test that path before using it.
 When completion is ready, configure this board's vetted publication manifest
 and real live completion-gate command in fleet.json so the watchdog can
 independently repeat and verify publication. Never install a constant-true gate.

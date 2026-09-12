@@ -71,6 +71,9 @@ def isolated_git_environment(monkeypatch):
 
 def local_publication(monkeypatch):
     monkeypatch.setattr(fleet, "_github_origin", lambda root: git(root, "remote", "get-url", "origin"))
+    # Local bare repositories stand in for GitHub's normal PR merge service.
+    monkeypatch.setattr(fleet, "_merge_reviewed_pull_request",
+                        lambda root, remote, candidate: git(root, "push", remote, f"{candidate}:refs/heads/main"))
 
 
 def test_publishes_accepted_source_and_retries_without_duplicate_commit(tmp_path, monkeypatch):
@@ -280,3 +283,127 @@ def test_timeout_kills_descendants_even_when_they_redirect_output(tmp_path):
         time.sleep(.02)
     else:
         pytest.fail("timed-out command left a live descendant")
+
+
+def github_pr(monkeypatch, *, patch=None, checks_fail=False, second_patch=None, listed=True):
+    candidate = "a" * 40
+    calls = []
+    views = 0
+    ready = {"number": 7, "state": "OPEN", "isDraft": False, "baseRefName": "main",
+             "headRefOid": candidate, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+             "reviewDecision": "APPROVED"}
+
+    def run(argv, root, *args):
+        nonlocal views
+        calls.append(argv)
+        if argv[:3] == ["gh", "pr", "list"]:
+            return json.dumps([{"number": 7, "headRefOid": candidate}] if listed else [])
+        if argv[:3] == ["gh", "pr", "view"]:
+            views += 1
+            return json.dumps({**ready, **(patch or {}), **(second_patch or {} if views == 2 else {})})
+        if argv[:3] == ["gh", "pr", "checks"] and checks_fail:
+            raise fleet.PublicationHold("hosted check unavailable due to billing")
+        return ""
+
+    monkeypatch.setattr(fleet, "_run", run)
+    return candidate, calls
+
+
+def test_github_publication_merges_exact_reviewed_head_without_direct_main_push(tmp_path, monkeypatch):
+    candidate, calls = github_pr(monkeypatch)
+    fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
+    pushes = [argv for argv in calls if argv[:2] == ["git", "push"]]
+    assert pushes == [["git", "push", "https://github.com/owner/repo.git",
+                       f"{candidate}:refs/heads/fleet-publication/{candidate}"]]
+    assert ["gh", "pr", "checks", "7", "--repo", "owner/repo", "--required"] in calls
+    assert calls[-1] == ["gh", "pr", "merge", "7", "--repo", "owner/repo", "--merge",
+                         "--match-head-commit", candidate]
+    assert not any("--admin" in argv or "--auto" in argv for argv in calls)
+
+
+@pytest.mark.parametrize("patch", [
+    {"mergeStateStatus": "BLOCKED"}, {"mergeStateStatus": "UNKNOWN"},
+    {"mergeStateStatus": "BEHIND"}, {"mergeable": "CONFLICTING"},
+    {"reviewDecision": "REVIEW_REQUIRED"}, {"reviewDecision": "CHANGES_REQUESTED"},
+    {"reviewDecision": None}, {"headRefOid": "b" * 40}, {"isDraft": True},
+    {"baseRefName": "other"}, {"state": "CLOSED"},
+])
+def test_unready_github_pr_cannot_use_account_bypass_rights(tmp_path, monkeypatch, patch):
+    candidate, calls = github_pr(monkeypatch, patch=patch)
+    with pytest.raises(fleet.PublicationHold, match="not ready"):
+        fleet._merge_reviewed_pull_request(tmp_path, "git@github.com:owner/repo.git", candidate)
+    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+
+
+def test_failed_or_unavailable_hosted_checks_hold_despite_local_validation(tmp_path, monkeypatch):
+    candidate, calls = github_pr(monkeypatch, checks_fail=True)
+    with pytest.raises(fleet.PublicationHold, match="checks are unsuccessful or unavailable"):
+        fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo", candidate)
+    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+
+
+def test_pr_head_movement_during_checks_refuses_merge(tmp_path, monkeypatch):
+    candidate, calls = github_pr(monkeypatch, second_patch={"headRefOid": "b" * 40})
+    with pytest.raises(fleet.PublicationHold, match="not ready"):
+        fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo", candidate)
+    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+
+
+def test_new_pr_waits_for_hosted_checks(tmp_path, monkeypatch):
+    candidate, calls = github_pr(monkeypatch, listed=False)
+    with pytest.raises(fleet.PublicationHold, match="pull request created"):
+        fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo", candidate)
+    assert any(argv[:3] == ["gh", "pr", "create"] for argv in calls)
+    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+
+
+def test_pending_pr_retry_reuses_validated_commit_and_checkout(tmp_path, monkeypatch):
+    root, remote = repository(tmp_path)
+    commit(root, "accepted feature")
+    config, _ = manifest(tmp_path, {"repo": root})
+    local_publication(monkeypatch)
+    merge = fleet._merge_reviewed_pull_request
+    attempted = []
+
+    def pending(integration, remote, candidate):
+        attempted.append((integration, candidate))
+        if len(attempted) == 1:
+            raise fleet.PublicationHold("required checks pending")
+        merge(integration, remote, candidate)
+
+    monkeypatch.setattr(fleet, "_merge_reviewed_pull_request", pending)
+    first = fleet.publish_completed_board(config, tmp_path / "state")
+    assert first["status"] == "held"
+    second = fleet.publish_completed_board(config, tmp_path / "state")
+    assert second["status"] == "published", second
+    assert attempted[0] == attempted[1]
+    assert len(list((tmp_path / "state/integrations").iterdir())) == 1
+
+
+@pytest.mark.parametrize("mutation", ["dirty", "head", "record"])
+def test_pending_pr_retry_refuses_changed_retained_candidate(tmp_path, monkeypatch, mutation):
+    root, _ = repository(tmp_path)
+    commit(root, "accepted feature")
+    config, _ = manifest(tmp_path, {"repo": root})
+    local_publication(monkeypatch)
+    calls = []
+
+    def pending(*args):
+        calls.append(args)
+        raise fleet.PublicationHold("required checks pending")
+
+    monkeypatch.setattr(fleet, "_merge_reviewed_pull_request", pending)
+    first = fleet.publish_completed_board(config, tmp_path / "state")
+    integration = Path(first["repositories"][0]["integration_worktree"])
+    if mutation == "dirty":
+        (integration / "baseline.txt").write_text("unexpected changes")
+    elif mutation == "head":
+        commit(integration, "unexpected commit")
+    else:
+        record = next((tmp_path / "state").glob("candidate-*.json"))
+        value = json.loads(record.read_text())
+        value["integration"] = str(root)
+        record.write_text(json.dumps(value))
+    second = fleet.publish_completed_board(config, tmp_path / "state")
+    assert second["status"] == "held"
+    assert len(calls) == 1
