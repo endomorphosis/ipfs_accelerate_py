@@ -213,6 +213,87 @@ class Runner:
         return {"returncode": 0, "stdout": "private output", "stderr": ""}
 
 
+def _blocked_with_ready_owner(**changes):
+    observation = _native_observation(health="blocked", reason_codes=["unsettled_goals"])
+    observation["details"].update(
+        owner_ready=True,
+        owner={"pid": 42, "start_time_ticks": 12345, "boot_id": "current-boot"},
+        owner_writer_custody={"configured": True, "verified": True, "held": True},
+    )
+    observation["details"].update(changes)
+    return observation
+
+
+def test_blocked_work_does_not_spend_a_ready_owners_later_restart_budget(tmp_path):
+    board = _board(tmp_path)
+    prior = {"attempts": 56, "last_action": "repair", "health": "blocked",
+             "last_progress_at": 10, "next_action_at": 500, "incident_since": 10}
+    observed = fleet.assess(_blocked_with_ready_owner(), prior, board, 100)
+    assert observed["attempts"] == 56
+    assert observed["next_action_at"] == 500
+    assert observed["last_progress_at"] == 10
+    stopped = fleet.assess(_observation(health="stopped", recovery_action="ensure"), observed, board, 501)
+    assert fleet.select_action(stopped, board, 501) == "ensure"
+
+
+def test_repair_enqueue_does_not_consume_ensure_attempts(tmp_path):
+    board = _board(tmp_path)
+    root = tmp_path / "watch"
+    directory = root / "spar"
+    directory.mkdir(parents=True)
+    (directory / "state.json").write_text(json.dumps({
+        "attempts": 56, "ensure_attempts": 0, "health": "blocked",
+        "last_progress_at": 10, "incident_since": 10,
+    }))
+    runner = Runner(_observation(health="blocked", reason_codes=["blocked_task"]))
+    state = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    assert state["last_action"] == "repair" and state["ensure_attempts"] == 0
+    runner.observation = _observation(health="stopped", recovery_action="ensure")
+    state = fleet.tick_board(board, root, apply=True, runner=runner, now=state["next_action_at"] + 1)
+    assert state["last_action"] == "ensure" and state["ensure_attempts"] == 1
+
+
+@pytest.mark.parametrize("change", [
+    {"authenticated_task_observation": False}, {"owner_ready": False},
+    {"owner": {}}, {"owner": {"pid": True, "start_time_ticks": 5, "boot_id": "b"}},
+    {"owner_writer_custody": {"configured": True, "verified": False, "held": True}},
+    {"owner_writer_custody": {"configured": True, "verified": True, "held": False}},
+])
+def test_unverified_readiness_cannot_refund_restart_budget(tmp_path, change):
+    board = _board(tmp_path)
+    state = fleet.assess(_blocked_with_ready_owner(**change),
+                         {"attempts": 10, "ensure_attempts": 2, "health": "blocked"}, board, 100)
+    state = fleet.assess(_observation(health="stopped", recovery_action="ensure"), state, board, 200)
+    assert fleet.select_action(state, board, 200) == "repair"
+
+
+def test_same_ready_owner_does_not_refund_an_inflight_ensure(tmp_path):
+    board = _board(tmp_path)
+    state = fleet.assess(_blocked_with_ready_owner(), {}, board, 100)
+    state.update(ensure_attempts=2, attempts=12, pending_action="ensure", next_action_at=500)
+    state = fleet.assess(_blocked_with_ready_owner(), state, board, 200)
+    assert state["ensure_attempts"] == 2 and state["pending_action"] == "ensure"
+    assert state["next_action_at"] == 500
+
+
+def test_interrupted_ensure_persists_only_its_own_budget_before_side_effect(tmp_path):
+    board = _board(tmp_path)
+    root = tmp_path / "watch"
+    directory = root / "spar"; directory.mkdir(parents=True)
+    (directory / "state.json").write_text(json.dumps({
+        "attempts": 56, "ensure_attempts": 1, "health": "stopped", "incident_since": 1,
+    }))
+    def interrupted(*args, **kwargs):
+        saved = json.loads((directory / "state.json").read_text())
+        assert saved["pending_action"] == "ensure" and saved["ensure_attempts"] == 2
+        assert saved["attempts"] == 57
+        raise KeyboardInterrupt()
+    runner = Runner(_observation(health="stopped", recovery_action="ensure"), action=interrupted)
+    with pytest.raises(KeyboardInterrupt):fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    saved = json.loads((directory / "state.json").read_text())
+    assert fleet.select_action(saved, board, saved["next_action_at"] + 1) == "repair"
+
+
 def test_transient_kernel_wait_does_not_trigger_repair_but_persistent_wait_does(tmp_path):
     board = _board(tmp_path)
     runner = Runner(_observation(health="degraded", busy=True,
