@@ -23318,9 +23318,18 @@ def _run(
             cwd=cwd,
             executor_contract=executor_contract,
         )
+    command = tuple(argv)
+    command_env = None if env is None else dict(env)
+    if argv and str(argv[0]) in {"git", str(TRUSTED_GIT)}:
+        # Prevent stat-cache writes from status and worktree diff; diff has
+        # a separate automatic refresh setting.  Keep explicit Git writes
+        # available and leave non-Git executor environments unchanged.
+        command_env = dict(os.environ) if command_env is None else command_env
+        command_env["GIT_OPTIONAL_LOCKS"] = "0"
+        command = (argv[0], "-c", "diff.autoRefreshIndex=false", *argv[1:])
     return subprocess.run(
-        tuple(argv), cwd=ROOT if cwd is None else cwd,
-        env=None if env is None else dict(env),
+        command, cwd=ROOT if cwd is None else cwd,
+        env=command_env,
         text=True, capture_output=True, check=False, timeout=timeout,
     )
 
@@ -23334,14 +23343,22 @@ def _trusted_git_environment() -> dict[str, str]:
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_TERMINAL_PROMPT": "0",
         "GIT_NO_REPLACE_OBJECTS": "1",
+        # Even a clean `git status` refreshes the index stat cache by default.
+        # This closed environment must retain observational index custody,
+        # including when the caller already disabled optional Git writes.
+        # Required writes (for example an explicit checkout) still work.
+        "GIT_OPTIONAL_LOCKS": "0",
         # Repository-local hooks and fsmonitor commands are external-effect
         # paths, not observations.  Disable both at Git's highest-precedence
         # command configuration for every sealed Git invocation.
-        "GIT_CONFIG_COUNT": "2",
+        "GIT_CONFIG_COUNT": "3",
         "GIT_CONFIG_KEY_0": "core.hooksPath",
         "GIT_CONFIG_VALUE_0": os.devnull,
         "GIT_CONFIG_KEY_1": "core.fsmonitor",
         "GIT_CONFIG_VALUE_1": "false",
+        # Worktree diff can refresh stat data even with optional locks off.
+        "GIT_CONFIG_KEY_2": "diff.autoRefreshIndex",
+        "GIT_CONFIG_VALUE_2": "false",
         "LC_ALL": "C",
         "LANG": "C",
     }
