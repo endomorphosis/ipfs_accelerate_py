@@ -109,3 +109,47 @@ def test_population_refuses_replacement_between_lock_and_directory_open(tmp_path
     monkeypatch.setattr(M.os,'open',opened)
     with pytest.raises(M.DatabasePortalBridgeError,match='population changed'):
         bridge._reconciliation_evidence_population(attempt)
+
+
+
+def test_preportal_reconciliation_uses_one_durable_receipt_population(tmp_path,monkeypatch):
+    bridge,attempt,_=prepared(tmp_path,32)
+    count=[];original=os.fsync
+    def sync(fd):count.append(fd);original(fd)
+    monkeypatch.setattr(M.os,'fsync',sync)
+    result=bridge.reconcile_quiesced_attempt(attempt)
+    assert result['reason']=='portal_attempt_artifacts_absent'
+    assert result['terminal_provider_evidence'] is False
+    assert len(count)==2
+
+
+@pytest.mark.parametrize('prefix',['linked_final','final_absent','stage_only','invalid_ready'])
+def test_preportal_population_recovers_only_actual_publication_prefixes(tmp_path,monkeypatch,prefix):
+    bridge,attempt,expected=prepared(tmp_path)
+    root=bridge._paths(attempt).reconciliation
+    final=root/(expected[0]['receipt_id'][7:]+'.json')
+    temporary=root/('.'+final.name+'.interrupted.tmp')
+    if prefix=='linked_final':os.link(final,temporary)
+    elif prefix=='final_absent':final.rename(temporary)
+    elif prefix=='stage_only':
+        final.unlink();temporary=root/('.'+final.name+'.interrupted.stage');temporary.write_bytes(b'incomplete unauthoritative stage')
+    else:final.unlink();temporary.write_bytes(b'not a receipt')
+    targets=[];original=M._recover_immutable_link_publication
+    def recover(path,**kwargs):targets.append(path);return original(path,**kwargs)
+    monkeypatch.setattr(M,'_recover_immutable_link_publication',recover)
+    if prefix=='invalid_ready':
+        with pytest.raises(M.DatabasePortalBridgeError):bridge.reconcile_quiesced_attempt(attempt)
+        assert temporary.exists() and not final.exists()
+    else:
+        result=bridge.reconcile_quiesced_attempt(attempt)
+        assert result['terminal_provider_evidence'] is False and not temporary.exists()
+        assert final.exists() is (prefix!='stage_only')
+        if final.exists():assert final.stat().st_nlink==1
+    assert targets==[final]
+
+
+def test_preportal_population_rejects_invalid_settled_final(tmp_path):
+    bridge,attempt,expected=prepared(tmp_path)
+    root=bridge._paths(attempt).reconciliation
+    (root/(expected[0]['receipt_id'][7:]+'.json')).write_bytes(b'{}')
+    with pytest.raises(M.DatabasePortalBridgeError):bridge.reconcile_quiesced_attempt(attempt)

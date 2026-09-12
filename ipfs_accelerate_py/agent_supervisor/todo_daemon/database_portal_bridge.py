@@ -12083,17 +12083,7 @@ class DatabasePortalExecutionBridge:
         recovery_receipts: list[dict[str, Any]] = []
         reconciliation_receipts: list[dict[str, Any]] = []
         try:
-            reconciliation_paths = sorted(paths.reconciliation.iterdir())
-            for reconciliation_path in reconciliation_paths:
-                match = re.fullmatch(r"([0-9a-f]{64})[.]json", reconciliation_path.name)
-                if match is None:
-                    raise DatabasePortalBridgeError(
-                        "database Portal reconciliation evidence name is malformed"
-                    )
-                candidate = self.load_reconciliation_receipt(
-                    attempt,
-                    "sha256:" + match.group(1),
-                )
+            for candidate in self._reconciliation_evidence_population(attempt):
                 reconciliation_receipts.append(candidate)
                 if candidate.get("stage") != "blocked":
                     continue
@@ -13036,24 +13026,8 @@ class DatabasePortalExecutionBridge:
             return None
 
         try:
-            reconciliation_paths = sorted(paths.reconciliation.iterdir())
-            reconciliation_receipts = [
-                self.load_reconciliation_receipt(
-                    attempt,
-                    "sha256:" + match.group(1),
-                )
-                for path in reconciliation_paths
-                if (
-                    match := re.fullmatch(
-                        r"([0-9a-f]{64})[.]json",
-                        path.name,
-                    )
-                )
-                is not None
-            ]
+            reconciliation_receipts = self._reconciliation_evidence_population(attempt)
         except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
-            return None
-        if len(reconciliation_paths) != len(reconciliation_receipts):
             return None
         stage_counts = {
             stage: sum(item.get("stage") == stage for item in reconciliation_receipts)
@@ -14956,75 +14930,8 @@ class DatabasePortalExecutionBridge:
                         invalid_reconciliation_store = True
                         continue
                     try:
-                        receipt_paths = sorted(child.iterdir())
-                    except OSError:
-                        unexpected_preportal_children.append(child)
-                        invalid_reconciliation_store = True
-                        continue
-                    try:
-                        recovery_targets: set[Path] = set()
-                        temporary_recovery_count = 0
-                        for receipt_path in receipt_paths:
-                            if re.fullmatch(
-                                r"[0-9a-f]{64}\.json",
-                                receipt_path.name,
-                            ):
-                                recovery_targets.add(receipt_path)
-                                continue
-                            temporary_match = re.fullmatch(
-                                r"\.([0-9a-f]{64}\.json)\."
-                                r"[A-Za-z0-9_-]+\.(?:tmp|stage)",
-                                receipt_path.name,
-                            )
-                            if temporary_match is not None:
-                                temporary_recovery_count += 1
-                                if temporary_recovery_count > 256:
-                                    raise DatabasePortalBridgeError(
-                                        "database Portal immutable evidence has "
-                                        "too many temporary publications"
-                                    )
-                                # A SIGKILL may leave either a non-authoritative
-                                # stage or a fully fsynced ready temp without a
-                                # final pathname.  Derive only the closed
-                                # content-addressed final name; locked recovery
-                                # discards safe stages and strictly validates
-                                # ready bytes before promotion.
-                                recovery_targets.add(
-                                    child / temporary_match.group(1)
-                                )
-                        for receipt_path in sorted(recovery_targets):
-                            _recover_immutable_link_publication(receipt_path)
-                        receipt_paths = sorted(child.iterdir())
+                        self._recover_reconciliation_evidence_population(attempt)
                     except (OSError, DatabasePortalBridgeError):
-                        unexpected_preportal_children.append(child)
-                        invalid_reconciliation_store = True
-                        continue
-                    valid_receipts = True
-                    for receipt_path in receipt_paths:
-                        match = re.fullmatch(r"([0-9a-f]{64})\.json", receipt_path.name)
-                        try:
-                            receipt_stat = receipt_path.lstat()
-                        except OSError:
-                            valid_receipts = False
-                            break
-                        if (
-                            match is None
-                            or receipt_path.is_symlink()
-                            or not receipt_path.is_file()
-                            or int(receipt_stat.st_nlink) != 1
-                            or int(receipt_stat.st_size) > 1024 * 1024
-                        ):
-                            valid_receipts = False
-                            break
-                        try:
-                            self.load_reconciliation_receipt(
-                                attempt,
-                                "sha256:" + match.group(1),
-                            )
-                        except DatabasePortalBridgeError:
-                            valid_receipts = False
-                            break
-                    if not valid_receipts:
                         unexpected_preportal_children.append(child)
                         invalid_reconciliation_store = True
                     continue
@@ -15898,6 +15805,39 @@ class DatabasePortalExecutionBridge:
                 "database Portal reconciliation receipt identity does not verify"
             )
         return receipt
+
+    def _recover_reconciliation_evidence_population(self, attempt: Any) -> list[dict[str, Any]]:
+        """Repair actual crash prefixes, then validate all settled finals once.
+
+        Single-link final files need the population durability check, not an
+        individual publication replay. Temporary names still nominate only
+        the existing bounded, content-addressed crash-recovery procedure.
+        """
+        paths = self._paths(attempt)
+        directory = paths.reconciliation
+        if (self.attempt_root.is_symlink() or paths.root.is_symlink()
+                or directory.is_symlink()
+                or paths.root.parent.resolve() != self.attempt_root.resolve()):
+            raise DatabasePortalBridgeError("reconciliation population root changed")
+        targets: set[Path] = set()
+        temporary_count = 0
+        with os.scandir(directory) as entries:
+            for count, entry in enumerate(entries, start=1):
+                if count > 65536 + 256:
+                    raise DatabasePortalBridgeError("reconciliation evidence population is oversized")
+                if re.fullmatch(r"[0-9a-f]{64}[.]json", entry.name):
+                    continue
+                temporary = re.fullmatch(
+                    r"[.]([0-9a-f]{64}[.]json)[.][A-Za-z0-9_-]+[.](?:tmp|stage)", entry.name)
+                if temporary is None:
+                    raise DatabasePortalBridgeError("reconciliation evidence population is not closed")
+                temporary_count += 1
+                if temporary_count > 256:
+                    raise DatabasePortalBridgeError("database Portal immutable evidence has too many temporary publications")
+                targets.add(directory / temporary.group(1))
+        for target in sorted(targets):
+            _recover_immutable_link_publication(target)
+        return self._reconciliation_evidence_population(attempt)
 
     def _reconciliation_evidence_population(self, attempt: Any) -> list[dict[str, Any]]:
         """Observe one durable immutable receipt population in linear work.
