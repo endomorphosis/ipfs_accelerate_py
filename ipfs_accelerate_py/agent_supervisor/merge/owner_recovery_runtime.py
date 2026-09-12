@@ -50,6 +50,8 @@ _SCOPE_FIELDS = frozenset(
     {"board_namespace", "config_cid", "plan_cid", "lane_id", "attempt_root"}
 )
 MAX_JSON_BYTES = 512 * 1024
+MAX_PRESERVED_HISTORY_ROWS = 100_000
+MAX_PRESERVED_HISTORY_BYTES = 64 * 1024 * 1024
 
 # Exact versioned relations, intentionally independent of CASF event acks.
 _TABLES = {
@@ -200,6 +202,7 @@ class _OwnerRecoveryRuntimeService(_OwnerMergeQueueService):
             with _BorrowedConnection(self) as connection:
                 connection.execute("BEGIN TRANSACTION")
                 self._validate_schema()
+                self._validate_preserved_history()
                 connection.commit()
 
     def _validate_schema(self):
@@ -234,6 +237,80 @@ class _OwnerRecoveryRuntimeService(_OwnerMergeQueueService):
                 raise OwnerRecoveryRuntimeError(
                     "recovery schema identity constraint differs"
                 )
+
+    def _validate_preserved_history(self):
+        """Audit canonical historical content at native admission, never replay it.
+
+        Operational polling checks the current head and revision continuity.
+        A new binding or explicit migration additionally checks every retained
+        record in this queue namespace, inside the same borrowed transaction.
+        This is not source qualification or proof of callback settlement, and
+        cannot replace the native operator's independently preserved inventory.
+        In particular, an older cursor profile is rejected, never padded.
+        """
+        run = self._connection._execute_once
+        remaining_rows = MAX_PRESERVED_HISTORY_ROWS
+        remaining_bytes = MAX_PRESERVED_HISTORY_BYTES
+
+        def audit(table, cid_column, json_column, where, parameters, first, last, parse):
+            nonlocal remaining_rows, remaining_bytes
+            count = last - first + 1
+            if count > remaining_rows:
+                raise OwnerRecoveryRuntimeError("preserved recovery history exceeds row bound")
+            remaining_rows -= count
+            expected = first
+            for offset in range(0, count, 128):
+                rows = run(
+                    f"SELECT revision,{cid_column},{json_column} FROM {table} "
+                    f"WHERE {where} ORDER BY revision LIMIT 128 OFFSET ?",
+                    [*parameters, offset],
+                ).fetchall()
+                for row in rows:
+                    revision, cid, raw = _tuple(row)
+                    _integer(revision, "preserved history revision")
+                    if revision != expected or type(raw) is not str:
+                        raise OwnerRecoveryRuntimeError("preserved recovery history coordinates differ")
+                    remaining_bytes -= len(raw.encode())
+                    if remaining_bytes < 0:
+                        raise OwnerRecoveryRuntimeError("preserved recovery history exceeds byte bound")
+                    value = parse(_json_object(raw))
+                    if _cid(value) != cid:
+                        raise OwnerRecoveryRuntimeError("preserved recovery history content identity differs")
+                    expected += 1
+            if expected != last + 1:
+                raise OwnerRecoveryRuntimeError("preserved recovery history is incomplete")
+
+        scopes = run(
+            "SELECT scope_cid FROM legacy_merge_recovery_scopes "
+            "WHERE repository_id=? AND target_branch=? ORDER BY scope_cid LIMIT ?",
+            [self.repository_id, self.target_branch, MAX_PRESERVED_HISTORY_ROWS + 1],
+        ).fetchall()
+        if len(scopes) > MAX_PRESERVED_HISTORY_ROWS:
+            raise OwnerRecoveryRuntimeError("preserved recovery scope population exceeds bound")
+        for row in scopes:
+            scope = row[0]
+            self._scope_row(scope)
+            head = self._cursor_head(scope)
+            audit("legacy_merge_recovery_cursor_history", "state_cid", "cursors_json",
+                  "scope_cid=?", [scope], 0, head["revision"], _cursors)
+        keys = run(
+            "SELECT receipt_key FROM legacy_merge_recovery_receipt_heads "
+            "WHERE repository_id=? AND target_branch=? UNION "
+            "SELECT receipt_key FROM legacy_merge_recovery_receipt_versions "
+            "WHERE repository_id=? AND target_branch=? ORDER BY receipt_key LIMIT ?",
+            [self.repository_id, self.target_branch] * 2 + [MAX_PRESERVED_HISTORY_ROWS + 1],
+        ).fetchall()
+        if len(keys) > MAX_PRESERVED_HISTORY_ROWS:
+            raise OwnerRecoveryRuntimeError("preserved recovery receipt population exceeds bound")
+        for row in keys:
+            key = row[0]
+            head = self._receipt_head(key)
+            # The union also discovers versions whose head has disappeared;
+            # _receipt_head rejects that case instead of treating it as absence.
+            audit("legacy_merge_recovery_receipt_versions", "receipt_cid", "receipt_json",
+                  "repository_id=? AND target_branch=? AND receipt_key=?",
+                  [self.repository_id, self.target_branch, key],
+                  1, head["revision"], lambda value: value)
 
     def _scope_row(self, scope_cid):
         rows = self._connection._execute_once(
@@ -849,6 +926,7 @@ def provision_legacy_merge_recovery_schema(
             for name, definition in _TABLES.items():
                 connection.execute("CREATE TABLE " + name + " (" + definition + ")")
         service._validate_schema()
+        service._validate_preserved_history()
         old = connection.execute(
             "SELECT payload_cid FROM legacy_merge_recovery_migrations WHERE migration_id=?",
             [migration_id],
@@ -1021,6 +1099,7 @@ def provision_legacy_merge_recovery_schema(
             "INSERT INTO legacy_merge_recovery_migrations VALUES (?,?)",
             [migration_id, payload_cid],
         )
+        service._validate_preserved_history()
         connection.commit()
     return {"migration_id": migration_id, "replayed": False, "scope_cids": scope_ids}
 
