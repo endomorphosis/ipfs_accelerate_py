@@ -96,41 +96,43 @@ def test_supervisor_preserves_unsettled_or_unverifiable_workspace(completed_work
     before = _git(case.repo, "rev-parse", case.branch)
     result = case.supervisor.cleanup_backlogged_worktrees()
     assert result["removed_count"] == 0
-    assert result["skipped"][0]["reason"] == "canonical_completion_required_for_cleanup"
+    assert result["attempted"] is False
+    assert result["reason"] == "canonical_cleanup_requires_guarded_runtime"
     assert case.workspace.is_dir()
     assert _git(case.repo, "rev-parse", case.branch) == before
-    assert len(case.reads) == 1
+    assert not case.reads
 
 
-def test_verified_canonical_rescue_cleanup_retains_exact_branch(completed_workspace):
+def test_completed_workspace_waits_for_guarded_cleanup_runtime(completed_workspace):
     case = completed_workspace
     before = _git(case.repo, "rev-parse", case.branch)
     result = case.supervisor.cleanup_backlogged_worktrees()
-    assert result["removed_count"] == 1
-    assert len(case.reads) == 2
-    assert not case.workspace.exists()
+    # A completion projection cannot admit the currently disabled background
+    # cleanup path. The native merge queue retains completion cleanup custody.
+    assert result == {
+        "attempted": False,
+        "reason": "canonical_cleanup_requires_guarded_runtime",
+        "removed_count": 0,
+    }
+    assert not case.reads
+    assert case.workspace.is_dir()
     assert _git(case.repo, "rev-parse", case.branch) == before
-    removed = result["removed"][0]
-    assert removed["completion_proof"]["verified"] is True
-    assert removed["branch_preserved"] is True
-    assert removed["head"] == before
 
 
-def test_completion_loss_at_mutation_boundary_keeps_workspace(completed_workspace, monkeypatch):
+def test_guarded_runtime_refusal_precedes_mutation_boundary(completed_workspace, monkeypatch):
     case = completed_workspace
-    original = case.supervisor._revalidate_worktree_mutation_preimage
+    before = _git(case.repo, "rev-parse", case.branch)
 
-    def change(*args, **kwargs):
-        result = original(*args, **kwargs)
-        case.current[0] = ConnectionError("owner changed before removal")
-        return result
+    def refuse(*args, **kwargs):
+        pytest.fail("unqualified background cleanup reached mutation preimage")
 
-    monkeypatch.setattr(case.supervisor, "_revalidate_worktree_mutation_preimage", change)
+    monkeypatch.setattr(case.supervisor, "_revalidate_worktree_mutation_preimage", refuse)
     result = case.supervisor.cleanup_backlogged_worktrees()
     assert result["removed_count"] == 0
-    assert len(case.reads) == 2
+    assert not case.reads
     assert case.workspace.is_dir()
-    assert result["skipped"][0]["reason"] == "canonical_completion_changed_before_cleanup"
+    assert _git(case.repo, "rev-parse", case.branch) == before
+    assert result["reason"] == "canonical_cleanup_requires_guarded_runtime"
 
 
 def test_forged_projection_cannot_supply_cleanup_authority(completed_workspace):
@@ -140,4 +142,5 @@ def test_forged_projection_cannot_supply_cleanup_authority(completed_workspace):
     result = case.supervisor.cleanup_backlogged_worktrees()
     assert result["removed_count"] == 0
     assert case.workspace.is_dir()
-    assert result["skipped"][0]["completion_proof"]["verified"] is False
+    assert not case.reads
+    assert result["reason"] == "canonical_cleanup_requires_guarded_runtime"

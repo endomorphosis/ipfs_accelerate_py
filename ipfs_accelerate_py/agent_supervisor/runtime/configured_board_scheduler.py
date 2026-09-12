@@ -851,6 +851,8 @@ def _git_run(
         "core.checkStat=default",
         "-c",
         "core.attributesFile=/dev/null",
+        "-c",
+        "diff.autoRefreshIndex=false",
         *argv,
     ]
     try:
@@ -5114,8 +5116,8 @@ def preflight_configured_board(
     for relative in board.worktree_submodule_paths:
         gitlink = _gitlink_commit(board, relative)
         target = board.path(relative)
-        top_level = _run(
-            ("git", "rev-parse", "--show-toplevel"),
+        top_level = _git_run(
+            ("rev-parse", "--show-toplevel"),
             cwd=target,
             timeout=60,
         ) if target.is_dir() else None
@@ -5124,22 +5126,21 @@ def preflight_configured_board(
             and top_level.returncode == 0
             and Path(top_level.stdout.strip()).resolve() == target.resolve()
         )
-        head = _run(
-            ("git", "rev-parse", "HEAD"),
+        head = _git_run(
+            ("rev-parse", "HEAD"),
             cwd=target,
             timeout=60,
         ) if exact_worktree else None
-        clean = _run(
-            ("git", "status", "--porcelain=v1", "--untracked-files=all"),
+        clean = _git_run(
+            ("status", "--porcelain=v1", "--untracked-files=all"),
             cwd=target,
             timeout=60,
         ) if head is not None and head.returncode == 0 else None
         actual_head = head.stdout.strip() if head is not None else ""
         expected_planning = planning_revisions.get(relative, "")
         planning_ancestor = (
-            _run(
+            _git_run(
                 (
-                    "git",
                     "merge-base",
                     "--is-ancestor",
                     expected_planning,

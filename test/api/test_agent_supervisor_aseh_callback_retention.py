@@ -1,8 +1,9 @@
-"""The older runtime must preserve peer callback source until native settlement."""
+"""Retain native callback source across current cleanup admission boundaries."""
 from types import SimpleNamespace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.merge.quarantine_validation import QuarantineDenied
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
 )
@@ -34,22 +35,26 @@ def test_database_cleanup_retains_merged_callback_and_registration(tmp_path, mis
 
 
 @pytest.mark.parametrize("attributes", [{}, {"isolate_merge_queue_to_task_projection": True}, {"isolate_merge_queue_to_task_projection": False}])
-def test_task_projection_cannot_enter_peer_cleanup_mutation(attributes):
+def test_unbound_peer_cannot_enter_cleanup_mutation(attributes):
     peer = SimpleNamespace(**attributes)
-    result = PortalImplementationDaemon._cleanup_already_merged_worktrees(peer)
-    assert result == {
-        "attempted": False, "removed_count": 0,
-        "reason": "canonical_cleanup_requires_guarded_runtime",
-    }
+    # Current main checks the workspace maintenance root before entering the
+    # cleanup method, even when a projection flag is supplied by the caller.
+    with pytest.raises(QuarantineDenied, match="workspace_maintenance_root_unbound"):
+        PortalImplementationDaemon._cleanup_already_merged_worktrees(peer)
 
 
-def test_native_portal_constructor_can_reach_cleanup_without_newer_flag(tmp_path):
+def test_native_portal_constructor_preserves_task_projection_isolation(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     todo = repo / "TODO.md"
     todo.write_text("## ASEH-061: pending implementation\n")
     daemon = PortalImplementationDaemon(
         todo_path=todo, repo_root=repo, state_path=repo / "state.json",
         strategy_path=repo / "strategy.json", events_path=repo / "events.jsonl",
+        isolate_merge_queue_to_task_projection=True,
     )
-    assert not hasattr(daemon, "isolate_merge_queue_to_task_projection")
-    assert daemon._cleanup_already_merged_worktrees()["attempted"] is False
+    assert daemon.isolate_merge_queue_to_task_projection is True
+    assert daemon._cleanup_already_merged_worktrees() == {
+        "attempted": False,
+        "removed_count": 0,
+        "reason": "task_projection_has_no_peer_cleanup_authority",
+    }

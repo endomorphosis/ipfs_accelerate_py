@@ -5760,6 +5760,9 @@ STATUS_REPLICA_RETRY_DELAY_SECONDS: Final = 0.05
 AUTHORIZATION_TRANSITION_LOCK_TIMEOUT_SECONDS: Final = 5.0
 R19_HISTORICAL_LIFECYCLE_LOCK_TIMEOUT_SECONDS: Final = 5.0
 STATUS_RECEIPT_MAX_BYTES: Final = 1_048_576
+# Launch references retain the complete source-transition admission chain,
+# which already exceeds the smaller health/status receipt bound.
+OWNER_LAUNCH_REFERENCE_MAX_BYTES: Final = 8 * 1024 * 1024
 LIVE_REPLAY_MAX_BYTES: Final = 1_073_741_824
 LIVE_REPLAY_IO_TIMEOUT_SECONDS: Final = 60.0
 LIVE_REPLAY_SCHEMA: Final = (
@@ -8973,7 +8976,7 @@ def _r30_candidate_git_guard_protocol(candidate_head: str) -> dict[str, Any]:
             "mechanism": "fresh_interpreter_traceme_exact_exec_v1",
             "operation_allowlist": ["update-ref", "update-index"],
         },
-        "git_environment": _trusted_git_environment(),
+        "git_environment": _trusted_git_guard_environment(),
         "parent_loss_cleanup": {
             "mechanism": (
                 "exact_parent_pdeathsig_sigcont_plus_protocol_eof_v1"
@@ -23318,15 +23321,32 @@ def _run(
             cwd=cwd,
             executor_contract=executor_contract,
         )
+    command_env = None if env is None else dict(env)
+    if argv and str(argv[0]) in {"git", str(TRUSTED_GIT)}:
+        # Prevent stat-cache writes from status and worktree diff; diff has
+        # a separate automatic refresh setting.  Keep explicit Git writes
+        # available and leave non-Git executor environments unchanged.
+        command_env = dict(os.environ) if command_env is None else command_env
+        command_env["GIT_OPTIONAL_LOCKS"] = "0"
+        # Preserve the exact declared argv required by validation receipts.
+        command_env["GIT_CONFIG_PARAMETERS"] = (
+            command_env.get("GIT_CONFIG_PARAMETERS", "")
+            + " 'diff.autoRefreshIndex=false'"
+        ).strip()
     return subprocess.run(
         tuple(argv), cwd=ROOT if cwd is None else cwd,
-        env=None if env is None else dict(env),
+        env=command_env,
         text=True, capture_output=True, check=False, timeout=timeout,
     )
 
 
-def _trusted_git_environment() -> dict[str, str]:
-    """Return the closed environment for every pre-seal Git observation."""
+def _trusted_git_guard_environment() -> dict[str, str]:
+    """Keep the original R30 environment for intentional Git transactions.
+
+    Only update-ref/update-index guard children use this immutable protocol.
+    Read-only observations use _trusted_git_environment instead, so preserving
+    historical guard CIDs cannot enable an observational index refresh.
+    """
 
     return {
         "PATH": "/usr/bin:/bin",
@@ -23342,6 +23362,36 @@ def _trusted_git_environment() -> dict[str, str]:
         "GIT_CONFIG_VALUE_0": os.devnull,
         "GIT_CONFIG_KEY_1": "core.fsmonitor",
         "GIT_CONFIG_VALUE_1": "false",
+        "LC_ALL": "C",
+        "LANG": "C",
+    }
+
+
+def _trusted_git_environment() -> dict[str, str]:
+    """Return the closed environment for every pre-seal Git observation."""
+
+    return {
+        "PATH": "/usr/bin:/bin",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        # Even a clean `git status` refreshes the index stat cache by default.
+        # This closed environment must retain observational index custody,
+        # including when the caller already disabled optional Git writes.
+        # Required writes (for example an explicit checkout) still work.
+        "GIT_OPTIONAL_LOCKS": "0",
+        # Repository-local hooks and fsmonitor commands are external-effect
+        # paths, not observations.  Disable both at Git's highest-precedence
+        # command configuration for every sealed Git invocation.
+        "GIT_CONFIG_COUNT": "3",
+        "GIT_CONFIG_KEY_0": "core.hooksPath",
+        "GIT_CONFIG_VALUE_0": os.devnull,
+        "GIT_CONFIG_KEY_1": "core.fsmonitor",
+        "GIT_CONFIG_VALUE_1": "false",
+        # Worktree diff can refresh stat data even with optional locks off.
+        "GIT_CONFIG_KEY_2": "diff.autoRefreshIndex",
+        "GIT_CONFIG_VALUE_2": "false",
         "LC_ALL": "C",
         "LANG": "C",
     }
@@ -24153,7 +24203,7 @@ def _r30_git_guard_launcher(
             ) from OSError(error, os.strerror(error))
         require_exact_parent("immediately before exact exec")
         command = (str(git), operation, "--stdin")
-        os.execve(descriptor, command, _trusted_git_environment())
+        os.execve(descriptor, command, _trusted_git_guard_environment())
     except OSError as exc:
         raise OperatorError(
             "R30 Git guard exact exec is unavailable"
@@ -24723,7 +24773,7 @@ def _prepared_candidate_git_guard(
     initial_index_flags_digest = _ordinary_git_index_flags_digest()
 
     git = _trusted_git_executable()
-    environment = _trusted_git_environment()
+    environment = _trusted_git_guard_environment()
     reference: subprocess.Popen[bytes] | None = None
     index: subprocess.Popen[bytes] | None = None
     reference_trace: _GitGuardSyscallTrace | None = None
@@ -86588,6 +86638,7 @@ def _r21_nonblocking_named_lock(
     *,
     name: str,
     lock_class: str,
+    retained_descriptors: list[int] | None = None,
 ) -> Any:
     """Acquire one exact descriptor-relative lock without waiting or following."""
 
@@ -86639,6 +86690,8 @@ def _r21_nonblocking_named_lock(
             or stat.S_IMODE(after.st_mode) != 0o600
         ):
             raise OperatorError("R21 owner-start lock changed during admission")
+        if retained_descriptors is not None:
+            retained_descriptors.append(descriptor)
         yield {
             "lock_class": lock_class,
             "name": name,
@@ -86660,6 +86713,8 @@ def _r21_nonblocking_named_lock(
         raise OperatorError("R21 owner-start lock observation is unavailable") from exc
     finally:
         if descriptor >= 0:
+            if retained_descriptors is not None and descriptor in retained_descriptors:
+                retained_descriptors.remove(descriptor)
             try:
                 if locked:
                     fcntl.flock(descriptor, fcntl.LOCK_UN)
@@ -86837,6 +86892,7 @@ def _r21_owner_start_contention_observation(
     try:
         owner_handle.assert_canonical_parent()
         directory_fd = owner_handle.directory_fileno()
+        retained_lock_descriptors = [owner_handle.fileno()]
         owner_opened = os.fstat(owner_handle.fileno())
         locks.append(
             {
@@ -86854,18 +86910,21 @@ def _r21_owner_start_contention_observation(
             directory_fd,
             name=f".{database.name}.migration.lock",
             lock_class="migration",
+            retained_descriptors=retained_lock_descriptors,
         ) as migration_lock:
             locks.append(dict(migration_lock))
             with _r21_nonblocking_named_lock(
                 directory_fd,
                 name=f".{database.name}.intent.lock",
                 lock_class="intent",
+                retained_descriptors=retained_lock_descriptors,
             ) as intent_lock:
                 locks.append(dict(intent_lock))
                 with _r21_nonblocking_named_lock(
                     directory_fd,
                     name=f".{database.name}.lock",
                     lock_class="database",
+                    retained_descriptors=retained_lock_descriptors,
                 ) as database_lock:
                     locks.append(dict(database_lock))
                     marker_absent = _r21_path_absent(
@@ -86933,6 +86992,53 @@ def _r21_owner_start_contention_observation(
                         witness = context[
                             "candidate_authorization_witness"
                         ]
+                        # Empty legacy WAL custody is a separate pre-baseline
+                        # operation. R23 still begins with WAL absence and its
+                        # receipt must continue to report wal_mutated=False.
+                        from ipfs_accelerate_py.agent_supervisor.runtime.empty_owner_wal import (
+                            EmptyOwnerWalError,
+                            preserve_empty_owner_wal,
+                        )
+
+                        def empty_wal_native_guard() -> None:
+                            owner_handle.assert_canonical_parent()
+                            if (
+                                str(getattr(server.lifecycle, "value", "") or "")
+                                != expected_lifecycle
+                                or server.identity is not None
+                            ):
+                                raise OperatorError(
+                                    "empty WAL preservation owner is not inert"
+                                )
+                            _assert_candidate_authorization_witness(
+                                witness,
+                                expected_head=str(context["candidate_head"]),
+                                expected_tree=str(context["candidate_tree"]),
+                                boundary="empty WAL preservation current source",
+                            )
+                            _r21_owner_start_endpoint_observation(
+                                paths=paths,
+                                server=server,
+                                marker_absent=_r21_path_absent(
+                                    directory_fd, owner_marker_path.name
+                                ),
+                            )
+
+                        try:
+                            preserve_empty_owner_wal(
+                                directory_fd=directory_fd,
+                                directory_path=database.parent,
+                                database_name=database.name,
+                                lock_descriptors=retained_lock_descriptors,
+                                source_identity={key: context[key] for key in (
+                                    "candidate_head", "candidate_tree", "store_id"
+                                )},
+                                native_guard=empty_wal_native_guard,
+                            )
+                        except EmptyOwnerWalError as exc:
+                            raise OperatorError(
+                                "owner-start empty WAL preservation refused"
+                            ) from exc
                         wal_observation = _r21_owner_start_file_observation(
                             directory_fd,
                             f"{database.name}.wal",
@@ -92488,7 +92594,7 @@ def request_status_refresh(config_path: Path) -> tuple[int, dict[str, Any]]:
     paths = _paths(board)
     launch = _secure_runtime_json(
         paths["evidence"] / "control-plane" / "owner-launch.json",
-        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        max_bytes=OWNER_LAUNCH_REFERENCE_MAX_BYTES,
     )
     unsigned = dict(launch)
     receipt_cid = unsigned.pop("receipt_cid", "")
