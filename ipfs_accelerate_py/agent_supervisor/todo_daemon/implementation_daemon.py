@@ -1086,6 +1086,7 @@ PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
 PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@2"
 )
+PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@3"
 PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-authority@1"
 )
@@ -38295,7 +38296,7 @@ class PortalImplementationDaemon:
         ceilings cannot exceed the daemon's immutable process bounds. The
         resulting policy uses measured sizes, not the looser declared
         ceilings, and does not enable generated, binary, archive, or other
-        content exemptions.
+        content exemptions. Version3 may grant exact PDF/ZIP output authority only.
         """
 
         defaults = {
@@ -38355,6 +38356,14 @@ class PortalImplementationDaemon:
                 if after_source is not None
                 else 0
             )
+            if bool(getattr(entry, "binary", False)):
+                metadata = getattr(entry, "metadata", {})
+                if not isinstance(metadata, Mapping):
+                    return defaults
+                before_bytes = metadata.get("before_size_bytes", 0)
+                after_bytes = metadata.get("after_size_bytes", 0)
+                if any(type(value) is not int or value < 0 for value in (before_bytes, after_bytes)):
+                    return defaults
             total_before_bytes += before_bytes
             total_after_bytes += after_bytes
             if (
@@ -38404,6 +38413,14 @@ class PortalImplementationDaemon:
                     return defaults
             metadata = getattr(entry, "metadata", None)
             if isinstance(metadata, Mapping):
+                if bool(getattr(entry, "binary", False)):
+                    for side in ("before", "after"):
+                        value = metadata.get(side + "_size_bytes", 0)
+                        if type(value) is not int or value < 0:
+                            return defaults
+                        materialized_bytes += value
+                    if materialized_bytes > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES:
+                        return defaults
                 for name in (
                     "size_bytes",
                     "before_size_bytes",
@@ -38486,7 +38503,8 @@ class PortalImplementationDaemon:
         # the process absolute caps so bounded thin-host edits remain
         # proposal-gate admissible without a declared artifact envelope.
         if (
-            raw_patch_bytes
+            not declared_artifact_envelope
+            and raw_patch_bytes
             <= DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
             and largest_file_bytes
             <= MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
@@ -38541,11 +38559,15 @@ class PortalImplementationDaemon:
         }
         if envelope_schema == PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
             expected_fields.add("allow_binary")
+        if envelope_schema == PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
+            expected_fields.remove("paths")
+            expected_fields.add("binary_paths")
         if type(envelope) is not dict or set(envelope) != expected_fields:
             return defaults
         if envelope_schema not in {
             PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
             PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
+            PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
         }:
             return defaults
         allow_binary = False
@@ -38554,7 +38576,7 @@ class PortalImplementationDaemon:
                 return defaults
             allow_binary = envelope["allow_binary"]
 
-        raw_paths = envelope.get("paths")
+        raw_paths = envelope.get("binary_paths" if envelope_schema == PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA else "paths")
         if type(raw_paths) is not list or not raw_paths:
             return defaults
         artifact_paths: list[str] = []
@@ -38594,8 +38616,8 @@ class PortalImplementationDaemon:
             include_ast_companions=False,
         )
         if (
-            set(changed_paths) != set(artifact_paths)
-            or len(changed_paths) != len(artifact_paths)
+            (envelope_schema != PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA
+             and (set(changed_paths) != set(artifact_paths) or len(changed_paths) != len(artifact_paths)))
             or not all(
                 any(
                     artifact_path == scope_path
@@ -38607,6 +38629,14 @@ class PortalImplementationDaemon:
         ):
             return defaults
 
+        binary_paths: tuple[str, ...] = ()
+        if envelope_schema == PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
+            raw_binary = envelope["binary_paths"]
+            if (type(raw_binary) is not list or not raw_binary
+                    or any(type(path) is not str or path not in artifact_paths or not path.lower().endswith((".pdf", ".zip")) for path in raw_binary)
+                    or len(set(raw_binary)) != len(raw_binary)):
+                return defaults
+            binary_paths = tuple(sorted(raw_binary))
         requested_limits: dict[str, int] = {}
         for name in (
             "max_file_bytes",
@@ -38666,6 +38696,7 @@ class PortalImplementationDaemon:
         return {
             **measured_limits,
             "allow_binary": allow_binary,
+            **({"binary_artifact_paths": binary_paths} if binary_paths else {}),
         }
 
     @staticmethod
@@ -40346,6 +40377,7 @@ class PortalImplementationDaemon:
                     "max_file_bytes",
                     "max_patch_bytes",
                     "max_output_bytes",
+                    "binary_artifact_paths",
                 }
             },
         }
@@ -40370,13 +40402,16 @@ class PortalImplementationDaemon:
             and "max_file_bytes" in local_envelope_limits
         ):
             policy_version += (
+                "+declared-binary-artifact-envelope-v3"
+                if local_envelope_limits.get("binary_artifact_paths") else
                 "+declared-binary-artifact-envelope-v2"
                 if local_envelope_limits.get("allow_binary")
                 else "+declared-artifact-envelope-v1"
             )
-            # The envelope helper admitted only exact set equality between
-            # these changed paths and the identity-bound task outputs.
-            policy_allowed_paths = changed_paths
+            # Legacy envelopes bind every changed path. Version3 grants only
+            # exact binary paths and leaves ordinary text scope unchanged.
+            if not local_envelope_limits.get("binary_artifact_paths"):
+                policy_allowed_paths = changed_paths
         replayable_proposal_ids = {
             str(proposal_id).strip()
             for proposal_id in replayable_consumed_proposal_ids

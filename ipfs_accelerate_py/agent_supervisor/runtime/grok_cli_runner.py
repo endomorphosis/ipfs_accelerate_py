@@ -389,6 +389,10 @@ _GROK_CONTAINER_BOOTSTRAP = Path("/opt/ipfs-accelerate/task-bootstrap.py")
 _GROK_PARENT_FORMAL_TOOLCHAIN_SHA256_ENV = "IPFS_ACCELERATE_AGENT_PARENT_FORMAL_TOOLCHAIN_SHA256"
 _GROK_TEX_TOOLCHAIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_TEX_TOOLCHAIN_JSON"
 _GROK_TEX_TOOLCHAIN_SHA256_ENV = "IPFS_ACCELERATE_AGENT_GROK_TEX_TOOLCHAIN_SHA256"
+_RESEARCH_TOOLCHAIN_ENV = "IPFS_ACCELERATE_AGENT_RESEARCH_TOOLCHAIN_JSON"
+_RESEARCH_TOOLCHAIN_SHA256_ENV = "IPFS_ACCELERATE_AGENT_RESEARCH_TOOLCHAIN_SHA256"
+_RESEARCH_REQUIRED_COMMANDS = ("lean", "lake", "z3", "cvc5")
+_RESEARCH_REQUIRED_MODULES = ("torch", "numpy", "multiformats", "z3", "cvc5", "pytest")
 _ALTERNATE_PROVIDER_EXECUTABLES = (
     "codex",
     "copilot",
@@ -1800,10 +1804,13 @@ def _host_codex_task_toolchain_python() -> Path:
     return resolved
 
 
-def _codex_task_container_environment() -> dict[str, str]:
+def _codex_task_container_environment(
+    *, tex_toolchain: Mapping[str, str] | None = None,
+    research_toolchain: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """Return the complete non-secret environment admitted past ``env -i``."""
 
-    return {
+    environment = {
         "BASH_ENV": "",
         "CODEX_HOME": str(_CODEX_CONTAINER_HOME),
         "ENV": "",
@@ -1816,6 +1823,16 @@ def _codex_task_container_environment() -> dict[str, str]:
         "PYTHONPATH": str(_CODEX_TASK_TOOLCHAIN_SITE_PACKAGES),
         "TERM": "dumb",
     }
+
+    if tex_toolchain:
+        environment.update({
+            "PATH": f"{tex_toolchain['root']}/bin/aarch64-linux:{Path(tex_toolchain['wrapper']).parent}:{environment['PATH']}",
+            "TEXMFHOME": "/tmp/ipfs-texmf-home",
+            "TEXMFVAR": "/tmp/ipfs-texmf-var",
+            "TEXMFCONFIG": "/tmp/ipfs-texmf-config",
+            _GROK_TEX_TOOLCHAIN_SHA256_ENV: tex_toolchain["sha256"],
+        })
+    return _with_research_environment(environment, research_toolchain or {})
 
 
 def _docker_control_env(
@@ -2716,9 +2733,85 @@ def _grok_task_tex_toolchain(base_env: Mapping[str, str]) -> dict[str, str]:
             "sha256": hashlib.sha256(json.dumps(profile, sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
 
 
+def _research_task_toolchain(base_env: Mapping[str, str]) -> dict[str, str]:
+    """Admit an optional exact, hash-inventoried CPU/checker toolchain only."""
+    raw = base_env.get(_RESEARCH_TOOLCHAIN_ENV, "")
+    if not raw:
+        return {}
+    if len(raw.encode()) > 8192:
+        raise ValueError("Research toolchain profile exceeds bound")
+    profile = json.loads(raw)
+    keys = {"schema", "root", "manifest", "manifest_sha256"}
+    if not isinstance(profile, dict) or set(profile) != keys or any(not isinstance(value, str) or any(c in value for c in "\x00\r\n") for value in profile.values()) or profile["schema"] != "docker-research-toolchain/v1":
+        raise ValueError("Research toolchain profile is invalid")
+    for name in ("root", "manifest"):
+        item = Path(profile[name])
+        if not item.is_absolute() or item.resolve(strict=True) != item or item.stat().st_uid not in {0, os.getuid()}:
+            raise ValueError("Research toolchain profile paths are not canonical owned paths")
+    root, manifest = (Path(profile[name]) for name in ("root", "manifest"))
+    if not root.is_dir() or not (root / "python").is_dir() or not (root / "bin").is_dir():
+        raise ValueError("Research toolchain root is not the declared CPU/checker toolchain")
+    if not manifest.is_file() or manifest.is_relative_to(root) or manifest.stat().st_size > 32 * 1024 * 1024:
+        raise ValueError("Research toolchain profile files are unavailable")
+    for name, target in (("manifest_sha256", manifest),):
+        with target.open("rb") as handle:
+            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+        if not re.fullmatch(r"[0-9a-f]{64}", profile[name]) or digest != profile[name]:
+            raise ValueError("Research toolchain profile digest mismatch")
+    expected = json.loads(manifest.read_text(encoding="utf-8"))
+    if not isinstance(expected, dict) or expected.get("schema") != "research-runtime-tree/v1" or expected.get("root") != str(root) or not isinstance(expected.get("members"), dict):
+        raise ValueError("Research toolchain tree manifest is invalid")
+    observed: dict[str, object] = {}
+    size = 0
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        for name in sorted(dirs + files):
+            item = Path(directory) / name
+            info = item.lstat()
+            relative = str(item.relative_to(root))
+            if len(observed) >= 100000 or info.st_uid not in {0, os.getuid()}:
+                raise ValueError("Research toolchain tree exceeds ownership or member bound")
+            if stat.S_ISLNK(info.st_mode):
+                if not item.resolve(strict=True).is_relative_to(root):
+                    raise ValueError("Research toolchain tree symlink escapes its root")
+                member = {"kind": "symlink", "target": os.readlink(item)}
+            elif stat.S_ISDIR(info.st_mode):
+                member = {"kind": "directory"}
+            elif stat.S_ISREG(info.st_mode):
+                size += info.st_size
+                if size > 8 * 1024**3:
+                    raise ValueError("Research toolchain tree exceeds byte bound")
+                with item.open("rb") as handle:
+                    digest = hashlib.file_digest(handle, "sha256").hexdigest()
+                member = {"kind": "file", "bytes": info.st_size, "sha256": digest}
+            else:
+                raise ValueError("Research toolchain tree has a non-file member")
+            if not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o002:
+                raise ValueError("Research toolchain tree is world writable")
+            observed[relative] = member
+    if observed != expected["members"]:
+        raise ValueError("Research toolchain tree differs from its exact manifest")
+    if root.stat().st_mode & 0o002:
+        raise ValueError("Research toolchain root is world writable")
+    return {"root": str(root),
+            "sha256": hashlib.sha256(json.dumps(profile, sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
+
+
+def _with_research_environment(environment: Mapping[str, str], research: Mapping[str, str]) -> dict[str, str]:
+    """Expose only the admitted tree, preserving the sealed environment."""
+    result = dict(environment)
+    if research:
+        result["PATH"] = f"{research['root']}/bin:{result['PATH']}"
+        result["PYTHONPATH"] = f"{research['root']}/python:{result.get('PYTHONPATH', '')}".rstrip(":")
+        result[_RESEARCH_TOOLCHAIN_SHA256_ENV] = research["sha256"]
+        if "IPFS_ACCELERATE_AGENT_VALIDATION_PATH" in result:
+            result["IPFS_ACCELERATE_AGENT_VALIDATION_PATH"] = result["PATH"]
+    return result
+
+
 def _grok_task_container_environment(
     *, base_env: Mapping[str, str], child_env: Mapping[str, str],
     workspace: Path, grok_home: Path, tex_toolchain: Mapping[str, str] | None = None,
+    research_toolchain: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Translate the non-secret command declaration to the pinned toolchain.
 
@@ -2754,6 +2847,8 @@ def _grok_task_container_environment(
                    "TEXMFCONFIG": "/tmp/ipfs-texmf-config", _GROK_TEX_TOOLCHAIN_SHA256_ENV: tex_toolchain["sha256"]}
         approved.update(tex_env)
         fixed.update(tex_env)
+    fixed = _with_research_environment(fixed, research_toolchain or {})
+    approved = _with_research_environment(approved, research_toolchain or {})
     # Credentials remain environment/file based and never enter either source
     # file or argv. Only the primary provider's admitted names may survive.
     for name in ("XAI_API_KEY", "GROK_API_KEY", "ipfs_accelerate_py_XAI_API_KEY"):
@@ -2769,9 +2864,17 @@ def _grok_task_container_environment(
     return fixed, approved
 
 
+def _research_module_preflight_source(environment: Mapping[str, str], modules: Sequence[str]) -> str:
+    """Import fixed required modules from the sealed paths under isolated Python."""
+    paths = tuple(path for path in environment.get("PYTHONPATH", "").split(":") if path)
+    return ("import importlib,sys\n"
+            + f"sys.path[:0] = {paths!r}\n"
+            + f"[importlib.import_module(name) for name in {tuple(modules)!r}]\n")
+
+
 def _write_grok_task_container_launchers(
     *, directory: Path, environment: Mapping[str, str], approved: Mapping[str, str],
-    required_commands: Sequence[str],
+    required_commands: Sequence[str], required_modules: Sequence[str] = (),
 ) -> tuple[Path, Path]:
     """Materialize non-secret, owner-only sources for exact read-only mounts."""
     directory.mkdir(mode=0o700)
@@ -2797,6 +2900,11 @@ def _write_grok_task_container_launchers(
         f"required = {tuple(dict.fromkeys(('python', 'git', *required_commands)))!r}\n"
         "result = subprocess.run([wrapper, '--preflight', *required], env=clean, stdout=sys.stderr, check=False)\n"
         "if result.returncode: raise SystemExit(result.returncode)\n"
+        f"modules = {tuple(required_modules)!r}\n"
+        "if modules:\n"
+        f"    code = {_research_module_preflight_source(approved, required_modules)!r}\n"
+        "    result = subprocess.run([wrapper, '--', 'python', '-I', '-c', code], env=clean, stdout=sys.stderr, check=False, timeout=60)\n"
+        "    if result.returncode: raise SystemExit(result.returncode)\n"
         "if len(sys.argv) < 2: raise SystemExit(64)\n"
         "os.execve(sys.argv[1], sys.argv[1:], clean)\n",
         encoding="utf-8",
@@ -2842,8 +2950,13 @@ def _docker_grok_command(
     task_environment: dict[str, str] = {}
     launchers: tuple[Path, Path] | None = None
     tex_toolchain: dict[str, str] = {}
+    research_toolchain: dict[str, str] = {}
     if task_execution:
         tex_toolchain = _grok_task_tex_toolchain(base_env)
+        research_toolchain = _research_task_toolchain(base_env)
+        if research_toolchain and (Path(research_toolchain["root"]).is_relative_to(workspace)
+                or workspace.is_relative_to(Path(research_toolchain["root"]))):
+            raise ValueError("Grok research toolchain overlaps writable workspace")
         if tex_toolchain and any(
             Path(tex_toolchain[name]).is_relative_to(workspace)
             or workspace.is_relative_to(Path(tex_toolchain[name]))
@@ -2852,14 +2965,15 @@ def _docker_grok_command(
             raise ValueError("Grok TeX toolchain overlaps the writable workspace")
         task_environment, approved = _grok_task_container_environment(
             base_env=base_env, child_env=child_env, workspace=workspace, grok_home=grok_home,
-            tex_toolchain=tex_toolchain,
+            tex_toolchain=tex_toolchain, research_toolchain=research_toolchain,
         )
         launchers = _write_grok_task_container_launchers(
             directory=mask_root.parent / "task-launchers", environment=task_environment,
             approved=approved, required_commands=(
                 *required_commands,
+                *(_RESEARCH_REQUIRED_COMMANDS if research_toolchain else ()),
                 *(("latexmk", "pdflatex", "bibtex", Path(tex_toolchain["wrapper"]).name) if tex_toolchain else ()),
-            ),
+            ), required_modules=(_RESEARCH_REQUIRED_MODULES if research_toolchain else ()),
         )
         child_env.clear()
         child_env.update(task_environment)
@@ -2927,6 +3041,8 @@ def _docker_grok_command(
         if tex_toolchain:
             for name in ("root", "wrapper"):
                 command.extend(_docker_mount(Path(tex_toolchain[name]), read_only=True))
+    if research_toolchain:
+        command.extend(_docker_mount(Path(research_toolchain["root"]), read_only=True))
     for git_root in _git_metadata_roots(workspace):
         command.extend(_docker_mount(git_root, read_only=True))
     command.extend(_docker_mount(workspace, read_only=False))
@@ -3124,6 +3240,7 @@ def _docker_codex_fallback_command(
     cidfile: Path,
     docker_bin: str,
     isolation_image: str,
+    base_env: Mapping[str, str] | None = None,
 ) -> list[str]:
     """Wrap the pinned Codex fallback in a host-write-confined container."""
 
@@ -3146,6 +3263,25 @@ def _docker_codex_fallback_command(
     expected_environment = _codex_task_container_environment()
     if child_env != expected_environment:
         raise ValueError("Codex fallback container environment is not sealed")
+
+    # Reuse the exact optional task formatting profile already qualified for
+    # Grok. No ambient home/cache or provider authority is inherited.
+    tex_toolchain = _grok_task_tex_toolchain(base_env or {})
+    research_toolchain = _research_task_toolchain(base_env or {})
+    if tex_toolchain:
+        if any(Path(tex_toolchain[name]).is_relative_to(workspace)
+               or workspace.is_relative_to(Path(tex_toolchain[name]))
+               for name in ("root", "wrapper")):
+            raise ValueError("Codex TeX toolchain overlaps the writable workspace")
+        expected_environment = _codex_task_container_environment(tex_toolchain=tex_toolchain)
+        child_env.clear()
+        child_env.update(expected_environment)
+    if research_toolchain:
+        if Path(research_toolchain["root"]).is_relative_to(workspace) or workspace.is_relative_to(Path(research_toolchain["root"])):
+            raise ValueError("Codex research toolchain overlaps writable workspace")
+        expected_environment = _with_research_environment(expected_environment, research_toolchain)
+        child_env.clear()
+        child_env.update(expected_environment)
 
     _validate_codex_quota_fallback_command(
         codex_command,
@@ -3216,6 +3352,9 @@ def _docker_codex_fallback_command(
     if host_ca_certificates is None:
         raise ValueError("Codex fallback requires pinned host CA certificates")
     command.extend(_docker_mount(host_ca_certificates, read_only=True))
+    if tex_toolchain:
+        for name in ("root", "wrapper"):
+            command.extend(_docker_mount(Path(tex_toolchain[name]), read_only=True))
     command.extend(
         _docker_mount(
             host_python,
@@ -3223,6 +3362,8 @@ def _docker_codex_fallback_command(
             read_only=True,
         )
     )
+    if research_toolchain:
+        command.extend(_docker_mount(Path(research_toolchain["root"]), read_only=True))
     for git_root in _git_metadata_roots(workspace):
         command.extend(_docker_mount(git_root, read_only=True))
     command.extend(_docker_mount(workspace, read_only=False))
@@ -3243,6 +3384,22 @@ def _docker_codex_fallback_command(
     environment_assignments = [
         f"{name}={value}" for name, value in sorted(expected_environment.items())
     ]
+    if tex_toolchain or research_toolchain:
+        required = (("latexmk", "pdflatex", "bibtex", Path(tex_toolchain["wrapper"]).name) if tex_toolchain else ()) + (_RESEARCH_REQUIRED_COMMANDS if research_toolchain else ())
+        modules = _RESEARCH_REQUIRED_MODULES if research_toolchain else ()
+        preflight = (
+            "import os,shutil,subprocess,sys\n"
+            f"missing=[name for name in {required!r} if shutil.which(name) is None]\n"
+            "if missing:\n"
+            " sys.stderr.write('Codex task formatting tools unavailable: '+','.join(missing)+'\\n');sys.exit(127)\n"
+            f"modules={modules!r}\n"
+            "if modules:\n"
+            f" code={_research_module_preflight_source(expected_environment, modules)!r}\n"
+            " result=subprocess.run([sys.executable,'-I','-c',code],env=dict(os.environ),check=False,timeout=60)\n"
+            " if result.returncode:sys.exit(result.returncode)\n"
+            "os.execvpe(sys.argv[1],sys.argv[1:],dict(os.environ))\n"
+        )
+        inner = [str(_CODEX_TASK_TOOLCHAIN_PYTHON), "-I", "-c", preflight, *inner]
     command.extend([image, "-i", *environment_assignments, *inner])
     return command
 
@@ -3305,6 +3462,7 @@ def _run_codex_quota_fallback_in_docker(
             cidfile=docker_lease.cidfile,
             docker_bin=docker_bin,
             isolation_image=isolation_image,
+            base_env=base_env,
         )
         if pre_effect_validator is not None:
             # Validate the route before the final auth check so an auth swap
@@ -3377,7 +3535,7 @@ def _run_codex_quota_fallback_in_docker(
             environment_receipt = {
                 "docker_cli": dict(sorted(docker_environment.items())),
                 "container": dict(
-                    sorted(_codex_task_container_environment().items())
+                    sorted(child_env.items())
                 ),
             }
             image_receipt = {
