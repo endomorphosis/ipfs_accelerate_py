@@ -3378,7 +3378,7 @@ def _immutable_publication_lock(path: Path) -> Any:
                         "database Portal immutable evidence publication lock timed out"
                     ) from exc
                 time.sleep(0.01)
-        yield
+        yield descriptor
     finally:
         if locked:
             fcntl.flock(descriptor, fcntl.LOCK_UN)
@@ -15798,6 +15798,22 @@ class DatabasePortalExecutionBridge:
                 "database Portal reconciliation receipt is not a regular file"
             )
 
+        try:
+            raw = receipt_path.read_bytes()
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "database Portal reconciliation receipt is unreadable"
+            ) from exc
+        return self._decode_reconciliation_receipt(
+            attempt, paths, normalized_id, raw, required_stage=required_stage
+        )
+
+    def _decode_reconciliation_receipt(
+        self, attempt: Any, paths: Any, normalized_id: str, raw: bytes,
+        *, required_stage: str = "",
+    ) -> dict[str, Any]:
+        """Apply the same exact receipt checks to direct and population reads."""
+
         def closed_object(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
             result: dict[str, Any] = {}
             for key, value in pairs:
@@ -15810,7 +15826,6 @@ class DatabasePortalExecutionBridge:
             return result
 
         try:
-            raw = receipt_path.read_bytes()
             if len(raw) > 262_144:
                 raise DatabasePortalBridgeError(
                     "database Portal reconciliation receipt is oversized"
@@ -15884,6 +15899,92 @@ class DatabasePortalExecutionBridge:
             )
         return receipt
 
+    def _reconciliation_evidence_population(self, attempt: Any) -> list[dict[str, Any]]:
+        """Observe one durable immutable receipt population in linear work.
+
+        Existing evidence searches rejected non-final directory entries. Keep
+        that requirement, pin the publication directory, validate every final,
+        sync the two directory entries once, then revalidate before returning.
+        Exact crash repair remains in the individual receipt loader.
+        """
+        paths = self._paths(attempt)
+        directory = paths.reconciliation
+        if not directory.exists() and not directory.is_symlink():
+            return []
+        if (self.attempt_root.is_symlink() or paths.root.is_symlink()
+                or directory.is_symlink()
+                or paths.root.parent.resolve() != self.attempt_root.resolve()):
+            raise DatabasePortalBridgeError("reconciliation population root changed")
+        flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
+        def fingerprint(info: os.stat_result) -> tuple[int, ...]:
+            return tuple(getattr(info, key) for key in (
+                "st_dev", "st_ino", "st_mode", "st_uid", "st_nlink", "st_size",
+                "st_mtime_ns", "st_ctime_ns"))
+        with _immutable_publication_lock(directory / "population") as publication_fd:
+            parent_fd = os.open(paths.root, flags | os.O_DIRECTORY)
+            try:
+                directory_fd = os.open(directory.name, flags | os.O_DIRECTORY, dir_fd=parent_fd)
+                try:
+                    parent_identity = fingerprint(os.fstat(parent_fd))
+                    directory_identity = fingerprint(os.fstat(directory_fd))
+                    names = tuple(sorted(os.listdir(directory_fd)))
+                    if len(names) > 65536 or any(re.fullmatch(r"[0-9a-f]{64}[.]json", name) is None for name in names):
+                        raise DatabasePortalBridgeError("reconciliation evidence population is not closed")
+                    def current() -> None:
+                        if (fingerprint(paths.root.lstat()) != parent_identity
+                                or fingerprint(os.fstat(parent_fd)) != parent_identity
+                                or fingerprint(os.stat(directory.name, dir_fd=parent_fd, follow_symlinks=False)) != directory_identity
+                                or fingerprint(os.fstat(directory_fd)) != directory_identity
+                                or fingerprint(os.fstat(publication_fd)) != directory_identity
+                                or tuple(sorted(os.listdir(directory_fd))) != names):
+                            raise DatabasePortalBridgeError("reconciliation evidence population changed")
+                    current()
+                    def read(name: str) -> tuple[tuple[int, ...], bytes]:
+                        descriptor = os.open(name, flags, dir_fd=directory_fd)
+                        try:
+                            info = os.fstat(descriptor)
+                            identity = fingerprint(info)
+                            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                                    or info.st_nlink != 1 or not 0 <= info.st_size <= 262144):
+                                raise DatabasePortalBridgeError("reconciliation evidence file is unsafe")
+                            raw = bytearray()
+                            while len(raw) <= info.st_size:
+                                chunk = os.read(descriptor, min(65536, info.st_size + 1 - len(raw)))
+                                if not chunk: break
+                                raw.extend(chunk)
+                            if (len(raw) != info.st_size or fingerprint(os.fstat(descriptor)) != identity
+                                    or fingerprint(os.stat(name, dir_fd=directory_fd, follow_symlinks=False)) != identity):
+                                raise DatabasePortalBridgeError("reconciliation evidence file changed")
+                            return identity, bytes(raw)
+                        finally:
+                            os.close(descriptor)
+                    records = []
+                    receipts = []
+                    total = 0
+                    for name in names:
+                        identity, raw = read(name)
+                        total += len(raw)
+                        if total > 64 * 1024 * 1024:
+                            raise DatabasePortalBridgeError("reconciliation evidence population is oversized")
+                        if not _immutable_receipt_payload_is_exact(directory / name, raw):
+                            raise DatabasePortalBridgeError("reconciliation evidence bytes are not exact")
+                        receipts.append(self._decode_reconciliation_receipt(
+                            attempt, paths, "sha256:" + name[:-5], raw))
+                        records.append((name, identity, _sha256_bytes(raw)))
+                    current()
+                    os.fsync(directory_fd)
+                    os.fsync(parent_fd)
+                    for name, identity, digest in records:
+                        observed, raw = read(name)
+                        if observed != identity or _sha256_bytes(raw) != digest:
+                            raise DatabasePortalBridgeError("reconciliation evidence changed across durability check")
+                    current()
+                    return receipts
+                finally:
+                    os.close(directory_fd)
+            finally:
+                os.close(parent_fd)
+
     def _interrupted_validation_recovery_evidence(
         self,
         attempt: Any,
@@ -15909,25 +16010,10 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "database Portal reconciliation evidence store is not exact"
             )
-        try:
-            receipt_paths = sorted(paths.reconciliation.iterdir())
-        except OSError as exc:
-            raise DatabasePortalBridgeError(
-                "database Portal reconciliation evidence store is unreadable"
-            ) from exc
         task_alias = str(binding.get("task_alias") or "")
         binding_id = str(binding.get("binding_id") or "")
         matches: list[dict[str, Any]] = []
-        for receipt_path in receipt_paths:
-            match = re.fullmatch(r"([0-9a-f]{64})\.json", receipt_path.name)
-            if match is None:
-                raise DatabasePortalBridgeError(
-                    "database Portal reconciliation evidence name is malformed"
-                )
-            receipt = self.load_reconciliation_receipt(
-                attempt,
-                "sha256:" + match.group(1),
-            )
+        for receipt in self._reconciliation_evidence_population(attempt):
             if receipt.get("stage") != "blocked":
                 continue
             nested = receipt.get("nested_state")
@@ -16042,6 +16128,8 @@ class DatabasePortalExecutionBridge:
             equivalent_receipts,
             key=lambda item: str(item.get("receipt_id") or ""),
         )
+        if self.load_reconciliation_receipt(attempt, selected["receipt_id"]) != selected:
+            raise DatabasePortalBridgeError("selected validation evidence changed")
         evidence = {
             "schema": (
                 "ipfs_accelerate_py/agent-supervisor/"
@@ -16073,16 +16161,7 @@ class DatabasePortalExecutionBridge:
                 "database Portal reconciliation evidence store is not exact"
             )
         matches: list[dict[str, Any]] = []
-        for path in sorted(paths.reconciliation.iterdir()):
-            match = re.fullmatch(r"([0-9a-f]{64})\.json", path.name)
-            if match is None:
-                raise DatabasePortalBridgeError(
-                    "database Portal reconciliation evidence name is malformed"
-                )
-            receipt = self.load_reconciliation_receipt(
-                attempt,
-                "sha256:" + match.group(1),
-            )
+        for receipt in self._reconciliation_evidence_population(attempt):
             nested = receipt.get("nested_state")
             portal = receipt.get("portal_reconciliation")
             fence = receipt.get("provider_runner_fence")
@@ -16175,6 +16254,8 @@ class DatabasePortalExecutionBridge:
             )
         if not matches:
             return None
+        if self.load_reconciliation_receipt(attempt, matches[0]["receipt_id"]) != matches[0]:
+            raise DatabasePortalBridgeError("selected migration evidence changed")
         evidence = {
             "schema": (
                 "ipfs_accelerate_py/agent-supervisor/"
@@ -16201,16 +16282,7 @@ class DatabasePortalExecutionBridge:
                 "database Portal reconciliation evidence store is not exact"
             )
         matches: list[dict[str, Any]] = []
-        for path in sorted(paths.reconciliation.iterdir()):
-            match = re.fullmatch(r"([0-9a-f]{64})\.json", path.name)
-            if match is None:
-                raise DatabasePortalBridgeError(
-                    "database Portal reconciliation evidence name is malformed"
-                )
-            receipt = self.load_reconciliation_receipt(
-                attempt,
-                "sha256:" + match.group(1),
-            )
+        for receipt in self._reconciliation_evidence_population(attempt):
             nested = receipt.get("nested_state")
             portal = receipt.get("portal_reconciliation")
             fence = receipt.get("provider_runner_fence")
@@ -16304,6 +16376,8 @@ class DatabasePortalExecutionBridge:
         if not matches:
             return None
         receipt = matches[0]
+        if self.load_reconciliation_receipt(attempt, receipt["receipt_id"]) != receipt:
+            raise DatabasePortalBridgeError("selected implementation evidence changed")
         evidence = {
             "schema": (
                 "ipfs_accelerate_py/agent-supervisor/"

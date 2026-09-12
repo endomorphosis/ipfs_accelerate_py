@@ -10771,6 +10771,7 @@ def test_bridge_preserves_provider_forbidden_terminal_recovery_block(
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_database_shutdown_fences_exact_live_nested_ordinary_runner(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
         content_identity,
@@ -10779,6 +10780,14 @@ def test_database_shutdown_fences_exact_live_nested_ordinary_runner(
         _ordinary_provider_runner_observation,
         _process_start_ticks,
     )
+
+    # This fixture represents a native ordinary runner. Its legacy orphan
+    # check must not inspect or act on unrelated production leases in /tmp.
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor
+
+    recovery_root = tmp_path / "ordinary-grok-recovery-root"
+    recovery_root.mkdir(mode=0o700)
+    monkeypatch.setattr(supervisor, "_ORDINARY_GROK_TEMP_ROOT", recovery_root)
 
     repo, daemon, _bridge, _attempt_record, paths = (
         _seed_interrupted_database_portal_attempt(tmp_path)
