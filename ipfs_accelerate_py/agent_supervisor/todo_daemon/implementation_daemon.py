@@ -52322,7 +52322,11 @@ class PortalImplementationDaemon:
         def git_bytes(arguments: Sequence[str]) -> bytes:
             try:
                 completed = subprocess.run(
-                    ["git", *arguments],
+                    # Status may otherwise rewrite private and nested indexes
+                    # merely to refresh their stat caches. Fingerprinting also
+                    # runs before custody admission, so every Git observation
+                    # must suppress optional writes, including child queries.
+                    ["git", "--no-optional-locks", *arguments],
                     cwd=workspace,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
