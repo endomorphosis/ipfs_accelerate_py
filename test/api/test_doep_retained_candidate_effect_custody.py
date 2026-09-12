@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from test_agent_supervisor_implementation_protected_paths import (
+from test.api.test_agent_supervisor_implementation_protected_paths import (
     PortalImplementationDaemon,
     _protected_git_worktree_daemon,
     _task,
