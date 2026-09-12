@@ -20,6 +20,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
@@ -559,6 +560,99 @@ class DatabasePortalExecutionBridge:
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
         return receipt
 
+    def _reconciled_projection_snapshot(
+        self, *, daemon: Any, paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any], todo_update: Mapping[str, Any],
+        completion_task_cids: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Fsync an exact attempt projection without granting task authority.
+
+        This callback is installed by the database bridge, never selected by a
+        provider path or environment flag. The outer bridge still requires the
+        normal durable Portal completion event and native acceptance sequence.
+        """
+        from .implementation_daemon import parse_task_text
+
+        result: dict[str, Any] = {
+            "schema": "database-portal-reconciled-projection-snapshot/v1",
+            "passed": False, "projection_authority": False,
+            "binding_id": str(binding.get("binding_id") or ""),
+            "reason": "attempt_projection_unproven",
+        }
+        descriptors: list[int] = []
+        try:
+            expected_paths = (paths.root, paths.task_projection, paths.binding)
+            if any(p.resolve() != p.absolute() for p in expected_paths):
+                raise ValueError("attempt projection path is noncanonical")
+            if (Path(daemon.todo_path).absolute() != paths.task_projection
+                    or Path(daemon.state_path).absolute() != paths.state
+                    or Path(daemon.events_path).absolute() != paths.events
+                    or Path(str(todo_update.get("path") or "")).absolute()
+                    != paths.task_projection):
+                raise ValueError("attempt projection or daemon path differs")
+            if (todo_update.get("task_source_identity")
+                    or (todo_update.get("updated") is not True
+                        and todo_update.get("reason") != "already_completed")):
+                raise ValueError("not a completed private Portal projection")
+            def revision(s: os.stat_result) -> tuple[int, ...]:
+                return (s.st_dev, s.st_ino, s.st_mode, s.st_size,
+                        s.st_mtime_ns, s.st_ctime_ns)
+            records: list[tuple[Path, int, tuple[int, ...], bytes]] = []
+            for path in (paths.binding, paths.task_projection):
+                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+                descriptors.append(fd)
+                initial = os.fstat(fd)
+                if not stat.S_ISREG(initial.st_mode) or initial.st_size > 8 * 1024 * 1024:
+                    raise ValueError("attempt projection is not a bounded regular file")
+                with os.fdopen(os.dup(fd), "rb") as handle:
+                    data = handle.read(8 * 1024 * 1024 + 1)
+                if len(data) != initial.st_size:
+                    raise ValueError("attempt projection changed while reading")
+                records.append((path, fd, revision(initial), data))
+            if json.loads(records[0][3]) != dict(binding):
+                raise ValueError("attempt binding changed")
+            text = records[1][3].decode("utf-8")
+            alias = str(binding.get("task_alias") or "")
+            if (_projection_immutable_digest(text) != binding["projection_immutable_digest"]
+                    or _HEADER.findall(text) != [alias]
+                    or _projection_status(text) not in _TERMINAL_STATUSES):
+                raise ValueError("sealed projection identity or terminal status differs")
+            tasks = parse_task_text(text, path=paths.task_projection,
+                                    task_header_prefix=self.task_header_prefix)
+            if len(tasks) != 1:
+                raise ValueError("projection must contain exactly one task")
+            identity = daemon._identity_for_task(tasks[0])
+            expected = {alias: str(identity.canonical_task_cid)}
+            if dict(completion_task_cids) != expected:
+                raise ValueError("projected completion CID differs")
+            for path, fd, before, data in records:
+                os.fsync(fd)
+                os.lseek(fd, 0, os.SEEK_SET)
+                with os.fdopen(os.dup(fd), "rb") as handle:
+                    if handle.read(len(data) + 1) != data:
+                        raise ValueError("attempt projection changed during fsync")
+                if (revision(os.fstat(fd)) != before
+                        or revision(path.stat(follow_symlinks=False)) != before):
+                    raise ValueError("attempt projection inode or revision changed")
+            directory = os.open(paths.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            descriptors.append(directory)
+            os.fsync(directory)
+            for path, fd, before, _data in records:
+                if (revision(os.fstat(fd)) != before
+                        or revision(path.stat(follow_symlinks=False)) != before):
+                    raise ValueError("attempt projection changed before final readback")
+            result.update(passed=True, reason="bound_attempt_projection_fsynced",
+                          path=str(paths.task_projection),
+                          projection_digest=_sha256_bytes(records[1][3]),
+                          binding_digest=_sha256_bytes(records[0][3]),
+                          completion_task_cids=expected)
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            result["error"] = str(exc)[:1000]
+        finally:
+            for fd in reversed(descriptors):
+                os.close(fd)
+        return result
+
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
@@ -573,6 +667,12 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "portal_factory did not return a Portal-compatible daemon"
             )
+        daemon._database_portal_reconciled_snapshot = lambda update, cids: (
+            self._reconciled_projection_snapshot(
+                daemon=daemon, paths=paths, binding=binding,
+                todo_update=update, completion_task_cids=cids,
+            )
+        )
         try:
             for _pass_index in range(self.max_passes):
                 projection = self._verify_projection(paths, binding)

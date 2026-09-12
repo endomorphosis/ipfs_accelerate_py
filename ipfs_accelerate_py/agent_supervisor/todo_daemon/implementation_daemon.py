@@ -23830,6 +23830,26 @@ class PortalImplementationDaemon:
                 and commit_result.get("committed") is True
             )
         )
+        database_projection_snapshot: dict[str, Any] = {}
+        database_snapshotter = getattr(
+            self, "_database_portal_reconciled_snapshot", None
+        )
+        if (
+            not todo_update_result.get("task_source_identity")
+            and (already_completed or (
+                updated
+                and commit_result is not None
+                and commit_result.get("committed") is False
+                and commit_result.get("reason") == "not_in_git_repo"
+            ))
+            and callable(database_snapshotter)
+        ):
+            database_projection_snapshot = dict(
+                database_snapshotter(todo_update_result, expected)
+            )
+            base_durable_update = (
+                database_projection_snapshot.get("passed") is True
+            )
         runtime_binding_uncertain = bool(
             runtime_binding.get("runtime_projection") is True
             and runtime_binding.get("authoritative") is not True
@@ -23875,6 +23895,8 @@ class PortalImplementationDaemon:
             )
         if runtime_binding:
             result["runtime_taskboard_binding"] = runtime_binding
+        if database_projection_snapshot:
+            result["database_projection_snapshot"] = database_projection_snapshot
         return result
 
     def _mark_tasks_completed_in_todo(
