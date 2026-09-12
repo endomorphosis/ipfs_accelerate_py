@@ -13768,6 +13768,7 @@ class PortalImplementationDaemon:
                 record.workspace_path,
                 expected_state_dir=expected_state_dir,
                 reason="controlled_shutdown_quiesced_owner",
+                expected_record=record,
             )
         )
         if terminal is None:
@@ -17414,6 +17415,11 @@ class PortalImplementationDaemon:
             return result
 
         state = PortalTaskState.load(self.state_path)
+        lifecycle_workspace = str(state.active_worktree_path or "").strip()
+        captured_lifecycle = (
+            self.worktree_lifecycle.load_workspace(Path(lifecycle_workspace))
+            if lifecycle_workspace else None
+        )
         lifecycle_preflight = self._reconcile_quiesced_worktree_lifecycle(
             state,
             terminalize=False,
@@ -17431,45 +17437,84 @@ class PortalImplementationDaemon:
             )
             return result
 
-        protected_path_reconciliation = (
-            self._reconcile_implementation_protected_path_fence()
-        )
+        protected_path_reconciliation: dict[str, Any] = {}
+        protected_reconciliation_error: BaseException | None = None
+        worktree_lifecycle_reconciliation = dict(lifecycle_preflight)
+
+        def reconcile_captured_paths() -> dict[str, Any]:
+            # This callback runs while the exact first-pass lifecycle (or its
+            # positively observed absence) excludes native replacement.
+            nonlocal protected_path_reconciliation, protected_reconciliation_error
+            try:
+                protected_path_reconciliation = (
+                    self._reconcile_implementation_protected_path_fence()
+                )
+            except BaseException as exc:
+                protected_reconciliation_error = exc
+                raise
+            return protected_path_reconciliation
+
+        try:
+            if captured_lifecycle is not None:
+                _, terminal = (
+                    self.worktree_lifecycle.reconcile_exact_dead_owner_after_effect(
+                        captured_lifecycle,
+                        expected_state_dir=self.state_path.parent.resolve(),
+                        effect=reconcile_captured_paths,
+                    )
+                )
+                if terminal is not None:
+                    worktree_lifecycle_reconciliation = {
+                        **lifecycle_preflight,
+                        "reconciled": True,
+                        "blocked": False,
+                        "reason": (
+                            "worktree_lifecycle_already_terminal"
+                            if captured_lifecycle.is_terminal
+                            else "worktree_lifecycle_dead_owner_terminalized"
+                        ),
+                        "state": terminal.state.value,
+                        "fence": terminal.fence,
+                        "owner_pid": terminal.owner.pid,
+                        "terminal_reason": terminal.terminal_reason,
+                    }
+            elif lifecycle_workspace:
+                self.worktree_lifecycle.run_effect_if_unclaimed(
+                    Path(lifecycle_workspace), effect=reconcile_captured_paths,
+                )
+            else:
+                reconcile_captured_paths()
+        except OwnershipError as exc:
+            if exc is protected_reconciliation_error:
+                raise
+            # Do not recapture a newer owner or retry an effect after refusal.
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "worktree_lifecycle_reconciliation_blocked",
+                "worktree_lifecycle_reconciliation": {
+                    **lifecycle_preflight,
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "worktree_lifecycle_captured_custody_changed",
+                    "error": str(exc),
+                },
+                "protected_path_reconciliation": protected_path_reconciliation,
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked", result,
+            )
+            return result
+
         if protected_path_reconciliation.get("blocked", False):
             result = {
                 "reconciled": False,
                 "blocked": True,
                 "reason": "protected_path_reconciliation_blocked",
-                "protected_path_reconciliation": (
-                    protected_path_reconciliation
-                ),
+                "protected_path_reconciliation": protected_path_reconciliation,
             }
             self._record_event(
-                "implementation_shutdown_reconciliation_blocked",
-                result,
-            )
-            return result
-
-        worktree_lifecycle_reconciliation = (
-            self._reconcile_quiesced_worktree_lifecycle(
-                state,
-                terminalize=True,
-            )
-        )
-        if worktree_lifecycle_reconciliation.get("blocked", False):
-            result = {
-                "reconciled": False,
-                "blocked": True,
-                "reason": "worktree_lifecycle_reconciliation_blocked",
-                "worktree_lifecycle_reconciliation": (
-                    worktree_lifecycle_reconciliation
-                ),
-                "protected_path_reconciliation": (
-                    protected_path_reconciliation
-                ),
-            }
-            self._record_event(
-                "implementation_shutdown_reconciliation_blocked",
-                result,
+                "implementation_shutdown_reconciliation_blocked", result,
             )
             return result
 
