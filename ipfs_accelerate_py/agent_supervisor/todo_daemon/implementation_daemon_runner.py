@@ -753,6 +753,8 @@ def _compact_recovery_observations(
                  and status in {"blocked", "quarantined", "unknown", "retrying"})
                 or outcome.get("operator_review_required") is True
                 or outcome.get("recovery_deferred") is True
+                or (stage == "unknown_callback_reopens"
+                    and outcome.get("reopened") is False)
             ):
                 continue
             if len(entries) >= 16:

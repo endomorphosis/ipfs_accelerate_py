@@ -87,6 +87,18 @@ def test_recovery_summary_has_bounded_rows_and_text():
     assert len(json.dumps(summary)) < 20000
 
 
+def test_legacy_callback_refusal_without_status_remains_visible():
+    result = idle_with_recovery(terminal_portal_reconciliations=[], unknown_callback_reopens=[{
+        "task_cid": "sha256:legacy-task", "reopened": False, "changed": False,
+        "reason": "post_commit_recovery_evidence_rejected",
+        "error_type": "DatabaseImplementationAuthorityError",
+    }])
+    summary = compact_daemon_pass_result(result)["recovery_observations"]
+    assert len(summary["entries"]) == 1
+    assert summary["entries"][0]["reason"] == "post_commit_recovery_evidence_rejected"
+    assert summary["entries"][0]["error_type"] == "DatabaseImplementationAuthorityError"
+
+
 @pytest.mark.parametrize("malformed", [None, {}, "not outcomes", 1])
 def test_malformed_stage_does_not_crash_idle_logging(malformed):
     result = idle_with_recovery(terminal_portal_reconciliations=malformed)
