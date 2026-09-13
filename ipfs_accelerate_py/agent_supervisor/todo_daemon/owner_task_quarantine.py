@@ -298,11 +298,9 @@ def current(daemon: Any) -> dict[str, Any]:
     intent = getattr(daemon.task_source, "intent", None)
     if intent is None:
         return result
-    with intent._connection() as connection:
-        heads = central.heads(connection)
-        if not heads:
-            return result
-        binding = getattr(connection, "_quack_mutation_binding", None)
+    heads, binding = intent.owner_task_quarantine_observation()
+    if not heads:
+        return result
     for attempt_id, head in heads.items():
         central.require(
             head["state"] == "active" and head["owner_binding"] == binding,

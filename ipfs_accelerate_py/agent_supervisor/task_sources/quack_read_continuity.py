@@ -85,9 +85,10 @@ def _replica_connection_lost(error):
     return (
         type(message) is str
         and len(message) <= 4096
-        and message.startswith(
-            "IO Error: Failed to send message: IO Error: Could not connect to server"
-        )
+        and message.startswith((
+            "IO Error: Failed to send message: IO Error: Could not connect to server",
+            "IO Error: Failed to send message: IO Error: Failure when receiving data from the peer",
+        ))
     )
 
 
@@ -164,5 +165,31 @@ def read_owner_quarantine_heads(*, open_connection, store_id, endpoint):
 
     return _read_owned_projection(
         open_connection=open_connection, read_projection=heads,
+        store_id=store_id, endpoint=endpoint, preserve_validation_errors=True,
+    )
+
+
+def read_owner_quarantine_observation(*, open_connection, store_id, endpoint):
+    """Return complete heads and the binding of their same owned read handle.
+
+    Local acknowledgement and callback admission remain outside this retry.
+    A replica can withdraw between any two SELECTs, so partial heads or a
+    binding from another handle must never escape as an admission observation.
+    """
+    from .owner_task_quarantine import heads
+
+    def observation(connection):
+        binding = dict(connection._quack_mutation_binding)
+        before = tuple((key, type(value), value) for key, value in sorted(binding.items()))
+        result = heads(connection)
+        current = connection._quack_mutation_binding
+        if (type(current) is not dict
+                or tuple((key, type(value), value) for key, value in sorted(current.items())) != before
+                or connection.in_transaction or connection._quack_pending_mutations != []):
+            raise QuackReadUnavailable("quack quarantine read binding changed during observation")
+        return result, binding
+
+    return _read_owned_projection(
+        open_connection=open_connection, read_projection=observation,
         store_id=store_id, endpoint=endpoint, preserve_validation_errors=True,
     )
