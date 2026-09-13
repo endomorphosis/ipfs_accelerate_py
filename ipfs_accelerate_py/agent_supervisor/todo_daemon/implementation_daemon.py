@@ -88052,13 +88052,12 @@ class DatabaseImplementationDaemon:
                 if attempt.attempt_id not in quarantined]
 
     def _assert_task_not_owner_quarantined(self, task_cid: str) -> None:
-        from ..task_sources.owner_task_quarantine import heads, require
+        from ..task_sources.owner_task_quarantine import require
         intent = getattr(self.task_source, "intent", None)
         if intent is not None:
-            with intent._connection() as connection:
-                fences = heads(connection)
-                require(not any(head["task_cid"] == task_cid for head in fences.values()),
-                        "task_custody_quarantined")
+            fences = intent.owner_task_quarantines()
+            require(not any(head["task_cid"] == task_cid for head in fences.values()),
+                    "task_custody_quarantined")
 
     def _assert_owner_quarantine_independent_admission(self) -> None:
         from ..task_sources.owner_task_quarantine import require
