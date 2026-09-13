@@ -16868,6 +16868,7 @@ def test_callback_v3_porcelain_rejects_non_worktree_content_changes(
             "blocked",
             "Portal completion lacks one exact evaluated baseline",
         ),
+        ("blocked", "Portal callback reconciliation binding is invalid"),
         ("quarantined", "provider_callback_outcome_unknown"),
     ],
 )
@@ -16908,6 +16909,7 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
                     if source_status == "quarantined"
                     else "terminal"
                 ),
+                "reason": terminal_reason,
                 "failure_kind": (
                     "provider_callback_outcome_unknown"
                     if source_status == "quarantined"
@@ -16985,6 +16987,11 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
                     "queue_receipt": {},
                 }
             return cas_result
+
+        def recover_post_merge_retry(self, **kwargs: object) -> object:
+            assert source_status == "blocked"
+            captured["dedicated_owner_command"] = True
+            return self.record_queue_backoff_and_cas_status(**kwargs)
 
         def get_queue_entry(self, task_cid: str) -> object | None:
             receipt = captured.get("receipt")
@@ -17155,6 +17162,7 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     assert transition["control_expected_status"] == source_status
     assert captured["status"] == "retrying"
     assert result["recovered"] is True
+    assert captured.get("dedicated_owner_command", False) is (source_status == "blocked")
     assert result["write_count"] == 2
     assert retired == (
         [attempt.attempt_id] if source_status == "quarantined" else []
@@ -23625,3 +23633,25 @@ def test_pending_merge_state_artifact_cannot_bypass_bounded_reader(tmp_path, mon
             bridge._recorded_pending_merge_identity(paths, binding)
         else:
             bridge._pending_merge_state_is_current(paths, binding, identity)
+
+
+@pytest.mark.parametrize("reason", [
+    "Portal callback reconciliation binding is invalid",
+    "Portal callback reconciliation binding is invalid extra",
+    "wrapped: Portal callback reconciliation binding is invalid",
+    "portal_terminal_failure",
+])
+def test_callback_binding_terminal_has_only_exact_seed_recovery(reason: str) -> None:
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon._post_merge_completion_recovery_was_consumed = lambda _attempt: False
+    daemon._terminal_portal_failure_reason = lambda _attempt: reason
+    attempt = SimpleNamespace(attempt_id="attempt:callback-terminal", body={})
+    task = SimpleNamespace(body={"completion_receipt": {
+        "operation": "database_portal_terminal_failure",
+        "attempt_id": attempt.attempt_id,
+        "reason": reason,
+    }})
+    exact = reason == "Portal callback reconciliation binding is invalid"
+    assert daemon._recoverable_post_merge_terminal_reason(reason) == (reason if exact else "")
+    assert daemon._is_portal_completion_evaluated_baseline_missing_terminal(attempt, task) is exact
+    assert daemon._is_post_merge_declared_outputs_missing_terminal(attempt, task) is False
