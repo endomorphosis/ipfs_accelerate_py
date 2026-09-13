@@ -30427,6 +30427,9 @@ class DatabasePortalExecutionBridge:
         priority_completed_page = self._priority_repaired_completion_requests(
             priority_task_cids
         )
+        # A nonempty task page can have no eligible completed queue request.
+        # Advance its cursor and continue the ordinary bounded recovery scan.
+        priority_result = None
         if priority_completed_page:
             for priority_request in priority_completed_page:
                 self._record_post_merge_recovery_stage(
@@ -30450,8 +30453,6 @@ class DatabasePortalExecutionBridge:
                 "priority_request_not_found",
                 reason=f"candidate_count={len(priority_task_cids)}",
             )
-        else:
-            priority_result = None
         if (
             isinstance(priority_result, Mapping)
             and priority_result.get("schema")
