@@ -1,0 +1,23 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-033",
+  "task_cid": "sha256:9f276040e34160f78b651fff755ea63ae12ddc6fd97ec6a47f938e836be6307c",
+  "title": "Add materialized-state replay and recovery",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "base_repositories": {"ipfs_accelerate_py": {"commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f", "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"}, "ipfs_datasets_py": {"commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7", "tree": "456e09b51d6a07a3a5873436df24054768195320"}, "ipfs_kit_py": {"commit": "b6c65ba732733d7e33852713ba18aa3b12235668", "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"}, "lift_coding": {"commit": "bb8869ed72eb7002434345d9969efee729c4f7f6", "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"}},
+  "changed_paths": ["ipfs_accelerate_py/agent_supervisor/runtime/database_event_log.py", "test/api/doep/test_doep_033_add_materialized_state_replay_and_recovery.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-033.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-033.json"],
+  "expected_outputs": ["ipfs_accelerate_py/agent_supervisor/runtime/database_event_log.py", "test/api/doep/test_doep_033_add_materialized_state_replay_and_recovery.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-033.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-033.json"],
+  "write_scope": ["ipfs_accelerate_py/agent_supervisor/runtime/database_event_log.py", "test/api/doep/test_doep_033_add_materialized_state_replay_and_recovery.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-033.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-033.json"],
+  "outputs_present": {"ipfs_accelerate_py/agent_supervisor/runtime/database_event_log.py": true, "test/api/doep/test_doep_033_add_materialized_state_replay_and_recovery.py": true, "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-033.json": true, "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-033.json": true},
+  "path_digests": {"ipfs_accelerate_py/agent_supervisor/runtime/database_event_log.py": "sha256:bd6f087095084fed54a1c85f410df8b870d51532df09dce879ad34b5f4d615a4", "test/api/doep/test_doep_033_add_materialized_state_replay_and_recovery.py": "sha256:822f17b503849b8f96b45ae8ea705e9e4f29190afb0eb678e9da60b378219ee4", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-033.json": "sha256:ce3c12326315577ae7e2f7c9e44c82e4e15e5bf9b4abfd3a0a844104bd1e77cf"},
+  "required_evidence": {"source_commit_tree_gitlinks": {"ipfs_accelerate_py": {"commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f", "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"}, "ipfs_datasets_py": {"commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7", "tree": "456e09b51d6a07a3a5873436df24054768195320"}, "ipfs_kit_py": {"commit": "b6c65ba732733d7e33852713ba18aa3b12235668", "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"}, "lift_coding": {"commit": "bb8869ed72eb7002434345d9969efee729c4f7f6", "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"}}, "test_proof_results": {"validation_command": ["python3", "-m", "pytest", "test/api/doep/test_doep_033_add_materialized_state_replay_and_recovery.py", "-q"], "proof_selection": "verified_empty", "proof_reason": "Materialized-state replay and recovery are independently checked by deterministic Python assertions against DatabaseEventLog@1, EventCursor@1, ConsumerCheckpoint@1 and MaterializedStateReplay@1."}, "limitations": ["Candidate receipt only; independent fenced supervisor admission is required for completion.", "Worker or model assertion alone is insufficient.", "Materialized snapshots are restart hints; domain events remain authority. Pending snapshot rows are ignored on recovery."], "verifier_admission": "pending_independent_fenced_supervisor"},
+  "validation": {"commands": [{"argv": ["python3", "-m", "pytest", "test/api/doep/test_doep_033_add_materialized_state_replay_and_recovery.py", "-q"], "cwd": "external/ipfs_accelerate", "status": "candidate_local"}]},
+  "supervisor_acceptance": {"completion_authoritative": false, "state": "pending_independent_fenced_supervisor"}
+}

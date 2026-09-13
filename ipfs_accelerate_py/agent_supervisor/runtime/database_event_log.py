@@ -1,17 +1,19 @@
 """DuckDB-backed authoritative event, audit, log, metric, and cursor store.
 
-DQP-013 / DOEP-032 / DatabaseEventLog@1
-=======================================
+DQP-013 / DOEP-032 / DOEP-033 / DatabaseEventLog@1
+==================================================
 
 :class:`DatabaseEventLog` is the durable authority for domain events,
 structured logs, metrics, explicit application audits, stream heads,
-retention, integrity checkpoints, consumer cursors, and idempotent
-consumption. Physical delivery is at-least-once; logical transitions are
-exactly-once per ``(consumer_id, event_id)``. JSONL is an export adapter
-only: deleting or tampering with an export has no authority effect.
+retention, integrity checkpoints, consumer cursors, idempotent
+consumption, and materialized-state replay/recovery. Physical delivery
+is at-least-once; logical transitions are exactly-once per
+``(consumer_id, event_id)``. JSONL is an export adapter only: deleting
+or tampering with an export has no authority effect.
 
-Idempotent consumption is a binding of this store, not a second event
-subsystem. A worker or model assertion cannot mark an event consumed.
+Idempotent consumption and materialized-state replay are bindings of
+this store, not a second event subsystem. A worker or model assertion
+cannot mark an event consumed, skip suffix replay, or certify recovery.
 
 Cold import of this module performs no filesystem, database, network,
 provider, or process action.
@@ -60,6 +62,16 @@ IDEMPOTENT_EVENT_CONSUMPTION_CONSUMES: Final[tuple[str, ...]] = (
     EVENT_CURSOR_INTERFACE,
     CONSUMER_CHECKPOINT_INTERFACE,
 )
+MATERIALIZED_STATE_REPLAY_BINDING: Final[str] = "MaterializedStateReplay@1"
+MATERIALIZED_STATE_REPLAY_INTERFACE: Final[str] = (
+    MATERIALIZED_STATE_REPLAY_BINDING
+)
+MATERIALIZED_STATE_REPLAY_CONSUMES: Final[tuple[str, ...]] = (
+    DATABASE_EVENT_LOG_INTERFACE,
+    EVENT_CURSOR_INTERFACE,
+    CONSUMER_CHECKPOINT_INTERFACE,
+    IDEMPOTENT_EVENT_CONSUMPTION_BINDING,
+)
 
 DATABASE_EVENT_LOG_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-event-log@1"
@@ -84,6 +96,15 @@ AUDIT_RECORD_SCHEMA: Final[str] = (
 )
 JSONL_EXPORT_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/event-jsonl-export-receipt@1"
+)
+MATERIALIZED_STATE_SNAPSHOT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/materialized-state-snapshot@1"
+)
+MATERIALIZED_STATE_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/materialized-state-recovery@1"
+)
+MATERIALIZED_STATE_REPLAY_SCHEMA: Final[str] = (
+    MATERIALIZED_STATE_RECOVERY_SCHEMA
 )
 
 DEFAULT_STREAM_ID: Final[str] = "stream:default"
@@ -203,6 +224,23 @@ CREATE TABLE IF NOT EXISTS consumed_events (
 CREATE INDEX IF NOT EXISTS consumed_events_consumer_seq_idx
     ON consumed_events(consumer_id, stream_id, sequence);
 
+CREATE TABLE IF NOT EXISTS materialized_state_snapshots (
+    snapshot_cid VARCHAR PRIMARY KEY,
+    projection_id VARCHAR NOT NULL,
+    stream_id VARCHAR NOT NULL,
+    snapshot_id VARCHAR NOT NULL,
+    position BIGINT NOT NULL,
+    last_event_id VARCHAR NOT NULL DEFAULT '',
+    cursor_token VARCHAR NOT NULL,
+    state_json VARCHAR NOT NULL,
+    state_digest VARCHAR NOT NULL,
+    status VARCHAR NOT NULL,
+    recorded_at VARCHAR NOT NULL,
+    snapshot_digest VARCHAR NOT NULL
+);
+CREATE INDEX IF NOT EXISTS materialized_state_snapshots_projection_idx
+    ON materialized_state_snapshots(projection_id, stream_id, position);
+
 CREATE TABLE IF NOT EXISTS integrity_checkpoints (
     checkpoint_id VARCHAR PRIMARY KEY,
     stream_id VARCHAR NOT NULL,
@@ -280,6 +318,8 @@ class AuditAction(str, Enum):
     REDACT = "redact"
     POLL = "poll"
     CONSUME = "consume"
+    SNAPSHOT = "snapshot"
+    RECOVER = "recover"
 
 
 class ConsumptionStatus(str, Enum):
@@ -293,6 +333,20 @@ class ConsumptionOutcome(str, Enum):
     """Logical result of one consume attempt against one event identity."""
 
     APPLIED = "applied"
+    IDEMPOTENT_REPLAY = "idempotent_replay"
+
+
+class MaterializedSnapshotStatus(str, Enum):
+    """Durable snapshot-row status. Pending rows are ignored on recovery."""
+
+    PENDING = "pending"
+    COMMITTED = "committed"
+
+
+class MaterializedRecoveryOutcome(str, Enum):
+    """Logical result of one materialized-state recovery."""
+
+    RECOVERED = "recovered"
     IDEMPOTENT_REPLAY = "idempotent_replay"
 
 
@@ -620,6 +674,232 @@ class EventConsumptionPage:
         }
 
 
+def _projection_consumer_id(projection_id: str) -> str:
+    return f"consumer:materialized:{projection_id}"
+
+
+def _bounded_state(state: Mapping[str, Any] | None) -> dict[str, Any]:
+    if state is None:
+        return {}
+    if not isinstance(state, Mapping) or isinstance(state, (str, bytes)):
+        raise DatabaseEventLogError("materialized state must project to an object")
+    raw = dict(state)
+    encoded = _canonical_json(raw).encode("utf-8")
+    if len(encoded) > MAX_BODY_BYTES:
+        raise DatabaseEventLogBoundsError(
+            f"materialized state exceeds the {MAX_BODY_BYTES}-byte bound"
+        )
+    return raw
+
+
+def _state_digest(state: Mapping[str, Any]) -> str:
+    return _sha256_hex(_canonical_json(dict(state)).encode("utf-8"))
+
+
+def _snapshot_cid(
+    *,
+    projection_id: str,
+    cursor: EventCursor,
+    state: Mapping[str, Any],
+) -> str:
+    body = {
+        "projection_id": projection_id,
+        "cursor": cursor.to_record(),
+        "state_digest": _state_digest(state),
+    }
+    return _sha256_hex(_canonical_json(body).encode("utf-8"))
+
+
+def _snapshot_digest(
+    *,
+    snapshot_cid: str,
+    projection_id: str,
+    cursor: EventCursor,
+    state: Mapping[str, Any],
+    status: str,
+) -> str:
+    body = {
+        "snapshot_cid": snapshot_cid,
+        "projection_id": projection_id,
+        "cursor": cursor.to_record(),
+        "state_digest": _state_digest(state),
+        "status": status,
+    }
+    return _sha256_hex(_canonical_json(body).encode("utf-8"))
+
+
+@dataclass(frozen=True)
+class MaterializedStateSnapshot:
+    """Durable projection snapshot bound to one stream cursor.
+
+    Pending rows are crash-window markers and never recovery authority.
+    Events remain the source of truth; a snapshot is a restart hint.
+    """
+
+    projection_id: str
+    cursor: EventCursor
+    state: Mapping[str, Any]
+    status: MaterializedSnapshotStatus = MaterializedSnapshotStatus.COMMITTED
+    recorded_at: str = ""
+    snapshot_cid: str = ""
+    schema: str = MATERIALIZED_STATE_SNAPSHOT_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "projection_id", _text(self.projection_id, "projection_id")
+        )
+        if not isinstance(self.cursor, EventCursor):
+            raise TypeError("cursor must be an EventCursor")
+        cleaned = _bounded_state(self.state)
+        object.__setattr__(self, "state", MappingProxyType(cleaned))
+        if not isinstance(self.status, MaterializedSnapshotStatus):
+            object.__setattr__(
+                self, "status", MaterializedSnapshotStatus(str(self.status))
+            )
+        object.__setattr__(
+            self,
+            "recorded_at",
+            _text(self.recorded_at or _utc_iso(), "recorded_at"),
+        )
+        computed_cid = _snapshot_cid(
+            projection_id=self.projection_id,
+            cursor=self.cursor,
+            state=cleaned,
+        )
+        selected_cid = _text(
+            self.snapshot_cid or computed_cid, "snapshot_cid"
+        )
+        if self.snapshot_cid and selected_cid != computed_cid:
+            raise DatabaseEventLogIntegrityError(
+                "materialized snapshot_cid does not match content identity"
+            )
+        object.__setattr__(self, "snapshot_cid", computed_cid)
+        if self.schema != MATERIALIZED_STATE_SNAPSHOT_SCHEMA:
+            raise DatabaseEventLogError(
+                "unsupported materialized state snapshot schema"
+            )
+
+    @property
+    def state_digest(self) -> str:
+        return _state_digest(self.state)
+
+    @property
+    def snapshot_digest(self) -> str:
+        return _snapshot_digest(
+            snapshot_cid=self.snapshot_cid,
+            projection_id=self.projection_id,
+            cursor=self.cursor,
+            state=self.state,
+            status=self.status.value,
+        )
+
+    @property
+    def consumer_id(self) -> str:
+        return _projection_consumer_id(self.projection_id)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "interface": MATERIALIZED_STATE_REPLAY_INTERFACE,
+            "binding": MATERIALIZED_STATE_REPLAY_BINDING,
+            "consumes": list(MATERIALIZED_STATE_REPLAY_CONSUMES),
+            "carrier": DATABASE_EVENT_LOG_INTERFACE,
+            "snapshot_cid": self.snapshot_cid,
+            "projection_id": self.projection_id,
+            "consumer_id": self.consumer_id,
+            "cursor": self.cursor.to_record(),
+            "state": dict(self.state),
+            "status": self.status.value,
+            "recorded_at": self.recorded_at,
+            "state_digest": self.state_digest,
+            "snapshot_digest": self.snapshot_digest,
+            "authoritative": False,
+            "worker_assertion_is_authority": False,
+        }
+
+
+@dataclass(frozen=True)
+class MaterializedStateRecovery:
+    """Reconstructed projection: committed snapshot plus suffix replay."""
+
+    projection_id: str
+    state: Mapping[str, Any]
+    cursor: EventCursor
+    snapshot: MaterializedStateSnapshot | None
+    applied_event_ids: tuple[str, ...]
+    outcome: MaterializedRecoveryOutcome
+    recovered_from_snapshot: bool = False
+    checkpoint: ConsumerCheckpoint | None = None
+    has_more: bool = False
+    schema: str = MATERIALIZED_STATE_RECOVERY_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "projection_id", _text(self.projection_id, "projection_id")
+        )
+        cleaned = _bounded_state(self.state)
+        object.__setattr__(self, "state", MappingProxyType(cleaned))
+        if not isinstance(self.cursor, EventCursor):
+            raise TypeError("cursor must be an EventCursor")
+        if self.snapshot is not None and not isinstance(
+            self.snapshot, MaterializedStateSnapshot
+        ):
+            raise TypeError("snapshot must be a MaterializedStateSnapshot or None")
+        if not isinstance(self.applied_event_ids, tuple):
+            object.__setattr__(
+                self, "applied_event_ids", tuple(self.applied_event_ids)
+            )
+        if not isinstance(self.outcome, MaterializedRecoveryOutcome):
+            object.__setattr__(
+                self, "outcome", MaterializedRecoveryOutcome(str(self.outcome))
+            )
+        if not isinstance(self.recovered_from_snapshot, bool):
+            raise DatabaseEventLogError(
+                "recovered_from_snapshot must be a boolean"
+            )
+        if self.checkpoint is not None and not isinstance(
+            self.checkpoint, ConsumerCheckpoint
+        ):
+            raise TypeError("checkpoint must be a ConsumerCheckpoint or None")
+        if not isinstance(self.has_more, bool):
+            raise DatabaseEventLogError("has_more must be a boolean")
+        if self.schema != MATERIALIZED_STATE_RECOVERY_SCHEMA:
+            raise DatabaseEventLogError(
+                "unsupported materialized state recovery schema"
+            )
+
+    @property
+    def state_digest(self) -> str:
+        return _state_digest(self.state)
+
+    @property
+    def consumer_id(self) -> str:
+        return _projection_consumer_id(self.projection_id)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "interface": MATERIALIZED_STATE_REPLAY_INTERFACE,
+            "binding": MATERIALIZED_STATE_REPLAY_BINDING,
+            "consumes": list(MATERIALIZED_STATE_REPLAY_CONSUMES),
+            "carrier": DATABASE_EVENT_LOG_INTERFACE,
+            "projection_id": self.projection_id,
+            "consumer_id": self.consumer_id,
+            "state": dict(self.state),
+            "cursor": self.cursor.to_record(),
+            "snapshot": None if self.snapshot is None else self.snapshot.to_dict(),
+            "checkpoint": None
+            if self.checkpoint is None
+            else self.checkpoint.to_dict(),
+            "applied_event_ids": list(self.applied_event_ids),
+            "outcome": self.outcome.value,
+            "recovered_from_snapshot": self.recovered_from_snapshot,
+            "has_more": self.has_more,
+            "state_digest": self.state_digest,
+            "worker_assertion_is_authority": False,
+        }
+
+
 @dataclass(frozen=True)
 class StreamHead:
     """Authoritative head of one event stream."""
@@ -787,6 +1067,9 @@ class DatabaseEventLog:
     INTERFACE: Final[str] = DATABASE_EVENT_LOG_INTERFACE
     IDEMPOTENT_EVENT_CONSUMPTION_BINDING: Final[str] = (
         IDEMPOTENT_EVENT_CONSUMPTION_BINDING
+    )
+    MATERIALIZED_STATE_REPLAY_BINDING: Final[str] = (
+        MATERIALIZED_STATE_REPLAY_BINDING
     )
 
     def __init__(
@@ -1690,6 +1973,180 @@ class DatabaseEventLog:
             has_more=page.has_more,
         )
 
+    # -- materialized-state replay / recovery --------------------------------
+
+    def load_materialized_snapshot(
+        self,
+        projection_id: str,
+        stream_id: str = DEFAULT_STREAM_ID,
+    ) -> MaterializedStateSnapshot | None:
+        """Return the latest committed snapshot, ignoring pending crash rows."""
+
+        with self._lock:
+            return self._load_latest_committed_snapshot_unlocked(
+                self._require(),
+                _text(projection_id, "projection_id"),
+                _text(stream_id, "stream_id"),
+            )
+
+    def save_materialized_snapshot(
+        self,
+        projection_id: str,
+        state: Mapping[str, Any] | None,
+        cursor: EventCursor | Mapping[str, Any] | str,
+        *,
+        worker_assertion: bool = False,
+    ) -> MaterializedStateSnapshot:
+        """Persist a committed projection snapshot via a pending crash window.
+
+        ``worker_assertion`` cannot skip digest, cursor, or rewind checks.
+        """
+
+        del worker_assertion
+        selected = self._coerce_cursor(cursor)
+        consumer_projection = _text(projection_id, "projection_id")
+        payload = _bounded_state(state)
+        with self._lock:
+            connection = self._require()
+            return self._commit_materialized_snapshot_unlocked(
+                connection,
+                projection_id=consumer_projection,
+                state=payload,
+                cursor=selected,
+            )
+
+    def recover_materialized_state(
+        self,
+        projection_id: str,
+        *,
+        reducer: Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]]
+        | None = None,
+        initial_state: Mapping[str, Any] | None = None,
+        stream_id: str = DEFAULT_STREAM_ID,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        persist: bool = True,
+        until_head: bool = True,
+        worker_assertion: bool = False,
+    ) -> MaterializedStateRecovery:
+        """Rebuild projection state from the last committed snapshot plus suffix.
+
+        Pending snapshot rows are ignored. Events after the snapshot cursor
+        are folded through ``reducer``. A worker assertion cannot skip that
+        suffix or certify recovery. Snapshots are restart hints; the event
+        log remains authority. ``until_head`` replays every remaining page;
+        ``materialize`` uses a single bounded page.
+        """
+
+        del worker_assertion
+        selected_projection = _text(projection_id, "projection_id")
+        selected_stream = _text(stream_id, "stream_id")
+        page_limit = _positive_int(limit, "limit")
+        if page_limit > MAX_PAGE_LIMIT:
+            raise DatabaseEventLogBoundsError(
+                f"limit exceeds the {MAX_PAGE_LIMIT} bound"
+            )
+
+        with self._lock:
+            snapshot = self._load_latest_committed_snapshot_unlocked(
+                self._require(), selected_projection
+            )
+        if snapshot is not None:
+            if snapshot.cursor.stream_id != selected_stream:
+                raise DatabaseEventLogConflictError(
+                    "materialized snapshot is bound to a different stream"
+                )
+            # Fail closed when the snapshot cursor is outside the retained
+            # window; poll() also enforces this, but recovery must not
+            # silently start from origin after a retained snapshot.
+            self.poll(snapshot.cursor, limit=1, stream_id=selected_stream)
+            state = dict(snapshot.state)
+            current = snapshot.cursor
+            recovered_from_snapshot = True
+        else:
+            state = _bounded_state(initial_state)
+            current = self.initial_cursor(selected_stream)
+            recovered_from_snapshot = False
+
+        applied: list[str] = []
+        has_more = False
+        while True:
+            page = self.poll(current, limit=page_limit, stream_id=selected_stream)
+            has_more = page.has_more
+            if not page.events:
+                current = page.next_cursor
+                break
+            if reducer is None:
+                raise DatabaseEventLogError(
+                    "reducer is required to replay events after a "
+                    "materialized snapshot"
+                )
+            for event in page.events:
+                folded = reducer(state, event)
+                if not isinstance(folded, Mapping):
+                    raise DatabaseEventLogError(
+                        "materialized reducer must return an object"
+                    )
+                state = _bounded_state(folded)
+                applied.append(_text(event.get("event_id"), "event_id"))
+            current = page.next_cursor
+            if not page.has_more or not until_head:
+                break
+
+        if applied:
+            outcome = MaterializedRecoveryOutcome.RECOVERED
+        else:
+            outcome = MaterializedRecoveryOutcome.IDEMPOTENT_REPLAY
+
+        committed: MaterializedStateSnapshot | None = snapshot
+        checkpoint: ConsumerCheckpoint | None = None
+        if persist:
+            committed = self.save_materialized_snapshot(
+                selected_projection, state, current
+            )
+            checkpoint = self.save_consumer_checkpoint(
+                _projection_consumer_id(selected_projection),
+                current,
+            )
+        else:
+            checkpoint = self.load_consumer_checkpoint(
+                _projection_consumer_id(selected_projection)
+            )
+
+        return MaterializedStateRecovery(
+            projection_id=selected_projection,
+            state=state,
+            cursor=current,
+            snapshot=committed,
+            applied_event_ids=tuple(applied),
+            outcome=outcome,
+            recovered_from_snapshot=recovered_from_snapshot,
+            checkpoint=checkpoint,
+            has_more=has_more,
+        )
+
+    def materialize(
+        self,
+        projection_id: str,
+        *,
+        reducer: Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]],
+        initial_state: Mapping[str, Any] | None = None,
+        stream_id: str = DEFAULT_STREAM_ID,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        worker_assertion: bool = False,
+    ) -> MaterializedStateRecovery:
+        """Fold one bounded page into durable materialized state and persist it."""
+
+        return self.recover_materialized_state(
+            projection_id,
+            reducer=reducer,
+            initial_state=initial_state,
+            stream_id=stream_id,
+            limit=limit,
+            persist=True,
+            until_head=False,
+            worker_assertion=worker_assertion,
+        )
+
     # -- integrity / retention -----------------------------------------------
 
     def write_integrity_checkpoint(
@@ -2104,6 +2561,185 @@ class DatabaseEventLog:
             return None
         return _row_mapping(rows[0])
 
+    def _load_latest_committed_snapshot_unlocked(
+        self,
+        connection: Any,
+        projection_id: str,
+        stream_id: str | None = None,
+    ) -> MaterializedStateSnapshot | None:
+        if stream_id is None:
+            rows = connection.execute(
+                """
+                SELECT snapshot_cid, projection_id, stream_id, snapshot_id,
+                       position, last_event_id, cursor_token, state_json,
+                       state_digest, status, recorded_at, snapshot_digest
+                FROM materialized_state_snapshots
+                WHERE projection_id = ? AND status = ?
+                ORDER BY position DESC
+                LIMIT 1
+                """,
+                [
+                    projection_id,
+                    MaterializedSnapshotStatus.COMMITTED.value,
+                ],
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT snapshot_cid, projection_id, stream_id, snapshot_id,
+                       position, last_event_id, cursor_token, state_json,
+                       state_digest, status, recorded_at, snapshot_digest
+                FROM materialized_state_snapshots
+                WHERE projection_id = ? AND stream_id = ? AND status = ?
+                ORDER BY position DESC
+                LIMIT 1
+                """,
+                [
+                    projection_id,
+                    stream_id,
+                    MaterializedSnapshotStatus.COMMITTED.value,
+                ],
+            ).fetchall()
+        if not rows:
+            return None
+        return self._row_to_snapshot(_row_mapping(rows[0]))
+
+    def _row_to_snapshot(self, row: Mapping[str, Any]) -> MaterializedStateSnapshot:
+        body_raw = row.get("state_json") or "{}"
+        if isinstance(body_raw, Mapping):
+            state = dict(body_raw)
+        else:
+            try:
+                state = json.loads(str(body_raw))
+            except json.JSONDecodeError as exc:
+                raise DatabaseEventLogIntegrityError(
+                    "materialized snapshot state is not valid JSON"
+                ) from exc
+        if not isinstance(state, dict):
+            raise DatabaseEventLogIntegrityError(
+                "materialized snapshot state must be an object"
+            )
+        cursor = EventCursor(
+            stream_id=str(row["stream_id"]),
+            snapshot_id=str(row["snapshot_id"] or self._snapshot_id),
+            position=int(row["position"] or 0),
+            last_event_id=str(row["last_event_id"] or ""),
+        )
+        snapshot = MaterializedStateSnapshot(
+            projection_id=str(row["projection_id"]),
+            cursor=cursor,
+            state=state,
+            status=MaterializedSnapshotStatus(str(row["status"])),
+            recorded_at=str(row.get("recorded_at") or ""),
+            snapshot_cid=str(row.get("snapshot_cid") or ""),
+        )
+        stored_state_digest = str(row.get("state_digest") or "")
+        stored_snapshot_digest = str(row.get("snapshot_digest") or "")
+        if stored_state_digest and stored_state_digest != snapshot.state_digest:
+            raise DatabaseEventLogIntegrityError(
+                "materialized snapshot state digest mismatch"
+            )
+        if (
+            stored_snapshot_digest
+            and stored_snapshot_digest != snapshot.snapshot_digest
+        ):
+            raise DatabaseEventLogIntegrityError(
+                "materialized snapshot digest mismatch"
+            )
+        stored_cid = str(row.get("snapshot_cid") or "")
+        if stored_cid and stored_cid != snapshot.snapshot_cid:
+            raise DatabaseEventLogIntegrityError(
+                "materialized snapshot_cid mismatch"
+            )
+        return snapshot
+
+    def _upsert_snapshot_unlocked(
+        self,
+        connection: Any,
+        snapshot: MaterializedStateSnapshot,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO materialized_state_snapshots (
+                snapshot_cid, projection_id, stream_id, snapshot_id,
+                position, last_event_id, cursor_token, state_json,
+                state_digest, status, recorded_at, snapshot_digest
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                snapshot.snapshot_cid,
+                snapshot.projection_id,
+                snapshot.cursor.stream_id,
+                snapshot.cursor.snapshot_id,
+                snapshot.cursor.position,
+                snapshot.cursor.last_event_id,
+                snapshot.cursor.to_token(),
+                _canonical_json(dict(snapshot.state)),
+                snapshot.state_digest,
+                snapshot.status.value,
+                snapshot.recorded_at,
+                snapshot.snapshot_digest,
+            ],
+        )
+
+    def _commit_materialized_snapshot_unlocked(
+        self,
+        connection: Any,
+        *,
+        projection_id: str,
+        state: Mapping[str, Any],
+        cursor: EventCursor,
+    ) -> MaterializedStateSnapshot:
+        head = self._load_head(connection, cursor.stream_id)
+        cursor.assert_replayable(
+            stream_id=cursor.stream_id,
+            earliest_position=self._earliest_sequence(
+                connection, cursor.stream_id
+            ),
+            latest_position=head.latest_sequence,
+            snapshot_id=self._snapshot_id,
+        )
+        existing = self._load_latest_committed_snapshot_unlocked(
+            connection, projection_id, cursor.stream_id
+        )
+        payload = _bounded_state(state)
+        if existing is not None:
+            if existing.cursor.stream_id != cursor.stream_id:
+                raise DatabaseEventLogConflictError(
+                    "materialized snapshot is bound to a different stream"
+                )
+            if cursor.position < existing.cursor.position:
+                raise DatabaseEventLogConflictError(
+                    "materialized snapshot cannot rewind"
+                )
+            if cursor.position == existing.cursor.position:
+                same_state = dict(existing.state) == payload
+                same_cursor = self._cursors_equivalent(existing.cursor, cursor)
+                if same_state and same_cursor:
+                    return existing
+                raise DatabaseEventLogConflictError(
+                    "materialized snapshot already exists with a different state"
+                )
+        pending = MaterializedStateSnapshot(
+            projection_id=projection_id,
+            cursor=cursor,
+            state=payload,
+            status=MaterializedSnapshotStatus.PENDING,
+        )
+        self._upsert_snapshot_unlocked(connection, pending)
+        self._commit_if_idle(connection)
+        committed = MaterializedStateSnapshot(
+            projection_id=projection_id,
+            cursor=cursor,
+            state=payload,
+            status=MaterializedSnapshotStatus.COMMITTED,
+            recorded_at=pending.recorded_at,
+            snapshot_cid=pending.snapshot_cid,
+        )
+        self._upsert_snapshot_unlocked(connection, committed)
+        self._commit_if_idle(connection)
+        return committed
+
     def _upsert_consumed_unlocked(
         self,
         connection: Any,
@@ -2348,6 +2984,16 @@ __all__ = (
     "JSONL_EXPORT_RECEIPT_SCHEMA",
     "JsonlExportReceipt",
     "LogSeverity",
+    "MATERIALIZED_STATE_RECOVERY_SCHEMA",
+    "MATERIALIZED_STATE_REPLAY_BINDING",
+    "MATERIALIZED_STATE_REPLAY_CONSUMES",
+    "MATERIALIZED_STATE_REPLAY_INTERFACE",
+    "MATERIALIZED_STATE_REPLAY_SCHEMA",
+    "MATERIALIZED_STATE_SNAPSHOT_SCHEMA",
+    "MaterializedRecoveryOutcome",
+    "MaterializedSnapshotStatus",
+    "MaterializedStateRecovery",
+    "MaterializedStateSnapshot",
     "REDACTION_MARKER",
     "STREAM_HEAD_SCHEMA",
     "StreamHead",
