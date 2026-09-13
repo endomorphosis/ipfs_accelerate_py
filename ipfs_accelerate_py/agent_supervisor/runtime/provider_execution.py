@@ -11,6 +11,12 @@ cancel conservatively settles because the provider may still charge.  Enforce
 mode fails closed on unknown or stale coordination unless a reviewed degraded
 budget permits local/deterministic fallback.
 
+DOEP-043 extends this same gateway with unknown-provider-outcome
+reconciliation.  After dispatch, an inconclusive provider effect is recorded
+as ``provider_outcome_unknown`` and must enter ``CanonicalTaskStateMachine@1``
+reconciliation; it is never blindly retried and never completes a task.  This
+is not a second state machine, usage coordinator, or completion authority.
+
 This module is pure on cold import: no network, provider, process, database,
 or secret-store I/O.  Usage receipts remain operational evidence only and never
 authorize usage, rewrite provider settlement, or prove completion/correctness.
@@ -47,6 +53,23 @@ from ipfs_accelerate_py.endpoint_usage.schema import (
 )
 
 from ..proof.formal_verification_contracts import CanonicalContract
+from ..task_sources.control_plane_contracts import (
+    CANONICAL_TASK_STATE_MACHINE_INTERFACE,
+    ControlPlaneContractError,
+    TaskState,
+    TaskStateSnapshot,
+    allowed_task_transitions,
+    assert_task_transition,
+    canonical_task_state,
+    is_terminal_task_state,
+    task_transition_allowed,
+)
+from ..task_sources.control_plane_transactions import (
+    STATE_TRANSACTION_INTERFACE,
+    FenceMismatchError,
+    OptimisticConflictError,
+    assert_task_cas_transition,
+)
 from .provider_usage import (
     BRIDGE_AUTHORIZES_USAGE,
     BRIDGE_IS_COMPLETION_EVIDENCE,
@@ -81,6 +104,29 @@ PROVIDER_EXECUTION_RESULT_SCHEMA: Final[str] = (
 PROVIDER_EXECUTION_OBSERVATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/provider-execution-observation@1"
 )
+UNKNOWN_PROVIDER_OUTCOME_RECONCILIATION_BINDING: Final[str] = (
+    "UnknownProviderOutcomeReconciliation@1"
+)
+UNKNOWN_PROVIDER_OUTCOME_RECONCILIATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/unknown-provider-outcome-reconciliation@1"
+)
+UNKNOWN_PROVIDER_OUTCOME_RECONCILIATION_CONSUMES: Final[tuple[str, ...]] = (
+    CANONICAL_TASK_STATE_MACHINE_INTERFACE,
+    STATE_TRANSACTION_INTERFACE,
+)
+
+_UNKNOWN_OBSERVATION_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "unknown",
+        "provider_outcome_unknown",
+        "timeout",
+        "timed_out",
+        "lost",
+        "inconclusive",
+        "disconnected",
+    }
+)
+_ATTEMPT_SUFFIX = re.compile(r"^(?P<base>.+)#attempt-(?P<attempt>[0-9]+)$")
 
 MAX_TEXT_BYTES: Final[int] = 512
 MAX_REASON_CODES: Final[int] = 64
@@ -176,6 +222,24 @@ class ProviderExecutionPhase(str, Enum):
     FAILED = "failed"
     DEGRADED = "degraded"
     REPLAYED = "replayed"
+    PROVIDER_OUTCOME_UNKNOWN = "provider_outcome_unknown"
+    RECONCILING = "reconciling"
+
+
+class UnknownProviderOutcomeDisposition(str, Enum):
+    """Closed post-reconciliation dispositions from CanonicalTaskStateMachine@1.
+
+    These are the only successors of ``reconciling``.  ``retrying`` authorizes
+    a *new* attempt after reconciliation; the unknown attempt itself is never
+    reinvoked.
+    """
+
+    COMPLETED = "completed"
+    RETRYING = "retrying"
+    FAILED = "failed"
+    QUARANTINED = "quarantined"
+    BLOCKED = "blocked"
+    CANCELLED = "cancelled"
 
 
 class CoordinationState(str, Enum):
@@ -465,6 +529,83 @@ def _redact_endpoint(endpoint: str) -> str:
         return "endpoint:redacted"
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
     return f"endpoint:{digest}"
+
+
+def _base_idempotency_key(value: str) -> str:
+    text = str(value or "").strip()
+    matched = _ATTEMPT_SUFFIX.fullmatch(text)
+    if matched is not None:
+        return matched.group("base")
+    return text
+
+
+def _dispatch_outcome_unknown(request: "ProviderExecutionRequest") -> bool:
+    return request.side_effect_boundary in {
+        SideEffectBoundary.IDEMPOTENT,
+        SideEffectBoundary.SIDE_EFFECTING,
+    }
+
+
+def _observation_is_unknown(observation: Mapping[str, Any]) -> bool:
+    status = str(observation.get("status") or "").strip().casefold()
+    if status in _UNKNOWN_OBSERVATION_STATUSES:
+        return True
+    outcome = str(observation.get("provider_outcome") or "").strip().casefold()
+    return outcome in _UNKNOWN_OBSERVATION_STATUSES
+
+
+def unknown_provider_outcome_successors() -> tuple[TaskState, ...]:
+    """Return the sole canonical successor of ``provider_outcome_unknown``."""
+
+    return allowed_task_transitions(TaskState.PROVIDER_OUTCOME_UNKNOWN)
+
+
+def assert_unknown_provider_outcome_transition(
+    source: TaskState | str,
+    target: TaskState | str,
+) -> TaskState:
+    """Fail closed unless the edge is the canonical unknown-effect path.
+
+    ``provider_outcome_unknown`` may only enter ``reconciling``.  Blind retry
+    from unknown is never a legal successor.
+    """
+
+    current = canonical_task_state(source)
+    proposed = canonical_task_state(target)
+    if current is TaskState.PROVIDER_OUTCOME_UNKNOWN and proposed is TaskState.RETRYING:
+        raise ControlPlaneContractError(
+            "unknown provider outcomes cannot be blindly retried"
+        )
+    assert_task_transition(current, proposed)
+    if current is TaskState.PROVIDER_OUTCOME_UNKNOWN and proposed is not TaskState.RECONCILING:
+        raise ControlPlaneContractError(
+            "unknown provider outcomes must enter reconciliation"
+        )
+    return proposed
+
+
+def unknown_provider_outcome_retry_allowed(
+    *,
+    task_state: TaskState | str,
+    same_attempt: bool,
+    reconciled: bool = False,
+) -> bool:
+    """Return whether a provider call may be retried after an unknown effect.
+
+    The unknown attempt itself is never retried.  A new attempt is allowed
+    only after reconciliation has disposed the unknown effect to ``retrying``.
+    """
+
+    if same_attempt:
+        return False
+    state = canonical_task_state(task_state)
+    if is_terminal_task_state(state):
+        return False
+    return (
+        bool(reconciled)
+        and state is TaskState.RETRYING
+        and task_transition_allowed(TaskState.RECONCILING, state)
+    )
 
 
 def _finite_amount(vector: UsageVector, dimension: UsageDimension) -> int:
@@ -1036,6 +1177,212 @@ class ProviderExecutionResult(_ExecutionContract):
         return result
 
 
+def is_unknown_provider_outcome(result: ProviderExecutionResult) -> bool:
+    """Return whether an execution result is an unresolved unknown effect."""
+
+    if result.phase in {
+        ProviderExecutionPhase.PROVIDER_OUTCOME_UNKNOWN,
+        ProviderExecutionPhase.RECONCILING,
+    }:
+        return True
+    return "provider_outcome_unknown" in result.reason_codes
+
+
+def task_state_for_execution_result(result: ProviderExecutionResult) -> TaskState:
+    """Project an execution result onto CanonicalTaskStateMachine@1."""
+
+    recorded = result.observation.get("task_state")
+    if recorded:
+        return canonical_task_state(recorded)
+    if result.phase is ProviderExecutionPhase.PROVIDER_OUTCOME_UNKNOWN:
+        return TaskState.PROVIDER_OUTCOME_UNKNOWN
+    if result.phase is ProviderExecutionPhase.RECONCILING:
+        return TaskState.RECONCILING
+    if result.phase is ProviderExecutionPhase.CANCELLED:
+        return TaskState.CANCELLED
+    if result.phase is ProviderExecutionPhase.FAILED:
+        return TaskState.FAILED
+    if result.phase is ProviderExecutionPhase.DENIED:
+        return TaskState.BLOCKED
+    if result.success:
+        return TaskState.COMPLETED
+    return TaskState.IN_PROGRESS
+
+
+def blind_retry_forbidden(result: ProviderExecutionResult) -> bool:
+    """Unknown effects and in-flight reconciliation cannot be blindly retried."""
+
+    if "never_blind_retry" in result.reason_codes:
+        return True
+    state = task_state_for_execution_result(result)
+    return state in {TaskState.PROVIDER_OUTCOME_UNKNOWN, TaskState.RECONCILING}
+
+
+@dataclass(frozen=True)
+class UnknownProviderOutcomeReconciliation(_ExecutionContract):
+    """Operational record that an unknown provider effect entered reconciliation.
+
+    Consumes ``CanonicalTaskStateMachine@1`` and ``StateTransaction@1``.  The
+    record is not completion, correctness, or usage-authorization evidence, and
+    a worker assertion cannot dispose the unknown effect.
+    """
+
+    SCHEMA: ClassVar[str] = UNKNOWN_PROVIDER_OUTCOME_RECONCILIATION_SCHEMA
+    BINDING: ClassVar[str] = UNKNOWN_PROVIDER_OUTCOME_RECONCILIATION_BINDING
+
+    attempt_key: str
+    request_key: str
+    request_id: str
+    reservation_id: str
+    source_task_state: TaskState
+    target_task_state: TaskState
+    disposition: str = ""
+    evidence_ids: tuple[str, ...] = ()
+    lease_id: str = ""
+    fence_id: str = ""
+    worker_assertion: bool = False
+    authorizes_completion: bool = False
+    is_completion_evidence: bool = False
+    is_correctness_evidence: bool = False
+    blind_retry_allowed: bool = False
+    same_attempt_retry_allowed: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "attempt_key", _text(self.attempt_key, "attempt_key"))
+        object.__setattr__(self, "request_key", _text(self.request_key, "request_key"))
+        object.__setattr__(self, "request_id", _text(self.request_id, "request_id"))
+        object.__setattr__(
+            self, "reservation_id", _optional_text(self.reservation_id, "reservation_id")
+        )
+        source = canonical_task_state(self.source_task_state)
+        target = canonical_task_state(self.target_task_state)
+        assert_unknown_provider_outcome_transition(source, target)
+        object.__setattr__(self, "source_task_state", source)
+        object.__setattr__(self, "target_task_state", target)
+        disposition = _optional_text(self.disposition, "disposition")
+        if disposition:
+            _enum(disposition, UnknownProviderOutcomeDisposition, "disposition")
+        object.__setattr__(self, "disposition", disposition)
+        ids = tuple(
+            _text(item, "evidence_id")
+            for item in (self.evidence_ids or ())
+            if str(item or "").strip()
+        )
+        object.__setattr__(self, "evidence_ids", ids)
+        object.__setattr__(self, "lease_id", _optional_text(self.lease_id, "lease_id"))
+        object.__setattr__(self, "fence_id", _optional_text(self.fence_id, "fence_id"))
+        object.__setattr__(
+            self, "worker_assertion", _bool(self.worker_assertion, "worker_assertion")
+        )
+        for flag_name, expected in (
+            ("authorizes_completion", False),
+            ("is_completion_evidence", False),
+            ("is_correctness_evidence", False),
+            ("same_attempt_retry_allowed", False),
+        ):
+            value = getattr(self, flag_name)
+            if not isinstance(value, bool):
+                _fail(f"{flag_name} must be boolean", reason_codes=("invalid_field",))
+            if value is not expected:
+                _fail(
+                    f"{flag_name} cannot be true; unknown-outcome records are operational only",
+                    reason_codes=("authority_boundary",),
+                )
+        retry_allowed = _bool(self.blind_retry_allowed, "blind_retry_allowed")
+        if retry_allowed and not unknown_provider_outcome_retry_allowed(
+            task_state=target,
+            same_attempt=False,
+            reconciled=target is TaskState.RETRYING,
+        ):
+            _fail(
+                "blind retry is forbidden until reconciliation disposes to retrying",
+                reason_codes=("blind_retry_forbidden",),
+            )
+        if retry_allowed and source is TaskState.PROVIDER_OUTCOME_UNKNOWN:
+            _fail(
+                "blind retry is forbidden from provider_outcome_unknown",
+                reason_codes=("blind_retry_forbidden",),
+            )
+        object.__setattr__(self, "blind_retry_allowed", retry_allowed)
+        _reject_forbidden_payload(self._payload())
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": PROVIDER_EXECUTION_CONTRACT_VERSION,
+            "binding": self.BINDING,
+            "consumes": list(UNKNOWN_PROVIDER_OUTCOME_RECONCILIATION_CONSUMES),
+            "attempt_key": self.attempt_key,
+            "request_key": self.request_key,
+            "request_id": self.request_id,
+            "reservation_id": self.reservation_id,
+            "source_task_state": self.source_task_state.value,
+            "target_task_state": self.target_task_state.value,
+            "disposition": self.disposition,
+            "evidence_ids": self.evidence_ids,
+            "lease_id": self.lease_id,
+            "fence_id": self.fence_id,
+            "worker_assertion": self.worker_assertion,
+            "authorizes_completion": False,
+            "is_completion_evidence": False,
+            "is_correctness_evidence": False,
+            "blind_retry_allowed": self.blind_retry_allowed,
+            "same_attempt_retry_allowed": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "UnknownProviderOutcomeReconciliation":
+        allowed = {
+            "schema",
+            "schema_version",
+            "contract_version",
+            "binding",
+            "consumes",
+            "attempt_key",
+            "request_key",
+            "request_id",
+            "reservation_id",
+            "source_task_state",
+            "target_task_state",
+            "disposition",
+            "evidence_ids",
+            "lease_id",
+            "fence_id",
+            "worker_assertion",
+            "authorizes_completion",
+            "is_completion_evidence",
+            "is_correctness_evidence",
+            "blind_retry_allowed",
+            "same_attempt_retry_allowed",
+            "content_id",
+        }
+        _closed(
+            payload,
+            schema=cls.SCHEMA,
+            allowed=tuple(allowed),
+            name="unknown provider outcome reconciliation",
+        )
+        result = cls(
+            attempt_key=payload.get("attempt_key", ""),
+            request_key=payload.get("request_key", ""),
+            request_id=payload.get("request_id", ""),
+            reservation_id=payload.get("reservation_id", ""),
+            source_task_state=payload.get("source_task_state", ""),
+            target_task_state=payload.get("target_task_state", ""),
+            disposition=payload.get("disposition", ""),
+            evidence_ids=tuple(payload.get("evidence_ids") or ()),
+            lease_id=payload.get("lease_id", ""),
+            fence_id=payload.get("fence_id", ""),
+            worker_assertion=bool(payload.get("worker_assertion", False)),
+            authorizes_completion=bool(payload.get("authorizes_completion", False)),
+            is_completion_evidence=bool(payload.get("is_completion_evidence", False)),
+            is_correctness_evidence=bool(payload.get("is_correctness_evidence", False)),
+            blind_retry_allowed=bool(payload.get("blind_retry_allowed", False)),
+            same_attempt_retry_allowed=bool(payload.get("same_attempt_retry_allowed", False)),
+        )
+        _claim(payload, result.content_id, "content_id")
+        return result
+
+
 class ProviderInvoker(Protocol):
     """Typed adapter that performs the provider side-effect after reservation."""
 
@@ -1085,6 +1432,21 @@ class _TerminalRecord:
     invoke_count: int = 0
 
 
+@dataclass
+class _UnknownOutcomeRecord:
+    result: ProviderExecutionResult
+    lease_id: str
+    fence_id: str
+    catalog_revision: str
+    usage_revision: str
+    logical_keys: tuple[str, ...]
+    reservation_id: str
+    task_state: TaskState = TaskState.PROVIDER_OUTCOME_UNKNOWN
+    resolved: bool = False
+    retry_after_reconciliation: bool = False
+    reconciliation: Optional[UnknownProviderOutcomeReconciliation] = None
+
+
 class ProviderExecutionGateway:
     """Atomic estimate → reserve → invoke → settle gateway.
 
@@ -1115,6 +1477,8 @@ class ProviderExecutionGateway:
         self._in_flight: set[str] = set()
         self._invoke_counts: MutableMapping[str, int] = {}
         self._single_flight = single_flight_outcomes if single_flight_outcomes is not None else {}
+        self._unknown_by_attempt: MutableMapping[str, _UnknownOutcomeRecord] = {}
+        self._unknown_by_logical: MutableMapping[str, str] = {}
 
     @property
     def coordinator(self) -> Optional[UsageCoordinatorLike]:
@@ -1142,6 +1506,7 @@ class ProviderExecutionGateway:
             prior = self._terminals.get(attempt_key)
             if prior is not None:
                 return self._replay_result(prior.result, extra_reasons=("exact_replay",))
+            self._reject_blind_unknown_retry(request)
             if attempt_key in self._in_flight:
                 raise ProviderExecutionError(
                     "attempt already in flight",
@@ -1172,6 +1537,8 @@ class ProviderExecutionGateway:
                 ProviderExecutionPhase.DENIED,
                 ProviderExecutionPhase.CANCELLED,
                 ProviderExecutionPhase.FAILED,
+                ProviderExecutionPhase.PROVIDER_OUTCOME_UNKNOWN,
+                ProviderExecutionPhase.RECONCILING,
             }
             else prior.phase,
             final_status=prior.final_status,
@@ -1328,7 +1695,19 @@ class ProviderExecutionGateway:
         try:
             observation = self._invoke(request)
         except Exception as exc:
-            # Unknown side effects after dispatch: cancel conservatively.
+            if _dispatch_outcome_unknown(request):
+                return self._unknown_after_dispatch(
+                    request,
+                    reservation_id=reservation_id,
+                    usage_revision=usage_revision,
+                    estimate=estimate,
+                    coordination=coordination,
+                    dispatched=dispatched,
+                    reason="invoke_failed",
+                    observation={"error_class": type(exc).__name__},
+                    extra_reasons=(type(exc).__name__.casefold(),),
+                )
+            # Read-only / none: the provider effect is known not to have applied.
             settlement = self._conservative_settle(
                 reservation_id,
                 estimate=estimate,
@@ -1347,6 +1726,18 @@ class ProviderExecutionGateway:
                 observation={"error_class": type(exc).__name__},
                 settled=units,
                 coordination_state=coordination,
+            )
+
+        if _dispatch_outcome_unknown(request) and _observation_is_unknown(observation):
+            return self._unknown_after_dispatch(
+                request,
+                reservation_id=reservation_id,
+                usage_revision=usage_revision,
+                estimate=estimate,
+                coordination=coordination,
+                dispatched=dispatched,
+                reason="inconclusive_observation",
+                observation=observation,
             )
 
         settled_units = self._observation_units(observation, estimate)
@@ -1829,6 +2220,456 @@ class ProviderExecutionGateway:
         except Exception:
             return None
 
+    def unknown_outcome(self, attempt_key: str) -> Optional[_UnknownOutcomeRecord]:
+        with self._lock:
+            return self._unknown_by_attempt.get(attempt_key)
+
+    def reconcile(
+        self,
+        request: ProviderExecutionRequest,
+        *,
+        disposition: UnknownProviderOutcomeDisposition | str | None = None,
+        evidence_ids: Sequence[str] = (),
+        expected_task: TaskStateSnapshot | None = None,
+        proposed_task: TaskStateSnapshot | None = None,
+        current_task: TaskStateSnapshot | None = None,
+        worker_assertion: bool = False,
+    ) -> ProviderExecutionResult:
+        """Resolve an unknown provider outcome without reinvoking the provider.
+
+        Consumes ``CanonicalTaskStateMachine@1``: unknown → reconciling →
+        disposition.  Worker or model assertions cannot authorize the
+        transition, complete the task, or retry the same attempt.
+        """
+
+        if not isinstance(request, ProviderExecutionRequest):
+            _fail(
+                "request must be ProviderExecutionRequest",
+                reason_codes=("invalid_request",),
+            )
+        target_disposition: UnknownProviderOutcomeDisposition | None
+        if disposition is None:
+            target_disposition = None
+        else:
+            target_disposition = _enum(
+                disposition, UnknownProviderOutcomeDisposition, "disposition"
+            )
+        with self._lock:
+            record = self._unknown_by_attempt.get(request.attempt_key)
+            if record is None:
+                raise ProviderExecutionError(
+                    "no unknown provider outcome to reconcile",
+                    reason_codes=("unknown_outcome_missing",),
+                )
+            self._assert_reconciliation_bindings(
+                request, record, worker_assertion=worker_assertion
+            )
+            disposed = (
+                canonical_task_state(target_disposition.value)
+                if target_disposition is not None
+                else TaskState.RECONCILING
+            )
+            if record.resolved and record.task_state is disposed:
+                return self._replay_result(
+                    record.result, extra_reasons=("exact_replay", "reconciled")
+                )
+
+            cas_requested = expected_task is not None or proposed_task is not None
+            enter_edge = (
+                expected_task is not None
+                and proposed_task is not None
+                and expected_task.state is TaskState.PROVIDER_OUTCOME_UNKNOWN
+                and proposed_task.state is TaskState.RECONCILING
+            )
+            disposition_edge = (
+                expected_task is not None
+                and proposed_task is not None
+                and expected_task.state is TaskState.RECONCILING
+            )
+            if record.task_state is TaskState.PROVIDER_OUTCOME_UNKNOWN:
+                if cas_requested and not enter_edge and not disposition_edge:
+                    raise ControlPlaneContractError(
+                        "unknown provider outcomes must enter reconciliation"
+                    )
+                if enter_edge:
+                    self._cas_or_transition(
+                        expected_task,
+                        proposed_task,
+                        current_task,
+                        source=TaskState.PROVIDER_OUTCOME_UNKNOWN,
+                        target=TaskState.RECONCILING,
+                        worker_assertion=worker_assertion,
+                    )
+                else:
+                    assert_unknown_provider_outcome_transition(
+                        TaskState.PROVIDER_OUTCOME_UNKNOWN, TaskState.RECONCILING
+                    )
+                record.task_state = TaskState.RECONCILING
+                record.reconciliation = UnknownProviderOutcomeReconciliation(
+                    attempt_key=request.attempt_key,
+                    request_key=request.request_key,
+                    request_id=request.bridge.request_id,
+                    reservation_id=record.reservation_id,
+                    source_task_state=TaskState.PROVIDER_OUTCOME_UNKNOWN,
+                    target_task_state=TaskState.RECONCILING,
+                    evidence_ids=tuple(evidence_ids),
+                    lease_id=record.lease_id,
+                    fence_id=record.fence_id,
+                    worker_assertion=bool(worker_assertion),
+                )
+                if target_disposition is None or enter_edge:
+                    result = self._reconciled_result(
+                        request,
+                        record=record,
+                        disposed=TaskState.RECONCILING,
+                        evidence_ids=evidence_ids,
+                        worker_assertion=worker_assertion,
+                    )
+                    return self._store_reconciled(
+                        request,
+                        record,
+                        result,
+                        TaskState.RECONCILING,
+                        evidence_ids=evidence_ids,
+                        worker_assertion=worker_assertion,
+                    )
+
+            if target_disposition is None:
+                result = self._reconciled_result(
+                    request,
+                    record=record,
+                    disposed=TaskState.RECONCILING,
+                    evidence_ids=evidence_ids,
+                    worker_assertion=worker_assertion,
+                )
+                return self._store_reconciled(
+                    request,
+                    record,
+                    result,
+                    TaskState.RECONCILING,
+                    evidence_ids=evidence_ids,
+                    worker_assertion=worker_assertion,
+                )
+
+            if cas_requested:
+                self._cas_or_transition(
+                    expected_task,
+                    proposed_task,
+                    current_task,
+                    source=TaskState.RECONCILING,
+                    target=disposed,
+                    worker_assertion=worker_assertion,
+                )
+            else:
+                assert_unknown_provider_outcome_transition(
+                    TaskState.RECONCILING, disposed
+                )
+
+            if disposed is TaskState.COMPLETED:
+                candidate = expected_task if expected_task is not None else proposed_task
+                live = current_task if current_task is not None else candidate
+                if (
+                    candidate is None
+                    or live is None
+                    or candidate.state is not TaskState.RECONCILING
+                    or not candidate.may_complete_against(live)
+                ):
+                    raise ProviderExecutionError(
+                        "unknown-outcome reconciliation cannot complete a task",
+                        reason_codes=("completion_not_authorized",),
+                    )
+            result = self._reconciled_result(
+                request,
+                record=record,
+                disposed=disposed,
+                evidence_ids=evidence_ids,
+                worker_assertion=worker_assertion,
+            )
+            return self._store_reconciled(
+                request,
+                record,
+                result,
+                disposed,
+                evidence_ids=evidence_ids,
+                worker_assertion=worker_assertion,
+            )
+
+    def _store_reconciled(
+        self,
+        request: ProviderExecutionRequest,
+        record: _UnknownOutcomeRecord,
+        result: ProviderExecutionResult,
+        disposed: TaskState,
+        *,
+        evidence_ids: Sequence[str] = (),
+        worker_assertion: bool = False,
+    ) -> ProviderExecutionResult:
+        retry_after = disposed is TaskState.RETRYING
+        record.result = result
+        record.task_state = disposed
+        record.resolved = disposed not in {
+            TaskState.PROVIDER_OUTCOME_UNKNOWN,
+            TaskState.RECONCILING,
+        }
+        record.retry_after_reconciliation = retry_after
+        if disposed is not TaskState.RECONCILING:
+            record.reconciliation = UnknownProviderOutcomeReconciliation(
+                attempt_key=request.attempt_key,
+                request_key=request.request_key,
+                request_id=request.bridge.request_id,
+                reservation_id=record.reservation_id,
+                source_task_state=TaskState.RECONCILING,
+                target_task_state=disposed,
+                disposition=disposed.value,
+                evidence_ids=tuple(evidence_ids),
+                lease_id=record.lease_id,
+                fence_id=record.fence_id,
+                worker_assertion=bool(worker_assertion),
+                blind_retry_allowed=retry_after,
+            )
+        self._terminals[request.attempt_key] = _TerminalRecord(
+            result=result,
+            finished_at=float(self._clock()),
+            invoke_count=int(self._invoke_counts.get(request.attempt_key, 0)),
+        )
+        self._single_flight[request.request_key] = result
+        if record.resolved and not retry_after:
+            for key in record.logical_keys:
+                self._unknown_by_logical.pop(key, None)
+        return result
+
+    def _logical_unknown_keys(self, request: ProviderExecutionRequest) -> tuple[str, ...]:
+        keys = [
+            f"attempt:{request.attempt_key}",
+            f"request_key:{request.request_key}",
+        ]
+        base = _base_idempotency_key(request.bridge.idempotency_key)
+        if base:
+            keys.append(f"idempotency:{base}")
+        task_id = str(getattr(request.bridge.scope, "task_id", "") or "").strip()
+        if task_id:
+            keys.append(f"task:{task_id}")
+        return tuple(keys)
+
+    def _reject_blind_unknown_retry(self, request: ProviderExecutionRequest) -> None:
+        for key in self._logical_unknown_keys(request):
+            attempt_key = self._unknown_by_logical.get(key)
+            if not attempt_key:
+                continue
+            record = self._unknown_by_attempt.get(attempt_key)
+            if record is None:
+                continue
+            if attempt_key == request.attempt_key:
+                continue
+            if record.retry_after_reconciliation:
+                continue
+            raise ProviderExecutionError(
+                "unknown provider outcome must reconcile before retry",
+                reason_codes=("blind_retry_forbidden", "provider_outcome_unknown"),
+            )
+
+    def _assert_reconciliation_bindings(
+        self,
+        request: ProviderExecutionRequest,
+        record: _UnknownOutcomeRecord,
+        *,
+        worker_assertion: bool,
+    ) -> None:
+        del worker_assertion  # never authority; bindings still apply
+        if request.bridge.lease_id != record.lease_id:
+            raise ProviderExecutionError(
+                "lease foreign to unknown provider outcome",
+                reason_codes=("lease_fence_mismatch", "stale_lease"),
+            )
+        if request.bridge.fence_id != record.fence_id:
+            raise FenceMismatchError(
+                "fence foreign to unknown provider outcome",
+                details={"expected": record.fence_id, "observed": request.bridge.fence_id},
+            )
+        if request.bridge.catalog_revision != record.catalog_revision:
+            raise ProviderExecutionError(
+                "catalog_revision stale relative to unknown provider outcome",
+                reason_codes=("stale_catalog_revision",),
+            )
+        if request.bridge.usage_revision != record.usage_revision:
+            raise ProviderExecutionError(
+                "usage_revision stale relative to unknown provider outcome",
+                reason_codes=("stale_usage_revision",),
+            )
+
+    def _cas_or_transition(
+        self,
+        expected_task: TaskStateSnapshot | None,
+        proposed_task: TaskStateSnapshot | None,
+        current_task: TaskStateSnapshot | None,
+        *,
+        source: TaskState,
+        target: TaskState,
+        worker_assertion: bool,
+    ) -> TaskStateSnapshot | None:
+        assert_unknown_provider_outcome_transition(source, target)
+        if expected_task is None and proposed_task is None:
+            return None
+        if expected_task is None or proposed_task is None:
+            raise ProviderExecutionError(
+                "task CAS reconciliation requires expected and proposed snapshots",
+                reason_codes=("missing_cas_snapshot",),
+            )
+        if expected_task.state is not source or proposed_task.state is not target:
+            raise ControlPlaneContractError(
+                "task CAS snapshots must match the canonical unknown-outcome edge "
+                f"{source.value} -> {target.value}"
+            )
+        try:
+            assert_task_cas_transition(
+                expected_task,
+                proposed_task,
+                current=current_task,
+                worker_assertion=worker_assertion,
+            )
+        except (ControlPlaneContractError, OptimisticConflictError, FenceMismatchError):
+            raise
+        except Exception as exc:
+            raise ProviderExecutionError(
+                f"task CAS reconciliation failed: {exc}",
+                reason_codes=("cas_transition_failed",),
+            ) from exc
+        return proposed_task
+
+    def _unknown_after_dispatch(
+        self,
+        request: ProviderExecutionRequest,
+        *,
+        reservation_id: str,
+        usage_revision: str,
+        estimate: Any,
+        coordination: CoordinationState,
+        dispatched: bool,
+        reason: str,
+        observation: Optional[Mapping[str, Any]] = None,
+        extra_reasons: Sequence[str] = (),
+    ) -> ProviderExecutionResult:
+        settlement = self._conservative_settle(
+            reservation_id,
+            estimate=estimate,
+            reason=reason,
+            coordination=coordination,
+        )
+        units = settlement.get("charged") or estimate.requested
+        observed = dict(observation or {})
+        observed["task_state"] = TaskState.PROVIDER_OUTCOME_UNKNOWN.value
+        observed["reconciliation_required"] = True
+        observed["same_attempt_retry_allowed"] = False
+        result = self._terminal(
+            request,
+            phase=ProviderExecutionPhase.PROVIDER_OUTCOME_UNKNOWN,
+            final_status=SupervisorUsageFinalStatus.UNKNOWN,
+            granted=True,
+            reservation_id=reservation_id,
+            usage_revision=str(settlement.get("usage_revision") or usage_revision),
+            reason_codes=(
+                "provider_outcome_unknown",
+                "never_blind_retry",
+                "conservative_settle",
+                reason,
+                "dispatched" if dispatched else "dispatch_mark_skipped",
+                *tuple(extra_reasons),
+            ),
+            observation=observed,
+            settled=units,
+            coordination_state=coordination,
+        )
+        logical_keys = self._logical_unknown_keys(request)
+        record = _UnknownOutcomeRecord(
+            result=result,
+            lease_id=request.bridge.lease_id,
+            fence_id=request.bridge.fence_id,
+            catalog_revision=request.bridge.catalog_revision,
+            usage_revision=request.bridge.usage_revision,
+            logical_keys=logical_keys,
+            reservation_id=reservation_id,
+        )
+        with self._lock:
+            self._unknown_by_attempt[request.attempt_key] = record
+            for key in logical_keys:
+                self._unknown_by_logical[key] = request.attempt_key
+        return result
+
+    def _reconciled_result(
+        self,
+        request: ProviderExecutionRequest,
+        *,
+        record: _UnknownOutcomeRecord,
+        disposed: TaskState,
+        evidence_ids: Sequence[str],
+        worker_assertion: bool,
+    ) -> ProviderExecutionResult:
+        prior = record.result
+        phase = ProviderExecutionPhase.RECONCILING
+        final_status = SupervisorUsageFinalStatus.UNKNOWN
+        if disposed is TaskState.FAILED:
+            phase = ProviderExecutionPhase.FAILED
+            final_status = SupervisorUsageFinalStatus.FAILED
+        elif disposed is TaskState.CANCELLED:
+            phase = ProviderExecutionPhase.CANCELLED
+            final_status = SupervisorUsageFinalStatus.CANCELLED
+        elif disposed is TaskState.QUARANTINED:
+            phase = ProviderExecutionPhase.FAILED
+            final_status = SupervisorUsageFinalStatus.FAILED
+        elif disposed is TaskState.BLOCKED:
+            phase = ProviderExecutionPhase.RECONCILING
+            final_status = SupervisorUsageFinalStatus.UNKNOWN
+        elif disposed is TaskState.RETRYING:
+            phase = ProviderExecutionPhase.RECONCILING
+            final_status = SupervisorUsageFinalStatus.UNKNOWN
+        elif disposed is TaskState.COMPLETED:
+            phase = ProviderExecutionPhase.SETTLED
+            final_status = SupervisorUsageFinalStatus.COMMITTED
+        observation = dict(prior.observation)
+        observation["task_state"] = disposed.value
+        observation["reconciliation_required"] = disposed is TaskState.RECONCILING
+        observation["same_attempt_retry_allowed"] = False
+        observation["worker_assertion_is_authority"] = False
+        if evidence_ids:
+            observation["evidence_ids"] = ",".join(
+                _text(item, "evidence_id") for item in evidence_ids if str(item or "").strip()
+            )
+        reasons = [
+            "provider_outcome_unknown",
+            "never_blind_retry",
+            "reconciled",
+            disposed.value,
+        ]
+        if worker_assertion:
+            reasons.append("worker_assertion_insufficient")
+        if disposed is TaskState.RETRYING:
+            reasons.append("retry_after_reconciliation")
+        if disposed is TaskState.COMPLETED:
+            reasons.append("operational_settlement_only")
+        return ProviderExecutionResult(
+            phase=phase,
+            final_status=final_status,
+            granted=prior.granted,
+            reservation_id=prior.reservation_id,
+            usage_revision=prior.usage_revision,
+            catalog_revision=prior.catalog_revision,
+            provider_id=prior.provider_id,
+            redacted_endpoint=prior.redacted_endpoint,
+            attempt_key=prior.attempt_key,
+            request_key=prior.request_key,
+            request_id=prior.request_id,
+            reason_codes=tuple(reasons),
+            observation=observation,
+            settled=prior.settled,
+            receipt=prior.receipt,
+            endpoint_receipt_id=prior.endpoint_receipt_id,
+            supervisor_receipt_id=prior.supervisor_receipt_id,
+            attribution=prior.attribution,
+            replayed=False,
+            coordination_state=prior.coordination_state,
+            mode=request.mode,
+        )
+
     def _terminal(
         self,
         request: ProviderExecutionRequest,
@@ -1943,6 +2784,9 @@ def discover_schemas() -> dict[str, str]:
         "bridge_is_completion_evidence": str(BRIDGE_IS_COMPLETION_EVIDENCE).lower(),
         "bridge_is_correctness_evidence": str(BRIDGE_IS_CORRECTNESS_EVIDENCE).lower(),
         "bridge_rewrites_provider_settlement": str(BRIDGE_REWRITES_PROVIDER_SETTLEMENT).lower(),
+        "unknown_provider_outcome_reconciliation": UNKNOWN_PROVIDER_OUTCOME_RECONCILIATION_BINDING,
+        "canonical_task_state_machine": CANONICAL_TASK_STATE_MACHINE_INTERFACE,
+        "state_transaction": STATE_TRANSACTION_INTERFACE,
     }
 
 
@@ -1969,6 +2813,9 @@ __all__ = [
     "PROVIDER_EXECUTION_RESULT_SCHEMA",
     "RESERVATION_AWARE_PROVIDER_EXECUTION_REQUIREMENT_ID",
     "SCHEMA_VERSION",
+    "UNKNOWN_PROVIDER_OUTCOME_RECONCILIATION_BINDING",
+    "UNKNOWN_PROVIDER_OUTCOME_RECONCILIATION_CONSUMES",
+    "UNKNOWN_PROVIDER_OUTCOME_RECONCILIATION_SCHEMA",
     "CoordinationState",
     "ProviderExecutionError",
     "ProviderExecutionGateway",
@@ -1978,10 +2825,18 @@ __all__ = [
     "ProviderExecutionResult",
     "ProviderInvoker",
     "SideEffectBoundary",
+    "UnknownProviderOutcomeDisposition",
+    "UnknownProviderOutcomeReconciliation",
     "UsageCoordinatorLike",
     "accounting_bounds",
+    "assert_unknown_provider_outcome_transition",
+    "blind_retry_forbidden",
     "build_execution_request",
     "conservative_estimate",
     "discover_schemas",
+    "is_unknown_provider_outcome",
     "new_attempt_idempotency_key",
+    "task_state_for_execution_result",
+    "unknown_provider_outcome_retry_allowed",
+    "unknown_provider_outcome_successors",
 ]
