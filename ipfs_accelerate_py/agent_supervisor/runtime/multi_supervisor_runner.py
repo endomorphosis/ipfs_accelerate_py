@@ -5310,6 +5310,23 @@ class UnadmittedSupervisorProcessBirthError(ProcessIdentityMismatch):
         self.all_trees_fenced = False
 
 
+class SupervisorProcessHandoffError(ProcessIdentityMismatch):
+    """Preserve an admitted child whose failed notification could not be fenced."""
+
+    def __init__(
+        self, *, process: subprocess.Popen[bytes], profile: LifecycleProfile,
+        track_name: str, marker_path: Path, cleanup_error_type: str = "",
+    ) -> None:
+        super().__init__("supervisor startup notification failed; owned tree fencing incomplete")
+        self.process = process
+        self.profile = profile
+        self.track_name = str(track_name)
+        self.marker_path = Path(marker_path)
+        self.marker_published = True
+        self.all_trees_fenced = False
+        self.cleanup_error_type = cleanup_error_type
+
+
 def utc_run_stamp() -> str:
     """Return a UTC run stamp suitable for log/pid filenames."""
 
@@ -9488,10 +9505,36 @@ def start_track(
                     profile=profile,
                     all_trees_fenced=fenced,
                 ) from exc
-        _emit(
-            output,
-            f"started {resolved.name} supervisor pid={process.pid} script={resolved.script_path} log={resolved.log_path}",
-        )
+        try:
+            _emit(
+                output,
+                f"started {resolved.name} supervisor pid={process.pid} script={resolved.script_path} log={resolved.log_path}",
+            )
+        except BaseException as notification_error:
+            # The caller has not received this Popen yet. A callback can raise
+            # directly or synchronously deliver SIGTERM; retain ownership here
+            # until the exact captured birth and its descendants are fenced.
+            cleanup_error_type = ""
+            try:
+                fenced, _members = _terminate_managed_process(process, grace_seconds=1.0)
+            except BaseException as cleanup_error:
+                fenced = False
+                cleanup_error_type = type(cleanup_error).__name__
+            if not fenced:
+                raise SupervisorProcessHandoffError(
+                    process=process, profile=profile, track_name=resolved.name,
+                    marker_path=resolved.supervisor_pid_path,
+                    cleanup_error_type=cleanup_error_type,
+                ) from notification_error
+            try:
+                _remove_stale_pid_marker_if_unchanged(
+                    resolved.supervisor_pid_path, int(process.pid),
+                )
+            except (OSError, ValueError):
+                # Preserve a substituted/unavailable projection and the
+                # original notification failure after proving the child dead.
+                pass
+            raise
         return process
     finally:
         if authority_handoff is not None:
@@ -15257,7 +15300,7 @@ def run_supervisor_tracks(
             _emit(output, "terminal board drain observed; fencing supervisors")
         else:
             _emit(output, "completed requested run window")
-    except UnadmittedSupervisorProcessBirthError as exc:
+    except (UnadmittedSupervisorProcessBirthError, SupervisorProcessHandoffError) as exc:
         processes[exc.track_name] = exc.process
         blocked = str(exc)
         _emit(
