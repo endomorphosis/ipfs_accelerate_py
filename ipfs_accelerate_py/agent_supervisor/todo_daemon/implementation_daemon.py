@@ -39600,10 +39600,32 @@ class PortalImplementationDaemon:
                 if isinstance(event.get("merge_result"), Mapping)
                 and event["merge_result"].get("queued") is True
             ]
-            if not request_sources or (
-                len(request_sources) == 1
-                and len(terminal_confirmations) == 1
-                and not queued_request_sources
+            # A synchronous callback may append its receipt before the outer
+            # producer learns that the append verification failed. Its later
+            # queued finish is a confirmation of that same attempt, not a new
+            # completion source. Reproduce the original enqueue projection
+            # below and keep the exact receipt/artifact verifier authoritative.
+            from .retained_completion_events import (
+                retained_synchronous_reconciliation,
+            )
+
+            retained_synchronous = (
+                retained_synchronous_reconciliation(
+                    events,
+                    request_id=request_id,
+                    queued_confirmation=exact_sources[0],
+                )
+                if len(request_sources) == 1 and len(exact_sources) == 1
+                else None
+            )
+            if (
+                not request_sources
+                or (
+                    len(request_sources) == 1
+                    and len(terminal_confirmations) == 1
+                    and not queued_request_sources
+                )
+                or retained_synchronous is not None
             ):
                 enqueue_request_sources = [
                     event
@@ -39728,6 +39750,17 @@ class PortalImplementationDaemon:
                     and synchronous_projection_id(event)
                     == synchronous_provenance["source_projection_id"]
                 ]
+                if retained_synchronous is not None and (
+                    len(projected_sources) != 1
+                    or projected_sources[0] != retained_synchronous[0]
+                ):
+                    # Retained replay can only use the existing source. A
+                    # changed projection must never create a replacement.
+                    return {
+                        "recorded": False,
+                        "reason": "merge_queue_reconciliation_projection_conflict",
+                        "projection_source_count": len(projected_sources),
+                    }
                 if not projected_sources:
                     if any(
                         str(event.get("type") or "") == "task_completed"

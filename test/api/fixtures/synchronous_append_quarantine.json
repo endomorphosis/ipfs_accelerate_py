@@ -1,0 +1,2066 @@
+{
+  "events": [
+    {
+      "attempt": 1,
+      "attempted": false,
+      "baseline_ref": "e47a130ced0cf0aadbcd2c072059849019397def",
+      "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+      "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+      "canonical_task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+      "canonical_task_key": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+      "causal_parent_ids": [
+        "sha256:dcc9d5a3b45a399f5e9e034b047f20da908bdf4324adc83422669835deae611f"
+      ],
+      "coalescing_forbidden": false,
+      "coalescing_key": "",
+      "completion_task_cids": {
+        "DOEP-053": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518"
+      },
+      "event_id": "sha256:e02351432ce1def2a256db9183f750825434703b1271fe849c6b29c71170b3c8",
+      "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+      "merged": false,
+      "previous_event_id": "sha256:dcc9d5a3b45a399f5e9e034b047f20da908bdf4324adc83422669835deae611f",
+      "queue_dir": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/data/agent_supervisor/agent_supervisor_direct_objective_event_driven_planning_v1_r5/merge-queue",
+      "queued": true,
+      "reason": "merge_queued",
+      "request_id": "1789276097933096095-120031-3b513c8466a2",
+      "sequence": 43,
+      "snapshot_id": "event-log-snapshot:sha256:9056aa9be5a44d1a45c6792fc8ceee53ff3547c7e7bc97666eb50006352d2107",
+      "stream_id": "event-log:sha256:9056aa9be5a44d1a45c6792fc8ceee53ff3547c7e7bc97666eb50006352d2107",
+      "target_branch": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1",
+      "target_repository_id": "repository:baguqeeraxwt2vjni5joai4673v3al6jrgceki2ve55baut7ozeayy4ltxnxa",
+      "task_id": "DOEP-053",
+      "timestamp": "2026-09-13T05:08:18.029685+00:00",
+      "type": "merge_candidate_enqueued",
+      "worktree_path": ""
+    },
+    {
+      "attempt": 1,
+      "attempt_consumed": false,
+      "baseline_ref": "e47a130ced0cf0aadbcd2c072059849019397def",
+      "board_completion": {
+        "complete": false,
+        "pending_merge": true,
+        "reason": "merge_queued_awaiting_integration"
+      },
+      "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+      "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+      "canonical_task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+      "canonical_task_key": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+      "causal_parent_ids": [
+        "sha256:a2e375d3e757de1a12481c6b94602e5b88c11dce250f4135968def382ade41d4"
+      ],
+      "coalescing_forbidden": false,
+      "coalescing_key": "",
+      "event_id": "sha256:183b9d2fd5d772563790ca754958c67e8f1a7a7c4f1572e31f40897d7463e933",
+      "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+      "merge_queue_synchronous_source": {
+        "baseline_ref": "e47a130ced0cf0aadbcd2c072059849019397def",
+        "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+        "canonical_task_key": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+        "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+        "merge_candidate_enqueued_event_id": "sha256:e02351432ce1def2a256db9183f750825434703b1271fe849c6b29c71170b3c8",
+        "portal_attempt": 1,
+        "request_id": "1789276097933096095-120031-3b513c8466a2",
+        "schema": "ipfs_accelerate_py.agent_supervisor.merge-queue-synchronous-source@1",
+        "source_projection_id": "baguqeera5bju422bepabmst7on3y7da2h3manuy42lwntv4n6va5bb4opdpa",
+        "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+        "task_id": "DOEP-053",
+        "validation_repository_tree_id": "git-tree:ef9305f68cf4296de9365bba1397b81a8a54e077",
+        "validation_target_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+        "validation_target_tree": "ef9305f68cf4296de9365bba1397b81a8a54e077"
+      },
+      "merge_result": {
+        "attempted": false,
+        "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+        "canonical_task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+        "canonical_task_key": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+        "completion_task_cids": {
+          "DOEP-053": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518"
+        },
+        "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+        "merged": false,
+        "queue_dir": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/data/agent_supervisor/agent_supervisor_direct_objective_event_driven_planning_v1_r5/merge-queue",
+        "queued": true,
+        "reason": "merge_queued",
+        "request_id": "1789276097933096095-120031-3b513c8466a2",
+        "target_branch": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "target_repository_id": "repository:baguqeeraxwt2vjni5joai4673v3al6jrgceki2ve55baut7ozeayy4ltxnxa"
+      },
+      "previous_event_id": "sha256:a2e375d3e757de1a12481c6b94602e5b88c11dce250f4135968def382ade41d4",
+      "provider_dispatched": false,
+      "reason": "merge_queue_synchronous_source_projected",
+      "returncode": 0,
+      "sequence": 48,
+      "snapshot_id": "event-log-snapshot:sha256:9056aa9be5a44d1a45c6792fc8ceee53ff3547c7e7bc97666eb50006352d2107",
+      "stream_id": "event-log:sha256:9056aa9be5a44d1a45c6792fc8ceee53ff3547c7e7bc97666eb50006352d2107",
+      "task_id": "DOEP-053",
+      "timestamp": "2026-09-13T05:08:39.984287+00:00",
+      "type": "worktree_reconciliation_candidate_queued",
+      "validation_result": {
+        "attempted": true,
+        "passed": true,
+        "returncode": 0
+      }
+    },
+    {
+      "attempt": 1,
+      "baseline_ref": "e47a130ced0cf0aadbcd2c072059849019397def",
+      "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+      "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+      "canonical_task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+      "canonical_task_key": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+      "causal_parent_ids": [
+        "sha256:183b9d2fd5d772563790ca754958c67e8f1a7a7c4f1572e31f40897d7463e933"
+      ],
+      "coalescing_forbidden": false,
+      "coalescing_key": "",
+      "completion_receipt_evidence": {
+        "completion_receipts": [
+          {
+            "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+            "canonical_task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "canonical_task_key": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
+            "status": "succeeded",
+            "task_id": "DOEP-053"
+          }
+        ],
+        "completion_source_event_id": "sha256:183b9d2fd5d772563790ca754958c67e8f1a7a7c4f1572e31f40897d7463e933",
+        "completion_task_cids": {
+          "DOEP-053": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518"
+        },
+        "integration_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+        "receipt_id": "baguqeeraxy76fmh2htilgi4xv4lirqasi3twxoenfsdz5pevhbmlr2izz5cq",
+        "request_id": "1789276097933096095-120031-3b513c8466a2",
+        "schema": "ipfs_accelerate_py.agent_supervisor.merge-queue-callback-completion-receipt@1"
+      },
+      "completion_source_event_id": "sha256:183b9d2fd5d772563790ca754958c67e8f1a7a7c4f1572e31f40897d7463e933",
+      "completion_task_cids": {
+        "DOEP-053": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518"
+      },
+      "event_id": "sha256:33d680252e70787ce8dd1f6bd1305645f04fe3b9a198a1b40375f02b18d769fa",
+      "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+      "integration_commit_proof": {
+        "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+        "integration_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+        "integration_ref": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+        "passed": true,
+        "reasons": [],
+        "target_branch": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1"
+      },
+      "landed_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+      "merge_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+      "merge_result": {
+        "attempted": true,
+        "merge_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+        "merged": true,
+        "queued": false,
+        "reason": "merge_queue_callback_completed",
+        "request_id": "1789276097933096095-120031-3b513c8466a2",
+        "target_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8"
+      },
+      "post_merge_declared_output_invariant": {
+        "checks": [
+          {
+            "exists": true,
+            "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+            "reason": "declared_output_tracked",
+            "repository": "external/ipfs_accelerate",
+            "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+            "task_id": "DOEP-053",
+            "tracked": true,
+            "tracked_path": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py"
+          },
+          {
+            "exists": true,
+            "path": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "reason": "declared_output_tracked",
+            "repository": "external/ipfs_accelerate",
+            "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+            "task_id": "DOEP-053",
+            "tracked": true,
+            "tracked_path": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+          },
+          {
+            "exists": true,
+            "path": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+            "reason": "declared_output_tracked",
+            "repository": "external/ipfs_accelerate",
+            "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+            "task_id": "DOEP-053",
+            "tracked": true,
+            "tracked_path": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json"
+          },
+          {
+            "exists": true,
+            "path": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+            "reason": "declared_output_tracked",
+            "repository": "external/ipfs_accelerate",
+            "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+            "task_id": "DOEP-053",
+            "tracked": true,
+            "tracked_path": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+          }
+        ],
+        "missing_outputs": [],
+        "mode": "repository_tree",
+        "passed": true,
+        "reason": "declared_outputs_tracked",
+        "repository_ref": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+        "task_ids": [
+          "DOEP-053"
+        ],
+        "unsafe_outputs": [],
+        "untracked_outputs": []
+      },
+      "previous_event_id": "sha256:183b9d2fd5d772563790ca754958c67e8f1a7a7c4f1572e31f40897d7463e933",
+      "reason": "merge_queue_callback_completed",
+      "reconciled_candidate_key": "baguqeerari7mrztdiiapj7c3urvhb6ebxzg34ramrbhpfiokjskod36jziha",
+      "request_id": "1789276097933096095-120031-3b513c8466a2",
+      "resolved": true,
+      "sequence": 49,
+      "snapshot_id": "event-log-snapshot:sha256:9056aa9be5a44d1a45c6792fc8ceee53ff3547c7e7bc97666eb50006352d2107",
+      "stream_id": "event-log:sha256:9056aa9be5a44d1a45c6792fc8ceee53ff3547c7e7bc97666eb50006352d2107",
+      "target_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+      "task_id": "DOEP-053",
+      "timestamp": "2026-09-13T05:08:40.020621+00:00",
+      "type": "merge_reconciled"
+    },
+    {
+      "attempt": 1,
+      "attempt_consumed": true,
+      "baseline_ref": "e47a130ced0cf0aadbcd2c072059849019397def",
+      "board_completion": {
+        "complete": false,
+        "pending_merge": true,
+        "reason": "merge_queued_awaiting_integration"
+      },
+      "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+      "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+      "cache_hit": false,
+      "canonical_task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+      "canonical_task_key": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+      "causal_parent_ids": [
+        "sha256:8cf32888a27459b6832659989d7a1ce07cb82f7feae01153af01aca7a48bb6b3"
+      ],
+      "cleanup_result": {
+        "cleaned": false,
+        "reason": "not_attempted"
+      },
+      "coalescing_forbidden": false,
+      "coalescing_key": "",
+      "commit_result": {
+        "candidate_handoff_guard": {
+          "allowed": true,
+          "attempt": 1,
+          "baseline_commit": "e47a130ced0cf0aadbcd2c072059849019397def",
+          "baseline_ref": "e47a130ced0cf0aadbcd2c072059849019397def",
+          "candidate_entry_count": 4,
+          "collection_error": "",
+          "current_fingerprint": "sha256:ab422881a2a27902a32debb07eb782eceb154c5a2b5fa1e73e3dc4e876db9b00",
+          "expected_branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+          "expected_fingerprint": "sha256:ab422881a2a27902a32debb07eb782eceb154c5a2b5fa1e73e3dc4e876db9b00",
+          "final_status_fingerprint": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "final_tree": "ef9305f68cf4296de9365bba1397b81a8a54e077",
+          "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+          "phase": "post_commit",
+          "reasons": [],
+          "schema": "ipfs_accelerate_py/agent-supervisor/validated-candidate-handoff-guard@1",
+          "submodule_expansion_count": 1,
+          "task_id": "DOEP-053",
+          "validated_fingerprint": "sha256:ab422881a2a27902a32debb07eb782eceb154c5a2b5fa1e73e3dc4e876db9b00",
+          "validated_workspace": {
+            "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+            "errors": [],
+            "head": "e47a130ced0cf0aadbcd2c072059849019397def",
+            "status_bytes": 28,
+            "status_clean": false,
+            "status_fingerprint": "sha256:79a96578de7f0e219440163f1666908f0b7acfc8f1f0eb61bec56fde8d57d513",
+            "tree": "f10a2cb150b37f00a5d0e2484976856acd6cd647",
+            "verified": true
+          },
+          "workspace_after": {
+            "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+            "errors": [],
+            "head": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+            "status_bytes": 0,
+            "status_clean": true,
+            "status_fingerprint": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "tree": "ef9305f68cf4296de9365bba1397b81a8a54e077",
+            "verified": true
+          },
+          "workspace_before": {
+            "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+            "errors": [],
+            "head": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+            "status_bytes": 0,
+            "status_clean": true,
+            "status_fingerprint": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "tree": "ef9305f68cf4296de9365bba1397b81a8a54e077",
+            "verified": true
+          }
+        },
+        "commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+        "committed": true,
+        "status": "M  external/ipfs_accelerate",
+        "submodule_results": [
+          {
+            "commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+            "committed": true,
+            "path": "external/ipfs_accelerate",
+            "status": "A  artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json\nA  artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json\nM  ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py\nA  test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+          },
+          {
+            "committed": false,
+            "nested_submodule_results": [
+              {
+                "committed": false,
+                "path": "external/ipfs_datasets/ipfs_datasets_py/logic/CEC/DCEC_Library",
+                "reason": "no_changes"
+              },
+              {
+                "committed": false,
+                "path": "external/ipfs_datasets/ipfs_datasets_py/logic/CEC/Talos",
+                "reason": "no_changes"
+              },
+              {
+                "committed": false,
+                "path": "external/ipfs_datasets/ipfs_datasets_py/logic/CEC/Eng-DCEC",
+                "reason": "no_changes"
+              },
+              {
+                "committed": false,
+                "path": "external/ipfs_datasets/ipfs_datasets_py/logic/CEC/ShadowProver",
+                "reason": "no_changes"
+              },
+              {
+                "committed": false,
+                "path": "external/ipfs_datasets/ipfs_datasets_py/multimedia/convert_to_txt_based_on_mime_type",
+                "reason": "no_changes"
+              },
+              {
+                "committed": false,
+                "path": "external/ipfs_datasets/ipfs_datasets_py/multimedia/omni_converter_mk2",
+                "reason": "no_changes"
+              },
+              {
+                "committed": false,
+                "path": "external/ipfs_datasets/ipfs_datasets_py/processors/web_archiving/common_crawl_search_engine",
+                "reason": "no_changes"
+              }
+            ],
+            "path": "external/ipfs_datasets",
+            "reason": "no_changes"
+          },
+          {
+            "committed": false,
+            "path": "external/ipfs_kit",
+            "reason": "no_changes"
+          }
+        ]
+      },
+      "event_id": "sha256:0d367145c1522e6475524e0efa9c3d6c0f516da95f71b79f9fda0f81a883f217",
+      "failed_preservation_result": {},
+      "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+      "log_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/data/agent_supervisor/agent_supervisor_direct_objective_event_driven_planning_v1_r5/state/lane-3/doep_lane_3_database_portal_attempts/03afeeba45e9a4b2dc4f3b9c/implementation-logs/doep-053-attempt-1.log",
+      "merge_result": {
+        "attempted": false,
+        "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+        "canonical_task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+        "canonical_task_key": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+        "completion_task_cids": {
+          "DOEP-053": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518"
+        },
+        "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+        "merged": false,
+        "queue_dir": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/data/agent_supervisor/agent_supervisor_direct_objective_event_driven_planning_v1_r5/merge-queue",
+        "queued": true,
+        "reason": "merge_queued",
+        "request_id": "1789276097933096095-120031-3b513c8466a2",
+        "target_branch": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "target_repository_id": "repository:baguqeeraxwt2vjni5joai4673v3al6jrgceki2ve55baut7ozeayy4ltxnxa",
+        "train_result": {
+          "acceptance_pending": false,
+          "accepted": false,
+          "canonical_task_id": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+          "commit_sha": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+          "failure_count": 1,
+          "finished_at": 1789276120.0581267,
+          "integrated": false,
+          "max_attempts": 3,
+          "merge_result": {
+            "already_merged": false,
+            "attempted": true,
+            "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+            "cleanup_result": {
+              "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+              "cleaned": true,
+              "deleted_branch": true,
+              "finished_at": "2026-09-13T05:08:39.952192+00:00",
+              "lifecycle_finalize": {
+                "finalized": false,
+                "reason": "cleanup_pending"
+              },
+              "removed_worktree": false,
+              "started_at": "2026-09-13T05:08:39.938916+00:00",
+              "submodule_cleanup": [],
+              "worktree_path": ""
+            },
+            "command": [
+              "git",
+              "merge",
+              "--no-ff",
+              "--no-edit",
+              "0876ac0b3b334a0bf0f6092a6c2eafcf66394032"
+            ],
+            "completion_skipped": true,
+            "deterministic_conflict_repair": [],
+            "finished_at": "2026-09-13T05:08:21.215054+00:00",
+            "generated_submodule_reconciliation": [],
+            "identical_untracked_paths": [],
+            "integration_commit_proof": {
+              "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+              "integration_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+              "integration_ref": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+              "passed": true,
+              "reasons": [],
+              "target_branch": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1"
+            },
+            "integration_occurred": true,
+            "main_worktree_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio",
+            "merge_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+            "merge_reconciliation_receipt": {
+              "reason": "merge_queue_reconciliation_append_unverified",
+              "reconciliation_count": 1,
+              "recorded": false
+            },
+            "merged": false,
+            "merged_gitlink_recording": {
+              "alignments": [
+                {
+                  "aligned": true,
+                  "commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                  "path": "external/ipfs_accelerate",
+                  "reason": "already_aligned"
+                }
+              ],
+              "attempted": true,
+              "commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+              "committed": false,
+              "expected_commits": {
+                "external/ipfs_accelerate": "f424f189fc17305be3ba984be6ef57918ae2413a"
+              },
+              "failures": [],
+              "ok": true,
+              "paths": [
+                "external/ipfs_accelerate"
+              ],
+              "reason": "isolated_parent_gitlinks_already_recorded",
+              "stderr": "",
+              "stdout": ""
+            },
+            "post_merge_declared_output_invariant": {
+              "checks": [
+                {
+                  "exists": true,
+                  "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+                  "reason": "declared_output_tracked",
+                  "repository": "external/ipfs_accelerate",
+                  "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                  "task_id": "DOEP-053",
+                  "tracked": true,
+                  "tracked_path": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py"
+                },
+                {
+                  "exists": true,
+                  "path": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+                  "reason": "declared_output_tracked",
+                  "repository": "external/ipfs_accelerate",
+                  "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                  "task_id": "DOEP-053",
+                  "tracked": true,
+                  "tracked_path": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+                },
+                {
+                  "exists": true,
+                  "path": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+                  "reason": "declared_output_tracked",
+                  "repository": "external/ipfs_accelerate",
+                  "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                  "task_id": "DOEP-053",
+                  "tracked": true,
+                  "tracked_path": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json"
+                },
+                {
+                  "exists": true,
+                  "path": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+                  "reason": "declared_output_tracked",
+                  "repository": "external/ipfs_accelerate",
+                  "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                  "task_id": "DOEP-053",
+                  "tracked": true,
+                  "tracked_path": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+                }
+              ],
+              "missing_outputs": [],
+              "mode": "repository_tree",
+              "passed": true,
+              "reason": "declared_outputs_tracked",
+              "repository_ref": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+              "task_ids": [
+                "DOEP-053"
+              ],
+              "unsafe_outputs": [],
+              "untracked_outputs": []
+            },
+            "post_merge_submodule_invariant": {
+              "candidate_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+              "integrated_handoff_proof": {
+                "candidate_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+                "passed": true,
+                "paths": [
+                  {
+                    "chain": [
+                      {
+                        "candidate_gitlink": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                        "relationship": "equal",
+                        "relative": "external/ipfs_accelerate",
+                        "repository_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/external/ipfs_accelerate",
+                        "target_gitlink": "f424f189fc17305be3ba984be6ef57918ae2413a"
+                      }
+                    ],
+                    "passed": true,
+                    "path": "external/ipfs_accelerate"
+                  }
+                ],
+                "reason": "candidate_handoff_integrated",
+                "target_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8"
+              },
+              "passed": true,
+              "paths": [
+                {
+                  "candidate_gitlink": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                  "passed": true,
+                  "path": "external/ipfs_accelerate",
+                  "reason": "reconciled_submodule_gitlink_recorded",
+                  "reconciled_commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                  "target_gitlink": "f424f189fc17305be3ba984be6ef57918ae2413a"
+                }
+              ],
+              "reason": "managed_submodule_handoff_verified",
+              "target_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8"
+            },
+            "reason": "merge_queue_reconciliation_append_unverified",
+            "resolved_generated_conflicts": [],
+            "restored_generated_dirty_overlap": [],
+            "returncode": 2,
+            "shared_worktree_path_scrub": {
+              "ok": true,
+              "paths": [],
+              "scrubbed": false
+            },
+            "started_at": "2026-09-13T05:08:18.233527+00:00",
+            "stderr": "",
+            "stdout": "Merge made by the 'ort' strategy.\n external/ipfs_accelerate | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n",
+            "submodule_durability_preflight": {
+              "attempted": true,
+              "canonical_parent_git_dir": "/home/barberb/lift_coding/.git",
+              "expected_paths": [
+                "external/ipfs_accelerate"
+              ],
+              "failures": [],
+              "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+              "paths": [
+                {
+                  "canonical_git_dir": "/home/barberb/lift_coding/.git/worktrees/portfolio/modules/external/ipfs_accelerate",
+                  "durability": "canonical_task_branch",
+                  "gitlink_commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                  "hops": [
+                    {
+                      "canonical_checkout": true,
+                      "canonical_git_dir": "/home/barberb/lift_coding/.git/worktrees/portfolio/modules/external/ipfs_accelerate",
+                      "canonical_object_available": true,
+                      "checkout_git_dir": "/home/barberb/lift_coding/.git/worktrees/portfolio/modules/external/ipfs_accelerate",
+                      "configured_git_dir": "/home/barberb/lift_coding/.git/modules/external/ipfs_accelerate",
+                      "gitlink_commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                      "path": "external/ipfs_accelerate",
+                      "target_store_layout": "linked_parent_worktree"
+                    }
+                  ],
+                  "path": "external/ipfs_accelerate",
+                  "reason": "canonical_task_branch_verified",
+                  "task_branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927-submodule-external-ipfs_accelerate",
+                  "task_branch_commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                  "task_branch_contains_gitlink": true,
+                  "verified": true
+                }
+              ],
+              "requirement": "canonical_object_and_task_branch",
+              "verified": true
+            },
+            "submodule_failure_rollback": {},
+            "submodule_merge_results": [
+              {
+                "ancestry_valid": true,
+                "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927-submodule-external-ipfs_accelerate",
+                "branch_commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                "cleanup_returncode": 0,
+                "cleanup_stderr": "",
+                "command": [
+                  "git",
+                  "-c",
+                  "user.name=Implementation Daemon",
+                  "-c",
+                  "user.email=implementation-daemon@example.invalid",
+                  "merge",
+                  "--ff-only",
+                  "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927-submodule-external-ipfs_accelerate"
+                ],
+                "commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                "compare_and_swap_returncode": 0,
+                "compare_and_swap_stderr": "",
+                "default_branch": "refs/agent-supervisor/submodule-targets/4ed9403979e2572030e6d2da/external/ipfs_accelerate",
+                "ff_only_result": {
+                  "returncode": 0,
+                  "stderr": "",
+                  "stdout": "Updating cdb2b80a3..f424f189f\nFast-forward\n .../outputs/DOEP-053.json                          |  65 ++\n .../receipts/DOEP-053.json                         | 121 ++++\n .../entrypoints/refill_controller.py               | 736 ++++++++++++++++++++-\n ...t_doep_053_add_automatic_bounded_task_refill.py | 665 +++++++++++++++++++\n 4 files changed, 1582 insertions(+), 5 deletions(-)\n create mode 100644 artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json\n create mode 100644 artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json\n create mode 100644 test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py\n"
+                },
+                "integration_ref": "refs/agent-supervisor/submodule-targets/4ed9403979e2572030e6d2da/external/ipfs_accelerate",
+                "isolated_target": true,
+                "merged": true,
+                "path": "external/ipfs_accelerate",
+                "returncode": 0,
+                "stderr": "",
+                "stdout": "Updating cdb2b80a3..f424f189f\nFast-forward\n .../outputs/DOEP-053.json                          |  65 ++\n .../receipts/DOEP-053.json                         | 121 ++++\n .../entrypoints/refill_controller.py               | 736 ++++++++++++++++++++-\n ...t_doep_053_add_automatic_bounded_task_refill.py | 665 +++++++++++++++++++\n 4 files changed, 1582 insertions(+), 5 deletions(-)\n create mode 100644 artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json\n create mode 100644 artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json\n create mode 100644 test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py\n",
+                "target_base_commit": "cdb2b80a38e97e09c1161881603a5ee05502d9d5",
+                "target_parent_ref": "e47a130ced0cf0aadbcd2c072059849019397def"
+              }
+            ],
+            "target_branch": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1",
+            "target_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+            "used_ephemeral_main_worktree": false
+          },
+          "merged": false,
+          "reason": "merge_queue_reconciliation_append_unverified",
+          "request_id": "1789276097933096095-120031-3b513c8466a2",
+          "retryable": false,
+          "started_at": 1789276098.163713,
+          "status": "quarantined",
+          "target_branch": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1",
+          "task_id": "DOEP-053"
+        },
+        "worktree_lifecycle_handoff": {
+          "fence": 5,
+          "finalized": true,
+          "reason": "pooled_merge_queue_handoff",
+          "state": "terminal"
+        },
+        "worktree_pool_handoff": {
+          "attempted": true,
+          "base_commit": "e47a130ced0cf0aadbcd2c072059849019397def",
+          "base_ref": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1",
+          "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+          "cache_hit": false,
+          "cache_key": "e58ef163b3fc5282d5ea879907152a4fe122258387a376b6a35b5721d81d8923",
+          "dependency_paths": [
+            "external/ipfs_accelerate",
+            "external/ipfs_datasets",
+            "external/ipfs_kit"
+          ],
+          "entry_id": "6d42fa48740c-afde929673d0",
+          "estimated_seconds_saved": 0.0,
+          "handoff_reason": "merge_queue_handoff",
+          "invalidation_reason": "",
+          "invalidation_reasons": [],
+          "lifecycle_finalize": {
+            "fence": 5,
+            "finalized": true,
+            "reason": "pooled_merge_queue_handoff",
+            "state": "terminal"
+          },
+          "pooled": true,
+          "reason": "clean_prepared_workspace",
+          "released": true,
+          "reused": false,
+          "setup_seconds": 30.07749,
+          "setup_time_saved_seconds": 0.0,
+          "worktree_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/data/agent_supervisor/agent_supervisor_direct_objective_event_driven_planning_v1_r5/worktrees/workspace_6d42fa48740c_afde929673d0"
+        }
+      },
+      "previous_event_id": "sha256:8cf32888a27459b6832659989d7a1ce07cb82f7feae01153af01aca7a48bb6b3",
+      "provider_dispatched": true,
+      "returncode": 0,
+      "saved_duration_seconds": 0.0,
+      "sequence": 51,
+      "setup_duration_seconds": 30.07749,
+      "snapshot_id": "event-log-snapshot:sha256:9056aa9be5a44d1a45c6792fc8ceee53ff3547c7e7bc97666eb50006352d2107",
+      "stream_id": "event-log:sha256:9056aa9be5a44d1a45c6792fc8ceee53ff3547c7e7bc97666eb50006352d2107",
+      "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+      "task_id": "DOEP-053",
+      "timestamp": "2026-09-13T05:08:40.154541+00:00",
+      "type": "implementation_finished",
+      "validation_result": {
+        "affected_paths": [
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+        ],
+        "attempted": true,
+        "authoritative": false,
+        "authority_gates": [
+          {
+            "depends_on": [
+              "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe"
+            ],
+            "disposition": "pending",
+            "gate": "completion",
+            "reason": "validation_passed_requires_independent_authority"
+          },
+          {
+            "depends_on": [
+              "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe"
+            ],
+            "disposition": "pending",
+            "gate": "freshness",
+            "reason": "validation_passed_requires_independent_authority"
+          },
+          {
+            "depends_on": [
+              "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe"
+            ],
+            "disposition": "pending",
+            "gate": "merge",
+            "reason": "validation_passed_requires_independent_authority"
+          },
+          {
+            "depends_on": [
+              "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe"
+            ],
+            "disposition": "pending",
+            "gate": "proof",
+            "reason": "validation_passed_requires_independent_authority"
+          },
+          {
+            "depends_on": [
+              "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe"
+            ],
+            "disposition": "pending",
+            "gate": "semantic",
+            "reason": "validation_passed_requires_independent_authority"
+          }
+        ],
+        "cache_hits": 0,
+        "cache_misses": 1,
+        "candidate_binding": {
+          "current_fingerprint": "sha256:ab422881a2a27902a32debb07eb782eceb154c5a2b5fa1e73e3dc4e876db9b00",
+          "expected_fingerprint": "sha256:ab422881a2a27902a32debb07eb782eceb154c5a2b5fa1e73e3dc4e876db9b00",
+          "proposal_id": "48fdd330d7fee219e0de25ea6793568549c667fe2a7bed0858edc2b8d86ada43",
+          "validated_workspace": {
+            "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+            "errors": [],
+            "head": "e47a130ced0cf0aadbcd2c072059849019397def",
+            "status_bytes": 28,
+            "status_clean": false,
+            "status_fingerprint": "sha256:79a96578de7f0e219440163f1666908f0b7acfc8f1f0eb61bec56fde8d57d513",
+            "tree": "f10a2cb150b37f00a5d0e2484976856acd6cd647",
+            "verified": true
+          },
+          "verified": true
+        },
+        "candidate_handoff": {
+          "post_commit": {
+            "allowed": true,
+            "attempt": 1,
+            "baseline_commit": "e47a130ced0cf0aadbcd2c072059849019397def",
+            "baseline_ref": "e47a130ced0cf0aadbcd2c072059849019397def",
+            "candidate_entry_count": 4,
+            "collection_error": "",
+            "current_fingerprint": "sha256:ab422881a2a27902a32debb07eb782eceb154c5a2b5fa1e73e3dc4e876db9b00",
+            "expected_branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+            "expected_fingerprint": "sha256:ab422881a2a27902a32debb07eb782eceb154c5a2b5fa1e73e3dc4e876db9b00",
+            "final_status_fingerprint": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "final_tree": "ef9305f68cf4296de9365bba1397b81a8a54e077",
+            "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+            "phase": "post_commit",
+            "reasons": [],
+            "schema": "ipfs_accelerate_py/agent-supervisor/validated-candidate-handoff-guard@1",
+            "submodule_expansion_count": 1,
+            "task_id": "DOEP-053",
+            "validated_fingerprint": "sha256:ab422881a2a27902a32debb07eb782eceb154c5a2b5fa1e73e3dc4e876db9b00",
+            "validated_workspace": {
+              "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+              "errors": [],
+              "head": "e47a130ced0cf0aadbcd2c072059849019397def",
+              "status_bytes": 28,
+              "status_clean": false,
+              "status_fingerprint": "sha256:79a96578de7f0e219440163f1666908f0b7acfc8f1f0eb61bec56fde8d57d513",
+              "tree": "f10a2cb150b37f00a5d0e2484976856acd6cd647",
+              "verified": true
+            },
+            "workspace_after": {
+              "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+              "errors": [],
+              "head": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+              "status_bytes": 0,
+              "status_clean": true,
+              "status_fingerprint": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "tree": "ef9305f68cf4296de9365bba1397b81a8a54e077",
+              "verified": true
+            },
+            "workspace_before": {
+              "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+              "errors": [],
+              "head": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+              "status_bytes": 0,
+              "status_clean": true,
+              "status_fingerprint": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "tree": "ef9305f68cf4296de9365bba1397b81a8a54e077",
+              "verified": true
+            }
+          },
+          "pre_commit": {
+            "allowed": true,
+            "attempt": 1,
+            "baseline_commit": "e47a130ced0cf0aadbcd2c072059849019397def",
+            "baseline_ref": "e47a130ced0cf0aadbcd2c072059849019397def",
+            "candidate_entry_count": 4,
+            "collection_error": "",
+            "current_fingerprint": "sha256:ab422881a2a27902a32debb07eb782eceb154c5a2b5fa1e73e3dc4e876db9b00",
+            "expected_branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+            "expected_fingerprint": "sha256:ab422881a2a27902a32debb07eb782eceb154c5a2b5fa1e73e3dc4e876db9b00",
+            "final_status_fingerprint": "sha256:79a96578de7f0e219440163f1666908f0b7acfc8f1f0eb61bec56fde8d57d513",
+            "final_tree": "f10a2cb150b37f00a5d0e2484976856acd6cd647",
+            "implementation_commit": "",
+            "phase": "pre_commit",
+            "reasons": [],
+            "schema": "ipfs_accelerate_py/agent-supervisor/validated-candidate-handoff-guard@1",
+            "submodule_expansion_count": 1,
+            "task_id": "DOEP-053",
+            "validated_fingerprint": "sha256:ab422881a2a27902a32debb07eb782eceb154c5a2b5fa1e73e3dc4e876db9b00",
+            "validated_workspace": {
+              "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+              "errors": [],
+              "head": "e47a130ced0cf0aadbcd2c072059849019397def",
+              "status_bytes": 28,
+              "status_clean": false,
+              "status_fingerprint": "sha256:79a96578de7f0e219440163f1666908f0b7acfc8f1f0eb61bec56fde8d57d513",
+              "tree": "f10a2cb150b37f00a5d0e2484976856acd6cd647",
+              "verified": true
+            },
+            "workspace_after": {
+              "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+              "errors": [],
+              "head": "e47a130ced0cf0aadbcd2c072059849019397def",
+              "status_bytes": 28,
+              "status_clean": false,
+              "status_fingerprint": "sha256:79a96578de7f0e219440163f1666908f0b7acfc8f1f0eb61bec56fde8d57d513",
+              "tree": "f10a2cb150b37f00a5d0e2484976856acd6cd647",
+              "verified": true
+            },
+            "workspace_before": {
+              "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+              "errors": [],
+              "head": "e47a130ced0cf0aadbcd2c072059849019397def",
+              "status_bytes": 28,
+              "status_clean": false,
+              "status_fingerprint": "sha256:79a96578de7f0e219440163f1666908f0b7acfc8f1f0eb61bec56fde8d57d513",
+              "tree": "f10a2cb150b37f00a5d0e2484976856acd6cd647",
+              "verified": true
+            }
+          }
+        },
+        "code_proof_authoritative": false,
+        "completion_authoritative": false,
+        "coverage_errors": [],
+        "dependency_state": {
+          "candidate_content_sha256": "9afb1241ee451aee54bcfceeac01d1cdeb4febdeb8eecb4a6e45c5cba72ef543",
+          "changed_files": [
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+            "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+            "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+          ],
+          "gitlinks": [
+            " 31096be86103f29faef80a01e03d09b1ad7345c6 Mcp-Plus-Plus (heads/main)",
+            " cdb2b80a38e97e09c1161881603a5ee05502d9d5 external/ipfs_accelerate (agent-supervisor/submodule-targets/4ed9403979e2572030e6d2da/external/ipfs_accelerate)",
+            "-1d932cc778a24cc0bf46fc4baad8306d4fed9c4b external/ipfs_accelerate/docs/fastmcp",
+            "-0da9a074d09267a927d72faa58c26d828f0f8edb external/ipfs_accelerate/docs/mcp-python-sdk",
+            "-31096be86103f29faef80a01e03d09b1ad7345c6 external/ipfs_accelerate/ipfs_accelerate_py/mcplusplus",
+            "-41bbe7ede20294944cccb77f22072351a29e6902 external/ipfs_accelerate/ipfs_datasets_py",
+            "-80bbdc3443e560b9bf40339c864a32689ccad8ef external/ipfs_accelerate/ipfs_kit_py",
+            "-f6151d2113f42e75ea7d83a1b2362fc97e55e44d external/ipfs_accelerate/ipfs_model_manager_py",
+            "-b397988ed9e3e656475c1cf4417b84efdb95daf3 external/ipfs_accelerate/ipfs_transformers_py",
+            "-6108e850ae1cf2f71bb0815a600bcd50c39abfa7 external/ipfs_accelerate/test/doc-builder",
+            "-6108e850ae1cf2f71bb0815a600bcd50c39abfa7 external/ipfs_accelerate/test/huggingface_doc_builder",
+            "-44752c8dd99f3fb0da23006dc4fde4a07d9c417f external/ipfs_accelerate/test/huggingface_transformers",
+            " 2427d7641050ae6541c137fd0bf7b8c133415470 external/ipfs_datasets (agent-supervisor/submodule-targets/b6d6599abbc369e25565c34a/external/ipfs_datasets)",
+            "-5a7a2df8181cfdc33bc19be09989df7ff83f2d4e external/ipfs_datasets/.tools/ipfs_kit_py",
+            "-b157eabc2a1d1f481aa44fff9a1399fa2b29beae external/ipfs_datasets/ipfs_accelerate_py",
+            "-a4beb5b3280595be6b9221cac3c91dd019e6d371 external/ipfs_datasets/ipfs_datasets_py/logic/CEC/DCEC_Library",
+            "-df518c21ef81b8001e6db59f5fd70f10cc04ff6c external/ipfs_datasets/ipfs_datasets_py/logic/CEC/Eng-DCEC",
+            "-3060ede1ac1ec3f8ef9f9c9e41386aed1dbbe7f9 external/ipfs_datasets/ipfs_datasets_py/logic/CEC/ShadowProver",
+            "-e0b7650d3e3a403924773f8253e924c719748d36 external/ipfs_datasets/ipfs_datasets_py/logic/CEC/Talos",
+            "-d58933631a5362b1e2fdc45254ef620fa231223a external/ipfs_datasets/ipfs_datasets_py/multimedia/convert_to_txt_based_on_mime_type",
+            "-c1d9b0d517cea022516aab5b5d8fa5e3bc9a65aa external/ipfs_datasets/ipfs_datasets_py/multimedia/omni_converter_mk2",
+            "-5c7c2ab8a509073f39359b2a35446183855f460a external/ipfs_datasets/ipfs_datasets_py/processors/web_archiving/common_crawl_search_engine",
+            "-5a7a2df8181cfdc33bc19be09989df7ff83f2d4e external/ipfs_datasets/ipfs_kit_py",
+            " 18921719153a1b028632e811ed1ace35088546c1 external/ipfs_kit (v0.2.0-2364-g18921719)",
+            "-fec09b04ad626df44a03bc605cb2e526b752b042 external/ipfs_kit/docs/filesystem_spec",
+            "-4cf83720b59738d93db4068976f9c2a11f023e45 external/ipfs_kit/docs/ipfs-docs",
+            "-c7ca8b5f87b41fcc795297ca65b0bb41c10234bf external/ipfs_kit/docs/ipfs_cluster",
+            "-03f5199b9bf5a96c7ebf5e2e6f5dce8cf58b655f external/ipfs_kit/docs/ipfsspec",
+            "-c6ba777810d03fed23aea11b5969b7d8a97f1edf external/ipfs_kit/docs/lassie",
+            "-e18a6de9c020c5e406d9f61b638f5d276054798d external/ipfs_kit/docs/libp2p-universal-connectivity",
+            "-17cee4a438797313d1e878b103abc1dbefdf423e external/ipfs_kit/docs/libp2p_docs",
+            "-6b2c86693090c770d2c9a4d82ba315000a77068b external/ipfs_kit/docs/lighthouse-python-sdk",
+            "-d3133ae6ce7333a501e38046aff4275c44326f90 external/ipfs_kit/docs/mcp-python-sdk",
+            "-3b6791869635735ddb1a54aed7450ad6ef687c06 external/ipfs_kit/docs/storacha_specs",
+            "-48f13ab632dec4c3575acaad6e309ef60420904b external/ipfs_kit/ipfs_accelerate_py",
+            " 4e56e1864a5e78194bababc3a68775c4196cbed0 external/meta-wearables-dat-android (heads/main)",
+            " 2b5695d16a710f3d2d7341f88570b86d01723d50 external/meta-wearables-dat-ios (heads/main)",
+            " 8a5f89e6d4c1566675d2676b84a99abcf9c48419 hallucinate_app (heads/main)",
+            "-0cc04ebb640c4c981cf4650016e096a73ab0e8c0 hallucinate_app/ipfs_accelerate_py",
+            "-9059235ee84c17cdc5c971cedaf332529a1e6235 hallucinate_app/ipfs_datasets_py",
+            "-ad19bd0a548139c540bd78163b9bea8dd38bf6cb hallucinate_app/ipfs_kit_py",
+            "-5cec1a41432a072cf86a8318c9dcb9493b6db7c2 hallucinate_app/swissknife",
+            " 75931db15273786ecd579f1089ec5599b9ded352 swissknife (heads/main)"
+          ],
+          "manifest_hashes": {
+            ".gitmodules": "8e4e22675623c45254309091e0aafca000112b6035b3ca5c0e48849b0fc9e8af",
+            "Mcp-Plus-Plus/pyproject.toml": "bfbb73125d5cb32fed2b66f2a9f8c8c6307c11c830ba6679a423620fdb2418fa",
+            "Mcp-Plus-Plus/tests-go/go.mod": "f8ab2558d10b7634f20ffcea4f9f4fd7169d02fcaf9c7aef2d315c9a1cc48ab9",
+            "Mcp-Plus-Plus/tests-go/go.sum": "546e32872847a0bd6fba6561884c14b49065232a38dd87160256b558cb47c649",
+            "Mcp-Plus-Plus/tests-py/requirements.txt": "c04fb516f3b122d9a6b85ca2f444f9d304e1afc038a3d6c969168be6d9441d48",
+            "Mcp-Plus-Plus/tests-rs/Cargo.toml": "3dbb9490a3f154e5842fd8542d017c4923c445222220029ad3364a2bd5b02057",
+            "Mcp-Plus-Plus/tests-ts/package.json": "2f21e9cd003c7de32d6d973ee157ec135ae9f4e7f1e54ab5b1827cf2c68f7961",
+            "agent-runner/requirements.txt": "7f055d93396d350981aef56e7e1c71ad1ae5e7f7e842dc156ebf37087fe9f59e",
+            "external/.meta-wearables-dat-android.bootstrap.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/.meta-wearables-dat-ios.bootstrap.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/ipfs_accelerate/.gitmodules": "9b5856970fc61b9c18f7d272c1ed5b9322e5e7df08a8f74a100da2e33852bf90",
+            "external/ipfs_accelerate/config/agent_supervisor_vfs_generalization_sources.lock.json": "adede09ca8735f35fa1e7981863741789a62f677874bfc6da024051c1670a2f2",
+            "external/ipfs_accelerate/config/formal_verification_toolchains.lock.json": "80f1590ab0382126962e1ea11468f1b531cd073b3404cb5dae466b193003aa7c",
+            "external/ipfs_accelerate/config/formal_verification_zkp_deployment.lock.json": "81cce061e67681e63835954768c1eadac8ff1bd9d47855e2d043af3b20cb1d17",
+            "external/ipfs_accelerate/examples/proof_context_repository/pyproject.toml": "c3b906e26bdc5020f7bc57b96edf093c178761125989d1affd2728bdebdb64e9",
+            "external/ipfs_accelerate/install/requirements_apple.txt": "e9fe86ba7279f4b1eb8fed287e643e2165070b335741dd320f3638812eb57144",
+            "external/ipfs_accelerate/install/requirements_base.txt": "726dbaf803b252c4fda3281e2b5baca15b8c7d3232c0a30f660cfbc8b739ad14",
+            "external/ipfs_accelerate/install/requirements_cuda.txt": "ea2d7df4ca3661230a9cdeb4a24ba807ac1b4a1953684bbc1deb1cccb4a31767",
+            "external/ipfs_accelerate/install/requirements_github_ci.txt": "a7d6daf9176c35f85ebafe27f75c471618da15433063a30c571da3360dcbbd05",
+            "external/ipfs_accelerate/install/requirements_openvino.txt": "4db8b5d0403988d521fe864781cffff149327bdefba25dc3781672af9403f1f6",
+            "external/ipfs_accelerate/install/requirements_qualcomm.txt": "04946c1d9f670fe47f25672c0794da57a37f4dd1db9d356752fdccab0d13e1ff",
+            "external/ipfs_accelerate/install/requirements_torch_cu124.txt": "334ecec5a89ebab9cb4bf7ad1773f8ff76cc71d31a4d7ee16767b1082a87abdc",
+            "external/ipfs_accelerate/install/requirements_torch_cu130_nightly.txt": "c3e440cf2c875e43b59a875fb707f694777e01c33ac72627d8e689e98bc7f6f0",
+            "external/ipfs_accelerate/ipfs_accelerate_py/consensus_kit/Cargo.toml": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/ipfs_accelerate/ipfs_accelerate_py/mcp/requirements-mcp.txt": "7f9b85a3bf5b1621ce0cb4b8be85aa7d08737f9ca6e1d49eb709f865a6c4fa74",
+            "external/ipfs_accelerate/ipfs_accelerate_py/mcp/requirements.txt": "bf7674c09f3d9541a84ffb83a35da6af37eac905f5d32ae4e97cbebea7255d1b",
+            "external/ipfs_accelerate/ipfs_accelerate_py/requirements.txt": "e9e7455b38597c984035c89670436ff2fa521f3eac31b5d7d5a0e5a8d52c5e2e",
+            "external/ipfs_accelerate/ipfs_accelerate_py/utils/qualcomm/onnx/requirements.txt": "e2b2c312fe316e10c5d037fd80b99f46f8d5ee609a758ade9c383c23c6e81fde",
+            "external/ipfs_accelerate/ipfs_accelerate_py/worker/skillset/libllama/avx2/requirements.txt": "6bdf66b5bf2a44e658bea2ee86695ab150a06e600bf67cd5cce245ad54962c61",
+            "external/ipfs_accelerate/ipfs_accelerate_py/worker/skillset/libllama/requirements.txt": "ae818ace5090a15cd5a3de8746567f88803a7673384d5f79402ddede6d762de4",
+            "external/ipfs_accelerate/pyproject.toml": "e994222223003d119616de90ee146c6075d440d5b29d2f8b838b5d3ca3068f30",
+            "external/ipfs_accelerate/requirements-hf-server.txt": "3c9d34aa69517ef270232c602342482db5bf1a7c53d4f7a1658e8462191709a7",
+            "external/ipfs_accelerate/requirements-phase3.txt": "2563b16eb3d42adbccb4ceef123a0cdb4185eae892513ddfca7d5071c5c3d432",
+            "external/ipfs_accelerate/requirements-proof-reuse.txt": "4809b7012f515cfaea30140a117c86e47ada29f96fff9045eff57e390cf2fc8b",
+            "external/ipfs_accelerate/requirements.txt": "db63abfc0624140dfb23b96d8d024d48a83013626fc227a56c4c26ad6682cc01",
+            "external/ipfs_accelerate/requirements_dashboard.txt": "9e6eca5a5daa1625f3354ee5bf2283fe64cac72eeed380af462891906df37821",
+            "external/ipfs_accelerate/requirements_enhanced_scraper.txt": "f1de1c89b4c607ebb1d2e3322090b733632b6e918142e3164d9e4630d2a6d77a",
+            "external/ipfs_accelerate/requirements_webnn_webgpu.txt": "3dfbe4cc38dc9cd9df8699367189d0d2ab07d0cf582c03dbec57918ed0d6923e",
+            "external/ipfs_accelerate/scripts/generators/skill_generator/setup.py": "d903c2cec5c002511363ff8bd37f170a921c912ac1d00508f27f066daf581ebb",
+            "external/ipfs_accelerate/scripts/generators/test_generator/requirements.txt": "0a693a3e4a74e4f500426a4bce17d5ad2b37510542040fc9d90e6bc59ba6ab22",
+            "external/ipfs_accelerate/setup.py": "3b7c78fc7c053faf5cd02a5d1184dbbcd9b9217ef1bf19479c0a14bf7c8b7c15",
+            "external/ipfs_accelerate/test/doc-builder-test/pyproject.toml": "c5f768a38d656cd76cda1e6b440b2789fa0e03d270b2bb88cab9eff90f4a5ff7",
+            "external/ipfs_accelerate/test/doc-builder-test/setup.cfg": "e7e3c0f6112d7739ad2836697a49f99b4d51ea2c947afaf0b00417a43fdc2260",
+            "external/ipfs_accelerate/test/doc-builder-test/setup.py": "16e2bf03fc2ecef9065dc1dcb6a73970799ec38cbd75d5724c4e1d06c5a46f97",
+            "external/ipfs_accelerate/test/duckdb_api/benchmark_validation/requirements.txt": "3851e6a22bf37bc49a12d5bbd3eaac8e45b14bafaf7b13e7a20cff46b8643777",
+            "external/ipfs_accelerate/test/duckdb_api/distributed_testing/requirements.test.txt": "0482a473e19bfdf0bf33dbf5b735bdb95cc24fdfe4390503080174a88922e805",
+            "external/ipfs_accelerate/test/duckdb_api/simulation_validation/requirements.txt": "29ac73f3cabe50aea5c1cc818a329ee88edb5ae546fb218c90bb36dcd4955238",
+            "external/ipfs_accelerate/test/fixtures/agent_supervisor/compositional_verification/pyproject.toml": "6d7cd4157ad488b231b3759cd94ef8af8fb2e3599e9e58f030d06e914f5e3b0c",
+            "external/ipfs_accelerate/test/ipfs_accelerate_py/utils/qualcomm/onnx/requirements.txt": "e2b2c312fe316e10c5d037fd80b99f46f8d5ee609a758ade9c383c23c6e81fde",
+            "external/ipfs_accelerate/test/refactored_generator_suite/setup.py": "d903c2cec5c002511363ff8bd37f170a921c912ac1d00508f27f066daf581ebb",
+            "external/ipfs_accelerate/test/refactored_test_suite/requirements.txt": "0a693a3e4a74e4f500426a4bce17d5ad2b37510542040fc9d90e6bc59ba6ab22",
+            "external/ipfs_accelerate/test/requirements.txt": "b54886473706cddefb7dd4452332c9a0c9f45ddae04c48222f65e33f03f2461f",
+            "external/ipfs_accelerate/test/requirements_api.txt": "b67da94040b96358d62efbc16eed0b40315b2c1027238b8abc815117f7f70ea1",
+            "external/ipfs_accelerate/test/requirements_dashboard.txt": "9ec041a96a6e980ba8fdaae8224db76019093a03b6013d305dde995fd3505b1c",
+            "external/ipfs_accelerate/test/requirements_samsung.txt": "b68f698e9a849fe3a252f072d1d233bc22612ef59f1d40caf2f3e62e339fd3dc",
+            "external/ipfs_accelerate/test/requirements_test.txt": "1fb552da35d2bf0493df331d9d94ec09c168ce301a16178928e3abbc2cb5c7dd",
+            "external/ipfs_accelerate/test/scripts/requirements_db.txt": "176d62468abeca7370033d0333aa441a135850f4765a12be8583fa3b3247a34b",
+            "external/ipfs_datasets/.gitmodules": "8fd312de9fdd8ee55693025741e23533e0c8953392b74466040793cec34392b1",
+            "external/ipfs_datasets/archive/data/security_ir_artifacts/environment/typescript_toolchain/package.json": "35f5df1e873ba83ee80ed354404fde24be5b26e7883d746d8143ef073db58e76",
+            "external/ipfs_datasets/archive/migration_artifacts/package.json": "3e9649fa3825f881291987b1ba283eac758bfcd3da34a847be419f57409c2793",
+            "external/ipfs_datasets/archive/migration_artifacts/requirements.txt": "ca3468c2792ccee883a2a308e2be9aa8ffceed5294b9c6fe6fe97d783e9d8abc",
+            "external/ipfs_datasets/archive/workspace/todo-queues/legal-ir-daemon-oob-20260608T081102Z-best-8h-autoencoder.codex-task-vectors.json.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/ipfs_datasets/archive/workspace/todo-queues/legal-ir-daemon-oob-20260608T081102Z-best-8h-autoencoder.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/ipfs_datasets/archive/workspace/todo-queues/legal-ir-daemon-oob-20260608T081102Z-trial-01.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/ipfs_datasets/archive/workspace/todo-queues/legal-ir-daemon-oob-20260608T081102Z-trial-02.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/ipfs_datasets/archive/workspace/todo-queues/legal-ir-daemon-restart12-20260608T075001Z-best-8h-autoencoder.codex-task-vectors.json.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/ipfs_datasets/archive/workspace/todo-queues/legal-ir-daemon-restart12-20260608T075001Z-best-8h-autoencoder.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/ipfs_datasets/archive/workspace/todo-queues/legal-ir-daemon-restart12-20260608T075001Z-trial-01.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/ipfs_datasets/archive/workspace/todo-queues/legal-ir-daemon-restart12-20260608T075001Z-trial-02.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/ipfs_datasets/benchmarks/logic_pipeline/runtime_env/leanstral.lock": "6e98c033f4b1b647b99bc206cca54ce39200c94ab48154d9c0251c2e28424a61",
+            "external/ipfs_datasets/benchmarks/logic_pipeline/runtime_env/spacy.lock": "54349713a0a6b9a957cda271842fe8fa3abb751a2ffb8a97b43b580e70bf3a6e",
+            "external/ipfs_datasets/benchmarks/logic_pipeline/runtime_env/symai-router.lock": "aa0988d4bc868e7506a515e1e2f8a3fbd1aca49d84ffcea503d8dec246ea1b76",
+            "external/ipfs_datasets/docs/reports/requirements.txt": "7cb781702ae233b8ffde1c7706a10b64c86e88be05c3a20c56f69a6207f570fa",
+            "external/ipfs_datasets/examples/requirements.txt": "9e13902b91776a5c4e1aefec23d24c325e54bc4d7cedd5c0d6b7509f9a183696",
+            "external/ipfs_datasets/ipfs_datasets_py/logic/CEC/ShadowProver/.gitmodules": "c208d2176508e8697b74dcf9c014d878cab011d0ae08cd0ee8e8316fcd1bd611",
+            "external/ipfs_datasets/ipfs_datasets_py/mcp_server/requirements-docker.txt": "ed38da682d2760272c9ce0a07741c2cebcd3643500f0983b87e04b2d825b7762",
+            "external/ipfs_datasets/ipfs_datasets_py/multimedia/convert_to_txt_based_on_mime_type/pyproject.toml": "11df4b13abe728f1c8df611b378d6e20bafe27fbc869981a3f7c9066a9250339",
+            "external/ipfs_datasets/ipfs_datasets_py/multimedia/convert_to_txt_based_on_mime_type/requirements.txt": "f2a18d6debdba0c00c90575dcb3199b3611825b1b4a13c2421f64a6fea75d5ba",
+            "external/ipfs_datasets/ipfs_datasets_py/multimedia/omni_converter_mk2/requirements.txt": "0643e8843b1d7d0bcc8ace9b7526608aeb7a48579537c768c158ba49877cf76f",
+            "external/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/Cargo.lock": "592b3736d8e2c25f54aa1c7f5ea8cd1c1649c644762d1973f2687918bf9e470f",
+            "external/ipfs_datasets/ipfs_datasets_py/processors/groth16_backend/Cargo.toml": "f0b4b36d08496c9660945ca69e7fab2af6074ad56668830822d93573555f1231",
+            "external/ipfs_datasets/ipfs_datasets_py/processors/multimedia/convert_to_txt_based_on_mime_type/pyproject.toml": "11df4b13abe728f1c8df611b378d6e20bafe27fbc869981a3f7c9066a9250339",
+            "external/ipfs_datasets/ipfs_datasets_py/processors/multimedia/convert_to_txt_based_on_mime_type/requirements.txt": "f2a18d6debdba0c00c90575dcb3199b3611825b1b4a13c2421f64a6fea75d5ba",
+            "external/ipfs_datasets/ipfs_datasets_py/processors/multimedia/omni_converter_mk2/requirements.txt": "0643e8843b1d7d0bcc8ace9b7526608aeb7a48579537c768c158ba49877cf76f",
+            "external/ipfs_datasets/pyproject.toml": "da3e07632becd5efb9c22cfa3e2674c67ff9b5a41bb177f4517a7ca250ae76b7",
+            "external/ipfs_datasets/requirements-agent-supervisor-validation.txt": "d84de7ee9fa44796973e3656680583d1e8a69142018d9b724b666a7d561ffa38",
+            "external/ipfs_datasets/requirements-docs.txt": "321e7dd5bf21367affabd4555d6456bcff6587899542d58b43fc448988f4f239",
+            "external/ipfs_datasets/requirements-lazy.txt": "bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
+            "external/ipfs_datasets/requirements-theorem-provers.txt": "cb22dd5328bca48746c0747e2580a19b1a8602ed008875ad11c0eb650df825b9",
+            "external/ipfs_datasets/requirements.txt": "c440bb51092a82bb19e2641e680dbc63d427029c7561e66999843418c4eb11db",
+            "external/ipfs_datasets/requirements/duckdb-quack-bootstrap.lock": "a8759c24689337513d574a5517fd4616f07e0994e75afa38478855642e4f0ef1",
+            "external/ipfs_datasets/requirements/duckdb-quack-validator.lock": "839b484c8f448dc722cc1443a5961d3a5afd1bb6eae1d9b2d4e0091fdebab655",
+            "external/ipfs_datasets/requirements/duckdb-quack.lock": "c13d55fda5236686a02fdcfe782639c09395300d51ac5acf9effa0a4297d7a48",
+            "external/ipfs_datasets/requirements/ducklake-services.lock": "e511a7141d69df8490ab70eccfdc09b3f1c58140cb0711c97f3ab6b0050bf03e",
+            "external/ipfs_datasets/setup.py": "2608a6e65deedc5e2bd7a332a94ef39e8109cb4cafb925b4b3dd9fa0cfa2d0fc",
+            "external/ipfs_datasets/tests/fixtures/software_contracts/incremental_semantic_index/lock_environment/v1/requirements.txt": "3d7071fa573e18a9f864b94b618fbfe742c6a08e18ea44c91ac0e0e85e441b4e",
+            "external/ipfs_datasets/tests/fixtures/software_contracts/incremental_semantic_index/lock_environment/v2/requirements.txt": "043f7e7bfc123dac7d497dad63ac7772f4b8c0f1aa41459e8cef0080cdc07a22",
+            "external/ipfs_datasets/typescript/logic-runtime-mtl/package-lock.json": "fa3d6cec7a231c100adfb2a17f930c938be1d48e316a8d8b259833afc3f6389d",
+            "external/ipfs_datasets/typescript/logic-runtime-mtl/package.json": "9e3e60d9586abd9fad2774bf131dd5b51cf263d8246fad7d3ad8bf84209126fe",
+            "external/ipfs_kit/.gitmodules": "0575ab08e990ed1626dfbc7b68cdf06627c77377bf8d65b01439f04a22ce163e",
+            "external/ipfs_kit/.playwright_local/package.json": "c30b4557772957f6a1e48ef3f905900f2ff861dedaf4aca92ab74f037eea2f97",
+            "external/ipfs_kit/archive/archive_clutter/temp_files/requirements.txt": "9a7bcc9db43754165aebf530c53712ea1c05354998022c75bae14bd7bfc89dd1",
+            "external/ipfs_kit/archive/fixes/requirements.txt": "7bd5a3d0ad0ffd2fc56d5b332f511b8e299fb860def5b331da8bdb2ca96378d4",
+            "external/ipfs_kit/archive/reorganization_backup_final/pyproject.toml": "11a0fcdb9ec1a64e7efcac8f022ea85ddce38d8c372012a678e6e9f372077c27",
+            "external/ipfs_kit/archive/reorganization_backup_final/requirements.txt": "7bd5a3d0ad0ffd2fc56d5b332f511b8e299fb860def5b331da8bdb2ca96378d4",
+            "external/ipfs_kit/archive/reorganization_backup_final/setup.py": "38ecb5db650e72192623f941108241adc2a54eda74628820b8773face8ed8de4",
+            "external/ipfs_kit/archive/reorganization_backup_root/package.json": "074d812fb6e92c7beb207097f0369c615566d4cfe6ee8d6bdcc353a4c594674f",
+            "external/ipfs_kit/archive/reorganization_backup_root/pyproject.toml": "a6bf56fd452472af6a20720b256e04275d27ffe77933907bfd39cdc1fb667dfb",
+            "external/ipfs_kit/archive/reorganization_backup_root/requirements.txt": "de25f0ab9b8a2b8d24c1b95670eecc645898ecd60398521c8fcbb361099acd6e",
+            "external/ipfs_kit/archive/reorganization_backup_root/requirements_enhanced.txt": "9583e1fc7435746f47f26e70712895e3764190a8d4b4ad82fb05ba3c88c51a37",
+            "external/ipfs_kit/archive/reorganization_backup_root/setup.py": "38ecb5db650e72192623f941108241adc2a54eda74628820b8773face8ed8de4",
+            "external/ipfs_kit/backup/archive_clutter/temp_files/requirements.txt": "9a7bcc9db43754165aebf530c53712ea1c05354998022c75bae14bd7bfc89dd1",
+            "external/ipfs_kit/backup/fixes/requirements.txt": "7bd5a3d0ad0ffd2fc56d5b332f511b8e299fb860def5b331da8bdb2ca96378d4",
+            "external/ipfs_kit/config/package.json": "df2622fd99f47c180086c8c7ceb2b4a147ab8851f3a5be8cd55bf6a7f8495eaa",
+            "external/ipfs_kit/config/pyproject.toml": "11a0fcdb9ec1a64e7efcac8f022ea85ddce38d8c372012a678e6e9f372077c27",
+            "external/ipfs_kit/config/requirements.txt": "1a8c2b15a4c92187daa7dfab46f7cc3e1e56fee949425fe14cc5b6fdc76e8214",
+            "external/ipfs_kit/config/setup.cfg": "9e54ab6d86abb9c234a943c06d9443dc8d62452bb02dbc736a65b04c7ce95644",
+            "external/ipfs_kit/config/setup.py": "38ecb5db650e72192623f941108241adc2a54eda74628820b8773face8ed8de4",
+            "external/ipfs_kit/config/tox.ini": "16f6daed38e2f7e12bfab31da1e184219754f45d18cd9a55b5dc8d1bffcbc6f2",
+            "external/ipfs_kit/docs/py-ipld-car/pyproject.toml": "fc38c42ac41b4e540f6b84560b5f8529ec582397811ad9794ba54fd7a19b4c8a",
+            "external/ipfs_kit/docs/py-ipld-car/requirements.txt": "f5c3c4acaf9f5ffa9dfe77bc654cc1ee6c38ea6472412042d14a85da8893b975",
+            "external/ipfs_kit/docs/py-ipld-dag-pb/pyproject.toml": "af63197574fe853f43adf71cdb5cdee1f1adb601ee47751038881a63441b2644",
+            "external/ipfs_kit/docs/py-ipld-dag-pb/requirements.txt": "5ee80fdb951ff961f1b0985df0469eda9b8b47e5b286b12668eb0c83416efe17",
+            "external/ipfs_kit/docs/py-ipld-unixfs/pyproject.toml": "6b829d2f20090eda722e731737a1006c8813d268a11f65aac35c15189565bee1",
+            "external/ipfs_kit/docs/py-ipld-unixfs/requirements.txt": "f5c3c4acaf9f5ffa9dfe77bc654cc1ee6c38ea6472412042d14a85da8893b975",
+            "external/ipfs_kit/examples/package.json": "2ed8543f6325419ba4de807f754d7587cc7f9f7bbfdea5328a48c6b733f78d74",
+            "external/ipfs_kit/ipfs_kit_py/cluster.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "external/ipfs_kit/ipfs_kit_py/js/package.json": "a5039b70356deb0fd677502eeedbbbca8135e4c4bd0bd4311bd66730003ecd8c",
+            "external/ipfs_kit/ipfs_kit_py/mcp/ipfs_kit/setup.py": "68934c914bd51058fed78073b0f935ea160a5983842e8ac6f2ad15164e91131d",
+            "external/ipfs_kit/package.json": "283f51ed1f2619a23a788c9a3a0e32e11f9c5667031c8c8bb964153142a5899a",
+            "external/ipfs_kit/pyproject.toml": "5c48596878ccf0ac5fe493193de2885456b6495caa5f01ac783641de715c7a64",
+            "external/ipfs_kit/requirements-gpu.txt": "fa552bb24b81bee1404bce2675cb5535122fd972ccdd3e1bee426084acf846f8",
+            "external/ipfs_kit/requirements.txt": "4083586f56960826ed8944c82b61ffa7e6e94e31b3a7174b3633f34d0c5bca88",
+            "external/ipfs_kit/setup.py": "81a0fb92c5abe5d4ef6c5e5e3857d4ff9cbc4435c695ecbfdd8e03cfa4d88976",
+            "external/ipfs_kit/tests/e2e/playwright/package.json": "c3fdf2d9354e84d9daed54ad99820c70ed78b12e4e9ec460ca058ebdbff1d771",
+            "hallucinate_app/.gitmodules": "67a2249db87790f9f39ba2fe7b3b55796b40ffde4456fc7e0f6d44c12e10e4d4",
+            "hallucinate_app/hallucinate_app/experiments/webnn-developer-preview/package.json": "35f4f1da2dfa1266205ff9d4abe172da635cd1b90216cafd6fa8aaabe9ab94a2",
+            "hallucinate_app/hallucinate_app/model_collection_viewer/package.json": "616d07d4611d1c8c94dcadcb6b51a0921434b36762fff156df18fbcc0f9c56f6",
+            "hallucinate_app/hallucinate_app/node/package.json": "342f908ddc69061cd19a4ee83d2ad7bad3da9c7b4d8a57f100ddc0702fddc91e",
+            "hallucinate_app/hallucinate_app/python/hallucinate_app/ipfs_embeddings_py/setup.py": "b0560fc20a300d3eca5615b39150ecad72a6a67c2c5be8a1ae4ce29829a17428",
+            "hallucinate_app/hallucinate_app/python/pyproject.toml": "eaf9c2a246647d2490290db63d6cea2aa4071d1ccbbe79d6b1bf9f2111b6d625",
+            "hallucinate_app/hallucinate_app/python/requirements.txt": "f034b4292289ccfd30962c9c0a8bf4ca91eb0e5862f248d85176c6f5386f0a69",
+            "hallucinate_app/hallucinate_app/python/setup.py": "88b69bd6dd38aaae7194288fc4aee891989cf976057c544a9f7a516f4454e2f7",
+            "hallucinate_app/hallucinate_app/python/ucan_auth_py/setup.py": "eb287d330a41610fe6f82dcbb94651086a156241fa912490e42ada9ce22f9b61",
+            "hallucinate_app/package.json": "f51a0bd3aca3f388d7c1f97cb13f2ea57573bde1acd82a06b65b4c10b4d48388",
+            "hallucinate_app/python/requirements-bundled.txt": "70d10096e60fba60f335a964dc3174adada2d0465bd581df36f6c9ca6019ba9b",
+            "hallucinate_app/python/requirements.txt": "5fc7028f8e3ec76222d0ae4cadedc20b4547547343a883dc62215277e3ab44be",
+            "hallucinate_app/test/requirements.txt": "9d03b7982826bc0028a3779e9c499b236a01d01c339bcfd23266241dbfd97a2c",
+            "hallucinate_app/yarn.lock": "42fe0264eff87d9dd7961c3194f9477017fcefe28ec30f2272e21db33c83809d",
+            "implementation_plan/formal_assurance_control_plane/release/qualification/portfolio.lock.json": "596bd5ddaef18950d5dbe31c8b67422c4d8d3ecfdb2b93dd839fb459b5562586",
+            "mobile/modules/expo-glasses-audio/package.json": "b72d85a912c180cdf8a03046b342c229073cc8a884925df3b61dac8cdddda13d",
+            "mobile/modules/expo-meta-wearables-dat/package.json": "bb9154a69250cb0a74db59443b0985e15ef23f735846fa047f5a95a92d33411e",
+            "mobile/modules/glasses-audio-player/package.json": "a42c44ac43afbae3286da61e4ed5763519931278f80e53d8f6b7b5c1f4355cf8",
+            "mobile/modules/glasses-audio/package.json": "1f2ef306854a6ceb1ebe174877fab3c510e35ad3831e43d8824556fa68e5e83a",
+            "mobile/package-lock.json": "d74a77411a0611ffb1da57903437fd994d2e221ff11ef1ee7482fbdf7e9edc87",
+            "mobile/package.json": "296e239e0b1abff781dfa27cece7000adf163af2f5b01228f2ef7fcd1d3bdb0e",
+            "pyproject.toml": "8181fe8ff2b716da6009f52207f6229d2f1fd947e74f51339652864366657e19",
+            "requirements-dev.txt": "9bc38dbc68645262d0378ee42e1331c017833651471e12dedbf3ef153ed485c2",
+            "swissknife/ipfs_accelerate_js/package.json": "0600eb0f55535f8f0144c4fe63e65fa53425db323dd05d2930674f89fbf4cadb",
+            "swissknife/package-lock.json": "584a3304603b208797b50faee86f00f5a6fe987d2289f382ae4f7b93a62dbc21",
+            "swissknife/package.json": "3f12e1aa0d255b37e3b65808af412358c50e643f143edecf03a0f47a1b6c97bf",
+            "swissknife/pnpm-lock.yaml": "ab17cc697177d435dd2c3c27b820ee284e9413bea6b4f86fcafae78a8348eacf",
+            "swissknife/test/browser/package-consumer-fixture/package.json": "1a1770b0d4c112df371730edfdee04aec8290828ae24d8ecbaefffa3488fd0ea",
+            "swissknife/test/package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979",
+            "swissknife/web/package-lock.json": "dbb34d4d0929b8ec72dad1e3d82976923406cbcaabfd0c1ebf2cc877136e14b0",
+            "swissknife/web/package.json": "73b472ee94c9e8489809a56adb066cbc07887039ef5efc7e2b967b9abc66a1cb",
+            "swissknife/yarn.lock": "8de1199f058175ec1fde7a0a71ce988ab118782c2bd929850c1961a1b1bc9dd0"
+          }
+        },
+        "freshness_authoritative": false,
+        "impact_graph": {
+          "dependencies": {
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json": [],
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json": [],
+            "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py": [],
+            "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py": []
+          },
+          "graph_id": "ce94e158ff0d2eede00b7b0d6e0573fed5ce1efd3261acff24712616232d33a7",
+          "graph_version": "declared-validation-plan-v1",
+          "repository_tree_id": "e47a130ced0cf0aadbcd2c072059849019397def",
+          "validation_targets": {
+            "declared:acd234b8ea6a782442d523e1283b03a87276e310d483423a31748281202d67ee": [
+              "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+            ]
+          }
+        },
+        "max_workers": 2,
+        "merge_eligible": false,
+        "nodes": [
+          {
+            "blocked_by_failed_node_ids": [],
+            "command": "cd external/ipfs_accelerate && export PYTHONPATH=.:../ipfs_datasets:../ipfs_kit:../.. && python3 -m pytest test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py -q",
+            "depends_on": [],
+            "disposition": "succeeded",
+            "impact_paths": [
+              "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+            ],
+            "mandatory": true,
+            "node_id": "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe",
+            "observed_seeded_defect_id": "",
+            "reason": "validation_passed",
+            "result_digest": "57e691a3057f6ab2867644039dded02d35de28aeb2d637ed5ddecdd26b5f9a20",
+            "returncode": 0,
+            "selected": true,
+            "selection_reason": "changed_path_matches_command_target",
+            "stage": "targeted",
+            "validation_id": "declared:acd234b8ea6a782442d523e1283b03a87276e310d483423a31748281202d67ee"
+          }
+        ],
+        "passed": true,
+        "proof_authoritative": false,
+        "proposal_gate": {
+          "accepted": true,
+          "attempted": true,
+          "changed_paths": [
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+            "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+            "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+          ],
+          "completion_authoritative": false,
+          "policy_id": "f095bd0c4c06aaeeda64ee5464f70c7e33cf644799a4ac9a42e9bde6a772f45c",
+          "proof_authoritative": false,
+          "proposal_id": "48fdd330d7fee219e0de25ea6793568549c667fe2a7bed0858edc2b8d86ada43",
+          "reason_codes": [],
+          "receipt_id": "9def526735b9e1be5507b7c2767bb37de55a8b6b910bfef428fd9c37f9c58c62",
+          "repository_tree_id": "e47a130ced0cf0aadbcd2c072059849019397def"
+        },
+        "proved_requirement_ids": [],
+        "resource_budget": 2,
+        "results": [
+          {
+            "attempt_number": 1,
+            "cache_hit": false,
+            "cache_key": "2b4abeea40b15f14e9956df8bb84a003cecc94792f19d3f7d4fc2d7cafc3ea9c",
+            "command": "cd external/ipfs_accelerate && export PYTHONPATH=.:../ipfs_datasets:../ipfs_kit:../.. && python3 -m pytest test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py -q",
+            "diagnostic_signature": "b1389bf72bcfadddadfe4effcaa57e133bb44d72318ae47d00348cef2dca2b6b",
+            "execution_elapsed_seconds": 3.3448729580268264,
+            "finished_at": "2026-09-13T05:08:09.677048+00:00",
+            "ordinal": 0,
+            "raw_command": "cd external/ipfs_accelerate && export PYTHONPATH=.:../ipfs_datasets:../ipfs_kit:../.. && python3 -m pytest test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py -q",
+            "resource_admission": {
+              "active_leases": 0,
+              "admission_rank": 0,
+              "admitted": true,
+              "allowed": true,
+              "capability_fit_millionths": 1000000,
+              "configured_max_lanes": 2,
+              "critical_path_length": 0,
+              "effective_slots": 2,
+              "fairness_key": "execution",
+              "host_available_slots": 2,
+              "hysteresis_state": "stable",
+              "lane_id": "validation:0:988460a2e32cf566",
+              "merge_age_ms": 0,
+              "pressure_percent": 0,
+              "provider_available_slots": 2,
+              "provider_id": "",
+              "queue_age_ms": 0,
+              "queue_depth": 1,
+              "reason": "",
+              "reasons": [],
+              "reserved_disk_bytes": 0,
+              "reserved_gpu_memory_bytes": 0,
+              "reserved_memory_bytes": 0,
+              "reserved_process_slots": 1,
+              "reserved_quota_units": 0,
+              "reserved_tokens": 0,
+              "resource_class": "cpu-validation",
+              "resource_pool": "cpu-general",
+              "stage": "execution"
+            },
+            "resource_cost": 1,
+            "resource_lease": {
+              "child_limits": {
+                "context_tokens": 0,
+                "cpu_time_ms": 0,
+                "disk_bytes": 0,
+                "gpu_memory_bytes": 0,
+                "kernel_max_parallel": 1,
+                "max_processes": 1,
+                "maximum_provider_latency_ms": 120000,
+                "memory_bytes": 0,
+                "model_token_limit": 0,
+                "portfolio_max_parallel": 1,
+                "provider_quota": 1,
+                "wall_time_ms": 0
+              },
+              "lease_id": "resource-lease:a3831a8fb9354fbcaa46b5cc56a72120",
+              "released": true,
+              "resource_class": "cpu-validation",
+              "resource_pool": "cpu-general"
+            },
+            "returncode": 0,
+            "stage": "targeted",
+            "started_at": "2026-09-13T05:08:06.551735+00:00",
+            "timed_out": false,
+            "validation_id": "declared:acd234b8ea6a782442d523e1283b03a87276e310d483423a31748281202d67ee",
+            "validation_python_launcher": {
+              "content_sha256": "aaa6b635f68d9aa6763272a11d8f038f0e0c21920e201fbfe9c13f8d75208d7d",
+              "interpreter_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+              "interpreter_stat": "{\"device\":66306,\"inode\":1310800,\"mode\":493,\"mtime_ns\":1772540118000000000,\"path\":\"/usr/bin/python3.12\",\"size\":7845032}",
+              "mode": "linux:sealed-memfd",
+              "policy_sha256": "75192d2d6843d39c589bf2204a2ad25437374d49151b3dee454902db2edc96ac",
+              "sealed": true
+            },
+            "validation_result_digest": "57e691a3057f6ab2867644039dded02d35de28aeb2d637ed5ddecdd26b5f9a20"
+          }
+        ],
+        "returncode": 0,
+        "selection": {
+          "changed_files": [
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+            "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+            "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+          ],
+          "decisions": [
+            {
+              "command": "cd external/ipfs_accelerate && export PYTHONPATH=.:../ipfs_datasets:../ipfs_kit:../.. && python3 -m pytest test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py -q",
+              "decision": "included",
+              "executable": true,
+              "fallback": false,
+              "impact_paths": [
+                "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+              ],
+              "matched_paths": [
+                "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+              ],
+              "original_stage": "targeted",
+              "reason": "changed_path_matches_command_target",
+              "requirement_kind": "",
+              "selected": true,
+              "source": "declared",
+              "stage": "targeted",
+              "validation_id": "declared:acd234b8ea6a782442d523e1283b03a87276e310d483423a31748281202d67ee",
+              "verdict_kind": "test"
+            }
+          ],
+          "escalated": false,
+          "escalation_reason": "",
+          "fallback_count": 0,
+          "scope": "pre_merge",
+          "selected_count": 1,
+          "skipped_count": 0,
+          "unresolved_fallback_count": 0
+        },
+        "stages": [
+          {
+            "executed_count": 1,
+            "finished_at": "2026-09-13T05:08:09.877425+00:00",
+            "passed": true,
+            "planned_count": 1,
+            "stage": "targeted",
+            "started_at": "2026-09-13T05:08:06.525226+00:00",
+            "throughput": {
+              "completed_count": 1,
+              "elapsed_seconds": 3.3510270270053297,
+              "lane": "validation",
+              "parallel_speedup": 0.9981635275009993,
+              "peak_parallelism": 1,
+              "schema": "ipfs_accelerate_py/agent-supervisor/acceptance-throughput@1",
+              "serial_work_seconds": 3.3448729580268264,
+              "throughput_per_second": 0.2984159757415199
+            }
+          }
+        ],
+        "target_commit": "e47a130ced0cf0aadbcd2c072059849019397def",
+        "throughput": {
+          "accepted_count": 1,
+          "completed_count": 1,
+          "elapsed_seconds": 3.3531040409579873,
+          "lane": "validation",
+          "parallel_speedup": 0.9975452348538493,
+          "peak_parallelism": 1,
+          "planned_count": 1,
+          "schema": "ipfs_accelerate_py/agent-supervisor/acceptance-throughput@1",
+          "serial_work_seconds": 3.3448729580268264,
+          "throughput_per_second": 0.2982311278698941
+        },
+        "time_to_first_useful_failure_ms": null,
+        "time_to_first_useful_failure_seconds": null,
+        "validation_dag_receipt": {
+          "affected_paths": [
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+            "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+            "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+          ],
+          "authority_gates": [
+            {
+              "depends_on": [
+                "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe"
+              ],
+              "disposition": "pending",
+              "gate": "completion",
+              "reason": "validation_passed_requires_independent_authority"
+            },
+            {
+              "depends_on": [
+                "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe"
+              ],
+              "disposition": "pending",
+              "gate": "freshness",
+              "reason": "validation_passed_requires_independent_authority"
+            },
+            {
+              "depends_on": [
+                "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe"
+              ],
+              "disposition": "pending",
+              "gate": "merge",
+              "reason": "validation_passed_requires_independent_authority"
+            },
+            {
+              "depends_on": [
+                "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe"
+              ],
+              "disposition": "pending",
+              "gate": "proof",
+              "reason": "validation_passed_requires_independent_authority"
+            },
+            {
+              "depends_on": [
+                "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe"
+              ],
+              "disposition": "pending",
+              "gate": "semantic",
+              "reason": "validation_passed_requires_independent_authority"
+            }
+          ],
+          "changed_paths": [
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+            "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+            "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+          ],
+          "code_proof_authoritative": false,
+          "completion_authoritative": false,
+          "coverage_complete": true,
+          "graph_id": "ce94e158ff0d2eede00b7b0d6e0573fed5ce1efd3261acff24712616232d33a7",
+          "impact_graph": {
+            "dependencies": {
+              "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json": [],
+              "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json": [],
+              "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py": [],
+              "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py": []
+            },
+            "graph_id": "ce94e158ff0d2eede00b7b0d6e0573fed5ce1efd3261acff24712616232d33a7",
+            "graph_version": "declared-validation-plan-v1",
+            "repository_tree_id": "e47a130ced0cf0aadbcd2c072059849019397def",
+            "validation_targets": {
+              "declared:acd234b8ea6a782442d523e1283b03a87276e310d483423a31748281202d67ee": [
+                "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+              ]
+            }
+          },
+          "nodes": [
+            {
+              "blocked_by_failed_node_ids": [],
+              "command": "cd external/ipfs_accelerate && export PYTHONPATH=.:../ipfs_datasets:../ipfs_kit:../.. && python3 -m pytest test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py -q",
+              "depends_on": [],
+              "disposition": "succeeded",
+              "impact_paths": [
+                "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+              ],
+              "mandatory": true,
+              "node_id": "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe",
+              "observed_seeded_defect_id": "",
+              "reason": "validation_passed",
+              "result_digest": "57e691a3057f6ab2867644039dded02d35de28aeb2d637ed5ddecdd26b5f9a20",
+              "returncode": 0,
+              "selected": true,
+              "selection_reason": "changed_path_matches_command_target",
+              "stage": "targeted",
+              "validation_id": "declared:acd234b8ea6a782442d523e1283b03a87276e310d483423a31748281202d67ee"
+            }
+          ],
+          "objective_id": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+          "passed": true,
+          "policy_id": "32eaac81b570ddd750da63d265604ca82fc38c2561181557c946c1675e65a99e",
+          "proof_authoritative": false,
+          "proposal_receipt_id": "9def526735b9e1be5507b7c2767bb37de55a8b6b910bfef428fd9c37f9c58c62",
+          "proved_requirement_ids": [],
+          "receipt_id": "e3cd4b20888a39d264dcef4be35c171567d787d81eebaa57f0141ddbedca9724",
+          "repository_tree_id": "e47a130ced0cf0aadbcd2c072059849019397def",
+          "required_validation_ids": [
+            "declared:acd234b8ea6a782442d523e1283b03a87276e310d483423a31748281202d67ee"
+          ],
+          "schema": "ipfs_accelerate_py/agent-supervisor/validation-dag-receipt@3",
+          "seeded_defect_id": "",
+          "seeded_defect_path": "",
+          "selected_node_ids": [
+            "6c73af837d74bf24952bf0fd98507d5bf9a7cdc47bbeb96f64f1be69876e51fe"
+          ],
+          "transitive_evidence": null,
+          "uncovered_impact": false
+        },
+        "validation_plan_binding": {
+          "command_count": 1,
+          "graph_id": "ce94e158ff0d2eede00b7b0d6e0573fed5ce1efd3261acff24712616232d33a7",
+          "graph_version": "declared-validation-plan-v1",
+          "source": "proposal_declared_validation_plan",
+          "validation_ids": [
+            "declared:acd234b8ea6a782442d523e1283b03a87276e310d483423a31748281202d67ee"
+          ]
+        }
+      },
+      "workspace_setup": {
+        "base_commit": "e47a130ced0cf0aadbcd2c072059849019397def",
+        "base_ref": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+        "cache_hit": false,
+        "cache_key": "e58ef163b3fc5282d5ea879907152a4fe122258387a376b6a35b5721d81d8923",
+        "dependency_paths": [
+          "external/ipfs_accelerate",
+          "external/ipfs_datasets",
+          "external/ipfs_kit"
+        ],
+        "entry_id": "6d42fa48740c-afde929673d0",
+        "estimated_seconds_saved": 0.0,
+        "invalidation_reason": "",
+        "invalidation_reasons": [],
+        "prior_attempt_seed": {
+          "applied": false,
+          "baseline_ref": "e47a130ced0cf0aadbcd2c072059849019397def",
+          "reason": "merge_target_baseline",
+          "seed_ref": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1"
+        },
+        "reused": false,
+        "saved_duration_seconds": 0.0,
+        "setup_duration_seconds": 30.07749,
+        "setup_seconds": 30.07749,
+        "setup_time_saved_seconds": 0.0,
+        "validation_project_dependency_preflight": {
+          "applicable": true,
+          "automatic_install_attempted": false,
+          "completion_authority": false,
+          "event_projection_compacted": true,
+          "finding_preview": [],
+          "full_receipt_artifact": {
+            "artifact_id": "blob:sha256:8cde35cfaf52ba1b067d74c4fd926e63aa2eb9ffe7f992ffda71f245f627ca3e",
+            "digest": "sha256:8cde35cfaf52ba1b067d74c4fd926e63aa2eb9ffe7f992ffda71f245f627ca3e",
+            "kind": "validation_project_dependency_preflight_receipt",
+            "media_type": "application/json",
+            "schema": "ipfs_accelerate_py.agent_supervisor.bounded-blob-reference@1",
+            "size_bytes": 11928
+          },
+          "incompatible_count": 0,
+          "invalid_command_count": 0,
+          "invalid_requirement_count": 0,
+          "marker_skipped_count": 17,
+          "missing_count": 0,
+          "observed_distribution_count": 5,
+          "passed": true,
+          "probe_project_count": 1,
+          "probe_scope": "installed_distribution_metadata",
+          "project_count": 1,
+          "project_root_count": 1,
+          "reason": "approved_validation_environment_satisfies_project_dependencies",
+          "receipt_id": "5ecf7b5c7951ef7ecdf8ebc4de7227907276666fccfe78a2b2051da09c996389",
+          "receipt_schema": "ipfs_accelerate_py/agent-supervisor/validation-project-dependency-preflight@1",
+          "retry_fingerprint": "63fb0e207db9375fe57a45fe65c701c34831fd851edb9b203efb391c6d181e44",
+          "schema": "ipfs_accelerate_py/agent-supervisor/validation-project-dependency-preflight-event-projection@1",
+          "validation_command_count": 1
+        },
+        "worktree_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/data/agent_supervisor/agent_supervisor_direct_objective_event_driven_planning_v1_r5/worktrees/workspace_6d42fa48740c_afde929673d0"
+      },
+      "worktree_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/data/agent_supervisor/agent_supervisor_direct_objective_event_driven_planning_v1_r5/worktrees/workspace_6d42fa48740c_afde929673d0"
+    }
+  ],
+  "provenance": {
+    "event_excerpt_is_complete_chain": false,
+    "event_file_sha256": "817f6dc62441df07deb2d7bbf76a1eb330ca8966ad38c1376bab54073b4c9ac4",
+    "queue_archive_sha256": "0af8b073b612ca94bb80c6aed7a0dc5f37d433e48d668fd2d13e3a0caad6af96",
+    "source": "qualified generation-107 stopped queue archive plus immutable DOEP-053 event excerpt",
+    "task_completion_authority": false
+  },
+  "request": {
+    "attempt": 1,
+    "branch_name": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+    "canonical_task_id": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+    "canonical_task_key": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+    "claim_generation": 2,
+    "claim_token": "",
+    "claimed_at": 0.0,
+    "commit_sha": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+    "consumer_id": "",
+    "dedupe_key": "1189aa321ec42610f08ed2f01ab6bae31d3bcccccaa6f89b838775f381bd21f5",
+    "enqueued_at": 1789276097.9330945,
+    "failure_count": 1,
+    "failure_reason": "merge_queue_reconciliation_append_unverified",
+    "finished_at": 1789276120.058832,
+    "lane_id": "120031:0",
+    "metadata": {
+      "baseline_ref": "e47a130ced0cf0aadbcd2c072059849019397def",
+      "candidate_tree": "ef9305f68cf4296de9365bba1397b81a8a54e077",
+      "changed_submodule_paths": [
+        "external/ipfs_accelerate"
+      ],
+      "completion_task_cids": {
+        "DOEP-053": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518"
+      },
+      "events_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/data/agent_supervisor/agent_supervisor_direct_objective_event_driven_planning_v1_r5/state/lane-3/doep_lane_3_database_portal_attempts/03afeeba45e9a4b2dc4f3b9c/portal-events.jsonl",
+      "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+      "implementation_protected_paths": [
+        "docs/architecture/AGENT_SUPERVISOR_DIRECT_OBJECTIVE_AND_EVENT_DRIVEN_PLANNING_V1_PLAN.md",
+        "docs/architecture/agent_supervisor_direct_objective_event_driven_planning.objectives.md",
+        "docs/architecture/agent_supervisor_direct_objective_event_driven_planning.todo.md",
+        "config/agent_supervisor_direct_objective_event_driven_planning_board.json",
+        "config/agent_supervisor_direct_objective_event_driven_planning_validation_profiles.json",
+        "config/agent_supervisor_direct_objective_event_driven_planning_scheduler.json",
+        "scripts/generate_agent_supervisor_direct_objective_event_driven_planning_board.py",
+        "scripts/run_agent_supervisor_direct_objective_event_driven_planning_validation.py",
+        "scripts/ops/agent_supervisor/configured_board_scheduler.py",
+        "scripts/ops/agent_supervisor/direct_objective_event_driven_planning_handoff.py",
+        "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+        "external/ipfs_accelerate/pyproject.toml",
+        "external/ipfs_datasets/pyproject.toml"
+      ],
+      "manual_completion_authority_context_id": "baguqeera7557akrflyveein7sulju6xa6rtkjoabolmyib5ak6qkrdxxkvda",
+      "manual_completion_authority_epoch_id": "",
+      "manual_completion_authority_required_task_ids": [],
+      "manual_completion_authority_revocation_generation": 0,
+      "manual_completion_authority_task_ids": [],
+      "proof_changed_scopes": [
+        {
+          "ast_scope_ids": [],
+          "change_kind": "modified",
+          "invariant_classes": [],
+          "metadata": {
+            "task_id": "DOEP-053",
+            "task_priority": "P2"
+          },
+          "path": "external/ipfs_accelerate",
+          "policy_contract_version": 1,
+          "risk": "medium",
+          "schema": "ipfs_accelerate_py/agent-supervisor/changed-proof-scope@1",
+          "scope_id": "baguqeeraungk7ap4je2k7po6utzstbhgmn3aufaqw3wovjlwlfxxkko6jxoa"
+        }
+      ],
+      "proof_changed_scopes_complete": true,
+      "quarantine": {
+        "acceptance_pending": false,
+        "accepted": false,
+        "canonical_task_id": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+        "commit_sha": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+        "failure_count": 1,
+        "finished_at": 1789276120.0581267,
+        "integrated": false,
+        "max_attempts": 3,
+        "merge_result": {
+          "already_merged": false,
+          "attempted": true,
+          "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+          "cleanup_result": {
+            "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927",
+            "cleaned": true,
+            "deleted_branch": true,
+            "finished_at": "2026-09-13T05:08:39.952192+00:00",
+            "lifecycle_finalize": {
+              "finalized": false,
+              "reason": "cleanup_pending"
+            },
+            "removed_worktree": false,
+            "started_at": "2026-09-13T05:08:39.938916+00:00",
+            "submodule_cleanup": [],
+            "worktree_path": ""
+          },
+          "command": [
+            "git",
+            "merge",
+            "--no-ff",
+            "--no-edit",
+            "0876ac0b3b334a0bf0f6092a6c2eafcf66394032"
+          ],
+          "completion_skipped": true,
+          "deterministic_conflict_repair": [],
+          "finished_at": "2026-09-13T05:08:21.215054+00:00",
+          "generated_submodule_reconciliation": [],
+          "identical_untracked_paths": [],
+          "integration_commit_proof": {
+            "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+            "integration_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+            "integration_ref": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+            "passed": true,
+            "reasons": [],
+            "target_branch": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1"
+          },
+          "integration_occurred": true,
+          "main_worktree_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio",
+          "merge_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+          "merge_reconciliation_receipt": {
+            "reason": "merge_queue_reconciliation_append_unverified",
+            "reconciliation_count": 1,
+            "recorded": false
+          },
+          "merged": false,
+          "merged_gitlink_recording": {
+            "alignments": [
+              {
+                "aligned": true,
+                "commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                "path": "external/ipfs_accelerate",
+                "reason": "already_aligned"
+              }
+            ],
+            "attempted": true,
+            "commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+            "committed": false,
+            "expected_commits": {
+              "external/ipfs_accelerate": "f424f189fc17305be3ba984be6ef57918ae2413a"
+            },
+            "failures": [],
+            "ok": true,
+            "paths": [
+              "external/ipfs_accelerate"
+            ],
+            "reason": "isolated_parent_gitlinks_already_recorded",
+            "stderr": "",
+            "stdout": ""
+          },
+          "post_merge_declared_output_invariant": {
+            "checks": [
+              {
+                "exists": true,
+                "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+                "reason": "declared_output_tracked",
+                "repository": "external/ipfs_accelerate",
+                "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                "task_id": "DOEP-053",
+                "tracked": true,
+                "tracked_path": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py"
+              },
+              {
+                "exists": true,
+                "path": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+                "reason": "declared_output_tracked",
+                "repository": "external/ipfs_accelerate",
+                "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                "task_id": "DOEP-053",
+                "tracked": true,
+                "tracked_path": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+              },
+              {
+                "exists": true,
+                "path": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+                "reason": "declared_output_tracked",
+                "repository": "external/ipfs_accelerate",
+                "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                "task_id": "DOEP-053",
+                "tracked": true,
+                "tracked_path": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json"
+              },
+              {
+                "exists": true,
+                "path": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+                "reason": "declared_output_tracked",
+                "repository": "external/ipfs_accelerate",
+                "repository_ref": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                "task_id": "DOEP-053",
+                "tracked": true,
+                "tracked_path": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+              }
+            ],
+            "missing_outputs": [],
+            "mode": "repository_tree",
+            "passed": true,
+            "reason": "declared_outputs_tracked",
+            "repository_ref": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+            "task_ids": [
+              "DOEP-053"
+            ],
+            "unsafe_outputs": [],
+            "untracked_outputs": []
+          },
+          "post_merge_submodule_invariant": {
+            "candidate_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+            "integrated_handoff_proof": {
+              "candidate_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+              "passed": true,
+              "paths": [
+                {
+                  "chain": [
+                    {
+                      "candidate_gitlink": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                      "relationship": "equal",
+                      "relative": "external/ipfs_accelerate",
+                      "repository_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/external/ipfs_accelerate",
+                      "target_gitlink": "f424f189fc17305be3ba984be6ef57918ae2413a"
+                    }
+                  ],
+                  "passed": true,
+                  "path": "external/ipfs_accelerate"
+                }
+              ],
+              "reason": "candidate_handoff_integrated",
+              "target_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8"
+            },
+            "passed": true,
+            "paths": [
+              {
+                "candidate_gitlink": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                "passed": true,
+                "path": "external/ipfs_accelerate",
+                "reason": "reconciled_submodule_gitlink_recorded",
+                "reconciled_commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                "target_gitlink": "f424f189fc17305be3ba984be6ef57918ae2413a"
+              }
+            ],
+            "reason": "managed_submodule_handoff_verified",
+            "target_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8"
+          },
+          "reason": "merge_queue_reconciliation_append_unverified",
+          "resolved_generated_conflicts": [],
+          "restored_generated_dirty_overlap": [],
+          "returncode": 2,
+          "shared_worktree_path_scrub": {
+            "ok": true,
+            "paths": [],
+            "scrubbed": false
+          },
+          "started_at": "2026-09-13T05:08:18.233527+00:00",
+          "stderr": "",
+          "stdout": "Merge made by the 'ort' strategy.\n external/ipfs_accelerate | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n",
+          "submodule_durability_preflight": {
+            "attempted": true,
+            "canonical_parent_git_dir": "/home/barberb/lift_coding/.git",
+            "expected_paths": [
+              "external/ipfs_accelerate"
+            ],
+            "failures": [],
+            "implementation_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+            "paths": [
+              {
+                "canonical_git_dir": "/home/barberb/lift_coding/.git/worktrees/portfolio/modules/external/ipfs_accelerate",
+                "durability": "canonical_task_branch",
+                "gitlink_commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                "hops": [
+                  {
+                    "canonical_checkout": true,
+                    "canonical_git_dir": "/home/barberb/lift_coding/.git/worktrees/portfolio/modules/external/ipfs_accelerate",
+                    "canonical_object_available": true,
+                    "checkout_git_dir": "/home/barberb/lift_coding/.git/worktrees/portfolio/modules/external/ipfs_accelerate",
+                    "configured_git_dir": "/home/barberb/lift_coding/.git/modules/external/ipfs_accelerate",
+                    "gitlink_commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                    "path": "external/ipfs_accelerate",
+                    "target_store_layout": "linked_parent_worktree"
+                  }
+                ],
+                "path": "external/ipfs_accelerate",
+                "reason": "canonical_task_branch_verified",
+                "task_branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927-submodule-external-ipfs_accelerate",
+                "task_branch_commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+                "task_branch_contains_gitlink": true,
+                "verified": true
+              }
+            ],
+            "requirement": "canonical_object_and_task_branch",
+            "verified": true
+          },
+          "submodule_failure_rollback": {},
+          "submodule_merge_results": [
+            {
+              "ancestry_valid": true,
+              "branch": "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927-submodule-external-ipfs_accelerate",
+              "branch_commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+              "cleanup_returncode": 0,
+              "cleanup_stderr": "",
+              "command": [
+                "git",
+                "-c",
+                "user.name=Implementation Daemon",
+                "-c",
+                "user.email=implementation-daemon@example.invalid",
+                "merge",
+                "--ff-only",
+                "implementation/doep-053-5ef553dc4ae9-attempt-1-1789274927-submodule-external-ipfs_accelerate"
+              ],
+              "commit": "f424f189fc17305be3ba984be6ef57918ae2413a",
+              "compare_and_swap_returncode": 0,
+              "compare_and_swap_stderr": "",
+              "default_branch": "refs/agent-supervisor/submodule-targets/4ed9403979e2572030e6d2da/external/ipfs_accelerate",
+              "ff_only_result": {
+                "returncode": 0,
+                "stderr": "",
+                "stdout": "Updating cdb2b80a3..f424f189f\nFast-forward\n .../outputs/DOEP-053.json                          |  65 ++\n .../receipts/DOEP-053.json                         | 121 ++++\n .../entrypoints/refill_controller.py               | 736 ++++++++++++++++++++-\n ...t_doep_053_add_automatic_bounded_task_refill.py | 665 +++++++++++++++++++\n 4 files changed, 1582 insertions(+), 5 deletions(-)\n create mode 100644 artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json\n create mode 100644 artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json\n create mode 100644 test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py\n"
+              },
+              "integration_ref": "refs/agent-supervisor/submodule-targets/4ed9403979e2572030e6d2da/external/ipfs_accelerate",
+              "isolated_target": true,
+              "merged": true,
+              "path": "external/ipfs_accelerate",
+              "returncode": 0,
+              "stderr": "",
+              "stdout": "Updating cdb2b80a3..f424f189f\nFast-forward\n .../outputs/DOEP-053.json                          |  65 ++\n .../receipts/DOEP-053.json                         | 121 ++++\n .../entrypoints/refill_controller.py               | 736 ++++++++++++++++++++-\n ...t_doep_053_add_automatic_bounded_task_refill.py | 665 +++++++++++++++++++\n 4 files changed, 1582 insertions(+), 5 deletions(-)\n create mode 100644 artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json\n create mode 100644 artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json\n create mode 100644 test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py\n",
+              "target_base_commit": "cdb2b80a38e97e09c1161881603a5ee05502d9d5",
+              "target_parent_ref": "e47a130ced0cf0aadbcd2c072059849019397def"
+            }
+          ],
+          "target_branch": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1",
+          "target_commit": "67f7f5fd44f1a5cc8fd797d73c50bdc9494c52b8",
+          "used_ephemeral_main_worktree": false
+        },
+        "merged": false,
+        "reason": "merge_queue_reconciliation_append_unverified",
+        "request_id": "1789276097933096095-120031-3b513c8466a2",
+        "retryable": false,
+        "started_at": 1789276098.163713,
+        "status": "quarantined",
+        "target_branch": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "task_id": "DOEP-053"
+      },
+      "repo_root": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio",
+      "repository_tree_id": "git-tree:ef9305f68cf4296de9365bba1397b81a8a54e077",
+      "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+      "state_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/data/agent_supervisor/agent_supervisor_direct_objective_event_driven_planning_v1_r5/state/lane-3/doep_lane_3_database_portal_attempts/03afeeba45e9a4b2dc4f3b9c/portal-task-state.json",
+      "strategy_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/data/agent_supervisor/agent_supervisor_direct_objective_event_driven_planning_v1_r5/state/lane-3/doep_lane_3_database_portal_attempts/03afeeba45e9a4b2dc4f3b9c/portal-strategy.json",
+      "target_binding_schema": "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1",
+      "target_branch": "agent/agent-supervisor-direct-objective-and-event-driven-planning-v1",
+      "target_repository_id": "repository:baguqeeraxwt2vjni5joai4673v3al6jrgceki2ve55baut7ozeayy4ltxnxa",
+      "task": {
+        "acceptance": "Independently verify that 'Add automatic bounded task refill' satisfies the plan-bound task contract, exact outputs and current-tree tests; a worker or model assertion alone is insufficient.",
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "canonical_task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+        "canonical_task_key": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+        "completion": "auto",
+        "depends_on": [],
+        "metadata": {
+          "acceptance": "Independently verify that 'Add automatic bounded task refill' satisfies the plan-bound task contract, exact outputs and current-tree tests; a worker or model assertion alone is insufficient.",
+          "allowed effects": "isolated worktree edits, local deterministic validation, reviewed merge request through canonical authority",
+          "authority requirement": "A2",
+          "base repositories": "{\"ipfs_accelerate_py\":{\"commit\":\"87715e9295626e7918f7fc8a7b1a1531ab04208f\",\"tree\":\"1c9a399cc7a599d5904e5be2ae58c6be3650cff7\"},\"ipfs_datasets_py\":{\"commit\":\"3668b8857a9aa7b1a3c847be12725b5cd057d2e7\",\"tree\":\"456e09b51d6a07a3a5873436df24054768195320\"},\"ipfs_kit_py\":{\"commit\":\"b6c65ba732733d7e33852713ba18aa3b12235668\",\"tree\":\"14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2\"},\"lift_coding\":{\"commit\":\"bb8869ed72eb7002434345d9969efee729c4f7f6\",\"tree\":\"99e85bfe584b7688ffbeff86da1e612dd6893a42\"}}",
+          "board namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+          "budget profile": "B3",
+          "budgets": "{\"max_concurrent_tasks\":1,\"max_cpu_seconds\":7200,\"max_frontier_model_calls\":1,\"max_gpu_seconds\":1800,\"max_input_tokens\":48000,\"max_model_calls\":5,\"max_output_tokens\":14000,\"max_prover_seconds\":1800,\"max_provider_cost_usd\":20,\"max_test_seconds\":3600,\"max_wall_seconds\":28800,\"validation_reserve_percent\":30}",
+          "canonical task cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+          "canonical task key": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+          "completion": "auto",
+          "completion mode": "independent_evidence_and_canonical_cas",
+          "conflict policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+          "database attempt id": "attempt:26960c540ac042c3b023e9738b41ed69",
+          "database attempt number": "1",
+          "database claim id": "claim:f2e10fa7661b4a9ea0513fca73aea272",
+          "database dependency cids": "sha256:55028f70add58ed9a510a44754b7a2790b963ceb6e77e1201e320571ea8df13a, sha256:d976f744a4e99067273da9285ba8b759827f8a5f2a7081eaea1ef5227420ff73",
+          "database fence epoch": "1",
+          "database fencing token": "1",
+          "database lease id": "lease:ffd262ca85104d3593448b427ab09de7",
+          "database owner session id": "doep-v1-executor:shard:3-of-4:track:f788e2919039",
+          "database task cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+          "depends on": "",
+          "exact inputs": "DOEP-PLAN-V5, exact source forest, current dependency receipts, current policy and toolchain identities",
+          "exact outputs": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py, test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py, artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json, artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+          "execution validation": "python3, -m, pytest, test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py, -q",
+          "forbidden effects": "direct DuckDB or DuckLake write, policy-pointer mutation, task terminalization, credential access, scope expansion",
+          "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+          "output manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "outputs": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py, external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py, external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json, external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+          "owned files": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py, test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py, artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json, artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+          "owning repository": "external/ipfs_accelerate",
+          "parent goal id": "DOEP-G060",
+          "plan epoch": "1",
+          "plan revision": "DOEP-PLAN-V5",
+          "postconditions": "All exact outputs exist inside the declared write scope, The exact validation argv exits zero on the resulting tree, Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt, No truth, safety, authority or promotion gate has been weakened",
+          "preconditions": "Exact base commit/tree or a current re-admission receipt for this plan epoch, Every dependency has a current admitted success receipt, Delegated repository, path, method and effect authority is current, At least the declared validation reserve remains available",
+          "primary output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "priority": "P2",
+          "projection authority": "false",
+          "proof obligations": "authority and scope preservation, no stale evidence admission, declared semantic or operational property",
+          "read scope": "declared dependency cone, admitted current receipts, canonical interfaces named in the plan",
+          "receipt output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+          "repository authority": "ACC",
+          "required evidence": "source commit/tree/gitlinks, changed-path digest, test/proof results, receipt CID, limitations, verifier admission",
+          "risk class": "R3",
+          "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+          "root goal id": "DOEP-G000",
+          "scope expansion policy": "exact",
+          "stable task id": "DOEP-053",
+          "status": "ready",
+          "subgoal id": "DOEP-G060.S2",
+          "superproject outputs": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py, external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py, external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json, external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+          "superproject receipt output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+          "superproject test output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "terminal non success": "blocked_dependency, blocked_authority, blocked_policy, budget_exhausted, validation_failed, provider_outcome_unknown, quarantined_nonconvergent, cancelled",
+          "terminal success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+          "test obligations": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py, current protected regression subset selected by impact analysis",
+          "test output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "title": "Add automatic bounded task refill",
+          "track": "implementation",
+          "unknown effect rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+          "validation": "cd external/ipfs_accelerate && python3 -m pytest test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py -q",
+          "validation profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+          "write scope": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py, test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py, artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json, artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        },
+        "outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "priority": "P2",
+        "source_line": 3,
+        "status": "todo",
+        "task_id": "DOEP-053",
+        "title": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "track": "implementation",
+        "validation": [
+          "cd external/ipfs_accelerate && python3 -m pytest test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py -q"
+        ]
+      },
+      "task_header_prefix": "## DOEP-",
+      "todo_path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-direct-objective-and-event-driven-planning-v1/portfolio/data/agent_supervisor/agent_supervisor_direct_objective_event_driven_planning_v1_r5/state/lane-3/doep_lane_3_database_portal_attempts/03afeeba45e9a4b2dc4f3b9c/task-projection.md",
+      "validation_proof": {
+        "attempted": true,
+        "cache_hits": 0,
+        "cache_misses": 1,
+        "fallbacks": [],
+        "manual_completion_authority_context_id": "",
+        "manual_completion_authority_declared_validation_commands": [],
+        "manual_completion_authority_force_uncached": false,
+        "manual_completion_authority_revalidation": false,
+        "manual_completion_authority_revocation_generation": 0,
+        "manual_completion_authority_task_cid": "",
+        "manual_completion_authority_task_id": "",
+        "manual_completion_authority_validated_tree_id": "",
+        "manual_completion_authority_validated_tree_identity": {},
+        "manual_completion_authority_validation_plan_id": "",
+        "manual_completion_authority_validation_result_count": 0,
+        "operator_state": {},
+        "passed": true,
+        "proof": {},
+        "proposal_gate": {
+          "accepted": true,
+          "attempted": true,
+          "changed_paths": [
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+            "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+            "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+          ],
+          "completion_authoritative": false,
+          "policy_id": "f095bd0c4c06aaeeda64ee5464f70c7e33cf644799a4ac9a42e9bde6a772f45c",
+          "proof_authoritative": false,
+          "proposal_id": "48fdd330d7fee219e0de25ea6793568549c667fe2a7bed0858edc2b8d86ada43",
+          "reason_codes": [],
+          "receipt_id": "9def526735b9e1be5507b7c2767bb37de55a8b6b910bfef428fd9c37f9c58c62",
+          "repository_tree_id": "e47a130ced0cf0aadbcd2c072059849019397def"
+        },
+        "repository_tree_id": "git-tree:ef9305f68cf4296de9365bba1397b81a8a54e077",
+        "results": [
+          {
+            "cache_hit": false,
+            "cache_key": "2b4abeea40b15f14e9956df8bb84a003cecc94792f19d3f7d4fc2d7cafc3ea9c",
+            "command": "cd external/ipfs_accelerate && export PYTHONPATH=.:../ipfs_datasets:../ipfs_kit:../.. && python3 -m pytest test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py -q",
+            "finished_at": "2026-09-13T05:08:09.677048+00:00",
+            "ordinal": 0,
+            "returncode": 0,
+            "stage": "targeted",
+            "started_at": "2026-09-13T05:08:06.551735+00:00",
+            "timed_out": false,
+            "validation_id": "declared:acd234b8ea6a782442d523e1283b03a87276e310d483423a31748281202d67ee",
+            "validation_result_digest": "57e691a3057f6ab2867644039dded02d35de28aeb2d637ed5ddecdd26b5f9a20"
+          }
+        ],
+        "returncode": 0,
+        "selection": {
+          "changed_files": [
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+            "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+            "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+            "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+          ],
+          "decisions": [
+            {
+              "command": "cd external/ipfs_accelerate && export PYTHONPATH=.:../ipfs_datasets:../ipfs_kit:../.. && python3 -m pytest test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py -q",
+              "decision": "included",
+              "executable": true,
+              "fallback": false,
+              "impact_paths": [
+                "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+              ],
+              "matched_paths": [
+                "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py"
+              ],
+              "original_stage": "targeted",
+              "reason": "changed_path_matches_command_target",
+              "requirement_kind": "",
+              "selected": true,
+              "source": "declared",
+              "stage": "targeted",
+              "validation_id": "declared:acd234b8ea6a782442d523e1283b03a87276e310d483423a31748281202d67ee",
+              "verdict_kind": "test"
+            }
+          ],
+          "escalated": false,
+          "escalation_reason": "",
+          "fallback_count": 0,
+          "scope": "pre_merge",
+          "selected_count": 1,
+          "skipped_count": 0,
+          "unresolved_fallback_count": 0
+        },
+        "stages": [
+          {
+            "executed_count": 1,
+            "finished_at": "2026-09-13T05:08:09.877425+00:00",
+            "passed": true,
+            "planned_count": 1,
+            "stage": "targeted",
+            "started_at": "2026-09-13T05:08:06.525226+00:00",
+            "throughput": {
+              "completed_count": 1,
+              "elapsed_seconds": "3.3510270270053297",
+              "lane": "validation",
+              "parallel_speedup": "0.99816352750099935",
+              "peak_parallelism": 1,
+              "schema": "ipfs_accelerate_py/agent-supervisor/acceptance-throughput@1",
+              "serial_work_seconds": "3.3448729580268264",
+              "throughput_per_second": "0.2984159757415199"
+            }
+          }
+        ],
+        "target_commit": "0876ac0b3b334a0bf0f6092a6c2eafcf66394032",
+        "target_tree": "ef9305f68cf4296de9365bba1397b81a8a54e077",
+        "verdicts": {}
+      },
+      "worktree_path": "",
+      "worktree_pool_handoff": true
+    },
+    "priority": "P2",
+    "request_id": "1789276097933096095-120031-3b513c8466a2",
+    "retry_not_before": 0.0,
+    "status": "quarantined",
+    "task_id": "DOEP-053",
+    "updated_at": 1789276120.058832
+  }
+}

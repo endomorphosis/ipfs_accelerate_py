@@ -7,6 +7,108 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 
+def retained_synchronous_reconciliation(
+    events: Sequence[Mapping[str, Any]],
+    *,
+    request_id: str,
+    queued_confirmation: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], Mapping[str, Any]] | None:
+    """Locate the original handoff after a producer reports a queued result.
+
+    This selects an immutable source; it does not verify completion or grant
+    queue authority. The caller must verify the enqueue projection, complete
+    reconciliation receipt and Git artifacts before replaying that source.
+    """
+
+    def matches_request(event: Mapping[str, Any]) -> bool:
+        merge = event.get("merge_result")
+        direct = event.get("request_id")
+        nested = merge.get("request_id") if isinstance(merge, Mapping) else None
+        return bool(
+            request_id
+            and (direct == request_id or nested == request_id)
+            and direct in (None, "", request_id)
+            and nested in (None, "", request_id)
+        )
+
+    confirmations = [
+        (index, event)
+        for index, event in enumerate(events)
+        if event.get("type") == "implementation_finished" and matches_request(event)
+    ]
+    sources = [
+        (index, event)
+        for index, event in enumerate(events)
+        if event.get("type") == "worktree_reconciliation_candidate_queued"
+        and event.get("reason") == "merge_queue_synchronous_source_projected"
+        and matches_request(event)
+    ]
+    reconciliations = [
+        (index, event)
+        for index, event in enumerate(events)
+        if event.get("type") == "merge_reconciled" and matches_request(event)
+    ]
+    if len(confirmations) != 1 or len(sources) != 1 or len(reconciliations) != 1:
+        return None
+    final_index, final = confirmations[0]
+    source_index, source = sources[0]
+    reconciliation_index, reconciliation = reconciliations[0]
+    if (
+        final != queued_confirmation
+        or not source_index < reconciliation_index < final_index
+    ):
+        return None
+    identity_fields = (
+        "task_id",
+        "canonical_task_cid",
+        "canonical_task_key",
+        "attempt",
+        "branch",
+        "baseline_ref",
+        "implementation_commit",
+        "stream_id",
+    )
+    if (
+        any(not source.get(key) for key in identity_fields)
+        or any(
+            event.get(key) != source.get(key)
+            for event in (reconciliation, final)
+            for key in identity_fields
+        )
+        or any(
+            event.get(key) != source.get(key)
+            for event in (reconciliation, final)
+            for key in ("board_namespace", "task_source_identity")
+        )
+        or type(source.get("attempt")) is not int
+        or source["attempt"] < 1
+        or reconciliation.get("reason") != "merge_queue_callback_completed"
+        or reconciliation.get("completion_source_event_id") != source.get("event_id")
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", str(source.get("event_id") or ""))
+        is None
+        or final.get("returncode") != 0
+        or final.get("attempt_consumed") is not True
+        or type(final.get("provider_dispatched")) is not bool
+        or final.get("board_completion")
+        != {
+            "complete": False,
+            "pending_merge": True,
+            "reason": "merge_queued_awaiting_integration",
+        }
+    ):
+        return None
+    merge = final.get("merge_result")
+    if not (
+        isinstance(merge, Mapping)
+        and merge.get("attempted") is False
+        and merge.get("queued") is True
+        and merge.get("merged") is False
+        and merge.get("reason") == "merge_queued"
+    ):
+        return None
+    return source, reconciliation
+
+
 def legacy_merge_observation_is_anchored(
     events: Sequence[Mapping[str, Any]],
     *,

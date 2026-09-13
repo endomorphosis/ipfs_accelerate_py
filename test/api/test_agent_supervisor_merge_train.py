@@ -2099,9 +2099,11 @@ def test_delayed_schema_v3_callback_records_exact_reconciliation_once(
     [False, True],
     ids=["direct", "same-request-failure-envelope"],
 )
+@pytest.mark.parametrize("terminal_queued", [False, True])
 def test_synchronous_schema_v3_callback_projects_source_before_completion(
     tmp_path: Path,
     preexisting_failure_envelope: bool,
+    terminal_queued: bool,
 ) -> None:
     repo = _repo(tmp_path)
     attempt = _database_projection_attempt(
@@ -2130,6 +2132,10 @@ def test_synchronous_schema_v3_callback_projects_source_before_completion(
     _git(repo, "switch", "main")
     task = daemon._load_tasks()[0]
     task_cid = daemon._canonical_ref(task)
+    if terminal_queued:
+        daemon._task_identity_by_display_id[task.task_id] = (
+            daemon._identity_for_task(task)
+        )
     request, queued = daemon._enqueue_merge_candidate(
         branch_name="implementation/synchronous-callback",
         implementation_commit=candidate,
@@ -2240,6 +2246,8 @@ def test_synchronous_schema_v3_callback_projects_source_before_completion(
             "target_commit": result["merge_commit"],
         }
     )
+    if terminal_queued:
+        terminal_merge = dict(queued)
     daemon._record_event(
         "implementation_finished",
         {
@@ -2259,9 +2267,13 @@ def test_synchronous_schema_v3_callback_projects_source_before_completion(
             },
             "merge_result": terminal_merge,
             "board_completion": {
-                "complete": True,
-                "pending_merge": False,
-                "reason": "merged_into_target",
+                "complete": not terminal_queued,
+                "pending_merge": terminal_queued,
+                "reason": (
+                    "merge_queued_awaiting_integration"
+                    if terminal_queued
+                    else "merged_into_target"
+                ),
             },
         },
     )
@@ -2280,7 +2292,7 @@ def test_synchronous_schema_v3_callback_projects_source_before_completion(
             "post_merge_declared_output_invariant"
         ],
     )
-    assert replay["recorded"] is True
+    assert replay["recorded"] is True, replay
     assert replay["replayed"] is True
 
 
