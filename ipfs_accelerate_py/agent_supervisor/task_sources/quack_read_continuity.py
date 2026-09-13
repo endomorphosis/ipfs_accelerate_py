@@ -1,4 +1,4 @@
-"""Retry only an owned, pure task projection across a Quack replica withdrawal.
+"""Retry only owned, pure observations across a Quack replica withdrawal.
 
 The deadline is cooperative: interrupt can cancel DuckDB work, but cannot promise
 termination of arbitrary kernel I/O. No mutation or borrowed connection enters
@@ -91,7 +91,8 @@ def _replica_connection_lost(error):
     )
 
 
-def read_task_projection(*, open_connection, read_projection, store_id, endpoint):
+def _read_owned_projection(*, open_connection, read_projection, store_id, endpoint,
+                           preserve_validation_errors=False):
     """Replay a complete SELECT-only projection, never a yielded transaction."""
     deadline = time.monotonic() + READ_RETRY_SECONDS
     admitted = None
@@ -124,6 +125,14 @@ def read_task_projection(*, open_connection, read_projection, store_id, endpoint
             from .duckdb_interrupts import reraise_process_interrupt
 
             reraise_process_interrupt(error)
+            if preserve_validation_errors and not _replica_connection_lost(error):
+                import duckdb
+                # Only an owned query interrupted at its deadline becomes
+                # unavailable. Quarantine/policy/history/unknown outcomes keep
+                # their exact exception, even if observed near the deadline.
+                if not (isinstance(error, duckdb.InterruptException)
+                        and time.monotonic() >= deadline):
+                    raise
             if time.monotonic() >= deadline:
                 raise QuackReadUnavailable(
                     "quack task read deadline exhausted"
@@ -137,3 +146,23 @@ def read_task_projection(*, open_connection, read_projection, store_id, endpoint
         if remaining <= 0:
             raise QuackReadUnavailable("quack task read deadline exhausted")
         time.sleep(min(0.02, remaining))
+
+
+def read_task_projection(*, open_connection, read_projection, store_id, endpoint):
+    """Replay the existing owned task projection with its original contract."""
+    return _read_owned_projection(open_connection=open_connection,
+        read_projection=read_projection, store_id=store_id, endpoint=endpoint)
+
+
+def read_owner_quarantine_heads(*, open_connection, store_id, endpoint):
+    """Restart the complete count/history/anchor observation on a fresh handle.
+
+    The concrete validator is fixed here: a caller cannot replace one SELECT,
+    admit a callback, or replay any surrounding claim/dispatch operation.
+    """
+    from .owner_task_quarantine import heads
+
+    return _read_owned_projection(
+        open_connection=open_connection, read_projection=heads,
+        store_id=store_id, endpoint=endpoint, preserve_validation_errors=True,
+    )
