@@ -6394,14 +6394,20 @@ class IntentRepository:
 
     def owner_task_quarantines(self) -> Mapping[str, Mapping[str, Any]]:
         """Observe complete quarantine heads; retry only fresh owned Quack reads."""
+        return self.owner_task_quarantine_observation()[0]
+
+    def owner_task_quarantine_observation(self) -> tuple[Mapping[str, Mapping[str, Any]], Any]:
+        """Observe complete heads together with their exact owner binding."""
         from .owner_task_quarantine import heads
         if (type(self) is not IntentRepository
                 or "_connection" in self.__dict__ or not self._quack_transport):
             with self._connection(write=False) as connection:
-                return heads(connection)
+                observed = heads(connection)
+                binding = getattr(connection, "_quack_mutation_binding", None)
+                return observed, dict(binding) if type(binding) is dict else binding
         self._require_open()
         from . import duckdb_state
-        from .quack_read_continuity import QuackReadUnavailable, read_owner_quarantine_heads
+        from .quack_read_continuity import QuackReadUnavailable, read_owner_quarantine_observation
         expected_store = str(
             os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
         ).strip()
@@ -6410,7 +6416,7 @@ class IntentRepository:
                 "quack quarantine read has no accepted-root store identity"
             )
         try:
-            return read_owner_quarantine_heads(
+            return read_owner_quarantine_observation(
                 open_connection=lambda deadline: duckdb_state._open_quack_transport_connection_once(
                     self._open_target, deadline_monotonic=deadline
                 ),

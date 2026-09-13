@@ -260,6 +260,7 @@ def test_borrowed_and_subclass_quarantine_reads_do_not_reopen(owned, monkeypatch
     def forbidden(**kwargs):
         pytest.fail("caller-owned/subclass handles cannot enter continuity")
     monkeypatch.setattr(continuity, "read_owner_quarantine_heads", forbidden)
+    monkeypatch.setattr(continuity, "read_owner_quarantine_observation", forbidden)
     try:
         raw.execute("BEGIN")
         assert reader.owner_task_quarantines() == {}
