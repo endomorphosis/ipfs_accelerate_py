@@ -80006,6 +80006,14 @@ class PortalImplementationDaemon:
         implementation.
         """
 
+        # This legacy ancestry shortcut cannot settle a database claim's
+        # consumed candidate. Releasing it lets run_once dispatch a second
+        # provider inside the same claim, changing the bridge's pending merge
+        # identity. Native queue reconciliation must account for its effects
+        # and independently authorize any fresh database attempt instead.
+        # Presence is a restriction, not proof that a projection is valid.
+        if self.todo_path.name == "task-projection.md":
+            return []
         if not hasattr(self.merge_queue, "get"):
             return []
         results: list[dict[str, Any]] = []
@@ -80016,6 +80024,14 @@ class PortalImplementationDaemon:
             merge_result = event.get("merge_result") or {}
             request_id = str(event.get("request_id") or "")
             request = self.merge_queue.get(request_id) if request_id else None
+            metadata = getattr(request, "metadata", None)
+            if isinstance(metadata, Mapping) and Path(
+                str(metadata.get("todo_path") or "")
+            ).name == "task-projection.md":
+                # A non-database consumer also lacks authority to release or
+                # cancel another database attempt's candidate. Do not require
+                # valid receipt metadata to retain this restrictive boundary.
+                continue
             request_status = str(getattr(request, "status", "") or "")
             failure_reason = str(getattr(request, "failure_reason", "") or "")
             if self._implementation_commit_was_reconciled(
