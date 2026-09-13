@@ -93,6 +93,13 @@ def test_oversized_semantics_have_nonempty_provenance_bound_formal_index(oversiz
         assert evidence["semantics_analyzed"] is False
         assert result.bundle.blocks[evidence["opaque_artifact_fact_cid"]]
     assert result.bundle.root.producer.source_manifest_cid == chunked.snapshot_cid
+    assert result.paged_snapshot_cid in result.bundle.blocks
+    snapshot_fact = dict(json.loads(result.bundle.blocks[result.bundle.root.artifact_fact_index_cid])["pairs"])["artifact:snapshot-evidence"]
+    reference = json.loads(result.bundle.blocks[snapshot_fact])["artifact"]["metadata"]["snapshot"]
+    assert "entries" not in reference
+    assert reference["paged_snapshot_cid"] == result.paged_snapshot_cid
+    assert reference["snapshot_cid"] == result.snapshot_cid
+    assert reference["entry_count"] == len(chunked.entries)
     assert all(result.bundle.blocks[cid] == data for cid, data in chunked.manifest_blocks()[1].items())
     observed = result.observation()
     assert observed["analysis_coverage"] == "incomplete"
@@ -124,7 +131,7 @@ def test_small_python_analysis_failure_is_also_formally_visible(source):
     assert provenance_for(result, records[0])["raw_path_hex"] == b"module.py".hex()
 
 
-@pytest.mark.parametrize("omitted", ["limitation", "provenance", "opaque_fact", "manifest"])
+@pytest.mark.parametrize("omitted", ["limitation", "provenance", "opaque_fact", "manifest", "snapshot_page", "snapshot_evidence"])
 def test_matching_root_with_missing_bound_leaves_is_refused(oversized, omitted):
     root, request, chunked = oversized
     first = reconstruct(root, request, chunked)
@@ -137,8 +144,12 @@ def test_matching_root_with_missing_bound_leaves_is_refused(oversized, omitted):
         cid = dict(json.loads(blocks[first.bundle.root.artifact_fact_index_cid])["pairs"])[record.subject_id]
     elif omitted == "opaque_fact":
         cid = evidence["opaque_artifact_fact_cid"]
-    else:
+    elif omitted == "manifest":
         cid = chunked.snapshot_cid
+    elif omitted == "snapshot_page":
+        cid = json.loads(blocks[first.paged_snapshot_cid])["entry_pages"][0]
+    else:
+        cid = dict(json.loads(blocks[first.bundle.root.artifact_fact_index_cid])["pairs"])["artifact:snapshot-evidence"]
     del blocks[cid]
     stripped = SemanticStateBundle(first.bundle.root, blocks)
     with pytest.raises(r.ReconstructionError, match="omits or changes"):
@@ -272,3 +283,72 @@ def test_issuer_shaped_nomination_cannot_supply_analysis_authority(source):
     root, request = source
     with pytest.raises(r.ReconstructionError, match="datasets semantic-state bundle"):
         reconstruct(root, request, capture(root, request), nominated_bundle={"accepted": True})
+
+
+def test_closed_manifest_bytes_and_object_form_rebuild_identically(oversized):
+    root, request, chunked = oversized
+    expected = reconstruct(root, request, chunked)
+    cid, blocks = chunked.manifest_blocks()
+    actual = r.reconstruct_chunked_semantic_state(root, blocks, **request,
+                                                 expected_chunked_snapshot_cid=cid,
+                                                 limits=r.ReconstructionLimits(max_file_bytes=1024))
+    assert actual.bundle.blocks == expected.bundle.blocks
+    assert actual.paged_snapshot_cid == expected.paged_snapshot_cid
+
+
+def test_missing_chunk_page_refuses_before_content_projection(oversized, monkeypatch):
+    root, request, chunked = oversized
+    cid, blocks = chunked.manifest_blocks()
+    broken = dict(blocks)
+    del broken[json.loads(blocks[cid])["entry_pages"][0]]
+    monkeypatch.setattr(c, "project_chunked_repository", lambda *args, **kwargs: pytest.fail("unadmitted content read"))
+    with pytest.raises(r.ReconstructionError, match="reference is missing"):
+        r.reconstruct_chunked_semantic_state(root, broken, **request, expected_chunked_snapshot_cid=cid)
+
+
+def test_substituted_population_cannot_pass_closed_admission(oversized, monkeypatch):
+    root, request, chunked = oversized
+    forged = replace(chunked, entries=chunked.entries[1:])
+    monkeypatch.setattr(c, "project_chunked_repository", lambda *args, **kwargs: pytest.fail("substituted population read"))
+    with pytest.raises(r.ReconstructionError, match="population CID"):
+        reconstruct(root, request, forged)
+
+
+def test_streaming_admission_limit_must_be_explicitly_qualified(oversized, monkeypatch):
+    root, request, chunked = oversized
+    monkeypatch.setattr(c, "project_chunked_repository", lambda *args, **kwargs: pytest.fail("unqualified stream read"))
+    with pytest.raises(r.ReconstructionError, match="qualified admission limits"):
+        reconstruct(root, request, chunked, admission_limits=c.ChunkedSnapshotLimits(max_stream_bytes=1))
+
+
+def test_captured_consumer_keeps_original_snapshot_evidence_schema(source):
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.reconstruction import reconstruct_semantic_state
+    from ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot import SNAPSHOT_SCHEMA
+    root, request = source
+    result = reconstruct_semantic_state(root, **request)
+    pairs = dict(json.loads(result.bundle.blocks[result.bundle.root.artifact_fact_index_cid])["pairs"])
+    snapshot = json.loads(result.bundle.blocks[pairs["artifact:snapshot-evidence"]])["artifact"]["metadata"]["snapshot"]
+    assert snapshot["schema"] == SNAPSHOT_SCHEMA
+    assert len(snapshot["entries"]) == 1
+
+
+@pytest.mark.parametrize("attack", ["declared_limits", "entries", "chunks", "reference"])
+def test_object_admission_bounds_apply_before_manifest_serialization(source, monkeypatch, attack):
+    root, request = source
+    chunked = capture(root, request)
+    expected = chunked.snapshot_cid
+    if attack == "declared_limits":
+        chunked = replace(chunked, limits=replace(chunked.limits, max_metadata_bytes=2**40))
+    elif attack == "entries":
+        chunked = replace(chunked, entries=chunked.entries * 20001)
+    elif attack == "chunks":
+        blob = chunked.blobs[0]
+        chunked = replace(chunked, blobs=(replace(blob, chunks=blob.chunks * 65537),))
+    else:
+        member = replace(chunked.entries[0], raw_path_hex="a" * (r.MAX_BUNDLE_BLOCK_BYTES + 1))
+        chunked = replace(chunked, entries=(member,))
+    def forbidden(*args, **kwargs):
+        raise AssertionError("unqualified object reached manifest serialization")
+    monkeypatch.setattr(c.ChunkedRepositorySnapshot, "manifest_blocks", forbidden)
+    with pytest.raises(r.ReconstructionError, match="before serialization"):
+        r.reconstruct_chunked_semantic_state(root, chunked, **request, expected_chunked_snapshot_cid=expected)
