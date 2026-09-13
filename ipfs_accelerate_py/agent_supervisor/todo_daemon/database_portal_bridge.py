@@ -2920,6 +2920,18 @@ _ORDINARY_GROK_CONTAINER_FENCE_SCHEMA: Final[str] = (
 class DatabasePortalBridgeError(RuntimeError):
     """A database claim could not obtain trustworthy Portal evidence."""
 
+    def __init__(
+        self, *args: Any, diagnostic_summary: Mapping[str, Any] | None = None,
+    ) -> None:
+        from .candidate_failure_diagnostics import normalize_candidate_failure_diagnostics
+
+        super().__init__(*args)
+        # These closed codes explain a failure. They never establish callback
+        # termination, permit a retry, or admit a candidate for completion.
+        self.diagnostic_summary = normalize_candidate_failure_diagnostics(
+            diagnostic_summary
+        )
+
 
 class DatabasePortalTerminalQuiescentStateAdvanced(DatabasePortalBridgeError):
     """The sealed terminal probe observed a stable later quiescent state."""
@@ -5497,7 +5509,14 @@ class DatabasePortalExecutionBridge:
                         }
                     ):
                         raise DatabasePortalBridgeDeferred(failure)
-                    raise DatabasePortalBridgeError(failure)
+                    from .candidate_failure_diagnostics import summarize_candidate_failure
+
+                    raise DatabasePortalBridgeError(
+                        failure,
+                        diagnostic_summary=summarize_candidate_failure(
+                            implementation
+                        ),
+                    )
             # The final bounded pass may have completed the projection. Only
             # the canonical receipt validator can accept it or defer recovery;
             # absent runner metadata is not pre-dispatch retry authority.

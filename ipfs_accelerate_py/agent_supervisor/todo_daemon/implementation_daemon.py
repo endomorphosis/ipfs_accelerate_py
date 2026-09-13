@@ -102146,6 +102146,18 @@ class DatabaseImplementationDaemon:
                 outcome_body: dict[str, Any] = {
                     "exception_type": type(exc).__name__
                 }
+                if isinstance(exc, DatabasePortalBridgeError):
+                    from .candidate_failure_diagnostics import (
+                        normalize_candidate_failure_diagnostics,
+                    )
+
+                    diagnostic_summary = normalize_candidate_failure_diagnostics(
+                        getattr(exc, "diagnostic_summary", None)
+                    )
+                    if diagnostic_summary:
+                        outcome_body["candidate_failure_diagnostics"] = (
+                            diagnostic_summary
+                        )
                 outcome_updated_at_ms: int | None = None
                 exhausted_preentry = False
                 if isinstance(exc, DatabasePortalProviderRouteDeferred):
