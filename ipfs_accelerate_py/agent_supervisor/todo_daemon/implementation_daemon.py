@@ -6000,6 +6000,17 @@ _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS = frozenset(
         "source_id",
     }
 )
+POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.post-merge-retained-append-source@1"
+)
+
+
+_POST_MERGE_RETAINED_APPEND_SOURCE_FIELDS = (
+    _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS
+    | {"historical_integration_commit"}
+)
+
+
 POST_MERGE_DECLARED_OUTPUT_REPAIR_TERMINAL_REASONS = frozenset(
     {
         "repair_declared_output_paths_invalid",
@@ -116010,24 +116021,40 @@ class DatabaseImplementationDaemon:
         if is_settled and isinstance(settled_source, Mapping):
             settled_value = dict(settled_source)
             source_id = str(settled_value.pop("source_id", "") or "")
+            retained_append = (
+                settled_value.get("schema") == POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
+            )
             reconciled_transport = bool(
-                settled_value.get("schema")
+                retained_append
+                or settled_value.get("schema")
                 == POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
             )
             settled_fields = (
-                _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS
-                if reconciled_transport
-                else _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS
+                _POST_MERGE_RETAINED_APPEND_SOURCE_FIELDS
+                if retained_append
+                else (
+                    _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS
+                    if reconciled_transport
+                    else _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS
+                )
             )
             settled_schema = (
-                POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
-                if reconciled_transport
-                else POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA
+                POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
+                if retained_append
+                else (
+                    POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
+                    if reconciled_transport
+                    else POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA
+                )
             )
             settled_shape = (
-                "settled_reconciled_candidate_transport"
-                if reconciled_transport
-                else "settled_integrated_quarantine"
+                "settled_retained_append_reconciliation"
+                if retained_append
+                else (
+                    "settled_reconciled_candidate_transport"
+                    if reconciled_transport
+                    else "settled_integrated_quarantine"
+                )
             )
             event_identity_fields = (
                 (
@@ -116113,11 +116140,18 @@ class DatabaseImplementationDaemon:
                 and set(settled_source) == settled_fields
                 and settled_value.get("schema") == settled_schema
                 and settled_value.get("source_shape") == settled_shape
-                and settled_value.get("settlement_receipt_id")
-                == train_identity
+                and settled_value.get("settlement_receipt_id") == train_identity
                 and settled_value.get("projected_source_event_id")
                 == value.get("source_event_id")
                 and source_id == content_identity(settled_value)
+                and (
+                    not retained_append
+                    or re.fullmatch(
+                        r"[0-9a-f]{40}",
+                        str(settled_value.get("historical_integration_commit") or ""),
+                    )
+                    is not None
+                )
                 and all(
                     re.fullmatch(
                         r"sha256:[0-9a-f]{64}",
@@ -116135,22 +116169,29 @@ class DatabaseImplementationDaemon:
                 and quarantine.get("status") == "quarantined"
                 and quarantine.get("reason")
                 == (
-                    "merge_queue_reconciliation_projection_conflict"
-                    if reconciled_transport
-                    else "merge_completion_receipt_invalid"
+                    "merge_queue_reconciliation_append_unverified"
+                    if retained_append
+                    else (
+                        "merge_queue_reconciliation_projection_conflict"
+                        if reconciled_transport
+                        else "merge_completion_receipt_invalid"
+                    )
                 )
                 and quarantine.get("request_id") == value.get("request_id")
                 and quarantine.get("task_id") == task_ids[0]
-                and quarantine.get("commit_sha")
-                == value.get("candidate_commit")
+                and quarantine.get("commit_sha") == value.get("candidate_commit")
                 and isinstance(revival, Mapping)
                 and revival.get("previous_failure_count")
-                == (2 if reconciled_transport else 1)
+                == (1 if retained_append else (2 if reconciled_transport else 1))
                 and revival.get("previous_failure_reason")
                 == (
-                    "merge_queue_reconciliation_projection_conflict"
-                    if reconciled_transport
-                    else "merge_completion_receipt_invalid"
+                    "merge_queue_reconciliation_append_unverified"
+                    if retained_append
+                    else (
+                        "merge_queue_reconciliation_projection_conflict"
+                        if reconciled_transport
+                        else "merge_completion_receipt_invalid"
+                    )
                 )
             )
         git_id = r"[0-9a-f]{40}(?:[0-9a-f]{24})?"
