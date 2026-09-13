@@ -29,6 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
 from ipfs_accelerate_py.agent_supervisor.merge.owner_recovery_runtime import (
     STAGES,
     _cid,
+    _migration_payload_cid,
     recovery_scope_cid,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import build_server
@@ -47,6 +48,27 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 )
 
 SCHEMA = "spar/legacy-queue-offline-bundle@1"
+_CURSOR_NORMALIZATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/legacy-recovery-cursor-normalization@1"
+)
+_FIVE_STAGE_CURSOR_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-declared-output-recovery-cursor@1"
+)
+_FIVE_STAGE_CURSOR_PROFILE = frozenset(
+    {
+        "priority_task_cids",
+        "completed_requests",
+        "pending_requests",
+        "quarantined_requests",
+        "processing_requests",
+    }
+)
+_NEW_FALSE_RECOVERY_STAGES = (
+    "false_completed_requests",
+    "false_pending_requests",
+    "false_processing_requests",
+)
 MAX_INPUT_BYTES = 8 * 1024**3
 MAX_JSON_BYTES = 4 * 1024**2
 MAX_FILES = 10_256
@@ -598,6 +620,7 @@ class PreparedQueueStore:
     preserved_inventory: Mapping[str, Any]
     receipt_imports: tuple[Mapping[str, Any], ...]
     cursor_imports: tuple[Mapping[str, Any], ...]
+    cursor_normalizations: tuple[Mapping[str, Any], ...] = ()
 
     @property
     def manifest_cid(self):
@@ -653,6 +676,7 @@ def prepare_offline_clone(
         for s in manifest["scope_bindings"]
     }
     cursors = []
+    cursor_normalizations = []
     seen_cursors = set()
     for spec in manifest["cursor_imports"]:
         scope = scopes.get(spec["scope_cid"])
@@ -701,7 +725,6 @@ def prepare_offline_clone(
             or body["target_branch"] != manifest["target_branch"]
             or body["attempt_root"] != scope["attempt_root"]
             or type(body["cursors"]) is not dict
-            or set(body["cursors"]) != set(STAGES)
             or any(
                 type(value) is not str or len(value) > 4096
                 for value in body["cursors"].values()
@@ -711,16 +734,50 @@ def prepare_offline_clone(
             != content_identity({k: v for k, v in body.items() if k != "state_id"})
         ):
             raise SparMergeOwnerError("preserved cursor binding is invalid")
+        imported_cursors = body["cursors"]
+        if set(imported_cursors) != set(STAGES):
+            # The native schema@1 predecessor had exactly five scans.  It
+            # predates the three false-completion scans, so only those scans
+            # start at the beginning.  The source hash, content identity and
+            # scope were checked above before changing the imported profile.
+            # Never infer an older profile from arbitrary missing entries.
+            if (
+                body["schema"] != _FIVE_STAGE_CURSOR_SCHEMA
+                or set(imported_cursors) != _FIVE_STAGE_CURSOR_PROFILE
+                or set(STAGES)
+                != _FIVE_STAGE_CURSOR_PROFILE.union(_NEW_FALSE_RECOVERY_STAGES)
+            ):
+                raise SparMergeOwnerError("preserved cursor stage profile is invalid")
+            imported_cursors = {
+                **imported_cursors,
+                **dict.fromkeys(_NEW_FALSE_RECOVERY_STAGES, ""),
+            }
+            cursor_normalizations.append(
+                {
+                    "schema": _CURSOR_NORMALIZATION_SCHEMA,
+                    "profile": "schema-v1-five-stage-to-eight-stage",
+                    "source_manifest_cid": "sha256:"
+                    + hashlib.sha256(_json(manifest)).hexdigest(),
+                    "source_path": spec["path"],
+                    "source_sha256": entries[spec["path"]]["sha256"],
+                    "source_schema": body["schema"],
+                    "source_state_id": body["state_id"],
+                    "source_cursor_state_cid": _cid(body["cursors"]),
+                    "scope_cid": spec["scope_cid"],
+                    "added_cursors": dict.fromkeys(_NEW_FALSE_RECOVERY_STAGES, ""),
+                    "normalized_cursor_state_cid": _cid(imported_cursors),
+                }
+            )
         seen_cursors.add(spec["scope_cid"])
         cursors.append(
             {
                 "scope_cid": spec["scope_cid"],
-                "cursors": body["cursors"],
-                "state_cid": _cid(body["cursors"]),
+                "cursors": imported_cursors,
+                "state_cid": _cid(imported_cursors),
             }
         )
     # Validate the exact backend migration envelope before any owner is born.
-    _cid(
+    _migration_payload_cid(
         {
             "repository_id": manifest["repository_id"],
             "target_branch": manifest["target_branch"],
@@ -760,6 +817,7 @@ def prepare_offline_clone(
         before,
         tuple(receipts),
         tuple(cursors),
+        tuple(cursor_normalizations),
     )
 
 
@@ -992,6 +1050,7 @@ def qualify_offline_bundle(
             database_uuid=prepared.database_uuid,
             declared_source_commit=prepared.manifest["source_commit"],
             declared_source_tree=prepared.manifest["source_tree"],
+            cursor_normalizations=list(prepared.cursor_normalizations),
         )
         previous_identity = None
         for cycle in (1, 2):

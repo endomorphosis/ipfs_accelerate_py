@@ -25,10 +25,36 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TypedStateOwnerConnection,
 )
 from test.api.test_agent_supervisor_quack_state_server import _compatible_report
-from test.api.test_spar_replica_copy_writer_lock import (
-    writer_lock,
-    assert_other_writer_blocked,
-)
+# These independent kernel/subprocess checks also serve native runtimes that
+# do not include the optional replica-copier regression module.
+def writer_lock(database):
+    value = database.stat()
+    identity = (os.major(value.st_dev), os.minor(value.st_dev), value.st_ino)
+    for line in Path('/proc/locks').read_text().splitlines():
+        parts = line.split()
+        if len(parts) == 8 and parts[1:5] == ['POSIX', 'ADVISORY', 'WRITE', str(os.getpid())] and parts[6:] == ['0', 'EOF']:
+            major, minor, ino = parts[5].split(':')
+            if (int(major, 16), int(minor, 16), int(ino)) == identity:
+                return True
+    return False
+
+
+def assert_other_writer_blocked(database):
+    import duckdb
+    result = subprocess.run([sys.executable, '-I', '-c', '''
+import sys
+sys.path.insert(0, sys.argv[2])
+import duckdb
+try:
+    connection = duckdb.connect(sys.argv[1], config={'threads': 1})
+except duckdb.IOException as error:
+    sys.exit(69 if 'lock' in str(error).lower() else 2)
+else:
+    connection.close()
+    sys.exit(0)
+''', str(database), str(Path(duckdb.__file__).resolve().parent.parent)],
+        env={'PATH': os.defpath, 'LANG': 'C.UTF-8'}, capture_output=True, timeout=15)
+    assert result.returncode == 69
 
 
 @pytest.fixture
