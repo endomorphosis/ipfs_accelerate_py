@@ -38,6 +38,7 @@ def native_append_quarantine(
     source_record=None,
     task_source=None,
     nested_output=False,
+    attempt_inside_repository=False,
 ):
     repo = _repo(tmp_path)
     output_path = "external/child/base.txt" if nested_output else "base.txt"
@@ -73,7 +74,12 @@ def native_append_quarantine(
                 ]
             },
         )
-    attempt_root = tmp_path / "append_database_portal_attempts"
+    attempt_root = (
+        repo if attempt_inside_repository else tmp_path
+    ) / "append_database_portal_attempts"
+    if attempt_inside_repository:
+        with (repo / ".git/info/exclude").open("a") as stream:
+            stream.write("\n/append_database_portal_attempts/\n")
     daemon, paths, binding = _database_projection_daemon(
         repo=repo,
         attempt_root=attempt_root,
@@ -260,17 +266,52 @@ def test_native_append_quarantine_settlement_retains_original_receipt(
 @pytest.mark.parametrize("crash_before_task_cas", [False, True])
 @pytest.mark.parametrize("nested_output", [False, True])
 @pytest.mark.parametrize("advance_target", [False, True])
+@pytest.mark.parametrize(
+    "projection_already_completed", [False, "single_task", "merged_status_repair"]
+)
 def test_public_append_recovery_validates_current_target_and_replays_settlement(
     tmp_path,
     monkeypatch,
     crash_before_task_cas,
     nested_output,
     advance_target,
+    projection_already_completed,
 ):
     fixture = native_append_quarantine(
-        tmp_path, monkeypatch, nested_output=nested_output
+        tmp_path,
+        monkeypatch,
+        nested_output=nested_output,
+        attempt_inside_repository=projection_already_completed,
     )
     daemon, bridge = fixture.daemon, fixture.bridge
+    if projection_already_completed:
+        result = daemon._mark_tasks_completed_in_todo(
+            [fixture.request.task_id],
+            primary_task_id=fixture.request.task_id,
+            completion_reason=projection_already_completed,
+            expected_task_cids={
+                fixture.request.task_id: fixture.request.canonical_task_id
+            },
+        )
+        assert result["updated"] is True
+        if projection_already_completed == "merged_status_repair":
+            daemon._record_event(
+                "task_completed",
+                {
+                    "task_id": fixture.request.task_id,
+                    "reason": "task_became_completed",
+                    "completion_receipt_repair": False,
+                },
+            )
+            daemon._record_event(
+                "daemon_pass",
+                {
+                    "active_task_id": "",
+                    "completed_count": 1,
+                    "ready_count": 0,
+                    "selection_idle_reason": "database_pending_merge_reconciliation",
+                },
+            )
     if advance_target:
         if nested_output:
             child = fixture.repo / "external/child"
@@ -342,12 +383,37 @@ def test_public_append_recovery_validates_current_target_and_replays_settlement(
         with pytest.raises(RuntimeError, match="fixture crash before task CAS"):
             bridge.recover_post_merge_declared_outputs(boundary)
         assert daemon.merge_queue.get(fixture.request.request_id).status == "completed"
+        if advance_target:
+            if nested_output:
+                child = fixture.repo / "external/child"
+                _git(child, "commit", "--allow-empty", "-m", "advance settled child")
+                _git(child, "push", "origin", "HEAD:refs/heads/main")
+                _git(fixture.repo, "add", "external/child")
+            _git(
+                fixture.repo,
+                "commit",
+                "--allow-empty",
+                "-m",
+                "advance after settlement",
+            )
+            assert (
+                _git(fixture.repo, "rev-parse", "HEAD")
+                != qualifications[0]["current_target_commit"]
+            )
     result = bridge.recover_post_merge_declared_outputs(boundary)
     assert result is not None and result["recovered"] is True, json.dumps(
         {"result": result, "validations": validations, "transactions": transactions},
         indent=2,
     )
     assert authorizations and qualifications and validations
+    if crash_before_task_cas and advance_target:
+        assert qualifications[-1]["current_target_commit"] == _git(
+            fixture.repo, "rev-parse", "HEAD"
+        )
+        assert (
+            qualifications[-1]["current_target_commit"]
+            != qualifications[0]["current_target_commit"]
+        )
     assert all(result["passed"] is True for result in validations)
     assert fixture.paths.events.read_bytes().startswith(before)
     assert (
@@ -589,8 +655,13 @@ def test_native_append_claim_recovery_is_bounded(
         DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
     ],
 )
+@pytest.mark.parametrize("projection_already_completed", [False, True])
 def test_native_append_recovery_rearms_real_database_task_once(
-    tmp_path, monkeypatch, lose_cas_response, terminal_reason
+    tmp_path,
+    monkeypatch,
+    lose_cas_response,
+    terminal_reason,
+    projection_already_completed,
 ):
     from test.api.test_agent_supervisor_database_implementation_daemon import (
         _open_daemon,
@@ -628,7 +699,35 @@ def test_native_append_recovery_rearms_real_database_task_once(
             source_attempt=attempt,
             source_record=record,
             task_source=owner.task_source,
+            attempt_inside_repository=projection_already_completed,
         )
+        if projection_already_completed:
+            update = fixture.daemon._mark_tasks_completed_in_todo(
+                [fixture.request.task_id],
+                primary_task_id=fixture.request.task_id,
+                completion_reason="merged_status_repair",
+                expected_task_cids={
+                    fixture.request.task_id: fixture.request.canonical_task_id
+                },
+            )
+            assert update["updated"] is True
+            fixture.daemon._record_event(
+                "task_completed",
+                {
+                    "task_id": fixture.request.task_id,
+                    "reason": "task_became_completed",
+                    "completion_receipt_repair": False,
+                },
+            )
+            fixture.daemon._record_event(
+                "daemon_pass",
+                {
+                    "active_task_id": "",
+                    "completed_count": 1,
+                    "ready_count": 0,
+                    "selection_idle_reason": "database_pending_merge_reconciliation",
+                },
+            )
         failed = owner.commit_phase(attempt, "context")
         failed = owner.commit_phase(
             failed,

@@ -1230,6 +1230,9 @@ _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS: Final[
 _POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py.agent_supervisor.post-merge-retained-append-source@1"
 )
+_POST_MERGE_RETAINED_APPEND_COMPLETED_PROJECTION_SOURCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor.post-merge-retained-append-completed-projection-source@1"
+)
 
 
 _POST_MERGE_RETAINED_APPEND_SOURCE_FIELDS: Final[frozenset[str]] = (
@@ -7413,6 +7416,174 @@ class DatabasePortalExecutionBridge:
             prior = event
         return True
 
+    def _retained_append_existing_completion_status(
+        self,
+        events: Sequence[Mapping[str, Any]],
+        *,
+        source_event: Mapping[str, Any],
+        finish_event: Mapping[str, Any],
+        todo: Mapping[str, Any],
+        projection: _DatabasePortalRecoveryProjection,
+        settlement_started_at: float,
+    ) -> tuple[int, Mapping[str, Any]] | None:
+        """Bind a prior ignored-file completion observation, never task authority.
+
+        The caller has already verified the complete retained append lineage,
+        native quarantine/revival and callback settlement. An ignored local
+        projection can return already_completed without emitting another
+        event. Only its exact earlier native status write is eligible here;
+        current-target validation and canonical task CAS remain mandatory.
+        """
+        from datetime import datetime
+
+        fields = {
+            "updated",
+            "path",
+            "task_id",
+            "completion_reason",
+            "reason",
+            "updated_task_ids",
+            "already_completed_task_ids",
+            "updated_checkbox_task_ids",
+            "inserted_status_task_ids",
+            "missing_task_ids",
+            "missing_status_task_ids",
+            "completion_receipts",
+        }
+        alias = str(todo.get("task_id") or "")
+        if (
+            set(todo) != fields
+            or not alias
+            or todo.get("updated") is not False
+            or todo.get("reason") != "already_completed"
+            or todo.get("completion_reason") != "single_task"
+            or todo.get("already_completed_task_ids") != [alias]
+            or todo.get("path") != str(projection.paths.task_projection)
+            or any(
+                todo.get(key) != []
+                for key in (
+                    "updated_task_ids",
+                    "updated_checkbox_task_ids",
+                    "inserted_status_task_ids",
+                    "missing_task_ids",
+                    "missing_status_task_ids",
+                )
+            )
+        ):
+            return None
+        finish_index = events.index(finish_event)
+        statuses = [
+            (i, e)
+            for i, e in enumerate(events)
+            if i > finish_index
+            and e.get("type") in {"todo_status_updated", "todo_status_reconciled"}
+        ]
+        if len(statuses) != 1 or statuses[0][1].get("type") != "todo_status_updated":
+            return None
+        index, event = statuses[0]
+        try:
+            relative = projection.paths.task_projection.relative_to(
+                self.repository_root
+            )
+            finish_time = datetime.fromisoformat(
+                str(finish_event.get("timestamp") or "")
+            )
+            status_time = datetime.fromisoformat(str(event.get("timestamp") or ""))
+            if (
+                finish_time.tzinfo is None
+                or status_time.tzinfo is None
+                or not finish_time.timestamp()
+                <= status_time.timestamp()
+                < settlement_started_at
+            ):
+                return None
+        except (ValueError, TypeError, OverflowError, OSError):
+            return None
+        expected = dict(todo)
+        expected.pop("reason")
+        expected.update(
+            updated=True, updated_task_ids=[alias], already_completed_task_ids=[]
+        )
+        expected["commit_result"] = {
+            "committed": False,
+            "reason": "no_changes",
+            "path": relative.as_posix(),
+            "repo": str(self.repository_root),
+        }
+        for key in (
+            "canonical_task_cid",
+            "canonical_task_key",
+            "board_namespace",
+            "task_source_identity",
+        ):
+            if key in source_event:
+                expected[key] = source_event[key]
+        commit_result = event.get("commit_result")
+        if (
+            event.get("updated") is not True
+            or not isinstance(commit_result, Mapping)
+            or commit_result.get("committed") is not False
+            or event.get("completion_reason")
+            not in {"single_task", "merged_status_repair"}
+            or event.get("updated_checkbox_task_ids") not in ([], [alias])
+        ):
+            return None
+        expected["completion_reason"] = event["completion_reason"]
+        expected["updated_checkbox_task_ids"] = event["updated_checkbox_task_ids"]
+        if set(event) != set(expected) | _portal_event_envelope_fields(event) or any(
+            event.get(key) != value for key, value in expected.items()
+        ):
+            return None
+        # The caller's complete append-lineage check excludes new executions,
+        # queue sources and foreign identities throughout the remaining suffix.
+        # A local task_completed record is optional but cannot replace this
+        # status write or grant canonical completion authority.
+        completions = [
+            e for e in events[index + 1 :] if e.get("type") == "task_completed"
+        ]
+        if len(completions) > 1:
+            return None
+        if completions:
+            completion = completions[0]
+            try:
+                completed_time = datetime.fromisoformat(
+                    str(completion.get("timestamp") or "")
+                )
+                if (
+                    completed_time.tzinfo is None
+                    or not status_time.timestamp()
+                    <= completed_time.timestamp()
+                    < settlement_started_at
+                ):
+                    return None
+            except (ValueError, OverflowError, OSError):
+                return None
+            completion_fields = {
+                "task_id": alias,
+                "reason": "task_became_completed",
+                "completion_receipt_repair": False,
+            }
+            for key in (
+                "canonical_task_cid",
+                "canonical_task_key",
+                "board_namespace",
+                "task_source_identity",
+            ):
+                if key in source_event:
+                    completion_fields[key] = source_event[key]
+            if (
+                completion.get("completion_receipt_repair") is not False
+                or set(completion)
+                != set(completion_fields) | _portal_event_envelope_fields(completion)
+                or any(
+                    completion.get(key) != value
+                    for key, value in completion_fields.items()
+                )
+                or completion.get("previous_event_id") != event.get("event_id")
+            ):
+                return None
+        return index, event
+
     def _reconciled_callback_transport_source_evidence(
         self,
         request: Any,
@@ -7454,31 +7625,22 @@ class DatabasePortalExecutionBridge:
         )
         expected_failure_count = 1 if append_recovery else 2
         historical_integration = ""
+        retained_local_completion = False
         metadata = getattr(request, "metadata", None)
         task_alias = str(getattr(request, "task_id", "") or "")
-        portal_task_cid = str(
-            getattr(request, "canonical_task_id", "") or ""
-        )
-        portal_task_key = str(
-            getattr(request, "canonical_task_key", "") or ""
-        )
+        portal_task_cid = str(getattr(request, "canonical_task_id", "") or "")
+        portal_task_key = str(getattr(request, "canonical_task_key", "") or "")
         database_task_cid = str(projection.binding.get("task_cid") or "")
         canonical = str(getattr(request, "canonical_identity", "") or "")
         request_id = str(getattr(request, "request_id", "") or "")
         candidate = str(getattr(request, "commit_sha", "") or "")
         branch = str(getattr(request, "branch_name", "") or "")
-        task_payload = (
-            metadata.get("task") if isinstance(metadata, Mapping) else None
-        )
+        task_payload = metadata.get("task") if isinstance(metadata, Mapping) else None
         outputs = (
-            task_payload.get("outputs")
-            if isinstance(task_payload, Mapping)
-            else None
+            task_payload.get("outputs") if isinstance(task_payload, Mapping) else None
         )
         validation_proof = (
-            metadata.get("validation_proof")
-            if isinstance(metadata, Mapping)
-            else None
+            metadata.get("validation_proof") if isinstance(metadata, Mapping) else None
         )
         baseline = (
             str(metadata.get("baseline_ref") or "")
@@ -7518,10 +7680,7 @@ class DatabasePortalExecutionBridge:
             or canonical != portal_task_key
             or re.fullmatch(r"[0-9a-f]{40}", candidate) is None
             or re.fullmatch(r"[0-9a-f]{40}", baseline) is None
-            or re.fullmatch(
-                r"[0-9a-f]{40}(?:[0-9a-f]{24})?", candidate_tree
-            )
-            is None
+            or re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", candidate_tree) is None
             or metadata.get("implementation_commit") != candidate
             or completion_task_cids != {task_alias: portal_task_cid}
             or not isinstance(task_payload, Mapping)
@@ -7632,19 +7791,14 @@ class DatabasePortalExecutionBridge:
         }
         proof = merge_result.get("integration_commit_proof")
         invariant = merge_result.get("post_merge_declared_output_invariant")
-        reconciliation_receipt = merge_result.get(
-            "merge_reconciliation_receipt"
-        )
+        reconciliation_receipt = merge_result.get("merge_reconciliation_receipt")
         todo = merge_result.get("todo_update_result")
         completion_receipts = (
-            todo.get("completion_receipts")
-            if isinstance(todo, Mapping)
-            else None
+            todo.get("completion_receipts") if isinstance(todo, Mapping) else None
         )
         member = (
             completion_receipts[0]
-            if isinstance(completion_receipts, list)
-            and len(completion_receipts) == 1
+            if isinstance(completion_receipts, list) and len(completion_receipts) == 1
             else None
         )
         checks = invariant.get("checks") if isinstance(invariant, Mapping) else None
@@ -7659,9 +7813,7 @@ class DatabasePortalExecutionBridge:
             target_commit=integration,
             changed_submodule_paths=changed_submodule_paths,
         )
-        submodule_invariant = merge_result.get(
-            "post_merge_submodule_invariant"
-        )
+        submodule_invariant = merge_result.get("post_merge_submodule_invariant")
         if (
             not required_merge_fields <= set(merge_result)
             or not set(merge_result) <= required_merge_fields | optional_merge_fields
@@ -7766,11 +7918,7 @@ class DatabasePortalExecutionBridge:
             return None
 
         revivals = metadata.get("revivals")
-        revival = (
-            revivals[-1]
-            if isinstance(revivals, list) and revivals
-            else None
-        )
+        revival = revivals[-1] if isinstance(revivals, list) and revivals else None
         revival_at = revival.get("at") if isinstance(revival, Mapping) else None
         previous_enqueued_at = (
             revival.get("previous_enqueued_at")
@@ -7846,11 +7994,7 @@ class DatabasePortalExecutionBridge:
         except (OSError, RuntimeError, ValueError):
             return None
         quarantine_raw = read_receipt(quarantine_key)
-        quarantine = (
-            dict(quarantine_raw)
-            if isinstance(quarantine_raw, Mapping)
-            else {}
-        )
+        quarantine = dict(quarantine_raw) if isinstance(quarantine_raw, Mapping) else {}
         if (
             not quarantine
             or metadata.get("quarantine") != quarantine
@@ -7922,17 +8066,34 @@ class DatabasePortalExecutionBridge:
                     fresh = False
                 if fresh:
                     status_candidates.append((index, event))
-            if len(status_candidates) != 1:
+            if len(status_candidates) == 1:
+                status_index, status_event = status_candidates[0]
+            elif not status_candidates:
+                retained_status = self._retained_append_existing_completion_status(
+                    events,
+                    source_event=source_event,
+                    finish_event=transport,
+                    todo=todo,
+                    projection=projection,
+                    settlement_started_at=started_at,
+                )
+                if retained_status is None:
+                    return None
+                status_index, status_event = retained_status
+                retained_local_completion = True
+            else:
                 return None
-            status_index, status_event = status_candidates[0]
             if (
                 not events.index(transport) < status_index
                 or reconciliation_receipt.get("replayed") is not True
                 or reconciliation_receipt.get("event_id")
                 != reconciliation.get("event_id")
-                or not self._exact_callback_requalification_setup_audit_suffix(
-                    events[status_index + 1 :],
-                    previous_event=status_event,
+                or (
+                    not retained_local_completion
+                    and not self._exact_callback_requalification_setup_audit_suffix(
+                        events[status_index + 1 :],
+                        previous_event=status_event,
+                    )
                 )
             ):
                 return None
@@ -8137,10 +8298,7 @@ class DatabasePortalExecutionBridge:
             head.returncode != 0
             or re.fullmatch(r"[0-9a-f]{40}", head_text) is None
             or tree_result.returncode != 0
-            or re.fullmatch(
-                r"[0-9a-f]{40}(?:[0-9a-f]{24})?", current_tree
-            )
-            is None
+            or re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", current_tree) is None
             or candidate_tree_result.returncode != 0
             or observed_candidate_tree != candidate_tree
             or parents.returncode != 0
@@ -8193,15 +8351,13 @@ class DatabasePortalExecutionBridge:
                     ]
                     if any(item is None for item in gitlink_matches):
                         return None
-                    candidate_repository_ref = gitlink_matches[0].group(1).decode(
-                        "ascii"
+                    candidate_repository_ref = (
+                        gitlink_matches[0].group(1).decode("ascii")
                     )
-                    integration_repository_ref = gitlink_matches[1].group(1).decode(
-                        "ascii"
+                    integration_repository_ref = (
+                        gitlink_matches[1].group(1).decode("ascii")
                     )
-                    current_repository_ref = gitlink_matches[2].group(1).decode(
-                        "ascii"
-                    )
+                    current_repository_ref = gitlink_matches[2].group(1).decode("ascii")
                     historical_repository_ref = (
                         gitlink_matches[3].group(1).decode("ascii")
                         if append_recovery
@@ -8327,12 +8483,20 @@ class DatabasePortalExecutionBridge:
         settlement_id = _sha256_bytes(canonical_settlement)
         settled_source: dict[str, Any] = {
             "schema": (
-                _POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
+                (
+                    _POST_MERGE_RETAINED_APPEND_COMPLETED_PROJECTION_SOURCE_SCHEMA
+                    if retained_local_completion
+                    else _POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
+                )
                 if append_recovery
                 else _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
             ),
             "source_shape": (
-                "settled_retained_append_reconciliation"
+                (
+                    "settled_retained_append_existing_local_completion"
+                    if retained_local_completion
+                    else "settled_retained_append_reconciliation"
+                )
                 if append_recovery
                 else "settled_reconciled_candidate_transport"
             ),
@@ -10357,8 +10521,7 @@ class DatabasePortalExecutionBridge:
         is_settled = isinstance(settled_source, Mapping)
         is_v3 = bool(
             is_settled
-            and schema
-            == _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
+            and schema == _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
         )
         expected_fields = (
             _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_FIELDS
@@ -10381,8 +10544,7 @@ class DatabasePortalExecutionBridge:
         expected_source_fields = {
             key
             for key in expected_fields
-            if key
-            not in {"schema", "validation", "workspace_hygiene", "receipt_id"}
+            if key not in {"schema", "validation", "workspace_hygiene", "receipt_id"}
         }
         if (
             set(raw) != expected_fields
@@ -10396,8 +10558,14 @@ class DatabasePortalExecutionBridge:
         if is_settled:
             settled_value = dict(settled_source)
             source_id = str(settled_value.pop("source_id", "") or "")
+            retained_completed_projection = (
+                settled_value.get("schema")
+                == _POST_MERGE_RETAINED_APPEND_COMPLETED_PROJECTION_SOURCE_SCHEMA
+            )
             retained_append = (
-                settled_value.get("schema") == _POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
+                retained_completed_projection
+                or settled_value.get("schema")
+                == _POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
             )
             reconciled_transport = bool(
                 retained_append
@@ -10414,7 +10582,11 @@ class DatabasePortalExecutionBridge:
                 )
             )
             settled_schema = (
-                _POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
+                (
+                    _POST_MERGE_RETAINED_APPEND_COMPLETED_PROJECTION_SOURCE_SCHEMA
+                    if retained_completed_projection
+                    else _POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
+                )
                 if retained_append
                 else (
                     _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
@@ -10423,7 +10595,11 @@ class DatabasePortalExecutionBridge:
                 )
             )
             settled_shape = (
-                "settled_retained_append_reconciliation"
+                (
+                    "settled_retained_append_existing_local_completion"
+                    if retained_completed_projection
+                    else "settled_retained_append_reconciliation"
+                )
                 if retained_append
                 else (
                     "settled_reconciled_candidate_transport"
@@ -28474,18 +28650,14 @@ class DatabasePortalExecutionBridge:
                 return None
             history = raw_history if isinstance(raw_history, Mapping) else None
             revisions = (
-                history.get("revisions")
-                if isinstance(history, Mapping)
-                else None
+                history.get("revisions") if isinstance(history, Mapping) else None
             )
             history_body = dict(history) if isinstance(history, Mapping) else {}
             history_cid = history_body.pop("projection_cid", None)
             if (
                 not isinstance(history, Mapping)
-                or set(history)
-                != {"schema", "task_cid", "revisions", "projection_cid"}
-                or history.get("schema")
-                != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+                or set(history) != {"schema", "task_cid", "revisions", "projection_cid"}
+                or history.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
                 or history.get("task_cid") != str(attempt.task_cid)
                 or not isinstance(revisions, list)
                 or history_cid != content_identity(history_body)
@@ -28566,8 +28738,8 @@ class DatabasePortalExecutionBridge:
             if claim_raw is None:
                 return None
             try:
-                admission_attestation = (
-                    _validated_database_claim_process_attestation(admission_raw)
+                admission_attestation = _validated_database_claim_process_attestation(
+                    admission_raw
                 )
             except (TypedStateOwnerAuthorizationError, TypeError, ValueError):
                 return None
@@ -28576,11 +28748,17 @@ class DatabasePortalExecutionBridge:
             from .retained_callback_suffix import verified_seed_predecessor
 
             retained_suffix = verified_seed_predecessor(
-                history, task_cid=str(attempt.task_cid), task_alias=str(attempt.task_alias),
-                seed=seed, predecessor=predecessor_receipt,
+                history,
+                task_cid=str(attempt.task_cid),
+                task_alias=str(attempt.task_alias),
+                seed=seed,
+                predecessor=predecessor_receipt,
             )
-            if (seed.get("schema") == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
-                    and not retained_suffix):
+            if (
+                seed.get("schema")
+                == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+                and not retained_suffix
+            ):
                 recovery_evidence = predecessor_receipt.get(
                     "post_merge_completion_claim_verification_recovery"
                 )
@@ -28698,36 +28876,30 @@ class DatabasePortalExecutionBridge:
                 )
                 source_seed_id = _sha256_bytes(_canonical_json(source_seed_body))
                 if (
-                    recovery_control_revision
-                    != seed.get("recovery_control_revision")
+                    recovery_control_revision != seed.get("recovery_control_revision")
                     or set(predecessor_receipt)
                     != predecessor_base_fields | predecessor_optional_fields
                     or predecessor_receipt.get("operation")
                     != "database_portal_post_merge_declared_output_recovery"
                     or predecessor_receipt.get("reason")
                     != DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON
-                    or predecessor_receipt.get("control_expected_status")
-                    != "blocked"
+                    or predecessor_receipt.get("control_expected_status") != "blocked"
                     or predecessor_receipt.get("control_expected_revision")
                     != recovery_control_revision
                     or predecessor_receipt.get("backoff_seconds") != 0
                     or predecessor_receipt.get("backoff_ms") != 0
                     or _canonical_json(
-                        predecessor_receipt.get(
-                            "post_merge_completion_recovery_seed"
-                        )
+                        predecessor_receipt.get("post_merge_completion_recovery_seed")
                     )
                     != _canonical_json(dict(seed))
                     or not isinstance(recovery_evidence, Mapping)
                     or set(recovery_evidence) != recovery_evidence_fields
                     or any(
-                        predecessor_receipt.get(field)
-                        != recovery_evidence.get(field)
+                        predecessor_receipt.get(field) != recovery_evidence.get(field)
                         for field in predecessor_identity_fields
                     )
                     or any(
-                        predecessor_receipt.get(field)
-                        != claim_raw.get(field)
+                        predecessor_receipt.get(field) != claim_raw.get(field)
                         for field in (
                             "execution_route_binding",
                             "execution_route_policy_id",
@@ -28741,15 +28913,12 @@ class DatabasePortalExecutionBridge:
                     or recovery_evidence.get("reason")
                     != DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON
                     or recovery_evidence.get("task_cid") != str(attempt.task_cid)
-                    or recovery_evidence.get("task_alias")
-                    != str(attempt.task_alias)
+                    or recovery_evidence.get("task_alias") != str(attempt.task_alias)
                     or recovery_evidence.get("blocked_task_revision")
                     != recovery_control_revision
-                    or recovery_evidence.get("rebased_seed_id")
-                    != seed.get("seed_id")
+                    or recovery_evidence.get("rebased_seed_id") != seed.get("seed_id")
                     or recovery_evidence.get("source_seed_id") != source_seed_id
-                    or recovery_evidence.get("request_id")
-                    != seed.get("request_id")
+                    or recovery_evidence.get("request_id") != seed.get("request_id")
                     or recovery_evidence.get("candidate_commit")
                     != seed.get("candidate_commit")
                     or recovery_evidence.get("qualified_target_commit")
@@ -28762,17 +28931,12 @@ class DatabasePortalExecutionBridge:
                     != seed.get("recovery_evidence_id")
                     or recovery_evidence.get("queue_source_binding_id")
                     != seed.get("queue_source_binding_id")
-                    or recovery_evidence.get(
-                        "queue_source_projection_immutable_digest"
-                    )
+                    or recovery_evidence.get("queue_source_projection_immutable_digest")
                     != seed.get("queue_source_projection_immutable_digest")
                     or recovery_evidence.get("execution_route_binding_id")
-                    != content_identity(
-                        {"task_execution_route_binding": dict(route)}
-                    )
+                    != content_identity({"task_execution_route_binding": dict(route)})
                     or recovery_evidence.get("candidate_preserved") is not True
-                    or recovery_evidence.get("target_generation_unchanged")
-                    is not True
+                    or recovery_evidence.get("target_generation_unchanged") is not True
                     or recovery_evidence.get("provider_dispatched") is not False
                     or recovery_evidence.get("attempt_consumed") is not False
                     or not str(
@@ -28791,10 +28955,8 @@ class DatabasePortalExecutionBridge:
             }
             if (
                 claim_raw.get("claimed_from_revision") != claim_revision - 1
-                or _canonical_json(admission_raw)
-                != _canonical_json(expected_admission)
-                or _canonical_json(status_receipt)
-                != _canonical_json(admission_raw)
+                or _canonical_json(admission_raw) != _canonical_json(expected_admission)
+                or _canonical_json(status_receipt) != _canonical_json(admission_raw)
             ):
                 return None
             claim_receipt = dict(claim_raw)
@@ -28812,18 +28974,45 @@ class DatabasePortalExecutionBridge:
             if (
                 seed.get("schema")
                 == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
-                and status_receipt.get("operation")
-                == "database_attempt_admitted"
+                and status_receipt.get("operation") == "database_attempt_admitted"
                 and record_revision == claim_revision + 1
             ):
                 return claim_receipt
+            if (
+                seed.get("schema")
+                == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+                and status_receipt.get("operation") == "database_claim"
+                and record_revision == claim_revision
+                and str(getattr(record, "task_cid", "")) == str(attempt.task_cid)
+                and str(getattr(record, "task_alias", "")) == str(attempt.task_alias)
+            ):
+                from .implementation_daemon import (
+                    DatabaseImplementationDaemon,
+                    DatabaseImplementationDaemonError,
+                )
+
+                try:
+                    proof = DatabaseImplementationDaemon.verify_closed_post_merge_completion_claim_history(
+                        task_source=self.task_source, task=record
+                    )
+                except (DatabaseImplementationDaemonError, TypeError, ValueError):
+                    return None
+                if (
+                    isinstance(proof, Mapping)
+                    and proof.get("recovery_control_revision")
+                    == recovery_control_revision
+                    and proof.get("claim_revision") == claim_revision
+                    and _canonical_json(proof.get("seed")) == _canonical_json(seed)
+                    and _canonical_json(proof.get("claim_receipt"))
+                    == _canonical_json(claim_receipt)
+                ):
+                    return claim_receipt
             return None
         if (
             recovery_control_revision + 3 != claim_revision
             or record_revision != claim_revision + 1
             or status_receipt.get("operation") != "database_attempt_admitted"
-            or seed.get("schema")
-            != DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+            or seed.get("schema") != DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
             or seed.get("qualification_kind") != "callback_integration"
             or seed.get("terminal_reason")
             != DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
@@ -28832,8 +29021,7 @@ class DatabasePortalExecutionBridge:
 
         if (
             not isinstance(history, Mapping)
-            or set(history)
-            != {"schema", "task_cid", "revisions", "projection_cid"}
+            or set(history) != {"schema", "task_cid", "revisions", "projection_cid"}
             or history.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
             or history.get("task_cid") != str(attempt.task_cid)
             or not isinstance(revisions, list)
@@ -28849,8 +29037,7 @@ class DatabasePortalExecutionBridge:
             matches = [
                 (index, entry)
                 for index, entry in enumerate(revisions)
-                if isinstance(entry, Mapping)
-                and entry.get("revision") == revision
+                if isinstance(entry, Mapping) and entry.get("revision") == revision
             ]
             if len(matches) != 1:
                 return None
@@ -28870,8 +29057,7 @@ class DatabasePortalExecutionBridge:
                 "in_progress",
                 "in_progress",
             ]
-            or str(getattr(record, "status", "") or "").strip().lower()
-            != "in_progress"
+            or str(getattr(record, "status", "") or "").strip().lower() != "in_progress"
             or not isinstance(record_body, Mapping)
             or not isinstance(entries[-1].get("body"), Mapping)
             or _canonical_json(dict(entries[-1]["body"]))
@@ -29002,13 +29188,11 @@ class DatabasePortalExecutionBridge:
             or set(prior_receipt) & route_fields != route_fields
             or _canonical_json(prior_receipt.get("execution_route_binding"))
             != _canonical_json(route)
-            or prior_receipt.get("execution_route_policy_id")
-            != route.get("policy_id")
+            or prior_receipt.get("execution_route_policy_id") != route.get("policy_id")
             or prior_receipt.get("execution_route_origin_revision")
             != route.get("task_revision")
             or any(
-                type(prior_receipt.get(field))
-                is not type(missing_receipt.get(field))
+                type(prior_receipt.get(field)) is not type(missing_receipt.get(field))
                 or prior_receipt.get(field) != missing_receipt.get(field)
                 for field in source_identity_fields
             )
@@ -29027,15 +29211,11 @@ class DatabasePortalExecutionBridge:
                 for field in (*source_identity_fields, "attempt_number")
             )
             or missing_receipt.get("operation")
-            != (
-                "database_post_merge_declared_outputs_"
-                "callback_integration_recovery"
-            )
+            != ("database_post_merge_declared_outputs_" "callback_integration_recovery")
             or missing_receipt.get("control_expected_status") != "quarantined"
             or missing_receipt.get("control_expected_revision")
             != recovery_control_revision
-            or missing_receipt.get("post_merge_completion_recovery_seed")
-            is None
+            or missing_receipt.get("post_merge_completion_recovery_seed") is None
             or _canonical_json(
                 missing_receipt.get("post_merge_completion_recovery_seed")
             )
@@ -29050,8 +29230,7 @@ class DatabasePortalExecutionBridge:
             or recovered_receipt.get("control_expected_status") != "retrying"
             or recovered_receipt.get("control_expected_revision")
             != recovery_control_revision + 1
-            or recovered_receipt.get("post_merge_completion_recovery_seed")
-            is None
+            or recovered_receipt.get("post_merge_completion_recovery_seed") is None
             or _canonical_json(
                 recovered_receipt.get("post_merge_completion_recovery_seed")
             )
@@ -29073,41 +29252,31 @@ class DatabasePortalExecutionBridge:
             or set(claim_receipt) & route_fields != route_fields
             or _canonical_json(claim_receipt.get("execution_route_binding"))
             != _canonical_json(route)
-            or claim_receipt.get("execution_route_policy_id")
-            != route.get("policy_id")
+            or claim_receipt.get("execution_route_policy_id") != route.get("policy_id")
             or claim_receipt.get("execution_route_origin_revision")
             != route.get("task_revision")
-            or claim_receipt.get("post_merge_completion_recovery_seed")
-            is None
-            or _canonical_json(
-                claim_receipt.get("post_merge_completion_recovery_seed")
-            )
+            or claim_receipt.get("post_merge_completion_recovery_seed") is None
+            or _canonical_json(claim_receipt.get("post_merge_completion_recovery_seed"))
             != _canonical_json(dict(seed))
-            or claim_receipt.get(
-                "post_merge_completion_recovery_source_attempt_id"
-            )
+            or claim_receipt.get("post_merge_completion_recovery_source_attempt_id")
             != seed.get("attempt_id")
             or _canonical_json(admission_receipt)
             != _canonical_json(expected_admission_receipt)
-            or _canonical_json(status_receipt)
-            != _canonical_json(admission_receipt)
+            or _canonical_json(status_receipt) != _canonical_json(admission_receipt)
         ):
             return None
         witness_value = dict(witness)
         witness_id = witness_value.pop("receipt_id", None)
         if not (
-            witness.get("schema")
-            == TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA
+            witness.get("schema") == TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA
             and witness.get("operation")
             == TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
             and witness.get("task_cid") == str(attempt.task_cid)
             and witness.get("task_alias") == str(attempt.task_alias)
-            and witness.get("source_task_revision")
-            == recovery_control_revision
+            and witness.get("source_task_revision") == recovery_control_revision
             and witness.get("missing_route_task_revision")
             == recovery_control_revision + 1
-            and witness.get("recovered_task_revision")
-            == recovery_control_revision + 2
+            and witness.get("recovered_task_revision") == recovery_control_revision + 2
             and witness.get("prior_receipt_cid")
             == content_identity(
                 {"post_commit_route_predecessor_receipt": dict(prior_receipt)}
@@ -29117,26 +29286,20 @@ class DatabasePortalExecutionBridge:
                 {"post_commit_route_missing_receipt": dict(missing_receipt)}
             )
             and witness.get("route_binding_cid")
-            == content_identity(
-                {"task_execution_route_binding": dict(route)}
-            )
+            == content_identity({"task_execution_route_binding": dict(route)})
             and witness.get("route_policy_id") == route.get("policy_id")
             and witness.get("plan_root_cid") == route.get("plan_root_cid")
-            and witness.get("repository_tree_id")
-            == route.get("repository_tree_id")
+            and witness.get("repository_tree_id") == route.get("repository_tree_id")
             and recovered_receipt.get("execution_route_policy_id")
             == route.get("policy_id")
             and recovered_receipt.get("execution_route_origin_revision")
             == route.get("task_revision")
-            and witness.get("post_commit_candidate_receipt_id")
-            == seed.get("seed_id")
+            and witness.get("post_commit_candidate_receipt_id") == seed.get("seed_id")
             and type(witness.get("queue_revision_before")) is int
             and witness.get("queue_revision_before")
             == witness.get("queue_revision_after")
             and witness_id
-            == content_identity(
-                {"typed_post_commit_route_recovery": witness_value}
-            )
+            == content_identity({"typed_post_commit_route_recovery": witness_value})
         ):
             return None
         return dict(claim_receipt)

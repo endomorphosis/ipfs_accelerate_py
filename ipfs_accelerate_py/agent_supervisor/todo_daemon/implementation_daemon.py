@@ -6003,6 +6003,9 @@ _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS = frozenset(
 POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.post-merge-retained-append-source@1"
 )
+POST_MERGE_RETAINED_APPEND_COMPLETED_PROJECTION_SOURCE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.post-merge-retained-append-completed-projection-source@1"
+)
 
 
 _POST_MERGE_RETAINED_APPEND_SOURCE_FIELDS = (
@@ -104227,11 +104230,43 @@ class DatabaseImplementationDaemon:
             "portable_coordination_authority": False,
         }
 
+    @classmethod
+    def verify_closed_post_merge_completion_claim_history(
+        cls, *, task_source: Any, task: Any
+    ) -> dict[str, Any] | None:
+        """Read a legacy claim's closed crash history without starting a daemon.
+
+        The restricted verifier has only a canonical task reader.  The explicit
+        closed-claim mode returns before execution or coordination state is
+        consulted and grants neither a task retry nor completion authority.
+        """
+        revision = getattr(task, "revision", None)
+        if type(revision) is not int:
+            return None
+
+        class ReadOnlyHistoryVerifier(cls):
+            @property
+            def task_source(self) -> Any:
+                return task_source
+
+            def open(self) -> Any:
+                raise DatabaseImplementationAuthorityError(
+                    "closed claim history verification cannot open daemon state"
+                )
+
+        verifier = object.__new__(ReadOnlyHistoryVerifier)
+        return verifier._post_merge_completion_crash_recovery_context(
+            task,
+            require_current_blocked=False,
+            closed_recovery_claim_revision=revision,
+        )
+
     def _post_merge_completion_crash_recovery_context(
         self,
         task: Any,
         *,
         require_current_blocked: bool,
+        closed_recovery_claim_revision: int | None = None,
     ) -> dict[str, Any] | None:
         """Recognize only the board-faithful lost-completion crash chain.
 
@@ -104240,19 +104275,38 @@ class DatabaseImplementationDaemon:
         history alone never grants a retry CAS.
         """
 
+        if closed_recovery_claim_revision is not None and (
+            require_current_blocked
+            or type(closed_recovery_claim_revision) is not int
+            or closed_recovery_claim_revision < 8
+        ):
+            return None
+
         candidate_body = getattr(task, "body", None)
-        candidate_receipt = (candidate_body.get("completion_receipt")
-                             if isinstance(candidate_body, Mapping) else None)
-        if (require_current_blocked and isinstance(candidate_receipt, Mapping)
-                and candidate_receipt.get("operation") == "database_portal_typed_deferral_budget_exhausted"):
+        candidate_receipt = (
+            candidate_body.get("completion_receipt")
+            if isinstance(candidate_body, Mapping)
+            else None
+        )
+        if (
+            require_current_blocked
+            and isinstance(candidate_receipt, Mapping)
+            and candidate_receipt.get("operation")
+            == "database_portal_typed_deferral_budget_exhausted"
+        ):
             retained = self._retained_callback_suffix_context(task)
             if retained is not None:
                 return retained
-        if (require_current_blocked and isinstance(candidate_receipt, Mapping)
-                and candidate_receipt.get("reason")
-                in {"retained callback recovery requires exact source seed before dispatch",
-                    "post-merge completion recovery seed evidence changed",
-                    DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON}):
+        if (
+            require_current_blocked
+            and isinstance(candidate_receipt, Mapping)
+            and candidate_receipt.get("reason")
+            in {
+                "retained callback recovery requires exact source seed before dispatch",
+                "post-merge completion recovery seed evidence changed",
+                DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
+            }
+        ):
             return self._retained_callback_suffix_context(task)
 
         task_cid = str(getattr(task, "task_cid", "") or "")
@@ -104309,8 +104363,7 @@ class DatabaseImplementationDaemon:
         projection_cid = projection_body.pop("projection_cid", None)
         if (
             not isinstance(history, Mapping)
-            or set(history)
-            != {"schema", "task_cid", "revisions", "projection_cid"}
+            or set(history) != {"schema", "task_cid", "revisions", "projection_cid"}
             or history.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
             or history.get("task_cid") != task_cid
             or not isinstance(revisions, list)
@@ -104337,9 +104390,7 @@ class DatabaseImplementationDaemon:
             and current_entry.get("body") == task_body
         )
         historical_entry = (
-            revisions[task_revision - 1]
-            if task_revision <= len(revisions)
-            else None
+            revisions[task_revision - 1] if task_revision <= len(revisions) else None
         )
         # Ready-frontier and history projections are separate owner reads.
         # A competing lane may advance the task between them; admit that only
@@ -104357,6 +104408,13 @@ class DatabaseImplementationDaemon:
                 "post-merge completion crash fence received malformed or "
                 "stale canonical history"
             )
+        if closed_recovery_claim_revision is not None and (
+            not task_snapshot_current
+            or task_status != "in_progress"
+            or task_revision != closed_recovery_claim_revision
+            or any(type(entry.get("revision")) is not int for entry in revisions)
+        ):
+            return None
 
         windows: list[dict[str, Any]] = []
         for index in range(0, len(revisions) - 5):
@@ -104371,26 +104429,20 @@ class DatabaseImplementationDaemon:
             ]:
                 continue
             receipts = [
-                self._post_merge_completion_history_receipt(entry)
-                for entry in chain
+                self._post_merge_completion_history_receipt(entry) for entry in chain
             ]
             recovery_candidate = receipts[1]
             seeded_claim_candidate = receipts[2]
             dedicated_recovery_declared = bool(
                 (
                     isinstance(recovery_candidate, Mapping)
-                    and "post_merge_completion_recovery_seed"
-                    in recovery_candidate
+                    and "post_merge_completion_recovery_seed" in recovery_candidate
                 )
                 or (
                     isinstance(seeded_claim_candidate, Mapping)
                     and (
-                        "post_merge_completion_recovery_seed"
-                        in seeded_claim_candidate
-                        or (
-                            "post_merge_completion_recovery_"
-                            "source_attempt_id"
-                        )
+                        "post_merge_completion_recovery_seed" in seeded_claim_candidate
+                        or ("post_merge_completion_recovery_" "source_attempt_id")
                         in seeded_claim_candidate
                     )
                 )
@@ -104411,9 +104463,8 @@ class DatabaseImplementationDaemon:
                 for entry in chain
                 if isinstance(entry.get("body"), Mapping)
             ]
-            if (
-                len(semantic_bodies) != len(chain)
-                or any(body != semantic_bodies[0] for body in semantic_bodies[1:])
+            if len(semantic_bodies) != len(chain) or any(
+                body != semantic_bodies[0] for body in semantic_bodies[1:]
             ):
                 if dedicated_recovery_declared:
                     raise DatabaseImplementationAuthorityError(
@@ -104435,13 +104486,9 @@ class DatabaseImplementationDaemon:
             assert generic_retry is not None
             assert ordinary_claim is not None
             assert exhausted_receipt is not None
-            seed_raw = recovery_receipt.get(
-                "post_merge_completion_recovery_seed"
-            )
+            seed_raw = recovery_receipt.get("post_merge_completion_recovery_seed")
             try:
-                seed = self._verified_post_merge_completion_recovery_seed(
-                    seed_raw
-                )
+                seed = self._verified_post_merge_completion_recovery_seed(seed_raw)
             except DatabaseImplementationDaemonError as exc:
                 if dedicated_recovery_declared:
                     raise DatabaseImplementationAuthorityError(
@@ -104464,15 +104511,13 @@ class DatabaseImplementationDaemon:
                     historical_source_revision == control_revision
                     and source_receipt.get("operation")
                     == "database_portal_terminal_failure"
-                    and source_receipt.get("reason")
-                    == seed.get("terminal_reason")
+                    and source_receipt.get("reason") == seed.get("terminal_reason")
                 )
             else:
                 predecessors = [
                     candidate
                     for candidate in windows
-                    if candidate.get("exhausted_task_revision")
-                    == control_revision
+                    if candidate.get("exhausted_task_revision") == control_revision
                 ]
                 predecessor = predecessors[0] if len(predecessors) == 1 else None
                 source_receipt_admitted = bool(
@@ -104491,8 +104536,8 @@ class DatabaseImplementationDaemon:
                     )
                 )
             try:
-                source_attempt = (
-                    self._post_merge_completion_source_attempt_from_seed(seed)
+                source_attempt = self._post_merge_completion_source_attempt_from_seed(
+                    seed
                 )
             except DatabaseImplementationDaemonError as exc:
                 raise DatabaseImplementationAuthorityError(
@@ -104508,12 +104553,14 @@ class DatabaseImplementationDaemon:
             expected_recovery_fields = (
                 _DATABASE_POST_MERGE_REPAIR_RECOVERY_RECEIPT_FIELDS
                 if qualification_kind == "repair"
-                else _DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_RECEIPT_FIELDS
-                if qualification_kind == "requalification"
                 else (
-                    _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_RECEIPT_FIELDS
-                    if qualification_kind == "callback_integration"
-                    else frozenset()
+                    _DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_RECEIPT_FIELDS
+                    if qualification_kind == "requalification"
+                    else (
+                        _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_RECEIPT_FIELDS
+                        if qualification_kind == "callback_integration"
+                        else frozenset()
+                    )
                 )
             )
             recovery_coordination = recovery_receipt.get("coordination")
@@ -104545,36 +104592,24 @@ class DatabaseImplementationDaemon:
                     == seed["recovery_evidence_id"]
                     and re.fullmatch(
                         r"[0-9a-f]{40}",
-                        str(
-                            recovery_receipt.get("source_repair_commit") or ""
-                        ),
+                        str(recovery_receipt.get("source_repair_commit") or ""),
                     )
                     is not None
                     and bool(
-                        str(
-                            recovery_receipt.get("source_repair_receipt_id")
-                            or ""
-                        )
+                        str(recovery_receipt.get("source_repair_receipt_id") or "")
                     )
                 )
                 or (
                     qualification_kind == "callback_integration"
                     and recovery_receipt.get("qualified_target_commit")
                     == seed["qualified_target_commit"]
-                    and recovery_receipt.get(
-                        "callback_requalification_receipt_id"
-                    )
+                    and recovery_receipt.get("callback_requalification_receipt_id")
                     == seed["qualification_receipt_id"]
-                    and recovery_receipt.get(
-                        "callback_reconciliation_evidence_id"
-                    )
+                    and recovery_receipt.get("callback_reconciliation_evidence_id")
                     == seed["recovery_evidence_id"]
                     and re.fullmatch(
                         r"[0-9a-f]{40}",
-                        str(
-                            recovery_receipt.get("source_integration_commit")
-                            or ""
-                        ),
+                        str(recovery_receipt.get("source_integration_commit") or ""),
                     )
                     is not None
                     and re.fullmatch(
@@ -104598,58 +104633,43 @@ class DatabaseImplementationDaemon:
                     DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
                 }
                 or set(recovery_receipt) != expected_recovery_fields
-                or recovery_receipt.get("operation")
-                != expected_recovery_operation
-                or recovery_receipt.get("post_merge_completion_recovery_seed")
-                != seed
-                or recovery_receipt.get("control_expected_revision")
-                != control_revision
+                or recovery_receipt.get("operation") != expected_recovery_operation
+                or recovery_receipt.get("post_merge_completion_recovery_seed") != seed
+                or recovery_receipt.get("control_expected_revision") != control_revision
                 or recovery_receipt.get("control_expected_status") != "blocked"
                 or recovery_receipt.get("attempt_id") != seed["attempt_id"]
-                or recovery_receipt.get("attempt_number")
-                != seed["attempt_number"]
+                or recovery_receipt.get("attempt_number") != seed["attempt_number"]
                 or recovery_receipt.get("claim_id") != seed["claim_id"]
                 or recovery_receipt.get("lease_id") != seed["lease_id"]
-                or recovery_receipt.get("owner_session_id")
-                != seed["owner_session_id"]
-                or recovery_receipt.get("fencing_token")
-                != seed["fencing_token"]
+                or recovery_receipt.get("owner_session_id") != seed["owner_session_id"]
+                or recovery_receipt.get("fencing_token") != seed["fencing_token"]
                 or recovery_receipt.get("fence_epoch") != seed["fence_epoch"]
-                or recovery_receipt.get("execution_phase")
-                != ATTEMPT_PHASE_FAILED
+                or recovery_receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
                 or recovery_receipt.get("execution_revision")
                 != int(source_attempt.revision)
                 or recovery_receipt.get("execution_finished_at_ms")
                 != source_attempt.finished_at_ms
                 or recovery_receipt.get("request_id") != seed["request_id"]
-                or recovery_receipt.get("candidate_commit")
-                != seed["candidate_commit"]
+                or recovery_receipt.get("candidate_commit") != seed["candidate_commit"]
                 or recovery_receipt.get("source_binding_id")
                 != seed["queue_source_binding_id"]
                 or recovery_receipt.get("source_projection_immutable_digest")
                 != seed["queue_source_projection_immutable_digest"]
-                or recovery_receipt.get("queue_reason")
-                != expected_queue_reason
+                or recovery_receipt.get("queue_reason") != expected_queue_reason
                 or not isinstance(recovery_receipt.get("queue_receipt"), Mapping)
                 or not isinstance(recovery_coordination, Mapping)
-                or recovery_coordination.get("attempt_id")
-                != seed["attempt_id"]
-                or recovery_coordination.get("claim_id")
-                != seed["claim_id"]
-                or recovery_coordination.get("attempt_number")
-                != seed["attempt_number"]
+                or recovery_coordination.get("attempt_id") != seed["attempt_id"]
+                or recovery_coordination.get("claim_id") != seed["claim_id"]
+                or recovery_coordination.get("attempt_number") != seed["attempt_number"]
                 or not qualification_fields_match
                 or set(seeded_claim)
                 != _DATABASE_POST_MERGE_COMPLETION_SEEDED_CLAIM_FIELDS
                 or seeded_claim.get("operation") != "database_claim"
                 or type(seeded_claim.get("claimed_from_revision")) is not int
                 or int(seeded_claim["claimed_from_revision"]) < 1
-                or seeded_claim.get(
-                    "post_merge_completion_recovery_source_attempt_id"
-                )
+                or seeded_claim.get("post_merge_completion_recovery_source_attempt_id")
                 != seed["attempt_id"]
-                or seeded_claim.get("post_merge_completion_recovery_seed")
-                != seed
+                or seeded_claim.get("post_merge_completion_recovery_seed") != seed
                 or set(generic_retry) != _DATABASE_GENERIC_PORTAL_RETRY_FIELDS
                 or generic_retry.get("operation") != "database_portal_retry"
                 or any(
@@ -104677,8 +104697,7 @@ class DatabaseImplementationDaemon:
                     int,
                 )
                 or int(generic_retry["execution_finished_at_ms"]) < 0
-                or generic_retry.get("control_expected_status")
-                != "in_progress"
+                or generic_retry.get("control_expected_status") != "in_progress"
                 or generic_retry.get("control_expected_revision")
                 != int(chain[2]["revision"])
                 or type(generic_retry.get("queue_reused")) is not bool
@@ -104700,10 +104719,8 @@ class DatabaseImplementationDaemon:
                 != "database_portal_typed_deferral_budget_exhausted"
                 or exhausted_receipt.get("attempt_id")
                 != ordinary_claim.get("attempt_id")
-                or exhausted_receipt.get("claim_id")
-                != ordinary_claim.get("claim_id")
-                or exhausted_receipt.get("lease_id")
-                != ordinary_claim.get("lease_id")
+                or exhausted_receipt.get("claim_id") != ordinary_claim.get("claim_id")
+                or exhausted_receipt.get("lease_id") != ordinary_claim.get("lease_id")
                 or any(
                     exhausted_receipt.get(field) != ordinary_claim.get(field)
                     for field in (
@@ -104743,9 +104760,7 @@ class DatabaseImplementationDaemon:
             }
             context_identity_body = {
                 key: (
-                    value.to_dict()
-                    if isinstance(value, DatabaseTaskAttempt)
-                    else value
+                    value.to_dict() if isinstance(value, DatabaseTaskAttempt) else value
                 )
                 for key, value in context_body.items()
             }
@@ -104755,6 +104770,7 @@ class DatabaseImplementationDaemon:
                     "context_id": content_identity(context_identity_body),
                 }
             )
+        closed_claim_proofs: list[dict[str, Any]] = []
         open_windows: list[dict[str, Any]] = []
         for candidate in windows:
             candidate_seed = candidate["source_seed"]
@@ -104762,9 +104778,7 @@ class DatabaseImplementationDaemon:
             closed = False
             for tail_index in range(exhausted_revision, len(revisions)):
                 tail_entry = revisions[tail_index]
-                tail_receipt = self._post_merge_completion_history_receipt(
-                    tail_entry
-                )
+                tail_receipt = self._post_merge_completion_history_receipt(tail_entry)
                 if not isinstance(tail_receipt, Mapping):
                     continue
                 operation = str(tail_receipt.get("operation") or "")
@@ -104774,12 +104788,8 @@ class DatabaseImplementationDaemon:
                     "database_post_merge_declared_outputs_callback_integration_recovery",
                 }:
                     try:
-                        later_seed = (
-                            self._verified_post_merge_completion_recovery_seed(
-                                tail_receipt.get(
-                                    "post_merge_completion_recovery_seed"
-                                )
-                            )
+                        later_seed = self._verified_post_merge_completion_recovery_seed(
+                            tail_receipt.get("post_merge_completion_recovery_seed")
                         )
                         later_source_attempt = (
                             self._post_merge_completion_source_attempt_from_seed(
@@ -104797,12 +104807,14 @@ class DatabaseImplementationDaemon:
                     later_expected_fields = (
                         _DATABASE_POST_MERGE_REPAIR_RECOVERY_RECEIPT_FIELDS
                         if later_kind == "repair"
-                        else _DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_RECEIPT_FIELDS
-                        if later_kind == "requalification"
                         else (
-                            _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_RECEIPT_FIELDS
-                            if later_kind == "callback_integration"
-                            else frozenset()
+                            _DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_RECEIPT_FIELDS
+                            if later_kind == "requalification"
+                            else (
+                                _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_RECEIPT_FIELDS
+                                if later_kind == "callback_integration"
+                                else frozenset()
+                            )
                         )
                     )
                     later_coordination = tail_receipt.get("coordination")
@@ -104828,59 +104840,37 @@ class DatabaseImplementationDaemon:
                             later_kind == "requalification"
                             and tail_receipt.get("qualified_target_commit")
                             == later_seed["qualified_target_commit"]
-                            and tail_receipt.get(
-                                "requalification_receipt_id"
-                            )
+                            and tail_receipt.get("requalification_receipt_id")
                             == later_seed["qualification_receipt_id"]
-                            and tail_receipt.get(
-                                "requalification_evidence_id"
-                            )
+                            and tail_receipt.get("requalification_evidence_id")
                             == later_seed["recovery_evidence_id"]
                             and re.fullmatch(
                                 r"[0-9a-f]{40}",
-                                str(
-                                    tail_receipt.get("source_repair_commit")
-                                    or ""
-                                ),
+                                str(tail_receipt.get("source_repair_commit") or ""),
                             )
                             is not None
                             and bool(
-                                str(
-                                    tail_receipt.get(
-                                        "source_repair_receipt_id"
-                                    )
-                                    or ""
-                                )
+                                str(tail_receipt.get("source_repair_receipt_id") or "")
                             )
                         )
                         or (
                             later_kind == "callback_integration"
                             and tail_receipt.get("qualified_target_commit")
                             == later_seed["qualified_target_commit"]
-                            and tail_receipt.get(
-                                "callback_requalification_receipt_id"
-                            )
+                            and tail_receipt.get("callback_requalification_receipt_id")
                             == later_seed["qualification_receipt_id"]
-                            and tail_receipt.get(
-                                "callback_reconciliation_evidence_id"
-                            )
+                            and tail_receipt.get("callback_reconciliation_evidence_id")
                             == later_seed["recovery_evidence_id"]
                             and re.fullmatch(
                                 r"[0-9a-f]{40}",
                                 str(
-                                    tail_receipt.get(
-                                        "source_integration_commit"
-                                    )
-                                    or ""
+                                    tail_receipt.get("source_integration_commit") or ""
                                 ),
                             )
                             is not None
                             and re.fullmatch(
                                 r"sha256:[0-9a-f]{64}",
-                                str(
-                                    tail_receipt.get("source_train_receipt_id")
-                                    or ""
-                                ),
+                                str(tail_receipt.get("source_train_receipt_id") or ""),
                             )
                             is not None
                         )
@@ -104895,48 +104885,34 @@ class DatabaseImplementationDaemon:
                         later_control_revision == exhausted_revision
                         and set(tail_receipt) == later_expected_fields
                         and operation == later_expected_operation
-                        and tail_receipt.get(
-                            "post_merge_completion_recovery_seed"
-                        )
+                        and tail_receipt.get("post_merge_completion_recovery_seed")
                         == later_seed
                         and tail_receipt.get("control_expected_revision")
                         == exhausted_revision
-                        and tail_receipt.get("control_expected_status")
-                        == "blocked"
-                        and tail_receipt.get("attempt_id")
-                        == later_seed["attempt_id"]
+                        and tail_receipt.get("control_expected_status") == "blocked"
+                        and tail_receipt.get("attempt_id") == later_seed["attempt_id"]
                         and tail_receipt.get("attempt_number")
                         == later_seed["attempt_number"]
-                        and tail_receipt.get("claim_id")
-                        == later_seed["claim_id"]
-                        and tail_receipt.get("lease_id")
-                        == later_seed["lease_id"]
+                        and tail_receipt.get("claim_id") == later_seed["claim_id"]
+                        and tail_receipt.get("lease_id") == later_seed["lease_id"]
                         and tail_receipt.get("owner_session_id")
                         == later_seed["owner_session_id"]
                         and tail_receipt.get("fencing_token")
                         == later_seed["fencing_token"]
-                        and tail_receipt.get("fence_epoch")
-                        == later_seed["fence_epoch"]
-                        and tail_receipt.get("execution_phase")
-                        == ATTEMPT_PHASE_FAILED
+                        and tail_receipt.get("fence_epoch") == later_seed["fence_epoch"]
+                        and tail_receipt.get("execution_phase") == ATTEMPT_PHASE_FAILED
                         and tail_receipt.get("execution_revision")
                         == int(later_source_attempt.revision)
                         and tail_receipt.get("execution_finished_at_ms")
                         == later_source_attempt.finished_at_ms
-                        and tail_receipt.get("request_id")
-                        == later_seed["request_id"]
+                        and tail_receipt.get("request_id") == later_seed["request_id"]
                         and tail_receipt.get("candidate_commit")
                         == later_seed["candidate_commit"]
                         and tail_receipt.get("source_binding_id")
                         == later_seed["queue_source_binding_id"]
-                        and tail_receipt.get(
-                            "source_projection_immutable_digest"
-                        )
-                        == later_seed[
-                            "queue_source_projection_immutable_digest"
-                        ]
-                        and tail_receipt.get("queue_reason")
-                        == later_queue_reason
+                        and tail_receipt.get("source_projection_immutable_digest")
+                        == later_seed["queue_source_projection_immutable_digest"]
+                        and tail_receipt.get("queue_reason") == later_queue_reason
                         and isinstance(
                             tail_receipt.get("queue_receipt"),
                             Mapping,
@@ -104944,8 +104920,7 @@ class DatabaseImplementationDaemon:
                         and isinstance(later_coordination, Mapping)
                         and later_coordination.get("attempt_id")
                         == later_seed["attempt_id"]
-                        and later_coordination.get("claim_id")
-                        == later_seed["claim_id"]
+                        and later_coordination.get("claim_id") == later_seed["claim_id"]
                         and later_coordination.get("attempt_number")
                         == later_seed["attempt_number"]
                         and later_qualification_matches
@@ -104958,13 +104933,69 @@ class DatabaseImplementationDaemon:
                         )
                     ):
                         closed = True
+                        if closed_recovery_claim_revision is not None:
+                            claim = self._post_merge_completion_history_receipt(
+                                current_entry
+                            )
+                            suffix = revisions[exhausted_revision - 1 :]
+                            if (
+                                later_seed.get("schema")
+                                == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+                                and closed_recovery_claim_revision
+                                == exhausted_revision + 2
+                                and tail_entry.get("revision") == exhausted_revision + 1
+                                and tail_entry.get("status") == "retrying"
+                                and len(suffix) == 3
+                                and all(
+                                    isinstance(entry.get("body"), Mapping)
+                                    and content_identity(
+                                        {
+                                            key: value
+                                            for key, value in entry["body"].items()
+                                            if key != "completion_receipt"
+                                        }
+                                    )
+                                    == candidate["semantic_body_id"]
+                                    for entry in suffix
+                                )
+                                and isinstance(claim, Mapping)
+                                and set(claim)
+                                == _DATABASE_POST_MERGE_COMPLETION_SEEDED_CLAIM_FIELDS
+                                and claim.get("operation") == "database_claim"
+                                and type(claim.get("claimed_from_revision")) is int
+                                and claim.get("claimed_from_revision")
+                                == exhausted_revision + 1
+                                and claim.get("post_merge_completion_recovery_seed")
+                                == later_seed
+                                and claim.get(
+                                    "post_merge_completion_recovery_source_attempt_id"
+                                )
+                                == later_seed["attempt_id"]
+                                and all(
+                                    type(claim.get(field)) is int and claim[field] > 0
+                                    for field in (
+                                        "attempt_number",
+                                        "fencing_token",
+                                        "fence_epoch",
+                                    )
+                                )
+                            ):
+                                proof = {
+                                    "history_projection_cid": projection_cid,
+                                    "source_context_id": candidate["context_id"],
+                                    "recovery_control_revision": exhausted_revision,
+                                    "claim_revision": closed_recovery_claim_revision,
+                                    "seed": dict(later_seed),
+                                    "claim_receipt": dict(claim),
+                                }
+                                closed_claim_proofs.append(
+                                    {**proof, "proof_id": content_identity(proof)}
+                                )
                         break
                 if (
                     operation == "database_complete"
-                    and tail_entry.get("status")
-                    in {"completed", "complete", "done"}
-                    and set(tail_receipt)
-                    == _DATABASE_COMPLETE_RECEIPT_FIELDS
+                    and tail_entry.get("status") in {"completed", "complete", "done"}
+                    and set(tail_receipt) == _DATABASE_COMPLETE_RECEIPT_FIELDS
                     and re.fullmatch(
                         r"sha256:[0-9a-f]{64}",
                         str(tail_receipt.get("evidence_digest") or ""),
@@ -105000,15 +105031,19 @@ class DatabaseImplementationDaemon:
                     break
             if not closed:
                 open_windows.append(candidate)
+        if closed_recovery_claim_revision is not None:
+            return (
+                closed_claim_proofs[0]
+                if len(closed_claim_proofs) == 1 and not open_windows
+                else None
+            )
         if not open_windows:
             if not task_snapshot_stale:
                 return None
             stale_snapshot = {
                 "task_cid": task_cid,
                 "task_revision": task_revision,
-                "canonical_task_revision": int(
-                    current_entry["revision"]
-                ),
+                "canonical_task_revision": int(current_entry["revision"]),
             }
             return {
                 **stale_snapshot,
@@ -105023,13 +105058,10 @@ class DatabaseImplementationDaemon:
         context = open_windows[0]
         if not require_current_blocked:
             return context
-        current_receipt = self._post_merge_completion_history_receipt(
-            revisions[-1]
-        )
+        current_receipt = self._post_merge_completion_history_receipt(revisions[-1])
         latest = self.get_attempt(str(context["current_attempt_id"]))
         if (
-            revisions[-1].get("revision")
-            != context["exhausted_task_revision"]
+            revisions[-1].get("revision") != context["exhausted_task_revision"]
             or str(getattr(task, "status", "") or "") != "blocked"
             or latest is None
             or latest.status != "failed"
@@ -105051,18 +105083,13 @@ class DatabaseImplementationDaemon:
             ).get("fence_epoch")
             or not isinstance(current_receipt, Mapping)
             or current_receipt.get("attempt_id") != latest.attempt_id
-            or current_receipt.get("attempt_number")
-            != int(latest.attempt_number)
-            or current_receipt.get("owner_session_id")
-            != latest.owner_session_id
-            or current_receipt.get("fencing_token")
-            != int(latest.fencing_token)
+            or current_receipt.get("attempt_number") != int(latest.attempt_number)
+            or current_receipt.get("owner_session_id") != latest.owner_session_id
+            or current_receipt.get("fencing_token") != int(latest.fencing_token)
             or current_receipt.get("fence_epoch") != int(latest.fence_epoch)
             or current_receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
-            or current_receipt.get("execution_revision")
-            != int(latest.revision)
-            or current_receipt.get("execution_finished_at_ms")
-            != latest.finished_at_ms
+            or current_receipt.get("execution_revision") != int(latest.revision)
+            or current_receipt.get("execution_finished_at_ms") != latest.finished_at_ms
             or current_receipt.get("retryable") is not False
             or current_receipt.get("attempt_consumed") is not False
             or current_receipt.get("typed_deferral_slot_consumed") is not True
@@ -105073,9 +105100,7 @@ class DatabaseImplementationDaemon:
             return None
         coordination = current_receipt.get("coordination")
         persisted = (
-            coordination
-            if isinstance(coordination, Mapping) and coordination
-            else None
+            coordination if isinstance(coordination, Mapping) and coordination else None
         )
         current_coordination_reproduced = bool(
             isinstance(coordination, Mapping)
@@ -105093,18 +105118,13 @@ class DatabaseImplementationDaemon:
                 persisted=coordination,
             )
         )
-        if not (
-            current_coordination_reproduced
-            or portable_coordination_authority
-        ):
+        if not (current_coordination_reproduced or portable_coordination_authority):
             return None
         return {
             **context,
             "current_attempt": latest,
             "current_receipt": dict(current_receipt),
-            "portable_coordination_authority": (
-                portable_coordination_authority
-            ),
+            "portable_coordination_authority": (portable_coordination_authority),
         }
 
     def _post_merge_completion_consumer_seed(
@@ -115760,23 +115780,25 @@ class DatabaseImplementationDaemon:
         is_settled = isinstance(settled_source, Mapping)
         is_v3 = bool(
             is_settled
-            and schema
-            == POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
+            and schema == POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
         )
         expected_fields = (
-            base_expected_fields
-            | {"settled_integration_source", "workspace_hygiene"}
+            base_expected_fields | {"settled_integration_source", "workspace_hygiene"}
             if is_v3
-            else base_expected_fields | {"settled_integration_source"}
-            if is_settled
-            else base_expected_fields
+            else (
+                base_expected_fields | {"settled_integration_source"}
+                if is_settled
+                else base_expected_fields
+            )
         )
         expected_schema = (
             POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
             if is_v3
-            else POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
-            if is_settled
-            else POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+            else (
+                POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
+                if is_settled
+                else POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+            )
         )
         task_ids = value.get("task_ids")
         entries = value.get("entries")
@@ -115814,21 +115836,16 @@ class DatabaseImplementationDaemon:
             else None
         )
         completion_receipts = (
-            todo.get("completion_receipts")
-            if isinstance(todo, Mapping)
-            else None
+            todo.get("completion_receipts") if isinstance(todo, Mapping) else None
         )
         member = (
             completion_receipts[0]
-            if isinstance(completion_receipts, list)
-            and len(completion_receipts) == 1
+            if isinstance(completion_receipts, list) and len(completion_receipts) == 1
             else None
         )
         train_identity = (
             "sha256:"
-            + hashlib.sha256(
-                canonical_train_receipt.encode("utf-8")
-            ).hexdigest()
+            + hashlib.sha256(canonical_train_receipt.encode("utf-8")).hexdigest()
             if train_receipt is not None
             else ""
         )
@@ -115852,17 +115869,14 @@ class DatabaseImplementationDaemon:
         )
         if v1_train_receipt_valid:
             v1_train_receipt_valid = bool(
-                train_receipt.get("commit_sha")
-                == value.get("candidate_commit")
+                train_receipt.get("commit_sha") == value.get("candidate_commit")
                 and train_receipt.get("target_commit")
                 == value.get("integration_commit")
-                and train_receipt.get("merge_commit")
-                == value.get("integration_commit")
+                and train_receipt.get("merge_commit") == value.get("integration_commit")
                 and isinstance(merge_result, Mapping)
                 and merge_result.get("returncode") == 0
                 and merge_result.get("merged") is True
-                and merge_result.get("merge_commit")
-                == value.get("integration_commit")
+                and merge_result.get("merge_commit") == value.get("integration_commit")
                 and isinstance(member, Mapping)
                 and member.get("task_id") == task_ids[0]
                 and bool(str(member.get("canonical_task_cid") or ""))
@@ -115907,8 +115921,7 @@ class DatabaseImplementationDaemon:
             isinstance(train_receipt, Mapping)
             and set(train_receipt) == settlement_fields
             and train_receipt.get("status") == "already_merged"
-            and train_receipt.get("reason")
-            == "declared_outputs_already_on_target"
+            and train_receipt.get("reason") == "declared_outputs_already_on_target"
             and train_receipt.get("already_merged") is True
             and train_receipt.get("integrated") is True
             and train_receipt.get("merged") is False
@@ -115916,12 +115929,9 @@ class DatabaseImplementationDaemon:
             and train_receipt.get("request_id") == value.get("request_id")
             and one_task_id
             and train_receipt.get("task_id") == task_ids[0]
-            and train_receipt.get("commit_sha")
-            == value.get("candidate_commit")
-            and train_receipt.get("target_commit")
-            == value.get("integration_commit")
-            and train_receipt.get("merge_commit")
-            == value.get("integration_commit")
+            and train_receipt.get("commit_sha") == value.get("candidate_commit")
+            and train_receipt.get("target_commit") == value.get("integration_commit")
+            and train_receipt.get("merge_commit") == value.get("integration_commit")
             and isinstance(settlement_started, (int, float))
             and not isinstance(settlement_started, bool)
             and isinstance(settlement_finished, (int, float))
@@ -115933,10 +115943,7 @@ class DatabaseImplementationDaemon:
             and set(admission)
             == {"schema", "admitted", "distributed", "request_id", "status"}
             and admission.get("schema")
-            == (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "distributed-lane-admission@1"
-            )
+            == ("ipfs_accelerate_py/agent-supervisor/" "distributed-lane-admission@1")
             and admission.get("admitted") is True
             and admission.get("distributed") is False
             and admission.get("request_id") == value.get("request_id")
@@ -115973,12 +115980,9 @@ class DatabaseImplementationDaemon:
             and train_receipt.get("request_id") == value.get("request_id")
             and one_task_id
             and train_receipt.get("task_id") == task_ids[0]
-            and train_receipt.get("commit_sha")
-            == value.get("candidate_commit")
-            and train_receipt.get("target_commit")
-            == value.get("integration_commit")
-            and train_receipt.get("merge_commit")
-            == value.get("integration_commit")
+            and train_receipt.get("commit_sha") == value.get("candidate_commit")
+            and train_receipt.get("target_commit") == value.get("integration_commit")
+            and train_receipt.get("merge_commit") == value.get("integration_commit")
             and isinstance(settlement_started, (int, float))
             and not isinstance(settlement_started, bool)
             and isinstance(settlement_finished, (int, float))
@@ -115990,10 +115994,7 @@ class DatabaseImplementationDaemon:
             and set(admission)
             == {"schema", "admitted", "distributed", "request_id", "status"}
             and admission.get("schema")
-            == (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "distributed-lane-admission@1"
-            )
+            == ("ipfs_accelerate_py/agent-supervisor/" "distributed-lane-admission@1")
             and admission.get("admitted") is True
             and admission.get("distributed") is False
             and admission.get("request_id") == value.get("request_id")
@@ -116003,13 +116004,10 @@ class DatabaseImplementationDaemon:
             and merge_result.get("merged") is True
             and merge_result.get("already_merged") is True
             and merge_result.get("returncode") == 0
-            and merge_result.get("reason")
-            == "implementation_commit_already_merged"
+            and merge_result.get("reason") == "implementation_commit_already_merged"
             and merge_result.get("mutation_short_circuited") is True
-            and merge_result.get("merge_commit")
-            == value.get("integration_commit")
-            and merge_result.get("target_commit")
-            == value.get("integration_commit")
+            and merge_result.get("merge_commit") == value.get("integration_commit")
+            and merge_result.get("target_commit") == value.get("integration_commit")
             and isinstance(member, Mapping)
             and member.get("task_id") == task_ids[0]
             and member.get("canonical_task_key")
@@ -116021,8 +116019,14 @@ class DatabaseImplementationDaemon:
         if is_settled and isinstance(settled_source, Mapping):
             settled_value = dict(settled_source)
             source_id = str(settled_value.pop("source_id", "") or "")
+            retained_completed_projection = (
+                settled_value.get("schema")
+                == POST_MERGE_RETAINED_APPEND_COMPLETED_PROJECTION_SOURCE_SCHEMA
+            )
             retained_append = (
-                settled_value.get("schema") == POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
+                retained_completed_projection
+                or settled_value.get("schema")
+                == POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
             )
             reconciled_transport = bool(
                 retained_append
@@ -116039,7 +116043,11 @@ class DatabaseImplementationDaemon:
                 )
             )
             settled_schema = (
-                POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
+                (
+                    POST_MERGE_RETAINED_APPEND_COMPLETED_PROJECTION_SOURCE_SCHEMA
+                    if retained_completed_projection
+                    else POST_MERGE_RETAINED_APPEND_SOURCE_SCHEMA
+                )
                 if retained_append
                 else (
                     POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
@@ -116048,7 +116056,11 @@ class DatabaseImplementationDaemon:
                 )
             )
             settled_shape = (
-                "settled_retained_append_reconciliation"
+                (
+                    "settled_retained_append_existing_local_completion"
+                    if retained_completed_projection
+                    else "settled_retained_append_reconciliation"
+                )
                 if retained_append
                 else (
                     "settled_reconciled_candidate_transport"
@@ -116121,8 +116133,7 @@ class DatabaseImplementationDaemon:
                     else ""
                 )
                 identity = (
-                    "sha256:"
-                    + hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+                    "sha256:" + hashlib.sha256(serialized.encode("utf-8")).hexdigest()
                 )
                 if (
                     not isinstance(parsed, Mapping)
@@ -116225,9 +116236,7 @@ class DatabaseImplementationDaemon:
                     "train_receipt_id",
                 )
             )
-            or re.fullmatch(
-                r"[0-9a-f]{64}", str(value.get("train_dedupe_key") or "")
-            )
+            or re.fullmatch(r"[0-9a-f]{64}", str(value.get("train_dedupe_key") or ""))
             is None
             or value.get("train_receipt_id") != train_identity
             or train_receipt is None
@@ -116253,21 +116262,17 @@ class DatabaseImplementationDaemon:
                 "post-merge callback integration receipt is invalid"
             )
         for entry in entries:
-            entry_path = str(
-                entry.get("path") if isinstance(entry, Mapping) else ""
-            )
+            entry_path = str(entry.get("path") if isinstance(entry, Mapping) else "")
             if (
                 not isinstance(entry, Mapping)
-                or set(entry)
-                != {"path", "mode", "object_type", "object_id"}
+                or set(entry) != {"path", "mode", "object_type", "object_id"}
                 or not entry_path
                 or entry_path.startswith("/")
                 or "\0" in entry_path
                 or ".." in PurePosixPath(entry_path).parts
                 or entry.get("mode") not in {"100644", "100755"}
                 or entry.get("object_type") != "blob"
-                or re.fullmatch(git_id, str(entry.get("object_id") or ""))
-                is None
+                or re.fullmatch(git_id, str(entry.get("object_id") or "")) is None
             ):
                 raise DatabaseImplementationAuthorityError(
                     "post-merge callback integration entry is invalid"
@@ -116279,9 +116284,7 @@ class DatabaseImplementationDaemon:
             else None
         )
         command_count = (
-            validation.get("command_count")
-            if isinstance(validation, Mapping)
-            else None
+            validation.get("command_count") if isinstance(validation, Mapping) else None
         )
         if (
             not isinstance(validation, Mapping)
@@ -116306,18 +116309,20 @@ class DatabaseImplementationDaemon:
                 re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", str(item)) is None
                 for item in digests
             )
-            or re.fullmatch(
-                r"[0-9a-f]{64}", str(validation.get("log_sha256") or "")
-            )
+            or re.fullmatch(r"[0-9a-f]{64}", str(validation.get("log_sha256") or ""))
             is None
         ):
             raise DatabaseImplementationAuthorityError(
                 "post-merge callback integration validation is invalid"
             )
-        if is_v3 and self._verified_callback_validation_workspace_hygiene(
-            value.get("workspace_hygiene"),
-            qualification=value,
-        ) is None:
+        if (
+            is_v3
+            and self._verified_callback_validation_workspace_hygiene(
+                value.get("workspace_hygiene"),
+                qualification=value,
+            )
+            is None
+        ):
             raise DatabaseImplementationAuthorityError(
                 "post-merge callback validation workspace hygiene is invalid"
             )
