@@ -1,10 +1,11 @@
 """Supervisor capability and fenced coordination contracts.
 
-Sibling-supervisor event validation is a binding of this fabric, not a second
-event log, bus, or state owner. Sibling supervisors exchange canonical event
-envelopes and receipts. They never write DuckDB or DuckLake, never consume
-``DatabaseEventLog@1``, and never terminalize tasks. A worker or model
-assertion cannot admit a sibling event.
+Sibling-supervisor event validation and the sibling capability registry are
+bindings of this fabric, not a second event log, bus, capability service, or
+state owner. Sibling supervisors exchange canonical event envelopes, capability
+advertisements, and receipts. They never write DuckDB or DuckLake, never
+consume ``DatabaseEventLog@1``, and never terminalize tasks. A worker or model
+assertion cannot admit a sibling event or capability advertisement.
 
 Cold import of this module performs no filesystem, database, network,
 provider, or process action.
@@ -32,6 +33,16 @@ class SiblingSupervisorEventValidationError(SupervisorFabricError):
         self.code = code
 
 
+class SiblingSupervisorCapabilityRegistryError(SupervisorFabricError):
+    """A sibling-supervisor capability advertisement failed admission."""
+
+    def __init__(
+        self, message: str, *, code: str = "sibling_capability_invalid"
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 SUPERVISOR_FABRIC_INTERFACE: Final[str] = "SupervisorFabric@1"
 SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING: Final[str] = (
     "SiblingSupervisorEventValidation@1"
@@ -41,6 +52,15 @@ SIBLING_SUPERVISOR_EVENT_VALIDATION_INTERFACE: Final[str] = (
 )
 SIBLING_SUPERVISOR_EVENT_VALIDATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/sibling-supervisor-event-validation@1"
+)
+SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING: Final[str] = (
+    "SiblingSupervisorCapabilityRegistry@1"
+)
+SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_INTERFACE: Final[str] = (
+    SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING
+)
+SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/sibling-supervisor-capability-registry@1"
 )
 CANONICAL_EVENT_INTERFACE: Final[str] = "CanonicalEvent@1"
 CANONICAL_EVENT_SCHEMA_ID: Final[str] = (
@@ -52,6 +72,10 @@ EVENT_CURSOR_INTERFACE: Final[str] = "EventCursor@1"
 SIBLING_SUPERVISOR_EVENT_VALIDATION_CONSUMES: Final[tuple[str, ...]] = (
     SUPERVISOR_FABRIC_INTERFACE,
     CANONICAL_EVENT_INTERFACE,
+    DATABASE_EVENT_LOG_INTERFACE,
+)
+SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_CONSUMES: Final[tuple[str, ...]] = (
+    SUPERVISOR_FABRIC_INTERFACE,
     DATABASE_EVENT_LOG_INTERFACE,
 )
 
@@ -80,6 +104,30 @@ CANONICAL_EVENT_FORBIDDEN_FIELDS: Final[frozenset[str]] = frozenset(
 
 ALLOWED_SIBLING_EFFECTS: Final[frozenset[str]] = frozenset(
     {"", "none", "read_only", "event_exchange"}
+)
+ALLOWED_SIBLING_CAPABILITIES: Final[frozenset[str]] = frozenset(
+    {
+        "dispatch",
+        "event-exchange",
+        "incremental-reassessment",
+        "receipt-exchange",
+        "task-request",
+    }
+)
+FORBIDDEN_SIBLING_CAPABILITIES: Final[frozenset[str]] = frozenset(
+    {
+        "completion-authority",
+        "database-write",
+        "direct-state-write",
+        "duckdb-write",
+        "ducklake-write",
+        "policy-mutation",
+        "policy-pointer",
+        "quack-state-owner",
+        "state-write",
+        "task-terminalization",
+        "terminalize-task",
+    }
 )
 FORBIDDEN_SIBLING_WRITE_KEYS: Final[frozenset[str]] = frozenset(
     {
@@ -136,42 +184,54 @@ def _sha256_hex(payload: bytes) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
-def _text(value: Any, field_name: str, *, required: bool = True) -> str:
+def _typed_text(
+    value: Any,
+    field_name: str,
+    *,
+    required: bool = True,
+    error_cls: type[SupervisorFabricError] = SiblingSupervisorEventValidationError,
+    code: str = "sibling_identity_mismatch",
+) -> str:
     if value is None:
         if required:
-            raise SiblingSupervisorEventValidationError(
-                f"{field_name} is required",
-                code="sibling_identity_mismatch",
-            )
+            raise error_cls(f"{field_name} is required", code=code)
         return ""
     if not isinstance(value, str):
-        raise SiblingSupervisorEventValidationError(
-            f"{field_name} must be a string",
-            code="sibling_identity_mismatch",
-        )
+        raise error_cls(f"{field_name} must be a string", code=code)
     if not value:
         if required:
-            raise SiblingSupervisorEventValidationError(
-                f"{field_name} must not be empty",
-                code="sibling_identity_mismatch",
-            )
+            raise error_cls(f"{field_name} must not be empty", code=code)
         return ""
     if value != value.strip():
-        raise SiblingSupervisorEventValidationError(
+        raise error_cls(
             f"{field_name} must be exact and contain no surrounding whitespace",
-            code="sibling_identity_mismatch",
+            code=code,
         )
     if len(value) > _MAX_IDENTIFIER_CHARS:
-        raise SiblingSupervisorEventValidationError(
+        raise error_cls(
             f"{field_name} must not exceed {_MAX_IDENTIFIER_CHARS} characters",
-            code="sibling_identity_mismatch",
+            code=code,
         )
     if any(character.isspace() or not character.isprintable() for character in value):
-        raise SiblingSupervisorEventValidationError(
+        raise error_cls(
             f"{field_name} must contain only printable, non-whitespace characters",
-            code="sibling_identity_mismatch",
+            code=code,
         )
     return value
+
+
+def _text(value: Any, field_name: str, *, required: bool = True) -> str:
+    return _typed_text(value, field_name, required=required)
+
+
+def _capability_text(value: Any, field_name: str, *, required: bool = True) -> str:
+    return _typed_text(
+        value,
+        field_name,
+        required=required,
+        error_cls=SiblingSupervisorCapabilityRegistryError,
+        code="sibling_identity_mismatch",
+    )
 
 
 def _event_identifier(value: Any, field_name: str) -> str:
@@ -184,28 +244,34 @@ def _event_identifier(value: Any, field_name: str) -> str:
         ) from error
 
 
-def _reject_direct_state_writes(record: Mapping[str, Any]) -> None:
+def _reject_direct_state_writes(
+    record: Mapping[str, Any],
+    *,
+    error_cls: type[SupervisorFabricError] = SiblingSupervisorEventValidationError,
+    write_message: str = "sibling supervisors exchange events, never database writes: ",
+    mutation_message: str = "sibling events cannot mutate DatabaseEventLog@1: ",
+    effect_label: str = "sibling event effect",
+) -> None:
     present = sorted(key for key in FORBIDDEN_SIBLING_WRITE_KEYS if record.get(key))
     if present:
-        raise SiblingSupervisorEventValidationError(
-            "sibling supervisors exchange events, never database writes: "
-            + ", ".join(present),
+        raise error_cls(
+            write_message + ", ".join(present),
             code="direct_state_write",
         )
     mutations = sorted(
         key for key in FORBIDDEN_SIBLING_LOG_MUTATIONS if record.get(key)
     )
     if mutations:
-        raise SiblingSupervisorEventValidationError(
-            "sibling events cannot mutate DatabaseEventLog@1: " + ", ".join(mutations),
+        raise error_cls(
+            mutation_message + ", ".join(mutations),
             code="direct_state_write",
         )
     effect = record.get("effect")
     if effect is None:
         return
     if not isinstance(effect, str) or effect not in ALLOWED_SIBLING_EFFECTS:
-        raise SiblingSupervisorEventValidationError(
-            f"sibling event effect {effect!r} is not admitted",
+        raise error_cls(
+            f"{effect_label} {effect!r} is not admitted",
             code="forbidden_effect",
         )
 
@@ -449,12 +515,375 @@ def validate_sibling_supervisor_event(
     return admission
 
 
+def _assert_allowed_sibling_capability(capability: str) -> None:
+    if capability in FORBIDDEN_SIBLING_CAPABILITIES:
+        raise SiblingSupervisorCapabilityRegistryError(
+            f"sibling capability {capability!r} is forbidden",
+            code="forbidden_capability",
+        )
+    if capability not in ALLOWED_SIBLING_CAPABILITIES:
+        raise SiblingSupervisorCapabilityRegistryError(
+            f"sibling capability {capability!r} is not admitted",
+            code="unknown_capability",
+        )
+
+
+def _normalize_sibling_capabilities(record: Mapping[str, Any]) -> tuple[str, ...]:
+    raw = record.get("capabilities")
+    single = record.get("capability")
+    collected: list[Any] = []
+    if raw is not None:
+        if isinstance(raw, str):
+            collected.append(raw)
+        elif isinstance(raw, Sequence) and not isinstance(raw, (bytes, bytearray)):
+            collected.extend(raw)
+        else:
+            raise SiblingSupervisorCapabilityRegistryError(
+                "capabilities must be a sequence of capability ids",
+                code="unknown_capability",
+            )
+    if single not in (None, ""):
+        collected.append(single)
+    unique: list[str] = []
+    seen: set[str] = set()
+    for item in collected:
+        capability = _capability_text(item, "capability")
+        _assert_allowed_sibling_capability(capability)
+        if capability not in seen:
+            seen.add(capability)
+            unique.append(capability)
+    if not unique:
+        raise SupervisorFabricError("supervisor capability is required")
+    return tuple(sorted(unique))
+
+
+def _capability_effect(record: Mapping[str, Any]) -> str:
+    effect = record.get("effect") or "none"
+    if not isinstance(effect, str) or effect not in ALLOWED_SIBLING_EFFECTS:
+        raise SiblingSupervisorCapabilityRegistryError(
+            f"sibling capability effect {effect!r} is not admitted",
+            code="forbidden_effect",
+        )
+    return effect or "none"
+
+
+@dataclass(frozen=True)
+class SiblingSupervisorCapabilityAdmission:
+    """Non-authoritative admission of one sibling capability advertisement."""
+
+    local_supervisor_id: str
+    sibling_supervisor_id: str
+    capabilities: tuple[str, ...]
+    epoch: int
+    capability_digest: str
+    effect: str = "none"
+    schema: str = SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_SCHEMA:
+            raise SiblingSupervisorCapabilityRegistryError(
+                f"unsupported sibling capability admission schema {self.schema!r}",
+                code="admission_schema",
+            )
+        object.__setattr__(
+            self,
+            "local_supervisor_id",
+            _capability_text(self.local_supervisor_id, "local_supervisor_id"),
+        )
+        object.__setattr__(
+            self,
+            "sibling_supervisor_id",
+            _capability_text(self.sibling_supervisor_id, "sibling_supervisor_id"),
+        )
+        if self.local_supervisor_id == self.sibling_supervisor_id:
+            raise SiblingSupervisorCapabilityRegistryError(
+                "a supervisor is not its own sibling",
+                code="not_a_sibling",
+            )
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in self.capabilities:
+            capability = _capability_text(item, "capability")
+            _assert_allowed_sibling_capability(capability)
+            if capability not in seen:
+                seen.add(capability)
+                normalized.append(capability)
+        if not normalized:
+            raise SupervisorFabricError("supervisor capability is required")
+        object.__setattr__(self, "capabilities", tuple(sorted(normalized)))
+        object.__setattr__(
+            self,
+            "capability_digest",
+            _capability_text(self.capability_digest, "capability_digest"),
+        )
+        epoch = int(self.epoch)
+        if epoch < 1:
+            raise SiblingSupervisorCapabilityRegistryError(
+                "epoch must be >= 1",
+                code="stale_fence_epoch",
+            )
+        object.__setattr__(self, "epoch", epoch)
+        effect = self.effect or "none"
+        if effect not in ALLOWED_SIBLING_EFFECTS:
+            raise SiblingSupervisorCapabilityRegistryError(
+                f"sibling capability effect {effect!r} is not admitted",
+                code="forbidden_effect",
+            )
+        object.__setattr__(self, "effect", effect)
+
+    @property
+    def capability(self) -> str:
+        return self.capabilities[0]
+
+    @property
+    def logical_once_key(self) -> str:
+        return f"{self.sibling_supervisor_id}:{self.epoch}:{self.capability_digest}"
+
+    def has_capability(self, capability: str) -> bool:
+        return _capability_text(capability, "capability") in self.capabilities
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "binding": SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING,
+            "interface": SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_INTERFACE,
+            "carrier": SUPERVISOR_FABRIC_INTERFACE,
+            "consumes": {
+                "supervisor_fabric": SUPERVISOR_FABRIC_INTERFACE,
+                "database_event_log": DATABASE_EVENT_LOG_INTERFACE,
+            },
+            "local_supervisor_id": self.local_supervisor_id,
+            "sibling_supervisor_id": self.sibling_supervisor_id,
+            "capabilities": list(self.capabilities),
+            "capability": self.capability,
+            "epoch": self.epoch,
+            "effect": self.effect,
+            "capability_digest": self.capability_digest,
+            "logical_once_key": self.logical_once_key,
+            "fenced": True,
+            "admitted": True,
+            "database_write": False,
+            "completion_authoritative": False,
+            "worker_assertion_is_authority": False,
+            "worker_completion_insufficient": True,
+        }
+
+
+def admit_sibling_supervisor_capability(
+    record: Mapping[str, Any],
+) -> SiblingSupervisorCapabilityAdmission:
+    """Admit one sibling capability advertisement without writing or consuming state."""
+
+    if not isinstance(record, Mapping):
+        raise SiblingSupervisorCapabilityRegistryError(
+            "sibling capability record must be an object",
+            code="record_invalid",
+        )
+    _reject_direct_state_writes(
+        record,
+        error_cls=SiblingSupervisorCapabilityRegistryError,
+        write_message=(
+            "sibling supervisors exchange capability advertisements, never "
+            "database writes: "
+        ),
+        mutation_message=(
+            "sibling capability advertisements cannot mutate DatabaseEventLog@1: "
+        ),
+        effect_label="sibling capability effect",
+    )
+    if record.get("completion_authoritative"):
+        raise SiblingSupervisorCapabilityRegistryError(
+            "sibling capability admission is not completion authority",
+            code="completion_not_authoritative",
+        )
+    local_supervisor_id = _capability_text(
+        record.get("local_supervisor_id"), "local_supervisor_id"
+    )
+    sibling_supervisor_id = _capability_text(
+        record.get("sibling_supervisor_id") or record.get("supervisor_id"),
+        "sibling_supervisor_id",
+    )
+    if sibling_supervisor_id == local_supervisor_id:
+        raise SiblingSupervisorCapabilityRegistryError(
+            "a supervisor is not its own sibling",
+            code="not_a_sibling",
+        )
+    known = record.get("known_sibling_ids")
+    if known is not None:
+        if not isinstance(known, Sequence) or isinstance(known, (str, bytes)):
+            raise SiblingSupervisorCapabilityRegistryError(
+                "known_sibling_ids must be a sequence of supervisor ids",
+                code="unknown_sibling",
+            )
+        if sibling_supervisor_id not in tuple(known):
+            raise SiblingSupervisorCapabilityRegistryError(
+                f"unknown sibling supervisor {sibling_supervisor_id!r}",
+                code="unknown_sibling",
+            )
+    capabilities = _normalize_sibling_capabilities(record)
+    epoch_value = record.get("epoch")
+    for capability in capabilities:
+        fence = issue_fence(
+            {
+                "supervisor_id": sibling_supervisor_id,
+                "capability": capability,
+                "epoch": epoch_value,
+                "stale_epoch": record.get("stale_epoch"),
+            }
+        )
+        epoch_value = int(fence["epoch"])
+    effect = _capability_effect(record)
+    digest_payload = {
+        "capabilities": list(capabilities),
+        "effect": effect,
+        "epoch": int(epoch_value or 1),
+        "local_supervisor_id": local_supervisor_id,
+        "sibling_supervisor_id": sibling_supervisor_id,
+    }
+    admission = SiblingSupervisorCapabilityAdmission(
+        local_supervisor_id=local_supervisor_id,
+        sibling_supervisor_id=sibling_supervisor_id,
+        capabilities=capabilities,
+        epoch=int(epoch_value or 1),
+        capability_digest=_sha256_hex(_canonical_json(digest_payload).encode("utf-8")),
+        effect=effect,
+    )
+    _ = bool(record.get("worker_assertion"))
+    return admission
+
+
+def register_sibling_supervisor_capability(
+    record: Mapping[str, Any],
+    registry: dict[str, SiblingSupervisorCapabilityAdmission] | None = None,
+) -> SiblingSupervisorCapabilityAdmission:
+    """Admit, then CAS-insert, one sibling capability advertisement.
+
+    When ``registry`` is omitted the advertisement is admitted only. The
+    in-memory mapping is a SupervisorFabric@1 binding, not a durable store.
+    """
+
+    admission = admit_sibling_supervisor_capability(record)
+    if registry is None:
+        return admission
+    existing = registry.get(admission.sibling_supervisor_id)
+    if existing is not None:
+        if existing.epoch > admission.epoch:
+            raise SiblingSupervisorCapabilityRegistryError(
+                "stale fence epoch",
+                code="stale_fence_epoch",
+            )
+        if existing.epoch == admission.epoch:
+            if existing.capabilities != admission.capabilities:
+                raise SiblingSupervisorCapabilityRegistryError(
+                    "sibling capability advertisement conflicts at the current epoch",
+                    code="capability_conflict",
+                )
+            return existing
+    registry[admission.sibling_supervisor_id] = admission
+    return admission
+
+
+def lookup_sibling_supervisor_capability(
+    registry: Mapping[str, SiblingSupervisorCapabilityAdmission],
+    sibling_supervisor_id: str,
+    capability: str | None = None,
+) -> SiblingSupervisorCapabilityAdmission:
+    sibling_id = _capability_text(sibling_supervisor_id, "sibling_supervisor_id")
+    try:
+        admission = registry[sibling_id]
+    except KeyError as error:
+        raise SiblingSupervisorCapabilityRegistryError(
+            f"unknown sibling supervisor {sibling_id!r}",
+            code="unknown_sibling",
+        ) from error
+    if capability is not None and not admission.has_capability(capability):
+        raise SiblingSupervisorCapabilityRegistryError(
+            f"sibling {sibling_id!r} did not advertise {capability!r}",
+            code="capability_not_advertised",
+        )
+    return admission
+
+
+def sibling_supervisor_has_capability(
+    registry: Mapping[str, SiblingSupervisorCapabilityAdmission],
+    sibling_supervisor_id: str,
+    capability: str,
+) -> bool:
+    try:
+        lookup_sibling_supervisor_capability(
+            registry, sibling_supervisor_id, capability
+        )
+    except SiblingSupervisorCapabilityRegistryError as error:
+        if error.code in {"unknown_sibling", "capability_not_advertised"}:
+            return False
+        raise
+    return True
+
+
+def list_sibling_supervisor_capabilities(
+    registry: Mapping[str, SiblingSupervisorCapabilityAdmission],
+) -> tuple[SiblingSupervisorCapabilityAdmission, ...]:
+    return tuple(registry[key] for key in sorted(registry))
+
+
+def revoke_sibling_supervisor_capability(
+    record: Mapping[str, Any],
+    registry: dict[str, SiblingSupervisorCapabilityAdmission],
+) -> SiblingSupervisorCapabilityAdmission:
+    """Drop one admitted sibling advertisement without writing state."""
+
+    if not isinstance(record, Mapping):
+        raise SiblingSupervisorCapabilityRegistryError(
+            "sibling capability record must be an object",
+            code="record_invalid",
+        )
+    _reject_direct_state_writes(
+        record,
+        error_cls=SiblingSupervisorCapabilityRegistryError,
+        write_message=(
+            "sibling supervisors exchange capability advertisements, never "
+            "database writes: "
+        ),
+        mutation_message=(
+            "sibling capability advertisements cannot mutate DatabaseEventLog@1: "
+        ),
+        effect_label="sibling capability effect",
+    )
+    if record.get("completion_authoritative"):
+        raise SiblingSupervisorCapabilityRegistryError(
+            "sibling capability admission is not completion authority",
+            code="completion_not_authoritative",
+        )
+    sibling_supervisor_id = _capability_text(
+        record.get("sibling_supervisor_id") or record.get("supervisor_id"),
+        "sibling_supervisor_id",
+    )
+    existing = registry.get(sibling_supervisor_id)
+    if existing is None:
+        raise SiblingSupervisorCapabilityRegistryError(
+            f"unknown sibling supervisor {sibling_supervisor_id!r}",
+            code="unknown_sibling",
+        )
+    local_supervisor_id = record.get("local_supervisor_id")
+    if local_supervisor_id not in (None, "") and existing.local_supervisor_id != (
+        _capability_text(local_supervisor_id, "local_supervisor_id")
+    ):
+        raise SiblingSupervisorCapabilityRegistryError(
+            "local supervisor identity does not match the registered advertisement",
+            code="sibling_identity_mismatch",
+        )
+    return registry.pop(sibling_supervisor_id)
+
+
 class SupervisorFabric:
     """Fenced coordination carrier for sibling-supervisor event admission."""
 
     INTERFACE: Final[str] = SUPERVISOR_FABRIC_INTERFACE
     SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING: Final[str] = (
         SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING
+    )
+    SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING: Final[str] = (
+        SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING
     )
 
     def __init__(
@@ -473,6 +902,7 @@ class SupervisorFabric:
         self._known_sibling_ids = tuple(
             _text(item, "known_sibling_id") for item in known_sibling_ids
         )
+        self._capability_records: dict[str, SiblingSupervisorCapabilityAdmission] = {}
 
     @property
     def supervisor_id(self) -> str:
@@ -505,10 +935,83 @@ class SupervisorFabric:
         payload.setdefault("epoch", record.get("epoch", self._epoch))
         if self._known_sibling_ids and "known_sibling_ids" not in payload:
             payload["known_sibling_ids"] = self._known_sibling_ids
-        return validate_sibling_supervisor_event(payload)
+        admission = validate_sibling_supervisor_event(payload)
+        registered = self._capability_records.get(admission.sibling_supervisor_id)
+        if registered is None:
+            return admission
+        if admission.epoch != registered.epoch:
+            raise SiblingSupervisorCapabilityRegistryError(
+                "stale fence epoch",
+                code="stale_fence_epoch",
+            )
+        if admission.capability not in registered.capabilities:
+            raise SiblingSupervisorCapabilityRegistryError(
+                f"sibling {admission.sibling_supervisor_id!r} did not advertise "
+                f"{admission.capability!r}",
+                code="capability_not_advertised",
+            )
+        return admission
+
+    def _capability_payload(self, record: Mapping[str, Any]) -> dict[str, Any]:
+        payload: dict[str, Any] = dict(record)
+        payload.setdefault("local_supervisor_id", self._supervisor_id)
+        payload.setdefault("epoch", record.get("epoch", self._epoch))
+        if self._known_sibling_ids and "known_sibling_ids" not in payload:
+            payload["known_sibling_ids"] = self._known_sibling_ids
+        return payload
+
+    def register_sibling_capability(
+        self, record: Mapping[str, Any]
+    ) -> SiblingSupervisorCapabilityAdmission:
+        return register_sibling_supervisor_capability(
+            self._capability_payload(record),
+            self._capability_records,
+        )
+
+    def lookup_sibling_capability(
+        self,
+        sibling_supervisor_id: str,
+        capability: str | None = None,
+    ) -> SiblingSupervisorCapabilityAdmission:
+        return lookup_sibling_supervisor_capability(
+            self._capability_records,
+            sibling_supervisor_id,
+            capability,
+        )
+
+    def sibling_has_capability(
+        self, sibling_supervisor_id: str, capability: str
+    ) -> bool:
+        return sibling_supervisor_has_capability(
+            self._capability_records,
+            sibling_supervisor_id,
+            capability,
+        )
+
+    def list_sibling_capabilities(
+        self,
+    ) -> tuple[SiblingSupervisorCapabilityAdmission, ...]:
+        return list_sibling_supervisor_capabilities(self._capability_records)
+
+    def revoke_sibling_capability(
+        self, record: Mapping[str, Any]
+    ) -> SiblingSupervisorCapabilityAdmission:
+        return revoke_sibling_supervisor_capability(
+            self._capability_payload(record),
+            self._capability_records,
+        )
+
+    def capability_registry_snapshot(self) -> Mapping[str, Any]:
+        return MappingProxyType(
+            {
+                sibling_id: admission.to_dict()
+                for sibling_id, admission in sorted(self._capability_records.items())
+            }
+        )
 
 
 __all__ = [
+    "ALLOWED_SIBLING_CAPABILITIES",
     "ALLOWED_SIBLING_EFFECTS",
     "CANONICAL_EVENT_FORBIDDEN_FIELDS",
     "CANONICAL_EVENT_INTERFACE",
@@ -516,15 +1019,28 @@ __all__ = [
     "CANONICAL_EVENT_SCHEMA_ID",
     "DATABASE_EVENT_LOG_INTERFACE",
     "EVENT_CURSOR_INTERFACE",
+    "FORBIDDEN_SIBLING_CAPABILITIES",
+    "SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING",
+    "SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_CONSUMES",
+    "SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_INTERFACE",
+    "SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_SCHEMA",
     "SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING",
     "SIBLING_SUPERVISOR_EVENT_VALIDATION_CONSUMES",
     "SIBLING_SUPERVISOR_EVENT_VALIDATION_INTERFACE",
     "SIBLING_SUPERVISOR_EVENT_VALIDATION_SCHEMA",
     "SUPERVISOR_FABRIC_INTERFACE",
+    "SiblingSupervisorCapabilityAdmission",
+    "SiblingSupervisorCapabilityRegistryError",
     "SiblingSupervisorEventAdmission",
     "SiblingSupervisorEventValidationError",
     "SupervisorFabric",
     "SupervisorFabricError",
+    "admit_sibling_supervisor_capability",
     "issue_fence",
+    "list_sibling_supervisor_capabilities",
+    "lookup_sibling_supervisor_capability",
+    "register_sibling_supervisor_capability",
+    "revoke_sibling_supervisor_capability",
+    "sibling_supervisor_has_capability",
     "validate_sibling_supervisor_event",
 ]
