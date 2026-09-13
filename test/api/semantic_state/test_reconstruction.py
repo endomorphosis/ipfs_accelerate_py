@@ -59,7 +59,7 @@ def test_stale_valid_nomination_rejected_after_real_source_change(source):
     changed = commit(root)
     with pytest.raises(r.ReconstructionError, match="cold reconstruction"):
         r.reconstruct_semantic_state(root, **changed, nominated_bundle=old.bundle)
-    with pytest.raises(r.ReconstructionError, match="requested commit/tree"):
+    with pytest.raises(r.ReconstructionError, match="requested committed population"):
         r.reconstruct_semantic_state(root, **request)
 
 
@@ -102,15 +102,18 @@ def test_working_or_hidden_source_rejected(source, mutation):
     (r.ReconstructionLimits(max_entries=1), "entry"),
 ])
 def test_budget_refusal_precedes_producer_execution(source, limits, reason, monkeypatch):
-    from ipfs_datasets_py.logic.software_contracts.semantic_index import snapshot
+    from ipfs_datasets_py.logic.software_contracts.semantic_index import committed_snapshot
     root, _ = source
     (root / "second.py").write_text("x = 1\n")
     request = commit(root)
     def forbidden(*args, **kwargs):
         pytest.fail("source acquisition occurred beyond the configured budget")
-    monkeypatch.setattr(snapshot, "snapshot_repository", forbidden)
-    with pytest.raises(r.ReconstructionError, match=reason):
+    monkeypatch.setattr(committed_snapshot, "snapshot_committed_repository", forbidden)
+    with pytest.raises(r.ReconstructionBudgetError, match=reason) as refused:
         r.reconstruct_semantic_state(root, **request, limits=limits)
+    assert len(refused.value.plan.entries) == 2
+    assert refused.value.plan.total_blob_bytes == sum(p.stat().st_size for p in root.glob("*.py"))
+    assert refused.value.plan.to_dict()["blob_bytes_acquired"] == 0
 
 
 def test_source_drift_during_producer_is_rejected(source, monkeypatch):
@@ -138,11 +141,34 @@ def test_opaque_source_stays_visible_and_target_is_not_executed(source):
     assert result.observation()["completion_authority"] is False
 
 
-def test_datasets_default_exclusions_cannot_hide_tracked_source(source):
+def test_datasets_explicit_complete_population_includes_normally_excluded_source(source, monkeypatch):
+    from ipfs_datasets_py.logic.software_contracts.semantic_index.scanner import RepositoryScanner
     root, _ = source
-    (root / "vendor").mkdir()
-    (root / "vendor" / "required.py").write_text("x = 1\n")
+    for directory in ("vendor", "coverage", "venv"):
+        (root / directory).mkdir()
+        (root / directory / "required.py").write_text("def required():\n    return 1\n")
     request = commit(root)
+    scanned = []
+    real_scan = RepositoryScanner.scan_snapshot
+    def observe(self, snapshot, *args, **kwargs):
+        scanned.extend(entry.path for entry in snapshot.entries)
+        return real_scan(self, snapshot, *args, **kwargs)
+    monkeypatch.setattr(RepositoryScanner, "scan_snapshot", observe)
+    result = r.reconstruct_semantic_state(root, **request)
+    assert scanned == ["coverage/required.py", "module.py", "vendor/required.py", "venv/required.py"]
+    assert result.population_cid
+    assert result.observation()["population_scope"] == "complete-committed"
+    assert result.observation()["completion_authority"] is False
+
+
+def test_reduced_producer_population_is_still_refused(source, monkeypatch):
+    from dataclasses import replace
+    from ipfs_datasets_py.logic.software_contracts.semantic_index import committed_snapshot
+    root, request = source
+    real_snapshot = committed_snapshot.snapshot_committed_repository
+    def reduced(*args, **kwargs):
+        return replace(real_snapshot(*args, **kwargs), entries=())
+    monkeypatch.setattr(committed_snapshot, "snapshot_committed_repository", reduced)
     with pytest.raises(r.ReconstructionError, match="omits committed source"):
         r.reconstruct_semantic_state(root, **request)
 
@@ -205,6 +231,6 @@ def test_subdirectory_cannot_silently_expand_requested_scope(source):
 
 
 def test_filesystem_source_has_no_committed_authority(tmp_path):
-    with pytest.raises(r.ReconstructionError, match="unavailable"):
+    with pytest.raises(r.ReconstructionError, match="failed|unavailable"):
         r.reconstruct_semantic_state(tmp_path, expected_commit="a" * 40,
                                      expected_tree="b" * 40, repository_id="fixture")
