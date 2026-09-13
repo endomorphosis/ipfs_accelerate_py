@@ -1,9 +1,10 @@
 # Paged evidence and formal limitations for committed chunk projections
 
 `chunked_reconstruction.reconstruct_chunked_semantic_state` is an explicit
-consumer of the datasets paging producer at `dbaff9c2198e014ee1bff4bba7c1c7240dbf4231`.
+consumer of the datasets streaming producer at `30e76cefc93635a0f7d3e80a190174aed7f14785`.
 It builds on the formal limitation consumer
-`af811cae6743138cb0afaa2e86c044993e8dea5d` and retains the captured consumer
+`af811cae6743138cb0afaa2e86c044993e8dea5d`, paging consumer
+`eae35e0811dd2f04fa9c2a4db792032fca43cc2a`, and retains the captured consumer
 `c705c3751b11dcd6fc693258970708e0f5582ef9` unchanged. Both source revisions
 and actual imported bytes must be qualified by the native launcher. The existing
 `reconstruct_semantic_state` API and snapshot schemas retain their behavior.
@@ -51,15 +52,42 @@ An empty known-limitation index reports `not_established`, and every result keep
 complete-analysis, semantic-acceptance and completion authority false. No
 nomination, empty index or content hash establishes positive analysis coverage.
 
-The 4 MiB per-file and 128 MiB retained-source ceilings remain enforced. Returned
-semantic and manifest metadata blocks have a 1 MiB ceiling. Larger ordinary
-source populations still require a streaming scanner/pytest frontend. A complete
+The default retained projection keeps its 4 MiB per-file and 128 MiB aggregate
+source ceilings. Returned semantic and manifest metadata blocks retain a 1 MiB
+ceiling. A complete
 15,770-entry synthetic population now fits bounded snapshot/manifest pages; no
 full live SPAR snapshot was acquired. Original snapshot-CID reconstruction and
 scanner acquisition metadata still use bounded full metadata in memory. Other
 oversized state indices, artifact facts or AST blocks may still require paging;
 this consumer refuses them. Oversized code still needs separately
 qualified analysis before its limitation can disappear.
+
+Passing typed `streaming_limits=StreamingScanLimits()` opts into the new cold
+ordinary-source path. It consumes one committed blob at a time, retains no source
+bytes in the snapshot, and runs static Python/pytest extraction and final graph
+assembly in owned, bounded children. Canonical facts and final state have a
+32 MiB aggregate bound; individual records retain a 1 MiB bound. AST counts,
+worker address space/CPU/time and pipe sizes also have fixed limits. Failures
+raise `StreamingReconstructionError` with a structured producer refusal. An
+oversized final bundle block is likewise a structured refusal. The existing
+captured consumer remains byte-identical and the default chunk path is preserved.
+
+When streaming is selected, configuration schema v3 binds the explicit mode,
+fact/AST/time limits and the observed process profile, including worker source
+hash. Worker source and committed Git fences must remain stable throughout the
+scan. Runtime RSS measurements appear only in observations and never alter
+canonical identities. A small mixed fixture produces exactly the same paged
+bundle as the retained path; its configuration digest differs because execution
+bounds differ. Separate producer and full-consumer tests consume a real
+138,410,910-byte population of 66 ordinary Python files and preserve every source
+CID without converting any input to opaque.
+
+These are canonical fact bounds, not a hard cap on total parent RSS. The producer
+report measures parent Python allocations separately from analyzer/assembly
+child RSS; Git decoding retains its independent process cap. The current
+32 MiB fact bound, other oversized semantic indices/ASTs, oversized opaque code,
+and native qualification remain possible refusals for the actual SPAR population.
+No full SPAR acquisition was performed.
 
 This change does not schedule providers, alter boards/holds, update live source
 pins, or grant native admission. Durable storage/admission, independent producer
