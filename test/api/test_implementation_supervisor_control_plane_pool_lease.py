@@ -983,6 +983,57 @@ def test_control_plane_reload_defers_for_exact_database_portal_callback_gap(
     )
     assert fixture["state_path"].read_bytes() == original_state
 
+def test_control_plane_reload_defers_during_post_finish_callback_settlement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _finish_database_portal_callback_gap(
+        _seed_live_database_portal_callback_gap(tmp_path)
+    )
+    supervisor = fixture["supervisor"]
+    supervisor._loaded_control_plane_source = {
+        "source_id": "loaded-source",
+        "repository_revision": "loaded-revision",
+    }
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_source_snapshot",
+        lambda: {
+            "source_id": "current-source",
+            "repository_revision": "current-revision",
+        },
+    )
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    activity = supervisor._active_managed_database_portal_callback(
+        fixture["child"]
+    )
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert activity is not None
+    assert activity["task_id"] == "PCSM-043"
+    assert activity["phase"] == "callback_settlement_grace"
+    assert decision.action == "continue"
+    assert (
+        loop.config.status_extra_fields["control_plane_reload_deferred_reason"]
+        == "active_managed_database_portal_callback"
+    )
+    assert (
+        loop.config.status_extra_fields["control_plane_reload_deferred_task_id"]
+        == "PCSM-043"
+    )
+
+
 @pytest.mark.parametrize(
     "case",
     (
