@@ -55,6 +55,13 @@ def git(root, *args):
     return subprocess.check_output(['git', '-C', str(root), *args], text=True).strip()
 
 
+def clean_source_identity(root):
+    if git(root, 'status', '--porcelain=v1', '--untracked-files=normal'):
+        raise ValueError('qualification source is dirty: ' + str(root))
+    return {'head': git(root, 'rev-parse', 'HEAD'),
+            'tree': git(root, 'rev-parse', 'HEAD^{tree}')}
+
+
 def install_readonly_guard(roots):
     """Guard Python writes, including descriptor-relative filesystem APIs."""
     open_context = threading.local()
@@ -154,8 +161,7 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     roots = {'ipfs_accelerate_py': root, 'ipfs_datasets_py': root / 'ipfs_datasets_py',
              'ipfs_kit_py': root / 'ipfs_kit_py'}
-    identities = {name: {'head': git(path, 'rev-parse', 'HEAD'),
-                         'tree': git(path, 'rev-parse', 'HEAD^{tree}')}
+    identities = {name: clean_source_identity(path)
                   for name, path in roots.items()}
     config = json.loads((root / 'config/agent_supervisor_efficiency_state_hardening_scheduler.json').read_text())
     env = {**os.environ, 'GIT_OPTIONAL_LOCKS': '0', 'PYTHONDONTWRITEBYTECODE': '1',
@@ -195,17 +201,20 @@ def main():
         print(json.dumps(result), flush=True)
     after = evidence_hashes()
     unchanged = before == after
+    final_identities = {name: clean_source_identity(path) for name, path in roots.items()}
+    source_unchanged = identities == final_identities
     report = {'schema': 'aseh/isolated-current-source-qualification@1', 'authority': False,
               'native_receipt_admitted': False, 'goal_acceptance': False, 'merge_authority': False,
               'source_identities': identities, 'capture_sha256': hashlib.sha256((capture / 'capture-receipt.json').read_bytes()).hexdigest(),
               'recorded_evidence_unchanged': unchanged, 'before': before, 'after': after,
-              'conftest_scope': 'unrelated repository conftests excluded; suite fixtures and exact package origins retained',
+              'source_unchanged': source_unchanged, 'final_source_identities': final_identities,
+              'conftest_scope': 'outer pytest conftests excluded; explicit test-module fixtures and exact package origins retained; nested sealed executors keep their original command',
               'results': results, 'passed': sum(r['exit_code'] == 0 for r in results),
               'failed': sum(r['exit_code'] != 0 for r in results)}
     with (output / 'qualification.json').open('x') as handle:
         json.dump(report, handle, indent=2, sort_keys=True)
         handle.write('\n')
-    return 0 if unchanged and all(r['exit_code'] == 0 for r in results) else 1
+    return 0 if unchanged and source_unchanged and all(r['exit_code'] == 0 for r in results) else 1
 
 
 if __name__ == '__main__':

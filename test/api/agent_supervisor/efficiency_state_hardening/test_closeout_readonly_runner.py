@@ -77,3 +77,24 @@ os.rmdir('reservation', dir_fd=fd); os.close(fd)
     result = subprocess.run([sys.executable, '-B', '-c', script, str(_PATH), str(tmp_path)],
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_qualification_refuses_dirty_or_untracked_source(tmp_path):
+    def git(*args):
+        return subprocess.run(['git', '-C', str(tmp_path), *args],
+                              capture_output=True, text=True, check=True)
+    git('init', '-q')
+    tracked = tmp_path / 'module.py'
+    tracked.write_text('VALUE = 1\n')
+    git('add', 'module.py')
+    git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+        'commit', '-qm', 'fixture')
+    identity = RUNNER.clean_source_identity(tmp_path)
+    assert identity['head'] == git('rev-parse', 'HEAD').stdout.strip()
+    tracked.write_text('VALUE = 2\n')
+    with pytest.raises(ValueError, match='source is dirty'):
+        RUNNER.clean_source_identity(tmp_path)
+    tracked.write_text('VALUE = 1\n')
+    (tmp_path / 'shadow.py').write_text('VALUE = 3\n')
+    with pytest.raises(ValueError, match='source is dirty'):
+        RUNNER.clean_source_identity(tmp_path)

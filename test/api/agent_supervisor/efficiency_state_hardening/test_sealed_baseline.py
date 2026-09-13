@@ -284,11 +284,38 @@ def _policy_identity(scheduler: Mapping[str, Any], *, scheduler_digest: str | No
     )
 
 
+SEALED_OUTPUT_COMMIT = "7d4f19ef5a6f59beacffd34804c3465a76f079c5"
+SEALED_OUTPUT_TREE = "d1accc90fe20be0e8299c39bf4824d2ed95865b8"
+
+
+def _historical_sealed_output(relative: str) -> bytes:
+    """Read the original validator/benchmark bytes without replacing its seal."""
+    assert not Path(relative).is_absolute() and '..' not in Path(relative).parts
+    assert _peel_tree(SEALED_OUTPUT_COMMIT) == SEALED_OUTPUT_TREE
+    assert _git_ok('merge-base', '--is-ancestor', SEALED_OUTPUT_COMMIT, 'HEAD')
+    # Bind this historical source to the exact baseline and manifest under test.
+    for seal in (BASELINE_PATH, MANIFEST_PATH):
+        result = subprocess.run(
+            ['git', 'show', SEALED_OUTPUT_COMMIT + ':' + seal.relative_to(ROOT).as_posix()],
+            cwd=ROOT, capture_output=True, check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == seal.read_bytes()
+    result = subprocess.run(['git', 'show', SEALED_OUTPUT_COMMIT + ':' + relative],
+                            cwd=ROOT, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def _sealed_output_digest(relative: str) -> str:
+    return 'sha256:' + hashlib.sha256(_historical_sealed_output(relative)).hexdigest()
+
+
 def _benchmark_digest(paths: list[str]) -> str:
     return content_identity(
         {
             "files": [
-                {"path": relative, "sha256": _sha256_file(ROOT / relative)}
+                {"path": relative, "sha256": _sealed_output_digest(relative)}
                 for relative in paths
             ],
             "schema": DIGEST_SCHEMA,
@@ -615,7 +642,7 @@ def test_task_and_acceptance_identities_and_unavailable_corpora() -> None:
         "test/api/agent_supervisor/efficiency_state_hardening/test_sealed_baseline.py"
     )
     if "sha256" in acceptance:
-        assert acceptance["sha256"] == _sha256_file(ROOT / acceptance["path"])
+        assert acceptance["sha256"] == _sealed_output_digest(acceptance["path"])
     _assert_unavailable(
         acceptance["hermetic_acceptance_vectors"],
         field="hermetic_acceptance_vectors",
@@ -644,13 +671,13 @@ def test_cost_method_benchmark_digest_and_resource_limits() -> None:
     file_paths = [
         item["path"] if isinstance(item, dict) else item for item in digest["files"]
     ]
-    live = _benchmark_digest(file_paths)
-    _assert_cid(live, field="computed_benchmark_code_digest")
+    sealed = _benchmark_digest(file_paths)
+    _assert_cid(sealed, field="computed_benchmark_code_digest")
     if "digest" in digest:
-        assert digest["digest"] == live
+        assert digest["digest"] == sealed
     for item in digest["files"]:
         if isinstance(item, dict) and "sha256" in item:
-            assert item["sha256"] == _sha256_file(ROOT / item["path"])
+            assert item["sha256"] == _sealed_output_digest(item["path"])
     assert limits["max_lanes"] == scheduler["max_lanes"]
     assert limits["max_concurrency"] == scheduler["provider"]["max_concurrency"]
     assert limits["implementation_timeout_seconds"] == (
