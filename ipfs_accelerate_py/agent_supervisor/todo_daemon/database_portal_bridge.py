@@ -29382,12 +29382,16 @@ class DatabasePortalExecutionBridge:
                 or identity != content_identity(material)):
             raise DatabasePortalBridgeError("retained completion dispatch history is malformed")
         sources = []
+        retained_failure_reasons = {
+            "Portal completion source canonical task key mismatches",
+            "Portal callback reconciliation binding is invalid",
+        }
         for row in material["revisions"]:
             body = row.get("body") if isinstance(row, Mapping) else None
             terminal = body.get("completion_receipt") if isinstance(body, Mapping) else None
             if (isinstance(terminal, Mapping)
                     and terminal.get("operation") == "database_portal_terminal_failure"
-                    and terminal.get("reason") == "Portal completion source canonical task key mismatches"):
+                    and terminal.get("reason") in retained_failure_reasons):
                 sources.append(terminal)
         if not sources:
             return
@@ -29395,9 +29399,10 @@ class DatabasePortalExecutionBridge:
         receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
         seed = receipt.get("post_merge_completion_recovery_seed") if isinstance(receipt, Mapping) else None
         if not (isinstance(seed, Mapping)
-                and seed.get("terminal_reason") == "Portal completion source canonical task key mismatches"
+                and seed.get("terminal_reason") in retained_failure_reasons
                 and seed.get("task_cid") == str(attempt.task_cid)
-                and any(all(seed.get(k) == terminal.get(k) for k in
+                and any(seed.get("terminal_reason") == terminal.get("reason")
+                    and all(seed.get(k) == terminal.get(k) for k in
                     ("attempt_id", "claim_id", "lease_id", "owner_session_id", "attempt_number", "fencing_token", "fence_epoch"))
                     for terminal in sources)):
             raise DatabasePortalBridgeError("retained callback recovery requires exact source seed before dispatch")

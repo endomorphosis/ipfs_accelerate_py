@@ -1,0 +1,2247 @@
+{
+  "projection_cid": "baguqeera6xa2qfh7htoz3uupknmf6gxxm227rvwknfcrciczx3mlcz6243va",
+  "revisions": [
+    {
+      "body": {
+        "allowed_effects": [
+          "isolated worktree edits",
+          "local deterministic validation",
+          "reviewed merge request through canonical authority"
+        ],
+        "authority_requirement": "A2",
+        "base_repositories": {
+          "ipfs_accelerate_py": {
+            "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+            "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+          },
+          "ipfs_datasets_py": {
+            "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+            "tree": "456e09b51d6a07a3a5873436df24054768195320"
+          },
+          "ipfs_kit_py": {
+            "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+            "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+          },
+          "lift_coding": {
+            "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+          }
+        },
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "budget_profile": "B3",
+        "budgets": {
+          "max_concurrent_tasks": 1,
+          "max_cpu_seconds": 7200,
+          "max_frontier_model_calls": 1,
+          "max_gpu_seconds": 1800,
+          "max_input_tokens": 48000,
+          "max_model_calls": 5,
+          "max_output_tokens": 14000,
+          "max_prover_seconds": 1800,
+          "max_provider_cost_usd": 20,
+          "max_test_seconds": 3600,
+          "max_wall_seconds": 28800,
+          "validation_reserve_percent": 30
+        },
+        "completion_mode": "independent_evidence_and_canonical_cas",
+        "conflict_policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+        "exact_inputs": [
+          "DOEP-PLAN-V5",
+          "exact source forest",
+          "current dependency receipts",
+          "current policy and toolchain identities"
+        ],
+        "exact_outputs": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "execution_validation": [
+          [
+            "python3",
+            "-m",
+            "pytest",
+            "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "-q"
+          ]
+        ],
+        "externally_claimable": false,
+        "forbidden_effects": [
+          "direct DuckDB or DuckLake write",
+          "policy-pointer mutation",
+          "task terminalization",
+          "credential access",
+          "scope expansion"
+        ],
+        "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "output_manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+        "owned_files": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "owning_repository": "external/ipfs_accelerate",
+        "parent_goal_id": "DOEP-G060",
+        "plan_epoch": 1,
+        "plan_revision": "DOEP-PLAN-V5",
+        "postconditions": [
+          "All exact outputs exist inside the declared write scope",
+          "The exact validation argv exits zero on the resulting tree",
+          "Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt",
+          "No truth, safety, authority or promotion gate has been weakened"
+        ],
+        "preconditions": [
+          "Exact base commit/tree or a current re-admission receipt for this plan epoch",
+          "Every dependency has a current admitted success receipt",
+          "Delegated repository, path, method and effect authority is current",
+          "At least the declared validation reserve remains available"
+        ],
+        "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+        "proof_obligations": [
+          "authority and scope preservation",
+          "no stale evidence admission",
+          "declared semantic or operational property"
+        ],
+        "read_scope": [
+          "declared dependency cone",
+          "admitted current receipts",
+          "canonical interfaces named in the plan"
+        ],
+        "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "repository_authority": "ACC",
+        "required_evidence": [
+          "source commit/tree/gitlinks",
+          "changed-path digest",
+          "test/proof results",
+          "receipt CID",
+          "limitations",
+          "verifier admission"
+        ],
+        "risk_class": "R3",
+        "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+        "root_goal_id": "DOEP-G000",
+        "stable_task_id": "DOEP-053",
+        "subgoal_id": "DOEP-G060.S2",
+        "superproject_outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "superproject_receipt_output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "superproject_test_output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "terminal_non_success": [
+          "blocked_dependency",
+          "blocked_authority",
+          "blocked_policy",
+          "budget_exhausted",
+          "validation_failed",
+          "provider_outcome_unknown",
+          "quarantined_nonconvergent",
+          "cancelled"
+        ],
+        "terminal_success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+        "test_obligations": [
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "current protected regression subset selected by impact analysis"
+        ],
+        "test_output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "title": "Add automatic bounded task refill",
+        "unknown_effect_rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+        "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+        "write_scope": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ]
+      },
+      "revision": 1,
+      "status": "todo"
+    },
+    {
+      "body": {
+        "allowed_effects": [
+          "isolated worktree edits",
+          "local deterministic validation",
+          "reviewed merge request through canonical authority"
+        ],
+        "authority_requirement": "A2",
+        "base_repositories": {
+          "ipfs_accelerate_py": {
+            "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+            "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+          },
+          "ipfs_datasets_py": {
+            "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+            "tree": "456e09b51d6a07a3a5873436df24054768195320"
+          },
+          "ipfs_kit_py": {
+            "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+            "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+          },
+          "lift_coding": {
+            "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+          }
+        },
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "budget_profile": "B3",
+        "budgets": {
+          "max_concurrent_tasks": 1,
+          "max_cpu_seconds": 7200,
+          "max_frontier_model_calls": 1,
+          "max_gpu_seconds": 1800,
+          "max_input_tokens": 48000,
+          "max_model_calls": 5,
+          "max_output_tokens": 14000,
+          "max_prover_seconds": 1800,
+          "max_provider_cost_usd": 20,
+          "max_test_seconds": 3600,
+          "max_wall_seconds": 28800,
+          "validation_reserve_percent": 30
+        },
+        "completion_mode": "independent_evidence_and_canonical_cas",
+        "completion_receipt": {
+          "attempt_id": "attempt:26960c540ac042c3b023e9738b41ed69",
+          "attempt_number": 1,
+          "claim_id": "claim:f2e10fa7661b4a9ea0513fca73aea272",
+          "claim_phase_schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-reservation@1",
+          "claim_process_attestation": {
+            "boot_id": "006c44d2-c190-4cce-9a49-35ab689b243f",
+            "client_id": "database-implementation-daemon:doep-v1-executor:shard:3-of-4:track:f788e2919039",
+            "grant_id": "owner-grant:2d325cf7-6ef5-42cc-8cb6-42ee6d79dfc8",
+            "parent_pid": 2896622,
+            "pid": 120031,
+            "process_birth_id": "birth:f39a261b9b76b525c672f5595cd29402",
+            "schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1",
+            "start_time_ticks": 68462178,
+            "uid": 1000
+          },
+          "claimed_from_revision": 1,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-053",
+            "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "task_contract_cid": "baguqeeras67giuto52oijgr4g7u25hufs6wlj5zcg36bvs3teckmmrxbuabq",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+          "fence_epoch": 1,
+          "fencing_token": 1,
+          "idle_lane_work_stealing": "",
+          "lease_id": "lease:ffd262ca85104d3593448b427ab09de7",
+          "operation": "database_claim",
+          "owner_session_id": "doep-v1-executor:shard:3-of-4:track:f788e2919039",
+          "strict_task_sharding": true,
+          "task_prefix": "DOEP-",
+          "task_shard_count": 4,
+          "task_shard_index": 3
+        },
+        "conflict_policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+        "exact_inputs": [
+          "DOEP-PLAN-V5",
+          "exact source forest",
+          "current dependency receipts",
+          "current policy and toolchain identities"
+        ],
+        "exact_outputs": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "execution_validation": [
+          [
+            "python3",
+            "-m",
+            "pytest",
+            "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "-q"
+          ]
+        ],
+        "externally_claimable": false,
+        "forbidden_effects": [
+          "direct DuckDB or DuckLake write",
+          "policy-pointer mutation",
+          "task terminalization",
+          "credential access",
+          "scope expansion"
+        ],
+        "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "output_manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+        "owned_files": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "owning_repository": "external/ipfs_accelerate",
+        "parent_goal_id": "DOEP-G060",
+        "plan_epoch": 1,
+        "plan_revision": "DOEP-PLAN-V5",
+        "postconditions": [
+          "All exact outputs exist inside the declared write scope",
+          "The exact validation argv exits zero on the resulting tree",
+          "Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt",
+          "No truth, safety, authority or promotion gate has been weakened"
+        ],
+        "preconditions": [
+          "Exact base commit/tree or a current re-admission receipt for this plan epoch",
+          "Every dependency has a current admitted success receipt",
+          "Delegated repository, path, method and effect authority is current",
+          "At least the declared validation reserve remains available"
+        ],
+        "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+        "proof_obligations": [
+          "authority and scope preservation",
+          "no stale evidence admission",
+          "declared semantic or operational property"
+        ],
+        "read_scope": [
+          "declared dependency cone",
+          "admitted current receipts",
+          "canonical interfaces named in the plan"
+        ],
+        "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "repository_authority": "ACC",
+        "required_evidence": [
+          "source commit/tree/gitlinks",
+          "changed-path digest",
+          "test/proof results",
+          "receipt CID",
+          "limitations",
+          "verifier admission"
+        ],
+        "risk_class": "R3",
+        "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+        "root_goal_id": "DOEP-G000",
+        "stable_task_id": "DOEP-053",
+        "subgoal_id": "DOEP-G060.S2",
+        "superproject_outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "superproject_receipt_output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "superproject_test_output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "terminal_non_success": [
+          "blocked_dependency",
+          "blocked_authority",
+          "blocked_policy",
+          "budget_exhausted",
+          "validation_failed",
+          "provider_outcome_unknown",
+          "quarantined_nonconvergent",
+          "cancelled"
+        ],
+        "terminal_success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+        "test_obligations": [
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "current protected regression subset selected by impact analysis"
+        ],
+        "test_output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "title": "Add automatic bounded task refill",
+        "unknown_effect_rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+        "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+        "write_scope": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ]
+      },
+      "revision": 2,
+      "status": "in_progress"
+    },
+    {
+      "body": {
+        "allowed_effects": [
+          "isolated worktree edits",
+          "local deterministic validation",
+          "reviewed merge request through canonical authority"
+        ],
+        "authority_requirement": "A2",
+        "base_repositories": {
+          "ipfs_accelerate_py": {
+            "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+            "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+          },
+          "ipfs_datasets_py": {
+            "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+            "tree": "456e09b51d6a07a3a5873436df24054768195320"
+          },
+          "ipfs_kit_py": {
+            "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+            "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+          },
+          "lift_coding": {
+            "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+          }
+        },
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "budget_profile": "B3",
+        "budgets": {
+          "max_concurrent_tasks": 1,
+          "max_cpu_seconds": 7200,
+          "max_frontier_model_calls": 1,
+          "max_gpu_seconds": 1800,
+          "max_input_tokens": 48000,
+          "max_model_calls": 5,
+          "max_output_tokens": 14000,
+          "max_prover_seconds": 1800,
+          "max_provider_cost_usd": 20,
+          "max_test_seconds": 3600,
+          "max_wall_seconds": 28800,
+          "validation_reserve_percent": 30
+        },
+        "completion_mode": "independent_evidence_and_canonical_cas",
+        "completion_receipt": {
+          "admitted_from_revision": 2,
+          "attempt_execution_phase": "claimed",
+          "attempt_execution_revision": 1,
+          "attempt_id": "attempt:26960c540ac042c3b023e9738b41ed69",
+          "attempt_number": 1,
+          "claim_id": "claim:f2e10fa7661b4a9ea0513fca73aea272",
+          "claim_phase_schema": "ipfs_accelerate_py/agent-supervisor/typed-database-attempt-admission@1",
+          "claim_process_attestation": {
+            "boot_id": "006c44d2-c190-4cce-9a49-35ab689b243f",
+            "client_id": "database-implementation-daemon:doep-v1-executor:shard:3-of-4:track:f788e2919039",
+            "grant_id": "owner-grant:2d325cf7-6ef5-42cc-8cb6-42ee6d79dfc8",
+            "parent_pid": 2896622,
+            "pid": 120031,
+            "process_birth_id": "birth:f39a261b9b76b525c672f5595cd29402",
+            "schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1",
+            "start_time_ticks": 68462178,
+            "uid": 1000
+          },
+          "claimed_from_revision": 1,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-053",
+            "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "task_contract_cid": "baguqeeras67giuto52oijgr4g7u25hufs6wlj5zcg36bvs3teckmmrxbuabq",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+          "fence_epoch": 1,
+          "fencing_token": 1,
+          "idle_lane_work_stealing": "",
+          "lease_id": "lease:ffd262ca85104d3593448b427ab09de7",
+          "operation": "database_attempt_admitted",
+          "owner_session_id": "doep-v1-executor:shard:3-of-4:track:f788e2919039",
+          "strict_task_sharding": true,
+          "task_prefix": "DOEP-",
+          "task_shard_count": 4,
+          "task_shard_index": 3
+        },
+        "conflict_policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+        "exact_inputs": [
+          "DOEP-PLAN-V5",
+          "exact source forest",
+          "current dependency receipts",
+          "current policy and toolchain identities"
+        ],
+        "exact_outputs": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "execution_validation": [
+          [
+            "python3",
+            "-m",
+            "pytest",
+            "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "-q"
+          ]
+        ],
+        "externally_claimable": false,
+        "forbidden_effects": [
+          "direct DuckDB or DuckLake write",
+          "policy-pointer mutation",
+          "task terminalization",
+          "credential access",
+          "scope expansion"
+        ],
+        "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "output_manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+        "owned_files": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "owning_repository": "external/ipfs_accelerate",
+        "parent_goal_id": "DOEP-G060",
+        "plan_epoch": 1,
+        "plan_revision": "DOEP-PLAN-V5",
+        "postconditions": [
+          "All exact outputs exist inside the declared write scope",
+          "The exact validation argv exits zero on the resulting tree",
+          "Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt",
+          "No truth, safety, authority or promotion gate has been weakened"
+        ],
+        "preconditions": [
+          "Exact base commit/tree or a current re-admission receipt for this plan epoch",
+          "Every dependency has a current admitted success receipt",
+          "Delegated repository, path, method and effect authority is current",
+          "At least the declared validation reserve remains available"
+        ],
+        "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+        "proof_obligations": [
+          "authority and scope preservation",
+          "no stale evidence admission",
+          "declared semantic or operational property"
+        ],
+        "read_scope": [
+          "declared dependency cone",
+          "admitted current receipts",
+          "canonical interfaces named in the plan"
+        ],
+        "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "repository_authority": "ACC",
+        "required_evidence": [
+          "source commit/tree/gitlinks",
+          "changed-path digest",
+          "test/proof results",
+          "receipt CID",
+          "limitations",
+          "verifier admission"
+        ],
+        "risk_class": "R3",
+        "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+        "root_goal_id": "DOEP-G000",
+        "stable_task_id": "DOEP-053",
+        "subgoal_id": "DOEP-G060.S2",
+        "superproject_outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "superproject_receipt_output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "superproject_test_output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "terminal_non_success": [
+          "blocked_dependency",
+          "blocked_authority",
+          "blocked_policy",
+          "budget_exhausted",
+          "validation_failed",
+          "provider_outcome_unknown",
+          "quarantined_nonconvergent",
+          "cancelled"
+        ],
+        "terminal_success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+        "test_obligations": [
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "current protected regression subset selected by impact analysis"
+        ],
+        "test_output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "title": "Add automatic bounded task refill",
+        "unknown_effect_rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+        "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+        "write_scope": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ]
+      },
+      "revision": 3,
+      "status": "in_progress"
+    },
+    {
+      "body": {
+        "allowed_effects": [
+          "isolated worktree edits",
+          "local deterministic validation",
+          "reviewed merge request through canonical authority"
+        ],
+        "authority_requirement": "A2",
+        "base_repositories": {
+          "ipfs_accelerate_py": {
+            "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+            "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+          },
+          "ipfs_datasets_py": {
+            "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+            "tree": "456e09b51d6a07a3a5873436df24054768195320"
+          },
+          "ipfs_kit_py": {
+            "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+            "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+          },
+          "lift_coding": {
+            "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+          }
+        },
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "budget_profile": "B3",
+        "budgets": {
+          "max_concurrent_tasks": 1,
+          "max_cpu_seconds": 7200,
+          "max_frontier_model_calls": 1,
+          "max_gpu_seconds": 1800,
+          "max_input_tokens": 48000,
+          "max_model_calls": 5,
+          "max_output_tokens": 14000,
+          "max_prover_seconds": 1800,
+          "max_provider_cost_usd": 20,
+          "max_test_seconds": 3600,
+          "max_wall_seconds": 28800,
+          "validation_reserve_percent": 30
+        },
+        "completion_mode": "independent_evidence_and_canonical_cas",
+        "completion_receipt": {
+          "attempt_id": "attempt:26960c540ac042c3b023e9738b41ed69",
+          "attempt_number": 1,
+          "claim_id": "claim:f2e10fa7661b4a9ea0513fca73aea272",
+          "control_expected_revision": 3,
+          "control_expected_status": "in_progress",
+          "coordination": {},
+          "execution_finished_at_ms": 1789276136959,
+          "execution_phase": "failed",
+          "execution_revision": 3,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-053",
+            "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "task_contract_cid": "baguqeeras67giuto52oijgr4g7u25hufs6wlj5zcg36bvs3teckmmrxbuabq",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+          "fence_epoch": 1,
+          "fencing_token": 1,
+          "lease_id": "lease:ffd262ca85104d3593448b427ab09de7",
+          "operation": "database_portal_terminal_failure",
+          "owner_session_id": "doep-v1-executor:shard:3-of-4:track:f788e2919039",
+          "reason": "Portal callback reconciliation binding is invalid",
+          "retryable": false
+        },
+        "conflict_policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+        "exact_inputs": [
+          "DOEP-PLAN-V5",
+          "exact source forest",
+          "current dependency receipts",
+          "current policy and toolchain identities"
+        ],
+        "exact_outputs": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "execution_validation": [
+          [
+            "python3",
+            "-m",
+            "pytest",
+            "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "-q"
+          ]
+        ],
+        "externally_claimable": false,
+        "forbidden_effects": [
+          "direct DuckDB or DuckLake write",
+          "policy-pointer mutation",
+          "task terminalization",
+          "credential access",
+          "scope expansion"
+        ],
+        "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "output_manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+        "owned_files": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "owning_repository": "external/ipfs_accelerate",
+        "parent_goal_id": "DOEP-G060",
+        "plan_epoch": 1,
+        "plan_revision": "DOEP-PLAN-V5",
+        "postconditions": [
+          "All exact outputs exist inside the declared write scope",
+          "The exact validation argv exits zero on the resulting tree",
+          "Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt",
+          "No truth, safety, authority or promotion gate has been weakened"
+        ],
+        "preconditions": [
+          "Exact base commit/tree or a current re-admission receipt for this plan epoch",
+          "Every dependency has a current admitted success receipt",
+          "Delegated repository, path, method and effect authority is current",
+          "At least the declared validation reserve remains available"
+        ],
+        "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+        "proof_obligations": [
+          "authority and scope preservation",
+          "no stale evidence admission",
+          "declared semantic or operational property"
+        ],
+        "read_scope": [
+          "declared dependency cone",
+          "admitted current receipts",
+          "canonical interfaces named in the plan"
+        ],
+        "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "repository_authority": "ACC",
+        "required_evidence": [
+          "source commit/tree/gitlinks",
+          "changed-path digest",
+          "test/proof results",
+          "receipt CID",
+          "limitations",
+          "verifier admission"
+        ],
+        "risk_class": "R3",
+        "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+        "root_goal_id": "DOEP-G000",
+        "stable_task_id": "DOEP-053",
+        "subgoal_id": "DOEP-G060.S2",
+        "superproject_outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "superproject_receipt_output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "superproject_test_output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "terminal_non_success": [
+          "blocked_dependency",
+          "blocked_authority",
+          "blocked_policy",
+          "budget_exhausted",
+          "validation_failed",
+          "provider_outcome_unknown",
+          "quarantined_nonconvergent",
+          "cancelled"
+        ],
+        "terminal_success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+        "test_obligations": [
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "current protected regression subset selected by impact analysis"
+        ],
+        "test_output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "title": "Add automatic bounded task refill",
+        "unknown_effect_rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+        "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+        "write_scope": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ]
+      },
+      "revision": 4,
+      "status": "blocked"
+    },
+    {
+      "body": {
+        "allowed_effects": [
+          "isolated worktree edits",
+          "local deterministic validation",
+          "reviewed merge request through canonical authority"
+        ],
+        "authority_requirement": "A2",
+        "base_repositories": {
+          "ipfs_accelerate_py": {
+            "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+            "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+          },
+          "ipfs_datasets_py": {
+            "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+            "tree": "456e09b51d6a07a3a5873436df24054768195320"
+          },
+          "ipfs_kit_py": {
+            "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+            "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+          },
+          "lift_coding": {
+            "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+          }
+        },
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "budget_profile": "B3",
+        "budgets": {
+          "max_concurrent_tasks": 1,
+          "max_cpu_seconds": 7200,
+          "max_frontier_model_calls": 1,
+          "max_gpu_seconds": 1800,
+          "max_input_tokens": 48000,
+          "max_model_calls": 5,
+          "max_output_tokens": 14000,
+          "max_prover_seconds": 1800,
+          "max_provider_cost_usd": 20,
+          "max_test_seconds": 3600,
+          "max_wall_seconds": 28800,
+          "validation_reserve_percent": 30
+        },
+        "completion_mode": "independent_evidence_and_canonical_cas",
+        "completion_receipt": {
+          "attempt_id": "attempt:26960c540ac042c3b023e9738b41ed69",
+          "attempt_number": 1,
+          "backoff_ms": 0,
+          "backoff_seconds": 0,
+          "claim_id": "claim:f2e10fa7661b4a9ea0513fca73aea272",
+          "control_expected_revision": 4,
+          "control_expected_status": "blocked",
+          "coordination": {
+            "attempt_id": "attempt:26960c540ac042c3b023e9738b41ed69",
+            "attempt_number": 1,
+            "claim_absent": false,
+            "claim_id": "claim:f2e10fa7661b4a9ea0513fca73aea272",
+            "claim_revision": 63,
+            "claim_state": "expired",
+            "coordination_attempt_revision": 2,
+            "coordination_attempt_status": "expired",
+            "expired_now": false,
+            "expires_at_ms": 1789276188235,
+            "historical_expired": true,
+            "lease_state": "expired",
+            "observed_at_ms": 1789296794341,
+            "successor": {},
+            "superseded_by_newer_fence": false
+          },
+          "evidence_source": "portal_completion_handshake_reclassified",
+          "execution_finished_at_ms": 1789276136959,
+          "execution_phase": "failed",
+          "execution_revision": 3,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-053",
+            "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "task_contract_cid": "baguqeeras67giuto52oijgr4g7u25hufs6wlj5zcg36bvs3teckmmrxbuabq",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+          "fence_epoch": 1,
+          "fencing_token": 1,
+          "lease_id": "lease:ffd262ca85104d3593448b427ab09de7",
+          "operation": "database_portal_validation_retry_recovery",
+          "owner_session_id": "doep-v1-executor:shard:3-of-4:track:f788e2919039",
+          "queue_reason": "database_portal_retry:attempt:26960c540ac042c3b023e9738b41ed69:portal_completion_handshake_retry",
+          "queue_receipt": {},
+          "queue_reused": false,
+          "reason": "portal_completion_handshake_retry",
+          "retry_not_before_ms": 1789296794479
+        },
+        "conflict_policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+        "exact_inputs": [
+          "DOEP-PLAN-V5",
+          "exact source forest",
+          "current dependency receipts",
+          "current policy and toolchain identities"
+        ],
+        "exact_outputs": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "execution_validation": [
+          [
+            "python3",
+            "-m",
+            "pytest",
+            "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "-q"
+          ]
+        ],
+        "externally_claimable": false,
+        "forbidden_effects": [
+          "direct DuckDB or DuckLake write",
+          "policy-pointer mutation",
+          "task terminalization",
+          "credential access",
+          "scope expansion"
+        ],
+        "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "output_manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+        "owned_files": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "owning_repository": "external/ipfs_accelerate",
+        "parent_goal_id": "DOEP-G060",
+        "plan_epoch": 1,
+        "plan_revision": "DOEP-PLAN-V5",
+        "postconditions": [
+          "All exact outputs exist inside the declared write scope",
+          "The exact validation argv exits zero on the resulting tree",
+          "Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt",
+          "No truth, safety, authority or promotion gate has been weakened"
+        ],
+        "preconditions": [
+          "Exact base commit/tree or a current re-admission receipt for this plan epoch",
+          "Every dependency has a current admitted success receipt",
+          "Delegated repository, path, method and effect authority is current",
+          "At least the declared validation reserve remains available"
+        ],
+        "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+        "proof_obligations": [
+          "authority and scope preservation",
+          "no stale evidence admission",
+          "declared semantic or operational property"
+        ],
+        "read_scope": [
+          "declared dependency cone",
+          "admitted current receipts",
+          "canonical interfaces named in the plan"
+        ],
+        "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "repository_authority": "ACC",
+        "required_evidence": [
+          "source commit/tree/gitlinks",
+          "changed-path digest",
+          "test/proof results",
+          "receipt CID",
+          "limitations",
+          "verifier admission"
+        ],
+        "risk_class": "R3",
+        "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+        "root_goal_id": "DOEP-G000",
+        "stable_task_id": "DOEP-053",
+        "subgoal_id": "DOEP-G060.S2",
+        "superproject_outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "superproject_receipt_output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "superproject_test_output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "terminal_non_success": [
+          "blocked_dependency",
+          "blocked_authority",
+          "blocked_policy",
+          "budget_exhausted",
+          "validation_failed",
+          "provider_outcome_unknown",
+          "quarantined_nonconvergent",
+          "cancelled"
+        ],
+        "terminal_success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+        "test_obligations": [
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "current protected regression subset selected by impact analysis"
+        ],
+        "test_output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "title": "Add automatic bounded task refill",
+        "unknown_effect_rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+        "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+        "write_scope": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ]
+      },
+      "revision": 5,
+      "status": "retrying"
+    },
+    {
+      "body": {
+        "allowed_effects": [
+          "isolated worktree edits",
+          "local deterministic validation",
+          "reviewed merge request through canonical authority"
+        ],
+        "authority_requirement": "A2",
+        "base_repositories": {
+          "ipfs_accelerate_py": {
+            "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+            "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+          },
+          "ipfs_datasets_py": {
+            "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+            "tree": "456e09b51d6a07a3a5873436df24054768195320"
+          },
+          "ipfs_kit_py": {
+            "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+            "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+          },
+          "lift_coding": {
+            "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+          }
+        },
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "budget_profile": "B3",
+        "budgets": {
+          "max_concurrent_tasks": 1,
+          "max_cpu_seconds": 7200,
+          "max_frontier_model_calls": 1,
+          "max_gpu_seconds": 1800,
+          "max_input_tokens": 48000,
+          "max_model_calls": 5,
+          "max_output_tokens": 14000,
+          "max_prover_seconds": 1800,
+          "max_provider_cost_usd": 20,
+          "max_test_seconds": 3600,
+          "max_wall_seconds": 28800,
+          "validation_reserve_percent": 30
+        },
+        "completion_mode": "independent_evidence_and_canonical_cas",
+        "completion_receipt": {
+          "attempt_id": "attempt:deac50bd8eef421bb95474ac2f1177e3",
+          "attempt_number": 2,
+          "claim_id": "claim:d3ca0cc4e5c547ae814bf2dfd768e8ca",
+          "claim_phase_schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-reservation@1",
+          "claim_process_attestation": {
+            "boot_id": "006c44d2-c190-4cce-9a49-35ab689b243f",
+            "client_id": "database-implementation-daemon:doep-v1-executor:shard:3-of-4:track:f788e2919039",
+            "grant_id": "owner-grant:c462e9a4-87e4-4a9c-8685-dce88517863f",
+            "parent_pid": 2001308,
+            "pid": 2045864,
+            "process_birth_id": "birth:5dabc34df6c3a1d109207b08327c7261",
+            "schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1",
+            "start_time_ticks": 70649738,
+            "uid": 1000
+          },
+          "claimed_from_revision": 5,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-053",
+            "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "task_contract_cid": "baguqeeras67giuto52oijgr4g7u25hufs6wlj5zcg36bvs3teckmmrxbuabq",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+          "fence_epoch": 2,
+          "fencing_token": 2,
+          "idle_lane_work_stealing": "",
+          "lease_id": "lease:8677473f3d8f4392a872815ab6d298e6",
+          "operation": "database_claim",
+          "owner_session_id": "doep-v1-executor:shard:3-of-4:track:f788e2919039",
+          "strict_task_sharding": true,
+          "task_prefix": "DOEP-",
+          "task_shard_count": 4,
+          "task_shard_index": 3
+        },
+        "conflict_policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+        "exact_inputs": [
+          "DOEP-PLAN-V5",
+          "exact source forest",
+          "current dependency receipts",
+          "current policy and toolchain identities"
+        ],
+        "exact_outputs": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "execution_validation": [
+          [
+            "python3",
+            "-m",
+            "pytest",
+            "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "-q"
+          ]
+        ],
+        "externally_claimable": false,
+        "forbidden_effects": [
+          "direct DuckDB or DuckLake write",
+          "policy-pointer mutation",
+          "task terminalization",
+          "credential access",
+          "scope expansion"
+        ],
+        "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "output_manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+        "owned_files": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "owning_repository": "external/ipfs_accelerate",
+        "parent_goal_id": "DOEP-G060",
+        "plan_epoch": 1,
+        "plan_revision": "DOEP-PLAN-V5",
+        "postconditions": [
+          "All exact outputs exist inside the declared write scope",
+          "The exact validation argv exits zero on the resulting tree",
+          "Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt",
+          "No truth, safety, authority or promotion gate has been weakened"
+        ],
+        "preconditions": [
+          "Exact base commit/tree or a current re-admission receipt for this plan epoch",
+          "Every dependency has a current admitted success receipt",
+          "Delegated repository, path, method and effect authority is current",
+          "At least the declared validation reserve remains available"
+        ],
+        "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+        "proof_obligations": [
+          "authority and scope preservation",
+          "no stale evidence admission",
+          "declared semantic or operational property"
+        ],
+        "read_scope": [
+          "declared dependency cone",
+          "admitted current receipts",
+          "canonical interfaces named in the plan"
+        ],
+        "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "repository_authority": "ACC",
+        "required_evidence": [
+          "source commit/tree/gitlinks",
+          "changed-path digest",
+          "test/proof results",
+          "receipt CID",
+          "limitations",
+          "verifier admission"
+        ],
+        "risk_class": "R3",
+        "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+        "root_goal_id": "DOEP-G000",
+        "stable_task_id": "DOEP-053",
+        "subgoal_id": "DOEP-G060.S2",
+        "superproject_outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "superproject_receipt_output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "superproject_test_output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "terminal_non_success": [
+          "blocked_dependency",
+          "blocked_authority",
+          "blocked_policy",
+          "budget_exhausted",
+          "validation_failed",
+          "provider_outcome_unknown",
+          "quarantined_nonconvergent",
+          "cancelled"
+        ],
+        "terminal_success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+        "test_obligations": [
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "current protected regression subset selected by impact analysis"
+        ],
+        "test_output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "title": "Add automatic bounded task refill",
+        "unknown_effect_rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+        "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+        "write_scope": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ]
+      },
+      "revision": 6,
+      "status": "in_progress"
+    },
+    {
+      "body": {
+        "allowed_effects": [
+          "isolated worktree edits",
+          "local deterministic validation",
+          "reviewed merge request through canonical authority"
+        ],
+        "authority_requirement": "A2",
+        "base_repositories": {
+          "ipfs_accelerate_py": {
+            "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+            "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+          },
+          "ipfs_datasets_py": {
+            "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+            "tree": "456e09b51d6a07a3a5873436df24054768195320"
+          },
+          "ipfs_kit_py": {
+            "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+            "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+          },
+          "lift_coding": {
+            "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+          }
+        },
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "budget_profile": "B3",
+        "budgets": {
+          "max_concurrent_tasks": 1,
+          "max_cpu_seconds": 7200,
+          "max_frontier_model_calls": 1,
+          "max_gpu_seconds": 1800,
+          "max_input_tokens": 48000,
+          "max_model_calls": 5,
+          "max_output_tokens": 14000,
+          "max_prover_seconds": 1800,
+          "max_provider_cost_usd": 20,
+          "max_test_seconds": 3600,
+          "max_wall_seconds": 28800,
+          "validation_reserve_percent": 30
+        },
+        "completion_mode": "independent_evidence_and_canonical_cas",
+        "completion_receipt": {
+          "admitted_from_revision": 6,
+          "attempt_execution_phase": "claimed",
+          "attempt_execution_revision": 1,
+          "attempt_id": "attempt:deac50bd8eef421bb95474ac2f1177e3",
+          "attempt_number": 2,
+          "claim_id": "claim:d3ca0cc4e5c547ae814bf2dfd768e8ca",
+          "claim_phase_schema": "ipfs_accelerate_py/agent-supervisor/typed-database-attempt-admission@1",
+          "claim_process_attestation": {
+            "boot_id": "006c44d2-c190-4cce-9a49-35ab689b243f",
+            "client_id": "database-implementation-daemon:doep-v1-executor:shard:3-of-4:track:f788e2919039",
+            "grant_id": "owner-grant:c462e9a4-87e4-4a9c-8685-dce88517863f",
+            "parent_pid": 2001308,
+            "pid": 2045864,
+            "process_birth_id": "birth:5dabc34df6c3a1d109207b08327c7261",
+            "schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1",
+            "start_time_ticks": 70649738,
+            "uid": 1000
+          },
+          "claimed_from_revision": 5,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-053",
+            "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "task_contract_cid": "baguqeeras67giuto52oijgr4g7u25hufs6wlj5zcg36bvs3teckmmrxbuabq",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+          "fence_epoch": 2,
+          "fencing_token": 2,
+          "idle_lane_work_stealing": "",
+          "lease_id": "lease:8677473f3d8f4392a872815ab6d298e6",
+          "operation": "database_attempt_admitted",
+          "owner_session_id": "doep-v1-executor:shard:3-of-4:track:f788e2919039",
+          "strict_task_sharding": true,
+          "task_prefix": "DOEP-",
+          "task_shard_count": 4,
+          "task_shard_index": 3
+        },
+        "conflict_policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+        "exact_inputs": [
+          "DOEP-PLAN-V5",
+          "exact source forest",
+          "current dependency receipts",
+          "current policy and toolchain identities"
+        ],
+        "exact_outputs": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "execution_validation": [
+          [
+            "python3",
+            "-m",
+            "pytest",
+            "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "-q"
+          ]
+        ],
+        "externally_claimable": false,
+        "forbidden_effects": [
+          "direct DuckDB or DuckLake write",
+          "policy-pointer mutation",
+          "task terminalization",
+          "credential access",
+          "scope expansion"
+        ],
+        "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "output_manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+        "owned_files": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "owning_repository": "external/ipfs_accelerate",
+        "parent_goal_id": "DOEP-G060",
+        "plan_epoch": 1,
+        "plan_revision": "DOEP-PLAN-V5",
+        "postconditions": [
+          "All exact outputs exist inside the declared write scope",
+          "The exact validation argv exits zero on the resulting tree",
+          "Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt",
+          "No truth, safety, authority or promotion gate has been weakened"
+        ],
+        "preconditions": [
+          "Exact base commit/tree or a current re-admission receipt for this plan epoch",
+          "Every dependency has a current admitted success receipt",
+          "Delegated repository, path, method and effect authority is current",
+          "At least the declared validation reserve remains available"
+        ],
+        "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+        "proof_obligations": [
+          "authority and scope preservation",
+          "no stale evidence admission",
+          "declared semantic or operational property"
+        ],
+        "read_scope": [
+          "declared dependency cone",
+          "admitted current receipts",
+          "canonical interfaces named in the plan"
+        ],
+        "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "repository_authority": "ACC",
+        "required_evidence": [
+          "source commit/tree/gitlinks",
+          "changed-path digest",
+          "test/proof results",
+          "receipt CID",
+          "limitations",
+          "verifier admission"
+        ],
+        "risk_class": "R3",
+        "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+        "root_goal_id": "DOEP-G000",
+        "stable_task_id": "DOEP-053",
+        "subgoal_id": "DOEP-G060.S2",
+        "superproject_outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "superproject_receipt_output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "superproject_test_output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "terminal_non_success": [
+          "blocked_dependency",
+          "blocked_authority",
+          "blocked_policy",
+          "budget_exhausted",
+          "validation_failed",
+          "provider_outcome_unknown",
+          "quarantined_nonconvergent",
+          "cancelled"
+        ],
+        "terminal_success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+        "test_obligations": [
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "current protected regression subset selected by impact analysis"
+        ],
+        "test_output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "title": "Add automatic bounded task refill",
+        "unknown_effect_rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+        "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+        "write_scope": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ]
+      },
+      "revision": 7,
+      "status": "in_progress"
+    },
+    {
+      "body": {
+        "allowed_effects": [
+          "isolated worktree edits",
+          "local deterministic validation",
+          "reviewed merge request through canonical authority"
+        ],
+        "authority_requirement": "A2",
+        "base_repositories": {
+          "ipfs_accelerate_py": {
+            "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+            "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+          },
+          "ipfs_datasets_py": {
+            "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+            "tree": "456e09b51d6a07a3a5873436df24054768195320"
+          },
+          "ipfs_kit_py": {
+            "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+            "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+          },
+          "lift_coding": {
+            "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+          }
+        },
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "budget_profile": "B3",
+        "budgets": {
+          "max_concurrent_tasks": 1,
+          "max_cpu_seconds": 7200,
+          "max_frontier_model_calls": 1,
+          "max_gpu_seconds": 1800,
+          "max_input_tokens": 48000,
+          "max_model_calls": 5,
+          "max_output_tokens": 14000,
+          "max_prover_seconds": 1800,
+          "max_provider_cost_usd": 20,
+          "max_test_seconds": 3600,
+          "max_wall_seconds": 28800,
+          "validation_reserve_percent": 30
+        },
+        "completion_mode": "independent_evidence_and_canonical_cas",
+        "completion_receipt": {
+          "attempt_id": "attempt:deac50bd8eef421bb95474ac2f1177e3",
+          "attempt_number": 2,
+          "backoff_ms": 300000,
+          "backoff_seconds": 300,
+          "claim_id": "claim:d3ca0cc4e5c547ae814bf2dfd768e8ca",
+          "control_expected_revision": 7,
+          "control_expected_status": "in_progress",
+          "coordination": {
+            "attempt_id": "attempt:deac50bd8eef421bb95474ac2f1177e3",
+            "attempt_number": 2,
+            "claim_id": "claim:d3ca0cc4e5c547ae814bf2dfd768e8ca"
+          },
+          "evidence_source": "typed_portal_deferral",
+          "execution_finished_at_ms": 1789296841021,
+          "execution_phase": "failed",
+          "execution_revision": 3,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-053",
+            "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "task_contract_cid": "baguqeeras67giuto52oijgr4g7u25hufs6wlj5zcg36bvs3teckmmrxbuabq",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+          "fence_epoch": 2,
+          "fencing_token": 2,
+          "lease_id": "lease:8677473f3d8f4392a872815ab6d298e6",
+          "operation": "database_portal_retry",
+          "owner_session_id": "doep-v1-executor:shard:3-of-4:track:f788e2919039",
+          "queue_reason": "database_portal_retry:attempt:deac50bd8eef421bb95474ac2f1177e3:validation_project_dependency_preflight_failed",
+          "queue_receipt": {
+            "changed": true,
+            "details": {
+              "attempt_id": "attempt:deac50bd8eef421bb95474ac2f1177e3",
+              "attempt_number": 2,
+              "claim_id": "claim:d3ca0cc4e5c547ae814bf2dfd768e8ca",
+              "expected_task_revision": 7,
+              "operation": "task.retry.cooldown.record",
+              "queue_revision": 2,
+              "reason": "database_portal_retry:attempt:deac50bd8eef421bb95474ac2f1177e3:validation_project_dependency_preflight_failed",
+              "retry_not_before_ms": 1789297141171,
+              "schema": "ipfs_accelerate_py/agent-supervisor/typed-retry-cooldown@1",
+              "store_revision_before": 4,
+              "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518"
+            },
+            "event_id": "sha256:44803fa7bf6a0b9b9670206545897723d77f7e6bbe693806490d0b486f33ee23",
+            "event_type": "TASK_RETRY_COOLDOWN_RECORDED",
+            "global_sequence": 0,
+            "recorded_at": "typed-state-owner",
+            "revision": 2,
+            "schema": "ipfs_accelerate_py/agent-supervisor/intent-receipt@1",
+            "subject_id": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518"
+          },
+          "queue_reused": false,
+          "reason": "validation_project_dependency_preflight_failed",
+          "retry_not_before_ms": 1789297141171
+        },
+        "conflict_policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+        "exact_inputs": [
+          "DOEP-PLAN-V5",
+          "exact source forest",
+          "current dependency receipts",
+          "current policy and toolchain identities"
+        ],
+        "exact_outputs": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "execution_validation": [
+          [
+            "python3",
+            "-m",
+            "pytest",
+            "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "-q"
+          ]
+        ],
+        "externally_claimable": false,
+        "forbidden_effects": [
+          "direct DuckDB or DuckLake write",
+          "policy-pointer mutation",
+          "task terminalization",
+          "credential access",
+          "scope expansion"
+        ],
+        "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "output_manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+        "owned_files": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "owning_repository": "external/ipfs_accelerate",
+        "parent_goal_id": "DOEP-G060",
+        "plan_epoch": 1,
+        "plan_revision": "DOEP-PLAN-V5",
+        "postconditions": [
+          "All exact outputs exist inside the declared write scope",
+          "The exact validation argv exits zero on the resulting tree",
+          "Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt",
+          "No truth, safety, authority or promotion gate has been weakened"
+        ],
+        "preconditions": [
+          "Exact base commit/tree or a current re-admission receipt for this plan epoch",
+          "Every dependency has a current admitted success receipt",
+          "Delegated repository, path, method and effect authority is current",
+          "At least the declared validation reserve remains available"
+        ],
+        "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+        "proof_obligations": [
+          "authority and scope preservation",
+          "no stale evidence admission",
+          "declared semantic or operational property"
+        ],
+        "read_scope": [
+          "declared dependency cone",
+          "admitted current receipts",
+          "canonical interfaces named in the plan"
+        ],
+        "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "repository_authority": "ACC",
+        "required_evidence": [
+          "source commit/tree/gitlinks",
+          "changed-path digest",
+          "test/proof results",
+          "receipt CID",
+          "limitations",
+          "verifier admission"
+        ],
+        "risk_class": "R3",
+        "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+        "root_goal_id": "DOEP-G000",
+        "stable_task_id": "DOEP-053",
+        "subgoal_id": "DOEP-G060.S2",
+        "superproject_outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "superproject_receipt_output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "superproject_test_output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "terminal_non_success": [
+          "blocked_dependency",
+          "blocked_authority",
+          "blocked_policy",
+          "budget_exhausted",
+          "validation_failed",
+          "provider_outcome_unknown",
+          "quarantined_nonconvergent",
+          "cancelled"
+        ],
+        "terminal_success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+        "test_obligations": [
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "current protected regression subset selected by impact analysis"
+        ],
+        "test_output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "title": "Add automatic bounded task refill",
+        "unknown_effect_rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+        "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+        "write_scope": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ]
+      },
+      "revision": 8,
+      "status": "retrying"
+    },
+    {
+      "body": {
+        "allowed_effects": [
+          "isolated worktree edits",
+          "local deterministic validation",
+          "reviewed merge request through canonical authority"
+        ],
+        "authority_requirement": "A2",
+        "base_repositories": {
+          "ipfs_accelerate_py": {
+            "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+            "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+          },
+          "ipfs_datasets_py": {
+            "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+            "tree": "456e09b51d6a07a3a5873436df24054768195320"
+          },
+          "ipfs_kit_py": {
+            "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+            "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+          },
+          "lift_coding": {
+            "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+          }
+        },
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "budget_profile": "B3",
+        "budgets": {
+          "max_concurrent_tasks": 1,
+          "max_cpu_seconds": 7200,
+          "max_frontier_model_calls": 1,
+          "max_gpu_seconds": 1800,
+          "max_input_tokens": 48000,
+          "max_model_calls": 5,
+          "max_output_tokens": 14000,
+          "max_prover_seconds": 1800,
+          "max_provider_cost_usd": 20,
+          "max_test_seconds": 3600,
+          "max_wall_seconds": 28800,
+          "validation_reserve_percent": 30
+        },
+        "completion_mode": "independent_evidence_and_canonical_cas",
+        "completion_receipt": {
+          "attempt_id": "attempt:af26f848a9f14d809b5c52d7f8463a24",
+          "attempt_number": 3,
+          "claim_id": "claim:9444a3db236640298d5977135d545054",
+          "claim_phase_schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-reservation@1",
+          "claim_process_attestation": {
+            "boot_id": "006c44d2-c190-4cce-9a49-35ab689b243f",
+            "client_id": "database-implementation-daemon:doep-v1-executor:shard:3-of-4:track:f788e2919039",
+            "grant_id": "owner-grant:c462e9a4-87e4-4a9c-8685-dce88517863f",
+            "parent_pid": 2001308,
+            "pid": 2045864,
+            "process_birth_id": "birth:5dabc34df6c3a1d109207b08327c7261",
+            "schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1",
+            "start_time_ticks": 70649738,
+            "uid": 1000
+          },
+          "claimed_from_revision": 8,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-053",
+            "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "task_contract_cid": "baguqeeras67giuto52oijgr4g7u25hufs6wlj5zcg36bvs3teckmmrxbuabq",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+          "fence_epoch": 3,
+          "fencing_token": 3,
+          "idle_lane_work_stealing": "",
+          "lease_id": "lease:a3ee8b573f4f43439868c59d6aa3af32",
+          "operation": "database_claim",
+          "owner_session_id": "doep-v1-executor:shard:3-of-4:track:f788e2919039",
+          "strict_task_sharding": true,
+          "task_prefix": "DOEP-",
+          "task_shard_count": 4,
+          "task_shard_index": 3
+        },
+        "conflict_policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+        "exact_inputs": [
+          "DOEP-PLAN-V5",
+          "exact source forest",
+          "current dependency receipts",
+          "current policy and toolchain identities"
+        ],
+        "exact_outputs": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "execution_validation": [
+          [
+            "python3",
+            "-m",
+            "pytest",
+            "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "-q"
+          ]
+        ],
+        "externally_claimable": false,
+        "forbidden_effects": [
+          "direct DuckDB or DuckLake write",
+          "policy-pointer mutation",
+          "task terminalization",
+          "credential access",
+          "scope expansion"
+        ],
+        "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "output_manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+        "owned_files": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "owning_repository": "external/ipfs_accelerate",
+        "parent_goal_id": "DOEP-G060",
+        "plan_epoch": 1,
+        "plan_revision": "DOEP-PLAN-V5",
+        "postconditions": [
+          "All exact outputs exist inside the declared write scope",
+          "The exact validation argv exits zero on the resulting tree",
+          "Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt",
+          "No truth, safety, authority or promotion gate has been weakened"
+        ],
+        "preconditions": [
+          "Exact base commit/tree or a current re-admission receipt for this plan epoch",
+          "Every dependency has a current admitted success receipt",
+          "Delegated repository, path, method and effect authority is current",
+          "At least the declared validation reserve remains available"
+        ],
+        "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+        "proof_obligations": [
+          "authority and scope preservation",
+          "no stale evidence admission",
+          "declared semantic or operational property"
+        ],
+        "read_scope": [
+          "declared dependency cone",
+          "admitted current receipts",
+          "canonical interfaces named in the plan"
+        ],
+        "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "repository_authority": "ACC",
+        "required_evidence": [
+          "source commit/tree/gitlinks",
+          "changed-path digest",
+          "test/proof results",
+          "receipt CID",
+          "limitations",
+          "verifier admission"
+        ],
+        "risk_class": "R3",
+        "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+        "root_goal_id": "DOEP-G000",
+        "stable_task_id": "DOEP-053",
+        "subgoal_id": "DOEP-G060.S2",
+        "superproject_outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "superproject_receipt_output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "superproject_test_output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "terminal_non_success": [
+          "blocked_dependency",
+          "blocked_authority",
+          "blocked_policy",
+          "budget_exhausted",
+          "validation_failed",
+          "provider_outcome_unknown",
+          "quarantined_nonconvergent",
+          "cancelled"
+        ],
+        "terminal_success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+        "test_obligations": [
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "current protected regression subset selected by impact analysis"
+        ],
+        "test_output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "title": "Add automatic bounded task refill",
+        "unknown_effect_rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+        "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+        "write_scope": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ]
+      },
+      "revision": 9,
+      "status": "in_progress"
+    },
+    {
+      "body": {
+        "allowed_effects": [
+          "isolated worktree edits",
+          "local deterministic validation",
+          "reviewed merge request through canonical authority"
+        ],
+        "authority_requirement": "A2",
+        "base_repositories": {
+          "ipfs_accelerate_py": {
+            "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+            "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+          },
+          "ipfs_datasets_py": {
+            "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+            "tree": "456e09b51d6a07a3a5873436df24054768195320"
+          },
+          "ipfs_kit_py": {
+            "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+            "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+          },
+          "lift_coding": {
+            "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+          }
+        },
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "budget_profile": "B3",
+        "budgets": {
+          "max_concurrent_tasks": 1,
+          "max_cpu_seconds": 7200,
+          "max_frontier_model_calls": 1,
+          "max_gpu_seconds": 1800,
+          "max_input_tokens": 48000,
+          "max_model_calls": 5,
+          "max_output_tokens": 14000,
+          "max_prover_seconds": 1800,
+          "max_provider_cost_usd": 20,
+          "max_test_seconds": 3600,
+          "max_wall_seconds": 28800,
+          "validation_reserve_percent": 30
+        },
+        "completion_mode": "independent_evidence_and_canonical_cas",
+        "completion_receipt": {
+          "admitted_from_revision": 9,
+          "attempt_execution_phase": "claimed",
+          "attempt_execution_revision": 1,
+          "attempt_id": "attempt:af26f848a9f14d809b5c52d7f8463a24",
+          "attempt_number": 3,
+          "claim_id": "claim:9444a3db236640298d5977135d545054",
+          "claim_phase_schema": "ipfs_accelerate_py/agent-supervisor/typed-database-attempt-admission@1",
+          "claim_process_attestation": {
+            "boot_id": "006c44d2-c190-4cce-9a49-35ab689b243f",
+            "client_id": "database-implementation-daemon:doep-v1-executor:shard:3-of-4:track:f788e2919039",
+            "grant_id": "owner-grant:c462e9a4-87e4-4a9c-8685-dce88517863f",
+            "parent_pid": 2001308,
+            "pid": 2045864,
+            "process_birth_id": "birth:5dabc34df6c3a1d109207b08327c7261",
+            "schema": "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1",
+            "start_time_ticks": 70649738,
+            "uid": 1000
+          },
+          "claimed_from_revision": 8,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-053",
+            "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "task_contract_cid": "baguqeeras67giuto52oijgr4g7u25hufs6wlj5zcg36bvs3teckmmrxbuabq",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+          "fence_epoch": 3,
+          "fencing_token": 3,
+          "idle_lane_work_stealing": "",
+          "lease_id": "lease:a3ee8b573f4f43439868c59d6aa3af32",
+          "operation": "database_attempt_admitted",
+          "owner_session_id": "doep-v1-executor:shard:3-of-4:track:f788e2919039",
+          "strict_task_sharding": true,
+          "task_prefix": "DOEP-",
+          "task_shard_count": 4,
+          "task_shard_index": 3
+        },
+        "conflict_policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+        "exact_inputs": [
+          "DOEP-PLAN-V5",
+          "exact source forest",
+          "current dependency receipts",
+          "current policy and toolchain identities"
+        ],
+        "exact_outputs": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "execution_validation": [
+          [
+            "python3",
+            "-m",
+            "pytest",
+            "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "-q"
+          ]
+        ],
+        "externally_claimable": false,
+        "forbidden_effects": [
+          "direct DuckDB or DuckLake write",
+          "policy-pointer mutation",
+          "task terminalization",
+          "credential access",
+          "scope expansion"
+        ],
+        "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "output_manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+        "owned_files": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "owning_repository": "external/ipfs_accelerate",
+        "parent_goal_id": "DOEP-G060",
+        "plan_epoch": 1,
+        "plan_revision": "DOEP-PLAN-V5",
+        "postconditions": [
+          "All exact outputs exist inside the declared write scope",
+          "The exact validation argv exits zero on the resulting tree",
+          "Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt",
+          "No truth, safety, authority or promotion gate has been weakened"
+        ],
+        "preconditions": [
+          "Exact base commit/tree or a current re-admission receipt for this plan epoch",
+          "Every dependency has a current admitted success receipt",
+          "Delegated repository, path, method and effect authority is current",
+          "At least the declared validation reserve remains available"
+        ],
+        "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+        "proof_obligations": [
+          "authority and scope preservation",
+          "no stale evidence admission",
+          "declared semantic or operational property"
+        ],
+        "read_scope": [
+          "declared dependency cone",
+          "admitted current receipts",
+          "canonical interfaces named in the plan"
+        ],
+        "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "repository_authority": "ACC",
+        "required_evidence": [
+          "source commit/tree/gitlinks",
+          "changed-path digest",
+          "test/proof results",
+          "receipt CID",
+          "limitations",
+          "verifier admission"
+        ],
+        "risk_class": "R3",
+        "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+        "root_goal_id": "DOEP-G000",
+        "stable_task_id": "DOEP-053",
+        "subgoal_id": "DOEP-G060.S2",
+        "superproject_outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "superproject_receipt_output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "superproject_test_output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "terminal_non_success": [
+          "blocked_dependency",
+          "blocked_authority",
+          "blocked_policy",
+          "budget_exhausted",
+          "validation_failed",
+          "provider_outcome_unknown",
+          "quarantined_nonconvergent",
+          "cancelled"
+        ],
+        "terminal_success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+        "test_obligations": [
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "current protected regression subset selected by impact analysis"
+        ],
+        "test_output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "title": "Add automatic bounded task refill",
+        "unknown_effect_rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+        "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+        "write_scope": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ]
+      },
+      "revision": 10,
+      "status": "in_progress"
+    },
+    {
+      "body": {
+        "allowed_effects": [
+          "isolated worktree edits",
+          "local deterministic validation",
+          "reviewed merge request through canonical authority"
+        ],
+        "authority_requirement": "A2",
+        "base_repositories": {
+          "ipfs_accelerate_py": {
+            "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+            "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+          },
+          "ipfs_datasets_py": {
+            "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+            "tree": "456e09b51d6a07a3a5873436df24054768195320"
+          },
+          "ipfs_kit_py": {
+            "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+            "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+          },
+          "lift_coding": {
+            "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+          }
+        },
+        "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+        "budget_profile": "B3",
+        "budgets": {
+          "max_concurrent_tasks": 1,
+          "max_cpu_seconds": 7200,
+          "max_frontier_model_calls": 1,
+          "max_gpu_seconds": 1800,
+          "max_input_tokens": 48000,
+          "max_model_calls": 5,
+          "max_output_tokens": 14000,
+          "max_prover_seconds": 1800,
+          "max_provider_cost_usd": 20,
+          "max_test_seconds": 3600,
+          "max_wall_seconds": 28800,
+          "validation_reserve_percent": 30
+        },
+        "completion_mode": "independent_evidence_and_canonical_cas",
+        "completion_receipt": {
+          "attempt_consumed": false,
+          "attempt_id": "attempt:af26f848a9f14d809b5c52d7f8463a24",
+          "attempt_number": 3,
+          "claim_id": "claim:9444a3db236640298d5977135d545054",
+          "control_expected_revision": 10,
+          "control_expected_status": "in_progress",
+          "coordination": {},
+          "execution_finished_at_ms": 1789297196286,
+          "execution_phase": "failed",
+          "execution_revision": 3,
+          "execution_route_binding": {
+            "execution_mode": "grok-codex",
+            "plan_root_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+            "policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+            "repository_tree_id": "sha256:2de6ca649a36e4ae245d83ae39af8e66d529619ee302b69b34b796f9ae231efe",
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1",
+            "source_revision": 1,
+            "task_alias": "DOEP-053",
+            "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "task_contract_cid": "baguqeeras67giuto52oijgr4g7u25hufs6wlj5zcg36bvs3teckmmrxbuabq",
+            "task_revision": 1
+          },
+          "execution_route_origin_revision": 1,
+          "execution_route_policy_id": "baguqeeraxtlhvoafdr25lh37jy7lesy5ejtbjsr33mkwjh6ojkrcw3v5tqia",
+          "fence_epoch": 3,
+          "fencing_token": 3,
+          "lease_id": "lease:a3ee8b573f4f43439868c59d6aa3af32",
+          "operation": "database_portal_typed_deferral_budget_exhausted",
+          "owner_session_id": "doep-v1-executor:shard:3-of-4:track:f788e2919039",
+          "prior_queue_entry_preserved_inactive": true,
+          "reason": "typed_portal_deferral_budget_exhausted",
+          "retry_budget": {
+            "attempt_consumed": false,
+            "current_deferral_fingerprint": "sha256:8e87181680f092d73e555bd90edbc93d3500a64641d5ba84b1157dff6ff94e81",
+            "exhausted": true,
+            "generation_fingerprint": "sha256:295db66bec62a8d1deca54ed88a59dfb60ec308f9c631294488eff2c7a36b176",
+            "matching_attempts": [
+              {
+                "attempt_id": "attempt:af26f848a9f14d809b5c52d7f8463a24",
+                "attempt_number": 3,
+                "deferral_fingerprint": "sha256:8e87181680f092d73e555bd90edbc93d3500a64641d5ba84b1157dff6ff94e81",
+                "reason": "validation_project_dependency_preflight_failed"
+              },
+              {
+                "attempt_id": "attempt:deac50bd8eef421bb95474ac2f1177e3",
+                "attempt_number": 2,
+                "deferral_fingerprint": "sha256:8e87181680f092d73e555bd90edbc93d3500a64641d5ba84b1157dff6ff94e81",
+                "reason": "validation_project_dependency_preflight_failed"
+              }
+            ],
+            "matching_attempts_digest": "sha256:f33c57917a730280df32ea9a0278495b39c423a3decb30e217720d439fe60423",
+            "matching_attempts_truncated": false,
+            "max_task_attempts": 2,
+            "observation_id": "sha256:86d0a7f85d7164733059c8657b72e58b49f9289cc116e345f8a62df47df5f0e3",
+            "omitted_matching_attempt_count": 0,
+            "schema": "ipfs_accelerate_py/agent-supervisor/database-portal-typed-deferral-budget@1",
+            "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "task_generation": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+            "typed_deferral_candidate_count": 2,
+            "typed_deferral_count": 2,
+            "typed_deferral_count_is_lower_bound": false,
+            "typed_deferral_slot_consumed": true,
+            "verified_count_complete": true,
+            "verified_typed_deferral_count": 2
+          },
+          "retryable": false,
+          "typed_deferral_slot_consumed": true
+        },
+        "conflict_policy": "Serialize overlapping schemas, exports, registries, state/CAS, merge and release artifacts; rebase and revalidate current evidence.",
+        "exact_inputs": [
+          "DOEP-PLAN-V5",
+          "exact source forest",
+          "current dependency receipts",
+          "current policy and toolchain identities"
+        ],
+        "exact_outputs": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "execution_validation": [
+          [
+            "python3",
+            "-m",
+            "pytest",
+            "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+            "-q"
+          ]
+        ],
+        "externally_claimable": false,
+        "forbidden_effects": [
+          "direct DuckDB or DuckLake write",
+          "policy-pointer mutation",
+          "task terminalization",
+          "credential access",
+          "scope expansion"
+        ],
+        "objective": "Extend the current canonical implementation to add automatic bounded task refill without creating a competing subsystem.",
+        "output_manifest": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+        "owned_files": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "owning_repository": "external/ipfs_accelerate",
+        "parent_goal_id": "DOEP-G060",
+        "plan_epoch": 1,
+        "plan_revision": "DOEP-PLAN-V5",
+        "postconditions": [
+          "All exact outputs exist inside the declared write scope",
+          "The exact validation argv exits zero on the resulting tree",
+          "Changed paths, commit, tree, CIDs, authority and limitations are in the canonical receipt",
+          "No truth, safety, authority or promotion gate has been weakened"
+        ],
+        "preconditions": [
+          "Exact base commit/tree or a current re-admission receipt for this plan epoch",
+          "Every dependency has a current admitted success receipt",
+          "Delegated repository, path, method and effect authority is current",
+          "At least the declared validation reserve remains available"
+        ],
+        "primary_output": "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+        "proof_obligations": [
+          "authority and scope preservation",
+          "no stale evidence admission",
+          "declared semantic or operational property"
+        ],
+        "read_scope": [
+          "declared dependency cone",
+          "admitted current receipts",
+          "canonical interfaces named in the plan"
+        ],
+        "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "repository_authority": "ACC",
+        "required_evidence": [
+          "source commit/tree/gitlinks",
+          "changed-path digest",
+          "test/proof results",
+          "receipt CID",
+          "limitations",
+          "verifier admission"
+        ],
+        "risk_class": "R3",
+        "rollback": "Reject or revert through the existing merge/rollback authority; invalidate successor receipts without rewriting history.",
+        "root_goal_id": "DOEP-G000",
+        "stable_task_id": "DOEP-053",
+        "subgoal_id": "DOEP-G060.S2",
+        "superproject_outputs": [
+          "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ],
+        "superproject_receipt_output": "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json",
+        "superproject_test_output": "external/ipfs_accelerate/test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "terminal_non_success": [
+          "blocked_dependency",
+          "blocked_authority",
+          "blocked_policy",
+          "budget_exhausted",
+          "validation_failed",
+          "provider_outcome_unknown",
+          "quarantined_nonconvergent",
+          "cancelled"
+        ],
+        "terminal_success": "Current independent validation and required receipts are admitted; postconditions hold; no required effect is unknown.",
+        "test_obligations": [
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "current protected regression subset selected by impact analysis"
+        ],
+        "test_output": "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "title": "Add automatic bounded task refill",
+        "unknown_effect_rule": "provider_outcome_unknown enters reconciliation and is never blindly retried",
+        "validation_profile": "doep-validation/DOEP-PLAN-V5/DOEP-053@1",
+        "write_scope": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+          "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+        ]
+      },
+      "revision": 11,
+      "status": "blocked"
+    }
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1",
+  "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518"
+}

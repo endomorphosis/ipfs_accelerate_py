@@ -187,27 +187,36 @@ def test_physical_no_provider_suffix(mutation):
         assert result["current_attempt"] == current
 
 
-def _seeded_dispatch_fixture():
-    d, task, attempts, _phases, h = _physical_fixture()
+def _seeded_dispatch_fixture(preflight_exhaustion=False):
+    if preflight_exhaustion:
+        from test.api.test_retained_callback_preflight_suffix import physical_fixture, history
+        d, task, attempts, _phases, _budget_calls = physical_fixture()
+        h = history()
+        d._task_source = SimpleNamespace(task_revision_history_projection=lambda cid: h)
+    else:
+        d, task, attempts, _phases, h = _physical_fixture()
+    source_revision = task.revision - 7
+    control_revision = task.revision
+    source_reason = h['revisions'][source_revision - 1]['body']['completion_receipt']['reason']
     source, _middle, _current = list(attempts.values())
     evidence = _callback_integration_recovery_evidence(d, source)
     seed = d._build_post_merge_completion_recovery_seed(
         attempt=source,
-        task_revision=8,
-        recovery_control_revision=15,
+        task_revision=source_revision,
+        recovery_control_revision=control_revision,
         evidence=evidence,
         qualified_target_commit=evidence["qualified_target_commit"],
         qualification_kind="callback_integration",
         qualification_receipt_id=evidence["callback_requalification_receipt_id"],
         recovery_evidence_id=evidence["evidence_id"],
-        terminal_reason=SOURCE_REASON,
+        terminal_reason=source_reason,
     )
-    old = h["revisions"][7]["body"]["completion_receipt"]
+    old = h["revisions"][source_revision - 1]["body"]["completion_receipt"]
     predecessor = {k: old[k] for k in IDENTITY | EXECUTION | ROUTE}
     predecessor.update(
         {
             "operation": "database_post_merge_declared_outputs_callback_integration_recovery",
-            "control_expected_revision": 15,
+            "control_expected_revision": control_revision,
             "control_expected_status": "blocked",
             "post_merge_completion_recovery_seed": seed,
             "queue_receipt": {},
@@ -233,16 +242,16 @@ def _seeded_dispatch_fixture():
             "source_train_receipt_id": "sha256:" + "4" * 64,
         }
     )
-    claim = copy.deepcopy(h["revisions"][12]["body"]["completion_receipt"])
+    claim = copy.deepcopy(h["revisions"][-3]["body"]["completion_receipt"])
     claim.update(
         {
             "attempt_id": "attempt:seed-consumer",
             "claim_id": "claim:seed-consumer",
             "lease_id": "lease:seed-consumer",
-            "attempt_number": 5,
-            "fencing_token": 5,
-            "fence_epoch": 5,
-            "claimed_from_revision": 16,
+            "attempt_number": getattr(_current, "attempt_number") + 1,
+            "fencing_token": getattr(_current, "fencing_token") + 1,
+            "fence_epoch": getattr(_current, "fence_epoch") + 1,
+            "claimed_from_revision": control_revision + 1,
             "post_merge_completion_recovery_seed": seed,
             "post_merge_completion_recovery_source_attempt_id": source.attempt_id,
         }
@@ -251,15 +260,15 @@ def _seeded_dispatch_fixture():
         **claim,
         "operation": "database_attempt_admitted",
         "claim_phase_schema": "ipfs_accelerate_py/agent-supervisor/typed-database-attempt-admission@1",
-        "admitted_from_revision": 17,
+        "admitted_from_revision": control_revision + 2,
         "attempt_execution_phase": "claimed",
         "attempt_execution_revision": 1,
     }
     semantic = {k: v for k, v in task.body.items() if k != "completion_receipt"}
     for rev, status, r in (
-        (16, "retrying", predecessor),
-        (17, "in_progress", claim),
-        (18, "in_progress", admitted),
+        (control_revision + 1, "retrying", predecessor),
+        (control_revision + 2, "in_progress", claim),
+        (control_revision + 3, "in_progress", admitted),
     ):
         h["revisions"].append(
             {
@@ -273,7 +282,7 @@ def _seeded_dispatch_fixture():
         task_cid=task.task_cid,
         task_alias=task.task_alias,
         status="in_progress",
-        revision=18,
+        revision=control_revision + 3,
         body=h["revisions"][-1]["body"],
     )
     attempt = SimpleNamespace(
@@ -291,8 +300,9 @@ def _seeded_dispatch_fixture():
     "mutation",
     [None, "foreign_source", "foreign_receipt", "gap", "foreign_admission", "no_seed"],
 )
-def test_native_seed_admission_and_actual_dispatch_boundary(mutation):
-    _d, b, a, r, seed, predecessor, h = _seeded_dispatch_fixture()
+@pytest.mark.parametrize("preflight_exhaustion", [False, True])
+def test_native_seed_admission_and_actual_dispatch_boundary(mutation, preflight_exhaustion):
+    _d, b, a, r, seed, predecessor, h = _seeded_dispatch_fixture(preflight_exhaustion)
     if mutation == "foreign_source":
         seed["attempt_id"] = "foreign"
     elif mutation == "foreign_receipt":
@@ -309,7 +319,7 @@ def test_native_seed_admission_and_actual_dispatch_boundary(mutation):
         record=r,
         status_receipt=r.body["completion_receipt"],
         seed=seed,
-        recovery_control_revision=15,
+        recovery_control_revision=seed["recovery_control_revision"],
     )
     assert (claim is not None) == (mutation is None)
     calls = []
@@ -328,7 +338,7 @@ def test_native_seed_admission_and_actual_dispatch_boundary(mutation):
                 record=r,
                 status_receipt=r.body["completion_receipt"],
                 seed=seed,
-                recovery_control_revision=15,
+                recovery_control_revision=seed["recovery_control_revision"],
             )
             is None
         ):
@@ -351,7 +361,8 @@ def test_native_seed_admission_and_actual_dispatch_boundary(mutation):
 
 
 @pytest.mark.parametrize("generation_refresh", [False, True])
-def test_retained_suffix_uses_current_real_claim_for_atomic_cas(tmp_path, monkeypatch, generation_refresh):
+@pytest.mark.parametrize("source_reason", [SOURCE_REASON, "Portal callback reconciliation binding is invalid"])
+def test_retained_suffix_uses_current_real_claim_for_atomic_cas(tmp_path, monkeypatch, generation_refresh, source_reason):
     """The original source cannot replace the latest claim as CAS authority.
 
     The matcher has independent captured-native tests above. This test injects
@@ -379,7 +390,7 @@ def test_retained_suffix_uses_current_real_claim_for_atomic_cas(tmp_path, monkey
             source,
             "failed",
             body={
-                "reason": SOURCE_REASON,
+                "reason": source_reason,
                 "portal_retryable_failure": False,
                 "portal_terminal_failure": True,
             },
@@ -387,7 +398,7 @@ def test_retained_suffix_uses_current_real_claim_for_atomic_cas(tmp_path, monkey
         now["ms"] += 6000
         source_coordination = d._reconcile_failed_attempt_coordination(source)
         d._persist_terminal_portal_failure(
-            source, reason=SOURCE_REASON, coordination_evidence=source_coordination
+            source, reason=source_reason, coordination_evidence=source_coordination
         )
         original = d.task_source.get(source.task_cid)
         d._persist_task_retry_state(
@@ -450,7 +461,7 @@ def test_retained_suffix_uses_current_real_claim_for_atomic_cas(tmp_path, monkey
                 recovery_control_revision=before.revision - 1, evidence=evidence,
                 qualified_target_commit="f" * 40, qualification_kind="callback_integration",
                 qualification_receipt_id="receipt:old", recovery_evidence_id="sha256:"+"a"*64,
-                terminal_reason=SOURCE_REASON,
+                terminal_reason=source_reason,
             )
             d._post_merge_completion_target_advanced = lambda *args, **kwargs: True
         result = d.recover_blocked_post_merge_declared_outputs(evidence)
