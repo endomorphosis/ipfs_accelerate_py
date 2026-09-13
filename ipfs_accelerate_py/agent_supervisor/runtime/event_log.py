@@ -1,4 +1,15 @@
-"""JSONL event-log helpers for agent supervisor runtimes."""
+"""JSONL event-log helpers for agent supervisor runtimes.
+
+DOEP-034 / EventCoalescingAndCausalOrdering@1
+=============================================
+
+Event coalescing and causal ordering are bindings of this JSONL log, not a
+second event subsystem. The durable append-only hash chain remains
+authority: coalescing is a wakeup projection over already-committed
+events, and causal parents must already exist in that chain. A worker or
+model assertion cannot skip causal edges, invent parents, or certify a
+coalesced view as a rewritten log.
+"""
 
 from __future__ import annotations
 
@@ -42,6 +53,35 @@ LEGACY_EVENT_LOG_MANIFEST_SCHEMA = "ipfs_accelerate_py.agent_supervisor.event-lo
 EVENT_CURSOR_CHECKPOINT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.event-cursor-checkpoint@1"
 SEMANTIC_CHANGE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/semantic-change@1"
 SEMANTIC_CHANGE_EVENT_TYPE: Final = "decision_runtime_semantic_change"
+EVENT_LOG_INTERFACE: Final = "EventLog@1"
+JSONL_EVENT_LOG_INTERFACE: Final = EVENT_LOG_INTERFACE
+EVENT_CURSOR_INTERFACE: Final = "EventCursor@1"
+EVENT_COALESCING_BINDING: Final = "EventCoalescing@1"
+CAUSAL_ORDERING_BINDING: Final = "CausalOrdering@1"
+EVENT_COALESCING_AND_CAUSAL_ORDERING_BINDING: Final = (
+    "EventCoalescingAndCausalOrdering@1"
+)
+EVENT_COALESCING_AND_CAUSAL_ORDERING_INTERFACE: Final = (
+    EVENT_COALESCING_AND_CAUSAL_ORDERING_BINDING
+)
+EVENT_COALESCING_AND_CAUSAL_ORDERING_CONSUMES: Final[tuple[str, ...]] = (
+    EVENT_LOG_INTERFACE,
+    EVENT_CURSOR_INTERFACE,
+)
+EVENT_COALESCING_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/event-coalescing@1"
+)
+CAUSAL_ORDERING_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/causal-ordering@1"
+)
+EVENT_COALESCING_DECISION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/event-coalescing-decision@1"
+)
+EVENT_COALESCING_PAGE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/event-coalescing-page@1"
+)
+MAX_CAUSAL_PARENTS: Final = 256
+MAX_COALESCING_KEY_BYTES: Final = 256
 _EVENT_OFFSET_INDEX_STRIDE = 256
 _EVENT_OFFSET_INDEX_MAX_ITEMS = 4096
 _EVENT_RECOVERY_TAIL_MAX_BYTES = 16 * MAX_PROJECTION_BYTES
@@ -53,7 +93,28 @@ _RESERVED_EVENT_FIELDS = frozenset(
         "position",
         "event_id",
         "previous_event_id",
+        "causal_parent_ids",
+        "coalescing_key",
+        "coalescing_forbidden",
     }
+)
+_ENVELOPE_IDENTITY_FIELDS = frozenset(
+    {
+        "type",
+        "timestamp",
+        *_RESERVED_EVENT_FIELDS,
+    }
+)
+_COALESCING_FORBIDDEN_TOKENS: Final[tuple[str, ...]] = (
+    "lease",
+    "fence",
+    "proof",
+    "payment",
+    "receipt",
+    "semantic_change",
+    "security",
+    "legal",
+    "irreversible",
 )
 
 
@@ -61,8 +122,24 @@ class EventPayloadTooLarge(ValueError):
     """An event exceeded its receipt or routine projection bound."""
 
 
+class EventCoalescingError(CursorReplayError):
+    """A coalescing projection is malformed or would hide a safety event."""
+
+
+class CausalOrderError(CursorReplayError):
+    """Causal parents are missing, cyclic, or inconsistent with sequence order."""
+
+
 class SemanticChangeIntegrityError(CursorReplayError):
     """A logical semantic-change event is malformed, duplicated, or reordered."""
+
+
+class EventCoalescingMode(str, Enum):
+    """Closed population of wakeup-coalescing projections."""
+
+    NONE = "none"
+    LATEST_GENERATION = "latest_generation"
+    SUPERSEDED = "superseded"
 
 
 class SemanticChangeKind(str, Enum):
@@ -241,6 +318,219 @@ class SemanticChangePage:
             raise TypeError("next_cursor must be an EventCursor")
         if len(self.changes) != len(self.event_ids):
             raise SemanticChangeIntegrityError("semantic change page event bindings are incomplete")
+
+
+def event_coalescing_forbidden(
+    event_or_type: Mapping[str, Any] | str,
+    *,
+    explicit: bool | None = None,
+) -> bool:
+    """Return whether an event type is forbidden from wakeup coalescing.
+
+    Lease, fence, proof, payment, receipt, semantic-change, security, and
+    legal transitions stay one wakeup per committed event. An explicit
+    ``False`` cannot override that closed safety set.
+    """
+
+    if explicit is True:
+        return True
+    event_type = ""
+    claimed_forbidden: bool | None = explicit
+    if isinstance(event_or_type, Mapping):
+        event_type = str(event_or_type.get("type") or "")
+        raw_flag = event_or_type.get("coalescing_forbidden")
+        if raw_flag is True:
+            claimed_forbidden = True
+        elif raw_flag is False and claimed_forbidden is None:
+            claimed_forbidden = False
+    else:
+        event_type = str(event_or_type or "")
+    folded = event_type.casefold()
+    if folded == SEMANTIC_CHANGE_EVENT_TYPE.casefold():
+        return True
+    if any(token in folded for token in _COALESCING_FORBIDDEN_TOKENS):
+        return True
+    return bool(claimed_forbidden)
+
+
+def event_coalescing_key(event: Mapping[str, Any]) -> str:
+    """Return the closed coalescing family key for one durable event."""
+
+    if not isinstance(event, Mapping):
+        raise EventCoalescingError("event must be an object")
+    return str(event.get("coalescing_key") or "").strip()
+
+
+def event_causal_parent_ids(event: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return declared causal parents, defaulting to the physical predecessor."""
+
+    if not isinstance(event, Mapping):
+        raise CausalOrderError("event must be an object")
+    raw = event.get("causal_parent_ids")
+    if raw is None:
+        previous = str(event.get("previous_event_id") or "").strip()
+        return (previous,) if previous else ()
+    return _normalize_causal_parent_ids(raw)
+
+
+def _normalize_causal_parent_ids(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+        raise CausalOrderError("causal_parent_ids must be an array of event ids")
+    parents: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        parent = str(item or "").strip()
+        if not parent or "\x00" in parent:
+            raise CausalOrderError("causal parent id must be non-empty")
+        if parent in seen:
+            raise CausalOrderError("causal_parent_ids contains duplicates")
+        seen.add(parent)
+        parents.append(parent)
+    if len(parents) > MAX_CAUSAL_PARENTS:
+        raise CausalOrderError("causal parent bound exceeded")
+    return tuple(parents)
+
+
+def _normalize_coalescing_key(value: object) -> str:
+    key = str(value or "").strip()
+    if "\x00" in key:
+        raise EventCoalescingError("coalescing_key contains NUL")
+    encoded = key.encode("utf-8")
+    if len(encoded) > MAX_COALESCING_KEY_BYTES:
+        raise EventCoalescingError("coalescing_key exceeds its bound")
+    return key
+
+
+def _logical_identity_payload(event: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        key: item
+        for key, item in event.items()
+        if key not in _ENVELOPE_IDENTITY_FIELDS
+    }
+
+
+@dataclass(frozen=True)
+class EventCoalescingDecision:
+    """A wakeup projection over immutable input events.
+
+    ``representative_event`` is an existing authoritative event. Coalescing
+    never invents a new event_id, sequence, or causal edge, and cannot be
+    mistaken for a rewritten log.
+    """
+
+    representative_event: Mapping[str, Any]
+    input_event_ids: tuple[str, ...]
+    mode: EventCoalescingMode
+    coalescing_key: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.representative_event, Mapping):
+            raise EventCoalescingError("representative_event must be an object")
+        object.__setattr__(
+            self,
+            "representative_event",
+            MappingProxyType(dict(self.representative_event)),
+        )
+        if not self.input_event_ids:
+            raise EventCoalescingError("coalescing decision requires input events")
+        normalized_ids: list[str] = []
+        seen: set[str] = set()
+        for event_id in self.input_event_ids:
+            identity = str(event_id or "").strip()
+            if not identity or "\x00" in identity:
+                raise EventCoalescingError("coalescing decision event id must be non-empty")
+            if identity in seen:
+                raise EventCoalescingError("coalescing decision contains duplicate events")
+            seen.add(identity)
+            normalized_ids.append(identity)
+        object.__setattr__(self, "input_event_ids", tuple(normalized_ids))
+        if not isinstance(self.mode, EventCoalescingMode):
+            raise EventCoalescingError("coalescing mode is not closed")
+        key = str(self.coalescing_key or "")
+        if "\x00" in key:
+            raise EventCoalescingError("coalescing_key contains NUL")
+        object.__setattr__(self, "coalescing_key", key)
+        representative_id = str(self.representative_event.get("event_id") or "")
+        if representative_id not in seen:
+            raise EventCoalescingError(
+                "coalescing representative is not one of the input events"
+            )
+        if event_coalescing_forbidden(self.representative_event) and len(normalized_ids) != 1:
+            raise EventCoalescingError("safety-significant events cannot be coalesced")
+        if self.mode is EventCoalescingMode.NONE and len(normalized_ids) != 1:
+            raise EventCoalescingError("NONE coalescing cannot fold multiple events")
+
+    @property
+    def representative_event_id(self) -> str:
+        return str(self.representative_event.get("event_id") or "")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": EVENT_COALESCING_DECISION_SCHEMA,
+            "binding": EVENT_COALESCING_BINDING,
+            "carrier": EVENT_LOG_INTERFACE,
+            "representative_event_id": self.representative_event_id,
+            "input_event_ids": list(self.input_event_ids),
+            "mode": self.mode.value,
+            "coalescing_key": self.coalescing_key,
+            "worker_assertion_is_authority": False,
+        }
+
+
+@dataclass(frozen=True)
+class CoalescedEventPage:
+    """Coalesced wakeup projection over one causally ordered physical page.
+
+    ``next_cursor`` advances by consumed physical events, never by the
+    coalesced representative count. The physical log remains authority.
+    """
+
+    events: tuple[Mapping[str, Any], ...]
+    decisions: tuple[EventCoalescingDecision, ...]
+    next_cursor: EventCursor
+    has_more: bool
+    consumed_event_ids: tuple[str, ...] = ()
+    binding: str = EVENT_COALESCING_AND_CAUSAL_ORDERING_BINDING
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.next_cursor, EventCursor):
+            raise TypeError("next_cursor must be an EventCursor")
+        if not isinstance(self.has_more, bool):
+            raise EventCoalescingError("has_more must be a boolean")
+        if self.binding != EVENT_COALESCING_AND_CAUSAL_ORDERING_BINDING:
+            raise EventCoalescingError("unsupported coalesced event page binding")
+        frozen_events = tuple(
+            MappingProxyType(dict(event)) if isinstance(event, Mapping) else event
+            for event in self.events
+        )
+        if any(not isinstance(event, Mapping) for event in frozen_events):
+            raise EventCoalescingError("coalesced page entries must be objects")
+        object.__setattr__(self, "events", frozen_events)
+        if len(self.events) != len(self.decisions):
+            raise EventCoalescingError("coalesced page decision bindings are incomplete")
+        for event, decision in zip(self.events, self.decisions):
+            if not isinstance(decision, EventCoalescingDecision):
+                raise EventCoalescingError("coalesced page decisions are malformed")
+            if str(event.get("event_id") or "") != decision.representative_event_id:
+                raise EventCoalescingError(
+                    "coalesced representative does not match its decision"
+                )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": EVENT_COALESCING_PAGE_SCHEMA,
+            "binding": self.binding,
+            "carrier": EVENT_LOG_INTERFACE,
+            "events": [dict(event) for event in self.events],
+            "decisions": [decision.to_dict() for decision in self.decisions],
+            "next_cursor": self.next_cursor.to_record(),
+            "has_more": self.has_more,
+            "consumed_event_ids": list(self.consumed_event_ids),
+            "worker_assertion_is_authority": False,
+            "authoritative": False,
+        }
 
 
 _EVENT_LOCKS: dict[str, threading.RLock] = {}
@@ -1488,6 +1778,62 @@ def _reconcile_manifest_tail(
     return value
 
 
+def _read_active_tail_event(path: Path) -> dict[str, Any] | None:
+    """Return the last complete JSON object in the active segment, if any."""
+
+    if not path.exists() or path.is_dir():
+        return None
+    try:
+        with path.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            if size <= 0:
+                return None
+            block = min(size, 65_536)
+            stream.seek(size - block)
+            data = stream.read()
+    except OSError:
+        return None
+    lines = [line for line in data.splitlines() if line.strip()]
+    if not lines:
+        return None
+    try:
+        value = json.loads(lines[-1])
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _prove_event_ids(path: Path, wanted: set[str]) -> None:
+    """Fail closed unless every requested event_id is already in the log."""
+
+    remaining = {item for item in wanted if item}
+    if not remaining:
+        return
+    for source in _source_paths(path):
+        try:
+            with source.open("rb") as stream:
+                for raw_line in stream:
+                    if not raw_line.strip():
+                        continue
+                    try:
+                        raw_event = json.loads(raw_line)
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        continue
+                    if not isinstance(raw_event, dict):
+                        continue
+                    event_id = str(raw_event.get("event_id") or "")
+                    if event_id in remaining:
+                        remaining.remove(event_id)
+                        if not remaining:
+                            return
+        except OSError as exc:
+            raise CausalOrderError("event log is unreadable while proving causal parents") from exc
+    raise CausalOrderError(
+        "causal parent is missing from the event log: " + ", ".join(sorted(remaining))
+    )
+
+
 def append_jsonl_event(
     path: Path | str,
     event_type: str,
@@ -1496,6 +1842,9 @@ def append_jsonl_event(
     max_bytes: int | None = None,
     fsync: bool = True,
     artifact_store: Any | None = None,
+    causal_parent_ids: Sequence[str] | None = None,
+    coalescing_key: str | None = None,
+    coalescing_forbidden: bool | None = None,
 ) -> dict[str, Any]:
     """Append one event and return the exact JSON object written.
 
@@ -1503,6 +1852,12 @@ def append_jsonl_event(
     the former ``None`` return and lets receipt publishers reuse the exact
     compact projection which reached the durable log. Receipt-shaped events
     have a hard 256 KiB ceiling; every other routine event has a 1 MiB ceiling.
+
+    ``causal_parent_ids`` declare happens-before edges that must already exist
+    in this stream. Empty or omitted parents default to the physical
+    predecessor. A coalescible head with the same type, key, and logical
+    payload is returned without writing; safety-significant types never
+    coalesce.
     """
 
     path = Path(path)
@@ -1519,10 +1874,33 @@ def append_jsonl_event(
             raise ValueError("event projection must be an object")
         compact_payload = projected
     supplied_payload = dict(compact_payload)
+    payload_parents = supplied_payload.get("causal_parent_ids")
+    payload_key = supplied_payload.get("coalescing_key")
+    payload_forbidden = supplied_payload.get("coalescing_forbidden")
     for field_name in _RESERVED_EVENT_FIELDS:
         supplied_payload.pop(field_name, None)
     selected_timestamp = supplied_payload.pop("timestamp", None)
     supplied_payload.pop("type", None)
+    selected_key = _normalize_coalescing_key(
+        coalescing_key if coalescing_key is not None else payload_key
+    )
+    selected_forbidden = event_coalescing_forbidden(
+        event_type,
+        explicit=(
+            coalescing_forbidden
+            if coalescing_forbidden is not None
+            else (bool(payload_forbidden) if payload_forbidden is not None else None)
+        ),
+    )
+    if selected_forbidden:
+        selected_key = ""
+    selected_parents: Sequence[str] | None
+    if causal_parent_ids is not None:
+        selected_parents = causal_parent_ids
+    elif payload_parents is not None:
+        selected_parents = _normalize_causal_parent_ids(payload_parents)
+    else:
+        selected_parents = None
     default_limit = (
         MAX_RECEIPT_BYTES
         if (
@@ -1541,6 +1919,28 @@ def append_jsonl_event(
         manifest = _manifest_for_append(path)
         previous_sequence = int(manifest.get("latest_sequence") or 0)
         previous_event_id = str(manifest.get("last_event_id") or "")
+        if selected_parents is None:
+            parents = (previous_event_id,) if previous_event_id else ()
+        else:
+            parents = _normalize_causal_parent_ids(selected_parents)
+        if previous_event_id and any(parent == previous_event_id for parent in parents):
+            missing_parents = {parent for parent in parents if parent != previous_event_id}
+        else:
+            missing_parents = set(parents)
+        if missing_parents:
+            _prove_event_ids(path, missing_parents)
+        head = _read_active_tail_event(path)
+        if (
+            head is not None
+            and selected_key
+            and not selected_forbidden
+            and not event_coalescing_forbidden(head)
+            and str(head.get("type") or "") == str(event_type)
+            and str(head.get("coalescing_key") or "") == selected_key
+            and json.loads(_canonical_event_bytes(_logical_identity_payload(head), limit))
+            == json.loads(_canonical_event_bytes(supplied_payload, limit))
+        ):
+            return head
         event = {
             "type": event_type,
             "timestamp": (selected_timestamp if selected_timestamp is not None else utc_now()),
@@ -1549,8 +1949,13 @@ def append_jsonl_event(
             "snapshot_id": str(manifest["snapshot_id"]),
             "sequence": previous_sequence + 1,
             "previous_event_id": previous_event_id,
+            "causal_parent_ids": list(parents),
+            "coalescing_key": selected_key,
+            "coalescing_forbidden": selected_forbidden,
         }
         event["event_id"] = _event_identity(event)
+        if event["event_id"] in parents:
+            raise CausalOrderError("an event cannot list itself as a causal parent")
         encoded = _canonical_event_bytes(event, limit) + b"\n"
         offset = path.stat().st_size if path.exists() else 0
         with path.open("ab") as fh:
@@ -1605,6 +2010,9 @@ def semantic_change_from_event(value: Mapping[str, Any]) -> SemanticChange:
                 "position",
                 "event_id",
                 "previous_event_id",
+                "causal_parent_ids",
+                "coalescing_key",
+                "coalescing_forbidden",
             }
         }
     change = SemanticChange.from_dict(payload)
@@ -1683,6 +2091,206 @@ CanonicalSemanticChange = SemanticChange
 CanonicalSemanticChangeEvent = SemanticChange
 append_canonical_semantic_change = append_semantic_change_event
 read_canonical_semantic_change_page = read_semantic_change_page
+
+
+def plan_event_coalescing(
+    events: Sequence[Mapping[str, Any]],
+) -> tuple[EventCoalescingDecision, ...]:
+    """Plan bounded wakeup coalescing without mutating event history.
+
+    Physical delivery remains at-least-once. The returned representatives are
+    existing events. Safety-significant types stay one decision per event.
+    """
+
+    if any(not isinstance(item, Mapping) for item in events):
+        raise EventCoalescingError("coalescing input contains a non-event")
+    ordered = sorted(
+        events,
+        key=lambda item: (
+            int(item.get("sequence") or item.get("position") or 0),
+            str(item.get("event_id") or ""),
+        ),
+    )
+    grouped: dict[tuple[str, str, str], list[Mapping[str, Any]]] = {}
+    singles: list[EventCoalescingDecision] = []
+    for event in ordered:
+        event_id = str(event.get("event_id") or "")
+        if not event_id:
+            raise EventCoalescingError("coalescing input is missing event_id")
+        key = event_coalescing_key(event)
+        if event_coalescing_forbidden(event) or not key:
+            singles.append(
+                EventCoalescingDecision(
+                    representative_event=event,
+                    input_event_ids=(event_id,),
+                    mode=EventCoalescingMode.NONE,
+                    coalescing_key=key,
+                )
+            )
+            continue
+        family_key = (
+            str(event.get("type") or ""),
+            key,
+            str(event.get("stream_id") or ""),
+        )
+        grouped.setdefault(family_key, []).append(event)
+
+    planned = list(singles)
+    for (_event_type, key, _stream_id), family in grouped.items():
+        representative = family[-1]
+        input_ids = tuple(str(item.get("event_id") or "") for item in family)
+        if len(family) == 1:
+            mode = EventCoalescingMode.NONE
+        else:
+            mode = EventCoalescingMode.LATEST_GENERATION
+        planned.append(
+            EventCoalescingDecision(
+                representative_event=representative,
+                input_event_ids=input_ids,
+                mode=mode,
+                coalescing_key=key,
+            )
+        )
+    return tuple(
+        sorted(
+            planned,
+            key=lambda item: (
+                int(
+                    item.representative_event.get("sequence")
+                    or item.representative_event.get("position")
+                    or 0
+                ),
+                item.representative_event_id,
+            ),
+        )
+    )
+
+
+def assert_causal_order(
+    events: Sequence[Mapping[str, Any]],
+    *,
+    known_event_ids: Iterable[str] = (),
+) -> None:
+    """Fail closed if the page is not a linear extension of its causal DAG."""
+
+    if any(not isinstance(item, Mapping) for item in events):
+        raise CausalOrderError("causal order input contains a non-event")
+    known = {str(item).strip() for item in known_event_ids if str(item).strip()}
+    seen_ids: set[str] = set(known)
+    previous_id = ""
+    previous_sequence = 0
+    positions: dict[str, int] = {}
+    for event in events:
+        event_id = str(event.get("event_id") or "").strip()
+        if not event_id:
+            raise CausalOrderError("event is missing event_id")
+        if event_id in seen_ids and event_id not in known:
+            raise CausalOrderError(f"duplicate event {event_id} in causal order")
+        sequence_raw = event.get("sequence", event.get("position"))
+        sequence = int(sequence_raw) if isinstance(sequence_raw, int) and not isinstance(sequence_raw, bool) else 0
+        if previous_sequence and sequence and sequence <= previous_sequence:
+            raise CausalOrderError("event sequence is not a causal linear extension")
+        physical_parent = str(event.get("previous_event_id") or "").strip()
+        if physical_parent and physical_parent not in seen_ids:
+            raise CausalOrderError("physical predecessor is missing from causal order")
+        if previous_id and physical_parent and physical_parent != previous_id:
+            raise CausalOrderError("physical hash chain is broken")
+        for parent in event_causal_parent_ids(event):
+            if parent == event_id:
+                raise CausalOrderError("an event cannot list itself as a causal parent")
+            if parent not in seen_ids:
+                raise CausalOrderError(f"causal parent {parent} is missing or reordered")
+            parent_sequence = positions.get(parent)
+            if parent_sequence is not None and sequence and parent_sequence >= sequence:
+                raise CausalOrderError("causal parent is not strictly earlier")
+        seen_ids.add(event_id)
+        positions[event_id] = sequence
+        previous_id = event_id
+        previous_sequence = sequence or previous_sequence
+
+
+def happens_before(
+    earlier: Mapping[str, Any] | str,
+    later: Mapping[str, Any] | str,
+    events: Sequence[Mapping[str, Any]],
+) -> bool:
+    """Return whether ``earlier`` is a causal ancestor of ``later``."""
+
+    population = {
+        str(event.get("event_id") or ""): event
+        for event in events
+        if isinstance(event, Mapping) and event.get("event_id")
+    }
+    earlier_id = (
+        str(earlier.get("event_id") or "")
+        if isinstance(earlier, Mapping)
+        else str(earlier or "")
+    ).strip()
+    later_id = (
+        str(later.get("event_id") or "")
+        if isinstance(later, Mapping)
+        else str(later or "")
+    ).strip()
+    if not earlier_id or not later_id or earlier_id == later_id:
+        return False
+    stack = [later_id]
+    visited: set[str] = set()
+    while stack:
+        current_id = stack.pop()
+        if current_id in visited:
+            continue
+        visited.add(current_id)
+        current = population.get(current_id)
+        if current is None:
+            continue
+        parents = set(event_causal_parent_ids(current))
+        previous = str(current.get("previous_event_id") or "").strip()
+        if previous:
+            parents.add(previous)
+        if earlier_id in parents:
+            return True
+        stack.extend(parent for parent in parents if parent not in visited)
+    return False
+
+
+def read_coalesced_event_page(
+    path: Path | str,
+    cursor: EventCursor | Mapping[str, Any] | str,
+    *,
+    limit: int = 256,
+    known_event_ids: Iterable[str] = (),
+    worker_assertion: bool = False,
+) -> CoalescedEventPage:
+    """Replay one causally ordered page and return its coalesced wakeup view.
+
+    The physical cursor still advances across every consumed event. Coalescing
+    only selects representatives for wakeup; it does not rewrite, delete, or
+    skip the durable suffix. ``worker_assertion`` is accepted and ignored as
+    authority.
+    """
+
+    del worker_assertion
+    page = read_jsonl_event_page(path, cursor, limit=limit)
+    selected_cursor = _coerce_event_cursor(cursor)
+    known = {str(item).strip() for item in known_event_ids if str(item).strip()}
+    if selected_cursor.last_event_id:
+        known.add(selected_cursor.last_event_id)
+    assert_causal_order(page.events, known_event_ids=known)
+    decisions = plan_event_coalescing(page.events)
+    return CoalescedEventPage(
+        events=tuple(decision.representative_event for decision in decisions),
+        decisions=decisions,
+        next_cursor=page.next_cursor,
+        has_more=page.has_more,
+        consumed_event_ids=tuple(
+            str(event.get("event_id") or "") for event in page.events
+        ),
+    )
+
+
+read_causal_event_page = read_coalesced_event_page
+plan_jsonl_event_coalescing = plan_event_coalescing
+assert_jsonl_causal_order = assert_causal_order
 
 
 def append_scan_receipt_event(
