@@ -70,6 +70,22 @@ source-read grants, projection receipt commands and derived-reference consumers
 have been admitted. In particular, an empty running owner alone is not a working
 history aggregator or semantic index.
 
+Source reference discovery uses `list_references(tree_id, after="", limit=256)`.
+Both source and artifact pages expose `has_more` and `next_cursor`; pass the
+cursor back as `after` to continue. Source pages also shrink to fit the response
+byte limit, so row count alone never establishes exhaustion. The
+`DerivedCoordinationClient.iter_references` and `iter_artifacts` helpers validate
+page scope, reference digests, ordering and cursor progress before yielding a
+page. Each page uses a fresh session when the client has a connection factory.
+Failures propagate without automatic request replay or file fallback.
+
+The iterators accept `max_pages` (default 1024). Exhausting it raises
+`DerivedDiscoveryLimitExceeded` with a resumable `next_cursor`; it does not
+silently truncate discovery. Pagination visits immutable reference identities,
+not a point-in-time snapshot. Concurrent insertions behind the cursor appear on
+the next scan. Reference integrity does not verify AST, proof, certificate or
+other artifact contents, and discovery never grants task completion authority.
+
 The implemented observation service is
 `scripts/ops/agent_supervisor/quack_fleet_aggregate.py`. It owns the aggregate
 Quack instance, polls each board through its existing admitted native operator
