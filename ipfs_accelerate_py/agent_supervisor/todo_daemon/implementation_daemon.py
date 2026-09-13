@@ -93089,7 +93089,9 @@ class DatabaseImplementationDaemon:
         retained_suffix_completion = bool(
             isinstance(completion_seed, Mapping)
             and completion_seed.get("schema") == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
-            and completion_seed.get("terminal_reason") == DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON
+            and (completion_seed.get("terminal_reason") == DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON
+                 or (completion_seed.get("terminal_reason") == DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON
+                     and completion_seed.get("recovery_control_revision") != completion_seed.get("source_task_revision")))
         )
         if callback_unknown_completion or retained_suffix_completion:
             expected_fields = expected_fields | {
@@ -93121,9 +93123,7 @@ class DatabaseImplementationDaemon:
         )[:2048]
         coordination = receipt.get("coordination")
         queue_receipt = receipt.get("queue_receipt")
-        if (completion_seed is not None
-                and completion_seed.get("schema") == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
-                and completion_seed.get("terminal_reason") == DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON):
+        if retained_suffix_completion:
             from .retained_callback_suffix import verified_seed_predecessor
 
             if not verified_seed_predecessor(
@@ -104065,7 +104065,6 @@ class DatabaseImplementationDaemon:
         from .retained_callback_suffix import (
             IDENTITY,
             PREFLIGHT_REASON,
-            SOURCE_REASON,
             verified_suffix,
         )
 
@@ -104088,12 +104087,15 @@ class DatabaseImplementationDaemon:
             return None
         attempts = []
         physical_receipts = [
-            ("source_receipt", context["source_receipt"], SOURCE_REASON),
+            ("source_receipt", context["source_receipt"], context["source_receipt"]["reason"]),
             ("middle_receipt", context["middle_receipt"], PREFLIGHT_REASON),
             *[("prior_terminal", r, r["reason"]) for r in context.get("prior_terminals", [])],
             ("current_receipt", context["current_receipt"], context["current_receipt"]["reason"]),
         ]
         for name, receipt, reason in physical_receipts:
+            budget_terminal = receipt.get("operation") == "database_portal_typed_deferral_budget_exhausted"
+            if budget_terminal:
+                reason = PREFLIGHT_REASON
             attempt = self.get_attempt(receipt["attempt_id"])
             if (
                 attempt is None
@@ -104125,8 +104127,10 @@ class DatabaseImplementationDaemon:
             ):
                 return None
             failed = phases[-1]["body"]
-            if name == "middle_receipt":
+            if name == "middle_receipt" or budget_terminal:
                 if self._verified_typed_deferral_receipt(attempt, failed) is None:
+                    return None
+                if budget_terminal and receipt.get("retry_budget") != self._typed_deferral_budget_observation(attempt):
                     return None
             elif failed != {
                 "attempt_consumed": "unknown",
@@ -104195,6 +104199,11 @@ class DatabaseImplementationDaemon:
         candidate_body = getattr(task, "body", None)
         candidate_receipt = (candidate_body.get("completion_receipt")
                              if isinstance(candidate_body, Mapping) else None)
+        if (require_current_blocked and isinstance(candidate_receipt, Mapping)
+                and candidate_receipt.get("operation") == "database_portal_typed_deferral_budget_exhausted"):
+            retained = self._retained_callback_suffix_context(task)
+            if retained is not None:
+                return retained
         if (require_current_blocked and isinstance(candidate_receipt, Mapping)
                 and candidate_receipt.get("reason")
                 in {"retained callback recovery requires exact source seed before dispatch",
@@ -118199,7 +118208,10 @@ class DatabaseImplementationDaemon:
         )
 
         def verify_completion_key_terminal_history(*, inside_coordination_fence: bool = False) -> None:
-            if completion_terminal_reason != DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON:
+            if (completion_terminal_reason != DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON
+                    and not (completion_terminal_reason == DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON
+                             and crash_source_admitted and crash_context is not None
+                             and crash_context.get("receiver_suffix") is True)):
                 return
             if (completion_recovery_seed is None
                     or qualification_kind != "callback_integration"
@@ -123305,8 +123317,13 @@ class DatabaseImplementationDaemon:
                 missing_completion_handshake = reason in {
                     DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                     DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-                    DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
                 }
+                # A rejected callback can already describe landed work.  Only
+                # the dedicated post-merge verifier may bind its retained
+                # request to a fresh claim.  A generic rearm loses that seed
+                # and dispatches ordinary setup against already-present output.
+                if reason == DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON:
+                    continue
                 pending_merge_claim_mismatch = (
                     self._canonical_portal_failure_reason(reason)
                     == DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON

@@ -20,6 +20,8 @@ from ..task_sources.typed_state_owner import (
 )
 
 SOURCE_REASON = "Portal completion source canonical task key mismatches"
+CALLBACK_REASON = "Portal callback reconciliation binding is invalid"
+EXHAUSTED_REASON = "typed_portal_deferral_budget_exhausted"
 GUARD_REASON = "retained callback recovery requires exact source seed before dispatch"
 EVIDENCE_REASON = "post-merge completion recovery seed evidence changed"
 GENERATION_REASON = "post-merge completion recovery seed target generation changed"
@@ -137,18 +139,30 @@ def verified_suffix(
         return None
     source, rearm, middle, middle_admitted, retry, current, admitted, terminal = receipts
     source_revision = control_revision - 7
+    # A legacy generic handshake retry also produced two proved pre-dispatch
+    # dependency deferrals.  This distinct closed suffix identifies its original
+    # callback only; physical phases, the reproduced budget and current fence
+    # remain mandatory in the caller before retained request qualification.
+    exhausted_callback = (
+        source.get("reason") == CALLBACK_REASON
+        and terminal.get("operation") == "database_portal_typed_deferral_budget_exhausted"
+        and terminal.get("reason") == EXHAUSTED_REASON
+    )
+    terminal_fields = TERMINAL | ({"attempt_consumed", "typed_deferral_slot_consumed",
+        "prior_queue_entry_preserved_inactive", "retry_budget"} if exhausted_callback else set())
     if (
         set(source) != TERMINAL
-        or set(terminal) != TERMINAL
+        or set(terminal) != terminal_fields
         or set(rearm) != RETRY
         or set(retry) != RETRY
         or set(middle) != CLAIM
         or set(current) != CLAIM
         or source["operation"] != "database_portal_terminal_failure"
-        or source["reason"] != SOURCE_REASON
+        or source["reason"] != (CALLBACK_REASON if exhausted_callback else SOURCE_REASON)
         or source["retryable"] is not False
-        or terminal["operation"] != "database_portal_terminal_failure"
-        or terminal["reason"] != GUARD_REASON
+        or terminal["operation"] != ("database_portal_typed_deferral_budget_exhausted"
+                                      if exhausted_callback else "database_portal_terminal_failure")
+        or terminal["reason"] != (EXHAUSTED_REASON if exhausted_callback else GUARD_REASON)
         or terminal["retryable"] is not False
         or rearm["operation"] != "database_portal_validation_retry_recovery"
         or rearm["reason"] != "portal_completion_handshake_retry"
@@ -163,6 +177,42 @@ def verified_suffix(
         or any(current[k] != terminal[k] for k in IDENTITY)
     ):
         return None
+    if exhausted_callback:
+        budget = terminal.get("retry_budget")
+        if (
+            terminal.get("attempt_consumed") is not False
+            or terminal.get("typed_deferral_slot_consumed") is not True
+            or terminal.get("prior_queue_entry_preserved_inactive") is not True
+            or not isinstance(budget, Mapping)
+            or budget.get("schema") != "ipfs_accelerate_py/agent-supervisor/database-portal-typed-deferral-budget@1"
+            or budget.get("task_cid") != task_cid
+            or budget.get("exhausted") is not True
+            or budget.get("attempt_consumed") is not False
+            or budget.get("typed_deferral_slot_consumed") is not True
+            or budget.get("verified_count_complete") is not True
+            or budget.get("matching_attempts_truncated") is not False
+            or budget.get("typed_deferral_count_is_lower_bound") is not False
+            or type(budget.get("max_task_attempts")) is not int
+            or budget["max_task_attempts"] != 2
+            or type(budget.get("typed_deferral_count")) is not int
+            or budget["typed_deferral_count"] != 2
+            or type(budget.get("omitted_matching_attempt_count")) is not int
+            or budget["omitted_matching_attempt_count"] != 0
+            or type(budget.get("verified_typed_deferral_count")) is not int
+            or budget["verified_typed_deferral_count"] != 2
+            or budget.get("matching_attempts") != [
+                {"attempt_id": r["attempt_id"], "attempt_number": r["attempt_number"],
+                 "reason": PREFLIGHT_REASON,
+                 "deferral_fingerprint": budget.get("current_deferral_fingerprint")}
+                for r in (current, middle)
+            ]
+        ):
+            return None
+        from .implementation_daemon import DatabaseImplementationDaemon
+        unsigned_budget = dict(budget)
+        observation_id = unsigned_budget.pop("observation_id", None)
+        if observation_id != DatabaseImplementationDaemon._database_portal_evidence_digest(unsigned_budget):
+            return None
     from ..task_sources.task_execution_route_policy import TaskExecutionRouteBinding
 
     route = source["execution_route_binding"]
@@ -278,6 +328,8 @@ def verified_suffix(
         "current_claim": dict(current),
         "semantic_body": bodies[0],
     }
+    if exhausted_callback:
+        result["preflight_exhaustion"] = True
     result["context_id"] = content_identity(result)
     return result
 
@@ -308,7 +360,7 @@ def verified_seed_predecessor(
     revision = context["recovery_control_revision"]
     if (
         seed.get("schema") != DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
-        or seed.get("terminal_reason") != SOURCE_REASON
+        or seed.get("terminal_reason") != source["reason"]
         or seed.get("task_cid") != task_cid
         or seed.get("task_alias") != task_alias
         or seed.get("source_task_revision") != context["source_task_revision"]
