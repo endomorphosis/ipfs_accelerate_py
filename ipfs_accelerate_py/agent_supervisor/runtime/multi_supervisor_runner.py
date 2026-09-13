@@ -9527,7 +9527,7 @@ def start_track(
                     cleanup_error_type=cleanup_error_type,
                 ) from notification_error
             try:
-                _remove_stale_pid_marker_if_unchanged(
+                _remove_owned_pid_projection(
                     resolved.supervisor_pid_path, int(process.pid),
                 )
             except (OSError, ValueError):
