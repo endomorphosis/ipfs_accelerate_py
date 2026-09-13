@@ -11,6 +11,13 @@ service may request residual syntax under an exact target/path/semantics/
 postconditions/tests packet and may not change authority, dependencies, or
 meaning.
 
+The deterministic synthesis allowlist extends this synthesizer.  It is not a
+competing synthesizer, not a second planner, and not a competing PatchPlan
+engine.  It names the closed operator/mode catalogue that may emit a
+SupervisorPatchPlan with synthesis origin ``deterministic_allowlist``.  A
+model assertion is never patch acceptance evidence.  Operational merge and
+completion remain independently verified.
+
 This module never imports LLM / model-provider surfaces. Hybrid packets are
 emitted for a *separate* residual service; the synthesizer itself does not
 invoke models.
@@ -39,6 +46,10 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, ClassVar, Final
 
+from ..analysis.analysis_ast_index import (
+    ASTDependencyStaticRoute,
+    StaticAnalysisState,
+)
 from ..analysis.deterministic_doctor_contracts import DoctorAuthorityRoots
 from ..proof.counterexample_guided_tactician import (
     CEGIS_LOOP_RESULT_SCHEMA,
@@ -115,6 +126,27 @@ RESIDUAL_HYBRID_ADMISSION_SCHEMA: Final[str] = (
 HYBRID_USAGE_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/residual-hybrid-usage-receipt@1"
 )
+DETERMINISTIC_SYNTHESIS_ALLOWLIST_INTERFACE: Final[str] = (
+    "DeterministicSynthesisAllowlist@1"
+)
+DETERMINISTIC_SYNTHESIS_ALLOWLIST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/deterministic-synthesis-allowlist@1"
+)
+DETERMINISTIC_SYNTHESIS_ALLOWLIST_DECISION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/deterministic-synthesis-allowlist-decision@1"
+)
+DETERMINISTIC_SYNTHESIS_ALLOWLIST_VERSION: Final[str] = (
+    "deterministic-synthesis-allowlist/1.0.0"
+)
+SUPERVISOR_PATCH_PLAN_SCHEMA: Final[str] = (
+    "ipfs_datasets_py/logic/external-work-plan-supervisor-patch-plan@1"
+)
+SUPERVISOR_PATCH_PLAN_SCHEMA_VERSION: Final[str] = (
+    "external-work-plan-supervisor-patch-plan/v1"
+)
+PATCH_SYNTHESIS_ORIGIN_DETERMINISTIC_ALLOWLIST: Final[str] = "deterministic_allowlist"
+PATCH_SYNTHESIS_ORIGIN_BOUNDED_MODEL_ASSISTED: Final[str] = "bounded_model_assisted"
+PATCH_SYNTHESIS_ORIGIN_NONE: Final[str] = "none"
 
 PRODUCER_ID: Final[str] = "program-repair-synthesis@1"
 CONTRACT_VERSION: Final[int] = 1
@@ -353,6 +385,14 @@ class ProgramRepairReason(str, Enum):
     UNDECLARED_EFFECT = "undeclared_effect_or_security_change"
     UNDECLARED_BEHAVIOR = "undeclared_behavior"
     COUNTEREVIDENCE_RESTRICTED = "operator_restricted_by_counterevidence"
+    OPERATOR_NOT_ALLOWLISTED = "operator_not_on_deterministic_allowlist"
+    ALLOWLIST_ADMITTED = "deterministic_allowlist_admitted"
+    ALLOWLIST_REJECTED = "deterministic_allowlist_rejected"
+    ALLOWLIST_ABSTAINED = "deterministic_allowlist_abstained"
+    STATIC_ANALYSIS_NOT_PASSED = "static_analysis_not_passed"
+    OPAQUE_DEPENDENCY = "opaque_dependency_blocks_deterministic_allowlist"
+    MODEL_ASSERTION_NOT_ACCEPTANCE = "model_assertion_is_never_patch_acceptance"
+    PATCH_PLAN_ORIGIN_MISMATCH = "supervisor_patch_plan_origin_not_allowlisted"
 
 
 class ResidualHybridDisposition(str, Enum):
@@ -360,6 +400,22 @@ class ResidualHybridDisposition(str, Enum):
     REJECTED = "rejected"
     BLOCKED = "blocked"
     DETERMINISTIC_CLOSED = "deterministic_closed"
+
+
+class DeterministicSynthesisAllowlistDisposition(str, Enum):
+    """Closed outcomes for deterministic synthesis allowlist admission."""
+
+    ADMITTED = "admitted"
+    REJECTED = "rejected"
+    ABSTAINED = "abstained"
+
+    @property
+    def grants_write_authority(self) -> bool:
+        return False
+
+    @property
+    def grants_completion_authority(self) -> bool:
+        return False
 
 
 class EqualityRewriteStatus(str, Enum):
@@ -555,6 +611,859 @@ def _walk_forbidden_claims(value: Any, *, path: str = "") -> list[str]:
         for index, item in enumerate(value):
             reasons.extend(_walk_forbidden_claims(item, path=f"{path}[{index}]"))
     return reasons
+
+
+# ---------------------------------------------------------------------------
+# Deterministic synthesis allowlist (DOEP-091)
+# ---------------------------------------------------------------------------
+#
+# Projection of ProgramRepairSynthesizer@1 / RepairOperatorRegistry@1.  Not a
+# competing synthesizer, not a second planner, and not a PatchPlan engine.
+# SupervisorPatchPlan remains the datasets-owned typed record; this catalogue
+# only admits which reviewed operators may name synthesis origin
+# ``deterministic_allowlist``.  A model assertion is never patch acceptance
+# evidence.  Completion authority is never granted.
+
+
+DETERMINISTIC_SYNTHESIS_ALLOWLIST_FORBIDDEN_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "admission_receipt_cid",
+        "applied_diff",
+        "authorization_decision",
+        "completion_decision",
+        "lease_id",
+        "merge_decision",
+        "mutation_ledger",
+        "policy_pointer",
+        "self_granted_acceptance",
+        "synthesized_bytes",
+        "worktree_id",
+    }
+)
+DETERMINISTIC_SYNTHESIS_ALLOWLIST_MODES: Final[tuple[str, ...]] = (
+    ProgramRepairMode.DETERMINISTIC.value,
+    ProgramRepairMode.ENUMERATIVE.value,
+    ProgramRepairMode.EQUALITY_REWRITE.value,
+    ProgramRepairMode.CEGIS.value,
+)
+DETERMINISTIC_SYNTHESIS_ALLOWLIST_ANALYSIS_KINDS: Final[tuple[str, ...]] = (
+    "mechanical_formatting",
+    "mechanical_import",
+    "mechanical_codemod",
+    "mechanical_rename",
+    "localized_exact",
+    "localized_conservative",
+)
+_DETERMINISTIC_SYNTHESIS_EXCLUDED_OPERATORS: Final[frozenset[str]] = frozenset(
+    {RepairOperatorKind.SEMANTIC_PATCH.value}
+)
+DETERMINISTIC_SYNTHESIS_ALLOWLIST_OPERATOR_KINDS: Final[tuple[str, ...]] = tuple(
+    dict.fromkeys(
+        kind.value
+        for kind in RepairOperatorKind
+        if kind.value not in _DETERMINISTIC_SYNTHESIS_EXCLUDED_OPERATORS
+    )
+)
+
+
+def operator_kind_on_deterministic_synthesis_allowlist(kind: Any) -> bool:
+    """True when *kind* is a reviewed operator on the deterministic allowlist."""
+
+    try:
+        normalized = normalize_repair_operator_kind(kind).value
+    except (UnknownRepairOperatorError, TypeError, ValueError, ProgramRepairSynthesisError):
+        return False
+    except Exception:
+        return False
+    return normalized in DETERMINISTIC_SYNTHESIS_ALLOWLIST_OPERATOR_KINDS
+
+
+def _analysis_kind_value(value: Any) -> str:
+    raw = getattr(value, "value", value)
+    return str(raw or "").strip().lower().replace("-", "_")
+
+
+@dataclass(frozen=True)
+class DeterministicSynthesisAllowlist:
+    """Closed catalogue of model-free synthesis operators and modes.
+
+    This is deliberately a projection of :class:`ProgramRepairSynthesizer`, not
+    a competing synthesizer.  It does not apply patches, admit merges, or
+    grant completion authority.
+    """
+
+    SCHEMA: ClassVar[str] = DETERMINISTIC_SYNTHESIS_ALLOWLIST_SCHEMA
+    INTERFACE: ClassVar[str] = DETERMINISTIC_SYNTHESIS_ALLOWLIST_INTERFACE
+
+    operator_kinds: tuple[str, ...] = DETERMINISTIC_SYNTHESIS_ALLOWLIST_OPERATOR_KINDS
+    modes: tuple[str, ...] = DETERMINISTIC_SYNTHESIS_ALLOWLIST_MODES
+    analysis_kinds: tuple[str, ...] = DETERMINISTIC_SYNTHESIS_ALLOWLIST_ANALYSIS_KINDS
+    supervisor_patch_plan_schema: str = SUPERVISOR_PATCH_PLAN_SCHEMA
+    supervisor_patch_plan_schema_version: str = SUPERVISOR_PATCH_PLAN_SCHEMA_VERSION
+    synthesis_origin: str = PATCH_SYNTHESIS_ORIGIN_DETERMINISTIC_ALLOWLIST
+    excluded_operator_kinds: tuple[str, ...] = tuple(
+        sorted(_DETERMINISTIC_SYNTHESIS_EXCLUDED_OPERATORS)
+    )
+    model_assertion_is_acceptance: bool = False
+    completion_authoritative: bool = False
+    mutation_authoritative: bool = False
+    proposal_only: bool = True
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "operator_kinds",
+            _ids(self.operator_kinds, "operator_kinds", required=True, limit=MAX_OPERATORS * 2),
+        )
+        object.__setattr__(self, "modes", _ids(self.modes, "modes", required=True, limit=16))
+        object.__setattr__(
+            self,
+            "analysis_kinds",
+            _ids(self.analysis_kinds, "analysis_kinds", required=True, limit=16),
+        )
+        object.__setattr__(
+            self,
+            "supervisor_patch_plan_schema",
+            _text(self.supervisor_patch_plan_schema, "supervisor_patch_plan_schema"),
+        )
+        object.__setattr__(
+            self,
+            "supervisor_patch_plan_schema_version",
+            _text(
+                self.supervisor_patch_plan_schema_version,
+                "supervisor_patch_plan_schema_version",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "synthesis_origin",
+            _text(self.synthesis_origin, "synthesis_origin"),
+        )
+        if self.synthesis_origin != PATCH_SYNTHESIS_ORIGIN_DETERMINISTIC_ALLOWLIST:
+            raise ProgramRepairAuthorityError(
+                "allowlist synthesis origin must be deterministic_allowlist",
+                reason_code=ProgramRepairReason.PATCH_PLAN_ORIGIN_MISMATCH,
+            )
+        if self.model_assertion_is_acceptance is not False:
+            raise ProgramRepairAuthorityError(
+                "model assertion is never patch acceptance evidence",
+                reason_code=ProgramRepairReason.MODEL_ASSERTION_NOT_ACCEPTANCE,
+            )
+        if self.completion_authoritative is not False:
+            raise ProgramRepairAuthorityError(
+                "deterministic synthesis allowlist cannot grant completion authority",
+                reason_code=ProgramRepairReason.AUTHORITY_CLAIM,
+            )
+        if self.mutation_authoritative is not False:
+            raise ProgramRepairAuthorityError(
+                "deterministic synthesis allowlist cannot grant mutation authority",
+                reason_code=ProgramRepairReason.AUTHORITY_CLAIM,
+            )
+        if self.proposal_only is not True:
+            raise ProgramRepairAuthorityError(
+                "deterministic synthesis allowlist remains proposal-only",
+                reason_code=ProgramRepairReason.PROPOSAL_ONLY,
+            )
+        object.__setattr__(self, "model_assertion_is_acceptance", False)
+        object.__setattr__(self, "completion_authoritative", False)
+        object.__setattr__(self, "mutation_authoritative", False)
+        object.__setattr__(self, "proposal_only", True)
+
+    def contains(self, kind: Any) -> bool:
+        try:
+            normalized = normalize_repair_operator_kind(kind).value
+        except (UnknownRepairOperatorError, TypeError, ValueError, Exception):
+            return False
+        return normalized in set(self.operator_kinds)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": DETERMINISTIC_SYNTHESIS_ALLOWLIST_SCHEMA,
+            "interface": DETERMINISTIC_SYNTHESIS_ALLOWLIST_INTERFACE,
+            "version": DETERMINISTIC_SYNTHESIS_ALLOWLIST_VERSION,
+            "operator_kinds": list(self.operator_kinds),
+            "modes": list(self.modes),
+            "analysis_kinds": list(self.analysis_kinds),
+            "supervisor_patch_plan_schema": self.supervisor_patch_plan_schema,
+            "supervisor_patch_plan_schema_version": self.supervisor_patch_plan_schema_version,
+            "synthesis_origin": self.synthesis_origin,
+            "excluded_operator_kinds": list(self.excluded_operator_kinds),
+            "model_assertion_is_acceptance": False,
+            "completion_authoritative": False,
+            "mutation_authoritative": False,
+            "proposal_only": True,
+            "max_model_calls": 0,
+        }
+
+
+def default_deterministic_synthesis_allowlist() -> DeterministicSynthesisAllowlist:
+    """Return the canonical closed deterministic synthesis allowlist."""
+
+    return DeterministicSynthesisAllowlist()
+
+
+@dataclass(frozen=True)
+class DeterministicSynthesisAllowlistDecision:
+    """Proposal-only admission decision for one allowlisted synthesis request.
+
+    The decision never applies a diff, never admits a merge, and never grants
+    completion authority.  Independent current-tree evidence remains required
+    for patch acceptance.
+    """
+
+    SCHEMA: ClassVar[str] = DETERMINISTIC_SYNTHESIS_ALLOWLIST_DECISION_SCHEMA
+    INTERFACE: ClassVar[str] = DETERMINISTIC_SYNTHESIS_ALLOWLIST_INTERFACE
+
+    disposition: DeterministicSynthesisAllowlistDisposition
+    reason_codes: tuple[str, ...]
+    operator_kinds: tuple[str, ...] = ()
+    admitted_operator_kinds: tuple[str, ...] = ()
+    rejected_operator_kinds: tuple[str, ...] = ()
+    target_paths: tuple[str, ...] = ()
+    mode: ProgramRepairMode = ProgramRepairMode.DETERMINISTIC
+    synthesis_origin: str = PATCH_SYNTHESIS_ORIGIN_DETERMINISTIC_ALLOWLIST
+    analysis_kind: str = ""
+    static_analysis_state: str = ""
+    ast_route_id: str = ""
+    supervisor_patch_plan: Mapping[str, Any] | None = None
+    model_calls: int = 0
+    proposal_only: bool = True
+    model_assertion_is_acceptance: bool = False
+    completion_authoritative: bool = False
+    mutation_authoritative: bool = False
+    acceptance_requires_independent_evidence: bool = True
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "disposition",
+            _enum(
+                self.disposition,
+                DeterministicSynthesisAllowlistDisposition,
+                "disposition",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "reason_codes",
+            _ids(self.reason_codes, "reason_codes", required=True, limit=MAX_REASON_CODES),
+        )
+        object.__setattr__(
+            self, "operator_kinds", _ids(self.operator_kinds, "operator_kinds")
+        )
+        object.__setattr__(
+            self,
+            "admitted_operator_kinds",
+            _ids(self.admitted_operator_kinds, "admitted_operator_kinds"),
+        )
+        object.__setattr__(
+            self,
+            "rejected_operator_kinds",
+            _ids(self.rejected_operator_kinds, "rejected_operator_kinds"),
+        )
+        object.__setattr__(
+            self, "target_paths", _paths(self.target_paths, "target_paths")
+        )
+        object.__setattr__(self, "mode", _enum(self.mode, ProgramRepairMode, "mode"))
+        object.__setattr__(
+            self, "synthesis_origin", _text(self.synthesis_origin, "synthesis_origin")
+        )
+        object.__setattr__(
+            self, "analysis_kind", _optional_text(self.analysis_kind, "analysis_kind")
+        )
+        object.__setattr__(
+            self,
+            "static_analysis_state",
+            _optional_text(self.static_analysis_state, "static_analysis_state"),
+        )
+        object.__setattr__(
+            self, "ast_route_id", _optional_text(self.ast_route_id, "ast_route_id")
+        )
+        if self.supervisor_patch_plan is not None:
+            if not isinstance(self.supervisor_patch_plan, Mapping):
+                raise ProgramRepairSynthesisError(
+                    "supervisor_patch_plan must be a mapping"
+                )
+            forbidden = set(self.supervisor_patch_plan).intersection(
+                DETERMINISTIC_SYNTHESIS_ALLOWLIST_FORBIDDEN_FIELDS
+            )
+            if forbidden:
+                raise ProgramRepairAuthorityError(
+                    "supervisor patch plan contains operational authority field(s): "
+                    f"{sorted(forbidden)[0]}",
+                    reason_code=ProgramRepairReason.AUTHORITY_CLAIM,
+                )
+            object.__setattr__(
+                self,
+                "supervisor_patch_plan",
+                MappingProxyType(dict(self.supervisor_patch_plan)),
+            )
+        if self.model_calls != 0:
+            raise ProgramRepairAuthorityError(
+                "deterministic synthesis allowlist must prove zero model calls",
+                reason_code=ProgramRepairReason.PROVIDER_OR_MODEL_CALL,
+            )
+        if self.proposal_only is not True:
+            raise ProgramRepairAuthorityError(
+                "allowlist decision remains proposal-only",
+                reason_code=ProgramRepairReason.PROPOSAL_ONLY,
+            )
+        if self.model_assertion_is_acceptance is not False:
+            raise ProgramRepairAuthorityError(
+                "model assertion is never patch acceptance evidence",
+                reason_code=ProgramRepairReason.MODEL_ASSERTION_NOT_ACCEPTANCE,
+            )
+        if self.completion_authoritative is not False:
+            raise ProgramRepairAuthorityError(
+                "allowlist decision cannot grant completion authority",
+                reason_code=ProgramRepairReason.AUTHORITY_CLAIM,
+            )
+        if self.mutation_authoritative is not False:
+            raise ProgramRepairAuthorityError(
+                "allowlist decision cannot grant mutation authority",
+                reason_code=ProgramRepairReason.AUTHORITY_CLAIM,
+            )
+        if self.acceptance_requires_independent_evidence is not True:
+            raise ProgramRepairAuthorityError(
+                "patch acceptance requires independent evidence",
+                reason_code=ProgramRepairReason.MODEL_ASSERTION_NOT_ACCEPTANCE,
+            )
+        object.__setattr__(self, "model_calls", 0)
+        object.__setattr__(self, "proposal_only", True)
+        object.__setattr__(self, "model_assertion_is_acceptance", False)
+        object.__setattr__(self, "completion_authoritative", False)
+        object.__setattr__(self, "mutation_authoritative", False)
+        object.__setattr__(self, "acceptance_requires_independent_evidence", True)
+
+    @property
+    def admitted(self) -> bool:
+        return self.disposition is DeterministicSynthesisAllowlistDisposition.ADMITTED
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": DETERMINISTIC_SYNTHESIS_ALLOWLIST_DECISION_SCHEMA,
+            "interface": DETERMINISTIC_SYNTHESIS_ALLOWLIST_INTERFACE,
+            "version": DETERMINISTIC_SYNTHESIS_ALLOWLIST_VERSION,
+            "disposition": self.disposition.value,
+            "reason_codes": list(self.reason_codes),
+            "operator_kinds": list(self.operator_kinds),
+            "admitted_operator_kinds": list(self.admitted_operator_kinds),
+            "rejected_operator_kinds": list(self.rejected_operator_kinds),
+            "target_paths": list(self.target_paths),
+            "mode": self.mode.value,
+            "synthesis_origin": self.synthesis_origin,
+            "analysis_kind": self.analysis_kind,
+            "static_analysis_state": self.static_analysis_state,
+            "ast_route_id": self.ast_route_id,
+            "supervisor_patch_plan": (
+                dict(self.supervisor_patch_plan)
+                if self.supervisor_patch_plan is not None
+                else None
+            ),
+            "model_calls": 0,
+            "max_model_calls": 0,
+            "proposal_only": True,
+            "model_assertion_is_acceptance": False,
+            "completion_authoritative": False,
+            "mutation_authoritative": False,
+            "acceptance_requires_independent_evidence": True,
+            "write_authority": False,
+            "semantic_authority": False,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "DeterministicSynthesisAllowlistDecision":
+        if not isinstance(payload, Mapping):
+            raise ProgramRepairSynthesisError("allowlist decision must be a mapping")
+        forbidden = set(payload).intersection(
+            DETERMINISTIC_SYNTHESIS_ALLOWLIST_FORBIDDEN_FIELDS
+        )
+        if forbidden:
+            raise ProgramRepairAuthorityError(
+                "allowlist decision contains operational authority field(s): "
+                f"{sorted(forbidden)[0]}",
+                reason_code=ProgramRepairReason.AUTHORITY_CLAIM,
+            )
+        return cls(
+            disposition=str(payload.get("disposition") or ""),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+            operator_kinds=tuple(payload.get("operator_kinds") or ()),
+            admitted_operator_kinds=tuple(payload.get("admitted_operator_kinds") or ()),
+            rejected_operator_kinds=tuple(payload.get("rejected_operator_kinds") or ()),
+            target_paths=tuple(payload.get("target_paths") or ()),
+            mode=str(payload.get("mode") or ProgramRepairMode.DETERMINISTIC.value),
+            synthesis_origin=str(
+                payload.get("synthesis_origin")
+                or PATCH_SYNTHESIS_ORIGIN_DETERMINISTIC_ALLOWLIST
+            ),
+            analysis_kind=str(payload.get("analysis_kind") or ""),
+            static_analysis_state=str(payload.get("static_analysis_state") or ""),
+            ast_route_id=str(payload.get("ast_route_id") or ""),
+            supervisor_patch_plan=payload.get("supervisor_patch_plan"),
+            model_calls=int(payload.get("model_calls") or 0),
+            proposal_only=bool(payload.get("proposal_only", True)),
+            model_assertion_is_acceptance=bool(
+                payload.get("model_assertion_is_acceptance", False)
+            ),
+            completion_authoritative=bool(payload.get("completion_authoritative", False)),
+            mutation_authoritative=bool(payload.get("mutation_authoritative", False)),
+            acceptance_requires_independent_evidence=bool(
+                payload.get("acceptance_requires_independent_evidence", True)
+            ),
+        )
+
+
+def _project_supervisor_patch_plan(
+    *,
+    patch_plan_id: str,
+    task_id: str,
+    context_pack_id: str,
+    base_plan_revision: str,
+    target_paths: Sequence[str],
+    operator_kinds: Sequence[str],
+    edits: Sequence[Mapping[str, Any]] | Sequence[Any] = (),
+    acceptance_conditions: Sequence[Mapping[str, Any]] | Sequence[Any] = (),
+) -> dict[str, Any]:
+    paths = tuple(_path(item, "target_paths") for item in target_paths)
+    if not paths:
+        raise ProgramRepairSynthesisError("typed patch plan requires declared scope")
+    raw_edits = tuple(edits or ())
+    projected_edits: list[dict[str, str]] = []
+    if raw_edits:
+        for index, item in enumerate(raw_edits):
+            if not isinstance(item, Mapping):
+                raise ProgramRepairSynthesisError("edits must be mappings")
+            forbidden = set(item).intersection(
+                DETERMINISTIC_SYNTHESIS_ALLOWLIST_FORBIDDEN_FIELDS
+            )
+            if forbidden:
+                raise ProgramRepairAuthorityError(
+                    "edit contains operational authority field(s): "
+                    f"{sorted(forbidden)[0]}",
+                    reason_code=ProgramRepairReason.AUTHORITY_CLAIM,
+                )
+            path = _path(item.get("path") or paths[min(index, len(paths) - 1)], "edit_path")
+            if path not in paths:
+                raise ProgramRepairAuthorityError(
+                    "edit path must be inside the declared scope",
+                    reason_code=ProgramRepairReason.SCOPE_WIDENING,
+                )
+            operation = _text(item.get("operation") or "replace", "operation")
+            if operation not in {"replace", "insert", "delete"}:
+                raise ProgramRepairSynthesisError(
+                    "patch edit operation is not allowlisted"
+                )
+            intent = _text(
+                item.get("intent")
+                or f"Apply allowlisted operator {operator_kinds[0] if operator_kinds else 'exact_rename'}.",
+                "intent",
+            )
+            projected_edits.append(
+                {
+                    "edit_id": _text(
+                        item.get("edit_id") or f"edit:{index + 1}", "edit_id"
+                    ),
+                    "path": path,
+                    "operation": operation,
+                    "intent": intent,
+                }
+            )
+    else:
+        for index, path in enumerate(paths):
+            kind = operator_kinds[min(index, len(operator_kinds) - 1)] if operator_kinds else "exact_rename"
+            projected_edits.append(
+                {
+                    "edit_id": f"edit:{index + 1}",
+                    "path": path,
+                    "operation": "replace",
+                    "intent": f"Apply allowlisted operator {kind} without granting completion authority.",
+                }
+            )
+    edit_ids = [item["edit_id"] for item in projected_edits]
+    if len(set(edit_ids)) != len(edit_ids):
+        raise ProgramRepairSynthesisError("edit IDs must be unique")
+    edit_paths = [item["path"] for item in projected_edits]
+    if len(set(edit_paths)) != len(edit_paths):
+        raise ProgramRepairSynthesisError("edit paths must be unique")
+
+    raw_conditions = tuple(acceptance_conditions or ())
+    projected_conditions: list[dict[str, str]] = []
+    if raw_conditions:
+        for item in raw_conditions:
+            if not isinstance(item, Mapping):
+                raise ProgramRepairSynthesisError(
+                    "acceptance_conditions must be mappings"
+                )
+            projected_conditions.append(
+                {
+                    "condition_id": _text(
+                        item.get("condition_id") or "independent-evidence",
+                        "condition_id",
+                    ),
+                    "description": _text(
+                        item.get("description")
+                        or "Independent current-tree tests must pass.",
+                        "description",
+                    ),
+                    "verification_method": _text(
+                        item.get("verification_method") or "independent pytest",
+                        "verification_method",
+                    ),
+                }
+            )
+    else:
+        projected_conditions.append(
+            {
+                "condition_id": "independent-current-tree-tests",
+                "description": "Selected current-tree tests pass under independent verification.",
+                "verification_method": "independent pytest",
+            }
+        )
+    return {
+        "schema": SUPERVISOR_PATCH_PLAN_SCHEMA,
+        "schema_version": SUPERVISOR_PATCH_PLAN_SCHEMA_VERSION,
+        "patch_plan_id": _text(patch_plan_id or "patch:deterministic-allowlist", "patch_plan_id"),
+        "base_plan_revision": _text(
+            base_plan_revision or "DOEP-PLAN-V5", "base_plan_revision"
+        ),
+        "task_id": _text(task_id or "task:deterministic-allowlist", "task_id"),
+        "context_pack_id": _text(
+            context_pack_id or "contextpack:deterministic-allowlist", "context_pack_id"
+        ),
+        "kind": "typed_edit",
+        "synthesis_origin": PATCH_SYNTHESIS_ORIGIN_DETERMINISTIC_ALLOWLIST,
+        "target_paths": list(paths),
+        "edits": projected_edits,
+        "acceptance_conditions": projected_conditions,
+        "semantic_nonempty": True,
+        "scope_bounded": True,
+        "model_assertion_is_acceptance": False,
+        "acceptance_requires_independent_evidence": True,
+        "mutation_authoritative": False,
+        "history_preserving": True,
+        "completion_authoritative": False,
+    }
+
+
+def admit_deterministic_synthesis_allowlist(
+    *,
+    operator_kinds: Sequence[str] = (),
+    target_paths: Sequence[str] = (),
+    mode: ProgramRepairMode | str = ProgramRepairMode.DETERMINISTIC,
+    ast_route: ASTDependencyStaticRoute | Mapping[str, Any] | None = None,
+    supervisor_patch_plan: Mapping[str, Any] | None = None,
+    edits: Sequence[Mapping[str, Any]] | Sequence[Any] = (),
+    acceptance_conditions: Sequence[Mapping[str, Any]] | Sequence[Any] = (),
+    patch_plan_id: str = "",
+    task_id: str = "",
+    context_pack_id: str = "",
+    base_plan_revision: str = "DOEP-PLAN-V5",
+    metadata: Mapping[str, Any] | None = None,
+    allowlist: DeterministicSynthesisAllowlist | None = None,
+) -> DeterministicSynthesisAllowlistDecision:
+    """Admit a model-free synthesis request onto the closed allowlist.
+
+    The decision is proposal-only.  It does not apply a patch, admit a merge,
+    or grant completion authority.  A model assertion is never patch
+    acceptance evidence.
+    """
+
+    catalogue = allowlist or default_deterministic_synthesis_allowlist()
+    requested_mode = _enum(mode, ProgramRepairMode, "mode")
+    reasons: list[str] = []
+    rejected: list[str] = []
+    admitted_kinds: list[str] = []
+    analysis_kind = ""
+    static_state = ""
+    route_id = ""
+    paths = _paths(target_paths, "target_paths") if target_paths else ()
+
+    if metadata is not None:
+        if not isinstance(metadata, Mapping):
+            raise ProgramRepairSynthesisError("metadata must be a mapping")
+        forbidden_meta = _walk_forbidden_claims(dict(metadata))
+        if forbidden_meta:
+            raise ProgramRepairAuthorityError(
+                f"allowlist metadata contains forbidden claims: {forbidden_meta[0]}",
+                reason_code=ProgramRepairReason.AUTHORITY_CLAIM,
+            )
+
+    if supervisor_patch_plan is not None:
+        if not isinstance(supervisor_patch_plan, Mapping):
+            raise ProgramRepairSynthesisError("supervisor_patch_plan must be a mapping")
+        forbidden = set(supervisor_patch_plan).intersection(
+            DETERMINISTIC_SYNTHESIS_ALLOWLIST_FORBIDDEN_FIELDS
+        )
+        if forbidden:
+            raise ProgramRepairAuthorityError(
+                "supervisor patch plan contains operational authority field(s): "
+                f"{sorted(forbidden)[0]}",
+                reason_code=ProgramRepairReason.AUTHORITY_CLAIM,
+            )
+        if supervisor_patch_plan.get("completion_authoritative") is True:
+            raise ProgramRepairAuthorityError(
+                "supervisor patch plan cannot grant completion authority",
+                reason_code=ProgramRepairReason.AUTHORITY_CLAIM,
+            )
+        if supervisor_patch_plan.get("mutation_authoritative") is True:
+            raise ProgramRepairAuthorityError(
+                "supervisor patch plan cannot grant mutation authority",
+                reason_code=ProgramRepairReason.AUTHORITY_CLAIM,
+            )
+        if supervisor_patch_plan.get("model_assertion_is_acceptance") is True:
+            raise ProgramRepairAuthorityError(
+                "model assertion is never patch acceptance evidence",
+                reason_code=ProgramRepairReason.MODEL_ASSERTION_NOT_ACCEPTANCE,
+            )
+        origin = str(supervisor_patch_plan.get("synthesis_origin") or "")
+        kind = str(supervisor_patch_plan.get("kind") or "")
+        if kind == "typed_edit" and origin != PATCH_SYNTHESIS_ORIGIN_DETERMINISTIC_ALLOWLIST:
+            return DeterministicSynthesisAllowlistDecision(
+                disposition=DeterministicSynthesisAllowlistDisposition.REJECTED,
+                reason_codes=(
+                    ProgramRepairReason.PATCH_PLAN_ORIGIN_MISMATCH.value,
+                    ProgramRepairReason.ALLOWLIST_REJECTED.value,
+                    ProgramRepairReason.PROPOSAL_ONLY.value,
+                    ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                ),
+                operator_kinds=tuple(str(item) for item in operator_kinds or ()),
+                rejected_operator_kinds=tuple(str(item) for item in operator_kinds or ()),
+                target_paths=paths,
+                mode=requested_mode,
+                synthesis_origin=origin or PATCH_SYNTHESIS_ORIGIN_NONE,
+            )
+        plan_paths = tuple(supervisor_patch_plan.get("target_paths") or ())
+        if plan_paths:
+            paths = _paths(plan_paths, "target_paths")
+        plan_edits = supervisor_patch_plan.get("edits") or edits
+        plan_conditions = (
+            supervisor_patch_plan.get("acceptance_conditions") or acceptance_conditions
+        )
+        edits = tuple(plan_edits or ())
+        acceptance_conditions = tuple(plan_conditions or ())
+        patch_plan_id = str(supervisor_patch_plan.get("patch_plan_id") or patch_plan_id)
+        task_id = str(supervisor_patch_plan.get("task_id") or task_id)
+        context_pack_id = str(
+            supervisor_patch_plan.get("context_pack_id") or context_pack_id
+        )
+        base_plan_revision = str(
+            supervisor_patch_plan.get("base_plan_revision") or base_plan_revision
+        )
+
+    if requested_mode is ProgramRepairMode.HYBRID_RESIDUAL:
+        return DeterministicSynthesisAllowlistDecision(
+            disposition=DeterministicSynthesisAllowlistDisposition.REJECTED,
+            reason_codes=(
+                ProgramRepairReason.PROVIDER_OR_MODEL_CALL.value,
+                ProgramRepairReason.ALLOWLIST_REJECTED.value,
+                ProgramRepairReason.PROPOSAL_ONLY.value,
+            ),
+            operator_kinds=tuple(str(item) for item in operator_kinds or ()),
+            rejected_operator_kinds=tuple(str(item) for item in operator_kinds or ()),
+            target_paths=paths,
+            mode=requested_mode,
+            synthesis_origin=PATCH_SYNTHESIS_ORIGIN_BOUNDED_MODEL_ASSISTED,
+        )
+    if requested_mode.value not in catalogue.modes:
+        return DeterministicSynthesisAllowlistDecision(
+            disposition=DeterministicSynthesisAllowlistDisposition.REJECTED,
+            reason_codes=(
+                ProgramRepairReason.OPERATOR_NOT_ALLOWLISTED.value,
+                ProgramRepairReason.ALLOWLIST_REJECTED.value,
+                ProgramRepairReason.PROPOSAL_ONLY.value,
+                ProgramRepairReason.ZERO_MODEL_CALLS.value,
+            ),
+            operator_kinds=tuple(str(item) for item in operator_kinds or ()),
+            rejected_operator_kinds=tuple(str(item) for item in operator_kinds or ()),
+            target_paths=paths,
+            mode=requested_mode,
+        )
+
+    requested: list[str] = []
+    for item in operator_kinds or ():
+        text = str(item).strip()
+        if not text:
+            continue
+        requested.append(text)
+        if catalogue.contains(text):
+            admitted_kinds.append(normalize_repair_operator_kind(text).value)
+        else:
+            rejected.append(text)
+            reasons.append(ProgramRepairReason.OPERATOR_NOT_ALLOWLISTED.value)
+
+    if ast_route is not None:
+        if isinstance(ast_route, ASTDependencyStaticRoute):
+            route = ast_route
+        elif isinstance(ast_route, Mapping):
+            # Fail closed: mappings must already be a constructed route object
+            # so callers cannot invent static-pass provenance without the
+            # canonical AST index.
+            raise ProgramRepairSynthesisError(
+                "ast_route mappings must be constructed via route_ast_dependency_static_analysis"
+            )
+        else:
+            raise ProgramRepairSynthesisError(
+                "ast_route must be ASTDependencyStaticRoute"
+            )
+        route_id = route.index_id
+        static_state = route.static_analysis_state.value
+        analysis_kind = _analysis_kind_value(route.model_route_facts.analysis_kind)
+        if not paths:
+            paths = route.focus_paths
+        if route.static_analysis_state is not StaticAnalysisState.PASSED:
+            return DeterministicSynthesisAllowlistDecision(
+                disposition=DeterministicSynthesisAllowlistDisposition.REJECTED,
+                reason_codes=(
+                    ProgramRepairReason.STATIC_ANALYSIS_NOT_PASSED.value,
+                    ProgramRepairReason.ALLOWLIST_REJECTED.value,
+                    ProgramRepairReason.PROPOSAL_ONLY.value,
+                    ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                ),
+                operator_kinds=tuple(requested),
+                admitted_operator_kinds=tuple(dict.fromkeys(admitted_kinds)),
+                rejected_operator_kinds=tuple(dict.fromkeys(rejected)),
+                target_paths=paths,
+                mode=requested_mode,
+                analysis_kind=analysis_kind,
+                static_analysis_state=static_state,
+                ast_route_id=route_id,
+            )
+        if route.unresolved_dependencies or route.model_route_facts.opaque_dependency_count:
+            return DeterministicSynthesisAllowlistDecision(
+                disposition=DeterministicSynthesisAllowlistDisposition.REJECTED,
+                reason_codes=(
+                    ProgramRepairReason.OPAQUE_DEPENDENCY.value,
+                    ProgramRepairReason.ALLOWLIST_REJECTED.value,
+                    ProgramRepairReason.PROPOSAL_ONLY.value,
+                    ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                ),
+                operator_kinds=tuple(requested),
+                admitted_operator_kinds=tuple(dict.fromkeys(admitted_kinds)),
+                rejected_operator_kinds=tuple(dict.fromkeys(rejected)),
+                target_paths=paths,
+                mode=requested_mode,
+                analysis_kind=analysis_kind,
+                static_analysis_state=static_state,
+                ast_route_id=route_id,
+            )
+        if analysis_kind not in set(catalogue.analysis_kinds):
+            return DeterministicSynthesisAllowlistDecision(
+                disposition=DeterministicSynthesisAllowlistDisposition.REJECTED,
+                reason_codes=(
+                    ProgramRepairReason.OPAQUE_DEPENDENCY.value,
+                    ProgramRepairReason.ALLOWLIST_REJECTED.value,
+                    ProgramRepairReason.PROPOSAL_ONLY.value,
+                    ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                ),
+                operator_kinds=tuple(requested),
+                admitted_operator_kinds=tuple(dict.fromkeys(admitted_kinds)),
+                rejected_operator_kinds=tuple(dict.fromkeys(rejected)),
+                target_paths=paths,
+                mode=requested_mode,
+                analysis_kind=analysis_kind,
+                static_analysis_state=static_state,
+                ast_route_id=route_id,
+            )
+        cone = set(route.focus_paths) | set(route.dependency_paths)
+        escaped = [path for path in paths if path not in cone]
+        if escaped:
+            return DeterministicSynthesisAllowlistDecision(
+                disposition=DeterministicSynthesisAllowlistDisposition.REJECTED,
+                reason_codes=(
+                    ProgramRepairReason.SCOPE_WIDENING.value,
+                    ProgramRepairReason.ALLOWLIST_REJECTED.value,
+                    ProgramRepairReason.PROPOSAL_ONLY.value,
+                    ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                ),
+                operator_kinds=tuple(requested),
+                admitted_operator_kinds=tuple(dict.fromkeys(admitted_kinds)),
+                rejected_operator_kinds=tuple(dict.fromkeys(rejected)),
+                target_paths=paths,
+                mode=requested_mode,
+                analysis_kind=analysis_kind,
+                static_analysis_state=static_state,
+                ast_route_id=route_id,
+            )
+
+    if not requested and not paths:
+        return DeterministicSynthesisAllowlistDecision(
+            disposition=DeterministicSynthesisAllowlistDisposition.ABSTAINED,
+            reason_codes=(
+                ProgramRepairReason.ALLOWLIST_ABSTAINED.value,
+                ProgramRepairReason.MALFORMED_INPUT.value,
+                ProgramRepairReason.PROPOSAL_ONLY.value,
+                ProgramRepairReason.ZERO_MODEL_CALLS.value,
+            ),
+            mode=requested_mode,
+        )
+    if rejected or not admitted_kinds:
+        return DeterministicSynthesisAllowlistDecision(
+            disposition=DeterministicSynthesisAllowlistDisposition.REJECTED,
+            reason_codes=tuple(
+                dict.fromkeys(
+                    (
+                        *(reasons or (ProgramRepairReason.NO_ADMISSIBLE_OPERATOR.value,)),
+                        ProgramRepairReason.ALLOWLIST_REJECTED.value,
+                        ProgramRepairReason.PROPOSAL_ONLY.value,
+                        ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                    )
+                )
+            ),
+            operator_kinds=tuple(requested),
+            admitted_operator_kinds=tuple(dict.fromkeys(admitted_kinds)),
+            rejected_operator_kinds=tuple(dict.fromkeys(rejected)),
+            target_paths=paths,
+            mode=requested_mode,
+            analysis_kind=analysis_kind,
+            static_analysis_state=static_state,
+            ast_route_id=route_id,
+        )
+    if not paths:
+        return DeterministicSynthesisAllowlistDecision(
+            disposition=DeterministicSynthesisAllowlistDisposition.ABSTAINED,
+            reason_codes=(
+                ProgramRepairReason.PATH_NOT_BOUNDED.value,
+                ProgramRepairReason.ALLOWLIST_ABSTAINED.value,
+                ProgramRepairReason.PROPOSAL_ONLY.value,
+                ProgramRepairReason.ZERO_MODEL_CALLS.value,
+            ),
+            operator_kinds=tuple(requested),
+            admitted_operator_kinds=tuple(dict.fromkeys(admitted_kinds)),
+            mode=requested_mode,
+            analysis_kind=analysis_kind,
+            static_analysis_state=static_state,
+            ast_route_id=route_id,
+        )
+
+    projection = _project_supervisor_patch_plan(
+        patch_plan_id=patch_plan_id,
+        task_id=task_id,
+        context_pack_id=context_pack_id,
+        base_plan_revision=base_plan_revision,
+        target_paths=paths,
+        operator_kinds=tuple(dict.fromkeys(admitted_kinds)),
+        edits=edits,
+        acceptance_conditions=acceptance_conditions,
+    )
+    return DeterministicSynthesisAllowlistDecision(
+        disposition=DeterministicSynthesisAllowlistDisposition.ADMITTED,
+        reason_codes=(
+            ProgramRepairReason.ALLOWLIST_ADMITTED.value,
+            ProgramRepairReason.PROPOSAL_ONLY.value,
+            ProgramRepairReason.ZERO_MODEL_CALLS.value,
+        ),
+        operator_kinds=tuple(requested),
+        admitted_operator_kinds=tuple(dict.fromkeys(admitted_kinds)),
+        target_paths=paths,
+        mode=requested_mode,
+        synthesis_origin=PATCH_SYNTHESIS_ORIGIN_DETERMINISTIC_ALLOWLIST,
+        analysis_kind=analysis_kind,
+        static_analysis_state=static_state,
+        ast_route_id=route_id,
+        supervisor_patch_plan=projection,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -3880,10 +4789,15 @@ class ProgramRepairSynthesizer:
     bounds, and roots. CEGIS independently validates counterexamples and
     terminates on fixed budgets. E-graph rewrites prove equivalence only under
     a declared theory. Every candidate is proposal-only.
+
+    The deterministic synthesis allowlist is a projection of this synthesizer,
+    not a competing synthesizer.
     """
 
     INTERFACE: ClassVar[str] = PROGRAM_REPAIR_SYNTHESIZER_INTERFACE
     VERSION: ClassVar[str] = PROGRAM_REPAIR_SYNTHESIZER_VERSION
+    ALLOWLIST_INTERFACE: ClassVar[str] = DETERMINISTIC_SYNTHESIS_ALLOWLIST_INTERFACE
+    ALLOWLIST_SCHEMA: ClassVar[str] = DETERMINISTIC_SYNTHESIS_ALLOWLIST_SCHEMA
 
     def __init__(
         self,
@@ -3903,6 +4817,19 @@ class ProgramRepairSynthesizer:
     @property
     def registry(self) -> RepairOperatorRegistry:
         return self._registry
+
+    def deterministic_synthesis_allowlist(self) -> DeterministicSynthesisAllowlist:
+        """Return the closed catalogue used by this synthesizer."""
+
+        return default_deterministic_synthesis_allowlist()
+
+    def admit_deterministic_synthesis_allowlist(
+        self,
+        **kwargs: Any,
+    ) -> DeterministicSynthesisAllowlistDecision:
+        """Admit a SupervisorPatchPlan origin onto the deterministic allowlist."""
+
+        return admit_deterministic_synthesis_allowlist(**kwargs)
 
     def synthesize(self, request: ProgramRepairRequest) -> ProgramRepairReceipt:
         """Run one bounded program-repair synthesis under the request mode."""
@@ -3971,6 +4898,11 @@ class ProgramRepairSynthesizer:
 
         kinds = request.operator_kinds or tuple(
             spec.kind.value for spec in self._registry.operators
+        )
+        kinds = tuple(
+            kind
+            for kind in kinds
+            if operator_kind_on_deterministic_synthesis_allowlist(kind)
         )
         kinds = kinds[: request.bounds.max_enumerative_candidates]
         for kind in kinds:
@@ -4720,11 +5652,25 @@ def synthesize_program_repair(
     return synth.synthesize(request)
 
 
+DeterministicSynthesisAllowlistAdjudicator = ProgramRepairSynthesizer
+
+
 __all__ = (
     "CONTRACT_VERSION",
+    "DETERMINISTIC_SYNTHESIS_ALLOWLIST_ANALYSIS_KINDS",
+    "DETERMINISTIC_SYNTHESIS_ALLOWLIST_DECISION_SCHEMA",
+    "DETERMINISTIC_SYNTHESIS_ALLOWLIST_FORBIDDEN_FIELDS",
+    "DETERMINISTIC_SYNTHESIS_ALLOWLIST_INTERFACE",
+    "DETERMINISTIC_SYNTHESIS_ALLOWLIST_MODES",
+    "DETERMINISTIC_SYNTHESIS_ALLOWLIST_OPERATOR_KINDS",
+    "DETERMINISTIC_SYNTHESIS_ALLOWLIST_SCHEMA",
+    "DETERMINISTIC_SYNTHESIS_ALLOWLIST_VERSION",
     "EQUALITY_REWRITE_RECEIPT_SCHEMA",
     "EQUALITY_THEORY_SCHEMA",
     "HYBRID_USAGE_RECEIPT_SCHEMA",
+    "PATCH_SYNTHESIS_ORIGIN_BOUNDED_MODEL_ASSISTED",
+    "PATCH_SYNTHESIS_ORIGIN_DETERMINISTIC_ALLOWLIST",
+    "PATCH_SYNTHESIS_ORIGIN_NONE",
     "PROGRAM_REPAIR_BOUNDS_SCHEMA",
     "PROGRAM_REPAIR_CANDIDATE_SCHEMA",
     "PROGRAM_REPAIR_RECEIPT_SCHEMA",
@@ -4735,8 +5681,17 @@ __all__ = (
     "RESIDUAL_HYBRID_ADMISSION_SCHEMA",
     "RESIDUAL_HYBRID_PACKET_SCHEMA",
     "RESIDUAL_HYBRID_SERVICE_INTERFACE",
+    "SUPERVISOR_PATCH_PLAN_SCHEMA",
+    "SUPERVISOR_PATCH_PLAN_SCHEMA_VERSION",
     "CEGIS_LOOP_RESULT_SCHEMA",
     "DeclaredEqualityTheory",
+    "DeterministicSynthesisAllowlist",
+    "DeterministicSynthesisAllowlistAdjudicator",
+    "DeterministicSynthesisAllowlistDecision",
+    "DeterministicSynthesisAllowlistDisposition",
+    "admit_deterministic_synthesis_allowlist",
+    "default_deterministic_synthesis_allowlist",
+    "operator_kind_on_deterministic_synthesis_allowlist",
     "EqualityEGraph",
     "EqualityFeatureStatus",
     "EqualityRewriteReceipt",
