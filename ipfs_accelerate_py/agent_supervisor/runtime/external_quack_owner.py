@@ -10,16 +10,27 @@ creates it from the server's exact live identity.  It never opens a database,
 creates a dispatcher, accepts a task-source callback, or exposes SQL.  It also
 refuses to synthesize a generic daemon gateway while the canonical 39-operation
 owner handler, host artifacts, and Plan R2 admission remain unqualified.
+
+DOEP-044 extends this same facade with owner-loss and owner-restart recovery.
+A lost exclusive owner cannot complete a task.  A restarted owner is admitted
+only as a later generation and fence of the same store.  Stale leases and
+worker assertions never bypass that gate.  This is not a second owner, backup
+service, or completion authority.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
-from ..task_sources.control_plane_contracts import content_identity
+from ..task_sources.control_plane_contracts import (
+    CANONICAL_TASK_STATE_MACHINE_INTERFACE,
+    TaskStateSnapshot,
+    content_identity,
+)
 from ..task_sources.quack_daemon_gateway import (
     QUACK_DAEMON_HANDLER_QUALIFICATION_STATUS,
     REQUIRED_QUACK_DAEMON_OPERATIONS,
@@ -60,6 +71,26 @@ EXTERNAL_QUACK_OWNER_QUALIFICATION_STATUS: Final[str] = (
 )
 EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER: Final[str] = (
     "canonical_39_operation_owner_handler_unqualified"
+)
+OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_BINDING: Final[str] = (
+    "OwnerLossAndOwnerRestartRecovery@1"
+)
+OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_INTERFACE: Final[str] = (
+    OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_BINDING
+)
+OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/owner-loss-and-owner-restart-recovery@1"
+)
+OWNER_LOSS_OBSERVATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/owner-loss-observation@1"
+)
+OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_CONSUMES: Final[tuple[str, ...]] = (
+    EXTERNAL_QUACK_OWNER_INTERFACE,
+    OWNER_LEASE_INTERFACE,
+    CANONICAL_TASK_STATE_MACHINE_INTERFACE,
+)
+_STOPPED_OWNER_LIFECYCLES: Final[frozenset[str]] = frozenset(
+    {"stopped", "stopping", "failed"}
 )
 
 # Compatibility identities retained for later EAAEF integration tests.  They
@@ -106,6 +137,25 @@ class RetiredInMemoryOwnerError(ExternalQuackOwnerError):
 
 class UnsignedEnvelopeError(RetiredInMemoryOwnerError):
     """Compatibility name for the retired content-hash envelope model."""
+
+
+class OwnerLossKind(str, Enum):
+    """Closed vocabulary for exclusive-owner loss."""
+
+    NOT_READY = "owner_not_ready"
+    LOST_HOLD = "lost_hold"
+    PROCESS_STOPPED = "process_stopped"
+    STALE_GENERATION = "stale_generation"
+    STALE_FENCE = "stale_fence"
+
+
+class OwnerRecoveryOutcome(str, Enum):
+    """Closed vocabulary for owner-loss and owner-restart recovery."""
+
+    OWNER_LOST = "owner_lost"
+    SUCCESSOR_ADMITTED = "successor_admitted"
+    STALE_REJECTED = "stale_rejected"
+    INVALID_FAILOVER = "invalid_failover"
 
 
 class TransportAuthError(RetiredInMemoryOwnerError):
@@ -201,11 +251,325 @@ class OwnerLease:
         return content_identity(dict(self.to_dict()))
 
 
+def _same_owner_store(previous: OwnerLease, current: OwnerLease) -> bool:
+    return (
+        current.board_namespace == previous.board_namespace
+        and current.shard_id == previous.shard_id
+        and current.store_id == previous.store_id
+        and current.database_uuid == previous.database_uuid
+    )
+
+
+def owner_lease_is_current(lease: OwnerLease, current: OwnerLease) -> bool:
+    """Return whether ``lease`` is the exact live owner generation."""
+
+    return (
+        isinstance(lease, OwnerLease)
+        and isinstance(current, OwnerLease)
+        and lease == current
+    )
+
+
+def assert_owner_restart_successor(
+    previous: OwnerLease,
+    current: OwnerLease,
+    *,
+    worker_assertion: bool = False,
+) -> OwnerLease:
+    """Admit only a later generation and fence of the same owner store.
+
+    ``worker_assertion`` is diagnostic only and never authorizes an invalid
+    failover or a stale owner lease.
+    """
+
+    del worker_assertion
+    if (
+        not isinstance(previous, OwnerLease)
+        or not isinstance(current, OwnerLease)
+        or not _same_owner_store(previous, current)
+        or current.generation <= previous.generation
+        or current.fence_epoch <= previous.fence_epoch
+        or current.server_id == previous.server_id
+    ):
+        raise StaleOwnerError(
+            "replacement is not a later generation of the same owner store",
+            reason_code="invalid_failover",
+        )
+    return current
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerLossObservation:
+    """Operational record that the exclusive owner was lost or went stale."""
+
+    kind: OwnerLossKind
+    outcome: OwnerRecoveryOutcome = OwnerRecoveryOutcome.OWNER_LOST
+    previous: OwnerLease | None = None
+    current: OwnerLease | None = None
+    reason_code: str = "owner_not_ready"
+    worker_assertion: bool = False
+    authorizes_completion: bool = False
+    worker_assertion_is_authority: bool = False
+    schema: str = OWNER_LOSS_OBSERVATION_SCHEMA
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, OwnerLossKind):
+            object.__setattr__(self, "kind", OwnerLossKind(str(self.kind)))
+        if not isinstance(self.outcome, OwnerRecoveryOutcome):
+            object.__setattr__(
+                self, "outcome", OwnerRecoveryOutcome(str(self.outcome))
+            )
+        if self.previous is not None and not isinstance(self.previous, OwnerLease):
+            raise ExternalQuackOwnerError(
+                "owner-loss previous lease is not the exact typed binding",
+                reason_code="stale_owner",
+            )
+        if self.current is not None and not isinstance(self.current, OwnerLease):
+            raise ExternalQuackOwnerError(
+                "owner-loss current lease is not the exact typed binding",
+                reason_code="stale_owner",
+            )
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
+        object.__setattr__(self, "worker_assertion", bool(self.worker_assertion))
+        object.__setattr__(self, "authorizes_completion", False)
+        object.__setattr__(self, "worker_assertion_is_authority", False)
+        if self.schema != OWNER_LOSS_OBSERVATION_SCHEMA:
+            raise ExternalQuackOwnerError(
+                "unsupported owner-loss observation schema",
+                reason_code="malformed_binding",
+            )
+
+    def to_dict(self) -> Mapping[str, Any]:
+        return MappingProxyType(
+            {
+                "schema": self.schema,
+                "interface": OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_INTERFACE,
+                "binding": OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_BINDING,
+                "consumes": list(OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_CONSUMES),
+                "carrier": EXTERNAL_QUACK_OWNER_INTERFACE,
+                "kind": self.kind.value,
+                "outcome": self.outcome.value,
+                "previous_lease_cid": None
+                if self.previous is None
+                else self.previous.content_id,
+                "current_lease_cid": None
+                if self.current is None
+                else self.current.content_id,
+                "reason_code": self.reason_code,
+                "worker_assertion": self.worker_assertion,
+                "authorizes_completion": False,
+                "worker_assertion_is_authority": False,
+            }
+        )
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(dict(self.to_dict()))
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerRestartRecovery:
+    """Operational record that a later owner generation succeeded a lost owner."""
+
+    previous: OwnerLease
+    current: OwnerLease
+    outcome: OwnerRecoveryOutcome = OwnerRecoveryOutcome.SUCCESSOR_ADMITTED
+    worker_assertion: bool = False
+    authorizes_completion: bool = False
+    worker_assertion_is_authority: bool = False
+    schema: str = OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_SCHEMA
+
+    def __post_init__(self) -> None:
+        admitted = assert_owner_restart_successor(self.previous, self.current)
+        object.__setattr__(self, "current", admitted)
+        if not isinstance(self.outcome, OwnerRecoveryOutcome):
+            object.__setattr__(
+                self, "outcome", OwnerRecoveryOutcome(str(self.outcome))
+            )
+        if self.outcome is not OwnerRecoveryOutcome.SUCCESSOR_ADMITTED:
+            raise StaleOwnerError(
+                "owner-restart recovery is only recorded for an admitted successor",
+                reason_code="invalid_failover",
+            )
+        object.__setattr__(self, "worker_assertion", bool(self.worker_assertion))
+        object.__setattr__(self, "authorizes_completion", False)
+        object.__setattr__(self, "worker_assertion_is_authority", False)
+        if self.schema != OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_SCHEMA:
+            raise ExternalQuackOwnerError(
+                "unsupported owner-restart recovery schema",
+                reason_code="malformed_binding",
+            )
+
+    def to_dict(self) -> Mapping[str, Any]:
+        return MappingProxyType(
+            {
+                "schema": self.schema,
+                "interface": OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_INTERFACE,
+                "binding": OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_BINDING,
+                "consumes": list(OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_CONSUMES),
+                "carrier": EXTERNAL_QUACK_OWNER_INTERFACE,
+                "outcome": self.outcome.value,
+                "previous_lease_cid": self.previous.content_id,
+                "current_lease_cid": self.current.content_id,
+                "previous_generation": self.previous.generation,
+                "current_generation": self.current.generation,
+                "previous_fence_epoch": self.previous.fence_epoch,
+                "current_fence_epoch": self.current.fence_epoch,
+                "previous_server_id": self.previous.server_id,
+                "current_server_id": self.current.server_id,
+                "worker_assertion": self.worker_assertion,
+                "authorizes_completion": False,
+                "worker_assertion_is_authority": False,
+            }
+        )
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(dict(self.to_dict()))
+
+
+def detect_owner_loss(
+    *,
+    lease: OwnerLease | None = None,
+    current: OwnerLease | None = None,
+    ready: bool = True,
+    held: bool = True,
+    lifecycle: str = "ready",
+    worker_assertion: bool = False,
+) -> OwnerLossObservation | None:
+    """Return an observation when the exclusive owner is lost or stale.
+
+    ``worker_assertion`` never conceals owner loss or a stale generation.
+    """
+
+    lifecycle_name = str(lifecycle or "").strip().casefold()
+    if lifecycle_name in _STOPPED_OWNER_LIFECYCLES:
+        kind = OwnerLossKind.PROCESS_STOPPED
+        reason = "process_stopped"
+    elif not ready:
+        kind = OwnerLossKind.NOT_READY
+        reason = "owner_not_ready"
+    elif not held:
+        kind = OwnerLossKind.LOST_HOLD
+        reason = "lost_hold"
+    elif (
+        isinstance(lease, OwnerLease)
+        and isinstance(current, OwnerLease)
+        and lease != current
+    ):
+        if lease.generation != current.generation:
+            kind = OwnerLossKind.STALE_GENERATION
+            reason = "stale_owner"
+        else:
+            kind = OwnerLossKind.STALE_FENCE
+            reason = "stale_owner"
+    else:
+        return None
+    return OwnerLossObservation(
+        kind=kind,
+        outcome=OwnerRecoveryOutcome.OWNER_LOST,
+        previous=lease if isinstance(lease, OwnerLease) else None,
+        current=current if isinstance(current, OwnerLease) else None,
+        reason_code=reason,
+        worker_assertion=bool(worker_assertion),
+    )
+
+
+def recover_from_owner_restart(
+    previous: OwnerLease,
+    current: OwnerLease,
+    *,
+    worker_assertion: bool = False,
+) -> OwnerRestartRecovery:
+    """Record that a later owner generation succeeded the lost owner."""
+
+    admitted = assert_owner_restart_successor(
+        previous, current, worker_assertion=worker_assertion
+    )
+    return OwnerRestartRecovery(
+        previous=previous,
+        current=admitted,
+        outcome=OwnerRecoveryOutcome.SUCCESSOR_ADMITTED,
+        worker_assertion=bool(worker_assertion),
+    )
+
+
+def assert_stale_owner_cannot_complete(
+    snapshot: TaskStateSnapshot,
+    *,
+    lease: OwnerLease,
+    current: OwnerLease | None,
+    ready: bool = True,
+    held: bool = True,
+    lifecycle: str = "ready",
+    worker_assertion: bool = False,
+    live_snapshot: TaskStateSnapshot | None = None,
+) -> OwnerLease:
+    """Reject completion unless the live owner generation is current.
+
+    Consumes ``CanonicalTaskStateMachine@1``.  This does not terminalize a
+    task: a worker or model assertion cannot complete against a lost owner
+    or a stale owner generation.
+    """
+
+    if not isinstance(snapshot, TaskStateSnapshot):
+        raise ExternalQuackOwnerError(
+            "owner-loss completion requires a canonical TaskStateSnapshot",
+            reason_code="malformed_binding",
+        )
+    if snapshot.INTERFACE != CANONICAL_TASK_STATE_MACHINE_INTERFACE:
+        raise ExternalQuackOwnerError(
+            "owner-loss completion requires CanonicalTaskStateMachine@1",
+            reason_code="malformed_binding",
+        )
+    loss = detect_owner_loss(
+        lease=lease,
+        current=current,
+        ready=ready,
+        held=held,
+        lifecycle=lifecycle,
+        worker_assertion=worker_assertion,
+    )
+    if loss is not None and loss.kind in {
+        OwnerLossKind.NOT_READY,
+        OwnerLossKind.LOST_HOLD,
+        OwnerLossKind.PROCESS_STOPPED,
+    }:
+        raise ExternalQuackOwnerNotReady(
+            "lost exclusive owner cannot complete a task",
+            reason_code=loss.reason_code,
+        )
+    if not isinstance(lease, OwnerLease) or not isinstance(current, OwnerLease):
+        raise StaleOwnerError(
+            "owner lease is not the exact typed binding",
+            reason_code="stale_owner",
+        )
+    if lease != current:
+        raise StaleOwnerError(
+            "stale owner generation or fence cannot complete a task",
+            reason_code="stale_owner",
+        )
+    live = snapshot if live_snapshot is None else live_snapshot
+    if not isinstance(live, TaskStateSnapshot) or not snapshot.may_complete_against(
+        live
+    ):
+        raise ExternalQuackOwnerError(
+            "worker or model assertion cannot complete a task without a "
+            "current owner generation",
+            reason_code="worker_assertion_insufficient",
+        )
+    return current
+
+
 class ExternalQuackOwner:
     """Resource-free facade bound to one exact READY ``QuackStateServer``."""
 
     INTERFACE: Final[str] = EXTERNAL_QUACK_OWNER_INTERFACE
     SCHEMA: Final[str] = EXTERNAL_QUACK_OWNER_SCHEMA
+    OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_BINDING: Final[str] = (
+        OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_BINDING
+    )
+    CONSUMES_TASK_STATE_MACHINE: Final[str] = CANONICAL_TASK_STATE_MACHINE_INTERFACE
 
     __slots__ = (
         "_board_namespace",
@@ -315,7 +679,9 @@ class ExternalQuackOwner:
             shard_id=self._shard_id,
         )
 
-    def assert_current(self, lease: OwnerLease) -> OwnerLease:
+    def assert_current(
+        self, lease: OwnerLease, *, worker_assertion: bool = False
+    ) -> OwnerLease:
         if not isinstance(lease, OwnerLease):
             raise StaleOwnerError(
                 "owner lease is not the exact typed binding",
@@ -327,25 +693,103 @@ class ExternalQuackOwner:
                 "stale owner generation or fence rejected",
                 reason_code="stale_owner",
             )
+        del worker_assertion
         return current
 
-    def assert_successor(self, previous: OwnerLease) -> OwnerLease:
+    def assert_successor(
+        self, previous: OwnerLease, *, worker_assertion: bool = False
+    ) -> OwnerLease:
         current = self.lease()
-        if (
-            not isinstance(previous, OwnerLease)
-            or current.board_namespace != previous.board_namespace
-            or current.shard_id != previous.shard_id
-            or current.store_id != previous.store_id
-            or current.database_uuid != previous.database_uuid
-            or current.generation <= previous.generation
-            or current.fence_epoch <= previous.fence_epoch
-            or current.server_id == previous.server_id
-        ):
-            raise StaleOwnerError(
-                "replacement is not a later generation of the same owner store",
-                reason_code="invalid_failover",
+        return assert_owner_restart_successor(
+            previous, current, worker_assertion=worker_assertion
+        )
+
+    def observe_owner_loss(
+        self,
+        lease: OwnerLease | None = None,
+        *,
+        worker_assertion: bool = False,
+    ) -> OwnerLossObservation:
+        """Classify exclusive-owner loss against this facade's live identity."""
+
+        server = self._owner_server
+        lifecycle = str(getattr(getattr(server, "lifecycle", None), "value", "") or "")
+        owner = getattr(server, "_owner", None)
+        held = bool(getattr(owner, "held", False)) if owner is not None else False
+        try:
+            current = self.lease()
+            ready = True
+            held = True
+        except ExternalQuackOwnerNotReady:
+            current = None
+            ready = False
+        observation = detect_owner_loss(
+            lease=lease,
+            current=current,
+            ready=ready,
+            held=held,
+            lifecycle=lifecycle,
+            worker_assertion=worker_assertion,
+        )
+        if observation is None:
+            raise ExternalQuackOwnerError(
+                "exclusive owner is current; no owner-loss to recover",
+                reason_code="owner_not_lost",
             )
-        return current
+        return observation
+
+    def recover_owner_restart(
+        self, previous: OwnerLease, *, worker_assertion: bool = False
+    ) -> OwnerRestartRecovery:
+        """Admit this facade as the later generation of a lost owner."""
+
+        current = self.assert_successor(previous, worker_assertion=worker_assertion)
+        return recover_from_owner_restart(
+            previous, current, worker_assertion=worker_assertion
+        )
+
+    def assert_task_may_complete(
+        self,
+        snapshot: TaskStateSnapshot,
+        *,
+        lease: OwnerLease | None = None,
+        current: TaskStateSnapshot | None = None,
+        worker_assertion: bool = False,
+    ) -> OwnerLease:
+        """Reject completion when the exclusive owner is lost or stale.
+
+        This method does not terminalize the task.
+        """
+
+        try:
+            live_lease = self.lease()
+            ready = True
+            held = True
+            lifecycle = "ready"
+        except ExternalQuackOwnerNotReady:
+            live_lease = None
+            ready = False
+            held = False
+            server = self._owner_server
+            lifecycle = str(
+                getattr(getattr(server, "lifecycle", None), "value", "") or "stopped"
+            )
+        bound = lease if lease is not None else live_lease
+        if bound is None:
+            raise ExternalQuackOwnerNotReady(
+                "lost exclusive owner cannot complete a task",
+                reason_code="owner_not_ready",
+            )
+        return assert_stale_owner_cannot_complete(
+            snapshot,
+            lease=bound,
+            current=live_lease,
+            ready=ready,
+            held=held,
+            lifecycle=lifecycle,
+            worker_assertion=worker_assertion,
+            live_snapshot=current,
+        )
 
     def require_operation(self, operation: str) -> None:
         """Reject SQL and every still-unqualified generic daemon operation."""
@@ -415,6 +859,9 @@ class ExternalQuackOwner:
                 "production_blockers": [
                     EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER
                 ],
+                "owner_loss_and_owner_restart_recovery_binding": (
+                    OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_BINDING
+                ),
             }
         )
 
@@ -455,7 +902,16 @@ __all__ = (
     "LIVE_QUACK_PORT",
     "OWNER_LEASE_INTERFACE",
     "OWNER_LEASE_SCHEMA",
+    "OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_BINDING",
+    "OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_CONSUMES",
+    "OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_INTERFACE",
+    "OWNER_LOSS_AND_OWNER_RESTART_RECOVERY_SCHEMA",
+    "OWNER_LOSS_OBSERVATION_SCHEMA",
     "OwnerLease",
+    "OwnerLossKind",
+    "OwnerLossObservation",
+    "OwnerRecoveryOutcome",
+    "OwnerRestartRecovery",
     "REMOTE_CAPABILITIES",
     "RemoteSqlRefusedError",
     "RetiredInMemoryOwnerError",
@@ -465,6 +921,11 @@ __all__ = (
     "TransportAuthError",
     "TransportSession",
     "UnsignedEnvelopeError",
+    "assert_owner_restart_successor",
+    "assert_stale_owner_cannot_complete",
+    "detect_owner_loss",
     "issue_envelope",
+    "owner_lease_is_current",
+    "recover_from_owner_restart",
     "verify_envelope",
 )
