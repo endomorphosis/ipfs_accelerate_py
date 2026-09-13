@@ -909,6 +909,7 @@ class MergeRequest:
     claim_token: str = ""
     claim_generation: int = 0
     retry_not_before: float = 0.0
+    finished_at: float = 0.0
 
     @property
     def canonical_identity(self) -> str:
@@ -978,6 +979,7 @@ class MergeRequest:
             "claim_token": self.claim_token,
             "claim_generation": self.claim_generation,
             "retry_not_before": self.retry_not_before,
+            "finished_at": self.finished_at,
             "dedupe_key": self.dedupe_key,
         }
 
@@ -1020,6 +1022,7 @@ class MergeRequest:
                 0.0,
                 _safe_float(data.get("retry_not_before"), 0.0),
             ),
+            finished_at=max(0.0, _safe_float(data.get("finished_at"), 0.0)),
         )
 
 
@@ -2808,6 +2811,7 @@ class MergeQueue:
         reopen_schema: str = "",
         reopen_reason: str = "",
         before_request_id: str = "",
+        ordered_by_request_id: bool = False,
     ) -> tuple[MergeRequest, ...]:
         """Return a bounded target-bound completion snapshot.
 
@@ -2815,6 +2819,8 @@ class MergeQueue:
         ``LIMIT`` and paginate by the immutable time-prefixed request id.  All
         pages use that same keyset order; mutable or out-of-order completion
         timestamps therefore cannot hide rows after the first page.
+        ``ordered_by_request_id`` retains the owner adapter signature; this
+        reader uses the immutable order for either value.
         """
 
         requested = max(0, min(int(limit), 256))
@@ -3380,6 +3386,7 @@ class MergeQueue:
             "claim_token": row["claim_token"],
             "claim_generation": row["claim_generation"],
             "retry_not_before": row["retry_not_before"],
+            "finished_at": row["finished_at"],
         }
         request = MergeRequest.from_dict(payload)
         return replace(request, file_path=self._stage_path(request))

@@ -30,9 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.owner_recovery_runtime import (
     OwnerRecoveryRuntimeClient,
     SERVICE_OPERATIONS as RECOVERY_OPERATIONS,
 )
-from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.residual_authority import (
-    SPAR_BOARD_NAMESPACE,
-)
+SPAR_BOARD_NAMESPACE = "semantic-preserving-autonomous-remodularization-v1"
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TypedStateOwnerConnection,
     TypedStateOwnerError,
@@ -571,11 +569,8 @@ def test_native_factory_injects_paired_queue_before_full_empty_recovery_pass(
     )
     assert bridge.merge_queue is pair.queue
     assert daemon.callbacks["merge_train_recovery"]["merge_queue"] is pair.queue
-    assert daemon.callbacks["quack_preprojection_transport_recovery_fn"] == (
-        bridge.recover_quack_preprojection_transport_failure
-    )
-    assert daemon.callbacks["deterministic_reconciliation_fn"] == (
-        bridge.run_deterministic_reconciliation
+    assert daemon.callbacks["post_commit_candidate_recovery_fn"] == (
+        bridge.recover_post_commit_candidate
     )
     assert daemon.callbacks["post_merge_recovery"]() is None
     assert pair.api.load_cursors()["revision"] == 0

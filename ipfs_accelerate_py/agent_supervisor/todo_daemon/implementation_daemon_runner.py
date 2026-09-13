@@ -2055,7 +2055,9 @@ def bind_database_portal_execution_from_args(
         getattr(parsed, "merge_target_branch", "") or ""
     ).strip()
     recovery_queue: Any = None
-    from ..semantic_refactoring.residual_authority import SPAR_BOARD_NAMESPACE
+    # Keep the legacy SPAR migration requirement independent of its optional
+    # materializer package; every configured Quack queue also requires an owner.
+    SPAR_BOARD_NAMESPACE = "semantic-preserving-autonomous-remodularization-v1"
 
     owner_recovery_required = (
         str(getattr(parsed, "board_namespace", "") or "") == SPAR_BOARD_NAMESPACE
