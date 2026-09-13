@@ -21,21 +21,36 @@ from .reconstruction import Reconstruction, ReconstructionError, ReconstructionL
 MAX_BUNDLE_BLOCK_BYTES = 1024 * 1024
 
 
+class StreamingReconstructionError(ReconstructionError):
+    """A structured bounded-analysis refusal, preserving producer diagnostics."""
+    def __init__(self, refusal):
+        super().__init__("streaming reconstruction refused: " + refusal["code"])
+        self.refusal = dict(refusal)
+
+    def observation(self):
+        return dict(self.refusal)
+
+
 @dataclass(frozen=True)
 class ChunkedReconstruction(Reconstruction):
     chunked_snapshot_cid: str
     analysis_limitation_cids: tuple[str, ...]
     paged_snapshot_cid: str
+    streaming_scan_observation: Any = None
 
     def observation(self) -> dict[str, Any]:
         return {**super().observation(),
-                "schema": "ipfs_accelerate_py/chunked-semantic-reconstruction@2",
+                "schema": ("ipfs_accelerate_py/chunked-semantic-reconstruction@3"
+                           if self.streaming_scan_observation is not None else
+                           "ipfs_accelerate_py/chunked-semantic-reconstruction@2"),
                 "chunked_snapshot_cid": self.chunked_snapshot_cid,
                 "paged_snapshot_cid": self.paged_snapshot_cid,
                 "analysis_limitation_count": len(self.analysis_limitation_cids),
                 "analysis_limitation_cids": list(self.analysis_limitation_cids),
                 "analysis_coverage": "incomplete" if self.analysis_limitation_cids else "not_established",
-                "complete_analysis_authority": False}
+                "complete_analysis_authority": False,
+                **({"streaming_scan": self.streaming_scan_observation}
+                   if self.streaming_scan_observation is not None else {})}
 
 
 @dataclass(frozen=True)
@@ -145,7 +160,7 @@ def reconstruct_chunked_semantic_state(
     repository: str | Path, chunked: Any, *, expected_commit: str, expected_tree: str,
     expected_chunked_snapshot_cid: str, repository_id: str,
     limits: ReconstructionLimits = ReconstructionLimits(), nominated_bundle: Any = None,
-    admission_limits: Any = None,
+    admission_limits: Any = None, streaming_limits: Any = None,
 ) -> ChunkedReconstruction:
     """Reproject the exact committed content, then bind every known opaque input.
 
@@ -159,6 +174,9 @@ def reconstruct_chunked_semantic_state(
     )
     from ipfs_datasets_py.logic.software_contracts.semantic_index.paged_snapshot import (
         admit_chunked_snapshot_manifest, page_snapshot_evidence, parse_paged_snapshot_evidence,
+    )
+    from ipfs_datasets_py.logic.software_contracts.semantic_index.streaming_scanner import (
+        StreamingScanLimits, StreamingAnalysisError, scan_chunked_repository_streaming,
     )
     from ipfs_datasets_py.logic.software_contracts.semantic_index.committed_snapshot import preflight_committed_repository
     from ipfs_datasets_py.logic.software_contracts.semantic_index.scanner import RepositoryScanner
@@ -196,6 +214,9 @@ def reconstruct_chunked_semantic_state(
                            (frame.source_cid for blob in chunked.blobs for frame in blob.chunks))
         if any(type(value) is not str or len(value) > MAX_BUNDLE_BLOCK_BYTES for value in references):
             raise ReconstructionError("manifest object reference exceeds frame bounds before serialization")
+    if streaming_limits is not None and not isinstance(streaming_limits, StreamingScanLimits):
+        raise ReconstructionError("streaming reconstruction requires typed analysis limits")
+    streaming = None
     root = Path(repository).resolve(strict=True)
     request = dict(expected_commit=expected_commit, expected_tree=expected_tree,
                    repository_id=repository_id, **asdict(limits))
@@ -208,8 +229,15 @@ def reconstruct_chunked_semantic_state(
                                                    repository_id=repository_id, expected_commit=expected_commit,
                                                    expected_tree=expected_tree, limits=admission_limits)
         manifest_cid, manifest_blocks = chunked.manifest_blocks()
-        projection = project_chunked_repository(root, chunked, max_file_bytes=limits.max_file_bytes,
-                                                max_total_bytes=limits.max_total_bytes)
+        if streaming_limits is None:
+            projection = project_chunked_repository(root, chunked, max_file_bytes=limits.max_file_bytes,
+                                                    max_total_bytes=limits.max_total_bytes)
+        else:
+            streaming = scan_chunked_repository_streaming(root, chunked, max_file_bytes=limits.max_file_bytes,
+                                                          limits=streaming_limits)
+            projection = streaming.projection
+    except StreamingAnalysisError as exc:
+        raise StreamingReconstructionError(exc.observation()) from exc
     except SnapshotError as exc:
         raise ReconstructionError(str(exc)) from exc
     snapshot = projection.snapshot
@@ -241,9 +269,9 @@ def reconstruct_chunked_semantic_state(
             max_entries=limits.max_entries, max_metadata_bytes=limits.max_metadata_bytes)
     except SnapshotError as exc:
         raise ReconstructionError(str(exc)) from exc
-    state = RepositoryScanner(repository_id=repository_id).scan_snapshot(
+    state = (streaming.state if streaming is not None else RepositoryScanner(repository_id=repository_id).scan_snapshot(
         snapshot, {entry.source_key: entry.captured_bytes for entry in snapshot.entries
-                   if entry.captured_bytes is not None and not entry.is_opaque})
+                   if entry.captured_bytes is not None and not entry.is_opaque}))
     # Keep the existing scanner/captured schema unchanged. Replace its
     # acquisition artifact before any semantic-state blocks are serialized.
     evidence = paged.artifact()
@@ -263,6 +291,9 @@ def reconstruct_chunked_semantic_state(
             raise ReconstructionError("conflicting chunk manifest block")
         blocks[cid] = data
     bundle = SemanticStateBundle(bundle.root, blocks)
+    if streaming is not None and any(len(data) > MAX_BUNDLE_BLOCK_BYTES for data in blocks.values()):
+        raise StreamingReconstructionError(StreamingAnalysisError(
+            "semantic_bundle_frame", phase="bundle", limit=MAX_BUNDLE_BLOCK_BYTES).observation())
     _verify_bound_bundle(bundle, producer, limitations, provenance, bound_artifacts, manifest_blocks, paged.blocks)
     matched = None
     if nominated_bundle is not None:
@@ -284,12 +315,17 @@ def reconstruct_chunked_semantic_state(
                      "stream_limits": asdict(chunked.limits), "population_scope": "complete-committed",
                      "analysis_limitation_index_cid": bundle.root.analysis_limitation_index_cid,
                      "reuse": "cold", "environment_bindings": []}
+    if streaming is not None:
+        configuration.update(schema="ipfs_accelerate_py/chunked-reconstruction-config@3",
+                             analysis_mode="streaming-ordinary", streaming_limits=asdict(streaming_limits),
+                             analysis_process_profile=streaming.observation["analysis_process_profile"])
     digest = "sha256:" + hashlib.sha256(json.dumps(configuration, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return ChunkedReconstruction(bundle, snapshot.snapshot_cid, state.state_cid, expected_commit,
                                  expected_tree, digest,
                                  tuple((entry.path, entry.opaque_reason) for entry in snapshot.entries if entry.is_opaque),
                                  matched, chunked.population_cid, manifest_cid,
-                                 tuple(item.limitation_cid for item in limitations), paged.root_cid)
+                                 tuple(item.limitation_cid for item in limitations), paged.root_cid,
+                                 streaming.observation if streaming is not None else None)
 
 
-__all__ = ["ChunkedReconstruction", "reconstruct_chunked_semantic_state"]
+__all__ = ["ChunkedReconstruction", "StreamingReconstructionError", "reconstruct_chunked_semantic_state"]
