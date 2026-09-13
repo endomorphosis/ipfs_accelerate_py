@@ -29,6 +29,11 @@ SCHEMA = "ipfs_accelerate_py/agent-supervisor/workspace-root-quarantine@1"
 MAX_FILES = 8192
 MAX_BYTES = 16_777_216
 MAX_RECORDS = 256
+# A physical Git repository can serve many board roots. Inspect their shared
+# metadata without charging unrelated records against one retained root's
+# population. The scan itself still has independent work and memory bounds.
+MAX_CENSUS_SCAN_FILES = 131_072
+MAX_CENSUS_SCAN_BYTES = 134_217_728
 
 
 def registry(repo_root: Path) -> Path:
@@ -174,6 +179,45 @@ def bounded_entries(directory: Path, *, bound: int, reason: str) -> list[Path]:
     return paths
 
 
+def _census_entries(directory: Path, *, bound: int, reason: str):
+    with os.scandir(directory) as entries:
+        for index, entry in enumerate(islice(entries, bound + 1)):
+            require(index < bound, reason)
+            yield Path(entry.path)
+
+
+def _census_identity(info: Any) -> tuple[int, ...]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_uid,
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _require_unchanged_census(observed: dict[Path, tuple[int, ...] | None]) -> None:
+    for path, expected in observed.items():
+        try:
+            actual = _census_identity(path.lstat())
+        except FileNotFoundError:
+            actual = None
+        require(actual == expected, "workspace_quarantine_census_changed")
+
+
+def _census_scope(path: Path, observed: dict[Path, Path]) -> Path:
+    resolved = path.resolve()
+    require(
+        path not in observed or observed[path] == resolved,
+        "workspace_quarantine_census_changed",
+    )
+    observed[path] = resolved
+    return resolved
+
+
 def records(directory: Path) -> list[dict[str, Any]]:
     paths = [
         path
@@ -297,6 +341,9 @@ def census(repo_root: Path, worktree_root: Path) -> dict[str, Any]:
     )
     candidates = []
     remaining_files, remaining_bytes = MAX_FILES, MAX_BYTES
+    scan_files, scan_bytes = MAX_CENSUS_SCAN_FILES, MAX_CENSUS_SCAN_BYTES
+    observed: dict[Path, tuple[int, ...] | None] = {}
+    scopes = {worktree_root: root, repo_root: repo_root.resolve()}
     claim_directories = tuple(
         (registry(repo_root).parent / name, "*.lock") for name in sorted(CLAIM_DIRS)
     )
@@ -308,21 +355,34 @@ def census(repo_root: Path, worktree_root: Path) -> dict[str, Any]:
         try:
             info = directory.lstat()
         except FileNotFoundError:
+            observed[directory] = None
             continue
         require(stat.S_ISDIR(info.st_mode), "workspace_quarantine_directory_invalid")
-        paths = bounded_entries(
-            directory,
-            bound=remaining_files,
-            reason="workspace_quarantine_population_bound",
-        )
-        remaining_files -= len(paths)
+        observed[directory] = _census_identity(info)
+        # The pool belongs wholly to this root. Lifecycle and claim directories
+        # are repository-wide; their validated scope determines retention.
+        if directory == pool:
+            paths = bounded_entries(
+                directory,
+                bound=min(remaining_files, scan_files),
+                reason="workspace_quarantine_population_bound",
+            )
+            remaining_files -= len(paths)
+        else:
+            paths = _census_entries(
+                directory,
+                bound=scan_files,
+                reason="workspace_quarantine_scan_population_bound",
+            )
         for path in paths:
+            scan_files -= 1
             if not fnmatchcase(path.name, pattern):
                 continue
             if path.name.startswith(".") and path.name.endswith(".update.lock"):
                 continue
-            raw, info = read_regular(path, bound=remaining_bytes)
-            remaining_bytes -= len(raw)
+            raw, info = read_regular(path, bound=min(MAX_BYTES, scan_bytes))
+            scan_bytes -= len(raw)
+            observed[path] = _census_identity(info)
             if directory == pool:
                 # Pool metadata and existing ownership sidecars are retained.
                 require(
@@ -335,7 +395,8 @@ def census(repo_root: Path, worktree_root: Path) -> dict[str, Any]:
                     require(
                         value.get("lease_token") == path.stem
                         and type(value.get("path")) is str
-                        and within(Path(value["path"]).resolve(), root),
+                        and Path(value["path"]).is_absolute()
+                        and within(_census_scope(Path(value["path"]), scopes), root),
                         "workspace_quarantine_pool_binding_invalid",
                     )
             elif directory.name in CLAIM_DIRS:
@@ -343,10 +404,12 @@ def census(repo_root: Path, worktree_root: Path) -> dict[str, Any]:
                 require(type(value) is dict, "workspace_quarantine_claim_invalid")
                 owner_root = value.get("worktree_root") or value.get("repo_root")
                 require(
-                    type(owner_root) is str and bool(owner_root),
+                    type(owner_root) is str
+                    and bool(owner_root)
+                    and Path(owner_root).is_absolute(),
                     "workspace_quarantine_claim_root_unknown",
                 )
-                if Path(owner_root).resolve() != Path(repo_root).resolve():
+                if _census_scope(Path(owner_root), scopes) != scopes[repo_root]:
                     continue
                 require(
                     type(value.get("lease_id")) is str
@@ -366,17 +429,26 @@ def census(repo_root: Path, worktree_root: Path) -> dict[str, Any]:
             else:
                 value = strict_json(raw.decode())
                 require(
-                    type(value) is dict and type(value.get("workspace_path")) is str,
+                    type(value) is dict
+                    and type(value.get("workspace_path")) is str
+                    and Path(value["workspace_path"]).is_absolute(),
                     "workspace_quarantine_lifecycle_entry_invalid",
                 )
-                if not within(Path(value["workspace_path"]).resolve(), root):
-                    continue
                 if path.name.startswith("ws-"):
                     record = WorkspaceLifecycleRecord.from_dict(value)
                     require(
                         record.record_id == record.compute_record_id(),
                         "workspace_quarantine_lifecycle_identity_invalid",
                     )
+                if not within(
+                    _census_scope(Path(value["workspace_path"]), scopes), root
+                ):
+                    continue
+            if directory != pool:
+                require(remaining_files > 0, "workspace_quarantine_population_bound")
+                remaining_files -= 1
+            require(len(raw) <= remaining_bytes, "workspace_quarantine_snapshot_bound")
+            remaining_bytes -= len(raw)
             candidates.append(
                 {
                     "path": str(path),
@@ -386,6 +458,13 @@ def census(repo_root: Path, worktree_root: Path) -> dict[str, Any]:
                     "inode": info.st_ino,
                 }
             )
+    # Observe all records used for scope decisions, including excluded records.
+    # A foreign record changing into this root during scanning is not absence.
+    # Freeze repeats this census under the existing exclusive native writer
+    # guard and compares the complete expected snapshot before publishing.
+    _require_unchanged_census(observed)
+    for path, expected in scopes.items():
+        require(path.resolve() == expected, "workspace_quarantine_census_changed")
     require(
         len(candidates) <= MAX_FILES
         and sum(row["size"] for row in candidates) <= MAX_BYTES,
