@@ -5,6 +5,13 @@ small, current-tree observation into a deterministic refill decision and asks
 the existing objective/refinery path to append work through its revision CAS.
 Keeping those effects behind callbacks makes queue emptiness and stale task
 status insufficient to either generate work or close a run.
+
+Automatic bounded task refill (DOEP-053) is a binding of ``RefillController``,
+not a second refill owner, planner, or event bus.  It consumes event-driven
+reassessment and PlanDelta identities, appends only the model-free affected
+suffix through the existing revision CAS callback, and never writes DuckDB or
+completes a task.  A worker or model assertion cannot skip the live plan-epoch
+fence or authorize completion.
 """
 
 from __future__ import annotations
@@ -13,11 +20,44 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
+from typing import Any, Callable, ClassVar, Final, Iterable, Mapping, Protocol, Sequence
+
+from ..analysis.dynamic_impact_frontier import (
+    INCREMENTAL_PLAN_IMPACT_SCHEMA,
+    PLAN_IMPACT_REFILL_DECISION_SCHEMA,
+    IncrementalPlanImpactAnalysis,
+    OrdinaryRefillDisposition,
+    PlanImpactNode,
+    PlanImpactRefillDecision,
+)
+from ..task_sources.plan_revision_store import (
+    STALE_PLAN_EPOCH_BINDING,
+    assert_plan_epoch_current,
+)
 
 
 BOUNDED_RESIDUAL_REFILL_REQUIREMENT_ID = "prompt_v3_refill.BOUNDED_RESIDUAL_REFILL_REQUIREMENT_ID"
 REFILL_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/bounded-residual-refill-receipt@1"
+AUTOMATIC_BOUNDED_TASK_REFILL_BINDING: Final[str] = "AutomaticBoundedTaskRefill@1"
+AUTOMATIC_BOUNDED_TASK_REFILL_INTERFACE: Final[str] = AUTOMATIC_BOUNDED_TASK_REFILL_BINDING
+AUTOMATIC_BOUNDED_TASK_REFILL_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/automatic-bounded-task-refill@1"
+)
+EVENT_DRIVEN_REASSESSMENT_BINDING: Final[str] = "EventDrivenReassessment@1"
+PLAN_DELTA_SCHEMA: Final[str] = "ipfs_datasets_py/logic/external-work-plan-delta@1"
+AUTOMATIC_BOUNDED_TASK_REFILL_CONSUMES: Final[tuple[str, ...]] = (
+    EVENT_DRIVEN_REASSESSMENT_BINDING,
+    INCREMENTAL_PLAN_IMPACT_SCHEMA,
+    PLAN_IMPACT_REFILL_DECISION_SCHEMA,
+    STALE_PLAN_EPOCH_BINDING,
+    PLAN_DELTA_SCHEMA,
+)
+_AUTOMATIC_SCHEDULER_METADATA: Final[Mapping[str, str]] = {
+    "priority": "P2",
+    "track": "implementation",
+    "parallel_lane": "doep-automatic-refill",
+    "resource_class": "cpu",
+}
 
 
 class RefillTrigger(str, Enum):
@@ -192,6 +232,151 @@ class RefillDecision:
         }
 
 
+class AutomaticBoundedRefillError(ValueError):
+    """Malformed automatic refill input or authority fence."""
+
+
+def _compact(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _unique_ids(values: Sequence[str] | Iterable[str] | None) -> tuple[str, ...]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for item in values or ():
+        text = _compact(item)
+        if text and text not in seen:
+            seen.add(text)
+            unique.append(text)
+    return tuple(unique)
+
+
+@dataclass(frozen=True)
+class AutomaticBoundedRefill:
+    """Receipt for one automatic bounded refill pass; never completion authority."""
+
+    disposition: RefillDisposition
+    observation: RefillObservation
+    live_plan_epoch: int
+    epoch: int
+    candidate_task_ids: tuple[str, ...] = ()
+    appended_task_ids: tuple[str, ...] = ()
+    preserved_task_ids: tuple[str, ...] = ()
+    preserved_receipt_refs: tuple[str, ...] = ()
+    gap_identities: tuple[str, ...] = ()
+    appended_count: int = 0
+    reason: str = ""
+    cas: RefillEpochCAS | None = None
+    decision: RefillDecision | None = None
+    schema: str = AUTOMATIC_BOUNDED_TASK_REFILL_SCHEMA
+    binding: str = AUTOMATIC_BOUNDED_TASK_REFILL_BINDING
+    carrier: str = "RefillController"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.disposition, RefillDisposition):
+            object.__setattr__(
+                self, "disposition", RefillDisposition(str(self.disposition))
+            )
+        if not isinstance(self.observation, RefillObservation):
+            raise AutomaticBoundedRefillError("observation must be RefillObservation")
+        epoch = int(self.live_plan_epoch)
+        if epoch < 1:
+            raise AutomaticBoundedRefillError("live_plan_epoch must be >= 1")
+        object.__setattr__(self, "live_plan_epoch", epoch)
+        object.__setattr__(self, "epoch", int(self.epoch))
+        object.__setattr__(
+            self, "candidate_task_ids", _unique_ids(self.candidate_task_ids)
+        )
+        object.__setattr__(
+            self, "appended_task_ids", _unique_ids(self.appended_task_ids)
+        )
+        object.__setattr__(
+            self, "preserved_task_ids", _unique_ids(self.preserved_task_ids)
+        )
+        object.__setattr__(
+            self, "preserved_receipt_refs", _unique_ids(self.preserved_receipt_refs)
+        )
+        object.__setattr__(self, "gap_identities", _unique_ids(self.gap_identities))
+        object.__setattr__(self, "appended_count", int(self.appended_count))
+        if self.appended_count < 0:
+            raise AutomaticBoundedRefillError("appended_count cannot be negative")
+        if set(self.appended_task_ids) & set(self.preserved_task_ids):
+            raise AutomaticBoundedRefillError(
+                "appended tasks must be disjoint from preserved unaffected tasks"
+            )
+        object.__setattr__(
+            self, "schema", self.schema or AUTOMATIC_BOUNDED_TASK_REFILL_SCHEMA
+        )
+        if self.schema != AUTOMATIC_BOUNDED_TASK_REFILL_SCHEMA:
+            raise AutomaticBoundedRefillError(
+                f"unsupported automatic bounded refill schema: {self.schema}"
+            )
+        object.__setattr__(
+            self, "binding", self.binding or AUTOMATIC_BOUNDED_TASK_REFILL_BINDING
+        )
+        object.__setattr__(self, "carrier", self.carrier or "RefillController")
+
+    @property
+    def model_free(self) -> bool:
+        return True
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema": self.schema,
+            "binding": self.binding,
+            "interface": AUTOMATIC_BOUNDED_TASK_REFILL_INTERFACE,
+            "carrier": self.carrier,
+            "consumes": list(AUTOMATIC_BOUNDED_TASK_REFILL_CONSUMES),
+            "disposition": self.disposition.value,
+            "live_plan_epoch": self.live_plan_epoch,
+            "epoch": self.epoch,
+            "wave": self.epoch,
+            "candidate_task_ids": list(self.candidate_task_ids),
+            "appended_task_ids": list(self.appended_task_ids),
+            "preserved_task_ids": list(self.preserved_task_ids),
+            "preserved_receipt_refs": list(self.preserved_receipt_refs),
+            "gap_identities": list(self.gap_identities),
+            "appended_count": self.appended_count,
+            "reason": self.reason,
+            "observation": {
+                "plan_root_cid": self.observation.plan_root_cid,
+                "revision": self.observation.revision,
+                "ready_tasks": self.observation.ready_tasks,
+                "active_tasks": self.observation.active_tasks,
+                "open_goals": self.observation.open_goals,
+                "validation_rejected": self.observation.validation_rejected,
+                "review_rejected": self.observation.review_rejected,
+                "merge_rejected": self.observation.merge_rejected,
+                "stale_evidence": self.observation.stale_evidence,
+                "branch_only_completion": self.observation.branch_only_completion,
+                "actionable_drift": self.observation.actionable_drift,
+                "retry_exhausted_with_refinement": (
+                    self.observation.retry_exhausted_with_refinement
+                ),
+                "rollout_threshold_missed": self.observation.rollout_threshold_missed,
+            },
+            "cas": None
+            if self.cas is None
+            else {
+                "plan_root_cid": self.cas.plan_root_cid,
+                "expected_revision": self.cas.expected_revision,
+                "epoch": self.cas.epoch,
+            },
+            "decision": None if self.decision is None else self.decision.to_dict(),
+            "model_free": True,
+            "authorizes_append": False,
+            "authorizes_completion": False,
+            "database_write": False,
+            "completion_authoritative": False,
+            "worker_assertion_is_authority": False,
+            "worker_completion_insufficient": True,
+            "no_competing_subsystem_created": True,
+            "append_effect": "revision_cas_callback_only",
+            "empty_queue_is_completion": False,
+        }
+        return payload
+
+
 AppendRefillWork = Callable[[Sequence[ResidualGap], RefillEpochCAS], bool]
 
 
@@ -216,6 +401,12 @@ def refill_triggers(observation: RefillObservation, policy: RefillPolicy) -> tup
 
 class RefillController:
     """Stateful circuit breaker around current-tree residual evaluation."""
+
+    AUTOMATIC_BOUNDED_TASK_REFILL_BINDING: ClassVar[str] = (
+        AUTOMATIC_BOUNDED_TASK_REFILL_BINDING
+    )
+    AUTOMATIC_REFILL_INTERFACE: ClassVar[str] = AUTOMATIC_BOUNDED_TASK_REFILL_INTERFACE
+    AUTOMATIC_REFILL_SCHEMA: ClassVar[str] = AUTOMATIC_BOUNDED_TASK_REFILL_SCHEMA
 
     def __init__(self, evaluator: ResidualEvidenceEvaluator, append: AppendRefillWork, *, policy: RefillPolicy | None = None,
                  production_hooks: Iterable[ProductionSelfImprovementHook] = ()) -> None:
@@ -295,6 +486,521 @@ class RefillController:
         self._seen_gap_ids.update(identities)
         return RefillDecision(RefillDisposition.REFILLED, triggers, epoch, identities, len(candidates), cas=cas)
 
+    def automatic_refill(
+        self,
+        observation: RefillObservation,
+        *,
+        reassessment: Any = None,
+        impact: IncrementalPlanImpactAnalysis | Mapping[str, Any] | None = None,
+        plan_delta: Mapping[str, Any] | None = None,
+        live_plan_epoch: int | None = None,
+        worker_assertion: bool = False,
+        tree_id: str = "",
+        scheduler_metadata: Mapping[str, Any] | None = None,
+    ) -> AutomaticBoundedRefill:
+        """Refill the model-free affected suffix through the existing CAS path."""
+
+        return automatic_bounded_refill(
+            observation,
+            controller=self,
+            reassessment=reassessment,
+            impact=impact,
+            plan_delta=plan_delta,
+            live_plan_epoch=live_plan_epoch,
+            worker_assertion=worker_assertion,
+            tree_id=tree_id,
+            scheduler_metadata=scheduler_metadata,
+        )
+
+
+
+# ---------------------------------------------------------------------------
+# Automatic bounded task refill (DOEP-053). Binding of RefillController; not a
+# competing refill owner, planner, or event bus.
+# ---------------------------------------------------------------------------
+
+
+def _coerce_impact(
+    value: IncrementalPlanImpactAnalysis | Mapping[str, Any] | None,
+) -> IncrementalPlanImpactAnalysis | None:
+    if value is None:
+        return None
+    if isinstance(value, IncrementalPlanImpactAnalysis):
+        return value
+    if isinstance(value, Mapping):
+        return IncrementalPlanImpactAnalysis.from_dict(value)
+    raise AutomaticBoundedRefillError("impact must be IncrementalPlanImpactAnalysis")
+
+
+def _coerce_reassessment(value: Any) -> Any:
+    if value is None:
+        return None
+    from .refill_event_adapter import EventDrivenReassessment
+
+    if isinstance(value, EventDrivenReassessment):
+        return value
+    if isinstance(value, Mapping):
+        return EventDrivenReassessment.from_dict(value)
+    raise AutomaticBoundedRefillError("reassessment must be EventDrivenReassessment")
+
+
+def _coerce_plan_delta(value: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise AutomaticBoundedRefillError("plan_delta must be a mapping")
+    if bool(value.get("completion_authoritative")):
+        raise AutomaticBoundedRefillError("plan delta cannot grant completion authority")
+    if value.get("history_preserving") is False:
+        raise AutomaticBoundedRefillError("plan delta must preserve history")
+    if value.get("model_free_refill") is False:
+        raise AutomaticBoundedRefillError("plan delta refill must be model-free")
+    refill_ids = _unique_ids(value.get("refill_task_ids") or ())
+    impacted_ids = _unique_ids(value.get("impacted_task_ids") or ())
+    preserved_ids = _unique_ids(value.get("preserved_task_ids") or ())
+    if set(impacted_ids) & set(preserved_ids):
+        raise AutomaticBoundedRefillError(
+            "impacted and preserved task ids must be disjoint"
+        )
+    if not set(refill_ids).issubset(set(impacted_ids)):
+        raise AutomaticBoundedRefillError(
+            "refill task ids must be a subset of the impacted suffix"
+        )
+    return {
+        "refill_task_ids": refill_ids,
+        "impacted_task_ids": impacted_ids,
+        "preserved_task_ids": preserved_ids,
+        "preserved_receipt_ids": _unique_ids(value.get("preserved_receipt_ids") or ()),
+        "triggering_event_id": _compact(value.get("triggering_event_id")),
+        "base_plan_revision": _compact(value.get("base_plan_revision")),
+    }
+
+
+def _gap_for_task(
+    task_id: str,
+    *,
+    observation: RefillObservation,
+    nodes_by_id: Mapping[str, PlanImpactNode],
+    depth_by_id: Mapping[str, int],
+    scheduler_metadata: Mapping[str, Any],
+) -> ResidualGap:
+    node = nodes_by_id.get(task_id)
+    goal = observation.plan_root_cid
+    evidence = f"evidence:{task_id}"
+    depth = int(depth_by_id.get(task_id, 0))
+    if node is not None:
+        if node.goal_id:
+            goal = node.goal_id
+        if node.receipt_refs:
+            evidence = node.receipt_refs[0]
+        depth = int(depth_by_id.get(node.node_id, depth))
+    return ResidualGap(
+        goal_cid=goal,
+        evidence_cid=evidence,
+        scope_cid=task_id,
+        lineage_goal_cids=(goal,),
+        depth=depth,
+        scheduler_metadata=dict(scheduler_metadata),
+        kind="task",
+    )
+
+
+def _receipt(
+    *,
+    disposition: RefillDisposition,
+    observation: RefillObservation,
+    live_plan_epoch: int,
+    epoch: int,
+    reason: str,
+    candidate_task_ids: Sequence[str] = (),
+    appended_task_ids: Sequence[str] = (),
+    preserved_task_ids: Sequence[str] = (),
+    preserved_receipt_refs: Sequence[str] = (),
+    gap_identities: Sequence[str] = (),
+    appended_count: int = 0,
+    cas: RefillEpochCAS | None = None,
+    decision: RefillDecision | None = None,
+    triggers: Sequence[RefillTrigger] = (),
+) -> AutomaticBoundedRefill:
+    if decision is None:
+        decision = RefillDecision(
+            disposition,
+            tuple(triggers),
+            epoch,
+            tuple(gap_identities),
+            appended_count,
+            reason,
+            cas,
+        )
+    return AutomaticBoundedRefill(
+        disposition=disposition,
+        observation=observation,
+        live_plan_epoch=live_plan_epoch,
+        epoch=epoch,
+        candidate_task_ids=tuple(candidate_task_ids),
+        appended_task_ids=tuple(appended_task_ids),
+        preserved_task_ids=tuple(preserved_task_ids),
+        preserved_receipt_refs=tuple(preserved_receipt_refs),
+        gap_identities=tuple(gap_identities),
+        appended_count=appended_count,
+        reason=reason,
+        cas=cas,
+        decision=decision,
+    )
+
+
+def automatic_bounded_refill(
+    observation: RefillObservation,
+    *,
+    controller: RefillController,
+    reassessment: Any = None,
+    impact: IncrementalPlanImpactAnalysis | Mapping[str, Any] | None = None,
+    plan_delta: Mapping[str, Any] | None = None,
+    live_plan_epoch: int | None = None,
+    worker_assertion: bool = False,
+    tree_id: str = "",
+    scheduler_metadata: Mapping[str, Any] | None = None,
+) -> AutomaticBoundedRefill:
+    """Automatically refill only logically necessary affected-suffix tasks.
+
+    Physical append remains the injected revision-CAS callback.  This function
+    does not write DuckDB/DuckLake, does not complete a task, and does not
+    enlarge ``RefillPolicy`` caps.  ``worker_assertion`` is diagnostic only.
+    """
+
+    del worker_assertion
+    if not isinstance(observation, RefillObservation):
+        raise AutomaticBoundedRefillError("observation must be RefillObservation")
+    if not isinstance(controller, RefillController):
+        raise AutomaticBoundedRefillError("controller must be RefillController")
+
+    coerced_reassessment = _coerce_reassessment(reassessment)
+    coerced_impact = _coerce_impact(impact)
+    coerced_delta = _coerce_plan_delta(plan_delta)
+    if (
+        coerced_reassessment is None
+        and coerced_impact is None
+        and coerced_delta is None
+    ):
+        raise AutomaticBoundedRefillError(
+            "automatic refill requires reassessment, impact, or plan_delta"
+        )
+
+    if coerced_reassessment is not None:
+        if coerced_impact is None:
+            coerced_impact = coerced_reassessment.impact
+        elif coerced_reassessment.impact is not None:
+            if (
+                coerced_reassessment.impact.event_id != coerced_impact.event_id
+                or coerced_reassessment.impact.cone.affected_ids
+                != coerced_impact.cone.affected_ids
+            ):
+                raise AutomaticBoundedRefillError(
+                    "reassessment impact does not match supplied impact"
+                )
+        reassessment_root = coerced_reassessment.observation.plan_root_cid
+        if reassessment_root and reassessment_root != observation.plan_root_cid:
+            raise AutomaticBoundedRefillError(
+                "reassessment plan_root does not match observation"
+            )
+
+    resolved_epoch = live_plan_epoch
+    if resolved_epoch is None and coerced_reassessment is not None:
+        resolved_epoch = coerced_reassessment.live_plan_epoch
+    if resolved_epoch is None and coerced_impact is not None:
+        resolved_epoch = coerced_impact.plan_epoch
+    if resolved_epoch is None:
+        raise AutomaticBoundedRefillError("live_plan_epoch is required")
+    live_epoch = int(resolved_epoch)
+    if live_epoch < 1:
+        raise AutomaticBoundedRefillError("live_plan_epoch must be >= 1")
+    if coerced_reassessment is not None:
+        assert_plan_epoch_current(
+            coerced_reassessment.live_plan_epoch,
+            live_epoch,
+            worker_assertion=False,
+        )
+    if coerced_impact is not None:
+        if coerced_impact.plan_root != observation.plan_root_cid:
+            raise AutomaticBoundedRefillError(
+                "impact plan_root does not match observation"
+            )
+        assert_plan_epoch_current(
+            coerced_impact.plan_epoch, live_epoch, worker_assertion=False
+        )
+        if coerced_impact.refill_decision.model_free is not True:
+            raise AutomaticBoundedRefillError(
+                "ordinary automatic refill must remain model-free"
+            )
+
+    triggers = refill_triggers(observation, controller.policy)
+    preserved_ids = ()
+    preserved_receipts = ()
+    candidate_ids: tuple[str, ...] = ()
+
+    if coerced_reassessment is not None:
+        from .refill_event_adapter import EventDrivenReassessmentDisposition
+
+        disposition = coerced_reassessment.disposition
+        if disposition is EventDrivenReassessmentDisposition.REPLAYED:
+            return _receipt(
+                disposition=RefillDisposition.NO_REFILL,
+                observation=observation,
+                live_plan_epoch=live_epoch,
+                epoch=controller._epoch,
+                reason="replayed_event",
+                preserved_task_ids=preserved_ids,
+                triggers=triggers,
+            )
+        if disposition is EventDrivenReassessmentDisposition.BLOCKED:
+            return _receipt(
+                disposition=RefillDisposition.BLOCKED,
+                observation=observation,
+                live_plan_epoch=live_epoch,
+                epoch=controller._epoch,
+                reason="reassessment_blocked",
+                triggers=triggers,
+            )
+
+    if coerced_impact is not None:
+        preserved_ids = coerced_impact.cone.unaffected_preserved_ids
+        preserved_receipts = coerced_impact.cone.preserved_receipt_refs
+        refill_decision: PlanImpactRefillDecision = coerced_impact.refill_decision
+        if refill_decision.disposition is OrdinaryRefillDisposition.BLOCKED_OPEN_FRONTIER:
+            return _receipt(
+                disposition=RefillDisposition.BLOCKED,
+                observation=observation,
+                live_plan_epoch=live_epoch,
+                epoch=controller._epoch,
+                reason="blocked_open_frontier",
+                preserved_task_ids=preserved_ids,
+                preserved_receipt_refs=preserved_receipts,
+                triggers=triggers,
+            )
+        if refill_decision.disposition is OrdinaryRefillDisposition.BOUND_EXCEEDED:
+            return _receipt(
+                disposition=RefillDisposition.BLOCKED,
+                observation=observation,
+                live_plan_epoch=live_epoch,
+                epoch=controller._epoch,
+                reason="impact_bound_exceeded",
+                preserved_task_ids=preserved_ids,
+                preserved_receipt_refs=preserved_receipts,
+                triggers=triggers,
+            )
+        if refill_decision.disposition is OrdinaryRefillDisposition.ABSTAIN_UNKNOWN:
+            return _receipt(
+                disposition=RefillDisposition.BLOCKED,
+                observation=observation,
+                live_plan_epoch=live_epoch,
+                epoch=controller._epoch,
+                reason="abstain_unknown_frontier",
+                preserved_task_ids=preserved_ids,
+                preserved_receipt_refs=preserved_receipts,
+                triggers=triggers,
+            )
+        if refill_decision.disposition is OrdinaryRefillDisposition.NO_REFILL:
+            return _receipt(
+                disposition=RefillDisposition.NO_REFILL,
+                observation=observation,
+                live_plan_epoch=live_epoch,
+                epoch=controller._epoch,
+                reason="no_unstarted_affected_tasks",
+                preserved_task_ids=preserved_ids,
+                preserved_receipt_refs=preserved_receipts,
+                triggers=triggers,
+            )
+        candidate_ids = refill_decision.candidate_task_ids
+    elif coerced_delta is not None:
+        preserved_ids = coerced_delta["preserved_task_ids"]
+        preserved_receipts = coerced_delta["preserved_receipt_ids"]
+        candidate_ids = coerced_delta["refill_task_ids"]
+
+    if coerced_delta is not None:
+        delta_refill = set(coerced_delta["refill_task_ids"])
+        candidate_ids = tuple(
+            item for item in candidate_ids if item in delta_refill
+        )
+        extra_preserved = coerced_delta["preserved_task_ids"]
+        preserved_ids = _unique_ids(tuple(preserved_ids) + extra_preserved)
+        extra_receipts = coerced_delta["preserved_receipt_ids"]
+        preserved_receipts = _unique_ids(tuple(preserved_receipts) + extra_receipts)
+
+    preserved_set = set(preserved_ids)
+    candidate_ids = tuple(
+        item for item in candidate_ids if item not in preserved_set
+    )
+    if not candidate_ids:
+        return _receipt(
+            disposition=RefillDisposition.NO_REFILL,
+            observation=observation,
+            live_plan_epoch=live_epoch,
+            epoch=controller._epoch,
+            reason="no_necessary_affected_suffix",
+            preserved_task_ids=preserved_ids,
+            preserved_receipt_refs=preserved_receipts,
+            triggers=triggers,
+        )
+
+    controller._trigger_ticks += 1
+    if controller._epoch >= controller.policy.max_epochs:
+        return _receipt(
+            disposition=RefillDisposition.BLOCKED,
+            observation=observation,
+            live_plan_epoch=live_epoch,
+            epoch=controller._epoch,
+            reason="epoch_budget_exhausted",
+            candidate_task_ids=candidate_ids,
+            preserved_task_ids=preserved_ids,
+            preserved_receipt_refs=preserved_receipts,
+            triggers=triggers,
+        )
+
+    evidence = controller.evaluator(observation, force_final_scan=True)
+    if not evidence.repository_tree_id:
+        return _receipt(
+            disposition=RefillDisposition.BLOCKED,
+            observation=observation,
+            live_plan_epoch=live_epoch,
+            epoch=controller._epoch,
+            reason="missing_current_tree_evidence",
+            candidate_task_ids=candidate_ids,
+            preserved_task_ids=preserved_ids,
+            preserved_receipt_refs=preserved_receipts,
+            triggers=triggers,
+        )
+    required_tree = _compact(tree_id)
+    if required_tree and evidence.repository_tree_id != required_tree:
+        return _receipt(
+            disposition=RefillDisposition.BLOCKED,
+            observation=observation,
+            live_plan_epoch=live_epoch,
+            epoch=controller._epoch,
+            reason="missing_or_mismatched_current_tree_evidence",
+            candidate_task_ids=candidate_ids,
+            preserved_task_ids=preserved_ids,
+            preserved_receipt_refs=preserved_receipts,
+            triggers=triggers,
+        )
+    for hook in controller.production_hooks:
+        hook(observation, evidence)
+    if (
+        observation.branch_only_completion
+        or observation.stale_evidence
+        or not evidence.completion.evidence_current
+        or not evidence.completion.accepted_commits_reachable
+    ):
+        return _receipt(
+            disposition=RefillDisposition.REOPEN_CONVERGENCE,
+            observation=observation,
+            live_plan_epoch=live_epoch,
+            epoch=controller._epoch,
+            reason="completion_not_authorized",
+            candidate_task_ids=candidate_ids,
+            preserved_task_ids=preserved_ids,
+            preserved_receipt_refs=preserved_receipts,
+            triggers=triggers,
+        )
+
+    nodes_by_id: dict[str, PlanImpactNode] = {}
+    depth_by_id: Mapping[str, int] = {}
+    if coerced_impact is not None:
+        nodes_by_id = {node.node_id: node for node in coerced_impact.nodes}
+        depth_by_id = coerced_impact.cone.depth_by_id
+    metadata = dict(scheduler_metadata or _AUTOMATIC_SCHEDULER_METADATA)
+    per_wave = min(
+        controller.policy.max_new_work_per_epoch,
+        controller.policy.max_findings_per_scan,
+    )
+    selected: list[ResidualGap] = []
+    selected_task_ids: list[str] = []
+    selected_ids: set[str] = set()
+    for task_id in candidate_ids:
+        gap = _gap_for_task(
+            task_id,
+            observation=observation,
+            nodes_by_id=nodes_by_id,
+            depth_by_id=depth_by_id,
+            scheduler_metadata=metadata,
+        )
+        gap.validate()
+        if (
+            gap.depth >= controller.policy.max_refinement_depth
+            or gap.identity in controller._seen_gap_ids
+            or gap.identity in selected_ids
+        ):
+            continue
+        selected.append(gap)
+        selected_task_ids.append(task_id)
+        selected_ids.add(gap.identity)
+        if len(selected) == per_wave:
+            break
+    identities = tuple(gap.identity for gap in selected)
+    if identities == controller._last_gap_set:
+        controller._unchanged_epochs += 1
+    else:
+        controller._unchanged_epochs = 0
+    controller._last_gap_set = identities
+    if controller._unchanged_epochs >= controller.policy.max_unchanged_epochs:
+        return _receipt(
+            disposition=RefillDisposition.BLOCKED,
+            observation=observation,
+            live_plan_epoch=live_epoch,
+            epoch=controller._epoch,
+            reason="unchanged_residual_circuit_breaker",
+            candidate_task_ids=candidate_ids,
+            preserved_task_ids=preserved_ids,
+            preserved_receipt_refs=preserved_receipts,
+            gap_identities=identities,
+            triggers=triggers,
+        )
+    if not selected:
+        return _receipt(
+            disposition=RefillDisposition.NO_REFILL,
+            observation=observation,
+            live_plan_epoch=live_epoch,
+            epoch=controller._epoch,
+            reason="no_novel_actionable_residual",
+            candidate_task_ids=candidate_ids,
+            preserved_task_ids=preserved_ids,
+            preserved_receipt_refs=preserved_receipts,
+            triggers=triggers,
+        )
+
+    epoch = controller._epoch + 1
+    cas = RefillEpochCAS(observation.plan_root_cid, observation.revision, epoch)
+    if not controller.append(tuple(selected), cas):
+        return _receipt(
+            disposition=RefillDisposition.CAS_CONFLICT,
+            observation=observation,
+            live_plan_epoch=live_epoch,
+            epoch=controller._epoch,
+            reason="revision_cas_rejected",
+            candidate_task_ids=candidate_ids,
+            preserved_task_ids=preserved_ids,
+            preserved_receipt_refs=preserved_receipts,
+            gap_identities=identities,
+            cas=cas,
+            triggers=triggers,
+        )
+    controller._epoch = epoch
+    controller._last_refill_tick = controller._trigger_ticks
+    controller._seen_gap_ids.update(identities)
+    return _receipt(
+        disposition=RefillDisposition.REFILLED,
+        observation=observation,
+        live_plan_epoch=live_epoch,
+        epoch=epoch,
+        reason="automatic_affected_suffix_refilled",
+        candidate_task_ids=candidate_ids,
+        appended_task_ids=tuple(selected_task_ids),
+        preserved_task_ids=preserved_ids,
+        preserved_receipt_refs=preserved_receipts,
+        gap_identities=identities,
+        appended_count=len(selected),
+        cas=cas,
+        triggers=triggers,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -784,8 +1490,28 @@ class ProductionRefillRuntime:
 
 
 __all__ = (
-    "BOUNDED_RESIDUAL_REFILL_REQUIREMENT_ID", "REFILL_RECEIPT_SCHEMA", "AppendRefillWork",
-    "CompletionAuthorityDecision", "ProductionSelfImprovementHook", "RefillController",
-    "RefillDecision", "RefillDisposition", "RefillEpochCAS", "RefillObservation", "RefillPolicy",
-    "RefillTrigger", "ResidualEvidence", "ResidualEvidenceEvaluator", "ResidualGap", "refill_triggers",
+    "AUTOMATIC_BOUNDED_TASK_REFILL_BINDING",
+    "AUTOMATIC_BOUNDED_TASK_REFILL_CONSUMES",
+    "AUTOMATIC_BOUNDED_TASK_REFILL_INTERFACE",
+    "AUTOMATIC_BOUNDED_TASK_REFILL_SCHEMA",
+    "BOUNDED_RESIDUAL_REFILL_REQUIREMENT_ID",
+    "PLAN_DELTA_SCHEMA",
+    "REFILL_RECEIPT_SCHEMA",
+    "AppendRefillWork",
+    "AutomaticBoundedRefill",
+    "AutomaticBoundedRefillError",
+    "CompletionAuthorityDecision",
+    "ProductionSelfImprovementHook",
+    "RefillController",
+    "RefillDecision",
+    "RefillDisposition",
+    "RefillEpochCAS",
+    "RefillObservation",
+    "RefillPolicy",
+    "RefillTrigger",
+    "ResidualEvidence",
+    "ResidualEvidenceEvaluator",
+    "ResidualGap",
+    "automatic_bounded_refill",
+    "refill_triggers",
 )

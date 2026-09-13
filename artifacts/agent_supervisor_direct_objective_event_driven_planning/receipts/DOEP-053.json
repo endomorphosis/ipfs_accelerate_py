@@ -1,0 +1,121 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-053",
+  "task_cid": "sha256:362b1ec567e529cad26c02a970b11ecadff13decf5d985f7e4c80fc0a427f518",
+  "title": "Add automatic bounded task refill",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "base_repositories": {
+    "ipfs_accelerate_py": {
+      "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+      "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+    },
+    "ipfs_datasets_py": {
+      "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+      "tree": "456e09b51d6a07a3a5873436df24054768195320"
+    },
+    "ipfs_kit_py": {
+      "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+      "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+    },
+    "lift_coding": {
+      "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+      "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+    }
+  },
+  "changed_paths": [
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+    "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+  ],
+  "expected_outputs": [
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+    "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+  ],
+  "write_scope": [
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py",
+    "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json"
+  ],
+  "outputs_present": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py": true,
+    "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-053.json": true
+  },
+  "path_digests": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/refill_controller.py": "sha256:ffd37a85f489a726dbf9c056f4cd592dbe3c950600bb41b440f01756523767bc",
+    "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py": "sha256:13bf28e282a7061d3c1ffa278ad908339fc90bb6a33072aa709e38017cda5824",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-053.json": "sha256:225f162488b14a57056f473f2b2f0ecce1c92ff0e17c240f3ee28790ba77023f"
+  },
+  "required_evidence": {
+    "source_commit_tree_gitlinks": {
+      "ipfs_accelerate_py": {
+        "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+        "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+      },
+      "ipfs_datasets_py": {
+        "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+        "tree": "456e09b51d6a07a3a5873436df24054768195320"
+      },
+      "ipfs_kit_py": {
+        "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+        "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+      },
+      "lift_coding": {
+        "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+        "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+      }
+    },
+    "test_proof_results": {
+      "validation_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+        "-q"
+      ],
+      "proof_selection": "verified_empty",
+      "proof_reason": "The deterministic current-tree test exercises automatic bounded refill through RefillController: event-driven reassessment consumption, PlanDelta subset/model-free fencing, affected-suffix CAS append with unaffected preservation, stale plan-epoch fail-closed, open-frontier/replay no-append, epoch/wave caps, and residual decide-path preservation. This controller does not write DuckDB or complete tasks; this task makes no separate formal proof claim."
+    },
+    "limitations": [
+      "Candidate receipt only; independent fenced supervisor admission is required for completion.",
+      "Worker or model assertion alone is insufficient.",
+      "Automatic bounded refill is model-free and appends only through the existing revision CAS callback.",
+      "This path does not write DuckDB or DuckLake and cannot authorize completion.",
+      "Physical event delivery remains owned by DatabaseEventLog@1; PlanDelta remains the datasets identity contract from DOEP-052.",
+      "Semantic deduplication remains owned by DOEP-054; oscillation and stop controls remain owned by DOEP-055/DOEP-056.",
+      "An empty queue is not completion."
+    ],
+    "verifier_admission": "pending_independent_fenced_supervisor"
+  },
+  "validation": {
+    "commands": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "test/api/doep/test_doep_053_add_automatic_bounded_task_refill.py",
+          "-q"
+        ],
+        "cwd": "external/ipfs_accelerate",
+        "status": "candidate_local"
+      }
+    ]
+  },
+  "supervisor_acceptance": {
+    "completion_authoritative": false,
+    "state": "pending_independent_fenced_supervisor"
+  }
+}
