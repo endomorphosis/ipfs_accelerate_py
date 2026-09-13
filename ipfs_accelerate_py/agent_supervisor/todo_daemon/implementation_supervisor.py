@@ -13412,12 +13412,33 @@ class PortalImplementationSupervisor:
                 continue
 
             if callback_in_progress:
+                # Current producers bind implementation custody to a process birth.
+                # Retain the legacy shape, but never ignore a supplied birth or
+                # reduce it to a PID check. Parent PID is mutable after reparenting.
+                if "owner_process_birth" in implementation_lock:
+                    raw_birth = implementation_lock["owner_process_birth"]
+                    if (
+                        not isinstance(raw_birth, Mapping)
+                        or set(raw_birth) != {"pid", "parent_pid", "boot_id", "start_time_ticks"}
+                    ):
+                        continue
+                    lock_birth = ProcessBirthIdentity(**raw_birth)
+                    if (
+                        self._stable_process_birth_identity(lock_birth) is None
+                        or self._stable_process_birth_identity(lock_birth)
+                        != self._stable_process_birth_identity(child_birth)
+                    ):
+                        continue
+
                 lock_pid = implementation_lock.get("pid")
                 lock_attempt = implementation_lock.get("attempt")
                 lock_started_at = implementation_lock.get("started_at")
                 if (
-                    set(implementation_lock)
-                    != _DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS
+                    set(implementation_lock) not in (
+                        _DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS,
+                        _DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS
+                        | {"owner_process_birth"},
+                    )
                     or implementation_lock.get("kind") != "implementation"
                     or isinstance(lock_pid, bool)
                     or type(lock_pid) is not int
