@@ -5331,19 +5331,99 @@ class QuackStateClient:
             "extension_json": extension_json,
             "status": "retrying",
         }
-        _validated_post_merge_retry_recovery_parameters(parameters)
-        digest = _post_merge_retry_recovery_command_digest(parameters)
+        return self._submit_post_merge_retry_command(parameters, final_body_json)
+
+    def recover_exhausted_post_merge_retry(
+        self,
+        *,
+        task: Mapping[str, Any],
+        history: Mapping[str, Any],
+        expected_control_receipt: Mapping[str, Any],
+        transition_receipt: Mapping[str, Any],
+        now_ms: int | None = None,
+    ) -> CASResult:
+        """Recover only the closed retained callback exhaustion history."""
+        from .exhausted_post_merge_recovery import (
+            QUEUE_RECEIPT_SCHEMA, build_parameters, validate_parameters,
+        )
+
+        task_cid = str(task.get("task_cid") or "")
+        rows = self.execute("executor_retry_cooldown_by_task", {"task_cid": task_cid})
+        if len(rows) != 1:
+            raise QuackClientError(
+                "exhausted post-merge recovery requires one prior cooldown"
+            )
+        prior_queue = rows[0]
+        selected_now = int(time.time() * 1_000) if now_ms is None else now_ms
+        revision = task.get("revision")
+        if type(revision) is not int or revision < 8:
+            raise QuackClientError("exhausted post-merge recovery revision is invalid")
+        successor_rows = self.execute(
+            "executor_task_revision_history_page",
+            {"task_cid": task_cid, "limit": 1, "offset": revision},
+        )
+        if successor_rows:
+            successor = successor_rows[0]
+            try:
+                body = json.loads(successor["body_json"])
+                final = body["completion_receipt"]
+                queue_receipt = final["queue_receipt"]
+                if (
+                    len(successor_rows) != 1 or successor["task_cid"] != task_cid
+                    or successor["revision"] != revision + 1 or successor["status"] != "retrying"
+                    or queue_receipt["schema"] != QUEUE_RECEIPT_SCHEMA
+                    or canonical_json_bytes({**dict(transition_receipt), "queue_receipt": queue_receipt})
+                    != canonical_json_bytes(final)
+                ):
+                    raise QuackClientError("exhausted post-merge replay successor differs")
+                prior_queue = queue_receipt["prior_queue"]
+                selected_now = queue_receipt["retry_not_before_ms"]
+            except (KeyError, TypeError, ValueError) as exc:
+                raise QuackClientError("exhausted post-merge replay has malformed historical authority") from exc
+        parameters = build_parameters(
+            task=task, history=history,
+            expected_control_receipt=expected_control_receipt,
+            transition_receipt=transition_receipt, prior_queue=prior_queue,
+            now_ms=selected_now,
+        )
+        # The owner derives this body again from its canonical predecessor.
+        body = {**dict(task["body"]), "completion_receipt":
+                validate_parameters(parameters)["final_transition_receipt"]}
+        return self._submit_post_merge_retry_command(
+            parameters, canonical_json_bytes(body).decode("utf-8")
+        )
+
+    def _submit_post_merge_retry_command(
+        self, parameters: Mapping[str, Any], final_body_json: str
+    ) -> CASResult:
+        """Share transaction mechanics after separate closed admissions."""
+        from .exhausted_post_merge_recovery import (
+            COMMAND as exhausted_command,
+            command_digest as exhausted_digest,
+            validate_parameters as validate_exhausted,
+        )
+
+        parameters = dict(parameters)
+        if parameters.get("operation") == exhausted_command:
+            validate_parameters = validate_exhausted
+            digest = exhausted_digest(parameters)
+            command_prefix = "exhausted-post-merge-recovery"
+        else:
+            validate_parameters = _validated_post_merge_retry_recovery_parameters
+            digest = _post_merge_retry_recovery_command_digest(parameters)
+            command_prefix = "post-merge-retry-recovery"
+        validate_parameters(parameters)
         session = self._require_session()
         live = self.load_generation()
         command = StateCommand(
-            command_id=f"cmd:post-merge-retry-recovery:{digest}",
+            command_id=f"cmd:{command_prefix}:{digest}",
             command_kind=CommandKind.CLAIM,
             store_id=self.store_id,
             session_id=session.session_id,
             expected_generation=live.generation,
             expected_revision=live.revision,
             fence_epoch=live.fence_epoch,
-            idempotency_key=f"executor-post-merge-retry-recovery:{digest}",
+            idempotency_key=f"executor-{command_prefix}:{digest}",
             authority_class=StateAuthorityClass.AUTHORITATIVE,
             parameters=parameters,
         )
@@ -5459,12 +5539,10 @@ class QuackStateClient:
                 raise OptimisticConflictError(
                     "post-merge retry history append failed"
                 )
-            validated = _validated_post_merge_retry_recovery_parameters(
-                values
-            )
+            validated = validate_parameters(values)
             return {
-                "schema": TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA,
-                "operation": TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+                "schema": parameters["schema"],
+                "operation": parameters["operation"],
                 "task_cid": values["task_cid"],
                 "transition_operation": values["transition_operation"],
                 "task_revision": revision + 1,

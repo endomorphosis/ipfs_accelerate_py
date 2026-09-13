@@ -48,6 +48,12 @@ from .control_plane_contracts import (
     content_identity,
 )
 from .control_plane_transactions import OptimisticConflictError
+from .exhausted_post_merge_recovery import (
+    COMMAND as EXHAUSTED_POST_MERGE_RECOVERY_COMMAND,
+    build_parameters as _build_exhausted_post_merge_parameters,
+    command_digest as _exhausted_post_merge_command_digest,
+    validate_parameters as _validated_exhausted_post_merge_parameters,
+)
 from .database_task_source import (
     TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
     TaskSourceIntegrityError,
@@ -63,6 +69,9 @@ from .duckdb_state import (
 from .intent_repository import (
     DATABASE_VIRGIN_TASK_TRANSFER_MODE,
     MAX_BODY_BYTES,
+    MAX_PLAN_PROJECTION_BYTES,
+    MAX_PROJECTION_RECORDS,
+    TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
     IntentRepositoryError,
     _database_virgin_transfer_binding,
     _database_virgin_transfer_claim_cursor,
@@ -5371,6 +5380,8 @@ def _validated_retry_mutation_parameters(
                 "cooldown_parameters"
             ]
         )
+    if value.get("operation") == EXHAUSTED_POST_MERGE_RECOVERY_COMMAND:
+        return dict(_validated_exhausted_post_merge_parameters(value)["cooldown_parameters"])
     return _validated_retry_cooldown_parameters(value)
 
 
@@ -6905,6 +6916,11 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
             }
         ),
         TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND: frozenset({'executor_cas_task_status_receipt', 'executor_insert_task_revision_history', 'executor_insert_retry_cooldown', 'executor_update_retry_cooldown'}),
+        EXHAUSTED_POST_MERGE_RECOVERY_COMMAND: frozenset({
+            "executor_cas_task_status_receipt",
+            "executor_insert_task_revision_history",
+            "executor_update_retry_cooldown",
+        }),
     }
 )
 
@@ -6932,6 +6948,7 @@ _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
         "task.validation.record.passed",
         "task.validation.record.nonpassing",
         TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+        EXHAUSTED_POST_MERGE_RECOVERY_COMMAND,
     }
 )
 _EVENT_EMITTING_COMMANDS: Final[frozenset[str]] = frozenset(
@@ -7037,6 +7054,9 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
                 "task.validation.record.nonpassing"
             ],
             TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND: frozenset({'executor_cas_task_status_receipt', 'executor_insert_task_revision_history'}),
+            EXHAUSTED_POST_MERGE_RECOVERY_COMMAND: _COMMAND_MUTATION_CATALOG[
+                EXHAUSTED_POST_MERGE_RECOVERY_COMMAND
+            ],
         }
     )
 )
@@ -9422,6 +9442,7 @@ class TypedStateOwnerGateway:
                                 in {
                                     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
                                     TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+                                    EXHAUSTED_POST_MERGE_RECOVERY_COMMAND,
                                 }
                                 and operation.name
                                 == "executor_cas_task_status_receipt"
@@ -9954,6 +9975,7 @@ class TypedStateOwnerGateway:
             TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: "claim",
             TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND: "claim",
             TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND: 'claim',
+            EXHAUSTED_POST_MERGE_RECOVERY_COMMAND: "claim",
         }.get(operation, "append")
         if command.command_kind.value != expected_kind:
             raise TypedStateOwnerAuthorizationError(
@@ -10020,6 +10042,16 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "post-merge retry recovery replay identity differs from "
                     "its parameters"
+                )
+        if operation == EXHAUSTED_POST_MERGE_RECOVERY_COMMAND:
+            digest = _exhausted_post_merge_command_digest(command.parameters)
+            if (
+                command.command_id != f"cmd:exhausted-post-merge-recovery:{digest}"
+                or command.idempotency_key
+                != f"executor-exhausted-post-merge-recovery:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "exhausted post-merge recovery replay identity differs"
                 )
         if operation == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND:
             digest = _protected_qualification_completion_command_digest(
@@ -11127,6 +11159,99 @@ class TypedStateOwnerGateway:
                     if revalidation_requirement is not None
                     else {}
                 ),
+            }
+
+        if operation == EXHAUSTED_POST_MERGE_RECOVERY_COMMAND:
+            recovery = _validated_exhausted_post_merge_parameters(command.parameters)
+            task_cid = recovery["task_cid"]
+            task_rows = self._connection.execute(
+                "SELECT task_alias, status, revision, body_json FROM tasks "
+                "WHERE task_cid = ? LIMIT 2", [task_cid],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "exhausted post-merge task authority is absent or ambiguous"
+                )
+            task_alias, status, revision, body_json = (task_rows[0][i] for i in range(4))
+            body, _ = _closed_canonical_json_object(
+                body_json, noun="exhausted post-merge current task body"
+            )
+            # This proof is reconstructed while holding the owner's transaction
+            # lock. Caller history/context hashes identify a snapshot; they do
+            # not replace canonical history or grant generic blocked-task CAS.
+            history_rows = self._connection.execute(
+                "SELECT revision, status, body_json FROM task_revisions "
+                "WHERE task_cid = ? ORDER BY revision LIMIT ?",
+                [task_cid, MAX_PROJECTION_RECORDS + 1],
+            ).fetchall()
+            if len(history_rows) > MAX_PROJECTION_RECORDS:
+                raise TypedStateOwnerAuthorizationError(
+                    "exhausted post-merge history exceeds its projection bound"
+                )
+            history = {
+                "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+                "task_cid": task_cid,
+                "revisions": [
+                    {"revision": row[0], "status": row[1], "body":
+                     _closed_canonical_json_object(
+                         row[2], noun="exhausted post-merge historical body"
+                     )[0]}
+                    for row in history_rows
+                ],
+            }
+            if len(canonical_json_bytes(history)) > MAX_PLAN_PROJECTION_BYTES:
+                raise TypedStateOwnerAuthorizationError(
+                    "exhausted post-merge history exceeds its byte bound"
+                )
+            history["projection_cid"] = content_identity(history)
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """, [task_cid],
+            ).fetchall()
+            if len(queue_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "exhausted post-merge prior cooldown is absent or ambiguous"
+                )
+            prior_queue = _validated_stored_retry_cooldown(
+                queue_rows[0], task_cid=task_cid
+            )
+            derived = _build_exhausted_post_merge_parameters(
+                task={"task_cid": task_cid, "task_alias": task_alias,
+                      "status": status, "revision": revision, "body": body},
+                history=history,
+                expected_control_receipt=recovery["expected_control_receipt"],
+                transition_receipt=recovery["transition_receipt"],
+                prior_queue=prior_queue,
+                now_ms=recovery["started_at_ms"],
+            )
+            if canonical_json_bytes(derived) != canonical_json_bytes(dict(command.parameters)):
+                raise TypedStateOwnerAuthorizationError(
+                    "exhausted post-merge authority differs from canonical history or cooldown"
+                )
+            expected_body = {
+                **body, "completion_receipt": recovery["final_transition_receipt"]
+            }
+            expected_body_json = canonical_json_bytes(expected_body).decode("utf-8")
+            if len(expected_body_json.encode("utf-8")) > MAX_BODY_BYTES:
+                raise TypedStateOwnerAuthorizationError(
+                    "exhausted post-merge owner-derived body exceeds its byte bound"
+                )
+            return {
+                "operation": operation,
+                "task_cid": task_cid,
+                "expected_revision": revision,
+                "body_json": expected_body_json,
+                "predecessor_body_json": canonical_json_bytes(body).decode("utf-8"),
+                "cooldown_parameters": dict(recovery["cooldown_parameters"]),
+                "prior_queue": prior_queue,
+                "transition_receipt": dict(recovery["final_transition_receipt"]),
+                "queue_receipt": dict(recovery["queue_receipt"]),
             }
 
         if operation == TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND:
@@ -13978,6 +14103,7 @@ class TypedStateOwnerGateway:
                     TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
                     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
                     TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+                    EXHAUSTED_POST_MERGE_RECOVERY_COMMAND,
                 }
             ):
                 expected_body_json = semantic_authority.get("body_json")
@@ -14816,7 +14942,10 @@ class TypedStateOwnerGateway:
                 )
             return
 
-        if operation == TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND:
+        if operation in {
+            TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+            EXHAUSTED_POST_MERGE_RECOVERY_COMMAND,
+        }:
             values = dict(authority["cooldown_parameters"])
             prior_queue = dict(authority.get("prior_queue") or {})
             expected_revision = int(authority["expected_revision"])

@@ -346,6 +346,7 @@ def verified_seed_predecessor(
     from .implementation_daemon import (
         _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_RECEIPT_FIELDS,
         DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+        DatabaseImplementationAuthorityError,
     )
 
     context = verified_suffix(
@@ -399,6 +400,42 @@ def verified_seed_predecessor(
     ):
         return False
     rows = history["revisions"]
+    queue_receipt = predecessor.get("queue_receipt")
+    from ..task_sources.exhausted_post_merge_recovery import (
+        QUEUE_RECEIPT_SCHEMA,
+        build_parameters,
+        validate_parameters,
+    )
+
+    if (
+        isinstance(queue_receipt, Mapping)
+        and {"source_identity", "current_identity", "prior_queue_cid", "context_id"}.intersection(queue_receipt)
+        and queue_receipt.get("schema") != QUEUE_RECEIPT_SCHEMA
+    ):
+        return False
+    if isinstance(queue_receipt, Mapping) and queue_receipt.get("schema") == QUEUE_RECEIPT_SCHEMA:
+        # The claim carries the original source identity. Reproduce the new
+        # queue witness against its historical exhausted control before allowing
+        # the completion consumer to rely on this retained seed.
+        prefix = {key: value for key, value in history.items() if key != "projection_cid"}
+        prefix["revisions"] = rows[:revision]
+        prefix["projection_cid"] = content_identity(prefix)
+        try:
+            parameters = build_parameters(
+                task={"task_cid": task_cid, "task_alias": task_alias,
+                      **prefix["revisions"][-1]},
+                history=prefix,
+                expected_control_receipt=context["current_receipt"],
+                transition_receipt={**dict(predecessor), "queue_receipt": {}},
+                prior_queue=queue_receipt.get("prior_queue"),
+                now_ms=queue_receipt.get("retry_not_before_ms"),
+            )
+            final = validate_parameters(parameters)["final_transition_receipt"]
+            if content_identity(final) != content_identity(dict(predecessor)):
+                return False
+        except (TypedStateOwnerAuthorizationError, DatabaseImplementationAuthorityError,
+                ValueError, TypeError, KeyError):
+            return False
     return len(rows) > revision and rows[revision] == {
         "revision": revision + 1,
         "status": "retrying",

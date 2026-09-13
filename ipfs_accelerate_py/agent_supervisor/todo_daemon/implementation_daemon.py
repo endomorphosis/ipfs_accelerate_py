@@ -118497,10 +118497,29 @@ class DatabaseImplementationDaemon:
             **route_lineage,
         }
 
-        requires_post_merge_queue_admission = bool(
+        exhausted_post_merge_recovery = bool(
             crash_source_admitted
             and control_receipt.get("operation")
             == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+        )
+        typed_exhausted_recovery = getattr(
+            self.task_source, "recover_exhausted_post_merge_retry", None
+        )
+        use_typed_exhausted_recovery = bool(
+            exhausted_post_merge_recovery
+            and crash_context is not None
+            and crash_context.get("receiver_suffix") is True
+            and crash_context.get("preflight_exhaustion") is True
+            and callable(typed_exhausted_recovery)
+        )
+        if use_typed_exhausted_recovery:
+            # This dedicated owner command rederives the entire canonical
+            # exhaustion suffix and the current released scheduling row. It
+            # still runs inside the existing physical/coordinator authority
+            # checks below; a process-local seal never crosses Quack.
+            guarded_queue_status = typed_exhausted_recovery
+        requires_post_merge_queue_admission = bool(
+            exhausted_post_merge_recovery and not use_typed_exhausted_recovery
         )
         post_merge_queue_admission_spec = (
             {
