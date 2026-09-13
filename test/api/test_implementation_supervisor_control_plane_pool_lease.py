@@ -1403,11 +1403,17 @@ def test_database_portal_callback_gap_accepts_exact_live_two_identity_attempt(
     assert activity["database_task_cid"] != activity["task_cid"]
     assert activity["database_attempt"] != activity["attempt"]
 
+@pytest.mark.parametrize("birth_bound_lock", [False, True])
 def test_control_plane_reload_defers_for_exact_database_portal_callback_gap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    birth_bound_lock: bool,
 ) -> None:
     fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    if birth_bound_lock:
+        lock = fixture["implementation_lock"]
+        lock["owner_process_birth"] = current_process_birth().to_dict()
+        _write_json(fixture["implementation_lock_path"], lock)
     supervisor = fixture["supervisor"]
     supervisor._loaded_control_plane_source = {
         "source_id": "loaded-source",
@@ -2885,3 +2891,23 @@ def test_watchdog_threads_one_exact_census_into_both_stuck_checks(
     assert seen["initial"] == expected
     assert seen["maintenance"] == expected
     assert seen["initial"] is seen["maintenance"]
+
+
+@pytest.mark.parametrize("drift", ["boot_id", "pid", "invalid_parent_pid", "start_time_ticks", "malformed", "extra_field"])
+def test_callback_birth_bound_lock_rejects_foreign_or_malformed_birth(tmp_path, drift):
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    lock = fixture["implementation_lock"]
+    birth = current_process_birth().to_dict()
+    if drift == "malformed":
+        birth = None
+    elif drift == "extra_field":
+        lock["unrecognized_authority"] = True
+    elif drift == "invalid_parent_pid":
+        birth["parent_pid"] = -1
+    elif drift == "boot_id":
+        birth[drift] = "foreign-boot"
+    else:
+        birth[drift] += 1
+    lock["owner_process_birth"] = birth
+    _write_json(fixture["implementation_lock_path"], lock)
+    assert fixture["supervisor"]._active_managed_database_portal_callback(fixture["child"]) is None
