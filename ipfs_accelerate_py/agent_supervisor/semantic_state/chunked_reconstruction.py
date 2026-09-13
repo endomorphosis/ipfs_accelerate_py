@@ -37,10 +37,13 @@ class ChunkedReconstruction(Reconstruction):
     analysis_limitation_cids: tuple[str, ...]
     paged_snapshot_cid: str
     streaming_scan_observation: Any = None
+    git_decoder_observation: Any = None
 
     def observation(self) -> dict[str, Any]:
         return {**super().observation(),
-                "schema": ("ipfs_accelerate_py/chunked-semantic-reconstruction@3"
+                "schema": ("ipfs_accelerate_py/chunked-semantic-reconstruction@4"
+                           if self.git_decoder_observation is not None else
+                           "ipfs_accelerate_py/chunked-semantic-reconstruction@3"
                            if self.streaming_scan_observation is not None else
                            "ipfs_accelerate_py/chunked-semantic-reconstruction@2"),
                 "chunked_snapshot_cid": self.chunked_snapshot_cid,
@@ -50,7 +53,9 @@ class ChunkedReconstruction(Reconstruction):
                 "analysis_coverage": "incomplete" if self.analysis_limitation_cids else "not_established",
                 "complete_analysis_authority": False,
                 **({"streaming_scan": self.streaming_scan_observation}
-                   if self.streaming_scan_observation is not None else {})}
+                   if self.streaming_scan_observation is not None else {}),
+                **({"git_decoder": self.git_decoder_observation}
+                   if self.git_decoder_observation is not None else {})}
 
 
 @dataclass(frozen=True)
@@ -161,6 +166,7 @@ def reconstruct_chunked_semantic_state(
     expected_chunked_snapshot_cid: str, repository_id: str,
     limits: ReconstructionLimits = ReconstructionLimits(), nominated_bundle: Any = None,
     admission_limits: Any = None, streaming_limits: Any = None,
+    decoder_profile: Any = None, decoder_budget: Any = None,
 ) -> ChunkedReconstruction:
     """Reproject the exact committed content, then bind every known opaque input.
 
@@ -171,6 +177,9 @@ def reconstruct_chunked_semantic_state(
     """
     from ipfs_datasets_py.logic.software_contracts.semantic_index.chunked_snapshot import (
         ChunkedRepositorySnapshot, ChunkedSnapshotLimits, project_chunked_repository,
+    )
+    from ipfs_datasets_py.logic.software_contracts.semantic_index.git_decoder_profile import (
+        DEFAULT_DECODER_PROFILE, DEFAULT_DECODER_BUDGET, admit_decoder_profile, require_decoder_profile,
     )
     from ipfs_datasets_py.logic.software_contracts.semantic_index.paged_snapshot import (
         admit_chunked_snapshot_manifest, page_snapshot_evidence, parse_paged_snapshot_evidence,
@@ -184,6 +193,12 @@ def reconstruct_chunked_semantic_state(
     from ipfs_datasets_py.logic.software_contracts.semantic_state import build_semantic_state
     from ipfs_datasets_py.logic.software_contracts.semantic_state.models import SemanticStateBundle, SemanticStateProducer
 
+    decoder_profile = DEFAULT_DECODER_PROFILE if decoder_profile is None else decoder_profile
+    decoder_budget = DEFAULT_DECODER_BUDGET if decoder_budget is None else decoder_budget
+    try:
+        admit_decoder_profile(decoder_profile, decoder_budget)
+    except SnapshotError as exc:
+        raise ReconstructionError(str(exc)) from exc
     if any(not isinstance(oid, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", oid)
            for oid in (expected_commit, expected_tree)):
         raise ReconstructionError("request requires full commit and tree object ids")
@@ -201,6 +216,10 @@ def reconstruct_chunked_semantic_state(
             or admission_limits.max_metadata_bytes > limits.max_metadata_bytes):
         raise ReconstructionError("chunked manifest exceeds reconstruction metadata/entry limits")
     if isinstance(chunked, ChunkedRepositorySnapshot):
+        try:
+            require_decoder_profile(chunked.decoder_profile, decoder_profile, decoder_budget)
+        except SnapshotError as exc:
+            raise ReconstructionError(str(exc)) from exc
         # Object callers must not serialize under their own unqualified budgets.
         if (not isinstance(chunked.limits, ChunkedSnapshotLimits)
                 or any(getattr(chunked.limits, name) > value for name, value in asdict(admission_limits).items())
@@ -227,14 +246,17 @@ def reconstruct_chunked_semantic_state(
             raise ReconstructionError("chunked manifest differs from requested snapshot CID")
         chunked = admit_chunked_snapshot_manifest(root, manifest_cid, manifest_blocks,
                                                    repository_id=repository_id, expected_commit=expected_commit,
-                                                   expected_tree=expected_tree, limits=admission_limits)
+                                                   expected_tree=expected_tree, limits=admission_limits,
+                                                   decoder_profile=decoder_profile, decoder_budget=decoder_budget)
         manifest_cid, manifest_blocks = chunked.manifest_blocks()
         if streaming_limits is None:
             projection = project_chunked_repository(root, chunked, max_file_bytes=limits.max_file_bytes,
-                                                    max_total_bytes=limits.max_total_bytes)
+                                                    max_total_bytes=limits.max_total_bytes,
+                                                    decoder_profile=decoder_profile, decoder_budget=decoder_budget)
         else:
             streaming = scan_chunked_repository_streaming(root, chunked, max_file_bytes=limits.max_file_bytes,
-                                                          limits=streaming_limits)
+                                                          limits=streaming_limits,
+                                                          decoder_profile=decoder_profile, decoder_budget=decoder_budget)
             projection = streaming.projection
     except StreamingAnalysisError as exc:
         raise StreamingReconstructionError(exc.observation()) from exc
@@ -319,13 +341,18 @@ def reconstruct_chunked_semantic_state(
         configuration.update(schema="ipfs_accelerate_py/chunked-reconstruction-config@3",
                              analysis_mode="streaming-ordinary", streaming_limits=asdict(streaming_limits),
                              analysis_process_profile=streaming.observation["analysis_process_profile"])
+    decoder_observation = None
+    if decoder_profile != DEFAULT_DECODER_PROFILE or decoder_budget != DEFAULT_DECODER_BUDGET:
+        decoder_observation = {"profile": decoder_profile.payload(), "caller_budget": asdict(decoder_budget)}
+        configuration.update(schema="ipfs_accelerate_py/chunked-reconstruction-config@4",
+                             git_decoder=decoder_observation)
     digest = "sha256:" + hashlib.sha256(json.dumps(configuration, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return ChunkedReconstruction(bundle, snapshot.snapshot_cid, state.state_cid, expected_commit,
                                  expected_tree, digest,
                                  tuple((entry.path, entry.opaque_reason) for entry in snapshot.entries if entry.is_opaque),
                                  matched, chunked.population_cid, manifest_cid,
                                  tuple(item.limitation_cid for item in limitations), paged.root_cid,
-                                 streaming.observation if streaming is not None else None)
+                                 streaming.observation if streaming is not None else None, decoder_observation)
 
 
 __all__ = ["ChunkedReconstruction", "StreamingReconstructionError", "reconstruct_chunked_semantic_state"]
