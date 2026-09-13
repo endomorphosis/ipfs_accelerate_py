@@ -89324,6 +89324,9 @@ DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON = (
 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON = (
     "Portal completion lacks one exact evaluated baseline"
 )
+DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON = (
+    "Portal callback reconciliation binding is invalid"
+)
 DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON = (
     "Portal completion source canonical task key mismatches"
 )
@@ -101180,6 +101183,7 @@ class DatabaseImplementationDaemon:
             in {
                 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                 DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+                DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
             }
         ):
             return reason
@@ -102926,6 +102930,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
                 DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON,
+                DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
             }
             or seed_id != self._database_portal_evidence_digest(value)
         ):
@@ -103060,6 +103065,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                 DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
+                DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
             }
             and terminal_receipt.get("retryable") is False
             and isinstance(terminal_receipt.get("coordination"), Mapping)
@@ -104536,6 +104542,7 @@ class DatabaseImplementationDaemon:
                     DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                     DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                     DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
+                    DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
                 }
                 or set(recovery_receipt) != expected_recovery_fields
                 or recovery_receipt.get("operation")
@@ -105265,6 +105272,7 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
             DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
             DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
+            DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
         }
         try:
             phase_reason = self._canonical_portal_failure_reason(
@@ -105349,6 +105357,7 @@ class DatabaseImplementationDaemon:
             in {
                 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                 DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+                DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
             }
         ):
             return True
@@ -105369,6 +105378,7 @@ class DatabaseImplementationDaemon:
             in {
                 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                 DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+                DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
             }
         )
 
@@ -116757,6 +116767,7 @@ class DatabaseImplementationDaemon:
                     in {
                         DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                         DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+                        DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
                     }
                     else DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
                 )
@@ -118105,6 +118116,23 @@ class DatabaseImplementationDaemon:
             "record_queue_backoff_and_cas_status",
             None,
         )
+        # Ordinary retained completion retries have a closed task-owner
+        # command.  Native crash/quarantine recovery keeps its existing
+        # coordination-coupled authority and admission requirements.
+        if not crash_source_admitted and not unknown_callback_source_admitted:
+            dedicated_post_merge_retry = getattr(
+                self.task_source, "recover_post_merge_retry", None
+            )
+            if (
+                callable(dedicated_post_merge_retry)
+                and isinstance(retry_receipt, Mapping)
+                and retry_receipt.get("reason") in {
+                    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
+                    DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                    DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
+                }
+            ):
+                guarded_queue_status = dedicated_post_merge_retry
         if not callable(guarded_queue_status):
             raise DatabaseImplementationAuthorityError(
                 "post-merge recovery task source has no atomic retry authority"
@@ -118165,6 +118193,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
                 DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON,
+                DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
             }
             else None
         )
@@ -118639,11 +118668,12 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery returned malformed queue evidence"
             )
         queue_receipt_dict = dict(queue_receipt)
+        changed = bool(getattr(cas_result, "changed", True))
         return {
             "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
             "attempted": True,
             "recovered": True,
-            "changed": True,
+            "changed": changed,
             "status": "retrying",
             "task_cid": task_cid,
             "task_alias": str(raw["task_alias"]),
@@ -118665,7 +118695,7 @@ class DatabaseImplementationDaemon:
             "queue_reused": queue_reused,
             "queue_receipt": queue_receipt_dict,
             "control_receipt": dict(to_dict()),
-            "write_count": 1 if queue_reused else 2,
+            "write_count": (1 if queue_reused else 2) if changed else 0,
         }
 
 
@@ -122067,6 +122097,7 @@ class DatabaseImplementationDaemon:
             not in {
                 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                 DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+                DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
             }
         ):
             return True
@@ -122088,6 +122119,7 @@ class DatabaseImplementationDaemon:
                     "",
                     DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                     DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+                    DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
                 }
             )
         ):
@@ -123273,6 +123305,7 @@ class DatabaseImplementationDaemon:
                 missing_completion_handshake = reason in {
                     DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                     DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                    DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
                 }
                 pending_merge_claim_mismatch = (
                     self._canonical_portal_failure_reason(reason)
@@ -123382,6 +123415,7 @@ class DatabaseImplementationDaemon:
                         DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                         DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                         DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+                        DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
                     }
                     and operation
                     in {
