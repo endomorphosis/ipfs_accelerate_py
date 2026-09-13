@@ -70701,20 +70701,20 @@ class PortalImplementationDaemon:
 
 
     def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
-        """Continuously drain inactive worktrees whose branches are already merged."""
+        """Retain peer callback source until canonical cleanup is qualified.
 
-        if self.isolate_merge_queue_to_task_projection:
-            # This worker owns one disposable task projection, not the board's
-            # acceptance state. A peer's terminal lifecycle may only prove
-            # dead-owner fencing while its callback outcome remains unknown.
-            # Exact task/queue cleanup still uses _cleanup_merged_worktree;
-            # background peer disposal belongs to the canonical supervisor.
-            return {
-                "attempted": False,
-                "reason": "task_projection_has_no_peer_cleanup_authority",
-                "removed_count": 0,
-            }
-        return self._cleanup_already_merged_worktrees_with_workspace_custody()
+        A task projection or a caller's isolation flag cannot authorize peer
+        disposal. Exact task-owned merge cleanup retains its separate path.
+        """
+        return {
+            "attempted": False,
+            "reason": (
+                "task_projection_has_no_peer_cleanup_authority"
+                if getattr(self, "isolate_merge_queue_to_task_projection", True) is not False
+                else "canonical_cleanup_requires_guarded_runtime"
+            ),
+            "removed_count": 0,
+        }
 
     @_workspace_maintenance_boundary()
     def _cleanup_already_merged_worktrees_with_workspace_custody(self) -> dict[str, Any]:

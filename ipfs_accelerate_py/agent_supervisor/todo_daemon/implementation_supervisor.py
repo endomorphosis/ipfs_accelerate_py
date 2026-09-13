@@ -20977,13 +20977,22 @@ class PortalImplementationSupervisor:
         if worktree_root is None:
             return {"attempted": False, "reason": "worktree_root_not_configured"}
         repo_root = self.config.repo_root
-        prune = subprocess.run(
-            ["git", "worktree", "prune"],
-            cwd=repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
+        program = self.config.database_program
+        canonical_board = (
+            program is not None
+            and program.authority_mode != AUTHORITY_MODE_LEGACY_MARKDOWN
         )
+        # Missing source is not evidence that a callback had no effects.
+        # Git prune has no task-specific completion admission.
+        prune = None
+        if not canonical_board:
+            prune = subprocess.run(
+                ["git", "worktree", "prune"],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
         records = self._git_worktree_records(repo_root)
         try:
             root_resolved = worktree_root.resolve()
@@ -21079,7 +21088,7 @@ class PortalImplementationSupervisor:
             completion_proof = self._canonical_completed_reconciliation_task(
                 branch=branch,
             )
-            if completion_proof.get("applicable") is True:
+            if canonical_board or completion_proof.get("applicable") is True:
                 # This older runtime predates the guarded pool mutation API.
                 # Preserve the candidate until that runtime is qualified;
                 # exact task/queue completion cleanup remains available.
@@ -21216,16 +21225,19 @@ class PortalImplementationSupervisor:
                 }
             )
 
-        managed_submodule_prune = self._prune_managed_submodule_worktrees()
+        managed_submodule_prune = (
+            {"attempted": False, "reason": "canonical_completion_required_for_cleanup"}
+            if canonical_board else self._prune_managed_submodule_worktrees()
+        )
         skip_summary = self._cleanup_skip_summary(skipped)
         result = {
             "attempted": True,
             "worktree_root": str(worktree_root),
             "target_ref": target_ref,
             "target_signature": target_signature,
-            "prune_returncode": prune.returncode,
-            "prune_stdout": prune.stdout[-4000:],
-            "prune_stderr": prune.stderr[-4000:],
+            "prune_returncode": (prune.returncode if prune is not None else 0),
+            "prune_stdout": (prune.stdout if prune is not None else "")[-4000:],
+            "prune_stderr": (prune.stderr if prune is not None else "")[-4000:],
             "removed_count": sum(1 for item in removed if item.get("removed")),
             "skipped_count": len(skipped),
             "skipped_reason_counts": skip_summary["reason_counts"],
