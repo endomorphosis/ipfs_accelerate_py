@@ -203,6 +203,33 @@ def _lane_process(pid: Any, lane_dir: Path, prefix: str, expected_cwd: str) -> d
     return identity
 
 
+STATUS_DIAGNOSTIC_SAMPLE_BYTES = 4096
+
+
+class _NativeStatusFailure(str):
+    """Keep existing reason strings while carrying bounded private diagnostics.
+
+    Only the local subprocess adapter constructs this type. Native JSON cannot
+    supply these fields or turn them into task, retry, or completion authority.
+    """
+    def __new__(cls, reason: str, evidence: Mapping[str, Any]):
+        value = super().__new__(cls, reason)
+        value.evidence = dict(evidence)
+        return value
+
+
+def _status_output_fingerprint(stream: Any) -> dict[str, Any]:
+    """Expose size and a bounded digest, never stderr/stdout text or paths."""
+    try:
+        size = os.fstat(stream.fileno()).st_size
+        sample = os.pread(stream.fileno(), STATUS_DIAGNOSTIC_SAMPLE_BYTES, 0)
+        return {"available": True, "observed_bytes": size,
+                "sampled_bytes": len(sample), "sample_sha256": hashlib.sha256(sample).hexdigest(),
+                "sample_complete": size == len(sample)}
+    except (OSError, ValueError):
+        return {"available": False}
+
+
 def _status_command(board: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
     argv = board.get("status_argv")
     if not isinstance(argv, list) or not argv:
@@ -210,6 +237,28 @@ def _status_command(board: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
     # Native status processes can fork. Give them their own process group so a
     # deadline cannot strand a probe child, or signal a live owner by accident.
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+        code = None
+        child = None
+        def failure(reason: str, error: Exception | None = None) -> str:
+            returned = getattr(child, "returncode", code)
+            evidence: dict[str, Any] = {
+                "schema": "ipfs_accelerate_py/native-status-failure-evidence@1",
+                "reason": reason,
+                "returncode": returned if type(returned) is int else code,
+                "stdout": _status_output_fingerprint(stdout),
+                "stderr": _status_output_fingerprint(stderr),
+                "diagnostic_only": True,
+                "retry_authority": False, "completion_authority": False,
+            }
+            if error is not None:
+                # Exception messages can contain credentials or command paths.
+                # A fixed type label and errno retain useful local facts only.
+                evidence["exception_type"] = next((kind.__name__ for kind in (
+                    json.JSONDecodeError, OSError, ValueError, TypeError)
+                    if isinstance(error, kind)), "Exception")
+                if isinstance(error, OSError) and type(error.errno) is int:
+                    evidence["errno"] = error.errno
+            return _NativeStatusFailure(reason, evidence)
         try:
             environment = dict(os.environ)
             # A packaged fleet release uses a deliberately minimal package
@@ -240,18 +289,18 @@ def _status_command(board: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
                 try:
                     child.wait(timeout=2)
                 except subprocess.TimeoutExpired:
-                    return {}, "native_status_cleanup_timeout"
-                return {}, "native_status_timeout"
+                    return {}, failure("native_status_cleanup_timeout")
+                return {}, failure("native_status_timeout")
             stdout.seek(0)
             raw = stdout.read(MAX_JSON_BYTES + 1)
             if len(raw) > MAX_JSON_BYTES:
-                return {}, "native_status_output_too_large"
+                return {}, failure("native_status_output_too_large")
             result = _object(json.loads(raw))
             if not result:
-                return {}, "native_status_invalid_json"
-            return result, "" if code == 0 else "native_status_nonzero"
-        except (OSError, ValueError, TypeError):
-            return {}, "native_status_failed"
+                return {}, failure("native_status_invalid_json")
+            return result, "" if code == 0 else failure("native_status_nonzero")
+        except (OSError, ValueError, TypeError) as error:
+            return {}, failure("native_status_failed", error)
 
 
 def _status_with_receipt_retry(
@@ -758,6 +807,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "source_integrity": source_integrity,
             "completion_gate": "separate_authoritative_closeout_verification_required"},
     }
+    if isinstance(command_error, _NativeStatusFailure):
+        result["details"]["native_status_failure"] = dict(command_error.evidence)
     if health == "stopped" and board.get("ensure_argv"):
         result["recovery_action"] = "ensure"
     return result

@@ -735,3 +735,92 @@ def test_spar_legacy_cached_projection_is_only_diagnostic(board, monkeypatch, cl
     assert result["health"] == "healthy"
     assert result["complete"] is False
     assert result["completion_candidate"] is True  # requests a separate native closeout review
+
+
+def test_status_nonzero_retains_typed_fingerprints_without_secret_text(tmp_path):
+    import hashlib
+    secret = 'private-provider-token-should-never-appear'
+    stderr = ('OSError: ' + secret + '\n').encode()
+    code = "import sys; print('{\"healthy\":false}'); sys.stderr.write(sys.argv[1]); raise SystemExit(7)"
+    native, reason = probe._status_command({'cwd': str(tmp_path),
+        'status_argv': [sys.executable, '-B', '-c', code, stderr.decode()]})
+    assert native == {'healthy': False}
+    assert reason == 'native_status_nonzero' and isinstance(reason, str)
+    evidence = reason.evidence
+    assert evidence['returncode'] == 7
+    assert evidence['stderr'] == {'available': True, 'observed_bytes': len(stderr),
+        'sampled_bytes': len(stderr), 'sample_sha256': hashlib.sha256(stderr).hexdigest(),
+        'sample_complete': True}
+    assert evidence['diagnostic_only'] is True
+    assert evidence['retry_authority'] is evidence['completion_authority'] is False
+    assert secret not in json.dumps(evidence) and 'OSError' not in json.dumps(evidence)
+
+
+def test_status_empty_stderr_and_invalid_json_have_distinct_typed_facts(tmp_path):
+    code = "print('invalid'); raise SystemExit(3)"
+    native, reason = probe._status_command({'cwd': str(tmp_path),
+        'status_argv': [sys.executable, '-B', '-c', code]})
+    assert native == {} and reason == 'native_status_failed'
+    assert reason.evidence['returncode'] == 3
+    assert reason.evidence['exception_type'] == 'JSONDecodeError'
+    assert reason.evidence['stderr']['observed_bytes'] == 0
+    assert reason.evidence['stderr']['sample_complete'] is True
+
+
+def test_status_output_diagnostic_sample_is_bounded(tmp_path, monkeypatch):
+    import hashlib
+    monkeypatch.setattr(probe, 'MAX_JSON_BYTES', 64)
+    code = "import sys; sys.stderr.write('s'*20000); print('x'*10000)"
+    native, reason = probe._status_command({'cwd': str(tmp_path),
+        'status_argv': [sys.executable, '-B', '-c', code]})
+    assert native == {} and reason == 'native_status_output_too_large'
+    for key in ('stdout', 'stderr'):
+        assert reason.evidence[key]['sampled_bytes'] == probe.STATUS_DIAGNOSTIC_SAMPLE_BYTES
+        assert reason.evidence[key]['sample_complete'] is False
+    assert reason.evidence['stderr']['observed_bytes'] == 20000
+    assert reason.evidence['stderr']['sample_sha256'] == hashlib.sha256(b's'*4096).hexdigest()
+    assert len(json.dumps(reason.evidence)) < 1024
+
+
+def test_status_spawn_failure_exposes_errno_without_command_path(tmp_path):
+    import errno
+    secret_path = tmp_path/'secret-provider-credential-in-command-name'
+    native, reason = probe._status_command({'cwd': str(tmp_path), 'status_argv': [str(secret_path)]})
+    assert native == {} and reason == 'native_status_failed'
+    assert reason.evidence['returncode'] is None
+    assert reason.evidence['exception_type'] == 'OSError'
+    assert reason.evidence['errno'] == errno.ENOENT
+    assert str(secret_path) not in json.dumps(reason.evidence)
+
+
+def test_status_timeout_diagnostics_do_not_skip_existing_process_cleanup(tmp_path):
+    code = "import sys,time; sys.stderr.write('private-timeout-output'); sys.stderr.flush(); time.sleep(60)"
+    native, reason = probe._status_command({'cwd': str(tmp_path), 'status_timeout_seconds': .1,
+        'status_argv': [sys.executable, '-B', '-c', code]})
+    assert native == {} and reason == 'native_status_timeout'
+    assert reason.evidence['returncode'] == -15
+    assert reason.evidence['stderr']['observed_bytes'] == len('private-timeout-output')
+    assert 'private-timeout-output' not in json.dumps(reason.evidence)
+
+
+def test_status_failure_reaches_probe_details_without_changing_authority(board):
+    value, _, _ = board
+    value['status_argv'] = [sys.executable, '-B', '-c',
+        "import sys; print('{\"healthy\":false}'); sys.stderr.write('secret-diagnostic'); raise SystemExit(9)"]
+    result = probe.observe_board(value, now=1000)
+    assert result['health'] == 'degraded'
+    assert 'native_status_nonzero' in result['reason_codes']
+    assert result['details']['native_status_failure']['returncode'] == 9
+    assert not result['details']['authenticated_task_observation']
+    assert result['complete'] is result['completion_candidate'] is False
+    assert 'secret-diagnostic' not in json.dumps(result)
+
+
+def test_native_json_cannot_forge_local_status_failure_evidence(board):
+    value, _, _ = board
+    value['status_argv'] = [sys.executable, '-B', '-c',
+        "print('{\"healthy\":true,\"native_status_failure\":{\"retry_authority\":true}}')"]
+    result = probe.observe_board(value, now=1000)
+    assert 'native_status_failure' not in result['details']
+    assert not result['details']['authenticated_task_observation']
+    assert not result['completion_candidate']
