@@ -51,7 +51,10 @@ from ..merge.protected_recovery_fence import (
     FENCE_CONTENTION_BACKOFF_SECONDS,
     is_protected_recovery_fence_contention,
 )
-from ..runtime.event_log import append_jsonl_event, utc_now
+from ..runtime.event_log import (
+    LEGACY_EVENT_ENVELOPE_FIELDS, append_jsonl_event,
+    strict_event_envelope_fields, utc_now,
+)
 from ..validation.validation_commands import validation_command_repository_root
 from .implementation_timeout import DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS
 from .landed_completion_recovery import (
@@ -449,17 +452,26 @@ _CONSUMED_ATTEMPT_TERMINAL_EVENT_CHAIN: Final[tuple[str, ...]] = (
     "implementation_finished",
     "daemon_pass",
 )
-_PORTAL_EVENT_ENVELOPE_FIELDS: Final[frozenset[str]] = frozenset(
-    {
-        "event_id",
-        "previous_event_id",
-        "sequence",
-        "snapshot_id",
-        "stream_id",
-        "timestamp",
-        "type",
-    }
-)
+_PORTAL_EVENT_ENVELOPE_FIELDS: Final[frozenset[str]] = LEGACY_EVENT_ENVELOPE_FIELDS
+
+
+def _portal_event_envelope_fields(event: Mapping[str, Any]) -> frozenset[str]:
+    try:
+        return strict_event_envelope_fields(event)
+    except ValueError as exc:
+        raise DatabasePortalBridgeError("Portal event envelope is invalid") from exc
+
+
+def _portal_event_fields_match(
+    event: Mapping[str, Any], legacy_fields: set[str] | frozenset[str],
+) -> bool:
+    try:
+        fields = _portal_event_envelope_fields(event)
+    except DatabasePortalBridgeError:
+        return False
+    return set(event) == legacy_fields | (fields - _PORTAL_EVENT_ENVELOPE_FIELDS)
+
+
 _CALLBACK_REQUALIFICATION_SETUP_AUDIT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py.agent_supervisor."
     "offline-nested-submodule-skip@1"
@@ -7108,7 +7120,7 @@ class DatabasePortalExecutionBridge:
             sequence = event.get("sequence")
             prior_sequence = prior.get("sequence")
             if (
-                set(event) != _CALLBACK_REQUALIFICATION_SETUP_AUDIT_FIELDS
+                not _portal_event_fields_match(event, _CALLBACK_REQUALIFICATION_SETUP_AUDIT_FIELDS)
                 or event.get("type")
                 != _CALLBACK_REQUALIFICATION_SETUP_AUDIT_TYPE
                 or event.get("schema")
@@ -7703,7 +7715,7 @@ class DatabasePortalExecutionBridge:
             != reconciliation.get("integration_commit_proof")
             or merge_result.get("post_merge_declared_output_invariant")
             != reconciliation.get("post_merge_declared_output_invariant")
-            or set(status_event) != set(todo) | _PORTAL_EVENT_ENVELOPE_FIELDS
+            or set(status_event) != set(todo) | _portal_event_envelope_fields(status_event)
             or any(status_event.get(key) != value for key, value in todo.items())
             or status_event.get("previous_event_id")
             != reconciliation.get("event_id")
@@ -9362,7 +9374,7 @@ class DatabasePortalExecutionBridge:
             {
                 key: value
                 for key, value in status_events[0].items()
-                if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+                if key not in _portal_event_envelope_fields(status_events[0])
             }
             if len(status_events) == 1
             else None
@@ -13010,6 +13022,12 @@ class DatabasePortalExecutionBridge:
     ) -> bool:
         """Verify the complete callback handoff, not merely its landed SHA."""
 
+        try:
+            _portal_event_envelope_fields(source)
+            _portal_event_envelope_fields(reconciliation)
+        except DatabasePortalBridgeError:
+            return False
+
         from ..proof.formal_verification_contracts import content_identity
 
         source_merge = source.get("merge_result")
@@ -13043,7 +13061,7 @@ class DatabasePortalExecutionBridge:
             "returncode",
             "task_id",
             "validation_result",
-        } | set(_PORTAL_EVENT_ENVELOPE_FIELDS)
+        } | _portal_event_envelope_fields(source)
         common_source_fields = common_source_required_fields | {
             "board_namespace",
             "task_source_identity",
@@ -13392,7 +13410,7 @@ class DatabasePortalExecutionBridge:
             <= (
                 reconciliation_required_fields
                 | reconciliation_optional_fields
-                | set(_PORTAL_EVENT_ENVELOPE_FIELDS)
+                | _portal_event_envelope_fields(reconciliation)
             )
             or reconciliation.get("resolved") is not True
             or str(reconciliation.get("reason") or "")
@@ -14409,7 +14427,7 @@ class DatabasePortalExecutionBridge:
             expected = {**dict(payload), **identity}
             return bool(
                 event.get("type") == event_type
-                and set(event) == set(expected) | _PORTAL_EVENT_ENVELOPE_FIELDS
+                and _portal_event_fields_match(event, set(expected) | _PORTAL_EVENT_ENVELOPE_FIELDS)
                 and all(event.get(key) == value for key, value in expected.items())
             )
 
@@ -14499,7 +14517,7 @@ class DatabasePortalExecutionBridge:
             if isinstance(cleanup_result, Mapping)
             and event.get("type") == "cleanup_finished"
             and set(event)
-            == set(cleanup_result) | _PORTAL_EVENT_ENVELOPE_FIELDS
+            == set(cleanup_result) | _portal_event_envelope_fields(event)
             and all(
                 event.get(key) == value
                 for key, value in cleanup_result.items()
@@ -14515,7 +14533,7 @@ class DatabasePortalExecutionBridge:
             for index, event in enumerate(prior)
             if todo_payload
             and event.get("type") == "todo_status_updated"
-            and set(event) == set(todo_payload) | _PORTAL_EVENT_ENVELOPE_FIELDS
+            and set(event) == set(todo_payload) | _portal_event_envelope_fields(event)
             and all(event.get(key) == value for key, value in todo_payload.items())
         ]
         if len(cleanup_matches) != 1 or len(todo_matches) != 1:
@@ -16704,6 +16722,7 @@ class DatabasePortalExecutionBridge:
             )
 
         events: list[dict[str, Any]] = []
+        seen_event_ids: set[str] = set()
         prior_event_id = ""
         stream_id = ""
         snapshot_id = ""
@@ -16718,6 +16737,9 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "validation retry Portal event stream contains a non-object"
                 )
+            _portal_event_envelope_fields(event)
+            if any(parent not in seen_event_ids for parent in event.get("causal_parent_ids", ())):
+                raise DatabasePortalBridgeError("Portal causal parent is absent or not earlier")
             body = dict(event)
             claimed_event_id = str(body.pop("event_id", "") or "")
             try:
@@ -16753,6 +16775,7 @@ class DatabasePortalExecutionBridge:
             stream_id = current_stream
             snapshot_id = current_snapshot
             prior_event_id = claimed_event_id
+            seen_event_ids.add(claimed_event_id)
             events.append(event)
         return events
 
@@ -18194,13 +18217,12 @@ class DatabasePortalExecutionBridge:
         seed_identity_body = {
             key: value
             for key, value in event.items()
-            if key not in _PORTAL_EVENT_ENVELOPE_FIELDS and key != "seed_id"
+            if key not in _portal_event_envelope_fields(event) and key != "seed_id"
         }
         if (
-            set(event)
-            != _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[
+            not _portal_event_fields_match(event, _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[
                 "database_portal_validation_retry_seeded"
-            ]
+            ])
             or event.get("schema")
             != DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA
             or event.get("canonical_task_key") != database_task_key
@@ -19318,12 +19340,11 @@ class DatabasePortalExecutionBridge:
             seed_identity_body = {
                 key: value
                 for key, value in seed_event.items()
-                if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+                if key not in _portal_event_envelope_fields(seed_event)
                 and key != "seed_id"
             }
             if (
-                set(seed_event)
-                != _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[seed_type]
+                not _portal_event_fields_match(seed_event, _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[seed_type])
                 or seed_event.get("schema") != seed_schema
                 or seed_event.get("task_id") != alias
                 or seed_event.get("canonical_task_cid")
@@ -19451,7 +19472,7 @@ class DatabasePortalExecutionBridge:
         cleanup_event_body = {
             key: value
             for key, value in cleanup_event.items()
-            if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+            if key not in _portal_event_envelope_fields(cleanup_event)
         }
         seed_portal_attempt = (
             seed_receipt.get("portal_attempt")
@@ -19750,12 +19771,11 @@ class DatabasePortalExecutionBridge:
             seed_identity_body = {
                 key: value
                 for key, value in seed_event.items()
-                if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+                if key not in _portal_event_envelope_fields(seed_event)
                 and key != "seed_id"
             }
             if (
-                set(seed_event)
-                != _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[first_type]
+                not _portal_event_fields_match(seed_event, _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[first_type])
                 or seed_event.get("schema") != seed_schema
                 or seed_event.get("task_id")
                 != str(binding.get("task_alias") or "")
@@ -19790,8 +19810,7 @@ class DatabasePortalExecutionBridge:
             )
             != _CONSUMED_ATTEMPT_TERMINAL_EVENT_CHAIN
             or any(
-                set(event)
-                != _CONSUMED_ATTEMPT_TERMINAL_EVENT_FIELDS[event_type]
+                not _portal_event_fields_match(event, _CONSUMED_ATTEMPT_TERMINAL_EVENT_FIELDS[event_type])
                 for event_type, event in zip(
                     _CONSUMED_ATTEMPT_TERMINAL_EVENT_CHAIN,
                     terminal_events,
@@ -20176,7 +20195,7 @@ class DatabasePortalExecutionBridge:
         retained_body = {
             key: value
             for key, value in retained_event.items()
-            if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+            if key not in _portal_event_envelope_fields(retained_event)
         }
         source_receipt = retained_event.get("retained_candidate_receipt")
         if not isinstance(source_receipt, Mapping):
@@ -20246,7 +20265,7 @@ class DatabasePortalExecutionBridge:
             preservation = {
                 key: value
                 for key, value in preservation_event.items()
-                if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+                if key not in _portal_event_envelope_fields(preservation_event)
             }
         else:
             daemon = self.portal_factory(paths, alias)
@@ -20289,7 +20308,7 @@ class DatabasePortalExecutionBridge:
             preservation = {
                 key: value
                 for key, value in preservation_event.items()
-                if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+                if key not in _portal_event_envelope_fields(preservation_event)
             }
 
         preserved_commit = str(preservation.get("preserved_commit") or "")
@@ -20957,13 +20976,13 @@ class DatabasePortalExecutionBridge:
         }
         if (
             not isinstance(value, Mapping)
-            or set(value) != fields | set(_PORTAL_EVENT_ENVELOPE_FIELDS)
+            or not _portal_event_fields_match(value, fields | _PORTAL_EVENT_ENVELOPE_FIELDS)
         ):
             return False
         body = {
             key: item
             for key, item in value.items()
-            if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+            if key not in _portal_event_envelope_fields(value)
         }
         workspace_before = body.get("workspace_before")
         workspace_after = body.get("workspace_after")
@@ -24638,7 +24657,7 @@ class DatabasePortalExecutionBridge:
             "returncode",
             "task_id",
             "validation_result",
-        } | set(_PORTAL_EVENT_ENVELOPE_FIELDS)
+        } | _portal_event_envelope_fields(source)
         source_allowed_fields = source_required_fields | {
             "board_namespace",
             "canonical_task_key",
@@ -24782,7 +24801,7 @@ class DatabasePortalExecutionBridge:
         status_payload = {
             key: value
             for key, value in status_event.items()
-            if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+            if key not in _portal_event_envelope_fields(status_event)
         }
         status_fields = {
             "already_completed_task_ids",
@@ -26775,10 +26794,9 @@ class DatabasePortalExecutionBridge:
                     for event in existing_events
                 )
                 != 1
-                or set(existing_seed_event)
-                != _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[
+                or not _portal_event_fields_match(existing_seed_event, _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[
                     "database_portal_validation_retry_seeded"
-                ]
+                ])
                 or any(
                     existing_seed_event.get(key) != value
                     for key, value in seed_body.items()
@@ -29160,7 +29178,7 @@ class DatabasePortalExecutionBridge:
                 if event.get("type") == event_type
                 and event.get("post_merge_completion_recovery_seed_id") == seed_id
                 and all(event.get(key) == value for key, value in payload.items())
-                and set(event) == set(payload) | _PORTAL_EVENT_ENVELOPE_FIELDS
+                and set(event) == set(payload) | _portal_event_envelope_fields(event)
             ]
 
         try:
