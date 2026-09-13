@@ -1,0 +1,120 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-055",
+  "task_cid": "sha256:09c8bfe34519ce11e93ef8ed69fa7cccc297b8deb0c15e0684490d97e886fab8",
+  "title": "Add oscillation, runaway, and nonconvergence controls",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "base_repositories": {
+    "ipfs_accelerate_py": {
+      "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+      "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+    },
+    "ipfs_datasets_py": {
+      "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+      "tree": "456e09b51d6a07a3a5873436df24054768195320"
+    },
+    "ipfs_kit_py": {
+      "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+      "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+    },
+    "lift_coding": {
+      "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+      "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+    }
+  },
+  "changed_paths": [
+    "ipfs_accelerate_py/agent_supervisor/self_improvement/campaign_refill_policy.py",
+    "test/api/doep/test_doep_055_add_oscillation_runaway_and_nonconvergence_controls.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-055.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-055.json"
+  ],
+  "expected_outputs": [
+    "ipfs_accelerate_py/agent_supervisor/self_improvement/campaign_refill_policy.py",
+    "test/api/doep/test_doep_055_add_oscillation_runaway_and_nonconvergence_controls.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-055.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-055.json"
+  ],
+  "write_scope": [
+    "ipfs_accelerate_py/agent_supervisor/self_improvement/campaign_refill_policy.py",
+    "test/api/doep/test_doep_055_add_oscillation_runaway_and_nonconvergence_controls.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-055.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-055.json"
+  ],
+  "outputs_present": {
+    "ipfs_accelerate_py/agent_supervisor/self_improvement/campaign_refill_policy.py": true,
+    "test/api/doep/test_doep_055_add_oscillation_runaway_and_nonconvergence_controls.py": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-055.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-055.json": true
+  },
+  "path_digests": {
+    "ipfs_accelerate_py/agent_supervisor/self_improvement/campaign_refill_policy.py": "sha256:37185db7083d42a57ffd50c0fc82a046b967b08bad4b02e81909d64b3c3bfef0",
+    "test/api/doep/test_doep_055_add_oscillation_runaway_and_nonconvergence_controls.py": "sha256:a6ee1a113a7956802ae128415b17f95a1f59a8d92e23f329d7079bf09da7be04",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-055.json": "sha256:53890ae763ad42d50f0bc8a10cf9b70cb2f73ac5fbdb68cb7b1c5aa65cce6652"
+  },
+  "required_evidence": {
+    "source_commit_tree_gitlinks": {
+      "ipfs_accelerate_py": {
+        "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+        "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+      },
+      "ipfs_datasets_py": {
+        "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+        "tree": "456e09b51d6a07a3a5873436df24054768195320"
+      },
+      "ipfs_kit_py": {
+        "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+        "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+      },
+      "lift_coding": {
+        "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+        "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+      }
+    },
+    "test_proof_results": {
+      "validation_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/doep/test_doep_055_add_oscillation_runaway_and_nonconvergence_controls.py",
+        "-q"
+      ],
+      "proof_selection": "verified_empty",
+      "proof_reason": "The deterministic current-tree test exercises oscillation, runaway, and nonconvergence controls through CampaignRefillController: cycling progress identities, repeated plan hashes, stable frontiers, generated-task/replan/objective runaway, event debounce, worker-assertion non-authority, empty-queue non-completion, and residual no-progress/round/repetition bounds. This path does not write DuckDB or complete tasks; this task makes no separate formal proof claim."
+    },
+    "limitations": [
+      "Candidate receipt only; independent fenced supervisor admission is required for completion.",
+      "Worker or model assertion alone is insufficient.",
+      "Oscillation, runaway, and nonconvergence controls are model-free bindings of CampaignRefillController rather than a competing subsystem.",
+      "This path does not write DuckDB or DuckLake and cannot authorize completion.",
+      "Automatic bounded refill remains owned by DOEP-053; semantic deduplication remains owned by DOEP-054; objective satisfaction and stop conditions remain owned by DOEP-056.",
+      "An empty queue is not completion."
+    ],
+    "verifier_admission": "pending_independent_fenced_supervisor"
+  },
+  "validation": {
+    "commands": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "test/api/doep/test_doep_055_add_oscillation_runaway_and_nonconvergence_controls.py",
+          "-q"
+        ],
+        "cwd": "external/ipfs_accelerate",
+        "status": "candidate_local"
+      }
+    ]
+  },
+  "supervisor_acceptance": {
+    "completion_authoritative": false,
+    "state": "pending_independent_fenced_supervisor"
+  }
+}
