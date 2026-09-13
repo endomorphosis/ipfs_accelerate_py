@@ -2857,6 +2857,10 @@ class QuackStateServer:
     _command_gateway: TypedStateOwnerGateway | None = field(
         default=None, init=False, repr=False
     )
+    _database_status_startup_json: bytes | None = field(
+        default=None, init=False, repr=False
+    )
+    _configured_status_token_publication_started: bool = field(default=False, init=False)
     _federation_repository: Any | None = field(default=None, init=False, repr=False)
     _outbox_wake: StateOwnerOutboxWake | None = field(
         default=None, init=False, repr=False
@@ -3605,6 +3609,71 @@ class QuackStateServer:
                 ),
             )
 
+    def configure_database_status_before_start(
+        self, *, board_namespace: str, plan_root_cid: str,
+        repository_tree_id: str, task_cids: Sequence[str],
+        queue_dir: Path | None = None, target_repository_id: str = "",
+        target_branch: str = "",
+    ) -> None:
+        """Freeze optional launcher-owned read scopes before socket publication.
+
+        This configures data only. The attempted owner validates the complete
+        persisted task population and existing queue under its native guard
+        before exposing a status credential or starting the typed socket.
+        No caller callback or requester-selected path enters startup.
+        """
+        from ..task_sources.legacy_merge_queue_observation import queue_binding
+
+        with self._lifecycle_gate, self._lock:
+            if (self._lifecycle is not ServerLifecycle.CREATED
+                    or self._database_status_startup_json is not None):
+                raise QuackStateServerControlError("startup status scope cannot be rebound")
+            values = (board_namespace, plan_root_cid, repository_tree_id)
+            if (any(type(value) is not str or not value.strip() or len(value) > 256
+                    for value in values)
+                    or isinstance(task_cids, (str, bytes))
+                    or not isinstance(task_cids, Sequence)
+                    or not 1 <= len(task_cids) <= 512
+                    or any(type(cid) is not str or not cid.strip() or len(cid) > 256
+                           for cid in task_cids)
+                    or len(set(task_cids)) != len(task_cids)):
+                raise QuackStateServerControlError("startup database status scope is invalid")
+            database = dict(board_namespace=board_namespace, plan_root_cid=plan_root_cid,
+                            repository_tree_id=repository_tree_id, task_cids=sorted(task_cids))
+            if queue_dir is None:
+                if target_repository_id or target_branch:
+                    raise QuackStateServerControlError("startup queue scope is incomplete")
+                queue = None
+            else:
+                queue = queue_binding(queue_dir=queue_dir,
+                    target_repository_id=target_repository_id, target_branch=target_branch,
+                    database_scope_cid=content_identity(database))
+            self._database_status_startup_json = canonical_json_bytes(
+                {"database": database, "queue": queue})
+
+    def _bind_configured_database_status(self, gateway: TypedStateOwnerGateway) -> None:
+        configured = self._database_status_startup_json
+        if configured is None:
+            return
+        from ..merge.merge_queue import hold_merge_queue_settlement
+        from ..task_sources.legacy_merge_queue_observation import queue_binding
+
+        scope = json.loads(configured)
+        gateway.bind_database_status_scope(**scope["database"])
+        queue = scope["queue"]
+        if queue is None:
+            return
+        arguments = {name: queue[name] for name in ("target_repository_id", "target_branch")}
+        arguments["queue_dir"] = Path(queue["queue_dir"])
+        def require_current():
+            if queue_binding(**arguments, database_scope_cid=queue["database_scope_cid"]) != queue:
+                raise QuackStateServerControlError("startup queue identity changed")
+        require_current()
+        with hold_merge_queue_settlement(**arguments, max_active_ids=1024):
+            require_current()
+            gateway.bind_legacy_merge_queue_status_scope(**arguments)
+            require_current()
+
     def bind_database_status_scope(self, **binding: Any) -> None:
         """Bind a non-federated sealed board to peer-bound read-only status."""
         with self._lock:
@@ -3614,6 +3683,16 @@ class QuackStateServer:
         if gateway is None:
             raise QuackStateServerControlError("typed command gateway is unavailable")
         gateway.bind_database_status_scope(**binding)
+
+    def bind_legacy_merge_queue_status_scope(self, **binding: Any) -> None:
+        """Opt in to observation of one launcher-owned Portal queue."""
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError("legacy queue status requires a ready owner")
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError("typed command gateway is unavailable")
+        gateway.bind_legacy_merge_queue_status_scope(**binding)
 
     def bind_typed_status_scope(self) -> None:
         """Bind the persisted status bootstrap to the admitted live slice."""
@@ -6167,6 +6246,7 @@ class QuackStateServer:
                 raise QuackStateServerError("server is starting without identity")
 
             self._lifecycle = ServerLifecycle.STARTING
+            self._configured_status_token_publication_started = False
             self.config.state_dir.mkdir(parents=True, exist_ok=True)
             self.config.database_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -6372,7 +6452,17 @@ class QuackStateServer:
                     repository_root=self.config.repository_root,
                 )
                 status_bootstrap_token = gateway.configure_status_bootstrap()
+                # Binding has no listener or persisted credential. Keep the
+                # unpublished gateway outside cleanup: stop() unlinks sockets.
+                try:
+                    self._bind_configured_database_status(gateway)
+                except BaseException:
+                    self._lifecycle = ServerLifecycle.FAILED
+                    self._emergency_cleanup()
+                    raise
                 gateway.start()
+                # Only a successfully started listener enters socket-unlinking
+                # teardown. A rejected pre-existing path is not ours to remove.
                 self._command_gateway = gateway
                 if self._event_wait is not None:
                     gateway.bind_event_wait_handlers(
@@ -6382,6 +6472,7 @@ class QuackStateServer:
                             self._gateway_clear_event_wait_cancellation
                         ),
                     )
+                self._configured_status_token_publication_started = True
                 _atomic_write_text(
                     self.typed_command_token_path(),
                     status_bootstrap_token,
@@ -6405,7 +6496,8 @@ class QuackStateServer:
                 self._log(f"state-owner start failed: {type(exc).__name__}")
                 self._emergency_cleanup()
                 try:
-                    self._write_status()
+                    if self._database_status_startup_json is None or self._identity is not None:
+                        self._write_status()
                 except Exception:
                     pass
                 raise
@@ -6424,10 +6516,12 @@ class QuackStateServer:
         except Exception:
             pass
         self._command_gateway = None
-        try:
-            self.typed_command_token_path().unlink()
-        except FileNotFoundError:
-            pass
+        if (self._database_status_startup_json is None
+                or self._configured_status_token_publication_started):
+            try:
+                self.typed_command_token_path().unlink()
+            except FileNotFoundError:
+                pass
         try:
             self._stop_transport_connection(observe_closed=True)
         except Exception:
@@ -6690,6 +6784,12 @@ class QuackStateServer:
                     self._event_wait.shutdown()
                 self._lifecycle = ServerLifecycle.STOPPED
                 return {"stopped": True, "already": True}
+            if (self._database_status_startup_json is not None and self._identity is None
+                    and self._owner is None and self._command_gateway is None):
+                # A configured attempt that lost owner admission has no
+                # authority over another owner's status or stop-control files.
+                self._lifecycle = ServerLifecycle.STOPPED
+                return {"stopped": True, "already": True}
             self._lifecycle = ServerLifecycle.STOPPING
             gateway = self._command_gateway
             self._command_gateway = None
@@ -6733,10 +6833,12 @@ class QuackStateServer:
                     "typed command gateway changed inside the lifecycle gate"
                 )
             self._command_gateway = None
-            try:
-                self.typed_command_token_path().unlink()
-            except FileNotFoundError:
-                pass
+            if (self._database_status_startup_json is None
+                    or self._configured_status_token_publication_started):
+                try:
+                    self.typed_command_token_path().unlink()
+                except FileNotFoundError:
+                    pass
 
             try:
                 self._stop_transport_connection(observe_closed=True)
