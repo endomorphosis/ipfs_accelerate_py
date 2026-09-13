@@ -89,6 +89,7 @@ from ..task_sources.plan_revision_store import PlanRevisionStore
 from ..task_sources.intent_repository import IntentRepository
 from ..proof.formal_verification_contracts import content_identity
 from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
+from .maintenance_diagnostics import prelaunch_maintenance_observation
 from .implementation_supervisor_runner import (
     persist_goal_completion_projection,
     persist_supervisor_scan_receipt,
@@ -9756,14 +9757,9 @@ class PortalImplementationSupervisor:
             delay_seconds = self._supervisor_loop_recovery_delay_seconds()
             self._record_event(
                 "supervisor_prelaunch_fenced_for_recovery",
-                {
-                    "reason": str(
-                        result.get("reason")
-                        or result.get("error")
-                        or "maintenance_blocked"
-                    ),
-                    "delay_seconds": delay_seconds,
-                },
+                prelaunch_maintenance_observation(
+                    result, delay_seconds=delay_seconds,
+                ),
             )
             time.sleep(delay_seconds)
             try:
