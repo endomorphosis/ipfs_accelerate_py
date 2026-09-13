@@ -9,19 +9,22 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+import re
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
 from .derived_artifacts import (
     ARTIFACT_KINDS, ARTIFACT_OPERATIONS, ARTIFACT_SCHEMA,
-    MAX_PAGE_SIZE, DerivedArtifactRegistry,
+    IDENTITY_FIELDS, MAX_PAGE_SIZE, DerivedArtifactRegistry,
 )
 
 SCHEMA = "ipfs_accelerate_py/agent-supervisor/derived-coordination@1"
 MAX_REQUEST_BYTES = 262144
 MAX_SOURCE_BYTES = 32768
 MAX_FILES = 8
+MAX_REFERENCE_PAGE_SIZE = 256
+_REFERENCE_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 def _canonical(value: Any) -> str:
@@ -89,7 +92,7 @@ class DerivedCoordinationService:
             "capabilities": set(),
             **ARTIFACT_OPERATIONS,
             "record_reference": {"tree_id", "ast_cid", "content_hash", "state_root"},
-            "list_references": {"tree_id"},
+            "list_references": {"tree_id", "after", "limit"},
             "ingest_snapshot": {"tree_id", "files", "worktree_id"},
             "snapshot": {"snapshot_id"},
             "parse_cache": {"content_hash"},
@@ -103,6 +106,7 @@ class DerivedCoordinationService:
             result = {
                 "operations": sorted(allowed), "artifact_kinds": list(ARTIFACT_KINDS),
                 "artifact_schema": ARTIFACT_SCHEMA, "artifact_page_limit": MAX_PAGE_SIZE,
+                "reference_page_limit": MAX_REFERENCE_PAGE_SIZE,
                 "artifact_verified": False,
             }
         elif operation in ARTIFACT_OPERATIONS:
@@ -125,16 +129,34 @@ class DerivedCoordinationService:
             result = {"reference": record, "source_reference_verified": False}
         elif operation == "list_references":
             tree_id = _text(payload.get("tree_id"), "tree_id")
+            after = payload.get("after", "")
+            limit = payload.get("limit", MAX_REFERENCE_PAGE_SIZE)
+            if not isinstance(after, str) or (after and _REFERENCE_ID.fullmatch(after) is None):
+                raise ValueError("invalid derived reference cursor")
+            if type(limit) is not int or not 1 <= limit <= MAX_REFERENCE_PAGE_SIZE:
+                raise ValueError("invalid derived reference page size")
             rows = self._connection.execute(
                 "SELECT body_json FROM derived_coordination_references WHERE repository_id = ? "
-                "AND tree_id = ? ORDER BY reference_id LIMIT 257",
-                [repository_id, tree_id],
+                "AND tree_id = ? AND reference_id > ? ORDER BY reference_id LIMIT ?",
+                [repository_id, tree_id, after, limit + 1],
             ).fetchall()
+            page = [json.loads(row[0]) for row in rows[:limit]]
+            more = len(rows) > limit
             result = {
-                "references": [json.loads(row[0]) for row in rows[:256]],
-                "has_more": len(rows) > 256,
+                "references": page,
+                "has_more": more,
+                "next_cursor": page[-1]["reference_id"] if more else "",
                 "source_reference_verified": False,
             }
+            # Reference fields may each be up to 512 characters. Honor the
+            # response byte bound as well as the requested row bound, leaving
+            # omitted rows reachable through the last returned identity.
+            while len(_canonical(self._response(result)).encode()) > MAX_REQUEST_BYTES:
+                page.pop()
+                if not page:
+                    raise ValueError("derived reference exceeds response bound")
+                result["has_more"] = True
+                result["next_cursor"] = page[-1]["reference_id"]
         elif operation == "ingest_snapshot":
             result = self._ingest(payload)
         elif operation == "snapshot":
@@ -164,16 +186,19 @@ class DerivedCoordinationService:
             result = {
                 "cache_entry": index.get_parse_cache_entry(digest) if owned else None
             }
-        envelope = {
+        envelope = self._response(result)
+        if len(_canonical(envelope).encode()) > MAX_REQUEST_BYTES:
+            raise ValueError("derived result exceeds bound")
+        return envelope
+
+    def _response(self, result: Mapping[str, Any]) -> dict[str, Any]:
+        return {
             "schema": SCHEMA,
             "authority": "derived_evidence",
             "completion_authority": False,
             "owner_identity": self._identity,
             "result": result,
         }
-        if len(_canonical(envelope).encode()) > MAX_REQUEST_BYTES:
-            raise ValueError("derived result exceeds bound")
-        return envelope
 
     def _ingest(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         from .duckdb_ast_index import SourceFileSpec, SourceSnapshot
@@ -256,6 +281,14 @@ class DerivedCoordinationService:
         return result
 
 
+class DerivedDiscoveryLimitExceeded(RuntimeError):
+    """The caller's page budget ended before discovery was exhausted."""
+
+    def __init__(self, next_cursor: str):
+        self.next_cursor = next_cursor
+        super().__init__("derived discovery page budget exhausted; resume at next_cursor")
+
+
 class DerivedCoordinationClient:
     """Typed owner facade with explicit repository scope and no fallback.
 
@@ -284,6 +317,113 @@ class DerivedCoordinationClient:
             return connection.derived_coordination(payload)
         finally:
             connection.close()
+
+    def iter_references(
+        self, *, tree_id: str, after: str = "", limit: int = MAX_REFERENCE_PAGE_SIZE,
+        max_pages: int = 1024,
+    ) -> Iterator[Mapping[str, Any]]:
+        """Discover all source references through bounded, fresh owner sessions.
+
+        Discovery is not a point-in-time snapshot: references inserted behind
+        the cursor during a scan are visible on the next scan. An exhausted
+        page budget or invalid response raises instead of implying completeness.
+        Transport failures propagate without replaying the failed request.
+        """
+        yield from self._iter_discovery(
+            "list_references", tree_id=tree_id, after=after, limit=limit,
+            max_pages=max_pages,
+        )
+
+    def iter_artifacts(
+        self, *, tree_id: str, artifact_kind: str, after: str = "",
+        limit: int = MAX_PAGE_SIZE, max_pages: int = 1024,
+    ) -> Iterator[Mapping[str, Any]]:
+        """Discover artifact references; callers still verify their contents."""
+        if artifact_kind not in ARTIFACT_KINDS:
+            raise ValueError("unsupported derived artifact kind")
+        yield from self._iter_discovery(
+            "list_artifacts", tree_id=tree_id, after=after, limit=limit,
+            max_pages=max_pages, artifact_kind=artifact_kind,
+        )
+
+    def _iter_discovery(
+        self, operation: str, *, tree_id: str, after: str, limit: int,
+        max_pages: int, artifact_kind: str = "",
+    ) -> Iterator[Mapping[str, Any]]:
+        _text(tree_id, "tree_id")
+        page_cap = MAX_PAGE_SIZE if artifact_kind else MAX_REFERENCE_PAGE_SIZE
+        if type(limit) is not int or not 1 <= limit <= page_cap:
+            raise ValueError("invalid derived discovery page size")
+        if type(max_pages) is not int or not 1 <= max_pages <= 1_000_000:
+            raise ValueError("invalid derived discovery page budget")
+        if not isinstance(after, str) or (after and _REFERENCE_ID.fullmatch(after) is None):
+            raise ValueError("invalid derived discovery cursor")
+        key = "artifact_key" if artifact_kind else "reference_id"
+        collection = "artifacts" if artifact_kind else "references"
+        verified = "artifact_verified" if artifact_kind else "source_reference_verified"
+        for _page_number in range(max_pages):
+            parameters = {"tree_id": tree_id, "after": after, "limit": limit}
+            if artifact_kind:
+                parameters["artifact_kind"] = artifact_kind
+            envelope = self.call(operation, **parameters)
+            if (
+                not isinstance(envelope, Mapping) or envelope.get("schema") != SCHEMA
+                or envelope.get("authority") != "derived_evidence"
+                or envelope.get("completion_authority") is not False
+            ):
+                raise ValueError("invalid derived discovery envelope")
+            result = envelope.get("result")
+            if not isinstance(result, Mapping) or result.get(verified) is not False:
+                raise ValueError("invalid derived discovery result")
+            rows = result.get(collection)
+            more, next_cursor = result.get("has_more"), result.get("next_cursor")
+            if type(rows) is not list or len(rows) > limit or type(more) is not bool:
+                raise ValueError("invalid derived discovery page")
+            previous = after
+            for row in rows:
+                if (
+                    not isinstance(row, Mapping)
+                    or row.get("repository_id") != self.repository_id
+                    or row.get("tree_id") != tree_id
+                    or (artifact_kind and row.get("artifact_kind") != artifact_kind)
+                    or not isinstance(row.get(key), str)
+                    or _REFERENCE_ID.fullmatch(row[key]) is None
+                    or row[key] <= previous
+                ):
+                    raise ValueError("derived discovery identity or order differs")
+                unsigned = dict(row)
+                reference_id = unsigned.pop("reference_id", None)
+                if _identity(unsigned) != reference_id:
+                    raise ValueError("derived discovery reference digest differs")
+                if artifact_kind:
+                    if (
+                        set(row) != IDENTITY_FIELDS | {
+                            "schema", "artifact_key", "artifact_cid", "reference_id",
+                        }
+                        or row.get("schema") != ARTIFACT_SCHEMA
+                        or row["artifact_key"] != _identity({
+                            "schema": ARTIFACT_SCHEMA,
+                            **{field: row[field] for field in IDENTITY_FIELDS},
+                        })
+                    ):
+                        raise ValueError("derived discovery artifact identity differs")
+                elif set(row) != {
+                    "repository_id", "tree_id", "ast_cid", "content_hash",
+                    "state_root", "reference_id",
+                }:
+                    raise ValueError("derived discovery reference fields differ")
+                previous = row[key]
+            if (
+                (more and (not rows or next_cursor != previous))
+                or (not more and next_cursor != "")
+            ):
+                raise ValueError("derived discovery cursor did not advance")
+            # Validate the entire page before exposing even its first row.
+            yield from rows
+            if not more:
+                return
+            after = next_cursor
+        raise DerivedDiscoveryLimitExceeded(after)
 
     @classmethod
     def from_fleet_deployment(cls, deployment_path: Path, *, repository_id: str,
