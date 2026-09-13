@@ -49,6 +49,18 @@ def inspect_legacy_verification_retry(
     post-terminal activity. Those cases need their own merge/lifecycle recovery;
     a fresh attempt must not hide an outstanding predecessor effect.
     """
+    return _inspect_legacy_verification_retry(
+        task_row, task_projection=task_projection, allowed_attempt_root=allowed_attempt_root,
+        retained_worktree_root=retained_worktree_root, expected_task_revision=expected_task_revision,
+        reconciled_predecessor=False,
+    )
+
+
+def _inspect_legacy_verification_retry(
+    task_row: Mapping[str, Any], *, task_projection: Path,
+    allowed_attempt_root: Path, retained_worktree_root: Path,
+    expected_task_revision: int, reconciled_predecessor: bool,
+) -> dict[str, Any]:
     alias, task_cid = task_row.get("task_alias"), task_row.get("task_cid")
     if (not isinstance(alias, str) or not re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", alias)
             or not isinstance(task_cid, str) or not task_cid
@@ -89,6 +101,11 @@ def inspect_legacy_verification_retry(
     lifecycle_types = ("implementation_started", REASON,
                        "protected_path_verification_deferred_worktree_retained", "implementation_finished")
     lifecycle = [event for event in events if event.get("type") in lifecycle_types]
+    predecessor = None
+    if reconciled_predecessor:
+        from .legacy_quarantined_predecessor import inspect_predecessor_events
+        predecessor = inspect_predecessor_events(events, identity=identity, alias=alias)
+        lifecycle = lifecycle[-4:]
     if [event.get("type") for event in lifecycle] != list(lifecycle_types):
         raise DatabasePortalBridgeError("legacy verification retry has no single completed provider lifecycle")
     started, timeout, retained, finished = lifecycle
@@ -96,14 +113,15 @@ def inspect_legacy_verification_retry(
         if (event.get("task_id") != alias
                 or event.get("canonical_task_cid") != identity["portal_canonical_task_cid"]
                 or event.get("canonical_task_key") != identity["portal_canonical_task_key"]
-                or type(event.get("attempt")) is not int or event["attempt"] != 1):
+                or type(event.get("attempt")) is not int
+                or event["attempt"] != (2 if predecessor is not None else 1)):
             raise DatabasePortalBridgeError("legacy verification retry event identity differs")
     if (retained.get("previous_event_id") != timeout["event_id"]
             or finished.get("previous_event_id") != retained["event_id"]
             or any(event.get("type") != "daemon_pass"
                    for event in events[finished["sequence"]:])
             or any(event.get("type", "").startswith(("merge_", "task_completed", "worktree_reconciliation"))
-                   for event in events)):
+                   for event in (events[started["sequence"] - 1:] if predecessor is not None else events))):
         raise DatabasePortalBridgeError("legacy verification retry has unsettled merge or terminal history")
     lock = timeout.get("lock")
     if (timeout.get("reason") != REASON or not isinstance(lock, Mapping)
@@ -167,6 +185,10 @@ def inspect_legacy_verification_retry(
         "attempt_refunded": False, "require_fresh_portal_revalidation": True,
         "retry_authorized": False,
     }
+    if predecessor is not None:
+        from .legacy_quarantined_predecessor import SCHEMA as RECONCILED_SCHEMA
+        material.update(schema=RECONCILED_SCHEMA, predecessor=predecessor,
+                        predecessor_queue_settlement_required=True)
     return {**material, "evidence_id": _digest(material)}
 
 
