@@ -11,11 +11,15 @@
   parity, then atomically commits the active pointer or restores the prior
   projection;
 * recovers at every crash boundary from CAS/store state rather than process
-  dictionaries; and
-* quarantines irreconcilable split-brain between backends.
+  dictionaries;
+* quarantines irreconcilable split-brain between backends; and
+* rejects stale plan epochs on apply, journal, and completion.  A worker or
+  model assertion cannot complete work bound to a superseded plan epoch.
 
 Task-source backends remain lossless projections.  They do not redefine plan
-authority; this store owns revision ancestry and the active plan root.
+authority; this store owns revision ancestry, the active plan root, and the
+live plan epoch.  Stale-plan-epoch handling is a binding of
+:class:`PlanRevisionStore`, not a second planner or completion authority.
 """
 
 from __future__ import annotations
@@ -29,7 +33,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -55,6 +59,18 @@ from ..planning.plan_revision_contracts import (
 from ..proof.formal_verification_contracts import (
     canonical_json_bytes,
     content_identity,
+)
+from .control_plane_contracts import (
+    CANONICAL_TASK_STATE_MACHINE_INTERFACE,
+    ControlPlaneContractError,
+    TaskState,
+    TaskStateSnapshot,
+)
+from .control_plane_transactions import (
+    REVISION_CAS_TRANSITION_BINDING,
+    STATE_TRANSACTION_INTERFACE,
+    OptimisticConflictError,
+    assert_task_cas_transition,
 )
 
 
@@ -83,6 +99,8 @@ PLAN_REVISION_CONTINUATION_SCHEMA: Final[str] = (
 PLAN_REVISION_INDEX_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/plan-revision-index@1"
 )
+STALE_PLAN_EPOCH_BINDING: Final[str] = "StalePlanEpochHandling@1"
+MIN_PLAN_EPOCH: Final[int] = 1
 
 MAX_INTENT_BYTES: Final[int] = 1_048_576
 MAX_CAS_BYTES: Final[int] = 1_048_576
@@ -119,6 +137,30 @@ class PlanRevisionStoreStaleError(PlanRevisionStoreConflictError):
     """Observed roots/revision/cursor no longer match the expected fence."""
 
 
+class PlanRevisionStoreStalePlanEpochError(PlanRevisionStoreStaleError):
+    """Live plan epoch drifted relative to the bound fence.
+
+    A worker or model assertion cannot bypass this fence.  Completion and
+    apply remain owned by the canonical store, not by a competing subsystem.
+    """
+
+    def __init__(
+        self,
+        message: str = "stale plan epoch cannot complete or apply",
+        *,
+        expected_plan_epoch: int = 0,
+        live_plan_epoch: int = 0,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.expected_plan_epoch = int(expected_plan_epoch or 0)
+        self.live_plan_epoch = int(live_plan_epoch or 0)
+        payload = dict(details or {})
+        payload.setdefault("expected_plan_epoch", self.expected_plan_epoch)
+        payload.setdefault("live_plan_epoch", self.live_plan_epoch)
+        self.details = payload
+
+
 # ---------------------------------------------------------------------------
 # Closed vocabularies
 # ---------------------------------------------------------------------------
@@ -147,6 +189,7 @@ class PlanRevisionEventType(str, Enum):
     PROJECTION_COMMITTED = "projection_committed"
     PROJECTION_RESTORED = "projection_restored"
     DEFERRED_ACTIVATED = "deferred_activated"
+    PLAN_EPOCH_ADVANCED = "plan_epoch_advanced"
     SPLIT_BRAIN_QUARANTINED = "split_brain_quarantined"
     RECOVERED = "recovered"
 
@@ -318,6 +361,203 @@ def _protected_cids(revision: PlanRevision) -> set[str]:
     return protected
 
 
+def bound_plan_epoch(
+    value: Any,
+    name: str = "plan_epoch",
+    *,
+    minimum: int = MIN_PLAN_EPOCH,
+) -> int:
+    """Fail closed unless ``value`` is a finite integer epoch at or above the bound."""
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise PlanRevisionStoreError(f"{name} must be an integer")
+    if value < minimum:
+        raise PlanRevisionStoreError(f"{name} must be >= {minimum}")
+    return value
+
+
+def assert_plan_epoch_current(
+    expected_plan_epoch: int,
+    live_plan_epoch: int,
+    *,
+    worker_assertion: bool = False,
+) -> int:
+    """Fail closed unless the bound epoch equals the live plan epoch.
+
+    ``worker_assertion`` is diagnostic only and never authorizes a mismatch.
+    """
+
+    _ = worker_assertion
+    expected = bound_plan_epoch(expected_plan_epoch, "expected_plan_epoch")
+    live = bound_plan_epoch(live_plan_epoch, "live_plan_epoch")
+    if expected != live:
+        raise PlanRevisionStoreStalePlanEpochError(
+            "stale plan epoch cannot complete or apply",
+            expected_plan_epoch=expected,
+            live_plan_epoch=live,
+        )
+    return live
+
+
+def plan_epoch_is_current(
+    expected_plan_epoch: int,
+    live_plan_epoch: int,
+    *,
+    worker_assertion: bool = False,
+) -> bool:
+    """Return whether ``expected_plan_epoch`` matches the live epoch without raising."""
+
+    try:
+        assert_plan_epoch_current(
+            expected_plan_epoch,
+            live_plan_epoch,
+            worker_assertion=worker_assertion,
+        )
+    except PlanRevisionStoreError:
+        return False
+    return True
+
+
+def assert_candidate_plan_epoch(
+    candidate_plan_epoch: int,
+    live_plan_epoch: int,
+    *,
+    expected_plan_epoch: int = 0,
+    worker_assertion: bool = False,
+) -> int:
+    """Admit a candidate epoch that is current or the exact next generation.
+
+    A missing live epoch (``0``) admits any candidate ``>= 1``.  A positive
+    ``expected_plan_epoch`` fences the observed live epoch.  Candidate epochs
+    behind live are stale; jumps larger than one generation fail closed.
+    """
+
+    _ = worker_assertion
+    candidate = bound_plan_epoch(candidate_plan_epoch, "plan_epoch")
+    live = bound_plan_epoch(live_plan_epoch, "live_plan_epoch", minimum=0)
+    if expected_plan_epoch:
+        observed = bound_plan_epoch(expected_plan_epoch, "expected_plan_epoch")
+        if live < MIN_PLAN_EPOCH or observed != live:
+            raise PlanRevisionStoreStalePlanEpochError(
+                "expected plan epoch does not match live plan epoch",
+                expected_plan_epoch=observed,
+                live_plan_epoch=live,
+            )
+    if live < MIN_PLAN_EPOCH:
+        return candidate
+    if candidate < live:
+        raise PlanRevisionStoreStalePlanEpochError(
+            "stale plan epoch cannot apply",
+            expected_plan_epoch=candidate,
+            live_plan_epoch=live,
+        )
+    if candidate > live + 1:
+        raise PlanRevisionStoreStalePlanEpochError(
+            "plan epoch must advance by at most one",
+            expected_plan_epoch=candidate,
+            live_plan_epoch=live,
+        )
+    return candidate
+
+
+def assert_task_snapshot_plan_epoch_current(
+    snapshot: TaskStateSnapshot,
+    live_plan_epoch: int,
+    *,
+    current: TaskStateSnapshot | None = None,
+    worker_assertion: bool = False,
+) -> int:
+    """Fail closed unless ``snapshot`` is current against the live plan epoch.
+
+    Consumes ``CanonicalTaskStateMachine@1``.  This does not terminalize a
+    task: it only rejects stale-epoch completion, including when a worker
+    or model asserts success.
+    """
+
+    if not isinstance(snapshot, TaskStateSnapshot):
+        raise PlanRevisionStoreError(
+            "plan-epoch completion requires a canonical TaskStateSnapshot"
+        )
+    if snapshot.INTERFACE != CANONICAL_TASK_STATE_MACHINE_INTERFACE:
+        raise PlanRevisionStoreError(
+            "plan-epoch completion requires CanonicalTaskStateMachine@1"
+        )
+    live_epoch = bound_plan_epoch(live_plan_epoch, "live_plan_epoch")
+    live_snapshot = snapshot if current is None else current
+    if not isinstance(live_snapshot, TaskStateSnapshot):
+        raise PlanRevisionStoreError("current task snapshot is invalid")
+    assert_plan_epoch_current(
+        snapshot.plan_epoch, live_epoch, worker_assertion=worker_assertion
+    )
+    assert_plan_epoch_current(
+        live_snapshot.plan_epoch, live_epoch, worker_assertion=worker_assertion
+    )
+    completable = {TaskState.IN_PROGRESS, TaskState.RECONCILING}
+    if snapshot.state not in completable or live_snapshot.state not in completable:
+        raise PlanRevisionStoreError(
+            "worker or model assertion cannot complete a task that is not "
+            "in progress or reconciling"
+        )
+    if not snapshot.may_complete_against(live_snapshot):
+        raise PlanRevisionStoreError(
+            "worker or model assertion cannot complete a task without "
+            "current plan-epoch CAS bindings"
+        )
+    return live_epoch
+
+
+def assert_task_cas_completion_plan_epoch(
+    expected: TaskStateSnapshot,
+    proposed: TaskStateSnapshot,
+    live_plan_epoch: int,
+    *,
+    current: TaskStateSnapshot | None = None,
+    worker_assertion: bool = False,
+) -> int:
+    """CAS-complete only when expected, proposed, and live share one plan epoch.
+
+    Consumes ``CanonicalTaskStateMachine@1`` and ``RevisionCASTransition@1``.
+    Worker assertions never authorize a stale-epoch successor.
+    """
+
+    live_epoch = bound_plan_epoch(live_plan_epoch, "live_plan_epoch")
+    if not isinstance(expected, TaskStateSnapshot) or not isinstance(
+        proposed, TaskStateSnapshot
+    ):
+        raise PlanRevisionStoreError(
+            "plan-epoch CAS completion requires canonical TaskStateSnapshot records"
+        )
+    for snapshot, name in (
+        (expected, "expected_plan_epoch"),
+        (proposed, "proposed_plan_epoch"),
+        (current if current is not None else expected, "live_plan_epoch"),
+    ):
+        if not isinstance(snapshot, TaskStateSnapshot):
+            raise PlanRevisionStoreError("current task snapshot is invalid")
+        if snapshot.plan_epoch != live_epoch:
+            raise PlanRevisionStoreStalePlanEpochError(
+                "stale plan epoch cannot CAS-complete",
+                expected_plan_epoch=snapshot.plan_epoch,
+                live_plan_epoch=live_epoch,
+                details={"binding": name},
+            )
+    try:
+        return assert_task_cas_transition(
+            expected,
+            proposed,
+            current=current,
+            worker_assertion=worker_assertion,
+        )
+    except ControlPlaneContractError:
+        raise
+    except OptimisticConflictError as exc:
+        raise PlanRevisionStoreStalePlanEpochError(
+            str(exc) or "stale plan epoch cannot CAS-complete",
+            expected_plan_epoch=expected.plan_epoch,
+            live_plan_epoch=live_epoch,
+        ) from exc
+
+
 # ---------------------------------------------------------------------------
 # Records
 # ---------------------------------------------------------------------------
@@ -347,6 +587,7 @@ class PlanRevisionIntent:
     retained_task_cids: tuple[str, ...] = ()
     claimed_task_cids: tuple[str, ...] = ()
     accepted_task_cids: tuple[str, ...] = ()
+    plan_epoch: int = MIN_PLAN_EPOCH
     state: PlanRevisionApplyState = PlanRevisionApplyState.INTENT_JOURNALED
     created_at_ns: int = 0
 
@@ -373,6 +614,7 @@ class PlanRevisionIntent:
             "retained_task_cids": list(self.retained_task_cids),
             "claimed_task_cids": list(self.claimed_task_cids),
             "accepted_task_cids": list(self.accepted_task_cids),
+            "plan_epoch": self.plan_epoch,
             "state": self.state.value,
             "created_at_ns": self.created_at_ns,
         }
@@ -437,6 +679,10 @@ class PlanRevisionIntent:
             accepted_task_cids=_sequence_ids(
                 payload.get("accepted_task_cids"), "accepted_task_cids"
             ),
+            plan_epoch=bound_plan_epoch(
+                int(payload.get("plan_epoch") or MIN_PLAN_EPOCH),
+                "plan_epoch",
+            ),
             state=PlanRevisionApplyState(
                 str(payload.get("state") or PlanRevisionApplyState.INTENT_JOURNALED.value)
             ),
@@ -467,6 +713,7 @@ class PlanRevisionApplyReceipt:
     reason_codes: tuple[str, ...] = ()
     markdown_path: str = ""
     duckdb_path: str = ""
+    plan_epoch: int = MIN_PLAN_EPOCH
 
     @property
     def committed(self) -> bool:
@@ -498,6 +745,7 @@ class PlanRevisionApplyReceipt:
             "reason_codes": list(self.reason_codes),
             "markdown_path": self.markdown_path,
             "duckdb_path": self.duckdb_path,
+            "plan_epoch": self.plan_epoch,
         }
 
 
@@ -518,6 +766,7 @@ class PlanRevisionActiveProjection:
     prior_active_cid: str = ""
     deferred_item_keys: tuple[str, ...] = ()
     quarantined: bool = False
+    plan_epoch: int = MIN_PLAN_EPOCH
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -535,6 +784,7 @@ class PlanRevisionActiveProjection:
             "prior_active_cid": self.prior_active_cid,
             "deferred_item_keys": list(self.deferred_item_keys),
             "quarantined": self.quarantined,
+            "plan_epoch": self.plan_epoch,
         }
 
     @classmethod
@@ -579,6 +829,10 @@ class PlanRevisionActiveProjection:
                 payload.get("deferred_item_keys"), "deferred_item_keys"
             ),
             quarantined=bool(payload.get("quarantined")),
+            plan_epoch=bound_plan_epoch(
+                int(payload.get("plan_epoch") or MIN_PLAN_EPOCH),
+                "plan_epoch",
+            ),
         )
 
 
@@ -605,6 +859,9 @@ class PlanRevisionApplyRequest:
     activate_deferred_keys: Sequence[str] = ()
     fault_injector: Callable[[str], None] | None = None
     records: Mapping[str, Any] | None = None
+    plan_epoch: int = MIN_PLAN_EPOCH
+    expected_plan_epoch: int = 0
+    worker_assertion: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "revision", _decode_revision(self.revision))
@@ -680,6 +937,17 @@ class PlanRevisionApplyRequest:
             raise PlanRevisionStoreError("aliases must be a mapping when provided")
         if self.records is not None and not isinstance(self.records, Mapping):
             raise PlanRevisionStoreError("records must be a mapping when provided")
+        object.__setattr__(
+            self, "plan_epoch", bound_plan_epoch(self.plan_epoch, "plan_epoch")
+        )
+        object.__setattr__(
+            self,
+            "expected_plan_epoch",
+            bound_plan_epoch(
+                self.expected_plan_epoch, "expected_plan_epoch", minimum=0
+            ),
+        )
+        object.__setattr__(self, "worker_assertion", bool(self.worker_assertion))
 
 
 # ---------------------------------------------------------------------------
@@ -706,6 +974,10 @@ class PlanRevisionStore:
     """
 
     INTERFACE: Final[str] = PLAN_REVISION_STORE_INTERFACE
+    STALE_PLAN_EPOCH_BINDING: Final[str] = STALE_PLAN_EPOCH_BINDING
+    CONSUMES_TASK_STATE_MACHINE: Final[str] = CANONICAL_TASK_STATE_MACHINE_INTERFACE
+    CONSUMES_REVISION_CAS: Final[str] = REVISION_CAS_TRANSITION_BINDING
+    CONSUMES_STATE_TRANSACTION: Final[str] = STATE_TRANSACTION_INTERFACE
 
     def __init__(
         self,
@@ -1009,6 +1281,102 @@ class PlanRevisionStore:
         active = self.get_active()
         return bool(active and active.quarantined)
 
+    def current_plan_epoch(self) -> int:
+        """Return the live plan epoch, or ``0`` when no active projection exists."""
+
+        active = self.get_active()
+        if active is None:
+            return 0
+        return bound_plan_epoch(active.plan_epoch)
+
+    def _assert_request_plan_epoch(
+        self,
+        request: PlanRevisionApplyRequest,
+        active: PlanRevisionActiveProjection | None,
+    ) -> int:
+        live = 0 if active is None else bound_plan_epoch(active.plan_epoch)
+        return assert_candidate_plan_epoch(
+            request.plan_epoch,
+            live,
+            expected_plan_epoch=request.expected_plan_epoch,
+            worker_assertion=request.worker_assertion,
+        )
+
+    def assert_live_plan_epoch(
+        self,
+        expected_plan_epoch: int,
+        *,
+        worker_assertion: bool = False,
+    ) -> int:
+        """Fail closed unless ``expected_plan_epoch`` matches the live epoch."""
+
+        live = self.current_plan_epoch()
+        if live < MIN_PLAN_EPOCH:
+            raise PlanRevisionStoreStalePlanEpochError(
+                "no live plan epoch is published",
+                expected_plan_epoch=expected_plan_epoch,
+                live_plan_epoch=live,
+            )
+        return assert_plan_epoch_current(
+            expected_plan_epoch, live, worker_assertion=worker_assertion
+        )
+
+    def assert_task_may_complete(
+        self,
+        snapshot: TaskStateSnapshot,
+        *,
+        current: TaskStateSnapshot | None = None,
+        worker_assertion: bool = False,
+    ) -> int:
+        """Reject completion when the snapshot's plan epoch is stale.
+
+        This method does not terminalize the task.  Worker or model
+        assertions never authorize completion against a superseded epoch.
+        """
+
+        if self.is_quarantined():
+            raise PlanRevisionStoreQuarantinedError(
+                "plan revision store is quarantined"
+            )
+        live = self.current_plan_epoch()
+        if live < MIN_PLAN_EPOCH:
+            raise PlanRevisionStoreError("no active plan epoch")
+        return assert_task_snapshot_plan_epoch_current(
+            snapshot,
+            live,
+            current=current,
+            worker_assertion=worker_assertion,
+        )
+
+    def assert_task_cas_completion(
+        self,
+        expected: TaskStateSnapshot,
+        proposed: TaskStateSnapshot,
+        *,
+        current: TaskStateSnapshot | None = None,
+        worker_assertion: bool = False,
+    ) -> int:
+        """CAS-complete only against the live plan epoch.
+
+        Does not write task state.  Consumes the canonical state machine and
+        revision/CAS successor rule.
+        """
+
+        if self.is_quarantined():
+            raise PlanRevisionStoreQuarantinedError(
+                "plan revision store is quarantined"
+            )
+        live = self.current_plan_epoch()
+        if live < MIN_PLAN_EPOCH:
+            raise PlanRevisionStoreError("no active plan epoch")
+        return assert_task_cas_completion_plan_epoch(
+            expected,
+            proposed,
+            live,
+            current=current,
+            worker_assertion=worker_assertion,
+        )
+
     def _publish_active(
         self,
         active: PlanRevisionActiveProjection,
@@ -1158,6 +1526,7 @@ class PlanRevisionStore:
                     "plan revision store is quarantined"
                 )
             prior_revision = self.load_revision(active.revision_cid)
+        plan_epoch = self._assert_request_plan_epoch(request, active)
         self._assert_lifecycle_safe(revision, delta, prior=prior_revision)
 
         expected_effects = tuple(request.expected_effects) or tuple(
@@ -1197,6 +1566,7 @@ class PlanRevisionStore:
             "retained_task_cids": list(revision.retained_population.member_cids),
             "claimed_task_cids": list(revision.claimed_population.member_cids),
             "accepted_task_cids": list(revision.completed_population.member_cids),
+            "plan_epoch": plan_epoch,
             "state": PlanRevisionApplyState.INTENT_JOURNALED.value,
             "created_at_ns": self._clock_ns(),
         }
@@ -1221,6 +1591,7 @@ class PlanRevisionStore:
                 "revision_cid": revision.revision_cid,
                 "plan_root_cid": revision.plan_root_cid,
                 "delta_cid": intent.delta_cid,
+                "plan_epoch": plan_epoch,
             },
         )
         self._append_event(
@@ -1562,6 +1933,10 @@ class PlanRevisionStore:
                             reason_codes=("idempotent_replay",),
                             markdown_path=str(payload.get("markdown_path") or ""),
                             duckdb_path=str(payload.get("duckdb_path") or ""),
+                            plan_epoch=bound_plan_epoch(
+                                int(payload.get("plan_epoch") or MIN_PLAN_EPOCH),
+                                "plan_epoch",
+                            ),
                         )
                     except PlanRevisionStoreError:
                         pass
@@ -1720,6 +2095,7 @@ class PlanRevisionStore:
             self._fault(request.fault_injector, "after_prepare")
             # Re-observe immediately before projection writes.
             self.reobserve_roots(request.revision.roots, request.observed_roots)
+            self._assert_request_plan_epoch(request, self.get_active())
             markdown_cid = self._apply_markdown(request, intent=intent)
             self._fault(request.fault_injector, "after_markdown")
             duckdb_cid = self._apply_duckdb(request, intent=intent)
@@ -1865,12 +2241,25 @@ class PlanRevisionStore:
             prior_active_cid=prior_active_cid,
             deferred_item_keys=remaining_deferred,
             quarantined=False,
+            plan_epoch=intent.plan_epoch,
         )
+        prior_epoch = prior_active.plan_epoch if prior_active is not None else 0
         self._publish_active(active, retain_prior=True)
         self._fault(request.fault_injector, "after_commit_pointer")
         intent = self._update_intent_state(
             intent, PlanRevisionApplyState.COMMITTED
         )
+        if intent.plan_epoch > prior_epoch >= MIN_PLAN_EPOCH:
+            self._append_event(
+                PlanRevisionEventType.PLAN_EPOCH_ADVANCED,
+                intent_cid=intent.intent_cid,
+                revision_cid=revision_cid,
+                plan_root_cid=request.revision.plan_root_cid,
+                body={
+                    "prior_plan_epoch": prior_epoch,
+                    "plan_epoch": intent.plan_epoch,
+                },
+            )
         if activated:
             self._append_event(
                 PlanRevisionEventType.DEFERRED_ACTIVATED,
@@ -1922,6 +2311,7 @@ class PlanRevisionStore:
                 "revision_cid": revision_cid,
                 "plan_root_cid": request.revision.plan_root_cid,
                 "active_cid": active.active_cid,
+                "plan_epoch": intent.plan_epoch,
             },
         )
         return receipt
@@ -1962,6 +2352,7 @@ class PlanRevisionStore:
             "reason_codes": list(reason_codes),
             "markdown_path": intent.markdown_path,
             "duckdb_path": intent.duckdb_path,
+            "plan_epoch": intent.plan_epoch,
         }
         receipt_cid = _cid_for(body)
         return PlanRevisionApplyReceipt(
@@ -1983,6 +2374,7 @@ class PlanRevisionStore:
             reason_codes=tuple(reason_codes),
             markdown_path=intent.markdown_path,
             duckdb_path=intent.duckdb_path,
+            plan_epoch=intent.plan_epoch,
         )
 
     def _quarantine(
@@ -2005,21 +2397,7 @@ class PlanRevisionStore:
         _atomic_write_json(path, record)
         active = self.get_active()
         if active is not None:
-            quarantined = PlanRevisionActiveProjection(
-                active_cid=active.active_cid,
-                plan_root_cid=active.plan_root_cid,
-                revision_cid=active.revision_cid,
-                semantic_revision=active.semantic_revision,
-                event_cursor=active.event_cursor,
-                markdown_projection_cid=active.markdown_projection_cid,
-                duckdb_projection_cid=active.duckdb_projection_cid,
-                markdown_path=active.markdown_path,
-                duckdb_path=active.duckdb_path,
-                intent_cid=active.intent_cid,
-                prior_active_cid=active.prior_active_cid,
-                deferred_item_keys=active.deferred_item_keys,
-                quarantined=True,
-            )
+            quarantined = replace(active, quarantined=True)
             _atomic_write_json(self.active_path, quarantined.to_dict())
         else:
             # Publish a quarantine-only active marker so subsequent applies fail.
@@ -2031,6 +2409,10 @@ class PlanRevisionStore:
                 event_cursor="",
                 intent_cid=intent_cid,
                 quarantined=True,
+                plan_epoch=bound_plan_epoch(
+                    int((body or {}).get("plan_epoch") or MIN_PLAN_EPOCH),
+                    "plan_epoch",
+                ),
             )
             _atomic_write_json(self.active_path, marker.to_dict())
         self._append_event(
@@ -2077,7 +2459,8 @@ class PlanRevisionStore:
                         remaining.append(key)
                 if not activated:
                     return ()
-                updated = PlanRevisionActiveProjection(
+                updated = replace(
+                    active,
                     active_cid=_cid_for(
                         {
                             "prior_active_cid": active.active_cid,
@@ -2085,15 +2468,6 @@ class PlanRevisionStore:
                             "remaining": remaining,
                         }
                     ),
-                    plan_root_cid=active.plan_root_cid,
-                    revision_cid=active.revision_cid,
-                    semantic_revision=active.semantic_revision,
-                    event_cursor=active.event_cursor,
-                    markdown_projection_cid=active.markdown_projection_cid,
-                    duckdb_projection_cid=active.duckdb_projection_cid,
-                    markdown_path=active.markdown_path,
-                    duckdb_path=active.duckdb_path,
-                    intent_cid=active.intent_cid,
                     prior_active_cid=active.active_cid,
                     deferred_item_keys=tuple(remaining),
                     quarantined=False,
@@ -2280,9 +2654,11 @@ __all__ = [
     "PLAN_REVISION_EVENT_SCHEMA",
     "PLAN_REVISION_INDEX_SCHEMA",
     "PLAN_REVISION_INTENT_SCHEMA",
+    "MIN_PLAN_EPOCH",
     "PLAN_REVISION_STORE_INTERFACE",
     "PLAN_REVISION_STORE_SCHEMA",
     "PLAN_REVISION_SUPERSESSION_SCHEMA",
+    "STALE_PLAN_EPOCH_BINDING",
     "PlanRevisionActiveProjection",
     "PlanRevisionApplyReceipt",
     "PlanRevisionApplyRequest",
@@ -2296,5 +2672,12 @@ __all__ = [
     "PlanRevisionStoreIntegrityError",
     "PlanRevisionStoreQuarantinedError",
     "PlanRevisionStoreStaleError",
+    "PlanRevisionStoreStalePlanEpochError",
+    "assert_candidate_plan_epoch",
+    "assert_plan_epoch_current",
+    "assert_task_cas_completion_plan_epoch",
+    "assert_task_snapshot_plan_epoch_current",
+    "bound_plan_epoch",
     "open_plan_revision_store",
+    "plan_epoch_is_current",
 ]
