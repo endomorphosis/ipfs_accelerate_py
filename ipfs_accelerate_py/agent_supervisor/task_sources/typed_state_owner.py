@@ -626,7 +626,8 @@ _EVENT_WAIT_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     }
 )
 _STATUS_SESSION_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
-    {COMPLETION_PROGRESS_SNAPSHOT_OPERATION, "completion.closeout.snapshot"}
+    {COMPLETION_PROGRESS_SNAPSHOT_OPERATION, "completion.closeout.snapshot",
+     "legacy.merge_queue.task.observe"}
 )
 _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
@@ -8145,6 +8146,7 @@ class TypedStateOwnerGateway:
         self._status_bootstrap_uid = -1
         self._status_bootstrap_scope: dict[str, str] = {}
         self._database_status_binding: dict[str, Any] = {}
+        self._legacy_merge_queue_status_binding: dict[str, Any] = {}
         self._event_wait_handler: Any | None = None
         self._event_wait_cancel_handler: Any | None = None
         self._event_wait_clear_handler: Any | None = None
@@ -8425,6 +8427,50 @@ class TypedStateOwnerGateway:
             with self._grants_lock:
                 self._status_bootstrap_scope = scope
 
+    def bind_legacy_merge_queue_status_scope(
+        self, *, queue_dir: Path, target_repository_id: str, target_branch: str,
+    ) -> None:
+        """Launcher-only, monotonic binding for the separate Portal queue.
+
+        No socket request can nominate or replace this path. Existing status
+        clients must reconnect to receive the optional read-only operation.
+        """
+        from .legacy_merge_queue_observation import queue_binding
+        with self._transaction_lock:
+            if not self._database_status_binding or self._legacy_merge_queue_status_binding:
+                raise TypedStateOwnerAuthorizationError("legacy queue status scope cannot be bound or rebound")
+            scope = self._resolve_database_status_scope()
+            binding = queue_binding(
+                queue_dir=queue_dir, target_repository_id=target_repository_id,
+                target_branch=target_branch, database_scope_cid=scope["database_scope_cid"],
+            )
+            with self._grants_lock:
+                self._legacy_merge_queue_status_binding = binding
+
+    def _legacy_merge_queue_observation(
+        self, observation_request: Any, *, grant: OwnerClientGrant,
+        peer_identity: tuple[int, int, int],
+    ) -> Mapping[str, Any]:
+        from .legacy_merge_queue_observation import capture_observation, validate_request
+        request = validate_request(observation_request)
+        self._require_active_grant(grant, peer_identity=peer_identity)
+        with self._grants_lock:
+            binding = dict(self._legacy_merge_queue_status_binding)
+        if not binding or grant.authority_profile != "dedicated_database_status":
+            raise TypedStateOwnerAuthorizationError("legacy queue observation requires a bound database status scope")
+
+        def capture_control(completion_request: Any) -> Mapping[str, Any]:
+            # Scope is immutable once bound. The normal snapshot rechecks the
+            # exact owner, peer grant, current source population and generation.
+            if binding["database_scope_cid"] != content_identity(self._database_status_binding):
+                raise TypedStateOwnerAuthorizationError("legacy queue database scope changed")
+            return self._completion_progress_snapshot(
+                completion_request, grant=grant, peer_identity=peer_identity,
+                include_closeout=True,
+            )
+
+        return capture_observation(binding, request, capture_control=capture_control)
+
     def bind_status_bootstrap_scope(self) -> None:
         """Monotonically bind status reads to one admitted federation slice."""
 
@@ -8477,8 +8523,10 @@ class TypedStateOwnerGateway:
             grant_id=f"owner-grant:status:{uuid.uuid4()}",
             client_id=STATUS_BOOTSTRAP_CLIENT_ID,
             process_birth_id=process_birth_id,
-            allowed_operations=(DATABASE_STATUS_ALLOWED_OPERATIONS if self._database_status_binding
-                                else STATUS_BOOTSTRAP_ALLOWED_OPERATIONS),
+            allowed_operations=((DATABASE_STATUS_ALLOWED_OPERATIONS | (
+                frozenset({"legacy.merge_queue.task.observe"})
+                if self._legacy_merge_queue_status_binding else frozenset()
+            )) if self._database_status_binding else STATUS_BOOTSTRAP_ALLOWED_OPERATIONS),
             allowed_command_operations=frozenset(),
             tenant_id=scope.get("tenant_id", ""),
             federation_id=scope.get("federation_id", ""),
@@ -9497,6 +9545,20 @@ class TypedStateOwnerGateway:
                                         )
                                 result = self._execute(operation, parameters)
                         response = result
+                    elif action == "legacy.merge_queue.task.observe":
+                        self._reject_unknown(
+                            request, {"schema", "action", "request_id", "observation_request"},
+                            "legacy merge queue observation request",
+                        )
+                        if (transaction_active or not status_session_grant_id
+                                or grant.grant_id != status_session_grant_id
+                                or action not in grant.allowed_operations):
+                            raise TypedStateOwnerAuthorizationError("legacy queue observation requires a status session grant")
+                        snapshot = self._legacy_merge_queue_observation(
+                            request.get("observation_request"), grant=grant,
+                            peer_identity=peer_identity,
+                        )
+                        response = {"ok": True, "result": dict(snapshot)}
                     elif action in {COMPLETION_PROGRESS_SNAPSHOT_OPERATION, "completion.closeout.snapshot"}:
                         self._reject_unknown(
                             request,
@@ -16550,6 +16612,19 @@ class TypedStateOwnerConnection:
 
         operations = self.grant.get("allowed_operations") or ()
         return COMPLETION_PROGRESS_SNAPSHOT_OPERATION in operations
+
+    def legacy_merge_queue_task_observation(
+        self, task_cids: Sequence[str], *, task_cid: str,
+    ) -> Mapping[str, Any]:
+        """Read all matching legacy queue rows; grants no recovery authority."""
+        from .legacy_merge_queue_observation import (
+            OPERATION, observation_request, validate_observation,
+        )
+        if self._active or OPERATION not in (self.grant.get("allowed_operations") or ()):
+            raise TypedStateOwnerAuthorizationError("legacy queue observation is outside the client grant")
+        request = observation_request(self.identity, task_cids, task_cid=task_cid)
+        result = self._request(OPERATION, observation_request=request).get("result")
+        return validate_observation(result, request=request)
 
     def completion_closeout_snapshot(self, task_cids: Sequence[str]) -> Mapping[str, Any]:
         """Observe sealed tasks, goals and remaining claims in one owner transaction."""
