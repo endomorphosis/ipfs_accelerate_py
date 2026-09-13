@@ -23157,6 +23157,95 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             successor.task_cid
         ).to_dict() == running_control_before
 
+        # A legacy v2 claim must reproduce the closed canonical crash window.
+        # Mutate only read projections in this disposable owner fixture; the
+        # verifier may not start another daemon or change canonical state.
+        history_reader = consumer_bridge.task_source.task_revision_history_projection
+        claim_history = history_reader(successor.task_cid)
+        legacy_claim = running_control.body["completion_receipt"]
+        assert consumer_bridge._post_merge_completion_claim_receipt(
+            attempt=successor,
+            record=running_control,
+            status_receipt=legacy_claim,
+            seed=replay_seed,
+            recovery_control_revision=replay_seed["recovery_control_revision"],
+        ) == legacy_claim
+        for mutation in (
+            "projection_digest", "missing_revision", "duplicate_revision", "boolean_revision",
+            "later_revision", "source_semantics", "recovery_semantics",
+            "recovery_status", "recovery_request", "recovery_control",
+            "recovery_execution", "recovery_extra_field", "recovery_seed",
+            "claim_extra_field", "claim_predecessor", "claim_fence_boolean",
+            "claim_source_attempt", "claim_semantics",
+        ):
+            changed_history = json.loads(json.dumps(claim_history, default=dict))
+            rows = changed_history["revisions"]
+            recovery_row, claim_row = rows[-2:]
+            recovery_receipt = recovery_row["body"]["completion_receipt"]
+            changed_claim = claim_row["body"]["completion_receipt"]
+            if mutation == "missing_revision":
+                del rows[0]
+            elif mutation == "duplicate_revision":
+                rows.insert(0, rows[0])
+            elif mutation == "boolean_revision":
+                rows[0]["revision"] = True
+            elif mutation == "later_revision":
+                later = json.loads(json.dumps(claim_row))
+                later["revision"] += 1
+                rows.append(later)
+            elif mutation == "source_semantics":
+                rows[blocked_revision - 1]["body"]["description"] = "changed source"
+            elif mutation == "recovery_semantics":
+                recovery_row["body"]["description"] = "changed recovery"
+            elif mutation == "recovery_status":
+                recovery_row["status"] = "todo"
+            elif mutation == "recovery_request":
+                recovery_receipt["request_id"] = "foreign-request"
+            elif mutation == "recovery_control":
+                recovery_receipt["control_expected_revision"] -= 1
+            elif mutation == "recovery_execution":
+                recovery_receipt["execution_revision"] += 1
+            elif mutation == "recovery_extra_field":
+                recovery_receipt["unqualified"] = True
+            elif mutation == "recovery_seed":
+                del recovery_receipt["post_merge_completion_recovery_seed"]
+            elif mutation == "claim_extra_field":
+                changed_claim["claim_phase_schema"] = "unqualified-overlay"
+            elif mutation == "claim_predecessor":
+                changed_claim["claimed_from_revision"] -= 1
+            elif mutation == "claim_fence_boolean":
+                changed_claim["fencing_token"] = True
+            elif mutation == "claim_source_attempt":
+                changed_claim["post_merge_completion_recovery_source_attempt_id"] = "foreign"
+            elif mutation == "claim_semantics":
+                claim_row["body"]["description"] = "changed claim"
+            changed_history.pop("projection_cid")
+            changed_history["projection_cid"] = content_identity(changed_history)
+            if mutation == "projection_digest":
+                changed_history["projection_cid"] = "sha256:" + "0" * 64
+            changed_record = SimpleNamespace(
+                task_cid=running_control.task_cid,
+                task_alias=running_control.task_alias,
+                status=running_control.status,
+                revision=running_control.revision,
+                body=claim_row["body"],
+            )
+            with monkeypatch.context() as history_patch:
+                history_patch.setattr(
+                    consumer_bridge.task_source,
+                    "task_revision_history_projection",
+                    lambda _cid: changed_history,
+                )
+                assert consumer_bridge._post_merge_completion_claim_receipt(
+                    attempt=successor,
+                    record=changed_record,
+                    status_receipt=changed_claim,
+                    seed=replay_seed,
+                    recovery_control_revision=replay_seed["recovery_control_revision"],
+                ) is None, mutation
+            assert history_reader(successor.task_cid) == claim_history
+            assert consumer_daemon.task_source.get(successor.task_cid).to_dict() == running_control_before
+
         # Lose the v2 zero-provider acceptance at the same boundary.  The
         # next exact suffix must link back through recovery_control_revision
         # while preserving the immutable historical terminal revision.
