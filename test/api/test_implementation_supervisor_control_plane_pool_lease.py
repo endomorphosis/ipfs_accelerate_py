@@ -25,6 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     _projection_immutable_digest,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalImplementationDaemon,
     PortalTaskState,
     parse_task_text,
     portal_task_identity,
@@ -1402,6 +1403,121 @@ def test_database_portal_callback_gap_accepts_exact_live_two_identity_attempt(
     }
     assert activity["database_task_cid"] != activity["task_cid"]
     assert activity["database_attempt"] != activity["attempt"]
+
+@pytest.mark.parametrize("legacy_lock", [False, True])
+def test_control_plane_reload_defers_for_current_producer_callback_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_lock: bool,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    supervisor = fixture["supervisor"]
+    producer = SimpleNamespace(
+        repo_root=fixture["repo"],
+        state_path=fixture["nested_state_path"],
+        _implementation_dispatch_process_birth=fixture["child"].identity_process_birth,
+        _identity_for_task=lambda _task: SimpleNamespace(
+            canonical_task_key=fixture["portal_task_key"],
+            canonical_task_cid=fixture["portal_task_cid"],
+            board_namespace=fixture["portal_board_namespace"],
+        ),
+    )
+    monkeypatch.setattr("sys.argv", ["implementation_daemon.py"])
+    metadata = PortalImplementationDaemon._build_implementation_lock_metadata(
+        producer,
+        SimpleNamespace(task_id=fixture["task_alias"]),
+        1,
+        fixture["implementation_lock"]["started_at"],
+    )
+    assert metadata["owner_process_birth"] == current_process_birth().to_dict()
+    if legacy_lock:
+        metadata.pop("owner_process_birth")
+    _write_json(fixture["implementation_lock_path"], metadata)
+    original_lock = fixture["implementation_lock_path"].read_bytes()
+    original_state = fixture["nested_state_path"].read_bytes()
+    supervisor._loaded_control_plane_source = {"source_id": "loaded-source"}
+    monkeypatch.setattr(
+        supervisor, "_control_plane_source_snapshot",
+        lambda: {"source_id": "current-source"},
+    )
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda *_: [])
+    monkeypatch.setattr(supervisor, "_active_validation_subprocess_exists", lambda: False)
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, fixture["child"], {})
+
+    assert decision.action == "continue"
+    assert loop.config.status_extra_fields["control_plane_reload_deferred"] is True
+    assert loop.config.status_extra_fields["control_plane_reload_deferred_reason"] == (
+        "active_managed_database_portal_callback"
+    )
+    assert fixture["implementation_lock_path"].read_bytes() == original_lock
+    assert fixture["nested_state_path"].read_bytes() == original_state
+
+
+@pytest.mark.parametrize("mutation", [
+    "null_birth", "missing_birth_field", "extra_birth_field", "reused_pid",
+    "foreign_pid", "foreign_boot", "boolean_ticks", "string_ticks",
+    "non_string_boot", "negative_parent", "boolean_parent", "extra_lock_field",
+])
+def test_database_portal_callback_rejects_invalid_birth_lock_schema(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    metadata = dict(fixture["implementation_lock"])
+    birth = fixture["child"].identity_process_birth.to_dict()
+    metadata["owner_process_birth"] = birth
+    if mutation == "null_birth":
+        metadata["owner_process_birth"] = None
+    elif mutation == "missing_birth_field":
+        birth.pop("parent_pid")
+    elif mutation == "extra_birth_field":
+        birth["unknown"] = "not-authority"
+    elif mutation == "reused_pid":
+        birth["start_time_ticks"] += 1
+    elif mutation == "foreign_pid":
+        birth["pid"] += 1
+    elif mutation == "foreign_boot":
+        birth["boot_id"] = "other-boot"
+    elif mutation == "boolean_ticks":
+        birth["start_time_ticks"] = True
+    elif mutation == "string_ticks":
+        birth["start_time_ticks"] = str(birth["start_time_ticks"])
+    elif mutation == "non_string_boot":
+        birth["boot_id"] = 123
+    elif mutation == "negative_parent":
+        birth["parent_pid"] = -1
+    elif mutation == "boolean_parent":
+        birth["parent_pid"] = True
+    elif mutation == "extra_lock_field":
+        metadata["unknown"] = "not-authority"
+    _write_json(fixture["implementation_lock_path"], metadata)
+
+    assert fixture["supervisor"]._active_managed_database_portal_callback(
+        fixture["child"]
+    ) is None
+
+
+@pytest.mark.parametrize("legacy_lock", [False, True])
+def test_database_portal_callback_lock_never_overrides_reused_child_handle(
+    tmp_path: Path,
+    legacy_lock: bool,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    if not legacy_lock:
+        metadata = dict(fixture["implementation_lock"])
+        metadata["owner_process_birth"] = fixture["child"].identity_process_birth.to_dict()
+        _write_json(fixture["implementation_lock_path"], metadata)
+    fixture["child"].identity_process_birth = replace(
+        fixture["child"].identity_process_birth,
+        start_time_ticks=fixture["child"].identity_process_birth.start_time_ticks + 1,
+    )
+
+    assert fixture["supervisor"]._active_managed_database_portal_callback(
+        fixture["child"]
+    ) is None
+
 
 def test_control_plane_reload_defers_for_exact_database_portal_callback_gap(
     tmp_path: Path,
