@@ -1,12 +1,17 @@
 """DuckDB-backed authoritative event, audit, log, metric, and cursor store.
 
-DQP-013 / DatabaseEventLog@1
-============================
+DQP-013 / DOEP-032 / DatabaseEventLog@1
+=======================================
 
 :class:`DatabaseEventLog` is the durable authority for domain events,
 structured logs, metrics, explicit application audits, stream heads,
-retention, integrity checkpoints, and consumer cursors. JSONL is an export
-adapter only: deleting or tampering with an export has no authority effect.
+retention, integrity checkpoints, consumer cursors, and idempotent
+consumption. Physical delivery is at-least-once; logical transitions are
+exactly-once per ``(consumer_id, event_id)``. JSONL is an export adapter
+only: deleting or tampering with an export has no authority effect.
+
+Idempotent consumption is a binding of this store, not a second event
+subsystem. A worker or model assertion cannot mark an event consumed.
 
 Cold import of this module performs no filesystem, database, network,
 provider, or process action.
@@ -17,7 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -46,12 +51,27 @@ from ..task_sources.task_identity import canonical_json_bytes
 DATABASE_EVENT_LOG_INTERFACE: Final[str] = "DatabaseEventLog@1"
 EVENT_CURSOR_INTERFACE: Final[str] = "EventCursor@1"
 CONSUMER_CHECKPOINT_INTERFACE: Final[str] = "ConsumerCheckpoint@1"
+IDEMPOTENT_EVENT_CONSUMPTION_BINDING: Final[str] = "IdempotentEventConsumption@1"
+IDEMPOTENT_EVENT_CONSUMPTION_INTERFACE: Final[str] = (
+    IDEMPOTENT_EVENT_CONSUMPTION_BINDING
+)
+IDEMPOTENT_EVENT_CONSUMPTION_CONSUMES: Final[tuple[str, ...]] = (
+    DATABASE_EVENT_LOG_INTERFACE,
+    EVENT_CURSOR_INTERFACE,
+    CONSUMER_CHECKPOINT_INTERFACE,
+)
 
 DATABASE_EVENT_LOG_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-event-log@1"
 )
 CONSUMER_CHECKPOINT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/consumer-checkpoint@1"
+)
+IDEMPOTENT_EVENT_CONSUMPTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/idempotent-event-consumption@1"
+)
+EVENT_CONSUMPTION_RECORD_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/event-consumption-record@1"
 )
 INTEGRITY_CHECKPOINT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/integrity-checkpoint@1"
@@ -169,6 +189,20 @@ CREATE TABLE IF NOT EXISTS consumer_checkpoints (
     checkpoint_digest VARCHAR NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS consumed_events (
+    consumer_id VARCHAR NOT NULL,
+    event_id VARCHAR NOT NULL,
+    stream_id VARCHAR NOT NULL,
+    sequence BIGINT NOT NULL,
+    snapshot_id VARCHAR NOT NULL,
+    status VARCHAR NOT NULL,
+    applied_at VARCHAR NOT NULL,
+    consumption_digest VARCHAR NOT NULL,
+    PRIMARY KEY (consumer_id, event_id)
+);
+CREATE INDEX IF NOT EXISTS consumed_events_consumer_seq_idx
+    ON consumed_events(consumer_id, stream_id, sequence);
+
 CREATE TABLE IF NOT EXISTS integrity_checkpoints (
     checkpoint_id VARCHAR PRIMARY KEY,
     stream_id VARCHAR NOT NULL,
@@ -245,6 +279,21 @@ class AuditAction(str, Enum):
     CHECKPOINT = "checkpoint"
     REDACT = "redact"
     POLL = "poll"
+    CONSUME = "consume"
+
+
+class ConsumptionStatus(str, Enum):
+    """Durable consumption-row status. Pending rows are retried, not skipped."""
+
+    PENDING = "pending"
+    APPLIED = "applied"
+
+
+class ConsumptionOutcome(str, Enum):
+    """Logical result of one consume attempt against one event identity."""
+
+    APPLIED = "applied"
+    IDEMPOTENT_REPLAY = "idempotent_replay"
 
 
 # ---------------------------------------------------------------------------
@@ -416,6 +465,161 @@ class ConsumerCheckpoint:
         return _sha256_hex(_canonical_json(body).encode("utf-8"))
 
 
+def _consumption_digest(
+    *,
+    consumer_id: str,
+    event_id: str,
+    stream_id: str,
+    sequence: int,
+    status: str,
+) -> str:
+    body = {
+        "consumer_id": consumer_id,
+        "event_id": event_id,
+        "stream_id": stream_id,
+        "sequence": sequence,
+        "status": status,
+    }
+    return _sha256_hex(_canonical_json(body).encode("utf-8"))
+
+
+@dataclass(frozen=True)
+class EventConsumptionRecord:
+    """One consumer's durable decision for one event identity."""
+
+    consumer_id: str
+    event_id: str
+    stream_id: str
+    sequence: int
+    outcome: ConsumptionOutcome
+    status: ConsumptionStatus = ConsumptionStatus.APPLIED
+    snapshot_id: str = DEFAULT_SNAPSHOT_ID
+    applied_at: str = ""
+    schema: str = EVENT_CONSUMPTION_RECORD_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "consumer_id", _text(self.consumer_id, "consumer_id")
+        )
+        object.__setattr__(self, "event_id", _text(self.event_id, "event_id"))
+        object.__setattr__(self, "stream_id", _text(self.stream_id, "stream_id"))
+        object.__setattr__(
+            self, "sequence", _nonneg_int(self.sequence, "sequence")
+        )
+        if not isinstance(self.outcome, ConsumptionOutcome):
+            object.__setattr__(
+                self, "outcome", ConsumptionOutcome(str(self.outcome))
+            )
+        if not isinstance(self.status, ConsumptionStatus):
+            object.__setattr__(
+                self, "status", ConsumptionStatus(str(self.status))
+            )
+        object.__setattr__(
+            self,
+            "snapshot_id",
+            _text(self.snapshot_id or DEFAULT_SNAPSHOT_ID, "snapshot_id"),
+        )
+        object.__setattr__(
+            self,
+            "applied_at",
+            _text(self.applied_at or _utc_iso(), "applied_at"),
+        )
+        if self.schema != EVENT_CONSUMPTION_RECORD_SCHEMA:
+            raise DatabaseEventLogError("unsupported event consumption schema")
+
+    @property
+    def consumption_digest(self) -> str:
+        return _consumption_digest(
+            consumer_id=self.consumer_id,
+            event_id=self.event_id,
+            stream_id=self.stream_id,
+            sequence=self.sequence,
+            status=self.status.value,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "binding": IDEMPOTENT_EVENT_CONSUMPTION_BINDING,
+            "consumer_id": self.consumer_id,
+            "event_id": self.event_id,
+            "stream_id": self.stream_id,
+            "sequence": self.sequence,
+            "outcome": self.outcome.value,
+            "status": self.status.value,
+            "snapshot_id": self.snapshot_id,
+            "applied_at": self.applied_at,
+            "consumption_digest": self.consumption_digest,
+            "worker_assertion_is_authority": False,
+        }
+
+
+@dataclass(frozen=True)
+class EventConsumptionPage:
+    """Bounded consume page: applied identities, durable cursor, checkpoint."""
+
+    consumer_id: str
+    records: tuple[EventConsumptionRecord, ...]
+    next_cursor: EventCursor
+    checkpoint: ConsumerCheckpoint
+    has_more: bool = False
+    schema: str = IDEMPOTENT_EVENT_CONSUMPTION_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "consumer_id", _text(self.consumer_id, "consumer_id")
+        )
+        if not isinstance(self.records, tuple):
+            object.__setattr__(self, "records", tuple(self.records))
+        if not isinstance(self.next_cursor, EventCursor):
+            raise TypeError("next_cursor must be an EventCursor")
+        if not isinstance(self.checkpoint, ConsumerCheckpoint):
+            raise TypeError("checkpoint must be a ConsumerCheckpoint")
+        if not isinstance(self.has_more, bool):
+            raise DatabaseEventLogError("has_more must be a boolean")
+        if self.schema != IDEMPOTENT_EVENT_CONSUMPTION_SCHEMA:
+            raise DatabaseEventLogError(
+                "unsupported idempotent event consumption schema"
+            )
+
+    @property
+    def applied_event_ids(self) -> tuple[str, ...]:
+        return tuple(
+            record.event_id
+            for record in self.records
+            if record.outcome is ConsumptionOutcome.APPLIED
+        )
+
+    @property
+    def replayed_event_ids(self) -> tuple[str, ...]:
+        return tuple(
+            record.event_id
+            for record in self.records
+            if record.outcome is ConsumptionOutcome.IDEMPOTENT_REPLAY
+        )
+
+    @property
+    def cursor(self) -> EventCursor:
+        return self.next_cursor
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "interface": IDEMPOTENT_EVENT_CONSUMPTION_INTERFACE,
+            "binding": IDEMPOTENT_EVENT_CONSUMPTION_BINDING,
+            "consumes": list(IDEMPOTENT_EVENT_CONSUMPTION_CONSUMES),
+            "carrier": DATABASE_EVENT_LOG_INTERFACE,
+            "consumer_id": self.consumer_id,
+            "records": [record.to_dict() for record in self.records],
+            "applied_event_ids": list(self.applied_event_ids),
+            "replayed_event_ids": list(self.replayed_event_ids),
+            "next_cursor": self.next_cursor.to_record(),
+            "checkpoint": self.checkpoint.to_dict(),
+            "has_more": self.has_more,
+            "worker_assertion_is_authority": False,
+        }
+
+
 @dataclass(frozen=True)
 class StreamHead:
     """Authoritative head of one event stream."""
@@ -581,6 +785,9 @@ class DatabaseEventLog:
     """Append-only DuckDB event authority with cursor polling and export."""
 
     INTERFACE: Final[str] = DATABASE_EVENT_LOG_INTERFACE
+    IDEMPOTENT_EVENT_CONSUMPTION_BINDING: Final[str] = (
+        IDEMPOTENT_EVENT_CONSUMPTION_BINDING
+    )
 
     def __init__(
         self,
@@ -1247,7 +1454,24 @@ class DatabaseEventLog:
             if not page.has_more or not page.events:
                 break
 
-    # -- consumer checkpoints ------------------------------------------------
+    # -- consumer checkpoints / idempotent consumption -----------------------
+
+    def consumer_cursor(
+        self,
+        consumer_id: str,
+        stream_id: str = DEFAULT_STREAM_ID,
+    ) -> EventCursor:
+        """Return the durable consumer cursor, or the stream's initial cursor."""
+
+        checkpoint = self.load_consumer_checkpoint(consumer_id)
+        selected_stream = _text(stream_id, "stream_id")
+        if checkpoint is None:
+            return self.initial_cursor(selected_stream)
+        if checkpoint.cursor.stream_id != selected_stream:
+            raise DatabaseEventLogConflictError(
+                "consumer checkpoint is bound to a different stream"
+            )
+        return checkpoint.cursor
 
     def save_consumer_checkpoint(
         self,
@@ -1255,76 +1479,216 @@ class DatabaseEventLog:
         cursor: EventCursor | Mapping[str, Any] | str,
     ) -> ConsumerCheckpoint:
         selected = self._coerce_cursor(cursor)
-        checkpoint = ConsumerCheckpoint(
-            consumer_id=_text(consumer_id, "consumer_id"),
-            cursor=selected,
-            updated_at=_utc_iso(),
-        )
+        consumer = _text(consumer_id, "consumer_id")
         with self._lock:
             connection = self._require()
-            head = self._load_head(connection, selected.stream_id)
-            selected.assert_replayable(
-                stream_id=selected.stream_id,
-                earliest_position=self._earliest_sequence(
-                    connection, selected.stream_id
-                ),
-                latest_position=head.latest_sequence,
-                snapshot_id=self._snapshot_id,
+            return self._save_consumer_checkpoint_unlocked(
+                connection, consumer, selected
             )
-            connection.execute(
-                """
-                INSERT OR REPLACE INTO consumer_checkpoints (
-                    consumer_id, stream_id, snapshot_id, position,
-                    last_event_id, updated_at, cursor_token, checkpoint_digest
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    checkpoint.consumer_id,
-                    selected.stream_id,
-                    selected.snapshot_id,
-                    selected.position,
-                    selected.last_event_id,
-                    checkpoint.updated_at,
-                    selected.to_token(),
-                    checkpoint.checkpoint_digest,
-                ],
-            )
-            self._commit_if_idle(connection)
-        return checkpoint
 
     def load_consumer_checkpoint(
         self, consumer_id: str
     ) -> ConsumerCheckpoint | None:
         with self._lock:
+            return self._load_consumer_checkpoint_unlocked(
+                self._require(), _text(consumer_id, "consumer_id")
+            )
+
+    def event_consumed(self, consumer_id: str, event_id: str) -> bool:
+        """Return True when this consumer has applied ``event_id``."""
+
+        with self._lock:
+            row = self._get_consumed_row(
+                self._require(),
+                _text(consumer_id, "consumer_id"),
+                _text(event_id, "event_id"),
+            )
+        return row is not None and str(row.get("status") or "") == (
+            ConsumptionStatus.APPLIED.value
+        )
+
+    def consumed_event_ids(self, consumer_id: str) -> tuple[str, ...]:
+        """Return applied event identities for ``consumer_id`` in stream order."""
+
+        with self._lock:
             connection = self._require()
             rows = connection.execute(
                 """
-                SELECT consumer_id, stream_id, snapshot_id, position,
-                       last_event_id, updated_at, cursor_token,
-                       checkpoint_digest
-                FROM consumer_checkpoints WHERE consumer_id = ? LIMIT 1
+                SELECT event_id FROM consumed_events
+                WHERE consumer_id = ? AND status = ?
+                ORDER BY sequence ASC
                 """,
-                [_text(consumer_id, "consumer_id")],
+                [
+                    _text(consumer_id, "consumer_id"),
+                    ConsumptionStatus.APPLIED.value,
+                ],
             ).fetchall()
-        if not rows:
-            return None
-        row = _row_mapping(rows[0])
-        cursor = EventCursor(
-            stream_id=str(row["stream_id"]),
-            snapshot_id=str(row["snapshot_id"]),
-            position=int(row["position"]),
-            last_event_id=str(row["last_event_id"] or ""),
-        )
-        checkpoint = ConsumerCheckpoint(
-            consumer_id=str(row["consumer_id"]),
-            cursor=cursor,
-            updated_at=str(row["updated_at"]),
-        )
-        if checkpoint.checkpoint_digest != str(row["checkpoint_digest"]):
-            raise DatabaseEventLogIntegrityError(
-                "consumer checkpoint digest mismatch"
+        return tuple(str(_row_mapping(row)["event_id"]) for row in rows)
+
+    def consume(
+        self,
+        consumer_id: str,
+        *,
+        stream_id: str = DEFAULT_STREAM_ID,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        handler: Callable[[Mapping[str, Any]], Any] | None = None,
+        cursor: EventCursor | Mapping[str, Any] | str | None = None,
+        worker_assertion: bool = False,
+    ) -> EventConsumptionPage:
+        """Apply the next page of events with exactly-once logical transitions.
+
+        Physical delivery remains at-least-once: a crash after the handler
+        runs but before the applied row commits may re-invoke the handler.
+        After an applied row exists, the same ``event_id`` is an idempotent
+        replay and the handler is not called again. ``worker_assertion`` is
+        not consumption authority and cannot skip the durable table.
+        """
+
+        del worker_assertion  # Never authoritative; durable rows decide.
+        consumer = _text(consumer_id, "consumer_id")
+        selected_stream = _text(stream_id, "stream_id")
+        page_limit = _positive_int(limit, "limit")
+        if page_limit > MAX_PAGE_LIMIT:
+            raise DatabaseEventLogBoundsError(
+                f"limit exceeds the {MAX_PAGE_LIMIT} bound"
             )
-        return checkpoint
+
+        with self._lock:
+            connection = self._require()
+            stored = self._load_consumer_checkpoint_unlocked(
+                connection, consumer
+            )
+            if stored is None:
+                current = (
+                    self._coerce_cursor(cursor)
+                    if cursor is not None
+                    else EventCursor.initial(
+                        selected_stream, snapshot_id=self._snapshot_id
+                    )
+                )
+                if current.stream_id != selected_stream:
+                    raise DatabaseEventLogConflictError(
+                        "supplied cursor stream does not match consume stream"
+                    )
+            else:
+                if stored.cursor.stream_id != selected_stream:
+                    raise DatabaseEventLogConflictError(
+                        "consumer checkpoint is bound to a different stream"
+                    )
+                current = stored.cursor
+                if cursor is not None:
+                    supplied = self._coerce_cursor(cursor)
+                    if not self._cursors_equivalent(supplied, current):
+                        raise DatabaseEventLogConflictError(
+                            "supplied cursor does not match the durable "
+                            "consumer checkpoint"
+                        )
+
+        page = self.poll(current, limit=page_limit, stream_id=selected_stream)
+        records: list[EventConsumptionRecord] = []
+        last_cursor = current
+
+        for event in page.events:
+            event_id = _text(event.get("event_id"), "event_id")
+            sequence = _nonneg_int(int(event.get("sequence") or 0), "sequence")
+            event_stream = _text(
+                event.get("stream_id") or selected_stream, "stream_id"
+            )
+            with self._lock:
+                connection = self._require()
+                existing = self._get_consumed_row(
+                    connection, consumer, event_id
+                )
+                already_applied = (
+                    existing is not None
+                    and str(existing.get("status") or "")
+                    == ConsumptionStatus.APPLIED.value
+                )
+                if already_applied:
+                    stamp = str(existing.get("applied_at") or _utc_iso())
+                    record = EventConsumptionRecord(
+                        consumer_id=consumer,
+                        event_id=event_id,
+                        stream_id=event_stream,
+                        sequence=sequence,
+                        outcome=ConsumptionOutcome.IDEMPOTENT_REPLAY,
+                        status=ConsumptionStatus.APPLIED,
+                        snapshot_id=self._snapshot_id,
+                        applied_at=stamp,
+                    )
+                    last_cursor = current.advance(
+                        position=sequence,
+                        event_id=event_id,
+                        snapshot_id=self._snapshot_id,
+                    )
+                    records.append(record)
+                    continue
+                stamp = _utc_iso()
+                self._upsert_consumed_unlocked(
+                    connection,
+                    consumer_id=consumer,
+                    event_id=event_id,
+                    stream_id=event_stream,
+                    sequence=sequence,
+                    status=ConsumptionStatus.PENDING,
+                    applied_at=stamp,
+                )
+                self._commit_if_idle(connection)
+
+            if handler is not None:
+                try:
+                    handler(event)
+                except Exception:
+                    # Leave the pending row; checkpoint stays at last_cursor.
+                    if records:
+                        self.save_consumer_checkpoint(consumer, last_cursor)
+                    raise
+
+            with self._lock:
+                connection = self._require()
+                stamp = _utc_iso()
+                self._upsert_consumed_unlocked(
+                    connection,
+                    consumer_id=consumer,
+                    event_id=event_id,
+                    stream_id=event_stream,
+                    sequence=sequence,
+                    status=ConsumptionStatus.APPLIED,
+                    applied_at=stamp,
+                )
+                last_cursor = current.advance(
+                    position=sequence,
+                    event_id=event_id,
+                    snapshot_id=self._snapshot_id,
+                )
+                self._save_consumer_checkpoint_unlocked(
+                    connection, consumer, last_cursor
+                )
+            records.append(
+                EventConsumptionRecord(
+                    consumer_id=consumer,
+                    event_id=event_id,
+                    stream_id=event_stream,
+                    sequence=sequence,
+                    outcome=ConsumptionOutcome.APPLIED,
+                    status=ConsumptionStatus.APPLIED,
+                    snapshot_id=self._snapshot_id,
+                    applied_at=stamp,
+                )
+            )
+
+        if page.events:
+            checkpoint_cursor = last_cursor
+        else:
+            checkpoint_cursor = page.next_cursor
+        checkpoint = self.save_consumer_checkpoint(consumer, checkpoint_cursor)
+        return EventConsumptionPage(
+            consumer_id=consumer,
+            records=tuple(records),
+            next_cursor=checkpoint.cursor,
+            checkpoint=checkpoint,
+            has_more=page.has_more,
+        )
 
     # -- integrity / retention -----------------------------------------------
 
@@ -1629,6 +1993,154 @@ class DatabaseEventLog:
 
     # -- internal ------------------------------------------------------------
 
+    @staticmethod
+    def _cursors_equivalent(left: EventCursor, right: EventCursor) -> bool:
+        return (
+            left.stream_id == right.stream_id
+            and left.position == right.position
+            and left.last_event_id == right.last_event_id
+            and left.snapshot_id == right.snapshot_id
+        )
+
+    def _load_consumer_checkpoint_unlocked(
+        self, connection: Any, consumer_id: str
+    ) -> ConsumerCheckpoint | None:
+        rows = connection.execute(
+            """
+            SELECT consumer_id, stream_id, snapshot_id, position,
+                   last_event_id, updated_at, cursor_token,
+                   checkpoint_digest
+            FROM consumer_checkpoints WHERE consumer_id = ? LIMIT 1
+            """,
+            [consumer_id],
+        ).fetchall()
+        if not rows:
+            return None
+        row = _row_mapping(rows[0])
+        cursor = EventCursor(
+            stream_id=str(row["stream_id"]),
+            snapshot_id=str(row["snapshot_id"]),
+            position=int(row["position"]),
+            last_event_id=str(row["last_event_id"] or ""),
+        )
+        checkpoint = ConsumerCheckpoint(
+            consumer_id=str(row["consumer_id"]),
+            cursor=cursor,
+            updated_at=str(row["updated_at"]),
+        )
+        if checkpoint.checkpoint_digest != str(row["checkpoint_digest"]):
+            raise DatabaseEventLogIntegrityError(
+                "consumer checkpoint digest mismatch"
+            )
+        return checkpoint
+
+    def _save_consumer_checkpoint_unlocked(
+        self,
+        connection: Any,
+        consumer_id: str,
+        selected: EventCursor,
+    ) -> ConsumerCheckpoint:
+        head = self._load_head(connection, selected.stream_id)
+        selected.assert_replayable(
+            stream_id=selected.stream_id,
+            earliest_position=self._earliest_sequence(
+                connection, selected.stream_id
+            ),
+            latest_position=head.latest_sequence,
+            snapshot_id=self._snapshot_id,
+        )
+        existing = self._load_consumer_checkpoint_unlocked(
+            connection, consumer_id
+        )
+        if existing is not None:
+            if existing.cursor.stream_id != selected.stream_id:
+                raise DatabaseEventLogConflictError(
+                    "consumer checkpoint is bound to a different stream"
+                )
+            if selected.position < existing.cursor.position:
+                raise DatabaseEventLogConflictError(
+                    "consumer checkpoint cannot rewind"
+                )
+        checkpoint = ConsumerCheckpoint(
+            consumer_id=consumer_id,
+            cursor=selected,
+            updated_at=_utc_iso(),
+        )
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO consumer_checkpoints (
+                consumer_id, stream_id, snapshot_id, position,
+                last_event_id, updated_at, cursor_token, checkpoint_digest
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                checkpoint.consumer_id,
+                selected.stream_id,
+                selected.snapshot_id,
+                selected.position,
+                selected.last_event_id,
+                checkpoint.updated_at,
+                selected.to_token(),
+                checkpoint.checkpoint_digest,
+            ],
+        )
+        self._commit_if_idle(connection)
+        return checkpoint
+
+    def _get_consumed_row(
+        self, connection: Any, consumer_id: str, event_id: str
+    ) -> dict[str, Any] | None:
+        rows = connection.execute(
+            """
+            SELECT consumer_id, event_id, stream_id, sequence, snapshot_id,
+                   status, applied_at, consumption_digest
+            FROM consumed_events
+            WHERE consumer_id = ? AND event_id = ?
+            LIMIT 1
+            """,
+            [consumer_id, event_id],
+        ).fetchall()
+        if not rows:
+            return None
+        return _row_mapping(rows[0])
+
+    def _upsert_consumed_unlocked(
+        self,
+        connection: Any,
+        *,
+        consumer_id: str,
+        event_id: str,
+        stream_id: str,
+        sequence: int,
+        status: ConsumptionStatus,
+        applied_at: str,
+    ) -> None:
+        digest = _consumption_digest(
+            consumer_id=consumer_id,
+            event_id=event_id,
+            stream_id=stream_id,
+            sequence=sequence,
+            status=status.value,
+        )
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO consumed_events (
+                consumer_id, event_id, stream_id, sequence, snapshot_id,
+                status, applied_at, consumption_digest
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                consumer_id,
+                event_id,
+                stream_id,
+                sequence,
+                self._snapshot_id,
+                status.value,
+                applied_at,
+                digest,
+            ],
+        )
+
     def _coerce_cursor(
         self, cursor: EventCursor | Mapping[str, Any] | str
     ) -> EventCursor:
@@ -1807,6 +2319,8 @@ __all__ = (
     "AuditAction",
     "CONSUMER_CHECKPOINT_INTERFACE",
     "CONSUMER_CHECKPOINT_SCHEMA",
+    "ConsumptionOutcome",
+    "ConsumptionStatus",
     "ConsumerCheckpoint",
     "DATABASE_EVENT_LOG_INTERFACE",
     "DATABASE_EVENT_LOG_SCHEMA",
@@ -1821,7 +2335,14 @@ __all__ = (
     "DatabaseEventLogNotOpenError",
     "DomainEvent",
     "DuckDBUnavailableError",
+    "EVENT_CONSUMPTION_RECORD_SCHEMA",
     "EVENT_CURSOR_INTERFACE",
+    "EventConsumptionPage",
+    "EventConsumptionRecord",
+    "IDEMPOTENT_EVENT_CONSUMPTION_BINDING",
+    "IDEMPOTENT_EVENT_CONSUMPTION_CONSUMES",
+    "IDEMPOTENT_EVENT_CONSUMPTION_INTERFACE",
+    "IDEMPOTENT_EVENT_CONSUMPTION_SCHEMA",
     "INTEGRITY_CHECKPOINT_SCHEMA",
     "IntegrityCheckpoint",
     "JSONL_EXPORT_RECEIPT_SCHEMA",
