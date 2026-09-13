@@ -164,6 +164,7 @@ from ..merge.worktree_lifecycle import (
 )
 from ..runtime.event_log import (
     append_jsonl_event,
+    strict_event_envelope_fields,
     event_log_manifest,
     event_log_sources,
     latest_event_cursor,
@@ -40195,6 +40196,38 @@ class PortalImplementationDaemon:
                 "reason": "merge_queue_reconciliation_source_invalid",
             }
 
+        # A reconstructed callback daemon may not have populated its display-ID
+        # cache. Carry identity already bound to this exact source/request,
+        # instead of relying on incidental cache enrichment during append.
+        source_identity = {}
+        if "canonical_task_key" in source:
+            source_key = source["canonical_task_key"]
+            if (
+                type(source_key) is not str
+                or not source_key
+                or source_key != str(getattr(request, "canonical_task_key", "") or "")
+            ):
+                return {
+                    "recorded": False,
+                    "reason": "merge_queue_reconciliation_source_identity_invalid",
+                }
+            source_identity["canonical_task_key"] = source_key
+        if "board_namespace" in source:
+            namespace = source["board_namespace"]
+            if type(namespace) is not str or not namespace:
+                return {
+                    "recorded": False,
+                    "reason": "merge_queue_reconciliation_source_identity_invalid",
+                }
+            source_identity["board_namespace"] = namespace
+        if "task_source_identity" in source:
+            if not isinstance(source["task_source_identity"], Mapping):
+                return {
+                    "recorded": False,
+                    "reason": "merge_queue_reconciliation_source_identity_invalid",
+                }
+            source_identity["task_source_identity"] = dict(source["task_source_identity"])
+
         reconciled_candidate_key = content_identity(
             {
                 "schema": (
@@ -40302,6 +40335,7 @@ class PortalImplementationDaemon:
                 receipt_evidence
             )
             payload: dict[str, Any] = {
+                **source_identity,
                 "task_id": task.task_id,
                 "canonical_task_cid": task_cid,
                 "attempt": source_attempt,
@@ -40361,15 +40395,10 @@ class PortalImplementationDaemon:
                     "board_namespace",
                     identity.board_namespace,
                 )
-            envelope_fields = {
-                "type",
-                "timestamp",
-                "stream_id",
-                "snapshot_id",
-                "sequence",
-                "previous_event_id",
-                "event_id",
-            }
+            try:
+                envelope_fields = strict_event_envelope_fields(event)
+            except ValueError:
+                return False
             previous_event_id = str(event.get("previous_event_id") or "")
             return bool(
                 set(event) == set(enriched) | envelope_fields
@@ -80557,6 +80586,12 @@ class PortalImplementationDaemon:
                                 }
                             )
 
+                        try:
+                            strict_event_envelope_fields(event)
+                        except ValueError as exc:
+                            raise CursorReplayError(
+                                "merge lifecycle causal envelope is invalid"
+                            ) from exc
                         identity_body = dict(event)
                         identity_body.pop("event_id", None)
                         try:
