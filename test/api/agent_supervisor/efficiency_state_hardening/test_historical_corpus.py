@@ -856,7 +856,7 @@ def verify_sealed_artifacts() -> dict[str, Any]:
     }
 
 
-write_sealed_artifacts()
+# Validate the recorded artifacts; generation must be requested explicitly.
 
 
 def _imported_module_names(tree: ast.AST) -> set[str]:

@@ -1517,7 +1517,12 @@ def test_module_installs_without_sibling_test_imports() -> None:
             assert not name.startswith(prefix), name
 
 
-def test_import_preserves_recorded_evidence(monkeypatch) -> None:
+@pytest.mark.parametrize("module_name", [
+    "test_release_report.py", "test_promotion_decision.py",
+    "test_live_cohort_admission.py", "test_historical_corpus.py",
+    "test_paired_harness.py", "test_context_pack_benchmark.py",
+])
+def test_import_preserves_recorded_evidence(monkeypatch, module_name) -> None:
     """Collection must not regenerate reports before their contents are checked."""
     import runpy
 
@@ -1525,10 +1530,11 @@ def test_import_preserves_recorded_evidence(monkeypatch) -> None:
     write_text = Path.write_text
 
     def reject_report_write(path, *args, **kwargs):
-        if path in before:
+        if path.resolve().is_relative_to(ROOT):
             raise AssertionError("validator import attempted to rewrite recorded evidence")
         return write_text(path, *args, **kwargs)
 
     monkeypatch.setattr(Path, "write_text", reject_report_write)
-    runpy.run_path(str(Path(__file__)), run_name="aseh_release_readonly_import_check")
+    runpy.run_path(str(Path(__file__).with_name(module_name)),
+                   run_name="aseh_readonly_import_check")
     assert {path: path.read_bytes() for path in before} == before
