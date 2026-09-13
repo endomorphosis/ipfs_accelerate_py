@@ -76,7 +76,8 @@ def test_native_backlog_reconciliation_defers_before_scanning_frozen_git(tmp_pat
     owner = SimpleNamespace(config=SimpleNamespace(repo_root=repo))
     result = implementation_supervisor.PortalImplementationSupervisor.reconcile_backlogged_worktrees(owner)
     assert result == {
-        "attempted": False, "skipped": True, "reason": "retained_workspace_scope",
+        "attempted": False, "maintenance_deferred": True, "skipped": [],
+        "reason": "retained_workspace_scope",
     }
     assert q.verify(repo, root) == frozen
 
