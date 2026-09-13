@@ -2,6 +2,8 @@
 import copy
 import importlib.util
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -43,3 +45,35 @@ def test_closed_validator_surface(command, tmp_path):
 def test_pytest_validator_preserves_exact_arguments(tmp_path):
     task = {'task_alias': 'ASEH-000', 'body': {'validation': 'python3 -m pytest -q tests/example.py'}}
     assert RUNNER.rewritten_command(task, tmp_path) == ['python3', '-m', 'pytest', '-q', 'tests/example.py']
+
+
+def test_write_guard_honors_dir_fds_and_symlink_entry_semantics(tmp_path):
+    script = '''
+import importlib.util, os, pathlib, sys
+spec = importlib.util.spec_from_file_location('runner', sys.argv[1])
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+base = pathlib.Path(sys.argv[2]); protected = base/'protected'; scratch = base/'scratch'
+protected.mkdir(); scratch.mkdir(); (protected/'record').write_text('original')
+os.chdir(protected)
+fd = os.open(scratch, os.O_RDONLY | os.O_DIRECTORY)
+module.install_readonly_guard([protected])
+os.mkdir('reservation', dir_fd=fd)
+w = os.open('output', os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=fd)
+os.write(w, b'temporary'); os.close(w)
+os.rename('output', 'renamed', src_dir_fd=fd, dst_dir_fd=fd)
+os.symlink(str(protected/'record'), 'link', dir_fd=fd)
+assert (scratch/'link').read_text() == 'original'
+for path in [protected/'record', scratch/'link']:
+    try: path.write_text('forbidden')
+    except PermissionError: pass
+    else: raise AssertionError('protected bytes were writable')
+try: os.open('record', os.O_WRONLY)
+except PermissionError: pass
+else: raise AssertionError('cwd write escaped guard')
+assert (protected/'record').read_text() == 'original'
+os.unlink('link', dir_fd=fd); os.unlink('renamed', dir_fd=fd)
+os.rmdir('reservation', dir_fd=fd); os.close(fd)
+'''
+    result = subprocess.run([sys.executable, '-B', '-c', script, str(_PATH), str(tmp_path)],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

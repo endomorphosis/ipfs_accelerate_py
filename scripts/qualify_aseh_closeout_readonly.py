@@ -14,6 +14,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+import threading
 import time
 
 REPOSITORIES = ('ipfs_accelerate_py', 'ipfs_datasets_py', 'ipfs_kit_py')
@@ -54,9 +55,18 @@ def git(root, *args):
     return subprocess.check_output(['git', '-C', str(root), *args], text=True).strip()
 
 
-def child(root, owner, argv):
-    """Execute one suite with exact package origins and Python write guards."""
-    roots = [root, root / 'ipfs_datasets_py', root / 'ipfs_kit_py']
+def install_readonly_guard(roots):
+    """Guard Python writes, including descriptor-relative filesystem APIs."""
+    open_context = threading.local()
+    original_open = os.open
+    def descriptor_open(path, flags, mode=0o777, *, dir_fd=None):
+        previous = getattr(open_context, 'dir_fd', None)
+        open_context.dir_fd = dir_fd
+        try:
+            return original_open(path, flags, mode, dir_fd=dir_fd)
+        finally:
+            open_context.dir_fd = previous
+    os.open = descriptor_open
     def audit(event, args):
         paths = []
         if event == 'open':
@@ -65,17 +75,34 @@ def child(root, owner, argv):
                 (isinstance(mode, str) and any(c in mode for c in 'wax+'))
                 or int(flags or 0) & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC)
             ):
-                paths = [path]
+                paths = [(path, getattr(open_context, 'dir_fd', None))]
         elif event in {'os.remove', 'os.rmdir', 'os.mkdir', 'os.chmod', 'os.truncate'}:
-            paths = [args[0]]
-        elif event in {'os.rename', 'os.link', 'os.symlink'}:
-            paths = list(args[:2])
-        for value in paths:
+            fd_index = 1 if event in {'os.remove', 'os.rmdir'} else 2
+            paths = [(args[0], args[fd_index] if len(args) > fd_index else None)]
+        elif event in {'os.rename', 'os.link'}:
+            paths = [(args[0], args[2]), (args[1], args[3])]
+        elif event == 'os.symlink':
+            # Creating a symlink mutates its destination entry, not its target.
+            paths = [(args[1], args[2])]
+        for value, dir_fd in paths:
+            if isinstance(value, int):
+                value = os.readlink('/proc/self/fd/' + str(value))
             if isinstance(value, (str, bytes, os.PathLike)):
-                path = Path(os.fsdecode(value)).resolve()
-                if any(path == r or r in path.parents for r in roots):
+                path = Path(os.fsdecode(value))
+                if not path.is_absolute() and dir_fd is not None and dir_fd >= 0:
+                    path = Path(os.readlink('/proc/self/fd/' + str(dir_fd))) / path
+                resolved = (path.parent.resolve() / path.name
+                            if event in {'os.remove', 'os.rmdir', 'os.mkdir', 'os.rename', 'os.symlink'}
+                            else path.resolve())
+                candidates = (path.absolute(), resolved)
+                if any(p == r or r in p.parents for p in candidates for r in roots):
                     raise PermissionError('qualification cannot mutate source checkout: ' + str(path))
     sys.addaudithook(audit)
+
+
+def child(root, owner, argv):
+    """Execute one suite with exact package origins and Python write guards."""
+    install_readonly_guard([root, root / 'ipfs_datasets_py', root / 'ipfs_kit_py'])
     import ipfs_accelerate_py, ipfs_datasets_py, ipfs_kit_py
     expected = {'ipfs_accelerate_py': root / 'ipfs_accelerate_py',
                 'ipfs_datasets_py': root / 'ipfs_datasets_py',

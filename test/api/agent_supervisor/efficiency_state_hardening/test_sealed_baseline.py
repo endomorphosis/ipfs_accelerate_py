@@ -12,6 +12,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     content_identity,
 )
@@ -138,6 +140,22 @@ def _sha256_file(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _historical_protected_input(relative: str) -> bytes:
+    """Verify sealed baseline bytes at the captured source, before repairs."""
+    assert not Path(relative).is_absolute() and '..' not in Path(relative).parts
+    captured = _load_json(INVENTORY / 'authority_inventory.json')['captured_from']
+    assert captured['repository'] == 'ipfs_accelerate_py'
+    assert captured['source_identity_kind'] == 'captured_committed_tree'
+    commit, tree = captured['commit'], captured['tree']
+    assert SHA1_RE.fullmatch(commit) and SHA1_RE.fullmatch(tree)
+    assert _peel_tree(commit) == tree
+    assert _git_ok('merge-base', '--is-ancestor', commit, 'HEAD')
+    result = subprocess.run(['git', 'show', commit + ':' + relative], cwd=ROOT,
+                            capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
 def _git(*args: str, cwd: Path | None = None) -> str:
     completed = subprocess.run(
         ["git", *args],
@@ -253,14 +271,14 @@ def _todo_task_ids() -> list[str]:
     return re.findall(r"^## (ASEH-[0-9]+)\b", TODO_PATH.read_text(encoding="utf-8"), re.M)
 
 
-def _policy_identity(scheduler: Mapping[str, Any]) -> str:
+def _policy_identity(scheduler: Mapping[str, Any], *, scheduler_digest: str | None = None) -> str:
     return content_identity(
         {
             "authority_policy": scheduler["authority_policy"],
             "plan_revision": "ASEH-PLAN-R1",
             "program_id": scheduler["program_identifier"],
             "requirements_digest": REQUIREMENTS_DIGEST,
-            "scheduler_digest": _sha256_file(SCHEDULER_PATH),
+            "scheduler_digest": scheduler_digest or _sha256_file(SCHEDULER_PATH),
             "schema": POLICY_SCHEMA,
         }
     )
@@ -416,9 +434,11 @@ def test_three_repository_commits_and_trees() -> None:
 
 def test_supervisor_policy_identity_binds_protected_inputs() -> None:
     baseline = _load(BASELINE_PATH)
-    scheduler = _load_json(SCHEDULER_PATH)
     policy = baseline["supervisor_policy"]
-    expected = _policy_identity(scheduler)
+    scheduler_bytes = _historical_protected_input(policy['path'])
+    scheduler = json.loads(scheduler_bytes)
+    scheduler_digest = 'sha256:' + hashlib.sha256(scheduler_bytes).hexdigest()
+    expected = _policy_identity(scheduler, scheduler_digest=scheduler_digest)
     _assert_cid(expected, field="computed_supervisor_policy_identity")
     if "identity" in policy:
         assert policy["identity"] == expected
@@ -428,7 +448,7 @@ def test_supervisor_policy_identity_binds_protected_inputs() -> None:
     assert policy["requirements_digest"] == _sha256_file(REQUIREMENTS_PATH)
     if "scheduler_digest" in policy:
         _assert_digest(policy["scheduler_digest"], field="scheduler_digest")
-        assert policy["scheduler_digest"] == _sha256_file(SCHEDULER_PATH)
+        assert policy["scheduler_digest"] == scheduler_digest
     assert policy["path"] == (
         "config/agent_supervisor_efficiency_state_hardening_scheduler.json"
     )
@@ -437,6 +457,35 @@ def test_supervisor_policy_identity_binds_protected_inputs() -> None:
     )
     assert policy["plan_revision"] == "ASEH-PLAN-R1"
     assert policy["schema"] == POLICY_SCHEMA
+
+
+def test_current_candidate_policy_is_separate_from_historical_baseline() -> None:
+    """Current source still needs independent native candidate admission."""
+    head = _git('rev-parse', 'HEAD')
+    tree = _peel_tree(head)
+    assert SHA1_RE.fullmatch(head) and SHA1_RE.fullmatch(tree)
+    relative = SCHEDULER_PATH.relative_to(ROOT).as_posix()
+    current = subprocess.run(['git', 'show', head + ':' + relative], cwd=ROOT,
+                             capture_output=True, check=False)
+    assert current.returncode == 0
+    assert current.stdout == SCHEDULER_PATH.read_bytes()
+    scheduler = json.loads(current.stdout)
+    _assert_cid(_policy_identity(scheduler), field='current_candidate_policy_identity')
+    assert scheduler['requirements_digest'] == _sha256_file(REQUIREMENTS_PATH)
+    assert scheduler['completion_policy']['current_tree_required'] is True
+    assert scheduler['completion_policy']['required_receipts_and_seals_verify'] is True
+
+
+def test_historical_protected_input_refuses_changed_capture_tree(monkeypatch) -> None:
+    original = _load_json
+    def changed(path):
+        payload = original(path)
+        if path == INVENTORY / 'authority_inventory.json':
+            payload['captured_from']['tree'] = '0' * 40
+        return payload
+    monkeypatch.setattr(sys.modules[__name__], '_load_json', changed)
+    with pytest.raises(AssertionError):
+        _historical_protected_input(SCHEDULER_PATH.relative_to(ROOT).as_posix())
 
 
 def test_provider_model_config_reconciles() -> None:
@@ -663,10 +712,10 @@ def test_manifests_reconcile_to_baseline() -> None:
     if "sha256" in requirements_item:
         assert requirements_item["sha256"] == REQUIREMENTS_DIGEST
     for item in manifest["protected_inputs"]:
-        live_digest = _sha256_file(ROOT / item["path"])
-        _assert_digest(live_digest, field=item["path"])
+        sealed_digest = 'sha256:' + hashlib.sha256(_historical_protected_input(item['path'])).hexdigest()
+        _assert_digest(sealed_digest, field=item["path"])
         if "sha256" in item:
-            assert item["sha256"] == live_digest
+            assert item["sha256"] == sealed_digest
     for item in manifest["unavailable_inputs"]:
         assert item["status"] == UNAVAILABLE
 
