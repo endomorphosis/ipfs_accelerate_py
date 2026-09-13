@@ -13,6 +13,9 @@ transactions that:
 This module is transport-agnostic. Callers supply a connection that implements
 ``execute`` / ``commit`` / ``rollback`` (DuckDB native, ``DuckDBConnection``,
 or a Quack-attached session). Arbitrary model-supplied SQL never enters here.
+
+Revision/CAS successors are enforced here against the canonical task state
+machine. Worker or model assertions never authorize a transition.
 """
 
 from __future__ import annotations
@@ -42,6 +45,9 @@ from .control_plane_contracts import (
     MIN_REVISION,
     StateCommand,
     StoreGeneration,
+    TaskState,
+    TaskStateSnapshot,
+    assert_task_transition,
     canonical_json_bytes,
 )
 
@@ -56,6 +62,9 @@ CAS_RESULT_SCHEMA: Final = (
 RETRY_POLICY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/retry-policy@1"
 )
+# Binding name for the CAS successor rule. This is not a second state machine:
+# StateTransaction@1 consumes CanonicalTaskStateMachine@1.
+REVISION_CAS_TRANSITION_BINDING: Final = "RevisionCASTransition@1"
 
 DEFAULT_MAX_RETRY_ATTEMPTS: Final[int] = 8
 DEFAULT_BASE_DELAY_SECONDS: Final[float] = 0.01
@@ -362,6 +371,199 @@ def is_retryable_exception(exc: BaseException) -> bool:
     }
 
 
+def next_cas_revision(expected_revision: int) -> int:
+    """Return the unique legal successor revision for a CAS write."""
+
+    current = _bounded_int(
+        expected_revision, "expected_revision", minimum=MIN_REVISION
+    )
+    nxt = current + 1
+    if nxt > MAX_INT:
+        raise ControlPlaneContractError("next CAS revision exceeds supported bounds")
+    return nxt
+
+
+def assert_revision_cas_transition(
+    *,
+    expected_revision: int,
+    live_revision: int,
+    next_revision: int | None = None,
+) -> int:
+    """Fail closed unless the CAS successor is live revision plus exactly one.
+
+    Stale, skipped, or rewound revisions are optimistic conflicts. This rule is
+    shared by store-head CAS, row CAS, and task-state CAS.
+    """
+
+    expected = _bounded_int(
+        expected_revision, "expected_revision", minimum=MIN_REVISION
+    )
+    live = _bounded_int(live_revision, "live_revision", minimum=MIN_REVISION)
+    if expected != live:
+        raise OptimisticConflictError(
+            "expected revision is stale",
+            details={
+                "expected_revision": expected,
+                "live_revision": live,
+            },
+        )
+    computed = next_cas_revision(expected)
+    if next_revision is None:
+        return computed
+    proposed = _bounded_int(next_revision, "next_revision", minimum=MIN_REVISION)
+    if proposed != computed:
+        raise OptimisticConflictError(
+            "CAS next revision must advance by exactly one",
+            details={
+                "expected_revision": expected,
+                "live_revision": live,
+                "next_revision": proposed,
+                "required_revision": computed,
+            },
+        )
+    return computed
+
+
+def revision_cas_transition_allowed(
+    *,
+    expected_revision: int,
+    live_revision: int,
+    next_revision: int | None = None,
+) -> bool:
+    """Return whether a revision CAS successor is legal without raising."""
+
+    try:
+        assert_revision_cas_transition(
+            expected_revision=expected_revision,
+            live_revision=live_revision,
+            next_revision=next_revision,
+        )
+    except (TransactionError, ControlPlaneContractError):
+        return False
+    return True
+
+
+def _task_cas_authority_tuple(
+    snapshot: TaskStateSnapshot,
+) -> tuple[str, str, int, str, str, str, int]:
+    return (
+        snapshot.task_cid,
+        snapshot.lease_id,
+        snapshot.fence_epoch,
+        snapshot.policy_cid,
+        snapshot.repository_tree_id,
+        snapshot.plan_cid,
+        snapshot.plan_epoch,
+    )
+
+
+def assert_task_cas_transition(
+    expected: TaskStateSnapshot,
+    proposed: TaskStateSnapshot,
+    *,
+    current: TaskStateSnapshot | None = None,
+    worker_assertion: bool = False,
+) -> int:
+    """Fail closed unless ``proposed`` is a legal CAS successor of ``expected``.
+
+    Consumes ``CanonicalTaskStateMachine@1``. A worker or model assertion is
+    never CAS authority: ``worker_assertion`` cannot bypass stale lease, fence,
+    policy, tree, plan epoch, revision, or illegal lifecycle edges. Terminal
+    success still requires ``TaskStateSnapshot.may_complete_against``.
+    """
+
+    if not isinstance(expected, TaskStateSnapshot) or not isinstance(
+        proposed, TaskStateSnapshot
+    ):
+        raise ControlPlaneContractError(
+            "task CAS transition requires canonical TaskStateSnapshot records"
+        )
+    live = expected if current is None else current
+    if not isinstance(live, TaskStateSnapshot):
+        raise ControlPlaneContractError("current task CAS snapshot is invalid")
+    if expected.task_cid != live.task_cid or proposed.task_cid != live.task_cid:
+        raise TransactionError(
+            "task CAS identity mismatch",
+            kind=TransactionConflictKind.IDENTITY_MISMATCH,
+            retryable=False,
+            details={
+                "expected_task_cid": expected.task_cid,
+                "live_task_cid": live.task_cid,
+                "proposed_task_cid": proposed.task_cid,
+            },
+        )
+    if expected.state is not live.state:
+        raise OptimisticConflictError(
+            "expected task state is stale relative to live CAS snapshot",
+            details={
+                "expected_state": expected.state.value,
+                "live_state": live.state.value,
+            },
+        )
+    next_revision = assert_revision_cas_transition(
+        expected_revision=expected.revision,
+        live_revision=live.revision,
+        next_revision=proposed.revision,
+    )
+    if (
+        expected.fence_epoch != live.fence_epoch
+        or proposed.fence_epoch != live.fence_epoch
+    ):
+        raise FenceMismatchError(
+            "stale fence epoch cannot CAS-transition",
+            details={
+                "expected_fence_epoch": expected.fence_epoch,
+                "live_fence_epoch": live.fence_epoch,
+                "proposed_fence_epoch": proposed.fence_epoch,
+            },
+        )
+    if _task_cas_authority_tuple(expected) != _task_cas_authority_tuple(
+        live
+    ) or _task_cas_authority_tuple(proposed) != _task_cas_authority_tuple(live):
+        raise OptimisticConflictError(
+            "stale lease, policy, tree or plan epoch cannot CAS-transition",
+            details={
+                "task_cid": live.task_cid,
+                "expected_revision": expected.revision,
+                "live_revision": live.revision,
+            },
+        )
+    try:
+        assert_task_transition(expected.state, proposed.state)
+    except ControlPlaneContractError:
+        raise
+    if proposed.state is TaskState.COMPLETED and not expected.may_complete_against(
+        live
+    ):
+        raise ControlPlaneContractError(
+            "worker or model assertion cannot complete a task without current CAS bindings"
+        )
+    # worker_assertion is diagnostic only; it never authorizes the transition.
+    _ = worker_assertion
+    return next_revision
+
+
+def task_cas_transition_allowed(
+    expected: TaskStateSnapshot,
+    proposed: TaskStateSnapshot,
+    *,
+    current: TaskStateSnapshot | None = None,
+    worker_assertion: bool = False,
+) -> bool:
+    """Return whether a task CAS successor is legal without raising."""
+
+    try:
+        assert_task_cas_transition(
+            expected,
+            proposed,
+            current=current,
+            worker_assertion=worker_assertion,
+        )
+    except (TransactionError, ControlPlaneContractError):
+        return False
+    return True
+
+
 @dataclass(frozen=True)
 class RetryPolicy:
     """Bounded exponential backoff with full jitter.
@@ -653,6 +855,38 @@ class StateTransaction:
     @property
     def active(self) -> bool:
         return self._active and not self._committed and not self._rolled_back
+
+    @staticmethod
+    def assert_revision_cas_transition(
+        *,
+        expected_revision: int,
+        live_revision: int,
+        next_revision: int | None = None,
+    ) -> int:
+        """Expose the module CAS successor rule on the canonical transaction."""
+
+        return assert_revision_cas_transition(
+            expected_revision=expected_revision,
+            live_revision=live_revision,
+            next_revision=next_revision,
+        )
+
+    @staticmethod
+    def assert_task_cas_transition(
+        expected: TaskStateSnapshot,
+        proposed: TaskStateSnapshot,
+        *,
+        current: TaskStateSnapshot | None = None,
+        worker_assertion: bool = False,
+    ) -> int:
+        """Expose canonical task CAS enforcement on the existing transaction."""
+
+        return assert_task_cas_transition(
+            expected,
+            proposed,
+            current=current,
+            worker_assertion=worker_assertion,
+        )
 
     def begin(self) -> "StateTransaction":
         if self._active:
@@ -1306,17 +1540,11 @@ class StateTransaction:
     ) -> StoreGeneration:
         """Advance the store generation head revision after a successful CAS."""
 
-        new_revision = (
-            live.revision + 1 if next_revision is None else int(next_revision)
+        new_revision = assert_revision_cas_transition(
+            expected_revision=live.revision,
+            live_revision=live.revision,
+            next_revision=next_revision,
         )
-        if new_revision <= live.revision:
-            raise OptimisticConflictError(
-                "next store revision must advance",
-                details={
-                    "live_revision": live.revision,
-                    "next_revision": new_revision,
-                },
-            )
         self._connection.execute(
             """
             UPDATE store_generations
@@ -1360,7 +1588,7 @@ class StateTransaction:
         _assert_safe_sql_identifier(revision_column, "revision_column")
         if not assignments:
             raise ControlPlaneContractError("CAS assignments must not be empty")
-        new_revision = expected_revision + 1
+        new_revision = next_cas_revision(expected_revision)
         set_parts: list[str] = []
         params: list[Any] = []
         for column, value in assignments.items():
@@ -1399,6 +1627,49 @@ class StateTransaction:
                 },
             )
         return new_revision
+
+    def cas_task_state_transition(
+        self,
+        expected: TaskStateSnapshot,
+        proposed: TaskStateSnapshot,
+        *,
+        current: TaskStateSnapshot | None = None,
+        worker_assertion: bool = False,
+        table: str = "tasks",
+        key_column: str = "task_cid",
+        status_column: str = "status",
+    ) -> int:
+        """Apply one canonical task CAS successor through row revision CAS.
+
+        Validation consumes ``CanonicalTaskStateMachine@1``; storage still uses
+        the existing row-revision compare-and-swap. Worker assertions cannot
+        bypass either check.
+        """
+
+        next_revision = assert_task_cas_transition(
+            expected,
+            proposed,
+            current=current,
+            worker_assertion=worker_assertion,
+        )
+        applied = self.cas_row_revision(
+            table=table,
+            key_column=key_column,
+            key_value=expected.task_cid,
+            expected_revision=expected.revision,
+            assignments={status_column: proposed.state.value},
+        )
+        if applied != next_revision:
+            raise OptimisticConflictError(
+                "task CAS applied an unexpected revision",
+                details={
+                    "task_cid": expected.task_cid,
+                    "expected_revision": expected.revision,
+                    "applied_revision": applied,
+                    "required_revision": next_revision,
+                },
+            )
+        return applied
 
     def execute_named_operation(
         self,
@@ -1519,14 +1790,10 @@ class StateTransaction:
                     result_digest=str(existing.get("result_digest") or ""),
                 )
 
-            if command.expected_revision != live.revision:
-                raise OptimisticConflictError(
-                    "command expected_revision is stale",
-                    details={
-                        "expected_revision": command.expected_revision,
-                        "live_revision": live.revision,
-                    },
-                )
+            assert_revision_cas_transition(
+                expected_revision=command.expected_revision,
+                live_revision=live.revision,
+            )
 
             body = apply(self, command, live)
             if not isinstance(body, Mapping):
@@ -1704,6 +1971,7 @@ __all__ = [
     "FenceMismatchError",
     "IdempotencyConflictError",
     "OptimisticConflictError",
+    "REVISION_CAS_TRANSITION_BINDING",
     "RetryPolicy",
     "STATE_TRANSACTION_INTERFACE",
     "STATE_TRANSACTION_SCHEMA",
@@ -1713,9 +1981,14 @@ __all__ = [
     "TransactionConnection",
     "TransactionError",
     "TransientTransactionError",
+    "assert_revision_cas_transition",
+    "assert_task_cas_transition",
     "classify_exception",
     "default_retry_policy",
     "is_retryable_exception",
+    "next_cas_revision",
     "result_digest",
+    "revision_cas_transition_allowed",
     "run_with_retry",
+    "task_cas_transition_allowed",
 ]
