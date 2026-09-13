@@ -129397,6 +129397,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument("--owner-merge-config-cid", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--owner-merge-plan-cid", default="", help=argparse.SUPPRESS)
     parser.add_argument(
         "--expected-task-source-root",
         default="",
@@ -130084,6 +130086,12 @@ def main(argv: list[str] | None = None) -> None:
     ):
         database_path = Path(args.todo_path)
 
+    owner_merge_attachment: Any = None
+    owner_merge_config_cid = str(getattr(args, "owner_merge_config_cid", "") or "")
+    owner_merge_plan_cid = str(getattr(args, "owner_merge_plan_cid", "") or "")
+    if bool(owner_merge_config_cid) != bool(owner_merge_plan_cid):
+        raise RuntimeError("paired owner bootstrap requires both config and plan identities")
+
     use_database_daemon = (
         program is not None
         and is_database_authority_mode(
@@ -130098,6 +130106,9 @@ def main(argv: list[str] | None = None) -> None:
             task_source_kind=str(getattr(args, "task_source_kind", "") or ""),
         )
     )
+
+    if owner_merge_config_cid and (not use_database_daemon or int(getattr(args, "state_owner_bootstrap_fd", -1)) < 3):
+        raise RuntimeError("paired owner bootstrap requires a native database listener")
 
     if use_database_daemon:
         authority_mode = (
@@ -130162,23 +130173,27 @@ def main(argv: list[str] | None = None) -> None:
                 request_state_owner_bootstrap,
             )
 
-            credentials = _lgcvf_daemon_call(
-                "owner_bootstrap",
-                lambda: request_state_owner_bootstrap(
-                    bootstrap_fd,
-                    client_id=(
-                        f"database-implementation-daemon:{owner_session_id}"
+            bootstrap_kwargs = {
+                "client_id": f"database-implementation-daemon:{owner_session_id}",
+                "store_id": str(getattr(args, "state_owner_bootstrap_store_id", "") or ""),
+            }
+            owner_merge_bundle = None
+            if owner_merge_config_cid:
+                from ..task_sources.owner_merge_bootstrap import request_owner_merge_bootstrap
+
+                owner_merge_bundle = _lgcvf_daemon_call(
+                    "owner_bootstrap",
+                    lambda: request_owner_merge_bootstrap(
+                        bootstrap_fd, **bootstrap_kwargs,
+                        config_cid=owner_merge_config_cid, plan_cid=owner_merge_plan_cid,
                     ),
-                    store_id=str(
-                        getattr(
-                            args,
-                            "state_owner_bootstrap_store_id",
-                            "",
-                        )
-                        or ""
-                    ),
-                ),
-            )
+                )
+                credentials = owner_merge_bundle.task
+            else:
+                credentials = _lgcvf_daemon_call(
+                    "owner_bootstrap",
+                    lambda: request_state_owner_bootstrap(bootstrap_fd, **bootstrap_kwargs),
+                )
             state_owner_bootstrap_credentials = credentials
             bootstrap_process_instance_id = credentials.process_birth_id
             expected_endpoint = str(
@@ -130219,6 +130234,15 @@ def main(argv: list[str] | None = None) -> None:
                     client,
                     execution_route_policy=credentials.execution_route_policy,
                 )
+                if owner_merge_bundle is not None:
+                    owner_merge_attachment = owner_merge_bundle.attach_merge_runtime(
+                        repository_root=REPO_ROOT,
+                        attempt_root=Path(args.state_dir).absolute() / f"{args.state_prefix}_database_portal_attempts",
+                        board_namespace=str(getattr(args, "board_namespace", "") or ""),
+                        lane_id=str(args.task_shard_index),
+                        admitted_config_cid=owner_merge_config_cid,
+                        admitted_plan_cid=owner_merge_plan_cid,
+                    )
             except BaseException as exc:
                 _emit_lgcvf_daemon_diagnostic("owner_attach", exc)
                 if client is not None:
@@ -130276,19 +130300,38 @@ def main(argv: list[str] | None = None) -> None:
             )
         except BaseException as exc:
             _emit_lgcvf_daemon_diagnostic("daemon_construct", exc)
-            if typed_task_source is not None:
-                typed_task_source.close()
+            try:
+                if typed_task_source is not None:
+                    typed_task_source.close()
+            finally:
+                if owner_merge_attachment is not None:
+                    owner_merge_attachment.close()
             raise
-        _lgcvf_daemon_call(
-            "portal_bind",
-            lambda: bind_database_portal_execution_from_args(
-                daemon,
-                args,
-                repo_root=REPO_ROOT,
-                portal_daemon_class=PortalImplementationDaemon,
-                external_agent_container_dispatcher_factory=dispatcher_factory,
-            ),
-        )
+        try:
+            _lgcvf_daemon_call(
+                "portal_bind",
+                lambda: bind_database_portal_execution_from_args(
+                    daemon,
+                    args,
+                    repo_root=REPO_ROOT,
+                    portal_daemon_class=PortalImplementationDaemon,
+                    external_agent_container_dispatcher_factory=dispatcher_factory,
+                    owner_merge_runtime=(
+                        owner_merge_attachment.runtime if owner_merge_attachment is not None else None
+                    ),
+                    admitted_owner_merge_config_cid=owner_merge_config_cid or None,
+                    admitted_owner_merge_plan_cid=owner_merge_plan_cid or None,
+                ),
+            )
+        except BaseException:
+            try:
+                close = getattr(daemon, "close_event_runtime", None) or getattr(daemon, "close", None)
+                if callable(close):
+                    close()
+            finally:
+                if owner_merge_attachment is not None:
+                    owner_merge_attachment.close()
+            raise
     else:
         daemon = PortalImplementationDaemon(
             todo_path=args.todo_path,
@@ -130481,9 +130524,13 @@ def main(argv: list[str] | None = None) -> None:
                 if callable(close):
                     close()
         finally:
-            if handlers_installed:
-                signal.signal(signal.SIGTERM, previous_term)
-                signal.signal(signal.SIGINT, previous_int)
+            try:
+                if owner_merge_attachment is not None:
+                    owner_merge_attachment.close()
+            finally:
+                if handlers_installed:
+                    signal.signal(signal.SIGTERM, previous_term)
+                    signal.signal(signal.SIGINT, previous_int)
 
 
 _IMPORTED_CONTROL_PLANE_MATERIALIZE_BOOTSTRAP = r"""

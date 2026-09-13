@@ -8900,6 +8900,8 @@ class PortalSupervisorConfig:
     database_owner_session_id: str = ""
     state_owner_bootstrap_fd: int = -1
     state_owner_bootstrap_store_id: str = ""
+    owner_merge_config_cid: str = ""
+    owner_merge_plan_cid: str = ""
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
@@ -26136,6 +26138,15 @@ class PortalImplementationSupervisor:
                             self.config.database_owner_session_id,
                         ]
                     )
+                if bool(self.config.owner_merge_config_cid) != bool(self.config.owner_merge_plan_cid):
+                    raise RuntimeError("paired owner bootstrap requires both config and plan identities")
+                if self.config.owner_merge_config_cid:
+                    if self.config.state_owner_bootstrap_fd < 3:
+                        raise RuntimeError("paired owner bootstrap requires its inherited listener")
+                    command.extend([
+                        "--owner-merge-config-cid", self.config.owner_merge_config_cid,
+                        "--owner-merge-plan-cid", self.config.owner_merge_plan_cid,
+                    ])
                 if self.config.state_owner_bootstrap_fd >= 3:
                     command.extend(
                         [
@@ -27267,6 +27278,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument("--owner-merge-config-cid", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--owner-merge-plan-cid", default="", help=argparse.SUPPRESS)
     parser.add_argument(
         "--explicit-legacy-task-source",
         action="store_true",
@@ -28104,6 +28117,8 @@ def supervisor_config_from_args(
         state_owner_bootstrap_store_id=str(
             getattr(args, "state_owner_bootstrap_store_id", "") or ""
         ),
+        owner_merge_config_cid=str(getattr(args, "owner_merge_config_cid", "") or ""),
+        owner_merge_plan_cid=str(getattr(args, "owner_merge_plan_cid", "") or ""),
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,
