@@ -3615,6 +3615,16 @@ class QuackStateServer:
             raise QuackStateServerControlError("typed command gateway is unavailable")
         gateway.bind_database_status_scope(**binding)
 
+    def bind_legacy_merge_queue_status_scope(self, **binding: Any) -> None:
+        """Opt in to observation of one launcher-owned Portal queue."""
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError("legacy queue status requires a ready owner")
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError("typed command gateway is unavailable")
+        gateway.bind_legacy_merge_queue_status_scope(**binding)
+
     def bind_typed_status_scope(self) -> None:
         """Bind the persisted status bootstrap to the admitted live slice."""
 
