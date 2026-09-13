@@ -7,8 +7,10 @@ authority. The existing captured-snapshot consumer remains unchanged.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, replace
 import hashlib
+from itertools import chain
 import json
 from pathlib import Path
 import re
@@ -23,11 +25,13 @@ MAX_BUNDLE_BLOCK_BYTES = 1024 * 1024
 class ChunkedReconstruction(Reconstruction):
     chunked_snapshot_cid: str
     analysis_limitation_cids: tuple[str, ...]
+    paged_snapshot_cid: str
 
     def observation(self) -> dict[str, Any]:
         return {**super().observation(),
-                "schema": "ipfs_accelerate_py/chunked-semantic-reconstruction@1",
+                "schema": "ipfs_accelerate_py/chunked-semantic-reconstruction@2",
                 "chunked_snapshot_cid": self.chunked_snapshot_cid,
+                "paged_snapshot_cid": self.paged_snapshot_cid,
                 "analysis_limitation_count": len(self.analysis_limitation_cids),
                 "analysis_limitation_cids": list(self.analysis_limitation_cids),
                 "analysis_coverage": "incomplete" if self.analysis_limitation_cids else "not_established",
@@ -47,7 +51,7 @@ class _LimitedIndex:
         raise AttributeError(name)
 
 
-def _bound_limitations(state, snapshot, chunked, limits, manifest_cid):
+def _bound_limitations(state, snapshot, chunked, limits, manifest_cid, paged_snapshot_cid):
     from ipfs_datasets_py.logic.software_contracts.content import cid_for_structured
     from ipfs_datasets_py.logic.software_contracts.semantic_index.models import ArtifactRecord, RepositoryState
     from ipfs_datasets_py.logic.software_contracts.semantic_state.models import AnalysisLimitation, ArtifactFactNode
@@ -71,10 +75,11 @@ def _bound_limitations(state, snapshot, chunked, limits, manifest_cid):
         covered.add(entry.raw_path_hex)
         reason = entry.opaque_reason or artifact.metadata.get("opaque_reason") or "scanner_analysis_opaque"
         payload = {
-            "schema": "ipfs_accelerate_py/chunked-analysis-limitation-provenance@1",
+            "schema": "ipfs_accelerate_py/chunked-analysis-limitation-provenance@2",
             "repository_id": snapshot.repository_id, "git_commit": snapshot.git_commit,
             "git_tree": snapshot.git_tree, "population_cid": chunked.population_cid,
             "chunked_snapshot_cid": manifest_cid, "snapshot_cid": snapshot_cid,
+            "paged_snapshot_cid": paged_snapshot_cid,
             "raw_path_hex": entry.raw_path_hex, "snapshot_entry_cid": entry.entry_cid,
             "git_object_oid": member.git_object_oid, "git_mode": member.git_mode,
             "source_cid": entry.source_cid, "size_bytes": entry.size_bytes,
@@ -104,7 +109,7 @@ def _bound_limitations(state, snapshot, chunked, limits, manifest_cid):
     return augmented, tuple(sorted(limitations, key=lambda item: item.limitation_cid)), tuple(provenance), tuple(bound_artifacts)
 
 
-def _verify_bound_bundle(bundle, producer, limitations, provenance, bound_artifacts, manifest_blocks):
+def _verify_bound_bundle(bundle, producer, limitations, provenance, bound_artifacts, manifest_blocks, snapshot_blocks):
     """Check both index membership and leaves; a CID claim alone is insufficient."""
     from ipfs_datasets_py.logic.software_contracts.content import canonical_dag_json_bytes
     from ipfs_datasets_py.logic.software_contracts.semantic_state import verify_semantic_state_bundle
@@ -120,7 +125,8 @@ def _verify_bound_bundle(bundle, producer, limitations, provenance, bound_artifa
     expected = SortedPairIndex([(item.limitation_cid, item.limitation_cid) for item in limitations])
     if root.producer != producer or root.analysis_limitation_index_cid != expected.index_cid:
         raise ReconstructionError("bundle changes bound producer or formal analysis limitations")
-    required = {expected.index_cid: canonical_dag_json_bytes(expected.identity_payload()), **manifest_blocks}
+    required = {expected.index_cid: canonical_dag_json_bytes(expected.identity_payload()),
+                **manifest_blocks, **snapshot_blocks}
     for item in limitations:
         required[item.limitation_cid] = canonical_dag_json_bytes(item.identity_payload())
     for artifact in (*provenance, *bound_artifacts):
@@ -139,6 +145,7 @@ def reconstruct_chunked_semantic_state(
     repository: str | Path, chunked: Any, *, expected_commit: str, expected_tree: str,
     expected_chunked_snapshot_cid: str, repository_id: str,
     limits: ReconstructionLimits = ReconstructionLimits(), nominated_bundle: Any = None,
+    admission_limits: Any = None,
 ) -> ChunkedReconstruction:
     """Reproject the exact committed content, then bind every known opaque input.
 
@@ -148,7 +155,10 @@ def reconstruct_chunked_semantic_state(
     of complete semantic analysis; this return value grants no such authority.
     """
     from ipfs_datasets_py.logic.software_contracts.semantic_index.chunked_snapshot import (
-        ChunkedRepositorySnapshot, project_chunked_repository,
+        ChunkedRepositorySnapshot, ChunkedSnapshotLimits, project_chunked_repository,
+    )
+    from ipfs_datasets_py.logic.software_contracts.semantic_index.paged_snapshot import (
+        admit_chunked_snapshot_manifest, page_snapshot_evidence, parse_paged_snapshot_evidence,
     )
     from ipfs_datasets_py.logic.software_contracts.semantic_index.committed_snapshot import preflight_committed_repository
     from ipfs_datasets_py.logic.software_contracts.semantic_index.scanner import RepositoryScanner
@@ -161,23 +171,43 @@ def reconstruct_chunked_semantic_state(
         raise ReconstructionError("request requires full commit and tree object ids")
     if not isinstance(repository_id, str) or not repository_id.strip():
         raise ReconstructionError("request requires an explicit repository identity")
-    if not isinstance(limits, ReconstructionLimits) or not isinstance(chunked, ChunkedRepositorySnapshot):
+    if not isinstance(limits, ReconstructionLimits) or not isinstance(chunked, (ChunkedRepositorySnapshot, Mapping)):
         raise ReconstructionError("chunk reconstruction requires typed limits and manifest")
-    if (chunked.repository_id, chunked.git_commit, chunked.git_tree) != (repository_id, expected_commit, expected_tree):
+    if isinstance(chunked, ChunkedRepositorySnapshot) and (
+            chunked.repository_id, chunked.git_commit, chunked.git_tree) != (repository_id, expected_commit, expected_tree):
         raise ReconstructionError("chunked manifest differs from requested committed population")
-    if (chunked.limits.max_entries > limits.max_entries
-            or chunked.limits.max_metadata_bytes > limits.max_metadata_bytes):
+    admission_limits = admission_limits if admission_limits is not None else ChunkedSnapshotLimits()
+    if not isinstance(admission_limits, ChunkedSnapshotLimits):
+        raise ReconstructionError("chunk reconstruction requires typed admission limits")
+    if (admission_limits.max_entries > limits.max_entries
+            or admission_limits.max_metadata_bytes > limits.max_metadata_bytes):
         raise ReconstructionError("chunked manifest exceeds reconstruction metadata/entry limits")
+    if isinstance(chunked, ChunkedRepositorySnapshot):
+        # Object callers must not serialize under their own unqualified budgets.
+        if (not isinstance(chunked.limits, ChunkedSnapshotLimits)
+                or any(getattr(chunked.limits, name) > value for name, value in asdict(admission_limits).items())
+                or len(chunked.entries) > admission_limits.max_entries
+                or len(chunked.blobs) > admission_limits.max_entries
+                or sum(len(blob.chunks) for blob in chunked.blobs) > admission_limits.max_chunks):
+            raise ReconstructionError("manifest object exceeds qualified admission limits before serialization")
+        references = chain((chunked.repository_id, chunked.population_cid),
+                           (entry.raw_path_hex for entry in chunked.entries),
+                           (blob.source_cid for blob in chunked.blobs),
+                           (frame.source_cid for blob in chunked.blobs for frame in blob.chunks))
+        if any(type(value) is not str or len(value) > MAX_BUNDLE_BLOCK_BYTES for value in references):
+            raise ReconstructionError("manifest object reference exceeds frame bounds before serialization")
     root = Path(repository).resolve(strict=True)
     request = dict(expected_commit=expected_commit, expected_tree=expected_tree,
                    repository_id=repository_id, **asdict(limits))
     try:
-        manifest_cid, manifest_blocks = chunked.manifest_blocks()
+        manifest_cid, manifest_blocks = (chunked.manifest_blocks() if isinstance(chunked, ChunkedRepositorySnapshot)
+                                         else (expected_chunked_snapshot_cid, chunked))
         if manifest_cid != expected_chunked_snapshot_cid:
             raise ReconstructionError("chunked manifest differs from requested snapshot CID")
-        plan = preflight_committed_repository(root, **request)
-        if plan.population_cid != chunked.population_cid:
-            raise ReconstructionError("chunked manifest changes the committed population")
+        chunked = admit_chunked_snapshot_manifest(root, manifest_cid, manifest_blocks,
+                                                   repository_id=repository_id, expected_commit=expected_commit,
+                                                   expected_tree=expected_tree, limits=admission_limits)
+        manifest_cid, manifest_blocks = chunked.manifest_blocks()
         projection = project_chunked_repository(root, chunked, max_file_bytes=limits.max_file_bytes,
                                                 max_total_bytes=limits.max_total_bytes)
     except SnapshotError as exc:
@@ -186,10 +216,10 @@ def reconstruct_chunked_semantic_state(
     if (snapshot.mode, snapshot.repository_id, snapshot.git_commit, snapshot.git_tree) != (
             "git-clean", repository_id, expected_commit, expected_tree):
         raise ReconstructionError("projected snapshot differs from committed request")
-    if ({entry.raw_path_hex for entry in snapshot.entries} != {entry.raw_path_hex for entry in plan.entries}
+    if ({entry.raw_path_hex for entry in snapshot.entries} != {entry.raw_path_hex for entry in chunked.entries}
             or projection.chunked_snapshot_cid != manifest_cid):
         raise ReconstructionError("projected snapshot changes the exact committed population")
-    members = {entry.raw_path_hex: entry for entry in plan.entries}
+    members = {entry.raw_path_hex: entry for entry in chunked.entries}
     blobs = {blob.git_object_oid: blob for blob in chunked.blobs}
     for entry in snapshot.entries:
         member = members[entry.raw_path_hex]
@@ -202,24 +232,42 @@ def reconstruct_chunked_semantic_state(
     if (any(entry.size_bytes > limits.max_file_bytes for entry in retained)
             or sum(entry.size_bytes for entry in retained) > limits.max_total_bytes):
         raise ReconstructionError("projected content exceeds reconstruction retained limits")
+    try:
+        paged = page_snapshot_evidence(snapshot, manifest_cid, max_metadata_bytes=limits.max_metadata_bytes)
+        _, paged = parse_paged_snapshot_evidence(
+            paged.root_cid, paged.blocks, expected_snapshot_cid=snapshot.snapshot_cid,
+            expected_source_manifest_cid=manifest_cid, repository_id=repository_id,
+            expected_commit=expected_commit, expected_tree=expected_tree,
+            max_entries=limits.max_entries, max_metadata_bytes=limits.max_metadata_bytes)
+    except SnapshotError as exc:
+        raise ReconstructionError(str(exc)) from exc
     state = RepositoryScanner(repository_id=repository_id).scan_snapshot(
         snapshot, {entry.source_key: entry.captured_bytes for entry in snapshot.entries
                    if entry.captured_bytes is not None and not entry.is_opaque})
-    state, limitations, provenance, bound_artifacts = _bound_limitations(state, snapshot, chunked, limits, manifest_cid)
+    # Keep the existing scanner/captured schema unchanged. Replace its
+    # acquisition artifact before any semantic-state blocks are serialized.
+    evidence = paged.artifact()
+    if sum(artifact.artifact_id == evidence.artifact_id for artifact in state.artifacts) != 1:
+        raise ReconstructionError("scanner acquisition evidence is missing or duplicated")
+    state = replace(state, artifacts=tuple(artifact for artifact in state.artifacts
+                                          if artifact.artifact_id != evidence.artifact_id) + (evidence,))
+    state, limitations, provenance, bound_artifacts = _bound_limitations(
+        state, snapshot, chunked, limits, manifest_cid, paged.root_cid)
+    bound_artifacts = (*bound_artifacts, evidence)
     producer = SemanticStateProducer(state.state_cid, snapshot.snapshot_cid, expected_commit, expected_tree,
                                      manifest_cid, state.schema, state.extractor_name, state.extractor_version)
     bundle = build_semantic_state(_LimitedIndex(state, producer, limitations))
     blocks = dict(bundle.blocks)
-    for cid, data in manifest_blocks.items():
+    for cid, data in chain(manifest_blocks.items(), paged.blocks.items()):
         if cid in blocks and blocks[cid] != data:
             raise ReconstructionError("conflicting chunk manifest block")
         blocks[cid] = data
     bundle = SemanticStateBundle(bundle.root, blocks)
-    _verify_bound_bundle(bundle, producer, limitations, provenance, bound_artifacts, manifest_blocks)
+    _verify_bound_bundle(bundle, producer, limitations, provenance, bound_artifacts, manifest_blocks, paged.blocks)
     matched = None
     if nominated_bundle is not None:
         nominated = _verify_bound_bundle(nominated_bundle, producer, limitations, provenance,
-                                         bound_artifacts, manifest_blocks)
+                                         bound_artifacts, manifest_blocks, paged.blocks)
         if nominated.root_cid != bundle.root.root_cid:
             raise ReconstructionError("nominated root differs from cold chunk reconstruction")
         matched = True
@@ -227,11 +275,12 @@ def reconstruct_chunked_semantic_state(
         after = preflight_committed_repository(root, **request)
     except SnapshotError as exc:
         raise ReconstructionError(str(exc)) from exc
-    if after.population_cid != plan.population_cid:
+    if after.population_cid != chunked.population_cid:
         raise ReconstructionError("committed population changed during chunk reconstruction")
-    configuration = {"schema": "ipfs_accelerate_py/chunked-reconstruction-config@1",
-                     "repository_id": repository_id, "population_cid": plan.population_cid,
+    configuration = {"schema": "ipfs_accelerate_py/chunked-reconstruction-config@2",
+                     "repository_id": repository_id, "population_cid": chunked.population_cid,
                      "chunked_snapshot_cid": manifest_cid, "limits": asdict(limits),
+                     "paged_snapshot_cid": paged.root_cid, "admission_limits": asdict(admission_limits),
                      "stream_limits": asdict(chunked.limits), "population_scope": "complete-committed",
                      "analysis_limitation_index_cid": bundle.root.analysis_limitation_index_cid,
                      "reuse": "cold", "environment_bindings": []}
@@ -239,8 +288,8 @@ def reconstruct_chunked_semantic_state(
     return ChunkedReconstruction(bundle, snapshot.snapshot_cid, state.state_cid, expected_commit,
                                  expected_tree, digest,
                                  tuple((entry.path, entry.opaque_reason) for entry in snapshot.entries if entry.is_opaque),
-                                 matched, plan.population_cid, manifest_cid,
-                                 tuple(item.limitation_cid for item in limitations))
+                                 matched, chunked.population_cid, manifest_cid,
+                                 tuple(item.limitation_cid for item in limitations), paged.root_cid)
 
 
 __all__ = ["ChunkedReconstruction", "reconstruct_chunked_semantic_state"]
