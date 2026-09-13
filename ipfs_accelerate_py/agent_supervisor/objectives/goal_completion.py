@@ -7,6 +7,14 @@ tree-bound, passing evidence with content-addressed provenance.
 
 The types in this module are independent of the markdown objective tracker so
 they can also be used by daemons, APIs, and persisted graph consumers.
+
+Objective satisfaction and stop conditions (DOEP-056) are a binding of the
+existing goal-completion evaluator and :class:`GoalLifecycle`, not a second
+completion owner, planner, queue, or event bus.  An objective stops only when
+admitted evidence satisfies it, a human/policy decision is required, budget is
+exhausted, no admissible/convergent plan exists, or it is cancelled.  A worker
+or model assertion cannot skip these controls or treat an empty queue as
+completion.  An empty queue is not completion.  This path never writes DuckDB.
 """
 
 from __future__ import annotations
@@ -16,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from hashlib import sha256
 import json
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, ClassVar, Final, Iterable, Mapping, Sequence
 
 from ..proof.formal_verification_contracts import (
     AssuranceLevel,
@@ -36,6 +44,43 @@ DEFAULT_CLOCK_SKEW_SECONDS = 300.0
 CHANNEL_PROOF_REVISION_NAMESPACE = "documentation-semantic-channel-proof"
 CHANNEL_EVIDENCE_PROVENANCE_NAMESPACE = "documentation-completion-receipt"
 
+OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_BINDING: Final = (
+    "ObjectiveSatisfactionAndStopConditions@1"
+)
+OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_INTERFACE: Final = (
+    OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_BINDING
+)
+OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/objective-satisfaction-and-stop-conditions@1"
+)
+OBJECTIVE_STOP_DECISION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/objective-stop-decision@1"
+)
+OSCILLATION_RUNAWAY_NONCONVERGENCE_BINDING: Final = (
+    "OscillationRunawayNonconvergence@1"
+)
+AUTOMATIC_BOUNDED_TASK_REFILL_BINDING: Final = "AutomaticBoundedTaskRefill@1"
+PLAN_COMPLETENESS_WITNESS_BINDING: Final = "PlanCompletenessWitness@1"
+OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_CONSUMES: Final[tuple[str, ...]] = (
+    "ipfs_accelerate_py.agent_supervisor.completion_gate.v1",
+    PLAN_COMPLETENESS_WITNESS_BINDING,
+    AUTOMATIC_BOUNDED_TASK_REFILL_BINDING,
+    OSCILLATION_RUNAWAY_NONCONVERGENCE_BINDING,
+)
+LEGAL_OBJECTIVE_STOP_CONDITIONS: Final[tuple[str, ...]] = (
+    "admitted_evidence_satisfied",
+    "human_or_policy_required",
+    "budget_exhausted",
+    "no_admissible_convergent_plan",
+    "cancelled",
+)
+FORBIDDEN_OBJECTIVE_STOP_CONDITIONS: Final[tuple[str, ...]] = (
+    "empty_queue",
+    "worker_assertion",
+    "model_assertion",
+    "empty_queue_is_completion",
+)
+
 
 class GoalState(str, Enum):
     """Canonical states in the goal lifecycle."""
@@ -46,6 +91,17 @@ class GoalState(str, Enum):
     ANALYSIS_INCONCLUSIVE = "analysis_inconclusive"
     BLOCKED = "blocked"
     REOPENED = "reopened"
+
+
+class ObjectiveStopDisposition(str, Enum):
+    """Typed stop outcomes for an objective.  Empty queue is not among them."""
+
+    CONTINUE = "continue"
+    SATISFIED = "satisfied"
+    HUMAN_OR_POLICY_REQUIRED = "human_or_policy_required"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    NO_ADMISSIBLE_CONVERGENT_PLAN = "no_admissible_convergent_plan"
+    CANCELLED = "cancelled"
 
 
 _GOAL_STATE_ALIASES = {
@@ -165,6 +221,10 @@ class IllegalGoalTransitionError(ValueError):
 # Concise public spelling retained for callers which do not use the Error
 # suffix convention.
 IllegalGoalTransition = IllegalGoalTransitionError
+
+
+class ObjectiveSatisfactionError(ValueError):
+    """Malformed objective-satisfaction or stop-condition input."""
 
 
 def _utc_datetime(value: datetime | str | None, *, field_name: str) -> datetime | None:
@@ -2192,6 +2252,15 @@ class GoalTransition:
 class GoalLifecycle:
     """Mutable state holder which enforces and audits lifecycle transitions."""
 
+    SATISFACTION_BINDING: ClassVar[str] = OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_BINDING
+    SATISFACTION_INTERFACE: ClassVar[str] = (
+        OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_INTERFACE
+    )
+    SATISFACTION_SCHEMA: ClassVar[str] = OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_SCHEMA
+    SATISFACTION_CONSUMES: ClassVar[tuple[str, ...]] = (
+        OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_CONSUMES
+    )
+
     goal_id: str = ""
     state: GoalState | str = GoalState.ACTIVE
     history: list[GoalTransition] = field(default_factory=list)
@@ -2247,6 +2316,13 @@ class GoalLifecycle:
         self.state = target_state
         self.history.append(transition)
         return self.state
+
+    def evaluate_satisfaction_and_stop(self, **kwargs: Any) -> "ObjectiveStopDecision":
+        """Evaluate stop conditions on this lifecycle without a competing owner."""
+
+        kwargs.setdefault("current_state", self.state)
+        kwargs.setdefault("goal_id", self.goal_id)
+        return evaluate_objective_satisfaction_and_stop_conditions(**kwargs)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -4413,6 +4489,342 @@ def evaluate_goal_completion(
     )
 
 
+def _required_bool(value: Any, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ObjectiveSatisfactionError(f"{name} must be a boolean")
+    return value
+
+
+def _optional_open_task_count(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ObjectiveSatisfactionError("open_task_count must be an integer")
+    if value < 0:
+        raise ObjectiveSatisfactionError("open_task_count must be >= 0")
+    return value
+
+
+def _queue_is_empty(*, queue_empty: bool, open_task_count: int | None) -> bool:
+    inferred = open_task_count == 0 if open_task_count is not None else False
+    if queue_empty and open_task_count is not None and not inferred:
+        raise ObjectiveSatisfactionError("queue_empty contradicts open_task_count")
+    return bool(queue_empty or inferred)
+
+
+def is_legal_objective_stop_condition(value: str | ObjectiveStopDisposition | None) -> bool:
+    """Return whether *value* is one of the plan-bound stop conditions."""
+
+    if isinstance(value, ObjectiveStopDisposition):
+        return value is not ObjectiveStopDisposition.CONTINUE
+    normalized = str(value or "").strip().casefold().replace("-", "_").replace(" ", "_")
+    return normalized in LEGAL_OBJECTIVE_STOP_CONDITIONS
+
+
+def objective_satisfaction_and_stop_conditions_are_armed() -> bool:
+    """Return True when only the plan-bound stop conditions can halt an objective."""
+
+    return bool(
+        OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_BINDING
+        == OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_INTERFACE
+        and LEGAL_OBJECTIVE_STOP_CONDITIONS
+        == (
+            "admitted_evidence_satisfied",
+            "human_or_policy_required",
+            "budget_exhausted",
+            "no_admissible_convergent_plan",
+            "cancelled",
+        )
+        and "empty_queue" in FORBIDDEN_OBJECTIVE_STOP_CONDITIONS
+        and "worker_assertion" in FORBIDDEN_OBJECTIVE_STOP_CONDITIONS
+        and "model_assertion" in FORBIDDEN_OBJECTIVE_STOP_CONDITIONS
+        and not any(
+            is_legal_objective_stop_condition(item)
+            for item in FORBIDDEN_OBJECTIVE_STOP_CONDITIONS
+        )
+    )
+
+
+_STOP_CONDITION_BY_DISPOSITION: Mapping[ObjectiveStopDisposition, str] = {
+    ObjectiveStopDisposition.SATISFIED: "admitted_evidence_satisfied",
+    ObjectiveStopDisposition.HUMAN_OR_POLICY_REQUIRED: "human_or_policy_required",
+    ObjectiveStopDisposition.BUDGET_EXHAUSTED: "budget_exhausted",
+    ObjectiveStopDisposition.NO_ADMISSIBLE_CONVERGENT_PLAN: "no_admissible_convergent_plan",
+    ObjectiveStopDisposition.CANCELLED: "cancelled",
+    ObjectiveStopDisposition.CONTINUE: "",
+}
+
+
+@dataclass(frozen=True)
+class ObjectiveStopDecision:
+    """Fail-closed stop verdict bound to the existing completion evaluator.
+
+    This is not a second completion owner.  Satisfaction requires admitted
+    evidence through :func:`evaluate_goal_completion`.  Worker or model
+    assertion cannot skip these controls.  An empty queue is not completion.
+    This path never writes DuckDB and cannot authorize completion.
+    """
+
+    disposition: ObjectiveStopDisposition
+    reason_code: str = ""
+    stop_condition: str = ""
+    satisfied: bool = False
+    stopped: bool = False
+    goal_id: str = ""
+    queue_empty: bool = False
+    worker_assertion: bool = False
+    completion: GoalCompletionDecision | None = None
+    schema_version: int = GOAL_COMPLETION_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        selected = (
+            self.disposition
+            if isinstance(self.disposition, ObjectiveStopDisposition)
+            else ObjectiveStopDisposition(str(self.disposition))
+        )
+        object.__setattr__(self, "disposition", selected)
+        object.__setattr__(self, "goal_id", str(self.goal_id or "").strip())
+        condition = str(
+            self.stop_condition or _STOP_CONDITION_BY_DISPOSITION.get(selected, "")
+        ).strip()
+        if condition and condition not in LEGAL_OBJECTIVE_STOP_CONDITIONS:
+            raise ObjectiveSatisfactionError(
+                f"unknown stop condition {condition!r}; expected one of: "
+                + ", ".join(LEGAL_OBJECTIVE_STOP_CONDITIONS)
+            )
+        if selected is ObjectiveStopDisposition.CONTINUE:
+            condition = ""
+        object.__setattr__(self, "stop_condition", condition)
+        object.__setattr__(
+            self,
+            "reason_code",
+            str(self.reason_code or condition or selected.value).strip(),
+        )
+        satisfied = selected is ObjectiveStopDisposition.SATISFIED
+        stopped = selected is not ObjectiveStopDisposition.CONTINUE
+        if self.satisfied and not satisfied:
+            raise ObjectiveSatisfactionError(
+                "only admitted-evidence satisfaction may set satisfied=True"
+            )
+        if self.stopped and not stopped:
+            raise ObjectiveSatisfactionError("continue decisions are not stopped")
+        object.__setattr__(self, "satisfied", satisfied)
+        object.__setattr__(self, "stopped", stopped)
+        object.__setattr__(self, "queue_empty", bool(self.queue_empty))
+        object.__setattr__(self, "worker_assertion", bool(self.worker_assertion))
+        if satisfied:
+            if self.completion is None or not self.completion.verified:
+                raise ObjectiveSatisfactionError(
+                    "satisfaction requires admitted completion evidence"
+                )
+
+    @property
+    def terminal(self) -> bool:
+        return self.stopped
+
+    @property
+    def success(self) -> bool:
+        return self.satisfied
+
+    @property
+    def empty_queue_is_completion(self) -> bool:
+        return False
+
+    @property
+    def worker_assertion_is_authority(self) -> bool:
+        return False
+
+    @property
+    def completion_authoritative(self) -> bool:
+        return False
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = {
+            "schema": OBJECTIVE_STOP_DECISION_SCHEMA,
+            "schema_version": self.schema_version,
+            "goal_id": self.goal_id,
+            "disposition": self.disposition.value,
+            "reason_code": self.reason_code,
+            "stop_condition": self.stop_condition,
+            "satisfied": self.satisfied,
+            "stopped": self.stopped,
+            "terminal": self.terminal,
+            "success": self.success,
+            "queue_empty": self.queue_empty,
+            "worker_assertion": self.worker_assertion,
+            "legal_stop_conditions": list(LEGAL_OBJECTIVE_STOP_CONDITIONS),
+            "forbidden_stop_conditions": list(FORBIDDEN_OBJECTIVE_STOP_CONDITIONS),
+            "completion": self.completion.to_dict() if self.completion is not None else None,
+            "binding": OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_BINDING,
+            "interface": OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_INTERFACE,
+            "carrier": "GoalLifecycle",
+            "entrypoint": "evaluate_objective_satisfaction_and_stop_conditions",
+            "consumes": list(OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_CONSUMES),
+            "model_free": True,
+            "authorizes_completion": False,
+            "database_write": False,
+            "completion_authoritative": False,
+            "worker_assertion_is_authority": False,
+            "worker_completion_insufficient": True,
+            "no_competing_subsystem_created": True,
+            "empty_queue_is_completion": False,
+        }
+        payload["decision_id"] = _stable_fingerprint("objective-stop", payload)
+        return payload
+
+
+def evaluate_objective_satisfaction_and_stop_conditions(
+    *,
+    current_state: GoalState | str = GoalState.ACTIVE,
+    acceptance_criteria: Sequence[str] | str | None = None,
+    evidence: Sequence[CompletionEvidence | Mapping[str, Any]] = (),
+    tasks_complete: bool = False,
+    queue_empty: bool = False,
+    open_task_count: int | None = None,
+    worker_assertion: bool = False,
+    cancelled: bool = False,
+    human_or_policy_required: bool = False,
+    budget_exhausted: bool = False,
+    no_admissible_convergent_plan: bool = False,
+    quarantined_nonconvergent: bool = False,
+    goal_id: str = "",
+    repository_tree: str = "",
+    repository_id: str = "",
+    objective_revision: str = "",
+    completion_binding: Any = None,
+    require_artifact_binding: bool = False,
+    now: datetime | str | None = None,
+    freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
+    analysis_inconclusive: bool = False,
+    blocked_reason: str = "",
+    coverage: Any = None,
+    analyzer_health: Any = None,
+    exhaustion_quorum: Any = None,
+    child_goals: Sequence[Any] = (),
+    required_child_goal_ids: Sequence[str] = (),
+    analysis_result: Any = None,
+    require_completion_gate: bool = True,
+) -> ObjectiveStopDecision:
+    """Stop an objective only on admitted satisfaction or a typed terminal.
+
+    This reuses :func:`evaluate_goal_completion` and is not a second completion
+    owner.  A worker or model assertion cannot skip these controls.  An empty
+    queue is not completion.  This path never writes DuckDB.
+    """
+
+    assertion = _required_bool(worker_assertion, "worker_assertion")
+    cancelled_flag = _required_bool(cancelled, "cancelled")
+    policy_flag = _required_bool(human_or_policy_required, "human_or_policy_required")
+    budget_flag = _required_bool(budget_exhausted, "budget_exhausted")
+    no_plan_flag = _required_bool(
+        no_admissible_convergent_plan, "no_admissible_convergent_plan"
+    )
+    quarantined_flag = _required_bool(
+        quarantined_nonconvergent, "quarantined_nonconvergent"
+    )
+    empty = _queue_is_empty(
+        queue_empty=_required_bool(queue_empty, "queue_empty"),
+        open_task_count=_optional_open_task_count(open_task_count),
+    )
+    # Record the assertion for diagnostics; it cannot skip these controls.
+    completion = evaluate_goal_completion(
+        current_state=current_state,
+        acceptance_criteria=acceptance_criteria,
+        evidence=evidence,
+        tasks_complete=tasks_complete,
+        repository_tree=repository_tree,
+        repository_id=repository_id,
+        objective_revision=objective_revision,
+        completion_binding=completion_binding,
+        require_artifact_binding=require_artifact_binding,
+        now=now,
+        freshness_seconds=freshness_seconds,
+        clock_skew_seconds=clock_skew_seconds,
+        analysis_inconclusive=analysis_inconclusive,
+        blocked_reason=blocked_reason,
+        coverage=coverage,
+        analyzer_health=analyzer_health,
+        exhaustion_quorum=exhaustion_quorum,
+        child_goals=child_goals,
+        required_child_goal_ids=required_child_goal_ids,
+        analysis_result=analysis_result,
+        require_completion_gate=require_completion_gate,
+    )
+    if completion.verified:
+        return ObjectiveStopDecision(
+            disposition=ObjectiveStopDisposition.SATISFIED,
+            reason_code="admitted_evidence_satisfied",
+            stop_condition="admitted_evidence_satisfied",
+            goal_id=goal_id,
+            queue_empty=empty,
+            worker_assertion=assertion,
+            completion=completion,
+        )
+    if cancelled_flag:
+        return ObjectiveStopDecision(
+            disposition=ObjectiveStopDisposition.CANCELLED,
+            reason_code="cancelled",
+            stop_condition="cancelled",
+            goal_id=goal_id,
+            queue_empty=empty,
+            worker_assertion=assertion,
+            completion=completion,
+        )
+    if policy_flag:
+        return ObjectiveStopDecision(
+            disposition=ObjectiveStopDisposition.HUMAN_OR_POLICY_REQUIRED,
+            reason_code="human_or_policy_required",
+            stop_condition="human_or_policy_required",
+            goal_id=goal_id,
+            queue_empty=empty,
+            worker_assertion=assertion,
+            completion=completion,
+        )
+    if budget_flag:
+        return ObjectiveStopDecision(
+            disposition=ObjectiveStopDisposition.BUDGET_EXHAUSTED,
+            reason_code="budget_exhausted",
+            stop_condition="budget_exhausted",
+            goal_id=goal_id,
+            queue_empty=empty,
+            worker_assertion=assertion,
+            completion=completion,
+        )
+    if no_plan_flag or quarantined_flag:
+        return ObjectiveStopDecision(
+            disposition=ObjectiveStopDisposition.NO_ADMISSIBLE_CONVERGENT_PLAN,
+            reason_code="no_admissible_convergent_plan",
+            stop_condition="no_admissible_convergent_plan",
+            goal_id=goal_id,
+            queue_empty=empty,
+            worker_assertion=assertion,
+            completion=completion,
+        )
+    reason = "empty_queue_is_not_completion" if empty else "objective_not_satisfied"
+    return ObjectiveStopDecision(
+        disposition=ObjectiveStopDisposition.CONTINUE,
+        reason_code=reason,
+        goal_id=goal_id,
+        queue_empty=empty,
+        worker_assertion=assertion,
+        completion=completion,
+    )
+
+
+def apply_objective_satisfaction_and_stop_conditions(
+    **kwargs: Any,
+) -> ObjectiveStopDecision:
+    """Apply the existing completion evaluator's stop binding.
+
+    This is not a second completion owner.  It reuses
+    :func:`evaluate_objective_satisfaction_and_stop_conditions` and never
+    writes DuckDB or authorizes completion.
+    """
+
+    return evaluate_objective_satisfaction_and_stop_conditions(**kwargs)
+
+
 @dataclass(frozen=True)
 class LegacyGoalMigrationDecision:
     """Auditable, replay-stable classification of one legacy completed goal."""
@@ -5006,6 +5418,7 @@ evaluate_implementation_completion = evaluate_code_proof_goal_completion
 
 
 __all__ = [
+    "AUTOMATIC_BOUNDED_TASK_REFILL_BINDING",
     "CONTRADICTION_KINDS",
     "CodeProofCompletionDecision",
     "CompletionDecision",
@@ -5016,11 +5429,13 @@ __all__ = [
     "DEFAULT_CLOCK_SKEW_SECONDS",
     "DEFAULT_EVIDENCE_FRESHNESS_SECONDS",
     "EvidenceValidationResult",
+    "FORBIDDEN_OBJECTIVE_STOP_CONDITIONS",
     "GOAL_COMPLETION_SCHEMA_VERSION",
     "GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION",
     "GoalCompletionDecision",
     "GoalLifecycle",
     "GoalLifecycleState",
+    "LEGAL_OBJECTIVE_STOP_CONDITIONS",
     "LegacyGoalMigrationDecision",
     "LEGACY_COMPLETED_GOAL_STATES",
     "GoalReopenDecision",
@@ -5029,7 +5444,18 @@ __all__ = [
     "IllegalGoalTransition",
     "IllegalGoalTransitionError",
     "LEGAL_GOAL_TRANSITIONS",
+    "OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_BINDING",
+    "OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_CONSUMES",
+    "OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_INTERFACE",
+    "OBJECTIVE_SATISFACTION_AND_STOP_CONDITIONS_SCHEMA",
+    "OBJECTIVE_STOP_DECISION_SCHEMA",
+    "OSCILLATION_RUNAWAY_NONCONVERGENCE_BINDING",
+    "ObjectiveSatisfactionError",
+    "ObjectiveStopDecision",
+    "ObjectiveStopDisposition",
+    "PLAN_COMPLETENESS_WITNESS_BINDING",
     "ReopenDecision",
+    "apply_objective_satisfaction_and_stop_conditions",
     "assess_goal_completion",
     "discover_goal_contradictions",
     "evaluate_goal_completion",
@@ -5037,13 +5463,16 @@ __all__ = [
     "evaluate_implementation_completion",
     "evaluate_proof_goal_completion",
     "evaluate_completion_gate",
+    "evaluate_objective_satisfaction_and_stop_conditions",
     "completion_diagnostics",
     "contradictions_from_proof_invalidation",
+    "is_legal_objective_stop_condition",
     "is_legacy_completed_goal_state",
     "is_schedulable_goal_state",
     "is_terminal_goal_state",
     "legal_goal_transitions",
     "normalize_goal_state",
+    "objective_satisfaction_and_stop_conditions_are_armed",
     "proof_invalidation_contradictions",
     "migrate_legacy_goal_completion",
     "reconcile_goal_reopenings",
