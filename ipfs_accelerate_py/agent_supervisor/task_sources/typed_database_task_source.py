@@ -27,6 +27,14 @@ from .control_plane_contracts import (
     content_identity,
 )
 from .control_plane_transactions import TransactionError
+from .exhausted_post_merge_recovery import (
+    COMMAND as EXHAUSTED_POST_MERGE_RECOVERY_COMMAND,
+    QUEUE_RECEIPT_SCHEMA as EXHAUSTED_POST_MERGE_QUEUE_RECEIPT_SCHEMA,
+    SCHEMA as EXHAUSTED_POST_MERGE_RECOVERY_SCHEMA,
+    build_parameters as _build_exhausted_post_merge_parameters,
+    validate_parameters as _validate_exhausted_post_merge_parameters,
+    validate_successor_cooldown as _validate_exhausted_successor_cooldown,
+)
 from .database_task_source import (
     DATABASE_TASK_SOURCE_SCHEMA,
     TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
@@ -205,9 +213,13 @@ _DAEMON_PRE_POST_MERGE_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozens
     }
 )
 
-_DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset({
+_DAEMON_PRE_EXHAUSTED_POST_MERGE_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset({
     *_DAEMON_PRE_POST_MERGE_OWNER_COMMAND_OPERATIONS,
     TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+})
+_DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset({
+    *_DAEMON_PRE_EXHAUSTED_POST_MERGE_OWNER_COMMAND_OPERATIONS,
+    EXHAUSTED_POST_MERGE_RECOVERY_COMMAND,
 })
 _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES: Final[
     frozenset[frozenset[str]]
@@ -216,6 +228,7 @@ _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES: Final[
         _DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
         _DAEMON_ROUTE_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
         _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS,
+        _DAEMON_PRE_EXHAUSTED_POST_MERGE_OWNER_COMMAND_OPERATIONS,
         _DAEMON_PRE_POST_MERGE_OWNER_COMMAND_OPERATIONS,
     }
 )
@@ -1200,6 +1213,18 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "retrying task has no complete typed cooldown binding"
             )
+        queue_receipt = receipt.get("queue_receipt")
+        if (
+            isinstance(queue_receipt, Mapping)
+            and queue_receipt.get("schema") == EXHAUSTED_POST_MERGE_QUEUE_RECEIPT_SCHEMA
+        ):
+            try:
+                _validate_exhausted_successor_cooldown(task=task.to_dict(), cooldown=cooldown)
+            except (TypedStateOwnerError, ValueError, TypeError, KeyError) as exc:
+                raise TaskSourceIntegrityError(
+                    "exhausted post-merge retry differs from its typed cooldown"
+                ) from exc
+            return
         receipt_values = dict(receipt)
         extension_values = dict(extension)
         operation = receipt_values.get("operation")
@@ -1266,8 +1291,10 @@ class TypedDatabaseTaskSource:
         legacy_post_merge_binding = (
             {"backoff_ms", "retry_not_before_ms"}.issubset(receipt_values)
             and isinstance(queue_receipt, Mapping)
-            and queue_receipt.get("schema")
-            != TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA
+            and queue_receipt.get("schema") not in {
+                TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA,
+                EXHAUSTED_POST_MERGE_QUEUE_RECEIPT_SCHEMA,
+            }
         )
         if (
             operation in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
@@ -3586,10 +3613,16 @@ class TypedDatabaseTaskSource:
                         "typed cooldown expected attempt identity is invalid"
                     )
                 identity_extension = extension
-                if "retained_callback_binding" in extension:
-                    # The caller names the preserved source; the QueueEntry
-                    # returned below names the independently bound later floor.
-                    identity_extension = task.body["completion_receipt"]
+                control = task.body["completion_receipt"]
+                queue_receipt = control.get("queue_receipt")
+                if "retained_callback_binding" in extension or (
+                    isinstance(queue_receipt, Mapping)
+                    and queue_receipt.get("schema") == EXHAUSTED_POST_MERGE_QUEUE_RECEIPT_SCHEMA
+                ):
+                    # The strict binding above has verified both identities.
+                    # The caller names the retained source; scheduling returns
+                    # the independently bound later attempt floor.
+                    identity_extension = control
                 mismatches = [
                     name
                     for name in sorted(required_identity)
@@ -4027,6 +4060,128 @@ class TypedDatabaseTaskSource:
                 "cas_result": cas_result,
             }
         )
+
+    def _read_exhausted_post_merge_successor(
+        self, *, task_cid: str, expected_revision: int,
+        expected_control_receipt: Mapping[str, Any], transition: Mapping[str, Any],
+        changed: bool,
+    ) -> Mapping[str, Any]:
+        """Reproduce committed recovery from canonical task/history/queue reads."""
+        task = self.get(task_cid)
+        row = self._retry_cooldown_row(task_cid)
+        if task is None or row is None or task.status != "retrying" or task.revision != expected_revision + 1:
+            raise TaskSourceConflictError("exhausted post-merge recovery successor is absent or stale")
+        self._validate_retrying_cooldown_binding(task, row)
+        final = task.body.get("completion_receipt")
+        queue_receipt = final.get("queue_receipt") if isinstance(final, Mapping) else None
+        if not isinstance(queue_receipt, Mapping) or queue_receipt.get("schema") != EXHAUSTED_POST_MERGE_QUEUE_RECEIPT_SCHEMA:
+            raise TaskSourceIntegrityError("exhausted post-merge recovery has no typed queue receipt")
+        history = dict(self.task_revision_history_projection(task_cid))
+        revisions = history.get("revisions")
+        if (
+            not isinstance(revisions, list) or len(revisions) != expected_revision + 1
+            or revisions[-1] != {"revision": task.revision, "status": "retrying", "body": dict(task.body)}
+        ):
+            raise TaskSourceConflictError("exhausted post-merge successor history changed")
+        predecessor = revisions[-2]
+        prior_task = {
+            "task_cid": task.task_cid, "task_alias": task.task_alias,
+            **predecessor,
+        }
+        prefix = {k: v for k, v in history.items() if k != "projection_cid"}
+        prefix["revisions"] = revisions[:-1]
+        prefix["projection_cid"] = content_identity(prefix)
+        parameters = _build_exhausted_post_merge_parameters(
+            task=prior_task, history=prefix,
+            expected_control_receipt=expected_control_receipt,
+            transition_receipt=transition, prior_queue=queue_receipt.get("prior_queue"),
+            now_ms=row["extension"]["started_at_ms"],
+        )
+        verified = _validate_exhausted_post_merge_parameters(parameters)
+        if (
+            canonical_json_bytes(dict(final)) != canonical_json_bytes(verified["final_transition_receipt"])
+            or canonical_json_bytes({**dict(predecessor["body"]), "completion_receipt": verified["final_transition_receipt"]})
+            != canonical_json_bytes(dict(task.body))
+        ):
+            raise TaskSourceConflictError("exhausted post-merge replay differs from canonical authority")
+        return MappingProxyType({
+            "previous_status": "blocked", "queue_receipt": dict(queue_receipt),
+            "queue_reused": True, "retry_not_before_ms": row["retry_not_before_ms"],
+            "transition_receipt": dict(final),
+            "cas_result": DatabaseCASResult(
+                task=task, previous_status="blocked", revision=task.revision,
+                event_cursor=self.snapshot().event_cursor, changed=changed,
+                receipt_cid=content_identity(dict(final)),
+            ),
+        })
+
+    def recover_exhausted_post_merge_retry(
+        self, *, task_cid: str, expected_revision: int,
+        expected_control_receipt: Mapping[str, Any], status: str,
+        receipt: Mapping[str, Any], delay_ms: int, reason: str,
+        selection_penalty: int = 0, exact_retry_not_before_ms: int | None = None,
+        _post_merge_recovery_admission: object | None = None,
+    ) -> Mapping[str, Any]:
+        """Atomically recover the proved retained callback exhaustion suffix."""
+        if (
+            _post_merge_recovery_admission is not None
+            or type(expected_revision) is not int or expected_revision < 8
+            or status != "retrying" or type(delay_ms) is not int or delay_ms != 0
+            or type(selection_penalty) is not int or selection_penalty != 0
+            or exact_retry_not_before_ms is not None
+            or not isinstance(expected_control_receipt, Mapping)
+            or not isinstance(receipt, Mapping) or receipt.get("queue_reason") != reason
+        ):
+            raise TaskSourceConflictError("exhausted post-merge recovery requires its closed zero-delay authority")
+        task = self.get(task_cid)
+        if task is None:
+            raise KeyError(str(task_cid))
+        arguments = {
+            "task_cid": task.task_cid, "expected_revision": expected_revision,
+            "expected_control_receipt": expected_control_receipt, "transition": dict(receipt),
+        }
+        if task.status == "retrying" and task.revision == expected_revision + 1:
+            return self._read_exhausted_post_merge_successor(**arguments, changed=False)
+        if (
+            task.status != "blocked" or task.revision != expected_revision
+            or canonical_json_bytes(task.body.get("completion_receipt"))
+            != canonical_json_bytes(dict(expected_control_receipt))
+        ):
+            raise TaskSourceConflictError("exhausted post-merge control was superseded")
+        history = self.task_revision_history_projection(task.task_cid)
+        try:
+            result = self._client.recover_exhausted_post_merge_retry(
+                task=task.to_dict(), history=history,
+                expected_control_receipt=expected_control_receipt,
+                transition_receipt=dict(receipt), now_ms=self._clock_ms(),
+            )
+        except Exception:
+            # A committed transaction can lose its response. Rebuild the exact
+            # successor; do not retry generic writes or infer success from status.
+            try:
+                return self._read_exhausted_post_merge_successor(**arguments, changed=False)
+            except Exception:
+                pass
+            raise
+        if not result.accepted:
+            raise TaskSourceConflictError("exhausted post-merge owner recovery was not accepted")
+        observed = self._read_exhausted_post_merge_successor(**arguments, changed=bool(result.changed))
+        details = result.result
+        if (
+            details.get("schema") != EXHAUSTED_POST_MERGE_RECOVERY_SCHEMA
+            or details.get("operation") != EXHAUSTED_POST_MERGE_RECOVERY_COMMAND
+            or details.get("task_cid") != task.task_cid
+            or details.get("task_revision") != expected_revision + 1
+            or details.get("queue_reused") is not True
+            or details.get("previous_status") != "blocked"
+            or canonical_json_bytes(details.get("transition_receipt"))
+            != canonical_json_bytes(observed["transition_receipt"])
+            or canonical_json_bytes(details.get("queue_receipt"))
+            != canonical_json_bytes(observed["queue_receipt"])
+            or details.get("retry_not_before_ms") != observed["retry_not_before_ms"]
+        ):
+            raise TaskSourceIntegrityError("exhausted post-merge owner response differs from durable state")
+        return observed
 
 
 __all__ = [
