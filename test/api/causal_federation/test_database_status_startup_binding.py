@@ -157,6 +157,40 @@ def test_second_configured_start_cannot_remove_live_owner_status(startup):
     assert first.ready()
 
 
+@pytest.mark.parametrize('kind', ['regular-file', 'symlink'])
+def test_valid_binding_rejected_socket_start_preserves_foreign_path(startup, kind):
+    make, _queue, arguments = startup
+    server = make()
+    server.configure_database_status_before_start(**arguments)
+    path = server.typed_command_socket_path()
+    if kind == 'regular-file':
+        path.write_bytes(b'foreign path is not a gateway resource')
+    else:
+        target = path.with_suffix('.foreign')
+        target.write_bytes(b'foreign symlink target')
+        path.symlink_to(target)
+    original = path.lstat()
+    token = server.typed_command_token_path()
+    token.parent.mkdir(exist_ok=True)
+    token.write_bytes(b'foreign credential preserved before publication')
+    with pytest.raises(TypedStateOwnerError, match='not a socket'):
+        server.start()
+    assert server.lifecycle is ServerLifecycle.FAILED
+    assert server._connection is None and server._owner is None
+    assert server._command_gateway is None
+    server.stop()
+    current = path.lstat()
+    assert (current.st_dev, current.st_ino, current.st_mode) == (
+        original.st_dev, original.st_ino, original.st_mode)
+    assert token.read_bytes() == b'foreign credential preserved before publication'
+    if kind == 'symlink':
+        assert path.is_symlink() and target.read_bytes() == b'foreign symlink target'
+    else:
+        assert path.read_bytes() == b'foreign path is not a gateway resource'
+    with server.owner_lock_path().open('r+') as candidate:
+        fcntl.flock(candidate, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 @pytest.mark.parametrize('mode', ['unconfigured', 'database-only'])
 def test_existing_unconfigured_or_database_only_startup_does_not_admit_queue(startup, mode):
     make, _queue, arguments = startup

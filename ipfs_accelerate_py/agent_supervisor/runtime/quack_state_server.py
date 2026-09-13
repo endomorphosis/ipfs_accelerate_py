@@ -6460,8 +6460,10 @@ class QuackStateServer:
                     self._lifecycle = ServerLifecycle.FAILED
                     self._emergency_cleanup()
                     raise
-                self._command_gateway = gateway
                 gateway.start()
+                # Only a successfully started listener enters socket-unlinking
+                # teardown. A rejected pre-existing path is not ours to remove.
+                self._command_gateway = gateway
                 if self._event_wait is not None:
                     gateway.bind_event_wait_handlers(
                         wait=self._gateway_wait_for_events,
