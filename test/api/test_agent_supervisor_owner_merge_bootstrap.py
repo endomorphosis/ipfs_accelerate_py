@@ -180,15 +180,23 @@ def test_partial_issuance_revokes_all_authority(paired, monkeypatch, failure):
     assert paired.broker._issued == {}
 
 
-def test_expiry_is_not_renewed_or_replayed(paired):
+def test_expiry_is_not_renewed_or_replayed(paired, monkeypatch):
     response = admit(paired)
     gateway = paired.queue._command_gateway
     token = response['recovery']['token']
-    with gateway._grants_lock:
-        gateway._grants[token] = replace(gateway._grants[token], issued_at=1, expires_at=2)
+    from ipfs_accelerate_py.agent_supervisor.task_sources import typed_state_owner as typed
+    expired_at = gateway._grants[token].expires_at / 1000 + 1
+    monkeypatch.setattr(typed, 'time', SimpleNamespace(time=lambda: expired_at,
+        monotonic=time.monotonic, sleep=time.sleep))
     paired.broker._issued[paired.request['client_id']]['renew_at'] = 0
     with pytest.raises(TypedStateOwnerError, match='expired'):
         paired.broker.maintain()
+    # Bundle maintenance stops at the first expired role without renewing
+    # another. Every remaining expired role also refuses its own next access.
+    birth=current_process_birth()
+    with pytest.raises(TypedStateOwnerError, match='expired'):
+        gateway._require_active_grant(gateway._grants[token], peer_identity=(
+            birth.pid, os.geteuid(), birth.start_time_ticks))
     assert token not in gateway._grants
     with pytest.raises(StateOwnerBootstrapError):
         admit(paired)

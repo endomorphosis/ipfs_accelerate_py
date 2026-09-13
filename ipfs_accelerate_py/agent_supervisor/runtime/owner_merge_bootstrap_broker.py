@@ -8,6 +8,7 @@ No task transition, consumer lease, or completion is created by bootstrap.
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 import math
 import os
 import re
@@ -35,7 +36,7 @@ class NativeOwnerMergeBroker:
 
     def __init__(self, *, task_server, queue_server, repository_id, target_branch,
                  scope_bindings, issue_task, revoke_task, validate_peer,
-                 ttl_seconds=86_400.0):
+                 ttl_seconds=86_400.0, renew_task=None):
         self.task_server = task_server
         self.queue_server = queue_server
         self.repository_id = repository_id
@@ -43,6 +44,9 @@ class NativeOwnerMergeBroker:
         self.issue_task = issue_task
         self.revoke_task = revoke_task
         self.validate_peer = validate_peer
+        self.renew_task = renew_task
+        if renew_task is not None and not callable(renew_task):
+            raise StateOwnerBootstrapError("native task renewal callback is invalid")
         self.ttl_seconds = float(ttl_seconds)
         if not math.isfinite(self.ttl_seconds) or not 1 <= self.ttl_seconds <= 86400:
             raise StateOwnerBootstrapError("native merge grant lifetime is outside its bound")
@@ -77,6 +81,9 @@ class NativeOwnerMergeBroker:
             if (identity.get("process_birth") != birth.to_dict()
                     or identity.get("process_birth_id") != process_birth_id(birth)):
                 raise StateOwnerBootstrapError("native merge roles are not owned by this parent")
+            gateway = server._command_gateway
+            if gateway is None or dict(gateway.identity) != identity:
+                raise StateOwnerBootstrapError("native merge gateway owner identity differs")
             identities.append(identity)
         if any(identities[0].get(key) == identities[1].get(key)
                for key in ("database_uuid", "store_id", "server_id", "listen_uri")):
@@ -87,7 +94,7 @@ class NativeOwnerMergeBroker:
         if self._owner_identities() != self._identities:
             raise StateOwnerBootstrapError("native merge owner generation changed")
 
-    def _live_grant(self, server, grant_id, birth):
+    def _live_grant(self, server, grant_id, birth, *, expected_grant=None):
         gateway = server._command_gateway
         if gateway is None:
             raise StateOwnerBootstrapError("native merge grant owner is unavailable")
@@ -95,6 +102,8 @@ class NativeOwnerMergeBroker:
             grants = tuple(g for g in gateway._grants.values() if g.grant_id == grant_id)
         if len(grants) != 1:
             raise StateOwnerBootstrapError("native merge grant is no longer current")
+        if expected_grant is not None and grants[0] != expected_grant:
+            raise StateOwnerBootstrapError("native merge retained grant binding changed")
         peer = (birth.pid, os.stat(f"/proc/{birth.pid}").st_uid,
                 birth.start_time_ticks)
         # The immutable process birth was re-read before this call; the gateway
@@ -141,9 +150,12 @@ class NativeOwnerMergeBroker:
                         or prior_birth.to_dict() != prior["request"]["process_birth"]):
                     self._retire(client_id, prior)
                 elif prior["request"] == request:
+                    if prior["response"]["scope_binding"] != scope:
+                        raise StateOwnerBootstrapError("native merge retained lane scope changed")
                     for server, grant_id in ((self.task_server, prior["task_grant"]),
                         *((self.queue_server, key) for key in prior["queue_grants"])):
-                        self._live_grant(server, grant_id, birth)
+                        self._live_grant(server, grant_id, birth,
+                            expected_grant=prior["grant_records"][grant_id])
                     return copy.deepcopy(prior["response"])
                 else:
                     raise StateOwnerBootstrapError("live native merge peer cannot replace its request")
@@ -151,10 +163,12 @@ class NativeOwnerMergeBroker:
                 "pid", "process_birth", "process_birth_id", "client_id", "store_id"
             )}
             task_request["schema"] = STATE_OWNER_BOOTSTRAP_REQUEST_SCHEMA
-            entry = {"request": copy.deepcopy(request), "queue_grants": [], "task_grant": ""}
+            entry = {"request": copy.deepcopy(request), "queue_grants": [], "task_grant": "", "grant_records": {}}
             try:
                 task, task_grant = self.issue_task(task_request, peer_pid=peer_pid, peer_uid=peer_uid)
                 entry["task_grant"] = task_grant
+                entry["grant_records"][task_grant] = self._live_grant(
+                    self.task_server, task_grant, birth)
                 scope_id = recovery_scope_cid(store_id=self._identities[1]["store_id"],
                     repository_id=self.repository_id, target_branch=self.target_branch,
                     scope_binding=scope)
@@ -169,6 +183,7 @@ class NativeOwnerMergeBroker:
                         peer_pid=peer_pid, ttl_seconds=self.ttl_seconds,
                         allowed_operations=tuple(operations), entity_scopes=entity_scopes)
                     entry["queue_grants"].append(grant.grant_id)
+                    entry["grant_records"][grant.grant_id] = grant
                     roles[name] = {"socket_path": str(self.queue_server.typed_command_socket_path()),
                         "store_id": self._identities[1]["store_id"],
                         "server_id": self._identities[1]["server_id"],
@@ -206,12 +221,36 @@ class NativeOwnerMergeBroker:
                 if birth is None or birth.to_dict() != request["process_birth"]:
                     self._retire(client_id, entry)
                     continue
-                self.validate_peer(peer_pid=birth.pid, client_id=client_id)
-                for server, grant_id in ((self.task_server, entry["task_grant"]),
-                    *((self.queue_server, key) for key in entry["queue_grants"])):
-                    self._live_grant(server, grant_id, birth)
-                    server.renew_typed_client_grant(grant_id, ttl_seconds=self.ttl_seconds)
+                lane_id = str(self.validate_peer(peer_pid=birth.pid, client_id=client_id))
+                if self.scopes.get(lane_id) != entry["response"]["scope_binding"]:
+                    raise StateOwnerBootstrapError("native merge retained lane scope changed")
+                roles = ((self.task_server, entry["task_grant"]),
+                    *((self.queue_server, key) for key in entry["queue_grants"]))
+                # Validate the complete retained bundle before extending any
+                # role. Matching an ID alone must not bless changed permissions.
+                for server, grant_id in roles:
+                    self._live_grant(server, grant_id, birth,
+                        expected_grant=entry["grant_records"][grant_id])
+                for server, grant_id in roles:
+                    issued = entry["grant_records"][grant_id]
+                    if server is self.task_server and self.renew_task is not None:
+                        renewed = self.renew_task(client_id, issued)
+                    else:
+                        renewed = server.renew_typed_client_grant(
+                            grant_id, ttl_seconds=self.ttl_seconds)
+                    if (type(renewed) is not type(issued)
+                            or replace(renewed, issued_at=issued.issued_at,
+                                expires_at=issued.expires_at) != issued):
+                        raise StateOwnerBootstrapError("native merge renewal changed grant authority")
+                    self._live_grant(server, grant_id, birth, expected_grant=renewed)
+                    entry["grant_records"][grant_id] = renewed
                 entry["renew_at"] = now + min(300.0, self.ttl_seconds / 3)
+
+    def owns_task_grant(self, client_id, grant_id):
+        """Tell the parent which task grants are exclusively bundle-maintained."""
+        with self._lock:
+            entry = self._issued.get(client_id)
+            return bool(entry and entry["task_grant"] == grant_id)
 
     def close(self):
         with self._lock:

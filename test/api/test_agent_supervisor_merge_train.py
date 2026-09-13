@@ -1951,6 +1951,8 @@ def test_delayed_schema_v3_callback_records_exact_reconciliation_once(
         {
             "task_id": task.task_id,
             "canonical_task_cid": task_cid,
+            "canonical_task_key": request.canonical_task_key,
+            "board_namespace": task.board_namespace,
             "attempt": 1,
             "returncode": 0,
             "attempt_consumed": True,
@@ -1977,6 +1979,8 @@ def test_delayed_schema_v3_callback_records_exact_reconciliation_once(
         if event.get("type") == "implementation_finished"
     ]
 
+    assert request.canonical_task_key
+    assert daemon._task_identity_by_display_id == {}
     result = daemon._merge_train_callback(request)
 
     assert result["merged"] is True
@@ -1988,6 +1992,29 @@ def test_delayed_schema_v3_callback_records_exact_reconciliation_once(
     assert events.index(source) < events.index(reconciled)
     assert not any(event.get("type") == "task_completed" for event in events)
     assert reconciled["resolved"] is True
+    # Actual producer events must pass both callback consumers with their full
+    # causal envelope and original content identity intact.
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import DatabasePortalExecutionBridge
+    assert source["causal_parent_ids"] and reconciled["causal_parent_ids"]
+    assert type(reconciled["coalescing_forbidden"]) is bool
+    assert DatabasePortalExecutionBridge._exact_callback_reconciliation_for_completion_source(
+        reconciled, source, alias=task.task_id, task_cid=task_cid,
+        task_key=source["canonical_task_key"], repository_root=repo,
+    )
+    for field, value in (
+        ("causal_parent_ids", "not-an-array"),
+        ("causal_parent_ids", ["sha256:" + "a" * 64] * 2),
+        ("coalescing_key", "x" * 257),
+        ("coalescing_forbidden", 0),
+        ("unreviewed_envelope_extension", True),
+    ):
+        for which in ("source", "reconciliation"):
+            forged_source, forged_reconciliation = dict(source), dict(reconciled)
+            (forged_source if which == "source" else forged_reconciliation)[field] = value
+            assert not DatabasePortalExecutionBridge._exact_callback_reconciliation_for_completion_source(
+                forged_reconciliation, forged_source, alias=task.task_id,
+                task_cid=task_cid, task_key=source["canonical_task_key"], repository_root=repo,
+            )
     assert reconciled["task_id"] == task.task_id
     assert reconciled["canonical_task_cid"] == task_cid
     assert reconciled["attempt"] == 1
@@ -2017,10 +2044,14 @@ def test_delayed_schema_v3_callback_records_exact_reconciliation_once(
     assert replay["merge_reconciliation_receipt"]["replayed"] is True
     assert paths.events.read_bytes() == before_replay
 
-    for tamper in ("extra_field", "foreign_completion_receipts"):
+    for tamper in ("extra_field", "foreign_completion_receipts", "partial_causal_envelope", "malformed_causal_envelope"):
         forged = json.loads(json.dumps(reconciled))
         if tamper == "extra_field":
             forged["attacker_extension"] = True
+        elif tamper == "partial_causal_envelope":
+            del forged["coalescing_key"]
+        elif tamper == "malformed_causal_envelope":
+            forged["coalescing_forbidden"] = 1
         else:
             forged_evidence = forged["completion_receipt_evidence"]
             forged_evidence["completion_receipts"][0][
@@ -3214,11 +3245,13 @@ def test_false_completion_reopen_merges_and_seals_qualification_receipt(
         log_path: Path,
         *,
         force_uncached: bool = False,
+        baseline_ref: str | None = None,
     ) -> dict[str, object]:
         nonlocal validation_count
         validation_count += 1
         assert validation_task.task_id == "REF-040"
         assert force_uncached is True
+        assert baseline_ref == baseline
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text("false reopen qualification passed\n")
         return {
