@@ -90831,6 +90831,311 @@ def _live_projection_reconciliation_admitted(
     return witness.get("cache_key") == expected_cache_key
 
 
+GOAL_LIFECYCLE_STATUS_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/aseh-goal-lifecycle-status@1"
+)
+
+
+def _unavailable_goal_lifecycle(reason: str) -> dict[str, Any]:
+    return {
+        "schema": GOAL_LIFECYCLE_STATUS_SCHEMA,
+        "available": False,
+        "reason": reason,
+        "records": None,
+        "status_counts": None,
+    }
+
+
+def _lifecycle_status_rows(value: Any, identity: str) -> list[dict[str, Any]]:
+    """Validate the bounded canonical rows hashed by IntentSnapshot."""
+
+    if not isinstance(value, list) or len(value) > 100:
+        raise OperatorError("goal lifecycle snapshot rows exceed the bound")
+    rows: list[dict[str, Any]] = []
+    identities: set[str] = set()
+    for row in value:
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != {identity, "status", "revision"}
+            or not isinstance(row[identity], str)
+            or not 0 < len(row[identity]) <= 512
+            or row[identity] in identities
+            or not isinstance(row["status"], str)
+            or re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", row["status"]) is None
+            or type(row["revision"]) is not int
+            or row["revision"] < 1
+        ):
+            raise OperatorError("goal lifecycle snapshot row is invalid")
+        identities.add(row[identity])
+        rows.append(dict(row))
+    if rows != sorted(rows, key=lambda row: row[identity]):
+        raise OperatorError("goal lifecycle snapshot row ordering differs")
+    return rows
+
+
+def _validate_goal_lifecycle_observation(
+    value: Any, snapshot: Mapping[str, Any], goal_records: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Bind lifecycle rows to the existing replay-admitted snapshot CID."""
+
+    if (
+        not isinstance(value, Mapping)
+        or not isinstance(snapshot, Mapping)
+        or set(value)
+        != {
+            "schema",
+            "available",
+            "records",
+            "snapshot_material",
+            "snapshot_projection_cid",
+            "plan_projection_cid",
+        }
+        or value.get("schema") != GOAL_LIFECYCLE_STATUS_SCHEMA
+        or value.get("available") is not True
+        or not isinstance(value.get("plan_projection_cid"), str)
+        or not value["plan_projection_cid"]
+    ):
+        raise OperatorError("goal lifecycle observation is unavailable")
+    material = value.get("snapshot_material")
+    if not isinstance(material, Mapping) or set(material) != {
+        "objectives",
+        "goals",
+        "plans",
+        "tasks",
+        "dependency_count",
+        "event_watermark",
+    }:
+        raise OperatorError("goal lifecycle snapshot material is incomplete")
+    for name in ("objectives", "dependency_count", "event_watermark"):
+        if type(material[name]) is not int or material[name] < 0:
+            raise OperatorError("goal lifecycle snapshot counter is invalid")
+    for name, identity in (
+        ("goals", "goal_cid"),
+        ("plans", "plan_cid"),
+        ("tasks", "task_cid"),
+    ):
+        _lifecycle_status_rows(material[name], identity)
+    expected_counts = {
+        "objective_count": material["objectives"],
+        "goal_count": len(material["goals"]),
+        "plan_count": len(material["plans"]),
+        "task_count": len(material["tasks"]),
+        "dependency_count": material["dependency_count"],
+        "event_cursor": material["event_watermark"],
+    }
+    if (
+        any(
+            type(snapshot.get(key)) is not int or snapshot[key] != count
+            for key, count in expected_counts.items()
+        )
+        or value["snapshot_projection_cid"] != snapshot.get("projection_cid")
+        or content_identity(material) != snapshot.get("projection_cid")
+    ):
+        raise OperatorError("goal lifecycle snapshot fence differs")
+    records = value.get("records")
+    if (
+        not isinstance(records, Mapping)
+        or not isinstance(goal_records, Mapping)
+        or not goal_records
+        or set(records) != set(goal_records)
+        or len(records) != len(material["goals"])
+    ):
+        raise OperatorError("goal lifecycle corpus is incomplete")
+    by_cid = {row["goal_cid"]: row for row in material["goals"]}
+    seen: set[str] = set()
+    for alias, semantic in goal_records.items():
+        if not isinstance(semantic, Mapping) or semantic.get("goal_alias") != alias:
+            raise OperatorError("goal lifecycle semantic identity differs")
+        cid = semantic.get("goal_cid")
+        _lifecycle_status_rows([records[alias]], "goal_cid")
+        if (
+            not isinstance(cid, str)
+            or cid in seen
+            or cid not in by_cid
+            or records[alias] != by_cid[cid]
+        ):
+            raise OperatorError("goal lifecycle canonical record differs")
+        seen.add(cid)
+    return dict(value)
+
+
+def _goal_lifecycle_from_plan_projection(
+    projection: Mapping[str, Any],
+    snapshot: Mapping[str, Any],
+    sealed_goal_records: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Use the existing atomic owner projection, without another live read."""
+
+    try:
+        material = dict(projection)
+        projection_cid = material.pop("projection_cid", None)
+        if (
+            material.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/intent-plan-projection@1"
+            or content_identity(material) != projection_cid
+            or any(
+                not isinstance(material.get(name), list) or len(material[name]) > 100
+                for name in ("objectives", "goals", "plans", "tasks")
+            )
+        ):
+            raise OperatorError("goal lifecycle plan projection is invalid")
+        records: dict[str, Any] = {}
+        for goal in material["goals"]:
+            alias = goal["goal_alias"]
+            if alias in records or _immutable_goal_record(
+                goal
+            ) != sealed_goal_records.get(alias):
+                raise OperatorError("goal lifecycle immutable corpus differs")
+            records[alias] = {
+                key: goal[key] for key in ("goal_cid", "status", "revision")
+            }
+        status_material = {
+            "objectives": len(material["objectives"]),
+            **{
+                name: [
+                    {key: row[key] for key in (identity, "status", "revision")}
+                    for row in material[name]
+                ]
+                for name, identity in (
+                    ("goals", "goal_cid"),
+                    ("plans", "plan_cid"),
+                    ("tasks", "task_cid"),
+                )
+            },
+            "dependency_count": sum(
+                len(row["dependencies"]) for row in material["tasks"]
+            ),
+            "event_watermark": material["event_watermark"],
+        }
+        return _validate_goal_lifecycle_observation(
+            {
+                "schema": GOAL_LIFECYCLE_STATUS_SCHEMA,
+                "available": True,
+                "records": dict(sorted(records.items())),
+                "snapshot_material": status_material,
+                "snapshot_projection_cid": snapshot.get("projection_cid"),
+                "plan_projection_cid": projection_cid,
+            },
+            snapshot,
+            sealed_goal_records,
+        )
+    except (OperatorError, KeyError, TypeError, ValueError):
+        # Keep existing health semantics. Missing or racing lifecycle evidence
+        # is unavailable; immutable source status is never a substitute.
+        return _unavailable_goal_lifecycle(
+            "canonical_lifecycle_unavailable_or_inconsistent"
+        )
+
+
+def _admitted_goal_lifecycle(
+    receipt: Mapping[str, Any], paths: Mapping[str, Path]
+) -> dict[str, Any]:
+    """Project lifecycle only after normal receipt freshness/owner admission."""
+
+    samples = receipt.get("samples")
+    if (
+        receipt.get("broker_authenticated") is not True
+        or not isinstance(samples, list)
+        or len(samples) != 2
+    ):
+        raise OperatorError("goal lifecycle lacks authenticated owner samples")
+    bootstrap = _secure_runtime_json(
+        paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
+    )
+    _bootstrap_receipt_id(bootstrap)
+    if bootstrap.get("bootstrap_receipt_id") != receipt.get("bootstrap_receipt_id"):
+        raise OperatorError("goal lifecycle bootstrap changed during observation")
+    integrity = bootstrap.get("integrity")
+    sealed_goals = (
+        integrity.get("goal_records") if isinstance(integrity, Mapping) else None
+    )
+    if not isinstance(sealed_goals, Mapping) or not sealed_goals:
+        raise OperatorError("goal lifecycle sealed corpus is unavailable")
+    observed_times: list[float] = []
+    admitted: list[dict[str, Any]] = []
+    for sample in samples:
+        if not isinstance(sample, Mapping):
+            raise OperatorError("goal lifecycle sample is invalid")
+        observed_at = sample.get("observed_at")
+        if (
+            type(observed_at) not in (int, float)
+            or not 0 < observed_at < 253402300800
+            or not math.isfinite(observed_at)
+        ):
+            raise OperatorError("goal lifecycle observation time is invalid")
+        observed_times.append(observed_at)
+        authority = sample.get("authority", {})
+        if (
+            not isinstance(authority, Mapping)
+            or authority.get("available") is not True
+            or authority.get("transport") != "quack"
+            or authority.get("credential_path") != "sealed_memfd_broker"
+            or authority.get("projection_matches_events") is not True
+            or authority.get("goal_records") != sealed_goals
+            or not _live_projection_reconciliation_admitted(sample, paths)
+        ):
+            raise OperatorError("goal lifecycle authority is unavailable")
+        admitted.append(
+            _validate_goal_lifecycle_observation(
+                authority.get("goal_lifecycle"),
+                authority.get("snapshot", {}),
+                authority.get("goal_records", {}),
+            )
+        )
+        if (
+            type(authority.get("event_cursor")) is not int
+            or authority["event_cursor"]
+            != admitted[-1]["snapshot_material"]["event_watermark"]
+        ):
+            raise OperatorError("goal lifecycle sample watermark differs")
+    if (
+        observed_times[0] > observed_times[1]
+        or observed_times[1] != receipt.get("observed_at")
+        or observed_times[1] > time.time()
+    ):
+        raise OperatorError("goal lifecycle observation time fence differs")
+    prior, current = admitted
+    prior_watermark = prior["snapshot_material"]["event_watermark"]
+    watermark = current["snapshot_material"]["event_watermark"]
+    if (
+        watermark < prior_watermark
+        or set(prior["records"]) != set(current["records"])
+        or (
+            watermark == prior_watermark
+            and current["snapshot_material"] != prior["snapshot_material"]
+        )
+    ):
+        raise OperatorError("goal lifecycle observation regressed")
+    for alias, row in current["records"].items():
+        previous = prior["records"][alias]
+        if (
+            row["goal_cid"] != previous["goal_cid"]
+            or row["revision"] < previous["revision"]
+            or (
+                row["revision"] == previous["revision"]
+                and row["status"] != previous["status"]
+            )
+        ):
+            raise OperatorError("goal lifecycle revision fence differs")
+    return {
+        "schema": GOAL_LIFECYCLE_STATUS_SCHEMA,
+        "available": True,
+        "reason": "",
+        "records": current["records"],
+        "status_counts": dict(
+            sorted(
+                Counter(row["status"] for row in current["records"].values()).items()
+            )
+        ),
+        "event_watermark": watermark,
+        "snapshot_projection_cid": current["snapshot_projection_cid"],
+        "plan_projection_cid": current["plan_projection_cid"],
+        "owner_binding": dict(samples[-1]["authority"]["owner_binding"]),
+        "observed_at": samples[-1]["observed_at"],
+        "receipt_cid": receipt["receipt_cid"],
+    }
+
+
 def _broker_status_query(
     board: Any,
     paths: Mapping[str, Path],
@@ -90925,6 +91230,9 @@ def _broker_status_query(
         plan_record = _immutable_plan_record(plan)
         plan_projection = source.plan_projection(
             task_cids=[item.task_cid for item in page.tasks]
+        )
+        goal_lifecycle = _goal_lifecycle_from_plan_projection(
+            plan_projection, snapshot, sealed_goal_records
         )
         task_authority_spec_cids = _task_authority_spec_cids(plan_projection)
         objective_record = _objective_record_from_projection(plan_projection)
@@ -91050,6 +91358,7 @@ def _broker_status_query(
         "query_started_at_ms": query_started_at_ms,
         "delayed_ready_task_ids": delayed_ready_task_ids,
         "goal_records": dict(sorted(goal_records.items())),
+        "goal_lifecycle": goal_lifecycle,
         "goal_edges": goal_edges,
         "plan_record": plan_record,
         "status_counts": dict(sorted(statuses.items())),
@@ -92850,6 +93159,14 @@ def status(config_path: Path, *, require_ready: bool) -> tuple[int, dict[str, An
     healthy = bool(
         receipt_available and owner_ready and receipt.get("healthy") is True
     )
+    goal_lifecycle = _unavailable_goal_lifecycle(
+        "authenticated_lifecycle_unavailable_or_inconsistent"
+    )
+    if receipt_available:
+        try:
+            goal_lifecycle = _admitted_goal_lifecycle(receipt, paths)
+        except (OperatorError, OSError, KeyError, TypeError, ValueError):
+            pass
     report = {
         "schema": LIVE_STATUS_SCHEMA,
         "program_id": PROGRAM,
@@ -92861,6 +93178,7 @@ def status(config_path: Path, *, require_ready: bool) -> tuple[int, dict[str, An
         "receipt_age_seconds": age if receipt_available else None,
         "receipt": receipt,
         "receipt_error": receipt_error,
+        "goal_lifecycle": goal_lifecycle,
         "healthy": healthy,
         "blocked": bool(receipt.get("blocked", False)),
         "stuck": bool(receipt.get("stuck", False)),
