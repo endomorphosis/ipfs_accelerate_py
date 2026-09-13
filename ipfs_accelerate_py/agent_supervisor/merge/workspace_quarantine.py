@@ -659,7 +659,12 @@ def maintenance_boundary(*, count_result: bool = False):
                         if count_result
                         else {
                             "attempted": False,
-                            "skipped": True,
+                            "maintenance_deferred": True,
+                            # Native cleanup/reconciliation consumers iterate
+                            # skipped workspace records. No scan ran under
+                            # custody, so this collection is empty; attempted
+                            # remains false and cannot prove guardrail release.
+                            "skipped": [],
                             "reason": "retained_workspace_scope",
                         }
                     )
