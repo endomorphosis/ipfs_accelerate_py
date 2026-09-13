@@ -98,6 +98,38 @@ def test_finished_legacy_provider_proposes_only_fresh_validation_and_preserves_b
     assert history.paths.events.read_bytes() == event_bytes
 
 
+@pytest.mark.parametrize("stored_plan", ["plan:one", "plan:other", ""])
+def test_actual_quack_task_query_supplies_authoritative_plan_binding(history, tmp_path, stored_plan):
+    """Exercise the actual registered query, not an enriched handwritten row."""
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import install_control_plane_schema
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import open_duckdb_connection
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import open_embedded_client
+
+    expected = inspect(history)
+    db = tmp_path / "control.duckdb"
+    install_control_plane_schema(db, application_version="test", tool_version="test", owner_id="test")
+    row = history.row
+    with open_duckdb_connection(db) as connection:
+        connection.execute(
+            "INSERT INTO tasks (task_cid, task_alias, goal_cid, plan_cid, objective_id, "
+            "ordinal, status, revision, priority, created_at, updated_at, identity_json, body_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [row['task_cid'], row['task_alias'], row['goal_cid'], stored_plan, 'objective:test',
+             1, row['status'], row['revision'], 'P2', '1970-01-01T00:00:00Z',
+             '1970-01-01T00:00:00Z', '{}', row['body_json']],
+        )
+    with open_embedded_client(db, owner_id="test:legacy-read") as client:
+        rows = client.execute("select_task_by_cid", {"task_cid": row['task_cid']})
+    assert len(rows) == 1
+    assert rows[0]['plan_cid'] == stored_plan
+    history.row = dict(rows[0])
+    if stored_plan == 'plan:one':
+        assert inspect_existing(history) == expected
+    else:
+        with pytest.raises(DatabasePortalBridgeError, match="task contract binding differs"):
+            inspect_existing(history)
+
+
 @pytest.mark.parametrize("field,value", [
     ("claim_id", "claim:other"), ("attempt_number", True), ("fencing_token", 8),
     ("reason", "pending_merge_timeout"), ("control_expected_revision", True),
