@@ -91136,6 +91136,118 @@ def _admitted_goal_lifecycle(
     }
 
 
+def _status_portfolio_from_plan_projection(
+    projection: Mapping[str, Any],
+    intent_snapshot: Any,
+    *,
+    repository_tree_id: str,
+    plan_root_cid: str,
+) -> tuple[dict[str, Any], tuple[Any, ...]]:
+    """Bind one full owner projection to its independently read status fence.
+
+    The health query already needs every task specification and relation. Use
+    that atomic projection for its task rows instead of fetching each full task
+    twice. The independent IntentSnapshot and exact replica replay still bind
+    the complete population; this helper performs no database operation.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DATABASE_TASK_SOURCE_SCHEMA, TaskSourceSnapshot, _as_task_record,
+    )
+
+    try:
+        material = dict(projection)
+        projection_cid = material.pop("projection_cid", None)
+        if (
+            set(material) != {
+                "schema", "event_watermark", "objectives", "goals",
+                "goal_edges", "plans", "tasks",
+            }
+            or material["schema"]
+            != "ipfs_accelerate_py/agent-supervisor/intent-plan-projection@1"
+            or content_identity(material) != projection_cid
+            or any(
+                not isinstance(material[name], list) or len(material[name]) > 100
+                for name in ("objectives", "goals", "goal_edges", "plans", "tasks")
+            )
+            or type(material["event_watermark"]) is not int
+            or material["event_watermark"] < 0
+        ):
+            raise OperatorError("live status plan projection is invalid")
+        status_material = {
+            "objectives": len(material["objectives"]),
+            **{
+                name: _lifecycle_status_rows(
+                    [
+                        {key: row[key] for key in (identity, "status", "revision")}
+                        for row in material[name]
+                    ],
+                    identity,
+                )
+                for name, identity in (
+                    ("goals", "goal_cid"), ("plans", "plan_cid"),
+                    ("tasks", "task_cid"),
+                )
+            },
+            "dependency_count": sum(len(row["dependencies"]) for row in material["tasks"]),
+            "event_watermark": material["event_watermark"],
+        }
+        counters = {
+            "objective_count": status_material["objectives"],
+            "goal_count": len(material["goals"]),
+            "plan_count": len(material["plans"]),
+            "task_count": len(material["tasks"]),
+            "dependency_count": status_material["dependency_count"],
+            "event_watermark": material["event_watermark"],
+        }
+        if (
+            any(
+                type(getattr(intent_snapshot, name)) is not int
+                or getattr(intent_snapshot, name) != count
+                for name, count in counters.items()
+            )
+            or content_identity(status_material) != intent_snapshot.projection_cid
+        ):
+            raise OperatorError("live status projection differs from canonical snapshot")
+        if (
+            not repository_tree_id or not plan_root_cid
+            or plan_root_cid not in {row["plan_cid"] for row in material["plans"]}
+        ):
+            raise OperatorError("live status plan root binding is unavailable")
+        tasks = tuple(
+            _as_task_record({
+                **row,
+                "dependencies": [edge["dependency_task_cid"] for edge in row["dependencies"]],
+            })
+            for row in sorted(material["tasks"], key=lambda row: (row["ordinal"], row["task_cid"]))
+        )
+        if len({task.task_alias for task in tasks}) != len(tasks):
+            raise OperatorError("live status task aliases are ambiguous")
+        # Match DatabaseTaskSource.snapshot exactly, including its distinction
+        # between rejected and completed/cancelled/quarantined task states.
+        terminal = bool(tasks) and all(
+            task.status in {"completed", "skipped", "cancelled", "failed", "quarantined", "complete", "done"}
+            for task in tasks
+        )
+        snapshot = TaskSourceSnapshot(
+            source_schema=DATABASE_TASK_SOURCE_SCHEMA, schema_version=1,
+            plan_root_cid=plan_root_cid, repository_tree_id=repository_tree_id,
+            projection_cid=intent_snapshot.projection_cid, formal_plan_id=plan_root_cid,
+            source_identity=content_identity({
+                "plan_root_cid": plan_root_cid, "repository_tree_id": repository_tree_id,
+                "projection_cid": intent_snapshot.projection_cid,
+            }),
+            revision=max(1, intent_snapshot.event_watermark),
+            event_cursor=intent_snapshot.event_watermark,
+            goal_count=intent_snapshot.goal_count, task_count=intent_snapshot.task_count,
+            dependency_count=intent_snapshot.dependency_count, terminal=terminal,
+            objective_count=intent_snapshot.objective_count, plan_count=intent_snapshot.plan_count,
+        )
+        return snapshot.to_dict(), tasks
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise OperatorError("live status plan projection is malformed") from exc
+
+
 def _broker_status_query(
     board: Any,
     paths: Mapping[str, Path],
@@ -91183,14 +91295,19 @@ def _broker_status_query(
     ) as source:
         if source.intent.uses_quack_transport is not True:
             raise OperatorError("live status did not use the Quack transport")
-        snapshot = source.snapshot().to_dict()
-        page = source.list_tasks(limit=100)
-        if page.next_cursor:
-            raise OperatorError("live task portfolio exceeds the sealed bound")
+        # One full-fidelity canonical read already contains every task, goal,
+        # plan, objective and dependency needed by this health observation.
+        # Keep an independent lightweight status fence and all replay checks.
+        plan_projection = source.plan_projection()
+        snapshot, tasks = _status_portfolio_from_plan_projection(
+            plan_projection, source.intent.snapshot(),
+            repository_tree_id=str(bootstrap.get("repository_tree_id") or ""),
+            plan_root_cid=str(bootstrap.get("plan_root_cid") or ""),
+        )
         ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
         page_statuses = {
             item.task_alias: str(item.status or "").lower()
-            for item in page.tasks
+            for item in tasks
         }
         queue_entries: dict[str, dict[str, Any]] = {}
         # Queue cooldown state matters only at a zero-ready, zero-active
@@ -91198,7 +91315,7 @@ def _broker_status_query(
         if not ready and not any(
             status in ACTIVE_STATUSES for status in page_statuses.values()
         ):
-            for item in page.tasks:
+            for item in tasks:
                 if page_statuses[item.task_alias] not in READY_STATUSES:
                     continue
                 entry = source.get_queue_entry(item.task_cid)
@@ -91212,25 +91329,24 @@ def _broker_status_query(
             sealed_goal_records if isinstance(sealed_goal_records, Mapping) else {}
         )
         goal_records: dict[str, dict[str, Any]] = {}
+        goals_by_cid = {goal["goal_cid"]: goal for goal in plan_projection["goals"]}
         for goal_alias, sealed_record in sealed_goal_records.items():
             sealed_record = (
                 sealed_record if isinstance(sealed_record, Mapping) else {}
             )
-            goal = source.get_goal(str(sealed_record.get("goal_cid") or ""))
+            goal = goals_by_cid.get(str(sealed_record.get("goal_cid") or ""))
             if not isinstance(goal, Mapping):
                 raise OperatorError(f"live goal is missing: {goal_alias}")
             goal_records[str(goal_alias)] = _immutable_goal_record(goal)
         goal_edges = sorted(
-            (dict(item) for item in source.list_goal_edges(limit=100)),
+            (dict(item) for item in plan_projection["goal_edges"]),
             key=_goal_edge_sort_key,
         )
-        plan = source.get_plan(str(bootstrap.get("plan_root_cid") or ""))
+        plan = next((item for item in plan_projection["plans"]
+                     if item["plan_cid"] == str(bootstrap.get("plan_root_cid") or "")), None)
         if not isinstance(plan, Mapping):
             raise OperatorError("live plan root is missing")
         plan_record = _immutable_plan_record(plan)
-        plan_projection = source.plan_projection(
-            task_cids=[item.task_cid for item in page.tasks]
-        )
         goal_lifecycle = _goal_lifecycle_from_plan_projection(
             plan_projection, snapshot, sealed_goal_records
         )
@@ -91302,7 +91418,7 @@ def _broker_status_query(
     task_cids: dict[str, str] = {}
     owner_bindings: dict[str, dict[str, Any]] = {}
     task_dependencies: dict[str, list[str]] = {}
-    for task in page.tasks:
+    for task in tasks:
         status_name = str(task.status or "").lower()
         aliases[task.task_alias] = status_name
         revisions[task.task_alias] = int(task.revision)
@@ -91746,6 +91862,7 @@ def _status_sample(
             local_replica_refresh = type(exc) is OperatorError and str(exc) in {
                 "published replica changed during shadow copy",
                 "published replica bytes differ from owner status",
+                "live status projection differs from canonical snapshot",
             }
             retryable_publication_race = bool(
                 transport_refresh or local_replica_refresh

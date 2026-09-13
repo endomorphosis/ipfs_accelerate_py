@@ -467,15 +467,15 @@ def test_real_quack_owner_reports_lifecycle_without_direct_database_reads(
         )
         with operator._LIVE_REPLAY_CACHE_LOCK:
             operator._LIVE_REPLAY_CACHE.clear()
-        original = DatabaseTaskSource.get_goal
+        original = DatabaseTaskSource.plan_projection
         reads = []
 
-        def only_quack(source, goal_cid):
+        def only_quack(source, **kwargs):
             reads.append(source.intent.uses_quack_transport)
             assert source.intent.uses_quack_transport is True
-            return original(source, goal_cid)
+            return original(source, **kwargs)
 
-        monkeypatch.setattr(DatabaseTaskSource, "get_goal", only_quack)
+        monkeypatch.setattr(DatabaseTaskSource, "plan_projection", only_quack)
         observed = operator._broker_status_query(
             board, paths, owner_status=server.status()
         )
