@@ -506,6 +506,74 @@ def test_operator_stop_rearms_from_sealed_lane_attempt_root(tmp_path, monkeypatc
         daemon.close()
 
 
+def test_operator_stop_rearms_when_live_attempt_root_hides_historical_projection(
+    tmp_path, monkeypatch
+):
+    """A fresh empty callback attempt_root must not hide the sealed lane SIGTERM."""
+
+    from types import SimpleNamespace
+    daemon, old, _, calls, artifact = setup(tmp_path)
+    before = snapshot(daemon, old, artifact)
+    peer = daemon.commit_phase(
+        daemon.claim_next(exclude_task_cids=(old.task_cid,)), "context"
+    )
+    prefix = "sawm_lane_3"
+    historical = tmp_path / f"{prefix}_database_portal_attempts" / "deadbeef"
+    historical.mkdir(parents=True)
+    (historical / "portal-task-state.json").write_text(
+        json.dumps(
+            {
+                "last_implementation_returncode": -15,
+                "last_implementation_task_id": "SAWM-023",
+            }
+        )
+    )
+    (historical / "database-attempt-binding.json").write_text(
+        json.dumps(
+            {
+                "task_alias": "SAWM-023",
+                "task_cid": peer.task_cid,
+                "attempt_id": peer.attempt_id,
+            }
+        )
+    )
+    live_root = tmp_path / "live-empty"
+    live_root.mkdir()
+    daemon.execution_state_dir = tmp_path
+    daemon.execution_state_prefix = prefix
+    daemon._provider_fn = SimpleNamespace(
+        __self__=SimpleNamespace(
+            _paths=lambda _attempt: SimpleNamespace(state=live_root / "missing.json"),
+            attempt_root=live_root,
+        )
+    )
+    original = daemon.get_attempt
+
+    def hidden(attempt_id):
+        if attempt_id == peer.attempt_id:
+            return None
+        return original(attempt_id)
+
+    monkeypatch.setattr(daemon, "get_attempt", hidden)
+    task = daemon.task_source.get(peer.task_cid)
+    daemon._cas_task_status_database(
+        peer.task_cid,
+        expected_revision=int(task.revision),
+        new_status="blocked",
+        receipt={"operation": "database_claim", "attempt_id": peer.attempt_id},
+    )
+    try:
+        rearms = daemon.reconcile_recoverable_portal_failure_rearms()
+        assert rearms
+        assert rearms[0]["reason"] == "operator_session_stop_unsettled_independent_attempt"
+        assert rearms[0]["task_alias"] == "SAWM-023"
+        assert daemon.task_source.get(peer.task_cid).status == "retrying"
+        assert snapshot(daemon, old, artifact) == before
+        assert calls == []
+    finally:
+        daemon.close()
+
+
 def test_operator_stop_projection_reads_sigterm_returncode(tmp_path):
     from types import SimpleNamespace
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
