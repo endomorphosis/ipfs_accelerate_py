@@ -1,13 +1,17 @@
 """Supervisor capability and fenced coordination contracts.
 
-Sibling-supervisor event validation and the sibling-supervisor capability
-registry are bindings of this fabric, not a second event log, bus, registry,
-database, or state owner. Sibling supervisors exchange canonical event
-envelopes and receipts. They never write DuckDB or DuckLake, never consume
-``DatabaseEventLog@1``, and never terminalize tasks. A worker or model
-assertion cannot admit a sibling event or a sibling capability. The
-capability registry is an in-process admitted catalogue only; it is not a competing subsystem
+Sibling-supervisor event validation, the sibling-supervisor capability
+registry, and cross-supervisor receipts are bindings of this fabric, not a
+second event log, bus, registry, receipt store, database, or state owner.
+Sibling supervisors exchange canonical event envelopes and receipts. They
+never write DuckDB or DuckLake, never consume ``DatabaseEventLog@1``, and
+never terminalize tasks. A worker or model assertion cannot admit a sibling
+event, a sibling capability, or a cross-supervisor receipt. The capability
+registry is an in-process admitted catalogue only; it is not a competing subsystem
 and grants no completion, mutation, write, or proof authority.
+Cross-supervisor receipts are in-process admitted envelopes bound to
+``receipt-exchange``; they are not a second receipt log and grant no
+completion, mutation, write, or proof authority.
 
 Cold import of this module performs no filesystem, database, network,
 provider, or process action.
@@ -39,6 +43,14 @@ class SiblingSupervisorCapabilityRegistryError(SupervisorFabricError):
     """A sibling-supervisor capability failed registry admission or lookup."""
 
     def __init__(self, message: str, *, code: str = "sibling_capability_invalid") -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class CrossSupervisorReceiptError(SupervisorFabricError):
+    """A cross-supervisor receipt failed operational admission."""
+
+    def __init__(self, message: str, *, code: str = "receipt_invalid") -> None:
         super().__init__(message)
         self.code = code
 
@@ -77,6 +89,18 @@ SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_SCHEMA: Final[str] = (
 SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_CONSUMES: Final[tuple[str, ...]] = (
     SUPERVISOR_FABRIC_INTERFACE,
     SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING,
+)
+CROSS_SUPERVISOR_RECEIPT_BINDING: Final[str] = "CrossSupervisorReceipt@1"
+CROSS_SUPERVISOR_RECEIPT_INTERFACE: Final[str] = CROSS_SUPERVISOR_RECEIPT_BINDING
+CROSS_SUPERVISOR_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/cross-supervisor-receipt@1"
+)
+CROSS_SUPERVISOR_RECEIPT_CAPABILITY: Final[str] = "receipt-exchange"
+CROSS_SUPERVISOR_RECEIPT_CARRIER: Final[str] = "event"
+CROSS_SUPERVISOR_RECEIPT_CONSUMES: Final[tuple[str, ...]] = (
+    SUPERVISOR_FABRIC_INTERFACE,
+    SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING,
+    SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING,
 )
 
 CANONICAL_EVENT_REQUIRED_FIELDS: Final[frozenset[str]] = frozenset(
@@ -144,7 +168,34 @@ FORBIDDEN_SIBLING_LOG_MUTATIONS: Final[frozenset[str]] = frozenset(
         "save_consumer_checkpoint",
     }
 )
+CROSS_SUPERVISOR_RECEIPT_REQUIRED_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "receipt_id",
+        "task_id",
+        "request_id",
+        "carrier_event_id",
+        "outcome",
+        "evidence_digest",
+        "payload",
+    }
+)
+CROSS_SUPERVISOR_RECEIPT_FORBIDDEN_FIELDS: Final[frozenset[str]] = (
+    CANONICAL_EVENT_FORBIDDEN_FIELDS
+    | FORBIDDEN_SIBLING_WRITE_KEYS
+    | FORBIDDEN_SIBLING_LOG_MUTATIONS
+    | {
+        "completion_authoritative",
+        "database_write",
+        "direct_state_write",
+        "terminalize_task",
+    }
+)
+CROSS_SUPERVISOR_RECEIPT_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"admitted", "rejected", "unknown"}
+)
 _MAX_IDENTIFIER_CHARS: Final[int] = 512
+_MAX_SIBLING_RECEIPT_PAYLOAD_BYTES: Final[int] = 65536
 
 
 def issue_fence(record: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -949,8 +1000,413 @@ def lookup_sibling_supervisor_capability(
     return registry.lookup(sibling_supervisor_id, capability)
 
 
+def _receipt_text(value: Any, field_name: str, *, required: bool = True) -> str:
+    return _text(
+        value,
+        field_name,
+        required=required,
+        error_cls=CrossSupervisorReceiptError,
+        code="receipt_invalid",
+    )
+
+
+def _receipt_digest_text(value: Any, field_name: str) -> str:
+    digest = _receipt_text(value, field_name)
+    prefix = "sha256:"
+    if not digest.startswith(prefix):
+        raise CrossSupervisorReceiptError(
+            f"{field_name} must be a sha256 digest",
+            code="receipt_invalid",
+        )
+    hex_part = digest[len(prefix) :]
+    if len(hex_part) != 64 or any(
+        character not in "0123456789abcdef" for character in hex_part
+    ):
+        raise CrossSupervisorReceiptError(
+            f"{field_name} must be a lowercase sha256 hex digest",
+            code="receipt_invalid",
+        )
+    return digest
+
+
+def _cross_supervisor_receipt_wire(receipt: Any) -> dict[str, Any]:
+    if not isinstance(receipt, Mapping):
+        raise CrossSupervisorReceiptError(
+            "cross-supervisor receipt must be an object",
+            code="receipt_invalid",
+        )
+    fields = set(receipt)
+    forbidden = fields & CROSS_SUPERVISOR_RECEIPT_FORBIDDEN_FIELDS
+    if forbidden:
+        raise CrossSupervisorReceiptError(
+            "cross-supervisor receipt contains operational authority field(s): "
+            + ", ".join(sorted(forbidden)),
+            code="operational_authority_field",
+        )
+    missing = CROSS_SUPERVISOR_RECEIPT_REQUIRED_FIELDS - fields
+    extra = fields - CROSS_SUPERVISOR_RECEIPT_REQUIRED_FIELDS
+    if missing or extra:
+        details = []
+        if missing:
+            details.append("missing " + ", ".join(sorted(missing)))
+        if extra:
+            details.append("unknown " + ", ".join(sorted(extra)))
+        raise CrossSupervisorReceiptError(
+            "cross-supervisor receipt fields: " + "; ".join(details),
+            code="receipt_invalid",
+        )
+    schema = receipt["schema"]
+    if schema != CROSS_SUPERVISOR_RECEIPT_SCHEMA:
+        raise CrossSupervisorReceiptError(
+            f"unsupported cross-supervisor receipt schema {schema!r}",
+            code="receipt_schema",
+        )
+    outcome = _receipt_text(receipt["outcome"], "outcome")
+    if outcome not in CROSS_SUPERVISOR_RECEIPT_OUTCOMES:
+        raise CrossSupervisorReceiptError(
+            f"unsupported cross-supervisor receipt outcome {outcome!r}",
+            code="unknown_outcome",
+        )
+    payload = receipt["payload"]
+    if not isinstance(payload, Mapping):
+        raise CrossSupervisorReceiptError(
+            "payload must be an object",
+            code="receipt_invalid",
+        )
+    try:
+        detached_payload = json.loads(_canonical_json(dict(payload)))
+    except (TypeError, ValueError) as error:
+        raise CrossSupervisorReceiptError(
+            f"invalid receipt payload: {error}",
+            code="receipt_invalid",
+        ) from error
+    if not isinstance(detached_payload, dict):
+        raise CrossSupervisorReceiptError(
+            "payload must be an object",
+            code="receipt_invalid",
+        )
+    encoded_payload = _canonical_json(detached_payload).encode("utf-8")
+    if len(encoded_payload) > _MAX_SIBLING_RECEIPT_PAYLOAD_BYTES:
+        raise CrossSupervisorReceiptError(
+            "receipt payload exceeds the admitted bound",
+            code="receipt_invalid",
+        )
+    return {
+        "carrier_event_id": _receipt_text(
+            receipt["carrier_event_id"], "carrier_event_id"
+        ),
+        "evidence_digest": _receipt_digest_text(
+            receipt["evidence_digest"], "evidence_digest"
+        ),
+        "outcome": outcome,
+        "payload": detached_payload,
+        "receipt_id": _receipt_text(receipt["receipt_id"], "receipt_id"),
+        "request_id": _receipt_text(
+            receipt["request_id"], "request_id", required=False
+        ),
+        "schema": CROSS_SUPERVISOR_RECEIPT_SCHEMA,
+        "task_id": _receipt_text(receipt["task_id"], "task_id"),
+    }
+
+
+@dataclass(frozen=True)
+class CrossSupervisorReceiptAdmission:
+    """Non-authoritative admission of one cross-supervisor receipt envelope.
+
+    This binding is not a second receipt log, bus, registry, or state owner.
+    Sibling supervisors exchange receipts as events; admission never writes
+    DuckDB or DuckLake, never consumes ``DatabaseEventLog@1``, and never
+    terminalizes a task.
+    """
+
+    local_supervisor_id: str
+    sibling_supervisor_id: str
+    receipt_id: str
+    task_id: str
+    carrier_event_id: str
+    outcome: str
+    evidence_digest: str
+    receipt_digest: str
+    epoch: int
+    request_id: str = ""
+    capability: str = CROSS_SUPERVISOR_RECEIPT_CAPABILITY
+    effect: str = "event_exchange"
+    schema: str = CROSS_SUPERVISOR_RECEIPT_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != CROSS_SUPERVISOR_RECEIPT_SCHEMA:
+            raise CrossSupervisorReceiptError(
+                f"unsupported cross-supervisor receipt schema {self.schema!r}",
+                code="receipt_schema",
+            )
+        object.__setattr__(
+            self,
+            "local_supervisor_id",
+            _receipt_text(self.local_supervisor_id, "local_supervisor_id"),
+        )
+        object.__setattr__(
+            self,
+            "sibling_supervisor_id",
+            _receipt_text(self.sibling_supervisor_id, "sibling_supervisor_id"),
+        )
+        if self.local_supervisor_id == self.sibling_supervisor_id:
+            raise CrossSupervisorReceiptError(
+                "a supervisor is not its own sibling",
+                code="not_a_sibling",
+            )
+        object.__setattr__(self, "receipt_id", _receipt_text(self.receipt_id, "receipt_id"))
+        object.__setattr__(self, "task_id", _receipt_text(self.task_id, "task_id"))
+        object.__setattr__(
+            self,
+            "request_id",
+            _receipt_text(self.request_id, "request_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "carrier_event_id",
+            _receipt_text(self.carrier_event_id, "carrier_event_id"),
+        )
+        outcome = _receipt_text(self.outcome, "outcome")
+        if outcome not in CROSS_SUPERVISOR_RECEIPT_OUTCOMES:
+            raise CrossSupervisorReceiptError(
+                f"unsupported cross-supervisor receipt outcome {outcome!r}",
+                code="unknown_outcome",
+            )
+        object.__setattr__(self, "outcome", outcome)
+        object.__setattr__(
+            self,
+            "evidence_digest",
+            _receipt_digest_text(self.evidence_digest, "evidence_digest"),
+        )
+        object.__setattr__(
+            self,
+            "receipt_digest",
+            _receipt_digest_text(self.receipt_digest, "receipt_digest"),
+        )
+        capability = _receipt_text(self.capability, "capability")
+        if capability in FORBIDDEN_SIBLING_CAPABILITIES:
+            raise CrossSupervisorReceiptError(
+                f"sibling capability {capability!r} is forbidden",
+                code="forbidden_capability",
+            )
+        if capability != CROSS_SUPERVISOR_RECEIPT_CAPABILITY:
+            raise CrossSupervisorReceiptError(
+                "cross-supervisor receipts require "
+                f"{CROSS_SUPERVISOR_RECEIPT_CAPABILITY!r}",
+                code="unknown_capability",
+            )
+        object.__setattr__(self, "capability", capability)
+        epoch = int(self.epoch)
+        if epoch < 1:
+            raise CrossSupervisorReceiptError(
+                "epoch must be >= 1",
+                code="stale_fence_epoch",
+            )
+        object.__setattr__(self, "epoch", epoch)
+        object.__setattr__(
+            self,
+            "effect",
+            _admit_sibling_effect(
+                self.effect,
+                error_cls=CrossSupervisorReceiptError,
+            ),
+        )
+
+    @property
+    def logical_once_key(self) -> str:
+        return f"{self.sibling_supervisor_id}:{self.receipt_id}"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "binding": CROSS_SUPERVISOR_RECEIPT_BINDING,
+            "interface": CROSS_SUPERVISOR_RECEIPT_INTERFACE,
+            "carrier": SUPERVISOR_FABRIC_INTERFACE,
+            "consumes": {
+                "supervisor_fabric": SUPERVISOR_FABRIC_INTERFACE,
+                "sibling_event_validation": SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING,
+                "sibling_capability_registry": (
+                    SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING
+                ),
+            },
+            "local_supervisor_id": self.local_supervisor_id,
+            "sibling_supervisor_id": self.sibling_supervisor_id,
+            "receipt_id": self.receipt_id,
+            "task_id": self.task_id,
+            "request_id": self.request_id,
+            "carrier_event_id": self.carrier_event_id,
+            "outcome": self.outcome,
+            "evidence_digest": self.evidence_digest,
+            "receipt_digest": self.receipt_digest,
+            "epoch": self.epoch,
+            "capability": self.capability,
+            "effect": self.effect,
+            "logical_once_key": self.logical_once_key,
+            "fenced": True,
+            "admitted": True,
+            "database_write": False,
+            "direct_state_write": False,
+            "terminalize_task": False,
+            "completion_authoritative": False,
+            "worker_assertion_is_authority": False,
+            "worker_completion_insufficient": True,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> CrossSupervisorReceiptAdmission:
+        if not isinstance(payload, Mapping):
+            raise CrossSupervisorReceiptError(
+                "cross-supervisor receipt admission must be an object",
+                code="record_invalid",
+            )
+        return cls(
+            local_supervisor_id=str(payload.get("local_supervisor_id") or ""),
+            sibling_supervisor_id=str(payload.get("sibling_supervisor_id") or ""),
+            receipt_id=str(payload.get("receipt_id") or ""),
+            task_id=str(payload.get("task_id") or ""),
+            request_id=str(payload.get("request_id") or ""),
+            carrier_event_id=str(payload.get("carrier_event_id") or ""),
+            outcome=str(payload.get("outcome") or ""),
+            evidence_digest=str(payload.get("evidence_digest") or ""),
+            receipt_digest=str(payload.get("receipt_digest") or ""),
+            epoch=int(payload.get("epoch") or 0),
+            capability=str(
+                payload.get("capability") or CROSS_SUPERVISOR_RECEIPT_CAPABILITY
+            ),
+            effect=str(payload.get("effect") or "event_exchange"),
+            schema=str(payload.get("schema") or CROSS_SUPERVISOR_RECEIPT_SCHEMA),
+        )
+
+
+def admit_cross_supervisor_receipt(
+    record: Mapping[str, Any],
+) -> CrossSupervisorReceiptAdmission:
+    """Admit one sibling receipt envelope without writing or consuming state."""
+
+    if not isinstance(record, Mapping):
+        raise CrossSupervisorReceiptError(
+            "cross-supervisor receipt record must be an object",
+            code="record_invalid",
+        )
+    _reject_direct_state_writes(
+        record,
+        error_cls=CrossSupervisorReceiptError,
+        subject="sibling receipts",
+    )
+    if record.get("completion_authoritative"):
+        raise CrossSupervisorReceiptError(
+            "cross-supervisor receipt admission is not completion authority",
+            code="completion_not_authoritative",
+        )
+    local_supervisor_id = _receipt_text(
+        record.get("local_supervisor_id"), "local_supervisor_id"
+    )
+    sibling_supervisor_id = _receipt_text(
+        record.get("sibling_supervisor_id") or record.get("supervisor_id"),
+        "sibling_supervisor_id",
+    )
+    if sibling_supervisor_id == local_supervisor_id:
+        raise CrossSupervisorReceiptError(
+            "a supervisor is not its own sibling",
+            code="not_a_sibling",
+        )
+    known = record.get("known_sibling_ids")
+    if known is not None:
+        if not isinstance(known, Sequence) or isinstance(known, (str, bytes)):
+            raise CrossSupervisorReceiptError(
+                "known_sibling_ids must be a sequence of supervisor ids",
+                code="unknown_sibling",
+            )
+        if sibling_supervisor_id not in tuple(known):
+            raise CrossSupervisorReceiptError(
+                f"unknown sibling supervisor {sibling_supervisor_id!r}",
+                code="unknown_sibling",
+            )
+    if "capability" in record:
+        capability = record.get("capability")
+    else:
+        capability = CROSS_SUPERVISOR_RECEIPT_CAPABILITY
+    if isinstance(capability, str) and capability in FORBIDDEN_SIBLING_CAPABILITIES:
+        raise CrossSupervisorReceiptError(
+            f"sibling capability {capability!r} is forbidden",
+            code="forbidden_capability",
+        )
+    if isinstance(capability, str) and capability and capability != CROSS_SUPERVISOR_RECEIPT_CAPABILITY:
+        raise CrossSupervisorReceiptError(
+            "cross-supervisor receipts require "
+            f"{CROSS_SUPERVISOR_RECEIPT_CAPABILITY!r}",
+            code="unknown_capability",
+        )
+    current_epoch = record.get("current_epoch")
+    if current_epoch is not None:
+        try:
+            current = int(current_epoch)
+        except (TypeError, ValueError) as error:
+            raise CrossSupervisorReceiptError(
+                "current_epoch must be an integer >= 1",
+                code="stale_fence_epoch",
+            ) from error
+        if current < 1:
+            raise CrossSupervisorReceiptError(
+                "current_epoch must be >= 1",
+                code="stale_fence_epoch",
+            )
+        try:
+            offered = int(record.get("epoch") or 0)
+        except (TypeError, ValueError) as error:
+            raise CrossSupervisorReceiptError(
+                "epoch must be an integer >= 1",
+                code="stale_fence_epoch",
+            ) from error
+        if offered < current:
+            raise CrossSupervisorReceiptError(
+                "stale fence epoch",
+                code="stale_fence_epoch",
+            )
+    fence = issue_fence(
+        {
+            "supervisor_id": sibling_supervisor_id,
+            "capability": capability,
+            "epoch": record.get("epoch"),
+            "stale_epoch": record.get("stale_epoch"),
+        }
+    )
+    admitted_capability = str(fence["capability"])
+    if admitted_capability in FORBIDDEN_SIBLING_CAPABILITIES:
+        raise CrossSupervisorReceiptError(
+            f"sibling capability {admitted_capability!r} is forbidden",
+            code="forbidden_capability",
+        )
+    if admitted_capability != CROSS_SUPERVISOR_RECEIPT_CAPABILITY:
+        raise CrossSupervisorReceiptError(
+            "cross-supervisor receipts require "
+            f"{CROSS_SUPERVISOR_RECEIPT_CAPABILITY!r}",
+            code="unknown_capability",
+        )
+    envelope = _cross_supervisor_receipt_wire(record.get("receipt"))
+    admission = CrossSupervisorReceiptAdmission(
+        local_supervisor_id=local_supervisor_id,
+        sibling_supervisor_id=str(fence["supervisor_id"]),
+        receipt_id=str(envelope["receipt_id"]),
+        task_id=str(envelope["task_id"]),
+        request_id=str(envelope["request_id"]),
+        carrier_event_id=str(envelope["carrier_event_id"]),
+        outcome=str(envelope["outcome"]),
+        evidence_digest=str(envelope["evidence_digest"]),
+        receipt_digest=_sha256_hex(_canonical_json(envelope).encode("utf-8")),
+        epoch=int(fence["epoch"]),
+        capability=admitted_capability,
+        effect=_admit_sibling_effect(
+            record.get("effect") or "event_exchange",
+            error_cls=CrossSupervisorReceiptError,
+        ),
+    )
+    _ = bool(record.get("worker_assertion"))
+    return admission
+
+
 class SupervisorFabric:
-    """Fenced coordination carrier for sibling-supervisor event admission."""
+    """Fenced coordination carrier for sibling-supervisor event and receipt admission."""
 
     INTERFACE: Final[str] = SUPERVISOR_FABRIC_INTERFACE
     SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING: Final[str] = (
@@ -959,6 +1415,7 @@ class SupervisorFabric:
     SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING: Final[str] = (
         SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING
     )
+    CROSS_SUPERVISOR_RECEIPT_BINDING: Final[str] = CROSS_SUPERVISOR_RECEIPT_BINDING
 
     def __init__(
         self,
@@ -1092,6 +1549,28 @@ class SupervisorFabric:
             self.lookup_sibling_capability(sibling_supervisor_id, capability)
         return validate_sibling_supervisor_event(payload)
 
+    def admit_cross_supervisor_receipt(
+        self, record: Mapping[str, Any]
+    ) -> CrossSupervisorReceiptAdmission:
+        payload: dict[str, Any] = dict(record)
+        payload.setdefault("local_supervisor_id", self._supervisor_id)
+        payload.setdefault("epoch", record.get("epoch", self._epoch))
+        payload.setdefault("capability", CROSS_SUPERVISOR_RECEIPT_CAPABILITY)
+        payload.setdefault("current_epoch", self._epoch)
+        if self._known_sibling_ids and "known_sibling_ids" not in payload:
+            payload["known_sibling_ids"] = self._known_sibling_ids
+        if self._capability_registry:
+            sibling_supervisor_id = _receipt_text(
+                payload.get("sibling_supervisor_id") or payload.get("supervisor_id"),
+                "sibling_supervisor_id",
+            )
+            capability = _receipt_text(
+                payload.get("capability") or CROSS_SUPERVISOR_RECEIPT_CAPABILITY,
+                "capability",
+            )
+            self.lookup_sibling_capability(sibling_supervisor_id, capability)
+        return admit_cross_supervisor_receipt(payload)
+
 
 __all__ = [
     "ALLOWED_SIBLING_CAPABILITIES",
@@ -1100,6 +1579,15 @@ __all__ = [
     "CANONICAL_EVENT_INTERFACE",
     "CANONICAL_EVENT_REQUIRED_FIELDS",
     "CANONICAL_EVENT_SCHEMA_ID",
+    "CROSS_SUPERVISOR_RECEIPT_BINDING",
+    "CROSS_SUPERVISOR_RECEIPT_CAPABILITY",
+    "CROSS_SUPERVISOR_RECEIPT_CARRIER",
+    "CROSS_SUPERVISOR_RECEIPT_CONSUMES",
+    "CROSS_SUPERVISOR_RECEIPT_FORBIDDEN_FIELDS",
+    "CROSS_SUPERVISOR_RECEIPT_INTERFACE",
+    "CROSS_SUPERVISOR_RECEIPT_OUTCOMES",
+    "CROSS_SUPERVISOR_RECEIPT_REQUIRED_FIELDS",
+    "CROSS_SUPERVISOR_RECEIPT_SCHEMA",
     "DATABASE_EVENT_LOG_INTERFACE",
     "EVENT_CURSOR_INTERFACE",
     "FORBIDDEN_SIBLING_CAPABILITIES",
@@ -1112,6 +1600,8 @@ __all__ = [
     "SIBLING_SUPERVISOR_EVENT_VALIDATION_INTERFACE",
     "SIBLING_SUPERVISOR_EVENT_VALIDATION_SCHEMA",
     "SUPERVISOR_FABRIC_INTERFACE",
+    "CrossSupervisorReceiptAdmission",
+    "CrossSupervisorReceiptError",
     "SiblingSupervisorCapabilityAdmission",
     "SiblingSupervisorCapabilityRegistry",
     "SiblingSupervisorCapabilityRegistryError",
@@ -1119,6 +1609,7 @@ __all__ = [
     "SiblingSupervisorEventValidationError",
     "SupervisorFabric",
     "SupervisorFabricError",
+    "admit_cross_supervisor_receipt",
     "build_sibling_supervisor_capability_registry",
     "issue_fence",
     "lookup_sibling_supervisor_capability",
