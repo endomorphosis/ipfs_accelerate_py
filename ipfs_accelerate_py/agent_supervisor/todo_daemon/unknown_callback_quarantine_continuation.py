@@ -110,10 +110,35 @@ def _nonempty_str(value: Any) -> str | None:
     return text or None
 
 
+def successor_attempt_number(
+    receipt: Mapping[str, Any],
+    *,
+    attempt_number_floor: int = 0,
+) -> int | None:
+    """Return a monotonic successor attempt above receipt and cooldown floors."""
+
+    prior_attempt = receipt.get("attempt_number")
+    if prior_attempt is None:
+        attempt_number = 1
+    else:
+        checked = _positive_int(prior_attempt)
+        if checked is None:
+            return None
+        attempt_number = checked + 1
+    if (
+        isinstance(attempt_number_floor, bool)
+        or type(attempt_number_floor) is not int
+        or attempt_number_floor < 0
+    ):
+        return None
+    return max(attempt_number, attempt_number_floor + 1)
+
+
 def continuation_receipt(
     task: Any,
     *,
     expected_revision: int,
+    attempt_number_floor: int = 0,
 ) -> dict[str, Any] | None:
     """Build a successor retry receipt that embeds the historical unknown."""
 
@@ -141,14 +166,12 @@ def continuation_receipt(
         fence_epoch,
     ):
         return None
-    prior_attempt = receipt.get("attempt_number")
-    if prior_attempt is None:
-        attempt_number = 1
-    else:
-        checked = _positive_int(prior_attempt)
-        if checked is None:
-            return None
-        attempt_number = checked + 1
+    attempt_number = successor_attempt_number(
+        receipt,
+        attempt_number_floor=attempt_number_floor,
+    )
+    if attempt_number is None:
+        return None
     queue_reason = f"{OPERATION}:{attempt_id}"
     preserved = dict(receipt)
     payload = {

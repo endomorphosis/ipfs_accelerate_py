@@ -96382,12 +96382,24 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "typed retry attempt floor has no exact cooldown validator"
             )
-        queue_entry = validate(
-            str(task.task_cid),
-            expected_attempt_identity=identity,
-            expected_reason=str(receipt.get("queue_reason") or ""),
-            expected_delay_ms=receipt.get("backoff_ms"),
-        )
+        try:
+            queue_entry = validate(
+                str(task.task_cid),
+                expected_attempt_identity=identity,
+                expected_reason=str(receipt.get("queue_reason") or ""),
+                expected_delay_ms=receipt.get("backoff_ms"),
+            )
+        except TaskSourceIntegrityError:
+            from .unknown_callback_quarantine_continuation import (
+                OPERATION as continuation_operation,
+            )
+
+            # A successor-admitted unknown-callback continuation can outlive a
+            # stale cooldown row.  That mismatch must not abort claim_next for
+            # unrelated ready tasks.
+            if receipt.get("operation") == continuation_operation:
+                return 0
+            raise
         return max(int(identity["attempt_number"]), int(queue_entry.attempt))
 
     def _callback_no_effect_retry_claim_is_within_budget(
@@ -127725,9 +127737,34 @@ class DatabaseImplementationDaemon:
         if current is None:
             current = task
         expected_revision = int(getattr(current, "revision", 0) or 0)
+        attempt_number_floor = 0
+        cooldown_row = getattr(self.task_source, "_retry_cooldown_row", None)
+        if callable(cooldown_row):
+            try:
+                row = cooldown_row(str(current.task_cid))
+            except Exception:
+                row = None
+            if isinstance(row, Mapping):
+                try:
+                    attempt_number_floor = max(
+                        attempt_number_floor,
+                        int(row.get("attempt") or 0),
+                    )
+                except (TypeError, ValueError):
+                    pass
+                extension = row.get("extension")
+                if isinstance(extension, Mapping):
+                    try:
+                        attempt_number_floor = max(
+                            attempt_number_floor,
+                            int(extension.get("attempt_number") or 0),
+                        )
+                    except (TypeError, ValueError):
+                        pass
         receipt = continuation_receipt(
             current,
             expected_revision=expected_revision,
+            attempt_number_floor=attempt_number_floor,
         )
         if receipt is None:
             return identity_incomplete_observation(current)
@@ -127782,6 +127819,13 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "unknown-callback quarantine continuation did not persist"
             )
+        repair = getattr(
+            self.task_source,
+            "repair_retrying_cooldown_bindings",
+            None,
+        )
+        if callable(repair):
+            repair()
         self._record_event(
             "unknown_callback_quarantine_continuation_admitted",
             attempt_id=str(receipt["attempt_id"]),

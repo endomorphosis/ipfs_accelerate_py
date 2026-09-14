@@ -8,6 +8,9 @@ from types import SimpleNamespace
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_RETRYING_RECEIPT_OPERATIONS,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DatabaseImplementationDaemon,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.unknown_callback_quarantine_continuation import (
     DEAD_ADMITTED_OPERATION,
     DUAL_IDENTITY_REPORT_REASON,
@@ -19,6 +22,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.unknown_callback_quarantine
     continuation_receipt,
     dual_identity_observation,
     is_dual_pending_merge_identity_block,
+    successor_attempt_number,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+    TaskSourceIntegrityError,
 )
 from test.api.test_agent_supervisor_database_implementation_daemon import (
     _open_daemon,
@@ -78,6 +85,17 @@ def test_dual_pending_merge_identity_is_reported_not_continued() -> None:
     assert observation["completion_authoritative"] is False
 
 
+def test_successor_attempt_number_is_monotonic_with_cooldown_floor() -> None:
+    receipt = _identity_receipt(attempt_number=1)
+    assert successor_attempt_number(receipt) == 2
+    assert successor_attempt_number(receipt, attempt_number_floor=4) == 5
+    missing = dict(receipt)
+    missing.pop("attempt_number")
+    assert successor_attempt_number(missing) == 1
+    assert successor_attempt_number(missing, attempt_number_floor=3) == 4
+    assert successor_attempt_number(receipt, attempt_number_floor=-1) is None
+
+
 def test_continuation_receipt_preserves_unknown_and_admits_successor() -> None:
     task = _quarantine_task(
         operation="database_portal_neutral_failure_quarantine",
@@ -98,6 +116,13 @@ def test_continuation_receipt_preserves_unknown_and_admits_successor() -> None:
     assert receipt["attempt_number"] == 2
     assert receipt["control_expected_revision"] == 4
     assert receipt["reason"] == SUCCESSOR_REASON
+    bumped = continuation_receipt(
+        task,
+        expected_revision=4,
+        attempt_number_floor=6,
+    )
+    assert bumped is not None
+    assert bumped["attempt_number"] == 7
 
 
 def test_continuation_receipt_rejects_forged_identity() -> None:
@@ -261,6 +286,42 @@ def test_dual_identity_block_is_explicit_and_does_not_reopen(
         assert independent.task_cid == "task:cid:002"
     finally:
         daemon.close()
+
+
+def test_continuation_cooldown_mismatch_does_not_abort_sibling_claim() -> None:
+    task = SimpleNamespace(
+        task_cid="task:cid:044",
+        status="retrying",
+        revision=9,
+        body={
+            "completion_receipt": {
+                "operation": OPERATION,
+                "attempt_id": "attempt:044",
+                "claim_id": "claim:044",
+                "lease_id": "lease:044",
+                "owner_session_id": "session:044",
+                "attempt_number": 1,
+                "fencing_token": 2,
+                "fence_epoch": 2,
+                "queue_reason": f"{OPERATION}:attempt:044",
+                "backoff_ms": 0,
+            }
+        },
+    )
+
+    class _Source:
+        @staticmethod
+        def validate_retrying_task_cooldown(*_args: object, **_kwargs: object) -> None:
+            raise TaskSourceIntegrityError(
+                "retry cooldown differs from the task revision lineage"
+            )
+
+    daemon = SimpleNamespace(task_source=_Source())
+    floor = DatabaseImplementationDaemon._typed_authoritative_attempt_floor(
+        daemon,
+        task,
+    )
+    assert floor == 0
 
 
 def test_without_recovery_adapter_unknown_callback_stays_fail_closed(
