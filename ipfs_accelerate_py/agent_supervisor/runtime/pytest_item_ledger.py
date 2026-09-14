@@ -19,6 +19,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from ..git_environment import git_subprocess_environment
+
 LEDGER_SCHEMA = "ipfs_accelerate_py/agent-supervisor/pytest-item-ledger@1"
 SKIP_REASON = "pytest-item-ledger reuse"
 # Path.write_text truncates before writing. Grant-handoff tests wait on
@@ -132,6 +134,7 @@ def task_id_from_workspace(workspace: Path) -> str | None:
             check=False,
             capture_output=True,
             text=True,
+            env=git_subprocess_environment(),
         )
     except OSError:
         completed = None
@@ -223,6 +226,7 @@ def dirty_source_paths(workspace: Path) -> tuple[str, ...]:
             cwd=workspace,
             check=False,
             capture_output=True,
+            env=git_subprocess_environment(),
         )
     except OSError:
         completed = None
