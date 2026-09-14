@@ -315,15 +315,15 @@ class SparCloseoutProfile:
                 owner_identity=owner_identity,
                 target_repository_id=target,
             ) as runtime:
-                if datasets.get("admitted") is not True:
-                    datasets = admit_accepted_root(
-                        self._profile,
-                        self.profile_cid,
-                        source=observed["source_observation"],
-                        kit=kit,
-                        task_evidence=observed["task_evidence"],
-                        goal_requirements=observed["goal_requirements"],
-                    )
+                datasets = admit_accepted_root(
+                    self._profile,
+                    self.profile_cid,
+                    source=observed["source_observation"],
+                    kit=kit,
+                    task_evidence=observed["task_evidence"],
+                    goal_requirements=observed["goal_requirements"],
+                    runtime=runtime,
+                )
                 goals = settle_spar_goals(
                     connection,
                     profile=self._profile,
@@ -474,50 +474,42 @@ class SparCloseoutProfile:
                 }
             )
         source = observe_source(self._repository_root, p["nested_repositories"])
+        from ..semantic_state.spar_accepted_root import (
+            MODE_FLOORS,
+            REQUIRED_MODE,
+            admit_accepted_root,
+            sealed_current_rollout_mode,
+        )
+        current_mode = sealed_current_rollout_mode()
         if not source["available"]:
             blockers.append("current_source_observation_unavailable")
         else:
             if not source["clean"]:
                 blockers.append("current_source_dirty")
-            for report in source["reports"]:
-                if not report["available"]:
-                    blockers.append(f"required_report_unavailable:{report['path']}")
-                elif (
-                    report.get("nomination_only") is True
-                    or report.get("can_authorize_completion") is not True
-                ):
-                    blockers.append(
-                        f"report_is_not_acceptance_authority:{report['path']}"
-                    )
-            final = source["reports"][0]
-            if (final.get("authority_roots") or {}).get(
-                "repository_forest_cid"
-            ) != source["source_forest"]["source_forest_root"]:
-                blockers.append("final_report_current_source_forest_mismatch")
+            if current_mode == REQUIRED_MODE:
+                for report in source["reports"]:
+                    if not report["available"]:
+                        blockers.append(f"required_report_unavailable:{report['path']}")
+                    elif (
+                        report.get("nomination_only") is True
+                        or report.get("can_authorize_completion") is not True
+                    ):
+                        blockers.append(
+                            f"report_is_not_acceptance_authority:{report['path']}"
+                        )
+                final = source["reports"][0]
+                if (final.get("authority_roots") or {}).get(
+                    "repository_forest_cid"
+                ) != source["source_forest"]["source_forest_root"]:
+                    blockers.append("final_report_current_source_forest_mismatch")
         kit = (self._kit_source_forest.observe(source) if self._kit_source_forest is not None
                else {"admitted": False, "reason": self._kit_source_forest_error,
                      "completion_authority": False, "semantic_acceptance_authority": False})
         if kit.get("admitted") is not True:
             blockers.append("kit_source_forest_cas_receipt_producer_and_admission_required")
-        from ..semantic_state.spar_accepted_root import admit_accepted_root
         from ..runtime.spar_runtime_settlement import observe_spar_runtime_settlement
         from .spar_goal_settlement import observe_goal_settlement
 
-        datasets = admit_accepted_root(
-            p,
-            self.profile_cid,
-            source=source,
-            kit=kit,
-            task_evidence=task_evidence,
-            goal_requirements=goal_requirements,
-        )
-        if datasets.get("admitted") is not True:
-            blockers.append(
-                str(datasets.get("reason") or "datasets_independent_accepted_root_producer_and_admission_required")
-            )
-            blockers.append(
-                "required_mode_roots_safety_floors_capstone_fixed_point_acceptance_required"
-            )
         owner_identity = snapshot.get("owner_identity") if isinstance(snapshot.get("owner_identity"), Mapping) else {}
         runtime = observe_spar_runtime_settlement(
             self._repository_root,
@@ -526,6 +518,21 @@ class SparCloseoutProfile:
                 owner_identity.get("repository_id") or "repository:ipfs_accelerate_py"
             ),
         )
+        datasets = admit_accepted_root(
+            p,
+            self.profile_cid,
+            source=source,
+            kit=kit,
+            task_evidence=task_evidence,
+            goal_requirements=goal_requirements,
+            runtime=runtime,
+        )
+        if datasets.get("admitted") is not True:
+            blockers.append(
+                str(datasets.get("reason") or "datasets_independent_accepted_root_producer_and_admission_required")
+            )
+            if current_mode == REQUIRED_MODE:
+                blockers.append(MODE_FLOORS)
         if runtime.get("admitted") is not True:
             blockers.append("runtime_lane_and_merge_queue_settlement_receipt_required")
             extra = runtime.get("reason")

@@ -182,6 +182,7 @@ def test_runtime_settlement_admits_private_zero_active_three_lane_fixture(tmp_pa
     assert observed["active_count"] == 0
     with hold_spar_runtime_settlement(root, owner_identity=owner, target_repository_id=_TARGET) as held:
         assert held["admitted"] is True and held["held"] is True
+        assert held["receipt_cid"] == observed["receipt_cid"]
 
 
 def _insert_task_claim(coordination: Path, *, claim_id: str, state: str, released_at_ms: int | None) -> None:
@@ -490,6 +491,7 @@ def test_admit_accepted_root_surfaces_producer_clause_outcomes(monkeypatch) -> N
     assert result["admitted"] is False
     assert result["reason"] == accepted_root.MODE_FLOORS
     assert result["producer_reason"] == accepted_root.MODE_FLOORS
+    assert result["current_rollout_mode"] == "bootstrap"
     outcomes = result["clause_outcomes"]
     assert set(outcomes) == set(accepted_root.REQUIRED_CLAUSES)
     assert all(row["accepted"] is False for row in outcomes.values())
@@ -711,3 +713,236 @@ def test_closeout_acceptance_republishes_kit_source_forest(native_source, monkey
     assert deferred["admitted"] is False
     assert calls and calls[-1] is True
     assert connection.execute("SELECT COUNT(*) FROM goals WHERE status='active'").fetchone()[0] == 32
+
+
+def _clause_missing_producer():
+    class Producer:
+        PRODUCER_INTERFACE = accepted_root.PRODUCER_INTERFACE
+
+        @staticmethod
+        def admit_spar_accepted_root(subject):
+            return {
+                "admitted": False,
+                "producer_interface": accepted_root.PRODUCER_INTERFACE,
+                "semantic_acceptance_authority": False,
+                "reason": accepted_root.MODE_FLOORS,
+                "profile_cid": subject["profile_cid"],
+                "source_forest_root": subject["source_forest_root"],
+                "subject_cid": content_identity(subject),
+                "required_mode_roots_accepted": False,
+                "safety_floors_noncompensable_accepted": False,
+                "self_hosted_capstone_accepted": False,
+                "fixed_point_accepted": False,
+                "clause_outcomes": {
+                    name: {
+                        "accepted": False,
+                        "reason": "current_source_clause_evidence_unavailable",
+                    }
+                    for name in accepted_root.REQUIRED_CLAUSES
+                },
+            }
+
+    return Producer
+
+
+def _bootstrap_inputs():
+    evidence = [
+        {"receipt": {"completion_receipt_cid": f"receipt:{i}"}, "blockers": []}
+        for i in range(51)
+    ]
+    source = {
+        "available": True,
+        "clean": True,
+        "repository_tree_id": "tree:sealed",
+        "source_forest": {
+            "source_forest_root": "forest:sealed",
+            "source_head": "head:sealed",
+        },
+        "reports": [
+            {
+                "path": "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/final_report.json",
+                "available": True,
+                "nomination_only": True,
+                "can_authorize_completion": False,
+                "final_root_accepted": True,
+                "content_digest": "sha256:final",
+                "authority_roots": {"repository_forest_cid": "forest:old"},
+            }
+        ],
+    }
+    kit = {
+        "admitted": True,
+        "transition_cid": "kit:transition",
+        "manifest_cid": "kit:manifest",
+    }
+    runtime = {
+        "admitted": True,
+        "settled": True,
+        "receipt_cid": "cid:runtime",
+    }
+    return evidence, source, kit, runtime
+
+
+def test_bootstrap_subject_verified_without_runtime_is_not_admitted(monkeypatch) -> None:
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    evidence, source, kit, _runtime = _bootstrap_inputs()
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source=source,
+        kit=kit,
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == accepted_root.RUNTIME_MISSING
+    assert result["current_rollout_mode"] == "bootstrap"
+    assert result.get("required_mode_roots_accepted") is not True
+    assert result["completion_authority"] is False
+
+
+def test_bootstrap_admits_from_kit_runtime_and_native_receipts(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.rollout import (
+        sealed_rollout_baseline,
+    )
+
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    evidence, source, kit, runtime = _bootstrap_inputs()
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source=source,
+        kit=kit,
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+        runtime=runtime,
+    )
+    assert result["admitted"] is True, result
+    assert result["admission_mode"] == "bootstrap"
+    assert result["current_rollout_mode"] == "bootstrap"
+    assert result["semantic_acceptance_authority"] is False
+    assert result["completion_authority"] is False
+    assert result.get("required_mode_roots_accepted") is not True
+    assert result.get("safety_floors_noncompensable_accepted") is not True
+    assert result.get("self_hosted_capstone_accepted") is not True
+    assert result.get("fixed_point_accepted") is not True
+    assert result.get("final_root_accepted") is not True
+    assert result["accepted_root_cid"]
+    assert result["runtime_receipt_cid"] == "cid:runtime"
+    assert result["kit_transition_cid"] == "kit:transition"
+    baseline = sealed_rollout_baseline()
+    assert baseline["current_mode"] == "bootstrap"
+    assert baseline["worker_may_change_mode"] is False
+
+
+def test_bootstrap_does_not_copy_nominated_report_booleans(monkeypatch) -> None:
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    evidence, source, kit, runtime = _bootstrap_inputs()
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source=source,
+        kit=kit,
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+        runtime=runtime,
+    )
+    encoded = json.dumps(result)
+    assert "final_root_accepted" not in encoded
+    assert result["admitted"] is True
+    probes = accepted_root._source_clause_probes(source)
+    assert all(row["accepted"] is False for row in probes.values())
+    assert all(row["semantic_acceptance_authority"] is False for row in probes.values())
+
+
+def test_required_mode_still_requires_independent_clauses(monkeypatch) -> None:
+    monkeypatch.setattr(accepted_root, "_sealed_current_rollout_mode", lambda: "required")
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    evidence, source, kit, runtime = _bootstrap_inputs()
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source=source,
+        kit=kit,
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+        runtime=runtime,
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == accepted_root.MODE_FLOORS
+    assert result["completion_authority"] is False
+
+
+def test_bootstrap_evaluate_settles_goals_from_native_receipts(native_source, monkeypatch) -> None:
+    gateway, connection, profile, client, cids, _root = native_source
+    assert gateway.publish_spar_source_forest()["admitted"] is True
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    runtime = {"admitted": True, "settled": True, "receipt_cid": "cid:runtime"}
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.spar_runtime_settlement.observe_spar_runtime_settlement",
+        lambda *args, **kwargs: runtime,
+    )
+    observed = view(native_source)
+    datasets = observed["datasets_accepted_root"]
+    assert datasets["admitted"] is True, datasets
+    assert datasets["admission_mode"] == "bootstrap"
+    assert datasets["current_rollout_mode"] == "bootstrap"
+    assert "required_mode_roots_safety_floors_capstone_fixed_point_acceptance_required" not in observed["blockers"]
+    assert not any(
+        item.startswith("report_is_not_acceptance_authority:") for item in observed["blockers"]
+    )
+    assert "final_report_current_source_forest_mismatch" not in observed["blockers"]
+    facts_goals = {}
+    for row in connection.execute(
+        "SELECT goal_cid, goal_alias, title, status, revision, parent_goal_cid, body_json FROM goals"
+    ).fetchall():
+        facts_goals[row[0]] = {
+            "goal_cid": row[0],
+            "goal_alias": row[1],
+            "title": row[2],
+            "status": row[3],
+            "revision": row[4],
+            "parent_goal_cid": row[5],
+            "body_json": row[6],
+        }
+    settled = settle_spar_goals(
+        connection,
+        profile=profile._profile,
+        native_goals=facts_goals,
+        task_evidence=observed["task_evidence"],
+        accepted_root=datasets,
+        runtime=runtime,
+        kit=observed["kit_source_forest_persistence"],
+        owner_identity=gateway.identity,
+    )
+    assert settled["admitted"] is True, settled
+    assert connection.execute("SELECT COUNT(*) FROM goals WHERE status='completed'").fetchone()[0] == 32
+    replay_goals = {}
+    for row in connection.execute(
+        "SELECT goal_cid, goal_alias, title, status, revision, parent_goal_cid, body_json FROM goals"
+    ).fetchall():
+        replay_goals[row[0]] = {
+            "goal_cid": row[0],
+            "goal_alias": row[1],
+            "title": row[2],
+            "status": row[3],
+            "revision": row[4],
+            "parent_goal_cid": row[5],
+            "body_json": row[6],
+        }
+    observed_after = view(native_source)
+    assert observed_after["goal_settlement"]["admitted"] is True, observed_after["goal_settlement"]
+    assert observed_after["goal_contracts_accepted"] is True
+    assert all(g["accepted"] for g in observed_after["goal_requirements"])
+    assert observed_after["completion_authority"] is True, observed_after["blockers"]
+    replay = settle_spar_goals(
+        connection,
+        profile=profile._profile,
+        native_goals=replay_goals,
+        task_evidence=observed_after["task_evidence"],
+        accepted_root=datasets,
+        runtime=runtime,
+        kit=observed_after["kit_source_forest_persistence"],
+        owner_identity=gateway.identity,
+    )
+    assert replay["admitted"] is True and replay["idempotent_replay"] is True

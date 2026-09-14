@@ -17,6 +17,9 @@ PRODUCER_INTERFACE = "SparAcceptedRootProducer@1"
 DATASETS_MODULE = "ipfs_datasets_py.semantic_refactoring.accepted_roots"
 MISSING = "datasets_independent_accepted_root_producer_and_admission_required"
 MODE_FLOORS = "required_mode_roots_safety_floors_capstone_fixed_point_acceptance_required"
+RUNTIME_MISSING = "runtime_lane_and_merge_queue_settlement_receipt_required"
+BOOTSTRAP_MODE = "bootstrap"
+REQUIRED_MODE = "required"
 REQUIRED_CLAUSES = (
     "required_mode_roots_accepted",
     "safety_floors_noncompensable_accepted",
@@ -91,7 +94,7 @@ def _producer_fail_extra(raw: Any) -> dict[str, Any]:
     return extra
 
 
-def _sealed_current_rollout_mode() -> str:
+def sealed_current_rollout_mode() -> str:
     """Read the sealed in-code SPAR current mode. Not acceptance authority."""
     try:
         from ..semantic_refactoring.rollout import sealed_rollout_baseline
@@ -100,6 +103,44 @@ def _sealed_current_rollout_mode() -> str:
     baseline = sealed_rollout_baseline()
     mode = baseline.get("current_mode") if isinstance(baseline, Mapping) else ""
     return mode if type(mode) is str else ""
+
+
+def _sealed_current_rollout_mode() -> str:
+    return sealed_current_rollout_mode()
+
+
+def _runtime_settled(runtime: Any) -> bool:
+    """True only for an independently admitted, settled runtime receipt."""
+    if not isinstance(runtime, Mapping):
+        return False
+    receipt_cid = runtime.get("receipt_cid")
+    return (
+        runtime.get("admitted") is True
+        and runtime.get("settled") is True
+        and type(receipt_cid) is str
+        and bool(receipt_cid.strip())
+    )
+
+
+def _producer_subject_verified(
+    raw: Mapping[str, Any],
+    *,
+    subject: Mapping[str, Any],
+    profile_cid: str,
+    subject_cid: str,
+) -> bool:
+    """Producer independently closed the subject; clause booleans are not used."""
+    error = raw.get("error")
+    if type(error) is str and error.strip():
+        return False
+    if raw.get("reason") == MISSING:
+        return False
+    return (
+        raw.get("producer_interface") == PRODUCER_INTERFACE
+        and raw.get("profile_cid") == profile_cid
+        and raw.get("source_forest_root") == subject["source_forest_root"]
+        and raw.get("subject_cid") == subject_cid
+    )
 
 
 def _source_clause_probes(source: Mapping[str, Any]) -> dict[str, Any]:
@@ -210,6 +251,7 @@ def admit_accepted_root(
     kit: Mapping[str, Any],
     task_evidence: Sequence[Mapping[str, Any]],
     goal_requirements: Sequence[Mapping[str, Any]],
+    runtime: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Re-admit a datasets producer result against the exact current subject."""
     if source.get("available") is not True:
@@ -256,37 +298,82 @@ def admit_accepted_root(
     clauses_ok = all(raw.get(name) is True for name in REQUIRED_CLAUSES)
     evidence = raw.get("evidence_cids")
     producer_ok = raw.get("producer_interface") == PRODUCER_INTERFACE
+    extra = _producer_fail_extra(raw)
+    extra["source_clause_probes"] = _source_clause_probes(source)
+    extra["current_rollout_mode"] = _sealed_current_rollout_mode()
     if (
-        raw.get("admitted") is not True
-        or raw.get("subject_cid") != subject_cid
-        or raw.get("profile_cid") != profile_cid
-        or raw.get("source_forest_root") != subject["source_forest_root"]
-        or not producer_ok
-        or raw.get("semantic_acceptance_authority") is not True
-        or not clauses_ok
-        or not isinstance(evidence, list)
-        or len(evidence) < 1
-        or any(not isinstance(item, str) or not item for item in evidence)
+        raw.get("admitted") is True
+        and raw.get("subject_cid") == subject_cid
+        and raw.get("profile_cid") == profile_cid
+        and raw.get("source_forest_root") == subject["source_forest_root"]
+        and producer_ok
+        and raw.get("semantic_acceptance_authority") is True
+        and clauses_ok
+        and isinstance(evidence, list)
+        and len(evidence) >= 1
+        and all(isinstance(item, str) and item for item in evidence)
     ):
-        if raw.get("admitted") is True:
-            reason = MODE_FLOORS
-        elif producer_ok and raw.get("reason") in {MISSING, MODE_FLOORS}:
-            reason = str(raw["reason"])
-        elif producer_ok:
-            reason = MODE_FLOORS
-        else:
-            reason = MISSING
-        extra = _producer_fail_extra(raw)
-        extra["source_clause_probes"] = _source_clause_probes(source)
-        return _deferred(reason, **extra)
-    return {
-        "schema": SCHEMA,
-        "admitted": True,
-        "authority": "datasets_spar_accepted_root",
-        "completion_authority": False,
-        "semantic_acceptance_authority": True,
-        "subject_cid": subject_cid,
-        "accepted_root_cid": raw.get("accepted_root_cid") or subject_cid,
-        "evidence_cids": list(evidence),
-        "producer_interface": PRODUCER_INTERFACE,
-    }
+        return {
+            "schema": SCHEMA,
+            "admitted": True,
+            "authority": "datasets_spar_accepted_root",
+            "completion_authority": False,
+            "semantic_acceptance_authority": True,
+            "subject_cid": subject_cid,
+            "accepted_root_cid": raw.get("accepted_root_cid") or subject_cid,
+            "evidence_cids": list(evidence),
+            "producer_interface": PRODUCER_INTERFACE,
+        }
+    current_mode = extra["current_rollout_mode"]
+    if current_mode == BOOTSTRAP_MODE:
+        subject_ok = _producer_subject_verified(
+            raw,
+            subject=subject,
+            profile_cid=profile_cid,
+            subject_cid=subject_cid,
+        )
+        if subject_ok and _runtime_settled(runtime):
+            kit_cid = kit.get("transition_cid")
+            runtime_cid = runtime["receipt_cid"] if isinstance(runtime, Mapping) else ""
+            accepted_root_cid = content_identity(
+                {
+                    "schema": SCHEMA,
+                    "admission_mode": BOOTSTRAP_MODE,
+                    "current_rollout_mode": BOOTSTRAP_MODE,
+                    "subject_cid": subject_cid,
+                    "profile_cid": profile_cid,
+                    "source_forest_root": subject["source_forest_root"],
+                    "kit_transition_cid": kit_cid,
+                    "runtime_receipt_cid": runtime_cid,
+                    "task_receipt_cids": list(subject["task_receipt_cids"]),
+                }
+            )
+            return {
+                "schema": SCHEMA,
+                "admitted": True,
+                "authority": "datasets_spar_accepted_root",
+                "completion_authority": False,
+                "semantic_acceptance_authority": False,
+                "admission_mode": BOOTSTRAP_MODE,
+                "current_rollout_mode": BOOTSTRAP_MODE,
+                "subject_cid": subject_cid,
+                "accepted_root_cid": accepted_root_cid,
+                "evidence_cids": [subject_cid, str(kit_cid), str(runtime_cid)],
+                "producer_interface": PRODUCER_INTERFACE,
+                "kit_transition_cid": kit_cid,
+                "runtime_receipt_cid": runtime_cid,
+            }
+        if subject_ok:
+            return _deferred(RUNTIME_MISSING, **extra)
+        if producer_ok and raw.get("reason") in {MISSING, MODE_FLOORS}:
+            return _deferred(str(raw["reason"]), **extra)
+        return _deferred(MISSING, **extra)
+    if raw.get("admitted") is True:
+        reason = MODE_FLOORS
+    elif producer_ok and raw.get("reason") in {MISSING, MODE_FLOORS}:
+        reason = str(raw["reason"])
+    elif producer_ok:
+        reason = MODE_FLOORS
+    else:
+        reason = MISSING
+    return _deferred(reason, **extra)

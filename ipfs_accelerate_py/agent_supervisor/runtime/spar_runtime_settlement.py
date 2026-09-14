@@ -359,7 +359,11 @@ def observe_spar_runtime_settlement(
         if not settled:
             receipt["reason"] = MISSING
         receipt["receipt_cid"] = content_identity(
-            {key: value for key, value in receipt.items() if key != "receipt_cid"}
+            {
+                key: value
+                for key, value in receipt.items()
+                if key not in {"receipt_cid", "held"}
+            }
         )
         return receipt
     except Exception as exc:  # noqa: BLE001 - settlement failure is a typed blocker
@@ -421,7 +425,11 @@ def hold_spar_runtime_settlement(
             if not settled:
                 receipt["reason"] = MISSING
             receipt["receipt_cid"] = content_identity(
-                {key: value for key, value in receipt.items() if key != "receipt_cid"}
+                {
+                    key: value
+                    for key, value in receipt.items()
+                    if key not in {"receipt_cid", "held"}
+                }
             )
             yield receipt
     except (MergeQueueIntegrityError, OSError, ValueError) as exc:
