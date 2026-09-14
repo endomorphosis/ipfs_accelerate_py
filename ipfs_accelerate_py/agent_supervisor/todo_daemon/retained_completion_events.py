@@ -36,6 +36,11 @@ def retained_synchronous_reconciliation(
         for index, event in enumerate(events)
         if event.get("type") == "implementation_finished" and matches_request(event)
     ]
+    enqueues = [
+        (index, event)
+        for index, event in enumerate(events)
+        if event.get("type") == "merge_candidate_enqueued" and matches_request(event)
+    ]
     sources = [
         (index, event)
         for index, event in enumerate(events)
@@ -48,62 +53,119 @@ def retained_synchronous_reconciliation(
         for index, event in enumerate(events)
         if event.get("type") == "merge_reconciled" and matches_request(event)
     ]
-    if len(confirmations) != 1 or len(sources) != 1 or len(reconciliations) != 1:
+    if len(sources) != 1 or len(reconciliations) != 1:
         return None
-    final_index, final = confirmations[0]
     source_index, source = sources[0]
     reconciliation_index, reconciliation = reconciliations[0]
-    if (
-        final != queued_confirmation
-        or not source_index < reconciliation_index < final_index
-    ):
-        return None
-    identity_fields = (
-        "task_id",
-        "canonical_task_cid",
-        "canonical_task_key",
-        "attempt",
-        "branch",
-        "baseline_ref",
-        "implementation_commit",
-        "stream_id",
-    )
-    if (
-        any(not source.get(key) for key in identity_fields)
-        or any(
+    queued_board_completion = {
+        "complete": False,
+        "pending_merge": True,
+        "reason": "merge_queued_awaiting_integration",
+    }
+    queued_merge = {
+        "attempted": False,
+        "queued": True,
+        "merged": False,
+        "reason": "merge_queued",
+    }
+
+    def _shared_identity_holds(final: Mapping[str, Any], *, require_task_key: bool) -> bool:
+        identity_fields = (
+            "task_id",
+            "canonical_task_cid",
+            "attempt",
+            "branch",
+            "baseline_ref",
+            "implementation_commit",
+            "stream_id",
+        )
+        if require_task_key:
+            identity_fields = (*identity_fields, "canonical_task_key")
+        if any(not source.get(key) for key in identity_fields):
+            return False
+        if any(
             event.get(key) != source.get(key)
             for event in (reconciliation, final)
             for key in identity_fields
-        )
-        or any(
+        ):
+            return False
+        if not require_task_key:
+            source_key = source.get("canonical_task_key")
+            enqueue_key = final.get("canonical_task_key")
+            recon_key = reconciliation.get("canonical_task_key")
+            cid = source.get("canonical_task_cid")
+            if source_key:
+                if enqueue_key != source_key or recon_key not in (source_key, None, ""):
+                    return False
+            elif enqueue_key != cid or final.get("canonical_task_cid") != cid or recon_key not in (
+                None,
+                "",
+                cid,
+            ):
+                return False
+        if any(
             event.get(key) != source.get(key)
             for event in (reconciliation, final)
             for key in ("board_namespace", "task_source_identity")
+        ):
+            return False
+        return (
+            type(source.get("attempt")) is int
+            and source["attempt"] >= 1
+            and reconciliation.get("reason") == "merge_queue_callback_completed"
+            and reconciliation.get("completion_source_event_id") == source.get("event_id")
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", str(source.get("event_id") or ""))
+            is not None
         )
-        or type(source.get("attempt")) is not int
-        or source["attempt"] < 1
-        or reconciliation.get("reason") != "merge_queue_callback_completed"
-        or reconciliation.get("completion_source_event_id") != source.get("event_id")
-        or re.fullmatch(r"sha256:[0-9a-f]{64}", str(source.get("event_id") or ""))
-        is None
-        or final.get("returncode") != 0
-        or final.get("attempt_consumed") is not True
-        or type(final.get("provider_dispatched")) is not bool
-        or final.get("board_completion")
-        != {
-            "complete": False,
-            "pending_merge": True,
-            "reason": "merge_queued_awaiting_integration",
-        }
+
+    if len(confirmations) == 1:
+        final_index, final = confirmations[0]
+        if (
+            queued_confirmation != final
+            or not source_index < reconciliation_index < final_index
+            or not _shared_identity_holds(final, require_task_key=True)
+            or final.get("returncode") != 0
+            or final.get("attempt_consumed") is not True
+            or type(final.get("provider_dispatched")) is not bool
+            or final.get("board_completion") != queued_board_completion
+        ):
+            return None
+        merge = final.get("merge_result")
+        if not (
+            isinstance(merge, Mapping)
+            and merge.get("attempted") is queued_merge["attempted"]
+            and merge.get("queued") is queued_merge["queued"]
+            and merge.get("merged") is queued_merge["merged"]
+            and merge.get("reason") == queued_merge["reason"]
+        ):
+            return None
+        return source, reconciliation
+
+    if len(confirmations) != 0 or len(enqueues) != 1:
+        return None
+    enqueue_index, enqueue = enqueues[0]
+    if (
+        queued_confirmation != enqueue
+        or not enqueue_index < source_index < reconciliation_index
+        or not _shared_identity_holds(enqueue, require_task_key=False)
+        or source.get("returncode") != 0
+        or source.get("attempt_consumed") is not False
+        or source.get("provider_dispatched") is not False
+        or source.get("board_completion") != queued_board_completion
+        or enqueue.get("attempted") is not queued_merge["attempted"]
+        or enqueue.get("queued") is not queued_merge["queued"]
+        or enqueue.get("merged") is not queued_merge["merged"]
+        or enqueue.get("reason") != queued_merge["reason"]
     ):
         return None
-    merge = final.get("merge_result")
+    merge = source.get("merge_result")
     if not (
         isinstance(merge, Mapping)
-        and merge.get("attempted") is False
-        and merge.get("queued") is True
-        and merge.get("merged") is False
-        and merge.get("reason") == "merge_queued"
+        and merge.get("attempted") is queued_merge["attempted"]
+        and merge.get("queued") is queued_merge["queued"]
+        and merge.get("merged") is queued_merge["merged"]
+        and merge.get("reason") == queued_merge["reason"]
+        and merge.get("request_id") in (None, "", request_id)
     ):
         return None
     return source, reconciliation

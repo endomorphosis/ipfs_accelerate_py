@@ -5852,11 +5852,12 @@ class DatabasePortalExecutionBridge:
             if e.get("type") == "merge_candidate_enqueued"
             and event_request_id(e) == request_id
         ]
-        if len(finishes) != 1 or len(enqueues) != 1:
+        if len(enqueues) != 1 or len(finishes) > 1:
             return None
-        finish, enqueue = finishes[0], enqueues[0]
+        enqueue = enqueues[0]
+        confirmation = finishes[0] if finishes else enqueue
         retained = retained_synchronous_reconciliation(
-            events, request_id=request_id, queued_confirmation=finish
+            events, request_id=request_id, queued_confirmation=confirmation
         )
         if retained is None:
             return None
@@ -5919,7 +5920,29 @@ class DatabasePortalExecutionBridge:
             return None
         # Refuse another execution on this attempt projection. These later
         # local observations cannot override the separately checked DB task.
-        for event in events[events.index(finish) + 1 :]:
+        # Merge-train append quarantines often never emit implementation_finished;
+        # later events are then those after the one merge_reconciled receipt.
+        later_start = events.index(
+            confirmation if confirmation.get("type") == "implementation_finished"
+            else reconciliation
+        )
+        for event in events[later_start + 1 :]:
+            merge = event.get("merge_result")
+            if (
+                event.get("type") == "worktree_reconciliation_candidate_queued"
+                and event.get("returncode") == 1
+                and event.get("attempt_consumed") is False
+                and event.get("provider_dispatched") is False
+                and event.get("task_id") == request.task_id
+                and event.get("canonical_task_cid") == request.canonical_task_id
+                and event.get("implementation_commit") == request.commit_sha
+                and isinstance(merge, Mapping)
+                and merge.get("reason") == "reconciled_candidate_queued_pending_merge"
+                and merge.get("request_id") == request_id
+                and merge.get("queued") is True
+                and merge.get("merged") is False
+            ):
+                continue
             if event.get("type") not in {
                 "daemon_pass",
                 "worktree_cleanup_fenced",
@@ -5962,7 +5985,7 @@ class DatabasePortalExecutionBridge:
             "enqueue": enqueue,
             "source": source,
             "reconciliation": reconciliation,
-            "finish": finish,
+            "finish": confirmation,
             "historical_integration_commit": historical_integration,
         }
 

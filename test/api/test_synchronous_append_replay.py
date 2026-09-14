@@ -107,6 +107,64 @@ def test_recorded_synchronous_handoff_is_unambiguous(mutation):
     "mutation",
     [
         "",
+        "missing_source_key",
+        "pending_merge_requeue",
+        "duplicate_source",
+        "foreign_enqueue",
+        "source_consumed",
+        "finish_present",
+    ],
+)
+def test_merge_train_enqueue_confirms_append_handoff_without_implementation_finished(
+    mutation,
+):
+    fixture = captured()
+    events = fixture["events"]
+    enqueue, source, receipt, finish = events
+    events[:] = [enqueue, source, receipt]
+    if mutation == "missing_source_key":
+        source.pop("canonical_task_key", None)
+        receipt.pop("canonical_task_key", None)
+    elif mutation == "pending_merge_requeue":
+        events.append(
+            {
+                **source,
+                "event_id": "sha256:" + "ab" * 32,
+                "reason": None,
+                "returncode": 1,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "merge_result": {
+                    **source["merge_result"],
+                    "reason": "reconciled_candidate_queued_pending_merge",
+                    "queued": True,
+                    "merged": False,
+                },
+            }
+        )
+    elif mutation == "duplicate_source":
+        events.insert(1, copy.deepcopy(source))
+    elif mutation == "foreign_enqueue":
+        enqueue["request_id"] = "foreign"
+    elif mutation == "source_consumed":
+        source["attempt_consumed"] = True
+    elif mutation == "finish_present":
+        events.append(finish)
+    result = retained_synchronous_reconciliation(
+        events,
+        request_id=fixture["request"]["request_id"],
+        queued_confirmation=enqueue,
+    )
+    admitted = mutation in {"", "missing_source_key", "pending_merge_requeue"}
+    assert (result is not None) is admitted
+    if admitted:
+        assert result == (source, receipt)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "",
         "wrong_proof",
         "wrong_output",
         "wrong_receipt_id",

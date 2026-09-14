@@ -39,6 +39,7 @@ def native_append_quarantine(
     task_source=None,
     nested_output=False,
     attempt_inside_repository=False,
+    record_implementation_finished=True,
 ):
     repo = _repo(tmp_path)
     output_path = "external/child/base.txt" if nested_output else "base.txt"
@@ -143,27 +144,28 @@ def native_append_quarantine(
     assert result["status"] == "quarantined", result
     assert result["reason"] == "merge_queue_reconciliation_append_unverified"
     monkeypatch.setattr(daemon, "_record_merge_queue_callback_reconciliation", original)
-    daemon._record_event(
-        "implementation_finished",
-        {
-            "task_id": task.task_id,
-            "canonical_task_cid": request.canonical_task_id,
-            "attempt": 1,
-            "returncode": 0,
-            "attempt_consumed": True,
-            "provider_dispatched": True,
-            "branch": branch,
-            "baseline_ref": baseline,
-            "implementation_commit": candidate,
-            "validation_result": {"attempted": True, "passed": True, "returncode": 0},
-            "merge_result": dict(queued),
-            "board_completion": {
-                "complete": False,
-                "pending_merge": True,
-                "reason": "merge_queued_awaiting_integration",
+    if record_implementation_finished:
+        daemon._record_event(
+            "implementation_finished",
+            {
+                "task_id": task.task_id,
+                "canonical_task_cid": request.canonical_task_id,
+                "attempt": 1,
+                "returncode": 0,
+                "attempt_consumed": True,
+                "provider_dispatched": True,
+                "branch": branch,
+                "baseline_ref": baseline,
+                "implementation_commit": candidate,
+                "validation_result": {"attempted": True, "passed": True, "returncode": 0},
+                "merge_result": dict(queued),
+                "board_completion": {
+                    "complete": False,
+                    "pending_merge": True,
+                    "reason": "merge_queued_awaiting_integration",
+                },
             },
-        },
-    )
+        )
     bridge = DatabasePortalExecutionBridge(
         task_source=task_source or _DatabaseProjectionTaskSource(record),
         attempt_root=attempt_root,
@@ -184,6 +186,23 @@ def native_append_quarantine(
         bridge=bridge,
         record=record,
     )
+
+
+def test_native_append_quarantine_is_selected_without_implementation_finished(
+    tmp_path, monkeypatch
+):
+    fixture = native_append_quarantine(
+        tmp_path, monkeypatch, record_implementation_finished=False
+    )
+    request = fixture.daemon.merge_queue.get(fixture.request.request_id)
+    events_before = fixture.paths.events.read_bytes()
+    assert fixture.bridge._owned_post_merge_recovery_projection(request) is None
+    projection = fixture.bridge._owned_post_merge_maintenance_projection(
+        request, train=fixture.train
+    )
+    assert projection is not None
+    assert fixture.daemon.merge_queue.get(request.request_id).status == "quarantined"
+    assert fixture.paths.events.read_bytes() == events_before
 
 
 def test_native_append_quarantine_is_selected_without_effects(tmp_path, monkeypatch):
