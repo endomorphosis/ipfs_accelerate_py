@@ -112,7 +112,7 @@ def capture(daemon: Any, attempt: Any, *, require_idle: bool = True) -> dict[str
     if attempt.status in {"failed", "superseded"}:
         central.require(
             saga is not None
-            and saga["stage"] == "commit_barrier"
+            and saga["stage"] in {"commit_barrier", "terminal"}
             and saga["intended_database_disposition"] == "superseded_attempt_revoked",
             "quarantine_terminal_diagnosis_unproved",
         )
@@ -133,6 +133,47 @@ def capture(daemon: Any, attempt: Any, *, require_idle: bool = True) -> dict[str
         )
         diagnosis = "terminal_disposition_conflict"
         basis = {"evidence": evidence, "binding": dict(binding)}
+        if saga["stage"] == "terminal":
+            # The legacy finalizer also published this conflict as a complete
+            # terminal receipt. Preserve that receipt and every original row;
+            # agreement with the old FAILED phase is quarantine evidence, never
+            # authority to repair the disposition or retry its callback.
+            central.require(
+                attempt.status == "failed"
+                and attempt.committed_phase == "failed"
+                and canonical_json_bytes(failed[0]["body"]["terminal_reconciliation"])
+                == canonical_json_bytes(evidence),
+                "quarantine_terminal_phase_changed",
+            )
+            prepared = bridge.load_reconciliation_receipt(
+                attempt, saga["prepared_reconciliation_receipt_id"],
+                required_stage="prepared",
+            )
+            barrier = bridge.load_reconciliation_receipt(
+                attempt, saga["commit_barrier_receipt_id"],
+                required_stage="commit_barrier",
+            )
+            terminal = bridge.load_reconciliation_receipt(
+                attempt, saga["receipt_id"], required_stage="terminal",
+            )
+            expected = {
+                name: prepared[name]
+                for name in (
+                    "schema", "interface", "attempt_id", "claim_id", "task_cid",
+                    "task_alias", "attempt_number", "owner_session_id",
+                    "fencing_token", "fence_epoch", "attempt_root",
+                )
+            }
+            expected.update(daemon._terminal_reconciliation_receipt_payload(
+                prepared=prepared, barrier=barrier, evidence=evidence,
+                attempt=attempt, actual_disposition="terminalized_for_retry",
+            ))
+            expected["receipt_id"] = saga["receipt_id"]
+            central.require(
+                canonical_json_bytes(terminal) == canonical_json_bytes(expected),
+                "quarantine_terminal_receipt_changed",
+            )
+            basis["terminal_receipt"] = terminal
     else:
         boundary = daemon._database_callback_boundary_state(attempt)
         central.require(
