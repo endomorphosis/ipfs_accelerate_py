@@ -142,14 +142,16 @@ def operator(f):
           "_git": f.git, "_git_bytes": f.raw, "_canonical_json": lambda v: json.dumps(v, sort_keys=True, separators=(",", ":")),
           "_identity": lambda v: "sha256:" + contract.digest(v),
           "_ASEH_CANDIDATE_GIT_GUARD": guard,
+          "_ASEH_RETAINED_INDEX_OBSERVATION": None,
           "_validate_candidate_git_guard_health": guard_check,
+          "_validate_retained_index_observation": lambda row, **kwargs: dict(row.record),
           "_candidate_authorization_witness": lambda **kwargs: dict(witness),
           "_assert_candidate_authorization_witness": witness_check,
           "checkout_repository_id": lambda root: "private-repository",
           "_git_changed_paths": lambda base, target: tuple(r["path"] for r in contract.raw_delta(f.raw, base, target)),
           "ASEH_SEALED_LINE_DESCENDANT_TASK_ALIAS": "ASEH-SEALED-LINE"}
     names = ["_validated_r45_source_repair_environment", "_r45_source_repair_receipt_identity",
-             "_r45_source_repair_registration",
+             "_r45_source_repair_registration", "_r45_active_git_custody_record",
              "_validate_r45_source_repair_continuity", "_r45_descendant_parent_shape",
              "_admit_r45_or_canonical_descendant", "_validate_r29_historical_live_effect_continuity",
              "_admit_canonical_merge_suffix", "_sealed_owner_delegation_environment", "preflight"]
@@ -291,22 +293,49 @@ def test_canonical_completion_still_refuses_linear_even_with_registration(fixtur
         ns["_admit_r45_or_canonical_descendant"](SimpleNamespace(protected_paths=[]), source_repair_bundle=None, **kwargs)
 
 
+def test_observational_index_custody_binds_without_write_guard(fixture):
+    f = fixture; ns, witness, _ = operator(f)
+    ns["_ASEH_CANDIDATE_GIT_GUARD"] = None
+    observation = SimpleNamespace(
+        candidate_head=f.target, candidate_tree=witness["tree"],
+        record={"observational": True, "epoch": "retained"},
+    )
+    ns["_ASEH_RETAINED_INDEX_OBSERVATION"] = observation
+    proof = admitted(f, ns, witness)
+    assert proof["schema"] == contract.CONTINUITY_SCHEMA
+    assert proof["active_guard_sha256"] == contract.digest(observation.record)
+    ns["_ASEH_RETAINED_INDEX_OBSERVATION"] = None
+    with pytest.raises(ValueError, match="Git custody is absent"):
+        admitted(f, ns, witness)
+
+
 def test_preflight_retains_same_guard_through_late_exact_check(fixture):
-    f = fixture; ns, witness, guard = operator(f); ns["_ASEH_CANDIDATE_GIT_GUARD"] = None
+    f = fixture; ns, witness, guard = operator(f)
+    ns["_ASEH_CANDIDATE_GIT_GUARD"] = None
+    ns["_ASEH_RETAINED_INDEX_OBSERVATION"] = None
     seen = []
+    observation = SimpleNamespace(
+        candidate_head=f.target, candidate_tree=witness["tree"],
+        record={"observational": True},
+    )
     @contextmanager
     def held(**kwargs):
         assert ns["_ASEH_CANDIDATE_GIT_GUARD"] is None
+        assert ns["_ASEH_RETAINED_INDEX_OBSERVATION"] is None
         ns["_ASEH_CANDIDATE_GIT_GUARD"] = guard
-        try: yield guard
-        finally: ns["_ASEH_CANDIDATE_GIT_GUARD"] = None; seen.append("released")
+        ns["_ASEH_RETAINED_INDEX_OBSERVATION"] = observation
+        try: yield observation
+        finally:
+            ns["_ASEH_CANDIDATE_GIT_GUARD"] = None
+            ns["_ASEH_RETAINED_INDEX_OBSERVATION"] = None
+            seen.append("released")
     def body(config):
         proof = admitted(f, ns, witness)
         assert ns["_r45_descendant_parent_shape"](parents=[f.middle], continuity={"repair_to_current": proof},
             transition=f.authority, candidate_head=f.target, candidate_tree=witness["tree"])
         seen.append("late_exact")
         return 0, {"private": True}
-    ns["_prepared_candidate_git_guard"] = held
+    ns["_prepared_retained_index_observation"] = held
     ns["_preflight_with_current_source"] = body
     assert ns["preflight"](f.tmp / "private-config.json")[0] == 0
     assert seen == ["late_exact", "released"]
@@ -540,7 +569,9 @@ def test_actual_preflight_exact_run_and_owner_start_route_composition(fixture):
               _bounded_launch_admission=bound, _prepared_candidate_git_guard=held,
               _r14_native_seal_anchor=lambda *args, **kwargs: None,
               _admit_materialized_launch=materialized)
+    ns["_prepared_retained_index_observation"] = held
     ns["_ASEH_CANDIDATE_GIT_GUARD"] = None
+    ns["_ASEH_RETAINED_INDEX_OBSERVATION"] = None
     code, report = ns["preflight"](f.tmp / "config.json")
     assert code == 0, report
     assert report["sealed_launch_admission"]["admitted"] is True

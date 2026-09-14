@@ -21,3 +21,15 @@ def git_subprocess_environment(
     result = {str(key): str(value) for key, value in inherited.items()}
     result["GIT_OPTIONAL_LOCKS"] = "0"
     return result
+
+
+def observational_status_arguments(*, retain_index: bool) -> tuple[str, ...]:
+    """Bound porcelain status so a retained index is not walked as untracked.
+
+    Launch and event-replay pin the live index by identity. ``--untracked-files=all``
+    walks ignored worktree noise and can contend with a held index.lock.
+    Required mutating Git commands are unchanged.
+    """
+
+    untracked = "no" if retain_index else "all"
+    return ("status", "--porcelain=v1", f"--untracked-files={untracked}")

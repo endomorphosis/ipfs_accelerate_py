@@ -91,3 +91,60 @@ def test_actual_fresh_guard_exec_environment_and_index_closure(tmp_path, monkeyp
     assert guard.reference_process.returncode == 0 and guard.index_process.returncode == 0
     assert all(not path.exists() for path in (guard.head_lock_path, guard.branch_lock_path, guard.index_lock_path))
     assert hashlib.sha256(index.read_bytes()).hexdigest() == original
+
+
+def test_retained_index_observation_does_not_start_git_write_protocol(tmp_path, monkeypatch):
+    repository = tmp_path / 'source'; repository.mkdir()
+    def git(*arguments):
+        p = subprocess.run(['/usr/bin/git', *arguments], cwd=repository, text=True,
+            capture_output=True, timeout=20, check=True)
+        return p.stdout.strip()
+    git('init', '-q', '--initial-branch=aseh')
+    git('config', 'user.name', 'Qualification'); git('config', 'user.email', 'qualification@example.invalid')
+    tracked = repository / 'source.py'; tracked.write_text('value = 1\n')
+    git('add', 'source.py'); git('commit', '-qm', 'qualified source')
+    head, tree = git('rev-parse', 'HEAD'), git('rev-parse', 'HEAD^{tree}')
+    index = repository / '.git/index'; original = hashlib.sha256(index.read_bytes()).hexdigest()
+    inode = index.stat().st_ino
+    monkeypatch.setattr(op, 'ROOT', repository)
+    before = {pid for pid in os.listdir('/proc') if pid.isdigit()}
+    with op._prepared_retained_index_observation(candidate_head=head, candidate_tree=tree) as observation:
+        after = {pid for pid in os.listdir('/proc') if pid.isdigit()}
+        for pid in sorted(after - before, key=int):
+            try:
+                command = Path(f'/proc/{pid}/cmdline').read_bytes().replace(b'\0', b' ').decode()
+            except OSError:
+                continue
+            assert 'update-ref' not in command and 'update-index' not in command
+        assert observation.candidate_head == head
+        assert observation.record['mechanism'] == 'index_identity_without_update_ref_or_update_index'
+        assert op._ASEH_CANDIDATE_GIT_GUARD is None
+        witness = op._candidate_authorization_witness(expected_head=head, expected_tree=tree)
+        assert witness['head'] == head and witness['status_digest'] == op._identity(b'')
+        assert hashlib.sha256(index.read_bytes()).hexdigest() == original
+        assert index.stat().st_ino == inode
+    assert op._ASEH_RETAINED_INDEX_OBSERVATION is None
+    assert hashlib.sha256(index.read_bytes()).hexdigest() == original
+    assert index.stat().st_ino == inode
+
+
+def test_launch_admission_skips_write_protocol_when_source_repair_is_registered(monkeypatch):
+    tree = ast.parse(Path(op.__file__).read_text())
+    names = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    observation = names['_prepared_retained_index_observation']
+    called = []
+    for node in ast.walk(observation):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            called.append(node.func.id)
+        for child in ast.walk(node):
+            if isinstance(child, ast.Constant) and child.value in {'update-ref', 'update-index'}:
+                called.append(str(child.value))
+    assert '_start_traced_git_guard_process' not in called
+    assert 'update-ref' not in called and 'update-index' not in called
+    preflight = names['preflight']
+    preflight_source = ast.get_source_segment(Path(op.__file__).read_text(), preflight)
+    assert '_prepared_retained_index_observation' in preflight_source
+    assert '_prepared_candidate_git_guard' not in preflight_source
+    monkeypatch.delenv('IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_PATH', raising=False)
+    monkeypatch.delenv('IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_SHA256', raising=False)
+    assert op._launch_uses_observational_index_custody() is False

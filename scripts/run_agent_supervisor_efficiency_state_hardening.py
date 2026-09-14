@@ -51,6 +51,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import (  # noqa:
     hashing_lock,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.shared_hashing import hash_descriptor  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.git_environment import (  # noqa: E402
+    observational_status_arguments,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (  # noqa: E402
     KNOWN_NON_WORKTREE_PHASES,
 )
@@ -23532,6 +23535,23 @@ class _CandidateGitGuard:
     record: Mapping[str, Any]
 
 
+@dataclass(frozen=True)
+class _RetainedIndexObservation:
+    """HEAD/index pin for launch and event-replay without Git write children."""
+
+    candidate_head: str
+    candidate_tree: str
+    branch_ref: str
+    index_path: Path
+    index_identity: tuple[object, ...]
+    index_entries_digest: str
+    index_flags_digest: str
+    status_digest: str
+    head_reflog_digest: str
+    branch_reflog_digest: str
+    record: Mapping[str, Any]
+
+
 @dataclass
 class _GitGuardSyscallTrace:
     """Exact Git-child lock provenance retained across fatal child exit."""
@@ -23548,6 +23568,7 @@ class _GitGuardSyscallTrace:
 
 
 _ASEH_CANDIDATE_GIT_GUARD: _CandidateGitGuard | None = None
+_ASEH_RETAINED_INDEX_OBSERVATION: _RetainedIndexObservation | None = None
 _ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE = False
 _ASEH_EXACT_R18_RECEIPT_CHAIN: list[Mapping[str, Any]] | None = None
 _ASEH_EXACT_R18_RECEIPT_CHAIN_PATH: Path | None = None
@@ -24696,6 +24717,177 @@ def _validate_candidate_git_guard_health(
     return dict(guard.record)
 
 
+def _porcelain_status_arguments() -> tuple[str, ...]:
+    """Skip untracked walks once a live index pin is already held."""
+
+    retain = (
+        _ASEH_CANDIDATE_GIT_GUARD is not None
+        or _ASEH_RETAINED_INDEX_OBSERVATION is not None
+    )
+    return observational_status_arguments(retain_index=retain)
+
+
+def _index_file_identity(path: Path) -> tuple[object, ...]:
+    """Pin one regular index file without asking Git to refresh it."""
+
+    try:
+        lexical = os.lstat(path)
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            opened = os.fstat(descriptor)
+            digest = hashlib.sha256()
+            while True:
+                block = os.read(descriptor, 65536)
+                if not block:
+                    break
+                digest.update(block)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise OperatorError("retained Git index is unavailable") from exc
+    fields = (
+        "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+        "st_size", "st_mtime_ns", "st_ctime_ns",
+    )
+    if (
+        not stat.S_ISREG(opened.st_mode)
+        or stat.S_ISLNK(lexical.st_mode)
+        or any(getattr(lexical, field) != getattr(opened, field) for field in fields)
+        or any(getattr(after, field) != getattr(opened, field) for field in fields)
+    ):
+        raise OperatorError("retained Git index identity drifted")
+    return tuple(int(getattr(opened, field)) for field in fields) + (
+        digest.hexdigest(),
+    )
+
+
+def _launch_uses_observational_index_custody() -> bool:
+    """Registered source-repair launch defers Git write-protocol guards.
+
+    Event-replay and admission only need a retained index pin. The
+    update-ref/update-index stdin protocol remains for exact live-effect
+    candidates that still require a prepared write epoch.
+    """
+
+    names = (
+        "IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_PATH",
+        "IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_SHA256",
+    )
+    if not any(name in os.environ for name in names):
+        return False
+    return bool(_validated_r45_source_repair_environment())
+
+
+def _validate_retained_index_observation(
+    observation: _RetainedIndexObservation,
+    *,
+    boundary: str,
+) -> dict[str, Any]:
+    """Require the pinned index bytes and HEAD/tree to remain exact."""
+
+    if (
+        _ASEH_RETAINED_INDEX_OBSERVATION is not observation
+        or _git("symbolic-ref", "-q", "HEAD") != observation.branch_ref
+        or _git("rev-parse", "HEAD") != observation.candidate_head
+        or _git("rev-parse", observation.branch_ref) != observation.candidate_head
+        or _git("rev-parse", "HEAD^{tree}") != observation.candidate_tree
+        or _index_file_identity(observation.index_path) != observation.index_identity
+    ):
+        raise OperatorError(f"retained index observation differs: {boundary}")
+    return dict(observation.record)
+
+
+def _r45_active_git_custody_record(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    boundary: str,
+) -> dict[str, Any]:
+    """Accept a live write-guard or the observational retained-index pin."""
+
+    guard = _ASEH_CANDIDATE_GIT_GUARD
+    if guard is not None:
+        if (
+            guard.candidate_head != candidate_head
+            or guard.candidate_tree != candidate_tree
+        ):
+            raise OperatorError("R45 source repair current Git custody is absent")
+        _validate_candidate_git_guard_health(guard, boundary=boundary)
+        return dict(guard.record)
+    observation = _ASEH_RETAINED_INDEX_OBSERVATION
+    if (
+        observation is None
+        or observation.candidate_head != candidate_head
+        or observation.candidate_tree != candidate_tree
+    ):
+        raise OperatorError("R45 source repair current Git custody is absent")
+    return _validate_retained_index_observation(observation, boundary=boundary)
+
+
+@contextmanager
+def _prepared_retained_index_observation(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+) -> Any:
+    """Pin HEAD and the live index without update-ref/update-index children."""
+
+    global _ASEH_RETAINED_INDEX_OBSERVATION
+    if (
+        _ASEH_RETAINED_INDEX_OBSERVATION is not None
+        or _ASEH_CANDIDATE_GIT_GUARD is not None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+    ):
+        raise OperatorError("retained index observation is contended or malformed")
+    branch_ref = _validate_candidate_git_branch_ref(
+        _git("symbolic-ref", "-q", "HEAD")
+    )
+    if (
+        _git("rev-parse", branch_ref) != candidate_head
+        or _git("rev-parse", "HEAD") != candidate_head
+        or _git("rev-parse", "HEAD^{tree}") != candidate_tree
+    ):
+        raise OperatorError("retained index observation branch identity differs")
+    status = _git(*observational_status_arguments(retain_index=True))
+    if status:
+        raise OperatorError("materialization/launch requires a clean checkout")
+    index_path = _git_guard_control_path("index")
+    observation = _RetainedIndexObservation(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        branch_ref=branch_ref,
+        index_path=index_path,
+        index_identity=_index_file_identity(index_path),
+        index_entries_digest=_identity(_git_bytes("ls-files", "--stage", "-z")),
+        index_flags_digest=_ordinary_git_index_flags_digest(),
+        status_digest=_identity(status.encode("utf-8")),
+        head_reflog_digest=_git_control_file_digest("logs/HEAD"),
+        branch_reflog_digest=_git_control_file_digest(f"logs/{branch_ref}"),
+        record={
+            "schema": "ipfs_accelerate_py/agent-supervisor/aseh-retained-index-observation@1",
+            "candidate_head": candidate_head,
+            "candidate_tree": candidate_tree,
+            "branch_ref": branch_ref,
+            "mechanism": "index_identity_without_update_ref_or_update_index",
+        },
+    )
+    _ASEH_RETAINED_INDEX_OBSERVATION = observation
+    try:
+        _validate_retained_index_observation(
+            observation, boundary="scope entry",
+        )
+        yield observation
+    finally:
+        _ASEH_RETAINED_INDEX_OBSERVATION = None
+
+
 @contextmanager
 def _prepared_candidate_git_guard(
     *,
@@ -25314,12 +25506,32 @@ def _candidate_authorization_witness(
         or re.fullmatch(r"[0-9a-f]{40}", expected_tree) is None
     ):
         raise OperatorError("R11 candidate identity is malformed")
+    observation = _ASEH_RETAINED_INDEX_OBSERVATION
+    if (
+        observation is not None
+        and observation.candidate_head == expected_head
+        and observation.candidate_tree == expected_tree
+    ):
+        _validate_retained_index_observation(
+            observation,
+            boundary="R11 retained-index authorization witness",
+        )
+        return {
+            "head": observation.candidate_head,
+            "tree": observation.candidate_tree,
+            "branch_ref": observation.branch_ref,
+            "index_entries_digest": observation.index_entries_digest,
+            "index_flags_digest": observation.index_flags_digest,
+            "status_digest": observation.status_digest,
+            "head_reflog_digest": observation.head_reflog_digest,
+            "branch_reflog_digest": observation.branch_reflog_digest,
+        }
 
     def observe() -> dict[str, str]:
         branch_ref = _git("symbolic-ref", "-q", "HEAD")
         if not branch_ref.startswith("refs/heads/"):
             raise OperatorError("R11 authorization requires an attached branch")
-        status = _git("status", "--porcelain=v1", "--untracked-files=all")
+        status = _git(*_porcelain_status_arguments())
         return {
             "head": _git("rev-parse", "HEAD"),
             "tree": _git("rev-parse", "HEAD^{tree}"),
@@ -25378,7 +25590,11 @@ def _assert_candidate_authorization_witness(
     guard = _ASEH_CANDIDATE_GIT_GUARD
     recorded = dict(witness)
     empty_status = _identity(b"")
-    frozen = guard is not None or _git_guard_index_lock_is_held()
+    frozen = (
+        guard is not None
+        or _git_guard_index_lock_is_held()
+        or _ASEH_RETAINED_INDEX_OBSERVATION is not None
+    )
     if frozen:
         if guard is not None:
             if (
@@ -50737,10 +50953,11 @@ def _validate_r45_source_repair_continuity(
         anchor_head=authorization_candidate_head, anchor_tree=authorization_candidate_tree,
         target_head=active_candidate_head, target_tree=active_candidate_tree,
     )
-    guard = _ASEH_CANDIDATE_GIT_GUARD
-    if guard is None or guard.candidate_head != active_candidate_head or guard.candidate_tree != active_candidate_tree:
-        raise OperatorError("R45 source repair current Git custody is absent")
-    _validate_candidate_git_guard_health(guard, boundary="R45 source-only continuity")
+    custody = _r45_active_git_custody_record(
+        candidate_head=active_candidate_head,
+        candidate_tree=active_candidate_tree,
+        boundary="R45 source-only continuity",
+    )
     witness = _candidate_authorization_witness(
         expected_head=active_candidate_head, expected_tree=active_candidate_tree,
     )
@@ -50750,7 +50967,7 @@ def _validate_r45_source_repair_continuity(
     )
     try:
         return contract.validate(
-            value, registered, pin=pin, witness=witness, guard=guard.record,
+            value, registered, pin=pin, witness=witness, guard=custody,
             canonical_validator=_validate_r29_historical_live_effect_continuity,
         )
     except (ValueError, OSError, KeyError, TypeError) as exc:
@@ -50809,12 +51026,14 @@ def _admit_r45_or_canonical_descendant(
     tail = None if target_head == repair_target else _admit_canonical_merge_suffix(
         board, base_head=repair_target, target_head=target_head, **tail_options,
     )
-    guard = _ASEH_CANDIDATE_GIT_GUARD
-    if guard is None:
-        raise OperatorError("R45 source-only current Git guard is absent")
+    custody = _r45_active_git_custody_record(
+        candidate_head=target_head,
+        candidate_tree=str(source_repair_bundle["active_source_tree"]),
+        boundary="R45 source-only bind",
+    )
     proof = contract.bind(
         registered, pin=pin, canonical_prefix=prefix, canonical_tail=tail,
-        witness=source_repair_bundle["active_source_witness"], guard=guard.record,
+        witness=source_repair_bundle["active_source_witness"], guard=custody,
     )
     return _validate_r45_source_repair_continuity(
         proof, authorization_candidate_head=base_head,
@@ -50971,15 +51190,9 @@ def _prequalify_r45_historical_live_launch(
             )
         elif len(_git("show", "-s", "--format=%P", current_head).split()) != 2:
             raise OperatorError("R45 linear source repair is not explicitly registered")
-    active_guard = _ASEH_CANDIDATE_GIT_GUARD
-    if (
-        active_guard is None
-        or active_guard.candidate_head != current_head
-        or active_guard.candidate_tree != current_tree
-    ):
-        raise OperatorError("R45 launch prequalification Git guard is absent")
-    _validate_candidate_git_guard_health(
-        active_guard,
+    _r45_active_git_custody_record(
+        candidate_head=current_head,
+        candidate_tree=current_tree,
         boundary="before R45 launch witness",
     )
     active_witness = _candidate_authorization_witness(
@@ -56844,7 +57057,16 @@ def _split(value: Any) -> list[str]:
 
 
 def _assert_clean_tree(board: Any) -> tuple[str, str]:
-    status = _git("status", "--porcelain=v1", "--untracked-files=all")
+    observation = _ASEH_RETAINED_INDEX_OBSERVATION
+    if observation is not None:
+        _validate_retained_index_observation(
+            observation, boundary="launch cleanliness",
+        )
+        branch = _git("branch", "--show-current")
+        if branch != board.merge_target_branch:
+            raise OperatorError("current branch differs from sealed merge target")
+        return observation.candidate_head, observation.candidate_tree
+    status = _git(*_porcelain_status_arguments())
     if status:
         raise OperatorError("materialization/launch requires a clean checkout")
     _ordinary_git_index_flags_digest()
@@ -56891,9 +57113,7 @@ def _source_forest(
             raise OperatorError(
                 f"configured source owner root differs: {relative}"
             )
-        nested_status = _git(
-            "status", "--porcelain=v1", "--untracked-files=all", cwd=path
-        )
+        nested_status = _git(*_porcelain_status_arguments(), cwd=path)
         if nested_status:
             raise OperatorError(
                 f"configured source owner is not clean: {relative}"
@@ -80961,11 +81181,29 @@ def _admit_materialized_launch(
                 config,
                 paths,
             )
+    if (
+        _ASEH_CANDIDATE_GIT_GUARD is None
+        and _ASEH_RETAINED_INDEX_OBSERVATION is None
+        and _launch_uses_observational_index_custody()
+    ):
+        with _prepared_retained_index_observation(
+            candidate_head=_git("rev-parse", "HEAD"),
+            candidate_tree=_git("rev-parse", "HEAD^{tree}"),
+        ):
+            return _admit_materialized_launch(
+                board,
+                config,
+                paths,
+            )
     population = _population(board, config)
-    if _ASEH_CANDIDATE_GIT_GUARD is None and _r30_launch_requires_git_guard(
-        paths=paths,
-        candidate_head=str(population["source_head"]),
-        candidate_tree=str(population["repository_tree_id"]),
+    if (
+        _ASEH_CANDIDATE_GIT_GUARD is None
+        and _ASEH_RETAINED_INDEX_OBSERVATION is None
+        and _r30_launch_requires_git_guard(
+            paths=paths,
+            candidate_head=str(population["source_head"]),
+            candidate_tree=str(population["repository_tree_id"]),
+        )
     ):
         with _prepared_candidate_git_guard(
             candidate_head=str(population["source_head"]),
@@ -89759,15 +89997,24 @@ def _run_supervisor_with_retained_child(
         )
         if isinstance(r39_path, Path) and r39_path.is_file():
             _load_exact_r39_receipt_chain(paths)
-        if _r30_launch_requires_git_guard(
-            paths=paths,
-            candidate_head=candidate_head,
-            candidate_tree=candidate_tree,
-        ):
-            launch_git_guard_scope = _prepared_candidate_git_guard(
+        if (
+            _launch_uses_observational_index_custody()
+            or _r30_launch_requires_git_guard(
+                paths=paths,
                 candidate_head=candidate_head,
                 candidate_tree=candidate_tree,
             )
+        ):
+            if _launch_uses_observational_index_custody():
+                launch_git_guard_scope = _prepared_retained_index_observation(
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                )
+            else:
+                launch_git_guard_scope = _prepared_candidate_git_guard(
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                )
             launch_git_guard_scope.__enter__()
             launch_git_guard_active = True
         authorization_witness = _candidate_authorization_witness(
@@ -90230,15 +90477,27 @@ def _run_supervisor_owner_impl(
         owner_launch_guard_scope.__exit__(*exception)
 
     try:
-        if _r30_launch_requires_git_guard(
-            paths=paths,
-            candidate_head=candidate_head,
-            candidate_tree=candidate_tree,
-        ):
-            owner_launch_guard_scope = _prepared_candidate_git_guard(
-                candidate_head=candidate_head,
-                candidate_tree=candidate_tree,
+        if (
+            _ASEH_RETAINED_INDEX_OBSERVATION is None
+            and (
+                _launch_uses_observational_index_custody()
+                or _r30_launch_requires_git_guard(
+                    paths=paths,
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                )
             )
+        ):
+            if _launch_uses_observational_index_custody():
+                owner_launch_guard_scope = _prepared_retained_index_observation(
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                )
+            else:
+                owner_launch_guard_scope = _prepared_candidate_git_guard(
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                )
             owner_launch_guard_scope.__enter__()
             owner_launch_guard_active = True
         authorization_witness = _candidate_authorization_witness(
@@ -93493,11 +93752,16 @@ def status(config_path: Path, *, require_ready: bool) -> tuple[int, dict[str, An
 
 
 def preflight(config_path: Path) -> tuple[int, dict[str, Any]]:
-    # A source-repair proof binds one current guard epoch. Keep that guard
-    # through materialized admission AND its later exact-run check.
+    # A source-repair proof binds one current index epoch. Keep observational
+    # custody through materialized admission AND its later exact-run check
+    # without unbounded update-ref/update-index children on the live checkout.
     registration_environment = _validated_r45_source_repair_environment()
-    if registration_environment and _ASEH_CANDIDATE_GIT_GUARD is None:
-        with _prepared_candidate_git_guard(
+    if (
+        registration_environment
+        and _ASEH_CANDIDATE_GIT_GUARD is None
+        and _ASEH_RETAINED_INDEX_OBSERVATION is None
+    ):
+        with _prepared_retained_index_observation(
             candidate_head=_git("rev-parse", "HEAD"),
             candidate_tree=_git("rev-parse", "HEAD^{tree}"),
         ):

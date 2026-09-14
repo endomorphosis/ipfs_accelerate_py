@@ -85,6 +85,13 @@ def test_environment_preserves_selected_routing_without_mutating_input(monkeypat
     assert helper.git_subprocess_environment({}) == {'GIT_OPTIONAL_LOCKS':'0'}
 
 
+def test_observational_status_skips_untracked_walk_on_retained_indexes():
+    assert helper.observational_status_arguments(retain_index=False) == (
+        'status', '--porcelain=v1', '--untracked-files=all')
+    assert helper.observational_status_arguments(retain_index=True) == (
+        'status', '--porcelain=v1', '--untracked-files=no')
+
+
 def test_unprotected_original_status_reproduces_raw_index_refresh(repo):
     before = index_identity(repo)
     completed = subprocess.run(['git', 'status', '--porcelain=v1'], cwd=repo,
