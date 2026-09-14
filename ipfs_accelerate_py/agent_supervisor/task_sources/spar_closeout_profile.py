@@ -232,6 +232,7 @@ class SparCloseoutProfile:
         self.profile_cid = content_identity(p)
         self._kit_source_forest = None
         self._kit_source_forest_error = "kit_source_forest_producer_not_bound"
+        self._closeout_acceptance_error = "spar_native_goal_cas_settlement_adapter_required"
 
     def assert_scope(self, binding: Mapping[str, Any]) -> None:
         p = self._profile
@@ -266,6 +267,82 @@ class SparCloseoutProfile:
             return {"admitted": False, "reason": "kit_source_forest_publication_deferred",
                     "error": self._kit_source_forest_error, "completion_authority": False,
                     "semantic_acceptance_authority": False}
+
+    def publish_closeout_acceptance(self, connection: Any, *, transaction_lock: Any,
+                                    owner_identity: Mapping[str, Any]) -> dict[str, Any]:
+        """Launcher-only SPAR adapters; status RPC never calls this writer."""
+        from .closeout_snapshot import capture_closeout_facts
+        from .intent_repository import completion_evidence_projection_on_connection
+        from .spar_goal_settlement import settle_spar_goals
+        from ..runtime.spar_runtime_settlement import hold_spar_runtime_settlement
+        from ..semantic_state.spar_accepted_root import admit_accepted_root
+
+        try:
+            facts = capture_closeout_facts(connection)
+            projection = completion_evidence_projection_on_connection(
+                connection,
+                task_cids=[task["task_cid"] for task in self._profile["tasks"]],
+                transaction_owned_by_caller=True,
+            )
+            snapshot = {
+                "snapshot_cid": "spar-closeout-producer",
+                "owner_identity": dict(owner_identity),
+                "completion_projection": dict(projection),
+            }
+            observed = self.evaluate(facts, snapshot)
+            kit = observed["kit_source_forest_persistence"]
+            datasets = observed["datasets_accepted_root"]
+            native_goals = {
+                row["goal_cid"]: row for row in facts["relations"]["goals"]["rows"]
+            }
+            target = str(owner_identity.get("repository_id") or "repository:ipfs_accelerate_py")
+            with hold_spar_runtime_settlement(
+                self._repository_root,
+                owner_identity=owner_identity,
+                target_repository_id=target,
+            ) as runtime:
+                if datasets.get("admitted") is not True:
+                    datasets = admit_accepted_root(
+                        self._profile,
+                        self.profile_cid,
+                        source=observed["source_observation"],
+                        kit=kit,
+                        task_evidence=observed["task_evidence"],
+                        goal_requirements=observed["goal_requirements"],
+                    )
+                goals = settle_spar_goals(
+                    connection,
+                    profile=self._profile,
+                    native_goals=native_goals,
+                    task_evidence=observed["task_evidence"],
+                    accepted_root=datasets,
+                    runtime=runtime,
+                    kit=kit,
+                    owner_identity=owner_identity,
+                )
+            self._closeout_acceptance_error = ""
+            receipt = {
+                "admitted": goals.get("admitted") is True,
+                "completion_authority": False,
+                "semantic_acceptance_authority": False,
+                "datasets_accepted_root": datasets,
+                "runtime_settlement": runtime,
+                "goal_settlement": goals,
+            }
+            if goals.get("admitted") is not True:
+                receipt["reason"] = goals.get("reason") or self._closeout_acceptance_error or (
+                    "spar_native_goal_cas_settlement_adapter_required"
+                )
+            return receipt
+        except Exception as error:  # noqa: BLE001 - retain owner and exact missing component
+            self._closeout_acceptance_error = type(error).__name__ + ":" + str(error)[:512]
+            return {
+                "admitted": False,
+                "reason": "spar_closeout_acceptance_deferred",
+                "error": self._closeout_acceptance_error,
+                "completion_authority": False,
+                "semantic_acceptance_authority": False,
+            }
 
     def evaluate(
         self, facts: Mapping[str, Any], snapshot: Mapping[str, Any]
@@ -399,13 +476,62 @@ class SparCloseoutProfile:
                      "completion_authority": False, "semantic_acceptance_authority": False})
         if kit.get("admitted") is not True:
             blockers.append("kit_source_forest_cas_receipt_producer_and_admission_required")
-        blockers.extend(
-            [
-                "datasets_independent_accepted_root_producer_and_admission_required",
-                "required_mode_roots_safety_floors_capstone_fixed_point_acceptance_required",
-                "spar_native_goal_cas_settlement_adapter_required",
-                "runtime_lane_and_merge_queue_settlement_receipt_required",
-            ]
+        from ..semantic_state.spar_accepted_root import admit_accepted_root
+        from ..runtime.spar_runtime_settlement import observe_spar_runtime_settlement
+        from .spar_goal_settlement import observe_goal_settlement
+
+        datasets = admit_accepted_root(
+            p,
+            self.profile_cid,
+            source=source,
+            kit=kit,
+            task_evidence=task_evidence,
+            goal_requirements=goal_requirements,
+        )
+        if datasets.get("admitted") is not True:
+            blockers.append(
+                str(datasets.get("reason") or "datasets_independent_accepted_root_producer_and_admission_required")
+            )
+            blockers.append(
+                "required_mode_roots_safety_floors_capstone_fixed_point_acceptance_required"
+            )
+        owner_identity = snapshot.get("owner_identity") if isinstance(snapshot.get("owner_identity"), Mapping) else {}
+        runtime = observe_spar_runtime_settlement(
+            self._repository_root,
+            owner_identity=owner_identity,
+            target_repository_id=str(
+                owner_identity.get("repository_id") or "repository:ipfs_accelerate_py"
+            ),
+        )
+        if runtime.get("admitted") is not True:
+            blockers.append("runtime_lane_and_merge_queue_settlement_receipt_required")
+        goals = observe_goal_settlement(
+            native_goals=native_goals,
+            profile=p,
+            accepted_root=datasets,
+            runtime=runtime,
+            kit=kit,
+        )
+        if goals.get("admitted") is not True:
+            blockers.append("spar_native_goal_cas_settlement_adapter_required")
+        else:
+            accepted_aliases = set(goals.get("accepted_goal_ids") or [])
+            for row in goal_requirements:
+                if row["goal_alias"] in accepted_aliases:
+                    row["accepted"] = True
+                    row["blockers"] = []
+        goal_contracts_accepted = bool(goal_requirements) and all(
+            row["accepted"] is True for row in goal_requirements
+        )
+        completion_authority = (
+            not blockers
+            and goal_contracts_accepted
+            and kit.get("admitted") is True
+            and datasets.get("admitted") is True
+            and runtime.get("admitted") is True
+            and goals.get("admitted") is True
+            and source.get("available") is True
+            and source.get("clean") is True
         )
         result = {
             "schema": OBSERVATION_SCHEMA,
@@ -413,12 +539,16 @@ class SparCloseoutProfile:
             "bootstrap_receipt_id": p["bootstrap_receipt_id"],
             "completion_snapshot_cid": snapshot["snapshot_cid"],
             "contracts_compared": True,
-            "goal_contracts_accepted": False,
-            "completion_authority": False,
+            "goal_contracts_accepted": goal_contracts_accepted,
+            "completion_authority": completion_authority,
+            "complete": completion_authority,
             "task_evidence": task_evidence,
             "goal_requirements": goal_requirements,
             "source_observation": source,
             "kit_source_forest_persistence": kit,
+            "datasets_accepted_root": datasets,
+            "runtime_settlement": runtime,
+            "goal_settlement": goals,
             "blockers": sorted(set(blockers)),
         }
         return {**result, "observation_cid": content_identity(result)}
