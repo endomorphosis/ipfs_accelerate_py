@@ -1,17 +1,24 @@
 """Supervisor capability and fenced coordination contracts.
 
 Sibling-supervisor event validation, the sibling-supervisor capability
-registry, and cross-supervisor receipts are bindings of this fabric, not a
-second event log, bus, registry, receipt store, database, or state owner.
-Sibling supervisors exchange canonical event envelopes and receipts. They
-never write DuckDB or DuckLake, never consume ``DatabaseEventLog@1``, and
-never terminalize tasks. A worker or model assertion cannot admit a sibling
-event, a sibling capability, or a cross-supervisor receipt. The capability
-registry is an in-process admitted catalogue only; it is not a competing subsystem
-and grants no completion, mutation, write, or proof authority.
+registry, cross-supervisor receipts, and cross-repository incremental
+reassessment are bindings of this fabric, not a second event log, bus,
+registry, receipt store, reassessment engine, planner, database, or state
+owner. Sibling supervisors exchange canonical event envelopes and receipts.
+They never write DuckDB or DuckLake, never consume ``DatabaseEventLog@1``,
+and never terminalize tasks. A worker or model assertion cannot admit a
+sibling event, a sibling capability, a cross-supervisor receipt, or a
+cross-repository incremental reassessment. The capability registry is an
+in-process admitted catalogue only; it is not a competing subsystem and
+grants no completion, mutation, write, or proof authority.
 Cross-supervisor receipts are in-process admitted envelopes bound to
 ``receipt-exchange``; they are not a second receipt log and grant no
 completion, mutation, write, or proof authority.
+Cross-repository incremental reassessment consumes
+``EventDrivenReassessment@1``, incremental plan-impact analysis, and the
+PlanDelta identity; it is not a second reassessment owner. Only the local
+impacted suffix is reassessed. Sibling-owned nodes are preserved, not
+locally mutated.
 
 Cold import of this module performs no filesystem, database, network,
 provider, or process action.
@@ -23,6 +30,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
 
@@ -51,6 +59,14 @@ class CrossSupervisorReceiptError(SupervisorFabricError):
     """A cross-supervisor receipt failed operational admission."""
 
     def __init__(self, message: str, *, code: str = "receipt_invalid") -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class CrossRepositoryIncrementalReassessmentError(SupervisorFabricError):
+    """A cross-repository incremental reassessment failed operational admission."""
+
+    def __init__(self, message: str, *, code: str = "reassessment_invalid") -> None:
         super().__init__(message)
         self.code = code
 
@@ -101,6 +117,70 @@ CROSS_SUPERVISOR_RECEIPT_CONSUMES: Final[tuple[str, ...]] = (
     SUPERVISOR_FABRIC_INTERFACE,
     SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING,
     SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING,
+)
+EVENT_DRIVEN_REASSESSMENT_BINDING: Final[str] = "EventDrivenReassessment@1"
+INCREMENTAL_PLAN_IMPACT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/incremental-plan-impact@1"
+)
+PLAN_DELTA_SCHEMA: Final[str] = "ipfs_datasets_py/logic/external-work-plan-delta@1"
+PLAN_DELTA_SCHEMA_VERSION: Final[str] = "external-work-plan-delta/v1"
+STALE_PLAN_EPOCH_BINDING: Final[str] = "StalePlanEpochHandling@1"
+IDEMPOTENT_EVENT_CONSUMPTION_BINDING: Final[str] = "IdempotentEventConsumption@1"
+CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_BINDING: Final[str] = (
+    "CrossRepositoryIncrementalReassessment@1"
+)
+CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_INTERFACE: Final[str] = (
+    CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_BINDING
+)
+CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/cross-repository-incremental-reassessment@1"
+)
+CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_CONSUMES: Final[tuple[str, ...]] = (
+    SUPERVISOR_FABRIC_INTERFACE,
+    SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING,
+    SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING,
+    CROSS_SUPERVISOR_RECEIPT_BINDING,
+    EVENT_DRIVEN_REASSESSMENT_BINDING,
+    INCREMENTAL_PLAN_IMPACT_SCHEMA,
+    PLAN_DELTA_SCHEMA,
+    STALE_PLAN_EPOCH_BINDING,
+    IDEMPOTENT_EVENT_CONSUMPTION_BINDING,
+)
+CROSS_REPOSITORY_OWNERS: Final[frozenset[str]] = frozenset(
+    {
+        "ipfs_accelerate_py",
+        "ipfs_datasets_py",
+        "ipfs_kit_py",
+    }
+)
+DEFAULT_LOCAL_REPOSITORY: Final[str] = "ipfs_accelerate_py"
+CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_CAPABILITIES: Final[frozenset[str]] = (
+    frozenset({"event-exchange", "receipt-exchange"})
+)
+_PRODUCTION_REFILL_EVENT_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        "scheduler_low_water",
+        "scheduler_drained_open_goal",
+        "validation_rejected",
+        "review_rejected",
+        "merge_rejected",
+        "doctor_finding",
+        "retry_exhausted",
+        "actionable_drift",
+        "rollout_threshold_missed",
+        "stale_evidence",
+        "branch_only_completion",
+    }
+)
+_REASSESSMENT_SEED_LIST_KEYS: Final[tuple[str, ...]] = (
+    "seed_node_ids",
+    "affected_task_ids",
+    "node_ids",
+)
+_REASSESSMENT_SEED_SCALAR_KEYS: Final[tuple[str, ...]] = (
+    "seed_node_id",
+    "node_id",
+    "task_id",
 )
 
 CANONICAL_EVENT_REQUIRED_FIELDS: Final[frozenset[str]] = frozenset(
@@ -1405,8 +1485,949 @@ def admit_cross_supervisor_receipt(
     return admission
 
 
+class CrossRepositoryIncrementalReassessmentDisposition(str, Enum):
+    """Closed outcomes for one cross-repository incremental reassessment."""
+
+    NO_REASSESSMENT = "no_reassessment"
+    REASSESSED = "reassessed"
+    REPLAYED = "replayed"
+    BLOCKED = "blocked"
+    UNKNOWN = "unknown"
+
+
+def _reassessment_text(
+    value: Any, field_name: str, *, required: bool = True
+) -> str:
+    return _text(
+        value,
+        field_name,
+        required=required,
+        error_cls=CrossRepositoryIncrementalReassessmentError,
+        code="reassessment_invalid",
+    )
+
+
+def _repository_id(value: Any, field_name: str) -> str:
+    repository = _reassessment_text(value, field_name)
+    if repository not in CROSS_REPOSITORY_OWNERS:
+        raise CrossRepositoryIncrementalReassessmentError(
+            f"unknown repository {repository!r}",
+            code="unknown_repository",
+        )
+    return repository
+
+
+def _unique_compact_ids(values: Sequence[Any]) -> tuple[str, ...]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        text = str(item or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            unique.append(text)
+    return tuple(unique)
+
+
+def _extend_seed_ids(collected: list[str], value: Any) -> None:
+    if value is None or value == "":
+        return
+    if isinstance(value, (str, bytes, bytearray)):
+        text = str(value).strip()
+        if text:
+            collected.append(text)
+        return
+    if isinstance(value, Sequence):
+        for item in value:
+            text = str(item or "").strip()
+            if text:
+                collected.append(text)
+        return
+    text = str(value or "").strip()
+    if text:
+        collected.append(text)
+
+
+def _payload_mapping(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    return {}
+
+
+def _seed_ids_from_mapping(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    collected: list[str] = []
+    for key in _REASSESSMENT_SEED_LIST_KEYS:
+        _extend_seed_ids(collected, payload.get(key))
+    for key in _REASSESSMENT_SEED_SCALAR_KEYS:
+        _extend_seed_ids(collected, payload.get(key))
+    return _unique_compact_ids(collected)
+
+
+def _plan_node_payloads(value: Any) -> tuple[dict[str, Any], ...]:
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+        raise CrossRepositoryIncrementalReassessmentError(
+            "nodes must be a sequence",
+            code="reassessment_invalid",
+        )
+    nodes: list[dict[str, Any]] = []
+    for item in value:
+        if hasattr(item, "to_dict"):
+            payload = item.to_dict()
+        elif isinstance(item, Mapping):
+            payload = dict(item)
+        else:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "plan impact node must be an object",
+                code="reassessment_invalid",
+            )
+        if not isinstance(payload, Mapping):
+            raise CrossRepositoryIncrementalReassessmentError(
+                "plan impact node must be an object",
+                code="reassessment_invalid",
+            )
+        nodes.append(dict(payload))
+    return tuple(nodes)
+
+
+def _node_repository_map(
+    value: Any,
+    node_ids: Sequence[str],
+    default_repository: str,
+) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    offered: Mapping[str, Any]
+    if value is None:
+        offered = {}
+    elif isinstance(value, Mapping):
+        offered = value
+    else:
+        raise CrossRepositoryIncrementalReassessmentError(
+            "node_repositories must be an object",
+            code="reassessment_invalid",
+        )
+    unknown = sorted(str(key) for key in offered if str(key) not in set(node_ids))
+    if unknown:
+        raise CrossRepositoryIncrementalReassessmentError(
+            "unknown node_repositories: " + ", ".join(unknown),
+            code="unknown_node",
+        )
+    for node_id in node_ids:
+        if node_id in offered:
+            mapping[node_id] = _repository_id(
+                offered[node_id], f"node_repositories.{node_id}"
+            )
+        else:
+            mapping[node_id] = default_repository
+    return mapping
+
+
+def _refill_kind(value: Any) -> str:
+    kind = str(value or "").strip()
+    if kind in _PRODUCTION_REFILL_EVENT_KINDS:
+        return kind
+    return ""
+
+
+def _consume_event_driven_reassessment() -> tuple[Any, Any, Any]:
+    from ..entrypoints.refill_event_adapter import (
+        EventDrivenReassessmentDisposition,
+        EventDrivenReassessmentError,
+        reassess_events,
+    )
+
+    return (
+        EventDrivenReassessmentDisposition,
+        EventDrivenReassessmentError,
+        reassess_events,
+    )
+
+
+@dataclass(frozen=True)
+class CrossRepositoryIncrementalReassessment:
+    """Non-authoritative local suffix reassessment from a sibling event or receipt.
+
+    This binding is not a second reassessment engine, planner, event log, or
+    state owner. Sibling supervisors exchange events and receipts; admission
+    never writes DuckDB or DuckLake, never consumes ``DatabaseEventLog@1``,
+    and never terminalizes a task. Only locally owned impacted nodes may be
+    named for refill. Sibling-owned nodes stay preserved.
+    """
+
+    local_supervisor_id: str
+    sibling_supervisor_id: str
+    local_repository: str
+    sibling_repository: str
+    epoch: int
+    live_plan_epoch: int
+    disposition: CrossRepositoryIncrementalReassessmentDisposition
+    triggering_event_id: str
+    seed_node_ids: tuple[str, ...] = ()
+    applied_event_ids: tuple[str, ...] = ()
+    replayed_event_ids: tuple[str, ...] = ()
+    local_impacted_ids: tuple[str, ...] = ()
+    foreign_affected_ids: tuple[str, ...] = ()
+    preserved_task_ids: tuple[str, ...] = ()
+    preserved_receipt_ids: tuple[str, ...] = ()
+    refill_task_ids: tuple[str, ...] = ()
+    plan_delta: Mapping[str, Any] | None = None
+    reassessment: Mapping[str, Any] | None = None
+    event_admission: Mapping[str, Any] | None = None
+    receipt_admission: Mapping[str, Any] | None = None
+    capability: str = "event-exchange"
+    effect: str = "event_exchange"
+    schema: str = CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_SCHEMA:
+            raise CrossRepositoryIncrementalReassessmentError(
+                f"unsupported cross-repository reassessment schema {self.schema!r}",
+                code="admission_schema",
+            )
+        object.__setattr__(
+            self,
+            "local_supervisor_id",
+            _reassessment_text(self.local_supervisor_id, "local_supervisor_id"),
+        )
+        object.__setattr__(
+            self,
+            "sibling_supervisor_id",
+            _reassessment_text(self.sibling_supervisor_id, "sibling_supervisor_id"),
+        )
+        if self.local_supervisor_id == self.sibling_supervisor_id:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "a supervisor is not its own sibling",
+                code="not_a_sibling",
+            )
+        local_repository = _repository_id(self.local_repository, "local_repository")
+        sibling_repository = _repository_id(
+            self.sibling_repository, "sibling_repository"
+        )
+        if local_repository == sibling_repository:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "cross-repository reassessment requires distinct repositories",
+                code="not_cross_repository",
+            )
+        object.__setattr__(self, "local_repository", local_repository)
+        object.__setattr__(self, "sibling_repository", sibling_repository)
+        if not isinstance(
+            self.disposition, CrossRepositoryIncrementalReassessmentDisposition
+        ):
+            object.__setattr__(
+                self,
+                "disposition",
+                CrossRepositoryIncrementalReassessmentDisposition(
+                    str(self.disposition)
+                ),
+            )
+        object.__setattr__(
+            self,
+            "triggering_event_id",
+            _reassessment_text(
+                self.triggering_event_id, "triggering_event_id", required=False
+            ),
+        )
+        object.__setattr__(self, "seed_node_ids", _unique_compact_ids(self.seed_node_ids))
+        object.__setattr__(
+            self, "applied_event_ids", _unique_compact_ids(self.applied_event_ids)
+        )
+        object.__setattr__(
+            self, "replayed_event_ids", _unique_compact_ids(self.replayed_event_ids)
+        )
+        object.__setattr__(
+            self, "local_impacted_ids", _unique_compact_ids(self.local_impacted_ids)
+        )
+        object.__setattr__(
+            self, "foreign_affected_ids", _unique_compact_ids(self.foreign_affected_ids)
+        )
+        object.__setattr__(
+            self, "preserved_task_ids", _unique_compact_ids(self.preserved_task_ids)
+        )
+        object.__setattr__(
+            self,
+            "preserved_receipt_ids",
+            _unique_compact_ids(self.preserved_receipt_ids),
+        )
+        object.__setattr__(
+            self, "refill_task_ids", _unique_compact_ids(self.refill_task_ids)
+        )
+        impacted = set(self.local_impacted_ids)
+        preserved = set(self.preserved_task_ids)
+        if impacted & preserved:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "impacted and preserved task ids must be disjoint",
+                code="reassessment_invalid",
+            )
+        if not set(self.refill_task_ids).issubset(impacted):
+            raise CrossRepositoryIncrementalReassessmentError(
+                "refill task ids must be a subset of the local impacted suffix",
+                code="reassessment_invalid",
+            )
+        if self.foreign_affected_ids and set(self.foreign_affected_ids) & impacted:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "foreign affected ids must not be locally impacted",
+                code="reassessment_invalid",
+            )
+        capability = _reassessment_text(self.capability, "capability")
+        if capability in FORBIDDEN_SIBLING_CAPABILITIES:
+            raise CrossRepositoryIncrementalReassessmentError(
+                f"sibling capability {capability!r} is forbidden",
+                code="forbidden_capability",
+            )
+        if capability not in CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_CAPABILITIES:
+            raise CrossRepositoryIncrementalReassessmentError(
+                f"unknown sibling capability {capability!r}",
+                code="unknown_capability",
+            )
+        object.__setattr__(self, "capability", capability)
+        epoch = int(self.epoch)
+        if epoch < 1:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "epoch must be >= 1",
+                code="stale_fence_epoch",
+            )
+        object.__setattr__(self, "epoch", epoch)
+        live_plan_epoch = int(self.live_plan_epoch)
+        if live_plan_epoch < 1:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "live_plan_epoch must be >= 1",
+                code="stale_plan_epoch",
+            )
+        object.__setattr__(self, "live_plan_epoch", live_plan_epoch)
+        object.__setattr__(
+            self,
+            "effect",
+            _admit_sibling_effect(
+                self.effect,
+                error_cls=CrossRepositoryIncrementalReassessmentError,
+            ),
+        )
+        object.__setattr__(self, "plan_delta", _frozen_mapping(self.plan_delta))
+        object.__setattr__(self, "reassessment", _frozen_mapping(self.reassessment))
+        object.__setattr__(
+            self, "event_admission", _frozen_mapping(self.event_admission)
+        )
+        object.__setattr__(
+            self, "receipt_admission", _frozen_mapping(self.receipt_admission)
+        )
+
+    @property
+    def logical_once_key(self) -> str:
+        trigger = self.triggering_event_id or (
+            self.applied_event_ids[0] if self.applied_event_ids else ""
+        )
+        return f"{self.sibling_supervisor_id}:{self.sibling_repository}:{trigger}"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "binding": CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_BINDING,
+            "interface": CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_INTERFACE,
+            "carrier": SUPERVISOR_FABRIC_INTERFACE,
+            "consumes": {
+                "supervisor_fabric": SUPERVISOR_FABRIC_INTERFACE,
+                "sibling_event_validation": SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING,
+                "sibling_capability_registry": (
+                    SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING
+                ),
+                "cross_supervisor_receipt": CROSS_SUPERVISOR_RECEIPT_BINDING,
+                "event_driven_reassessment": EVENT_DRIVEN_REASSESSMENT_BINDING,
+                "incremental_plan_impact": INCREMENTAL_PLAN_IMPACT_SCHEMA,
+                "plan_delta": PLAN_DELTA_SCHEMA,
+                "stale_plan_epoch": STALE_PLAN_EPOCH_BINDING,
+                "idempotent_event_consumption": IDEMPOTENT_EVENT_CONSUMPTION_BINDING,
+            },
+            "local_supervisor_id": self.local_supervisor_id,
+            "sibling_supervisor_id": self.sibling_supervisor_id,
+            "local_repository": self.local_repository,
+            "sibling_repository": self.sibling_repository,
+            "epoch": self.epoch,
+            "live_plan_epoch": self.live_plan_epoch,
+            "disposition": self.disposition.value,
+            "triggering_event_id": self.triggering_event_id,
+            "seed_node_ids": list(self.seed_node_ids),
+            "applied_event_ids": list(self.applied_event_ids),
+            "replayed_event_ids": list(self.replayed_event_ids),
+            "local_impacted_ids": list(self.local_impacted_ids),
+            "foreign_affected_ids": list(self.foreign_affected_ids),
+            "preserved_task_ids": list(self.preserved_task_ids),
+            "preserved_receipt_ids": list(self.preserved_receipt_ids),
+            "refill_task_ids": list(self.refill_task_ids),
+            "plan_delta": None if self.plan_delta is None else dict(self.plan_delta),
+            "reassessment": None if self.reassessment is None else dict(self.reassessment),
+            "event_admission": (
+                None if self.event_admission is None else dict(self.event_admission)
+            ),
+            "receipt_admission": (
+                None if self.receipt_admission is None else dict(self.receipt_admission)
+            ),
+            "capability": self.capability,
+            "effect": self.effect,
+            "logical_once_key": self.logical_once_key,
+            "fenced": True,
+            "admitted": True,
+            "model_free": True,
+            "authorizes_append": False,
+            "authorizes_completion": False,
+            "database_write": False,
+            "direct_state_write": False,
+            "terminalize_task": False,
+            "completion_authoritative": False,
+            "worker_assertion_is_authority": False,
+            "worker_completion_insufficient": True,
+            "no_competing_subsystem_created": True,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> CrossRepositoryIncrementalReassessment:
+        if not isinstance(payload, Mapping):
+            raise CrossRepositoryIncrementalReassessmentError(
+                "cross-repository reassessment must be an object",
+                code="record_invalid",
+            )
+        return cls(
+            local_supervisor_id=str(payload.get("local_supervisor_id") or ""),
+            sibling_supervisor_id=str(payload.get("sibling_supervisor_id") or ""),
+            local_repository=str(
+                payload.get("local_repository") or DEFAULT_LOCAL_REPOSITORY
+            ),
+            sibling_repository=str(payload.get("sibling_repository") or ""),
+            epoch=int(payload.get("epoch") or 0),
+            live_plan_epoch=int(payload.get("live_plan_epoch") or 0),
+            disposition=CrossRepositoryIncrementalReassessmentDisposition(
+                str(payload.get("disposition") or "no_reassessment")
+            ),
+            triggering_event_id=str(payload.get("triggering_event_id") or ""),
+            seed_node_ids=tuple(payload.get("seed_node_ids") or ()),
+            applied_event_ids=tuple(payload.get("applied_event_ids") or ()),
+            replayed_event_ids=tuple(payload.get("replayed_event_ids") or ()),
+            local_impacted_ids=tuple(payload.get("local_impacted_ids") or ()),
+            foreign_affected_ids=tuple(payload.get("foreign_affected_ids") or ()),
+            preserved_task_ids=tuple(payload.get("preserved_task_ids") or ()),
+            preserved_receipt_ids=tuple(payload.get("preserved_receipt_ids") or ()),
+            refill_task_ids=tuple(payload.get("refill_task_ids") or ()),
+            plan_delta=payload.get("plan_delta"),
+            reassessment=payload.get("reassessment"),
+            event_admission=payload.get("event_admission"),
+            receipt_admission=payload.get("receipt_admission"),
+            capability=str(payload.get("capability") or "event-exchange"),
+            effect=str(payload.get("effect") or "event_exchange"),
+            schema=str(
+                payload.get("schema")
+                or CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_SCHEMA
+            ),
+        )
+
+
+def _frozen_mapping(value: Any) -> Mapping[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise CrossRepositoryIncrementalReassessmentError(
+            "mapping field must be an object",
+            code="reassessment_invalid",
+        )
+    return MappingProxyType(dict(value))
+
+
+def _plan_delta_identity(
+    *,
+    base_plan_revision: str,
+    triggering_event_id: str,
+    impacted_task_ids: Sequence[str],
+    preserved_task_ids: Sequence[str],
+    preserved_receipt_ids: Sequence[str],
+    refill_task_ids: Sequence[str],
+) -> dict[str, Any]:
+    return {
+        "schema": PLAN_DELTA_SCHEMA,
+        "schema_version": PLAN_DELTA_SCHEMA_VERSION,
+        "base_plan_revision": base_plan_revision,
+        "triggering_event_id": triggering_event_id,
+        "impacted_task_ids": list(impacted_task_ids),
+        "preserved_task_ids": list(preserved_task_ids),
+        "preserved_receipt_ids": list(preserved_receipt_ids),
+        "refill_task_ids": list(refill_task_ids),
+        "history_preserving": True,
+        "model_free_refill": True,
+        "completion_authoritative": False,
+    }
+
+
+def _map_reassessment_disposition(
+    value: Any,
+) -> CrossRepositoryIncrementalReassessmentDisposition:
+    raw = str(getattr(value, "value", value) or "no_reassessment")
+    mapping = {
+        "no_reassessment": CrossRepositoryIncrementalReassessmentDisposition.NO_REASSESSMENT,
+        "reassessed": CrossRepositoryIncrementalReassessmentDisposition.REASSESSED,
+        "replayed": CrossRepositoryIncrementalReassessmentDisposition.REPLAYED,
+        "blocked": CrossRepositoryIncrementalReassessmentDisposition.BLOCKED,
+        "unknown": CrossRepositoryIncrementalReassessmentDisposition.UNKNOWN,
+    }
+    try:
+        return mapping[raw]
+    except KeyError as error:
+        raise CrossRepositoryIncrementalReassessmentError(
+            f"unsupported reassessment disposition {raw!r}",
+            code="reassessment_invalid",
+        ) from error
+
+
+def reassess_cross_repository(
+    record: Mapping[str, Any],
+) -> CrossRepositoryIncrementalReassessment:
+    """Admit a sibling event or receipt and reassess only the local suffix.
+
+    Physical sibling delivery remains the caller's responsibility. This
+    function never writes DuckDB or DuckLake, never consumes
+    ``DatabaseEventLog@1``, never terminalizes a task, and never grants
+    completion authority. ``worker_assertion`` is diagnostic only.
+    """
+
+    if not isinstance(record, Mapping):
+        raise CrossRepositoryIncrementalReassessmentError(
+            "cross-repository reassessment record must be an object",
+            code="record_invalid",
+        )
+    _reject_direct_state_writes(
+        record,
+        error_cls=CrossRepositoryIncrementalReassessmentError,
+        subject="cross-repository incremental reassessment",
+    )
+    if record.get("completion_authoritative"):
+        raise CrossRepositoryIncrementalReassessmentError(
+            "cross-repository incremental reassessment is not completion authority",
+            code="completion_not_authoritative",
+        )
+    local_supervisor_id = _reassessment_text(
+        record.get("local_supervisor_id"), "local_supervisor_id"
+    )
+    sibling_supervisor_id = _reassessment_text(
+        record.get("sibling_supervisor_id") or record.get("supervisor_id"),
+        "sibling_supervisor_id",
+    )
+    if sibling_supervisor_id == local_supervisor_id:
+        raise CrossRepositoryIncrementalReassessmentError(
+            "a supervisor is not its own sibling",
+            code="not_a_sibling",
+        )
+    known = record.get("known_sibling_ids")
+    if known is not None:
+        if not isinstance(known, Sequence) or isinstance(known, (str, bytes)):
+            raise CrossRepositoryIncrementalReassessmentError(
+                "known_sibling_ids must be a sequence of supervisor ids",
+                code="unknown_sibling",
+            )
+        if sibling_supervisor_id not in tuple(known):
+            raise CrossRepositoryIncrementalReassessmentError(
+                f"unknown sibling supervisor {sibling_supervisor_id!r}",
+                code="unknown_sibling",
+            )
+    local_repository = _repository_id(
+        record.get("local_repository") or DEFAULT_LOCAL_REPOSITORY,
+        "local_repository",
+    )
+    sibling_repository = _repository_id(
+        record.get("sibling_repository"), "sibling_repository"
+    )
+    if local_repository == sibling_repository:
+        raise CrossRepositoryIncrementalReassessmentError(
+            "cross-repository reassessment requires distinct repositories",
+            code="not_cross_repository",
+        )
+    event_payload = record.get("event")
+    receipt_payload = record.get("receipt")
+    if event_payload is None and receipt_payload is None:
+        raise CrossRepositoryIncrementalReassessmentError(
+            "event or receipt is required",
+            code="carrier_required",
+        )
+    if "capability" in record:
+        offered_capability = record.get("capability")
+    else:
+        offered_capability = (
+            CROSS_SUPERVISOR_RECEIPT_CAPABILITY
+            if receipt_payload is not None and event_payload is None
+            else "event-exchange"
+        )
+    if offered_capability in FORBIDDEN_SIBLING_CAPABILITIES:
+        raise CrossRepositoryIncrementalReassessmentError(
+            f"sibling capability {offered_capability!r} is forbidden",
+            code="forbidden_capability",
+        )
+    if offered_capability not in (None, ""):
+        capability = _reassessment_text(offered_capability, "capability")
+        if capability not in CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_CAPABILITIES:
+            raise CrossRepositoryIncrementalReassessmentError(
+                f"unknown sibling capability {capability!r}",
+                code="unknown_capability",
+            )
+        if capability == CROSS_SUPERVISOR_RECEIPT_CAPABILITY and receipt_payload is None:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "receipt-exchange requires a receipt carrier",
+                code="carrier_required",
+            )
+        if capability == "event-exchange" and event_payload is None:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "event-exchange requires an event carrier",
+                code="carrier_required",
+            )
+    else:
+        capability = offered_capability
+    current_epoch = record.get("current_epoch")
+    if current_epoch is not None:
+        try:
+            current = int(current_epoch)
+        except (TypeError, ValueError) as error:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "current_epoch must be an integer >= 1",
+                code="stale_fence_epoch",
+            ) from error
+        if current < 1:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "current_epoch must be >= 1",
+                code="stale_fence_epoch",
+            )
+        try:
+            offered = int(record.get("epoch") or 0)
+        except (TypeError, ValueError) as error:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "epoch must be an integer >= 1",
+                code="stale_fence_epoch",
+            ) from error
+        if offered < current:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "stale fence epoch",
+                code="stale_fence_epoch",
+            )
+    fence = issue_fence(
+        {
+            "supervisor_id": sibling_supervisor_id,
+            "capability": capability,
+            "epoch": record.get("epoch"),
+            "stale_epoch": record.get("stale_epoch"),
+        }
+    )
+    admitted_capability = str(fence["capability"])
+    if admitted_capability in FORBIDDEN_SIBLING_CAPABILITIES:
+        raise CrossRepositoryIncrementalReassessmentError(
+            f"sibling capability {admitted_capability!r} is forbidden",
+            code="forbidden_capability",
+        )
+    if admitted_capability not in CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_CAPABILITIES:
+        raise CrossRepositoryIncrementalReassessmentError(
+            f"unknown sibling capability {admitted_capability!r}",
+            code="unknown_capability",
+        )
+    event_admission: SiblingSupervisorEventAdmission | None = None
+    if event_payload is not None:
+        event_record: dict[str, Any] = {
+            "local_supervisor_id": local_supervisor_id,
+            "sibling_supervisor_id": sibling_supervisor_id,
+            "capability": "event-exchange",
+            "epoch": fence["epoch"],
+            "effect": record.get("effect") or "event_exchange",
+            "event": event_payload,
+        }
+        if known is not None:
+            event_record["known_sibling_ids"] = known
+        event_admission = validate_sibling_supervisor_event(event_record)
+    receipt_admission: CrossSupervisorReceiptAdmission | None = None
+    if receipt_payload is not None:
+        receipt_record: dict[str, Any] = {
+            "local_supervisor_id": local_supervisor_id,
+            "sibling_supervisor_id": sibling_supervisor_id,
+            "capability": CROSS_SUPERVISOR_RECEIPT_CAPABILITY,
+            "epoch": fence["epoch"],
+            "effect": record.get("effect") or "event_exchange",
+            "receipt": receipt_payload,
+        }
+        if known is not None:
+            receipt_record["known_sibling_ids"] = known
+        receipt_admission = admit_cross_supervisor_receipt(receipt_record)
+        if (
+            event_admission is not None
+            and receipt_admission.carrier_event_id != event_admission.event_id
+        ):
+            raise CrossRepositoryIncrementalReassessmentError(
+                "receipt carrier_event_id must match the admitted sibling event",
+                code="carrier_mismatch",
+            )
+    live_plan_epoch = record.get("live_plan_epoch")
+    if live_plan_epoch is None:
+        live_plan_epoch = record.get("plan_epoch") or fence["epoch"]
+    try:
+        live_epoch = int(live_plan_epoch)
+    except (TypeError, ValueError) as error:
+        raise CrossRepositoryIncrementalReassessmentError(
+            "live_plan_epoch must be an integer >= 1",
+            code="stale_plan_epoch",
+        ) from error
+    if live_epoch < 1:
+        raise CrossRepositoryIncrementalReassessmentError(
+            "live_plan_epoch must be >= 1",
+            code="stale_plan_epoch",
+        )
+    plan_root = _reassessment_text(
+        record.get("plan_root_cid") or record.get("plan_root"),
+        "plan_root_cid",
+    )
+    revision = record.get("revision")
+    if revision is None:
+        revision = live_epoch
+    try:
+        revision_value = int(revision)
+    except (TypeError, ValueError) as error:
+        raise CrossRepositoryIncrementalReassessmentError(
+            "revision must be an integer",
+            code="reassessment_invalid",
+        ) from error
+    event_body = event_payload if isinstance(event_payload, Mapping) else {}
+    event_fields = _payload_mapping(event_body.get("payload") if event_body else {})
+    receipt_body = receipt_payload if isinstance(receipt_payload, Mapping) else {}
+    receipt_fields = _payload_mapping(receipt_body.get("payload") if receipt_body else {})
+    offered_plan_epoch = (
+        record.get("event_plan_epoch")
+        or event_body.get("plan_epoch")
+        or event_fields.get("plan_epoch")
+        or receipt_fields.get("plan_epoch")
+        or live_epoch
+    )
+    try:
+        offered_epoch = int(offered_plan_epoch)
+    except (TypeError, ValueError) as error:
+        raise CrossRepositoryIncrementalReassessmentError(
+            "plan_epoch must be an integer >= 1",
+            code="stale_plan_epoch",
+        ) from error
+    from ..task_sources.plan_revision_store import assert_plan_epoch_current
+
+    assert_plan_epoch_current(
+        offered_epoch,
+        live_epoch,
+        worker_assertion=bool(record.get("worker_assertion")),
+    )
+    offered_root = (
+        str(event_body.get("plan_root") or "").strip()
+        or str(event_body.get("plan_root_cid") or "").strip()
+        or str(event_fields.get("plan_root") or "").strip()
+        or str(event_fields.get("plan_root_cid") or "").strip()
+        or str(receipt_fields.get("plan_root") or "").strip()
+        or str(receipt_fields.get("plan_root_cid") or "").strip()
+        or plan_root
+    )
+    if offered_root != plan_root:
+        raise CrossRepositoryIncrementalReassessmentError(
+            "event plan_root does not match plan_root_cid",
+            code="plan_root_mismatch",
+        )
+    triggering_event_id = ""
+    if event_admission is not None:
+        triggering_event_id = event_admission.event_id
+    elif receipt_admission is not None:
+        triggering_event_id = receipt_admission.carrier_event_id
+    seed_ids = _unique_compact_ids(
+        tuple(record.get("seed_node_ids") or ())
+        + _seed_ids_from_mapping(event_body)
+        + _seed_ids_from_mapping(event_fields)
+        + _seed_ids_from_mapping(receipt_fields)
+    )
+    nodes = _plan_node_payloads(record.get("nodes"))
+    node_ids = tuple(
+        _reassessment_text(item.get("node_id"), "node_id") for item in nodes
+    )
+    if (
+        receipt_admission is not None
+        and receipt_admission.task_id in set(node_ids)
+    ):
+        seed_ids = _unique_compact_ids(seed_ids + (receipt_admission.task_id,))
+    if len(node_ids) != len(set(node_ids)):
+        raise CrossRepositoryIncrementalReassessmentError(
+            "plan impact node_ids must be unique",
+            code="reassessment_invalid",
+        )
+    repositories = _node_repository_map(
+        record.get("node_repositories"),
+        node_ids,
+        local_repository,
+    )
+    unknown_outcome = bool(
+        receipt_admission is not None and receipt_admission.outcome == "unknown"
+    )
+    previously_consumed = record.get("previously_consumed_event_ids") or ()
+    if isinstance(previously_consumed, (str, bytes, bytearray)) or not isinstance(
+        previously_consumed, Sequence
+    ):
+        raise CrossRepositoryIncrementalReassessmentError(
+            "previously_consumed_event_ids must be a sequence",
+            code="reassessment_invalid",
+        )
+    previously_consumed_ids = _unique_compact_ids(tuple(previously_consumed))
+    disposition = CrossRepositoryIncrementalReassessmentDisposition.NO_REASSESSMENT
+    applied_event_ids: tuple[str, ...] = ()
+    replayed_event_ids: tuple[str, ...] = ()
+    local_impacted: tuple[str, ...] = ()
+    foreign_affected: tuple[str, ...] = ()
+    preserved_task_ids: tuple[str, ...] = node_ids
+    preserved_receipt_ids: tuple[str, ...] = _unique_compact_ids(
+        [
+            ref
+            for item in nodes
+            for ref in tuple(item.get("receipt_refs") or ())
+        ]
+    )
+    refill_task_ids: tuple[str, ...] = ()
+    reassessment_payload: Mapping[str, Any] | None = None
+    if unknown_outcome:
+        disposition = CrossRepositoryIncrementalReassessmentDisposition.UNKNOWN
+    elif triggering_event_id in previously_consumed_ids:
+        disposition = CrossRepositoryIncrementalReassessmentDisposition.REPLAYED
+        replayed_event_ids = (triggering_event_id,)
+    else:
+        if not seed_ids:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "applied events require non-empty seed_node_ids",
+                code="seed_node_ids",
+            )
+        unknown_seeds = [item for item in seed_ids if item not in set(node_ids)]
+        if unknown_seeds:
+            raise CrossRepositoryIncrementalReassessmentError(
+                "unknown seed_node_ids: " + ", ".join(unknown_seeds),
+                code="unknown_seed",
+            )
+        kind = _refill_kind(
+            record.get("kind")
+            or event_body.get("kind")
+            or event_fields.get("kind")
+            or receipt_fields.get("kind")
+        )
+        reassessment_event = {
+            "event_id": triggering_event_id,
+            "kind": kind,
+            "plan_epoch": live_epoch,
+            "plan_root": plan_root,
+            "seed_node_ids": list(seed_ids),
+        }
+        (
+            EventDrivenReassessmentDisposition,
+            EventDrivenReassessmentError,
+            reassess_events,
+        ) = _consume_event_driven_reassessment()
+        try:
+            reassessment = reassess_events(
+                (reassessment_event,),
+                nodes,
+                live_plan_epoch=live_epoch,
+                plan_root_cid=plan_root,
+                revision=revision_value,
+                ready_tasks=int(record.get("ready_tasks") or 0),
+                active_tasks=int(record.get("active_tasks") or 0),
+                open_goals=int(record.get("open_goals") or 0),
+                previously_consumed_event_ids=previously_consumed_ids,
+                worker_assertion=bool(record.get("worker_assertion")),
+                observations=tuple(record.get("observations") or ()),
+                impact_closure=record.get("impact_closure"),
+            )
+        except EventDrivenReassessmentError as error:
+            raise CrossRepositoryIncrementalReassessmentError(
+                str(error),
+                code="reassessment_invalid",
+            ) from error
+        reassessment_payload = reassessment.to_dict()
+        applied_event_ids = tuple(reassessment.applied_event_ids)
+        replayed_event_ids = tuple(reassessment.replayed_event_ids)
+        disposition = _map_reassessment_disposition(reassessment.disposition)
+        if reassessment.impact is not None:
+            affected = tuple(reassessment.impact.cone.affected_ids)
+            local_impacted = tuple(
+                node_id
+                for node_id in affected
+                if repositories.get(node_id, local_repository) == local_repository
+            )
+            foreign_affected = tuple(
+                node_id
+                for node_id in affected
+                if repositories.get(node_id, local_repository) != local_repository
+            )
+            local_node_ids = tuple(
+                node_id
+                for node_id in node_ids
+                if repositories.get(node_id, local_repository) == local_repository
+            )
+            preserved_task_ids = tuple(
+                node_id
+                for node_id in local_node_ids
+                if node_id not in set(local_impacted)
+            )
+            preserved_receipt_ids = _unique_compact_ids(
+                [
+                    ref
+                    for item in nodes
+                    if item.get("node_id") in set(preserved_task_ids)
+                    for ref in tuple(item.get("receipt_refs") or ())
+                ]
+            )
+            refill_candidates = set(reassessment.impact.refill_decision.candidate_task_ids)
+            refill_task_ids = tuple(
+                node_id for node_id in local_impacted if node_id in refill_candidates
+            )
+            if (
+                disposition
+                is CrossRepositoryIncrementalReassessmentDisposition.REASSESSED
+                and not local_impacted
+            ):
+                disposition = (
+                    CrossRepositoryIncrementalReassessmentDisposition.NO_REASSESSMENT
+                )
+    plan_delta = _plan_delta_identity(
+        base_plan_revision=str(revision_value),
+        triggering_event_id=triggering_event_id,
+        impacted_task_ids=local_impacted,
+        preserved_task_ids=_unique_compact_ids(
+            preserved_task_ids + foreign_affected
+        ),
+        preserved_receipt_ids=preserved_receipt_ids,
+        refill_task_ids=refill_task_ids,
+    )
+    _ = bool(record.get("worker_assertion"))
+    return CrossRepositoryIncrementalReassessment(
+        local_supervisor_id=local_supervisor_id,
+        sibling_supervisor_id=str(fence["supervisor_id"]),
+        local_repository=local_repository,
+        sibling_repository=sibling_repository,
+        epoch=int(fence["epoch"]),
+        live_plan_epoch=live_epoch,
+        disposition=disposition,
+        triggering_event_id=triggering_event_id,
+        seed_node_ids=seed_ids,
+        applied_event_ids=applied_event_ids,
+        replayed_event_ids=replayed_event_ids,
+        local_impacted_ids=local_impacted,
+        foreign_affected_ids=foreign_affected,
+        preserved_task_ids=preserved_task_ids,
+        preserved_receipt_ids=preserved_receipt_ids,
+        refill_task_ids=refill_task_ids,
+        plan_delta=plan_delta,
+        reassessment=reassessment_payload,
+        event_admission=(
+            None if event_admission is None else event_admission.to_dict()
+        ),
+        receipt_admission=(
+            None if receipt_admission is None else receipt_admission.to_dict()
+        ),
+        capability=admitted_capability,
+        effect=_admit_sibling_effect(
+            record.get("effect") or "event_exchange",
+            error_cls=CrossRepositoryIncrementalReassessmentError,
+        ),
+    )
+
+
 class SupervisorFabric:
-    """Fenced coordination carrier for sibling-supervisor event and receipt admission."""
+    """Fenced coordination carrier for sibling-supervisor event, receipt, and cross-repository reassessment admission."""
 
     INTERFACE: Final[str] = SUPERVISOR_FABRIC_INTERFACE
     SIBLING_SUPERVISOR_EVENT_VALIDATION_BINDING: Final[str] = (
@@ -1416,6 +2437,9 @@ class SupervisorFabric:
         SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING
     )
     CROSS_SUPERVISOR_RECEIPT_BINDING: Final[str] = CROSS_SUPERVISOR_RECEIPT_BINDING
+    CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_BINDING: Final[str] = (
+        CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_BINDING
+    )
 
     def __init__(
         self,
@@ -1571,6 +2595,36 @@ class SupervisorFabric:
             self.lookup_sibling_capability(sibling_supervisor_id, capability)
         return admit_cross_supervisor_receipt(payload)
 
+    def reassess_cross_repository(
+        self, record: Mapping[str, Any]
+    ) -> CrossRepositoryIncrementalReassessment:
+        payload: dict[str, Any] = dict(record)
+        payload.setdefault("local_supervisor_id", self._supervisor_id)
+        payload.setdefault("epoch", record.get("epoch", self._epoch))
+        payload.setdefault("current_epoch", self._epoch)
+        if self._known_sibling_ids and "known_sibling_ids" not in payload:
+            payload["known_sibling_ids"] = self._known_sibling_ids
+        if self._capability_registry:
+            sibling_supervisor_id = _reassessment_text(
+                payload.get("sibling_supervisor_id") or payload.get("supervisor_id"),
+                "sibling_supervisor_id",
+            )
+            event_present = payload.get("event") is not None
+            receipt_present = payload.get("receipt") is not None
+            if event_present:
+                self.lookup_sibling_capability(sibling_supervisor_id, "event-exchange")
+            if receipt_present:
+                self.lookup_sibling_capability(
+                    sibling_supervisor_id, CROSS_SUPERVISOR_RECEIPT_CAPABILITY
+                )
+            if not event_present and not receipt_present:
+                capability = _reassessment_text(
+                    payload.get("capability") or self._capability,
+                    "capability",
+                )
+                self.lookup_sibling_capability(sibling_supervisor_id, capability)
+        return reassess_cross_repository(payload)
+
 
 __all__ = [
     "ALLOWED_SIBLING_CAPABILITIES",
@@ -1579,6 +2633,12 @@ __all__ = [
     "CANONICAL_EVENT_INTERFACE",
     "CANONICAL_EVENT_REQUIRED_FIELDS",
     "CANONICAL_EVENT_SCHEMA_ID",
+    "CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_BINDING",
+    "CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_CAPABILITIES",
+    "CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_CONSUMES",
+    "CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_INTERFACE",
+    "CROSS_REPOSITORY_INCREMENTAL_REASSESSMENT_SCHEMA",
+    "CROSS_REPOSITORY_OWNERS",
     "CROSS_SUPERVISOR_RECEIPT_BINDING",
     "CROSS_SUPERVISOR_RECEIPT_CAPABILITY",
     "CROSS_SUPERVISOR_RECEIPT_CARRIER",
@@ -1589,8 +2649,15 @@ __all__ = [
     "CROSS_SUPERVISOR_RECEIPT_REQUIRED_FIELDS",
     "CROSS_SUPERVISOR_RECEIPT_SCHEMA",
     "DATABASE_EVENT_LOG_INTERFACE",
+    "DEFAULT_LOCAL_REPOSITORY",
     "EVENT_CURSOR_INTERFACE",
+    "EVENT_DRIVEN_REASSESSMENT_BINDING",
     "FORBIDDEN_SIBLING_CAPABILITIES",
+    "IDEMPOTENT_EVENT_CONSUMPTION_BINDING",
+    "INCREMENTAL_PLAN_IMPACT_SCHEMA",
+    "PLAN_DELTA_SCHEMA",
+    "PLAN_DELTA_SCHEMA_VERSION",
+    "STALE_PLAN_EPOCH_BINDING",
     "SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_BINDING",
     "SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_CONSUMES",
     "SIBLING_SUPERVISOR_CAPABILITY_REGISTRY_INTERFACE",
@@ -1600,6 +2667,9 @@ __all__ = [
     "SIBLING_SUPERVISOR_EVENT_VALIDATION_INTERFACE",
     "SIBLING_SUPERVISOR_EVENT_VALIDATION_SCHEMA",
     "SUPERVISOR_FABRIC_INTERFACE",
+    "CrossRepositoryIncrementalReassessment",
+    "CrossRepositoryIncrementalReassessmentDisposition",
+    "CrossRepositoryIncrementalReassessmentError",
     "CrossSupervisorReceiptAdmission",
     "CrossSupervisorReceiptError",
     "SiblingSupervisorCapabilityAdmission",
@@ -1613,6 +2683,7 @@ __all__ = [
     "build_sibling_supervisor_capability_registry",
     "issue_fence",
     "lookup_sibling_supervisor_capability",
+    "reassess_cross_repository",
     "register_sibling_supervisor_capability",
     "validate_sibling_supervisor_event",
 ]

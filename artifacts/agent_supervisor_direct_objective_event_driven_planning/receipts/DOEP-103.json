@@ -1,0 +1,122 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-103",
+  "task_cid": "sha256:352be477ff961381e8ce80cfdc8ea259cc78362b2d566a20bd26683ccdc7134d",
+  "title": "Add cross-repository incremental reassessment",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "base_repositories": {
+    "ipfs_accelerate_py": {
+      "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+      "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+    },
+    "ipfs_datasets_py": {
+      "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+      "tree": "456e09b51d6a07a3a5873436df24054768195320"
+    },
+    "ipfs_kit_py": {
+      "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+      "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+    },
+    "lift_coding": {
+      "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+      "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+    }
+  },
+  "changed_paths": [
+    "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py",
+    "test/api/doep/test_doep_103_add_cross_repository_incremental_reassessment.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-103.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-103.json"
+  ],
+  "expected_outputs": [
+    "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py",
+    "test/api/doep/test_doep_103_add_cross_repository_incremental_reassessment.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-103.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-103.json"
+  ],
+  "write_scope": [
+    "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py",
+    "test/api/doep/test_doep_103_add_cross_repository_incremental_reassessment.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-103.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-103.json"
+  ],
+  "outputs_present": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py": true,
+    "test/api/doep/test_doep_103_add_cross_repository_incremental_reassessment.py": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-103.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-103.json": true
+  },
+  "path_digests": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py": "sha256:33bd7dfd354b0fe098a300519686bf859f80618289757fec62cad9331c4ddb8b",
+    "test/api/doep/test_doep_103_add_cross_repository_incremental_reassessment.py": "sha256:f29cc60b365a8c7a173d4a2533482ed24113587a1f619116b08baf6fe4a8e37b",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-103.json": "sha256:adafaef34be717789d0542a43dc273d42ae16b7a2cd47a91f63c553cab9760e6"
+  },
+  "required_evidence": {
+    "source_commit_tree_gitlinks": {
+      "ipfs_accelerate_py": {
+        "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+        "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+      },
+      "ipfs_datasets_py": {
+        "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+        "tree": "456e09b51d6a07a3a5873436df24054768195320"
+      },
+      "ipfs_kit_py": {
+        "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+        "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+      },
+      "lift_coding": {
+        "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+        "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+      }
+    },
+    "test_proof_results": {
+      "validation_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/doep/test_doep_103_add_cross_repository_incremental_reassessment.py",
+        "-q"
+      ],
+      "proof_selection": "verified_empty",
+      "proof_reason": "Cross-repository incremental reassessment is independently checked by deterministic Python assertions against SupervisorFabric@1, EventDrivenReassessment@1, incremental plan-impact analysis, and the PlanDelta identity. Sibling events and receipts are admitted without DuckDB or DuckLake writes."
+    },
+    "limitations": [
+      "Candidate receipt only; independent fenced supervisor admission is required for completion.",
+      "Worker or model assertion alone is insufficient.",
+      "Cross-repository incremental reassessment is an in-process fabric binding; it does not write DuckDB or DuckLake, consume DatabaseEventLog, or terminalize tasks.",
+      "Only the locally owned impacted suffix is reassessed. Sibling-owned nodes are preserved, not locally mutated.",
+      "Sibling supervisors exchange events and receipts, never database writes.",
+      "Physical sibling delivery remains at-least-once; exactly-once logical transitions remain keyed by (consumer_id, event_id) inside DatabaseEventLog.",
+      "An unknown receipt outcome is a typed reconciliation signal and is never completion authority.",
+      "PlanDelta identity here names the impacted suffix only; operational PlanDelta@1 admission remains accelerate-owned and is not granted by this binding."
+    ],
+    "verifier_admission": "pending_independent_fenced_supervisor"
+  },
+  "validation": {
+    "commands": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "test/api/doep/test_doep_103_add_cross_repository_incremental_reassessment.py",
+          "-q"
+        ],
+        "cwd": "external/ipfs_accelerate",
+        "status": "candidate_local"
+      }
+    ]
+  },
+  "supervisor_acceptance": {
+    "completion_authoritative": false,
+    "state": "pending_independent_fenced_supervisor"
+  }
+}
