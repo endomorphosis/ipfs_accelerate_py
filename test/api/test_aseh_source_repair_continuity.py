@@ -154,6 +154,7 @@ def operator(f):
              "_r45_source_repair_registration", "_r45_active_git_custody_record",
              "_validate_r45_source_repair_continuity", "_r45_descendant_parent_shape",
              "_admit_r45_or_canonical_descendant", "_validate_r29_historical_live_effect_continuity",
+             "_r45_source_only_canonical_tail_mode",
              "_admit_canonical_merge_suffix", "_sealed_owner_delegation_environment", "preflight"]
     functions(names, ns)
     return ns, witness, guard
@@ -441,6 +442,33 @@ def test_later_canonical_task_tail_requires_real_task_queue_bindings(fixture):
     metadata["validation_proof"]["passed"] = False
     with pytest.raises(ValueError, match="candidate validation"):
         ns["_admit_r45_or_canonical_descendant"](board, source_repair_bundle=bundle, **kwargs)
+
+
+def test_later_source_only_merge_tail_uses_sealed_line_without_queue(fixture):
+    f = fixture; ns, witness, guard = operator(f)
+    repair_target = f.target
+    f.git("checkout", "-qb", "source-only-heal")
+    path = Path("ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py")
+    (f.repo / path).parent.mkdir(parents=True)
+    (f.repo / path).write_text("source only heal\n")
+    f.git("add", str(path)); f.git("commit", "-qm", "source-only scheduler heal")
+    candidate = f.git("rev-parse", "HEAD")
+    f.git("checkout", "-q", "main")
+    f.git("merge", "--no-ff", "-qm", "source-only scheduler heal", "source-only-heal")
+    f.target = f.git("rev-parse", "HEAD")
+    witness.update(head=f.target, tree=f.git("rev-parse", "HEAD^{tree}"))
+    guard.candidate_head = witness["head"]; guard.candidate_tree = witness["tree"]
+    proof = ns["_admit_r45_or_canonical_descendant"](
+        SimpleNamespace(protected_paths=[]), source_repair_bundle={
+            "source_only_repair_selected": True, "transition": f.authority,
+            "receipt": f.authority, "active_source_tree": witness["tree"],
+            "active_source_witness": witness,
+        }, **options(f))
+    integration = proof["canonical_tail"]["integrations"][0]
+    assert proof["canonical_tail"]["base_head"] == repair_target
+    assert integration["candidate_commit"] == candidate
+    assert integration["request_id"] == "aseh-sealed-line-descendant:" + f.target
+    assert integration["task_alias"] == "ASEH-SEALED-LINE"
 
 
 def test_later_linear_descendant_never_inherits_registration(fixture):

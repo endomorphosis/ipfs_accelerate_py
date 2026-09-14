@@ -51011,6 +51011,34 @@ def _r45_descendant_parent_shape(
     return True
 
 
+def _r45_source_only_canonical_tail_mode(*, base_head: str, target_head: str) -> str:
+    """Return sealed-line mode only when every tail merge is source-only."""
+
+    raw_suffix = _git(
+        "rev-list", "--first-parent", "--reverse", f"{base_head}..{target_head}"
+    )
+    commits = tuple(item for item in raw_suffix.splitlines() if item)
+    if not commits:
+        return "canonical_completion"
+    previous = base_head
+    for integration_commit in commits:
+        parent_fields = _git(
+            "show", "-s", "--format=%P", integration_commit
+        ).split()
+        if len(parent_fields) != 2 or parent_fields[0] != previous:
+            return "canonical_completion"
+        landed = _git_changed_paths(previous, integration_commit)
+        if not landed or any(
+            path != "scripts/run_agent_supervisor_efficiency_state_hardening.py"
+            and not path.startswith("ipfs_accelerate_py/agent_supervisor/")
+            and not path.startswith("test/api/")
+            for path in landed
+        ):
+            return "canonical_completion"
+        previous = integration_commit
+    return "sealed_line_descendant"
+
+
 def _admit_r45_or_canonical_descendant(
     board: Any, *, source_repair_bundle: Mapping[str, Any] | None,
     base_head: str, target_head: str, bootstrap: Mapping[str, Any],
@@ -51033,10 +51061,20 @@ def _admit_r45_or_canonical_descendant(
         board, base_head=base_head, target_head=repair_base, **options,
     )
     repair_target = registered["history"]["target_head"]
-    tail_options = dict(options, admission_mode="canonical_completion")
-    tail = None if target_head == repair_target else _admit_canonical_merge_suffix(
-        board, base_head=repair_target, target_head=target_head, **tail_options,
-    )
+    tail = None
+    if target_head != repair_target:
+        # Task tails still require one completed queue request. Source-only
+        # first-parent merges of scheduler/operator/tests use sealed-line
+        # admission so a watchdog heal cannot forge queue settlement.
+        tail_options = dict(
+            options,
+            admission_mode=_r45_source_only_canonical_tail_mode(
+                base_head=repair_target, target_head=target_head,
+            ),
+        )
+        tail = _admit_canonical_merge_suffix(
+            board, base_head=repair_target, target_head=target_head, **tail_options,
+        )
     custody = _r45_active_git_custody_record(
         candidate_head=target_head,
         candidate_tree=str(source_repair_bundle["active_source_tree"]),
