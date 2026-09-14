@@ -50653,6 +50653,145 @@ def _complete_r45_historical_live_prequalification(
     return result
 
 
+def _validated_r45_source_repair_environment() -> dict[str, str]:
+    names = (
+        "IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_PATH",
+        "IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_SHA256",
+    )
+    if not any(name in os.environ for name in names):
+        return {}
+    from ipfs_accelerate_py.agent_supervisor.runtime import source_repair_continuity as contract
+
+    try:
+        registered = contract.registration(os.environ, repository=ROOT, git=_git, git_bytes=_git_bytes)
+        if registered is None:
+            raise OperatorError("R45 source repair child environment target differs")
+        contract.current_target(registered, _git, head=_git("rev-parse", "HEAD"), tree=_git("rev-parse", "HEAD^{tree}"))
+        return {name: os.environ[name] for name in names}
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        raise OperatorError(f"R45 source repair child environment refused: {exc}") from exc
+
+
+def _r45_source_repair_registration(
+    *, anchor_head: str, anchor_tree: str, target_head: str, target_tree: str,
+    receipt: Mapping[str, Any] | None = None,
+) -> tuple[Any, dict[str, Any], str]:
+    """Load only explicitly registered, independently qualified source repair."""
+    from ipfs_accelerate_py.agent_supervisor.runtime import source_repair_continuity as contract
+
+    try:
+        value = contract.registration(
+            os.environ, repository=ROOT, git=_git, git_bytes=_git_bytes,
+        )
+        if value is None:
+            raise OperatorError("R45 linear source repair is not explicitly registered")
+        history = value["history"]
+        if (
+            history["anchor_head"] != anchor_head
+            or history["anchor_tree"] != anchor_tree
+            or (receipt is not None and contract.pinned_json(value["authority"]) != dict(receipt))
+        ):
+            raise OperatorError("R45 source repair registered authority/target differs")
+        contract.current_target(value, _git, head=target_head, tree=target_tree)
+        return contract, value, os.environ[contract.SHA_ENV]
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        raise OperatorError(f"R45 source repair registration refused: {exc}") from exc
+
+
+def _validate_r45_source_repair_continuity(
+    value: Mapping[str, Any], *, authorization_candidate_head: str,
+    authorization_candidate_tree: str, active_candidate_head: str,
+    active_candidate_tree: str,
+) -> dict[str, Any]:
+    contract, registered, pin = _r45_source_repair_registration(
+        anchor_head=authorization_candidate_head, anchor_tree=authorization_candidate_tree,
+        target_head=active_candidate_head, target_tree=active_candidate_tree,
+    )
+    guard = _ASEH_CANDIDATE_GIT_GUARD
+    if guard is None or guard.candidate_head != active_candidate_head or guard.candidate_tree != active_candidate_tree:
+        raise OperatorError("R45 source repair current Git custody is absent")
+    _validate_candidate_git_guard_health(guard, boundary="R45 source-only continuity")
+    witness = _candidate_authorization_witness(
+        expected_head=active_candidate_head, expected_tree=active_candidate_tree,
+    )
+    _assert_candidate_authorization_witness(
+        witness, expected_head=active_candidate_head, expected_tree=active_candidate_tree,
+        boundary="R45 source-only continuity",
+    )
+    try:
+        return contract.validate(
+            value, registered, pin=pin, witness=witness, guard=guard.record,
+            canonical_validator=_validate_r29_historical_live_effect_continuity,
+        )
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        raise OperatorError(f"R45 source repair continuity refused: {exc}") from exc
+
+
+def _r45_descendant_parent_shape(
+    *, parents: Sequence[str], continuity: Any, transition: Mapping[str, Any],
+    candidate_head: str, candidate_tree: str,
+) -> bool:
+    if len(parents) == 2:
+        return True
+    if len(parents) != 1 or not isinstance(continuity, Mapping):
+        return False
+    proof = continuity.get("repair_to_current")
+    if not isinstance(proof, Mapping) or proof.get("schema") != (
+        "ipfs_accelerate_py/agent-supervisor/aseh-source-repair-continuity@1"
+    ):
+        return False
+    _r45_source_repair_registration(
+        anchor_head=str(transition.get("repair_head") or ""),
+        anchor_tree=str(transition.get("repair_tree") or ""),
+        target_head=candidate_head, target_tree=candidate_tree, receipt=transition,
+    )
+    _validate_r45_source_repair_continuity(
+        proof, authorization_candidate_head=str(transition["repair_head"]),
+        authorization_candidate_tree=str(transition["repair_tree"]),
+        active_candidate_head=candidate_head, active_candidate_tree=candidate_tree,
+    )
+    return True
+
+
+def _admit_r45_or_canonical_descendant(
+    board: Any, *, source_repair_bundle: Mapping[str, Any] | None,
+    base_head: str, target_head: str, bootstrap: Mapping[str, Any],
+    integrity: Mapping[str, Any], task_outputs: Mapping[str, Sequence[str]],
+    completed_requests: Sequence[Any], admission_mode: str,
+) -> dict[str, Any]:
+    options = dict(bootstrap=bootstrap, integrity=integrity,
+                   task_outputs=task_outputs, completed_requests=completed_requests,
+                   admission_mode=admission_mode)
+    if source_repair_bundle is None or source_repair_bundle.get("source_only_repair_selected") is not True:
+        return _admit_canonical_merge_suffix(board, base_head=base_head, target_head=target_head, **options)
+    transition = source_repair_bundle["transition"]
+    contract, registered, pin = _r45_source_repair_registration(
+        anchor_head=base_head, anchor_tree=str(transition["repair_tree"]),
+        target_head=target_head, target_tree=str(source_repair_bundle["active_source_tree"]),
+        receipt=source_repair_bundle["receipt"],
+    )
+    repair_base = registered["history"]["repair_base_head"]
+    prefix = None if repair_base == base_head else _admit_canonical_merge_suffix(
+        board, base_head=base_head, target_head=repair_base, **options,
+    )
+    repair_target = registered["history"]["target_head"]
+    tail_options = dict(options, admission_mode="canonical_completion")
+    tail = None if target_head == repair_target else _admit_canonical_merge_suffix(
+        board, base_head=repair_target, target_head=target_head, **tail_options,
+    )
+    guard = _ASEH_CANDIDATE_GIT_GUARD
+    if guard is None:
+        raise OperatorError("R45 source-only current Git guard is absent")
+    proof = contract.bind(
+        registered, pin=pin, canonical_prefix=prefix, canonical_tail=tail,
+        witness=source_repair_bundle["active_source_witness"], guard=guard.record,
+    )
+    return _validate_r45_source_repair_continuity(
+        proof, authorization_candidate_head=base_head,
+        authorization_candidate_tree=str(transition["repair_tree"]),
+        active_candidate_head=target_head,
+        active_candidate_tree=str(source_repair_bundle["active_source_tree"]),
+    )
 def _prequalify_r45_historical_live_launch(
     *,
     paths: Mapping[str, Path],
@@ -50792,12 +50931,16 @@ def _prequalify_r45_historical_live_launch(
     if current != expected:
         raise OperatorError("active R45 external authority differs")
     is_descendant = current_head != anchor_head or current_tree != anchor_tree
+    source_only_repair_selected = is_descendant and bool(_validated_r45_source_repair_environment())
     if is_descendant:
         _git("merge-base", "--is-ancestor", anchor_head, current_head)
-        if len(_git("show", "-s", "--format=%P", current_head).split()) != 2:
-            raise OperatorError(
-                "R45 descendant live qualification requires a merge commit"
+        if source_only_repair_selected:
+            _r45_source_repair_registration(
+                anchor_head=anchor_head, anchor_tree=anchor_tree,
+                target_head=current_head, target_tree=current_tree, receipt=receipt,
             )
+        elif len(_git("show", "-s", "--format=%P", current_head).split()) != 2:
+            raise OperatorError("R45 linear source repair is not explicitly registered")
     active_guard = _ASEH_CANDIDATE_GIT_GUARD
     if (
         active_guard is None
@@ -50862,6 +51005,7 @@ def _prequalify_r45_historical_live_launch(
         "receipt_anchor_is_current": not is_descendant,
         "historical_live_deferred": is_descendant,
         "historical_live_effect_continuity": None,
+        "source_only_repair_selected": source_only_repair_selected,
         "r28_receipt_absent": True,
         "r29_receipt_absent": True,
         "r30_receipt_present": True,
@@ -53033,7 +53177,10 @@ def _assert_exact_run_launch_admission(
             r39_admitted = chain[-2]
             active_admitted = chain[-1]
             if (
-                len(parents) != 2
+                not _r45_descendant_parent_shape(
+                    parents=parents, continuity=continuity, transition=transition,
+                    candidate_head=candidate_head, candidate_tree=candidate_tree,
+                )
                 or transition.get("repair_head") == candidate_head
                 or transition.get("repair_head")
                 != active_admitted.get("repair_head")
@@ -67979,6 +68126,14 @@ def _validate_r29_historical_live_effect_continuity(
     if not isinstance(value, Mapping):
         raise OperatorError(
             "R29 descendant live effect lacks admitted canonical continuity"
+        )
+    if value.get("schema") == "ipfs_accelerate_py/agent-supervisor/aseh-source-repair-continuity@1":
+        return _validate_r45_source_repair_continuity(
+            value,
+            authorization_candidate_head=authorization_candidate_head,
+            authorization_candidate_tree=authorization_candidate_tree,
+            active_candidate_head=active_candidate_head,
+            active_candidate_tree=active_candidate_tree,
         )
     continuity = json.loads(_canonical_json(value))
     unsigned = dict(continuity)
@@ -83898,8 +84053,9 @@ def _admit_materialized_launch(
                 raise OperatorError(
                     "active R29 dispatch-correction policy receipt is absent"
                 )
-            current_proof = _admit_canonical_merge_suffix(
+            current_proof = _admit_r45_or_canonical_descendant(
                 board,
+                source_repair_bundle=r45_prequalification,
                 base_head=str(active_transition["repair_head"]),
                 target_head=str(population["source_head"]),
                 bootstrap=bootstrap,
@@ -88957,6 +89113,7 @@ def _sealed_owner_delegation_environment(
         "XDG_CACHE_HOME": str(qualification_home / ".cache" / "xdg"),
         "CUDA_CACHE_PATH": str(qualification_home / ".cache" / "cuda"),
         "CUDA_CACHE_DISABLE": "1",
+        **_validated_r45_source_repair_environment(),
     }
 
 
@@ -93306,6 +93463,19 @@ def status(config_path: Path, *, require_ready: bool) -> tuple[int, dict[str, An
 
 
 def preflight(config_path: Path) -> tuple[int, dict[str, Any]]:
+    # A source-repair proof binds one current guard epoch. Keep that guard
+    # through materialized admission AND its later exact-run check.
+    registration_environment = _validated_r45_source_repair_environment()
+    if registration_environment and _ASEH_CANDIDATE_GIT_GUARD is None:
+        with _prepared_candidate_git_guard(
+            candidate_head=_git("rev-parse", "HEAD"),
+            candidate_tree=_git("rev-parse", "HEAD^{tree}"),
+        ):
+            return _preflight_with_current_source(config_path)
+    return _preflight_with_current_source(config_path)
+
+
+def _preflight_with_current_source(config_path: Path) -> tuple[int, dict[str, Any]]:
     from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
         preflight_configured_board,
     )
