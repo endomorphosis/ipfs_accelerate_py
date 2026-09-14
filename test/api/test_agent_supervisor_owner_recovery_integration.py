@@ -645,12 +645,33 @@ def test_configured_native_factory_refuses_missing_admission_pair_before_workers
         MergeQueue, "__init__", lambda *a, **k: pytest.fail("legacy fallback")
     )
     daemon = BindingDaemon()
+    parsed = arguments(admitted, namespace=namespace, authority=authority)
+    parsed.owner_merge_bootstrap_profile = "native-owner-merge-pair@1"
     with pytest.raises(RuntimeError, match="native migration and paired grants"):
         bind_database_portal_execution_from_args(
             daemon,
-            arguments(admitted, namespace=namespace, authority=authority),
+            parsed,
             repo_root=admitted.repo,
             portal_daemon_class=CapturingPortal,
         )
     assert daemon.callbacks == {}
     assert not admitted.state_dir.exists()
+
+
+def test_spar_without_advertised_merge_pair_does_not_open_filesystem_queue(
+    admitted, monkeypatch
+):
+    monkeypatch.setattr(
+        MergeQueue, "__init__", lambda *a, **k: pytest.fail("legacy fallback")
+    )
+    daemon = BindingDaemon()
+    parsed = arguments(admitted, namespace=SPAR_BOARD_NAMESPACE, authority="quack")
+    parsed.owner_merge_bootstrap_profile = ""
+    bridge = bind_database_portal_execution_from_args(
+        daemon,
+        parsed,
+        repo_root=admitted.repo,
+        portal_daemon_class=CapturingPortal,
+    )
+    assert bridge.merge_queue is None
+    assert not (admitted.state_dir / "forbidden-legacy-fallback").exists()
